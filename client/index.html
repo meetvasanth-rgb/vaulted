@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0"/>
 <title>Vaulted</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
@@ -57,7 +57,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .setup-title{font-size:14px;font-weight:400;color:var(--cream2);margin-bottom:20px;text-align:center}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.field input{width:100%;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:13px;color:var(--cream);transition:border-color .15s}
+.field input{width:100%;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:16px;color:var(--cream);transition:border-color .15s}
 .field input:focus{border-color:var(--gold-border)}
 .field input::placeholder{color:var(--hint)}
 .field-note{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}
@@ -144,6 +144,25 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#E0E0E0;border-radius:2px}
 @media(max-width:520px){.cards{grid-template-columns:1fr}.setup-card,.waiting-card,.closed-card{padding:28px 22px}}
+
+@media(max-width:480px){
+  .logo-name{font-size:52px !important}
+  .tagline{font-size:16px !important;margin-bottom:36px}
+  .card{padding:16px 14px}
+  .card-title{font-size:12px}
+  .card-desc{font-size:10px}
+  .setup-card,.waiting-card,.closed-card{padding:24px 18px}
+  .code-value{font-size:22px}
+  .chat-hdr{height:46px;padding:0 12px}
+  .chat-hdr-logo{font-size:16px}
+  .bubble{font-size:13px;padding:9px 12px}
+  .msg-input{font-size:14px}
+  .e2e-bar{font-size:9px;padding:4px 12px}
+  .w-title{font-size:18px}
+  .call-name{font-size:22px}
+  .closed-title{font-size:20px}
+  .btn-gold{font-size:14px;padding:13px}
+}
 </style>
 </head>
 <body>
@@ -544,7 +563,9 @@ async function handleMsg(msg) {
     case 'message':
       hideTyping();
       const dec = await decryptMsg(msg.content);
-      addMessage(msg.name, dec, msg.time, false);
+      const rt = new Date();
+      const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
+      addMessage(msg.name, dec, rNow, false);
       notifyIncoming(msg.name);
       break;
 
@@ -605,7 +626,7 @@ async function sendMsg() {
   if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
   const encrypted = await encryptMsg(content);
   ws.send(JSON.stringify({ type:'message', content: encrypted }));
-  const now = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  const d = new Date(); const now = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
   addMessage(myName, content, now, true);
   input.value = ''; input.style.height = 'auto';
 }
