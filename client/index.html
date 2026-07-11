@@ -216,6 +216,126 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
   stroke: #C4B8AC !important;
 }
 
+
+/* ── SETUP / WAITING / CLOSED — WHITE + GOLD PALETTE ─────────────── */
+#s-setup, #s-waiting, #s-closed {
+  background: #FFFFFF;
+}
+#s-setup .setup-card,
+#s-waiting .waiting-card,
+#s-closed .closed-card {
+  background: #F7F4F0;
+  border: 0.5px solid #E8E2DA;
+}
+#s-setup .setup-back {
+  color: #9A8C7E;
+}
+#s-setup .setup-back:hover {
+  color: #4A3F35;
+}
+#s-setup .setup-logo .rule {
+  background: var(--gold);
+}
+#s-setup .setup-logo span {
+  color: #1A1510;
+}
+#s-setup .setup-title {
+  color: #4A3F35;
+}
+#s-setup .field label {
+  color: #9A8C7E;
+}
+#s-setup .field input {
+  background: #FFFFFF;
+  border-color: #E0D9D0;
+  color: #1A1510;
+}
+#s-setup .field input:focus {
+  border-color: rgba(184,151,62,0.5);
+}
+#s-setup .field input::placeholder {
+  color: #C4B8AC;
+}
+#s-setup .field-note {
+  color: #B0A498;
+}
+#s-setup .err-msg {
+  color: #C0392B;
+}
+#s-setup .btn-gold {
+  background: var(--gold);
+  color: #1A1510;
+}
+#s-setup .btn-gold:hover {
+  background: #C9A94A;
+}
+/* Waiting card */
+#s-waiting .w-logo span {
+  color: #1A1510;
+}
+#s-waiting .w-title {
+  color: #1A1510;
+}
+#s-waiting .w-sub {
+  color: #7A6E65;
+}
+#s-waiting .w-note {
+  color: #B0A498;
+}
+#s-waiting .code-box {
+  background: #FFFFFF;
+  border-color: rgba(184,151,62,0.35);
+}
+#s-waiting .code-label {
+  color: #9A8C7E;
+}
+#s-waiting .code-value {
+  color: var(--gold);
+}
+#s-waiting .copy-btn {
+  background: none;
+  border-color: #E0D9D0;
+  color: #7A6E65;
+}
+#s-waiting .copy-btn:hover {
+  border-color: rgba(184,151,62,0.4);
+  color: var(--gold);
+}
+#s-waiting .close-btn {
+  border-color: #E0D9D0;
+  color: #B0A498;
+}
+#s-waiting .close-btn:hover {
+  border-color: #C0392B;
+  color: #C0392B;
+}
+/* Closed card */
+#s-closed .closed-title {
+  color: #1A1510;
+}
+#s-closed .closed-sub {
+  color: #7A6E65;
+}
+#s-closed .closed-note {
+  background: #FFFFFF;
+  border-color: #E8E2DA;
+  color: #7A6E65;
+}
+#s-closed .closed-note strong {
+  color: #4A3F35;
+}
+#s-closed .closed-icon {
+  background: rgba(74,155,111,0.08);
+  border-color: rgba(74,155,111,0.2);
+}
+#s-closed .closed-icon svg {
+  stroke: #4A9B6F;
+}
+#s-closed .btn-gold {
+  background: var(--gold);
+  color: #1A1510;
+}
+
 </style>
 </head>
 <body>
