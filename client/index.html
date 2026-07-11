@@ -577,10 +577,36 @@ let typingTimer = null;
 let tabFocused = true;
 let unreadCount = 0;
 let heartbeatInterval = null;
+let lastRoomCode = '';    // remember room for reconnect
+let lastMyName = '';      // remember codename for reconnect
+let lastPubKey = null;    // remember pubkey for reconnect
+let isReconnecting = false;
 
-document.addEventListener('visibilitychange', () => {
+document.addEventListener('visibilitychange', async () => {
   tabFocused = !document.hidden;
-  if (!document.hidden) { unreadCount = 0; document.title = 'Vaulted'; }
+  if (!document.hidden) {
+    unreadCount = 0;
+    document.title = 'Vaulted';
+    // If we were in a chat and connection dropped while screen was locked
+    const inChat = document.getElementById('s-chat')?.classList.contains('active');
+    const wsDown = !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING;
+    if (inChat && wsDown && lastRoomCode && lastMyName) {
+      addSysMsg('Reconnecting…');
+      setPeerOffline();
+      enableInput(false);
+      isReconnecting = true;
+      myName = lastMyName;
+      try {
+        await connectWs((pubKey) => {
+          lastPubKey = pubKey;
+          ws.send(JSON.stringify({ type: 'join', name: lastMyName, code: lastRoomCode, pubKey }));
+        });
+      } catch {
+        addSysMsg('Could not reconnect. Please rejoin manually.');
+        isReconnecting = false;
+      }
+    }
+  }
 });
 window.addEventListener('focus', () => { tabFocused = true; unreadCount = 0; document.title = 'Vaulted'; });
 window.addEventListener('blur', () => { tabFocused = false; });
@@ -725,9 +751,10 @@ async function connectWs(onOpen) {
   ws.onclose = () => {
     if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
     const chatEl = document.getElementById('s-chat');
-    if (chatEl && chatEl.classList.contains('active')) {
+    if (chatEl && chatEl.classList.contains('active') && !isReconnecting) {
       setPeerOffline();
-      addSysMsg('Connection lost — the other person may have gone offline.');
+      enableInput(false);
+      addSysMsg('Connection lost. Will reconnect when you return…');
     }
   };
 
@@ -762,13 +789,16 @@ async function handleMsg(msg) {
 
     case 'joined':
       roomCode = msg.code;
+      lastRoomCode = msg.code;
+      lastMyName = myName;
       document.getElementById('hdr-code').textContent = msg.code;
       document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${msg.code}`;
       document.title = 'Vaulted';
       setPeerOnline();
       showScreen('s-chat');
       setTimeout(() => enableInput(true), 100);
-      playChime();
+      if (!isReconnecting) playChime();
+      isReconnecting = false;
       break;
 
     case 'pong':
@@ -819,6 +849,14 @@ async function handleMsg(msg) {
       setPeerOffline();
       addSysMsg(`${msg.name} lost connection — they may have locked their screen or lost signal.`);
       enableInput(false);
+      break;
+
+    case 'peer_reconnected':
+      peerOnline = true;
+      setPeerOnline();
+      addSysMsg(`${msg.name} reconnected`);
+      setTimeout(() => enableInput(true), 150);
+      playChime();
       break;
 
     case 'room_closed':
@@ -905,6 +943,7 @@ function rejoinRoom() {
 
 function closeRoom() {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  lastRoomCode = ''; lastMyName = ''; isReconnecting = false;
   if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type:'close_room' })); ws.close(); }
   ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null;
   resetClosedScreen();
@@ -930,6 +969,7 @@ function resetClosedScreen() {
 function startFresh() {
   resetClosedScreen();
   ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null; unreadCount = 0;
+  lastRoomCode = ''; lastMyName = ''; isReconnecting = false;
   document.getElementById('chat-body').innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   document.getElementById('msg-input').value = '';
   document.title = 'Vaulted';

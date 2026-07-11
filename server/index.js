@@ -171,8 +171,17 @@ wss.on('connection', (ws) => {
         if (cws !== ws && cPubKey) ws.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
       });
 
-      broadcast(room, { type: 'peer_joined', name }, ws);
-      console.log(`${name} joined room: ${code}`);
+      // Check if this is a reconnect (same name rejoining)
+      let isReconnect = false;
+      // Check recent peer names to detect reconnect
+      room.clients.forEach(c => {
+        if (c.ws !== ws && c.name === name) isReconnect = true;
+      });
+      broadcast(room, {
+        type: isReconnect ? 'peer_reconnected' : 'peer_joined',
+        name
+      }, ws);
+      console.log(`${name} ${isReconnect ? 'reconnected to' : 'joined'} room: ${code}`);
       return;
     }
 
