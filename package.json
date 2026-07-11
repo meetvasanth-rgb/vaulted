@@ -1,16 +1,11 @@
 {
   "name": "vaulted",
   "version": "1.0.0",
-  "description": "Private anonymous messaging — no trace",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js"
   },
-  "dependencies": {
-    "ws": "^8.17.0"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+  "dependencies": { "ws": "^8.17.0" },
+  "engines": { "node": ">=18" }
 }
