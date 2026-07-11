@@ -106,6 +106,62 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // ── CREATE NAMED ROOM ─────────────────────────────────────────────
+    if (msg.type === 'create_named') {
+      const roomName = (msg.roomName || '').toLowerCase().replace(/[^a-z0-9-]/g, '-').substring(0, 48);
+      const name = (msg.name || 'Stranger').substring(0, 24);
+      const password = msg.password || null;
+      const pubKey = msg.pubKey || null;
+
+      if (!roomName) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Invalid room name.' }));
+        return;
+      }
+
+      // If named room already exists and has 2 people — reject
+      if (rooms.has(roomName) && rooms.get(roomName).clients.size >= 2) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Room is full — someone else is already using this name.' }));
+        return;
+      }
+
+      // If named room exists (someone waiting) — join it instead
+      if (rooms.has(roomName)) {
+        const room = rooms.get(roomName);
+        // Check password
+        if (room.password && room.password !== password) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Wrong password for this room.' }));
+          return;
+        }
+        clientRecord = { ws, name, pubKey };
+        room.clients.add(clientRecord);
+        currentRoom = roomName;
+        ws.send(JSON.stringify({ type: 'joined', code: roomName, name }));
+        if (pubKey) broadcast(room, { type: 'peer_pubkey', pubKey }, ws);
+        room.clients.forEach(({ ws: cws, pubKey: cPubKey }) => {
+          if (cws !== ws && cPubKey) ws.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
+        });
+        broadcast(room, { type: 'peer_joined', name }, ws);
+        console.log(\`\${name} joined named room: \${roomName}\`);
+        return;
+      }
+
+      // Create new named room — persists until explicitly closed
+      rooms.set(roomName, {
+        clients: new Set(),
+        createdAt: Date.now(),
+        password,
+        named: true,
+        timer: setTimeout(() => cleanRoom(roomName), 7 * 24 * 60 * 60 * 1000), // 7 days
+      });
+      const room = rooms.get(roomName);
+      clientRecord = { ws, name, pubKey };
+      room.clients.add(clientRecord);
+      currentRoom = roomName;
+      ws.send(JSON.stringify({ type: 'named_created', roomName, name }));
+      console.log(\`Named room created: \${roomName}\`);
+      return;
+    }
+
     // ── JOIN ROOM ────────────────────────────────────────────
     if (msg.type === 'join') {
       const code = (msg.code || '').toLowerCase().trim();
@@ -118,6 +174,12 @@ wss.on('connection', (ws) => {
       }
       if (room.clients.size >= 2) {
         ws.send(JSON.stringify({ type: 'error', message: 'Room is full — only two people allowed.' }));
+        return;
+      }
+
+      // Check password for named rooms
+      if (room.password && room.password !== (msg.password || null)) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Wrong password. Ask the room creator for the correct password.' }));
         return;
       }
 
@@ -191,8 +253,13 @@ wss.on('connection', (ws) => {
     if (clientRecord) room.clients.delete(clientRecord);
 
     if (room.clients.size === 0) {
-      // Last person left — wipe room
-      cleanRoom(currentRoom);
+      if (room.named) {
+        // Named room — keep alive for 7 days, someone may return
+        console.log(\`Named room \${currentRoom} empty — keeping alive\`);
+      } else {
+        // One-time room — wipe immediately
+        cleanRoom(currentRoom);
+      }
     } else {
       // Notify other person
       broadcast(room, { type: 'peer_left', name: clientRecord?.name ?? 'Stranger' });
