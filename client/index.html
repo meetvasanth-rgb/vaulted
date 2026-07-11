@@ -594,6 +594,11 @@ function showScreen(id) {
   if (id === 's-chat' && peerWasOnline) {
     setTimeout(() => enableInput(true), 100);
   }
+  if (id === 's-setup') {
+    // Always reset the button when showing setup screen
+    const btn = document.getElementById('setup-btn');
+    if (btn) { btn.disabled = false; }
+  }
 }
 
 function toast(msg) {
@@ -787,7 +792,6 @@ function startCreate() {
   document.getElementById('setup-btn').textContent = 'Create room';
   document.getElementById('name-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
-  window.location.hash = '#create';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -803,7 +807,6 @@ function startNamed() {
   document.getElementById('named-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
-  window.location.hash = '#named';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -819,7 +822,6 @@ function startJoin() {
   document.getElementById('code-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
-  window.location.hash = '#join';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -846,7 +848,6 @@ async function handleSetup() {
       document.getElementById('display-code').textContent = result.code;
       const wNote = document.getElementById('w-note');
       if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
-      window.location.hash = '#waiting';
       showScreen('s-waiting');
       saveSession(roomCode, myToken, myName);
       startPolling();
@@ -857,8 +858,7 @@ async function handleSetup() {
           clearInterval(waitInterval);
           document.getElementById('hdr-code').textContent = roomCode;
           document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
-          window.location.hash = '#chat';
-          showScreen('s-chat');
+    showScreen('s-chat');
           enableInput(true);
           playChime();
           if (d.peerPubKey) await deriveSharedKey(d.peerPubKey);
@@ -878,7 +878,6 @@ async function handleSetup() {
       saveSession(roomCode, myToken, myName);
       document.getElementById('hdr-code').textContent = roomCode;
       document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${roomCode}`;
-      window.location.hash = '#chat';
       showScreen('s-chat');
       if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
       enableInput(true);
@@ -908,7 +907,6 @@ function copyCode() {
 
 // ── CLOSE / LEAVE ───────────────────────────────────────────────────────
 async function closeRoom() {
-  window.location.hash = '';
   stopPolling();
   if (roomCode && myToken) {
     try { await api('/api/close', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
@@ -920,7 +918,6 @@ async function closeRoom() {
 }
 
 async function leaveRoom() {
-  window.location.hash = '';
   stopPolling();
   if (roomCode && myToken) {
     try { await api('/api/leave', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
@@ -946,7 +943,6 @@ function goBack() {
   stopPolling();
   resetState();
   clearSession();
-  window.location.hash = '';
   showScreen('s-landing');
   triggerLandingAnim();
 }
@@ -1010,8 +1006,7 @@ window.addEventListener('load', async () => {
       const pubKey = await getOrGenerateKeyPair();
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
       if (!result.error) {
-        window.location.hash = '#chat';
-        showScreen('s-chat');
+showScreen('s-chat');
         setStatus(false, null);
         enableInput(false);
         if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
