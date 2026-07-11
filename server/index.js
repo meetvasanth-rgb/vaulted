@@ -141,7 +141,7 @@ wss.on('connection', (ws) => {
           if (cws !== ws && cPubKey) ws.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
         });
         broadcast(room, { type: 'peer_joined', name }, ws);
-        console.log(\`\${name} joined named room: \${roomName}\`);
+        console.log(`${name} joined named room: ${roomName}`);
         return;
       }
 
@@ -158,7 +158,7 @@ wss.on('connection', (ws) => {
       room.clients.add(clientRecord);
       currentRoom = roomName;
       ws.send(JSON.stringify({ type: 'named_created', roomName, name }));
-      console.log(\`Named room created: \${roomName}\`);
+      console.log(`Named room created: ${roomName}`);
       return;
     }
 
@@ -255,7 +255,7 @@ wss.on('connection', (ws) => {
     if (room.clients.size === 0) {
       if (room.named) {
         // Named room — keep alive for 7 days, someone may return
-        console.log(\`Named room \${currentRoom} empty — keeping alive\`);
+        console.log(`Named room ${currentRoom} empty — keeping alive`);
       } else {
         // One-time room — wipe immediately
         cleanRoom(currentRoom);
