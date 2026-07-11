@@ -497,29 +497,46 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 </div>
 
 <script>
-// ── iOS KEYBOARD VIEWPORT FIX ────────────────────────────────────────
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => {
-    const chat = document.getElementById('s-chat');
-    if (chat && chat.classList.contains('active')) {
-      chat.style.height = window.visualViewport.height + 'px';
-      const body = document.getElementById('chat-body');
-      if (body) body.scrollTop = body.scrollHeight;
-    }
-  });
-}
+// ── HTTP POLLING MESSENGER ────────────────────────────────────────────
+// No WebSockets — uses HTTP polling every 2s
+// Works on iOS even when browser is backgrounded
 
+// ── STATE ──────────────────────────────────────────────────────────────
+let myName = '';
+let myToken = '';
+let roomCode = '';
+let mode = 'create';
+let pollInterval = null;
+let typingInterval = null;
+let lastMsgTs = 0;
+let isTyping = false;
+let typingTimer = null;
+let tabFocused = true;
+let unreadCount = 0;
+let peerWasOnline = false;
 
-window.onerror = function(msg, src, line, col, err) {
-  console.error('Vaulted JS error:', msg, 'line:', line);
-  return false;
-};
-// -- E2E ENCRYPTION (WebCrypto ECDH + AES-GCM) -----------------------
+// E2E encryption state
 let myKeyPair = null;
 let sharedKey = null;
 
-async function generateKeyPair() {
-  // Reuse existing keypair on reconnect — avoids slow crypto on iOS
+// Session persistence (survives iOS page reload)
+const SESSION_KEY = 'vaulted_session';
+const SESSION_TTL = 5 * 60 * 1000; // 5 minutes
+
+function saveSession(code, token, name) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ code, token, name, savedAt: Date.now() })); } catch(e) {}
+}
+function loadSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    if (!s || Date.now() - s.savedAt > SESSION_TTL) { localStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  } catch(e) { return null; }
+}
+function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch(e) {} }
+
+// ── CRYPTO ─────────────────────────────────────────────────────────────
+async function getOrGenerateKeyPair() {
   if (myKeyPair) {
     const exported = await crypto.subtle.exportKey('raw', myKeyPair.publicKey);
     return btoa(String.fromCharCode(...new Uint8Array(exported)));
@@ -530,468 +547,79 @@ async function generateKeyPair() {
 }
 
 async function deriveSharedKey(peerPubKeyB64) {
-  const bytes = Uint8Array.from(atob(peerPubKeyB64), c => c.charCodeAt(0));
-  const peerKey = await crypto.subtle.importKey('raw', bytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
-  sharedKey = await crypto.subtle.deriveKey(
-    { name:'ECDH', public: peerKey }, myKeyPair.privateKey,
-    { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
-  );
+  if (!peerPubKeyB64 || !myKeyPair) return;
+  try {
+    const peerBytes = Uint8Array.from(atob(peerPubKeyB64), c => c.charCodeAt(0));
+    const peerKey = await crypto.subtle.importKey('raw', peerBytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
+    sharedKey = await crypto.subtle.deriveKey(
+      { name:'ECDH', public: peerKey }, myKeyPair.privateKey,
+      { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+    );
+  } catch(e) { sharedKey = null; }
 }
 
-async function encryptMsg(plaintext) {
-  if (!sharedKey) {
-    // Wait up to 3 seconds for key to be established
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 100));
-      if (sharedKey) break;
-    }
-  }
-  if (!sharedKey) return plaintext; // fallback after timeout
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, sharedKey, new TextEncoder().encode(plaintext));
-  const out = new Uint8Array(12 + ct.byteLength);
-  out.set(iv); out.set(new Uint8Array(ct), 12);
-  return 'e2e:' + btoa(String.fromCharCode(...out));
+async function encryptMsg(text) {
+  if (!sharedKey) return text;
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, sharedKey, new TextEncoder().encode(text));
+    const combined = new Uint8Array(iv.byteLength + enc.byteLength);
+    combined.set(iv); combined.set(new Uint8Array(enc), iv.byteLength);
+    return 'e2e:' + btoa(String.fromCharCode(...combined));
+  } catch(e) { return text; }
 }
 
 async function decryptMsg(data) {
-  // If not encrypted prefix, return as plaintext (sent before key exchange)
-  if (!data.startsWith('e2e:')) return data;
-  if (!sharedKey) {
-    // Wait up to 3 seconds for key
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 100));
-      if (sharedKey) break;
-    }
-  }
-  if (!sharedKey) return '[message received before encryption ready]';
+  if (!sharedKey || !data || !data.startsWith('e2e:')) return data;
   try {
-    const buf = Uint8Array.from(atob(data.slice(4)), c => c.charCodeAt(0));
-    const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: buf.slice(0,12) }, sharedKey, buf.slice(12));
+    const combined = Uint8Array.from(atob(data.slice(4)), c => c.charCodeAt(0));
+    const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: combined.slice(0,12) }, sharedKey, combined.slice(12));
     return new TextDecoder().decode(dec);
-  } catch { return '[could not decrypt message]'; }
+  } catch(e) { return '[encrypted]'; }
 }
 
-// -- STATE ------------------------------------------------------------
-let ws = null;
-let mode = 'create'; // 'create' | 'named' | 'join'
-let myName = '';
-let roomCode = '';
-let peerOnline = false;
-let typingTimer = null;
-let tabFocused = true;
-let unreadCount = 0;
-let heartbeatInterval = null;
-let lastRoomCode = '';    // remember room for reconnect
-let lastMyName = '';      // remember codename for reconnect
-let lastPubKey = null;    // remember pubkey for reconnect
-let isReconnecting = false;
-
-// ── SESSION PERSISTENCE ───────────────────────────────────────────────
-// Survives page reload on iOS browser resume
-const SESSION_KEY = 'vaulted_session';
-const SESSION_TTL = 5 * 60 * 1000; // 5 minutes
-
-function saveSession(roomCode, name) {
-  try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({
-      roomCode, name, savedAt: Date.now()
-    }));
-  } catch(e) {}
+// ── API HELPERS ─────────────────────────────────────────────────────────
+async function api(path, data = null) {
+  const opts = data
+    ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data) }
+    : { method:'GET' };
+  const res = await fetch(path, opts);
+  return res.json();
 }
 
-function loadSession() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (Date.now() - s.savedAt > SESSION_TTL) {
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-    return s;
-  } catch(e) { return null; }
-}
-
-function clearSession() {
-  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
-}
-
-
-
-document.addEventListener('visibilitychange', () => {
-  tabFocused = !document.hidden;
-  if (!document.hidden) {
-    unreadCount = 0;
-    document.title = 'Vaulted';
-    // Trigger reconnect check when returning from background
-    scheduleReconnect();
-  }
-});
-
-// Also reconnect on focus (catches tab switching on desktop)
-window.addEventListener('focus', () => {
-  tabFocused = true;
-  unreadCount = 0;
-  document.title = 'Vaulted';
-  // Only trigger reconnect from focus if visibilitychange didn't already
-  if (!reconnectTimer) scheduleReconnect();
-});
-
-let reconnectTimer = null;
-function scheduleReconnect() {
-  // Small delay to let network settle, deduplicates focus+visibility firing together
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; tryReconnect(1); }, 800);
-}
-
-async function tryReconnect(attempt = 1) {
-  // Try to restore from localStorage if JS vars are empty (iOS reload)
-  if (!lastRoomCode || !lastMyName) {
-    const session = loadSession();
-    if (session) { lastRoomCode = session.roomCode; lastMyName = session.name; myName = session.name; } // localStorage fallback
-  }
-  const inChat = document.getElementById('s-chat')?.classList.contains('active');
-  const wsDown = !ws || ws.readyState !== WebSocket.OPEN;
-  if (!inChat || !wsDown || !lastRoomCode || !lastMyName) return;
-  if (isReconnecting && attempt === 1) return; // already in progress
-
-  isReconnecting = true;
-  myName = lastMyName;
-
-  // Show reconnecting in status bar
-  const statusEl = document.getElementById('status-txt');
-  if (statusEl) statusEl.textContent = attempt === 1 ? 'Reconnecting…' : `Retry ${attempt}/5…`;
-  // After 3 failed attempts show a sys message so user isn't confused
-  if (attempt === 3) addSysMsg('Reconnecting… please wait');
-
-  try {
-    await connectWs((pubKey) => {
-      ws.send(JSON.stringify({
-        type: 'join',
-        name: lastMyName,
-        code: lastRoomCode,
-        pubKey
-      }));
-    });
-    // connectWs resolved — WebSocket opened and join sent
-    // Wait for 'joined' response from server (handled in handleMsg)
-  } catch (e) {
-    console.log(`Reconnect attempt ${attempt} failed:`, e.message);
-    isReconnecting = false;
-    if (attempt < 5) {
-      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
-      reconnectTimer = setTimeout(() => tryReconnect(attempt + 1), delay);
-    } else {
-      setPeerOffline();
-      if (statusEl) statusEl.textContent = 'Disconnected';
-      addSysMsg('Could not reconnect — please rejoin manually.');
-      enableInput(false);
-    }
-  }
-}
-window.addEventListener('focus', () => { tabFocused = true; unreadCount = 0; document.title = 'Vaulted'; });
-window.addEventListener('blur', () => { tabFocused = false; });
-
-function playChime() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [{ freq:830, start:0, dur:0.18, vol:0.18 }, { freq:1050, start:0.1, dur:0.22, vol:0.12 }].forEach(({ freq, start, dur, vol }) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.type = 'sine'; osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-      gain.gain.setValueAtTime(0, ctx.currentTime + start);
-      gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-      osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.05);
-    });
-    setTimeout(() => ctx.close(), 800);
-  } catch {}
-}
-
-function notifyIncoming(name) {
-  if (!tabFocused || document.hidden) {
-    playChime();
-    unreadCount++;
-    document.title = `(${unreadCount}) ${name} - Vaulted`;
-  }
-}
-
-// -- SCREENS ----------------------------------------------------------
+// ── SCREEN MANAGEMENT ───────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-}
-
-function triggerLandingAnim() {
-  document.getElementById('logoRule')?.classList.add('go');
-  document.getElementById('logoName')?.classList.add('go');
-  document.getElementById('logoSub')?.classList.add('go');
-  document.getElementById('logoTag')?.classList.add('go');
-  document.getElementById('cards')?.classList.add('go');
-}
-// Try immediately, on DOMContentLoaded, and on load - whichever fires first
-if (document.readyState !== 'loading') {
-  setTimeout(triggerLandingAnim, 200);
-} else {
-  document.addEventListener('DOMContentLoaded', () => setTimeout(triggerLandingAnim, 200));
-}
-window.addEventListener('load', () => setTimeout(triggerLandingAnim, 100));
-
-// -- SETUP FLOWS ------------------------------------------------------
-function startCreate() {
-  mode = 'create';
-  document.getElementById('setup-title').textContent = 'Choose a codename';
-  document.getElementById('join-field').style.display = 'none';
-  document.getElementById('named-field').style.display = 'none';
-  document.getElementById('password-field').style.display = 'none';
-  document.getElementById('setup-btn').textContent = 'Create room';
-  document.getElementById('name-input').value = '';
-  document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
-}
-
-function startNamed() {
-  mode = 'named';
-  document.getElementById('setup-title').textContent = 'Create a named room';
-  document.getElementById('join-field').style.display = 'none';
-  document.getElementById('named-field').style.display = 'block';
-  document.getElementById('password-field').style.display = 'block';
-  document.getElementById('setup-btn').textContent = 'Create named room';
-  document.getElementById('name-input').value = '';
-  document.getElementById('named-input').value = '';
-  document.getElementById('password-input').value = '';
-  document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
-}
-
-function startJoin() {
-  mode = 'join';
-  document.getElementById('setup-title').textContent = 'Join a room';
-  document.getElementById('join-field').style.display = 'block';
-  document.getElementById('named-field').style.display = 'none';
-  document.getElementById('password-field').style.display = 'block';
-  document.getElementById('setup-btn').textContent = 'Join room';
-  document.getElementById('name-input').value = '';
-  document.getElementById('code-input').value = '';
-  document.getElementById('password-input').value = '';
-  document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
-}
-
-async function handleSetup() {
-  const name = document.getElementById('name-input').value.trim();
-  if (!name) { showErr('Please enter a codename'); return; }
-  myName = name;
-  document.getElementById('err-msg').style.display = 'none';
-
-  if (mode === 'create') {
-    await connectWs(pubKey => ws.send(JSON.stringify({ type:'create', name, pubKey })));
-  } else if (mode === 'named') {
-    const roomName = document.getElementById('named-input').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const password = document.getElementById('password-input').value.trim();
-    if (!roomName) { showErr('Please enter a room name'); return; }
-    await connectWs(pubKey => ws.send(JSON.stringify({ type:'create_named', name, roomName, password: password || null, pubKey })));
-  } else {
-    const code = document.getElementById('code-input').value.trim().toLowerCase();
-    const password = document.getElementById('password-input').value.trim();
-    if (!code) { showErr('Please enter the room code or name'); return; }
-    await connectWs(pubKey => ws.send(JSON.stringify({ type:'join', name, code, password: password || null, pubKey })));
+  if (id === 's-chat' && peerWasOnline) {
+    setTimeout(() => enableInput(true), 100);
   }
+}
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+function enableInput(on) {
+  document.getElementById('msg-input').disabled = !on;
+  document.getElementById('send-btn').disabled = !on;
+  if (on) document.getElementById('msg-input').focus();
 }
 
 function showErr(msg) {
   const el = document.getElementById('err-msg');
-  el.textContent = msg; el.style.display = 'block';
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
-// -- WEBSOCKET ---------------------------------------------------------
-async function connectWs(onOpen) {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const pubKey = await generateKeyPair();
-
-  return new Promise((resolve, reject) => {
-    // Close any existing zombie connection
-    if (ws) { try { ws.close(); } catch {} }
-    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-
-    ws = new WebSocket(`${proto}//${location.host}`);
-
-    // Timeout if connection doesn't open in 5 seconds
-    const openTimeout = setTimeout(() => {
-      reject(new Error('Connection timeout'));
-      try { ws.close(); } catch {}
-    }, 10000);
-
-    ws.onopen = () => {
-      clearTimeout(openTimeout);
-      try {
-        onOpen(pubKey);
-      } catch(e) {
-        reject(e); return;
-      }
-      // Start heartbeat
-      heartbeatInterval = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000);
-      resolve();
-    };
-
-    ws.onmessage = async (evt) => {
-      let msg; try { msg = JSON.parse(evt.data); } catch { return; }
-      await handleMsg(msg);
-    };
-
-    ws.onclose = (evt) => {
-      clearTimeout(openTimeout);
-      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-      const chatEl = document.getElementById('s-chat');
-      if (chatEl && chatEl.classList.contains('active') && !isReconnecting) {
-        setPeerOffline();
-        enableInput(false);
-        // Trigger silent reconnect attempt
-        scheduleReconnect();
-      }
-    };
-
-    ws.onerror = (err) => {
-      clearTimeout(openTimeout);
-      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-      reject(new Error('WebSocket error'));
-    };
-  });
-}
-
-async function handleMsg(msg) {
-  switch (msg.type) {
-    case 'created':
-      roomCode = msg.code;
-      document.getElementById('display-code').textContent = msg.code;
-      document.getElementById('display-code').style.fontSize = '26px';
-      document.getElementById('w-title').textContent = 'Room ready';
-      document.getElementById('w-sub').textContent = 'Share this code with one person. They enter it and connect.';
-      document.getElementById('w-note').textContent = 'Waiting for the other person... Room auto-closes in 24h.';
-      showScreen('s-waiting');
-      break;
-
-    case 'named_created':
-      roomCode = msg.roomName;
-      document.getElementById('display-code').textContent = msg.roomName;
-      document.getElementById('display-code').style.fontSize = '22px';
-      document.getElementById('code-label').textContent = 'Room name';
-      document.getElementById('w-title').textContent = 'Named room created';
-      document.getElementById('w-sub').innerHTML = 'Your room <strong style="color:var(--gold)">' + msg.roomName + '</strong> is ready.<br/>Anyone with this name can join - anytime, from anywhere.';
-      document.getElementById('w-note').textContent = 'Room stays alive for 7 days. Return anytime.';
-      showScreen('s-waiting');
-      break;
-
-    case 'joined':
-      roomCode = msg.code;
-      lastRoomCode = msg.code;
-      lastMyName = myName;
-      saveSession(msg.code, myName);
-      document.title = 'Vaulted';
-      if (isReconnecting || msg.isReconnect) {
-        // Silent reconnect — restore state without changing screen
-        isReconnecting = false;
-        sharedKey = null; // reset — will be set when peer_pubkey arrives
-        setPeerOnline();
-        setTimeout(() => enableInput(true), 200);
-        if (statusEl) statusEl.textContent = 'Connected';
-        document.getElementById('status-txt').textContent = 'Connected';
-      } else {
-        document.getElementById('hdr-code').textContent = msg.code;
-        document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${msg.code}`;
-        setPeerOnline();
-        showScreen('s-chat');
-        setTimeout(() => enableInput(true), 100);
-        playChime();
-      }
-      break;
-
-    case 'pong':
-      // Server confirmed alive — heartbeat acknowledged
-      break;
-
-    case 'peer_pubkey':
-      // On reconnect, rederive since peer also regenerated their key
-      sharedKey = null; // reset to force fresh derivation
-      await deriveSharedKey(msg.pubKey);
-      break;
-
-    case 'peer_joined':
-      peerOnline = true;
-      playChime();
-      const waitEl = document.getElementById('s-waiting');
-      if (waitEl && waitEl.classList.contains('active')) {
-        document.getElementById('hdr-code').textContent = roomCode;
-        document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
-        document.title = 'Vaulted';
-        showScreen('s-chat');
-      }
-      setPeerOnline();
-      addSysMsg(`${msg.name} joined the room`);
-      setTimeout(() => enableInput(true), 150);
-      break;
-
-    case 'message':
-      hideTyping();
-      const dec = await decryptMsg(msg.content);
-      const rt = new Date();
-      const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
-      addMessage(msg.name, dec, rNow, false);
-      notifyIncoming(msg.name);
-      break;
-
-    case 'typing':
-      showTyping();
-      clearTimeout(typingTimer);
-      typingTimer = setTimeout(hideTyping, 2500);
-      break;
-
-    case 'peer_left':
-      setPeerOffline();
-      addSysMsg(`${msg.name} left the room`);
-      enableInput(false);
-      break;
-
-    case 'peer_timeout':
-      setPeerOffline();
-      addSysMsg(`${msg.name} lost connection — they may have locked their screen or lost signal.`);
-      enableInput(false);
-      break;
-
-    case 'peer_reconnected':
-      peerOnline = true;
-      setPeerOnline();
-      addSysMsg(`${msg.name} reconnected`);
-      setTimeout(() => enableInput(true), 150);
-      playChime();
-      break;
-
-    case 'room_closed':
-      closeWithMessage(msg.message || 'Room was closed.');
-      break;
-
-    case 'error':
-      showErr(msg.message);
-      break;
-  }
-}
-
-// -- CHAT HELPERS ------------------------------------------------------
 function addMessage(name, content, time, isMe) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
   const div = document.createElement('div');
   div.className = `msg ${isMe ? 'me' : 'them'}`;
-  const ticks = isMe ? `<span class="msg-ticks">--</span>` : '';
-  div.innerHTML = `<div class="msg-name">${escHtml(name)}</div><div class="bubble">${escHtml(content)}</div><div class="msg-time">${time}${ticks}</div>`;
+  div.innerHTML = `<div class="msg-name">${escHtml(name)}</div><div class="bubble">${escHtml(content)}</div><div class="msg-time">${time}</div>`;
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
 }
@@ -1005,111 +633,365 @@ function addSysMsg(text) {
   body.scrollTop = body.scrollHeight;
 }
 
-function showTyping() { document.getElementById('typing-indicator')?.classList.add('show'); }
-function hideTyping() { document.getElementById('typing-indicator')?.classList.remove('show'); }
-function setPeerOnline() { peerOnline = true; document.getElementById('status-dot').className = 'status-dot'; document.getElementById('status-txt').textContent = 'Connected'; }
-function setPeerOffline() { peerOnline = false; document.getElementById('status-dot').className = 'status-dot away'; document.getElementById('status-txt').textContent = 'Waiting...'; }
-function enableInput(on) { document.getElementById('msg-input').disabled = !on; document.getElementById('send-btn').disabled = !on; if (on) document.getElementById('msg-input').focus(); }
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-// -- SEND MESSAGE ------------------------------------------------------
+function setStatus(online, name) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-txt');
+  if (dot) dot.className = online ? 'status-dot' : 'status-dot away';
+  if (txt) txt.textContent = online ? 'Connected' : (name ? `Waiting for ${name}…` : 'Waiting…');
+  peerWasOnline = online;
+}
+
+function showTypingIndicator(show) {
+  document.getElementById('typing-indicator')?.classList.toggle('show', show);
+}
+
+function notifyMsg(name) {
+  if (!tabFocused || document.hidden) {
+    playChime();
+    unreadCount++;
+    document.title = `(${unreadCount}) ${name} — Vaulted`;
+  }
+}
+
+// ── AUDIO ───────────────────────────────────────────────────────────────
+function playChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [{ freq:830, start:0, dur:0.18, vol:0.18 }, { freq:1050, start:0.1, dur:0.22, vol:0.12 }].forEach(({ freq, start, dur, vol }) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.05);
+    });
+    setTimeout(() => ctx.close(), 800);
+  } catch(e) {}
+}
+
+// ── TAB VISIBILITY ──────────────────────────────────────────────────────
+document.addEventListener('visibilitychange', () => {
+  tabFocused = !document.hidden;
+  if (!document.hidden) { unreadCount = 0; document.title = 'Vaulted'; }
+});
+window.addEventListener('focus', () => { tabFocused = true; unreadCount = 0; document.title = 'Vaulted'; });
+window.addEventListener('blur', () => { tabFocused = false; });
+
+// ── POLLING ─────────────────────────────────────────────────────────────
+async function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(doPoll, 2000);
+  doPoll(); // immediate first poll
+}
+
+async function doPoll() {
+  if (!roomCode || !myToken) return;
+  try {
+    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=${lastMsgTs}`);
+
+    if (data.roomGone) {
+      stopPolling();
+      showScreen('s-closed');
+      document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
+      clearSession();
+      return;
+    }
+
+    // Peer online status
+    if (data.peerPubKey && !sharedKey) {
+      await deriveSharedKey(data.peerPubKey);
+    }
+
+    const wasOnline = peerWasOnline;
+    setStatus(data.peerOnline, data.peerName);
+
+    if (!wasOnline && data.peerOnline) {
+      enableInput(true);
+      playChime();
+    }
+
+    // Process new messages
+    if (data.messages && data.messages.length > 0) {
+      for (const msg of data.messages) {
+        if (msg.type === 'system') {
+          addSysMsg(msg.content);
+        } else if (msg.type === 'message') {
+          const decrypted = await decryptMsg(msg.content);
+          const rt = new Date();
+          const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
+          addMessage(msg.name, decrypted, rNow, false);
+          notifyMsg(msg.name);
+        }
+        if (msg.ts > lastMsgTs) lastMsgTs = msg.ts;
+      }
+    }
+
+  } catch(e) {
+    // Network error — keep polling, don't show error
+    console.log('Poll error:', e.message);
+  }
+}
+
+function stopPolling() {
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  if (typingInterval) { clearInterval(typingInterval); typingInterval = null; }
+}
+
+// ── SEND MESSAGE ────────────────────────────────────────────────────────
 async function sendMsg() {
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
-  if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!content || !roomCode || !myToken) return;
+  input.value = '';
+
   const encrypted = await encryptMsg(content);
-  ws.send(JSON.stringify({ type:'message', content: encrypted }));
-  const d = new Date(); const now = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-  addMessage(myName, content, now, true);
-  input.value = ''; input.style.height = 'auto';
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  addMessage(myName, content, time, true);
+
+  try {
+    await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
+  } catch(e) {}
 }
 
-function copyCode() {
-  navigator.clipboard.writeText(roomCode).then(() => toast('Code copied')).catch(() => { const el = document.createElement('input'); el.value = roomCode; document.body.appendChild(el); el.select(); document.execCommand('copy'); el.remove(); toast('Code copied'); });
+// ── TYPING ──────────────────────────────────────────────────────────────
+function onTyping() {
+  if (!roomCode || !myToken) return;
+  if (typingTimer) clearTimeout(typingTimer);
+  api('/api/typing', { code: roomCode, token: myToken }).catch(() => {});
+  typingTimer = setTimeout(() => { isTyping = false; }, 3000);
 }
 
-function leaveRoom() {
-  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-  // Disconnect but keep room alive on server
-  if (ws) {
-    ws.send(JSON.stringify({ type: 'leave_room' }));
-    ws.close();
-    ws = null;
+// Typing indicator polling (separate from message poll)
+async function checkTyping() {
+  if (!roomCode || !myToken) return;
+  try {
+    const data = await api(`/api/check_typing?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}`);
+    showTypingIndicator(data.typing);
+  } catch(e) {}
+}
+
+// ── LANDING ACTIONS ─────────────────────────────────────────────────────
+function startCreate() {
+  mode = 'create';
+  document.getElementById('setup-title').textContent = 'Choose a codename';
+  document.getElementById('join-field').style.display = 'none';
+  document.getElementById('setup-btn').textContent = 'Create room';
+  document.getElementById('name-input').value = '';
+  document.getElementById('err-msg').style.display = 'none';
+  showScreen('s-setup');
+  setTimeout(() => document.getElementById('name-input').focus(), 100);
+}
+
+function startNamed() {
+  mode = 'named';
+  document.getElementById('setup-title').textContent = 'Create a named room';
+  document.getElementById('join-field').style.display = 'none';
+  document.getElementById('setup-btn').textContent = 'Create named room';
+  document.getElementById('name-input').value = '';
+  document.getElementById('err-msg').style.display = 'none';
+  showScreen('s-setup');
+  setTimeout(() => document.getElementById('name-input').focus(), 100);
+}
+
+function startJoin() {
+  mode = 'join';
+  document.getElementById('setup-title').textContent = 'Join a room';
+  document.getElementById('join-field').style.display = 'block';
+  document.getElementById('setup-btn').textContent = 'Join room';
+  document.getElementById('name-input').value = '';
+  document.getElementById('code-input').value = '';
+  document.getElementById('err-msg').style.display = 'none';
+  showScreen('s-setup');
+  setTimeout(() => document.getElementById('name-input').focus(), 100);
+}
+
+// ── SETUP ───────────────────────────────────────────────────────────────
+async function handleSetup() {
+  const name = document.getElementById('name-input').value.trim();
+  if (!name) { showErr('Please enter a codename'); return; }
+  myName = name;
+  document.getElementById('err-msg').style.display = 'none';
+  document.getElementById('setup-btn').textContent = 'Connecting…';
+  document.getElementById('setup-btn').disabled = true;
+
+  try {
+    const pubKey = await getOrGenerateKeyPair();
+
+    if (mode === 'create' || mode === 'named') {
+      const result = await api('/api/create', { name, pubKey });
+      if (result.error) { showErr(result.error); resetSetupBtn(); return; }
+      myToken = result.token;
+      roomCode = result.code;
+      document.getElementById('display-code').textContent = result.code;
+      showScreen('s-waiting');
+      saveSession(roomCode, myToken, myName);
+      startPolling();
+      // Poll for peer joining
+      const waitInterval = setInterval(async () => {
+        const d = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=0`);
+        if (d.peerOnline) {
+          clearInterval(waitInterval);
+          // Transition to chat
+          document.getElementById('hdr-code').textContent = roomCode;
+          document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
+          showScreen('s-chat');
+          enableInput(true);
+          playChime();
+          if (d.peerPubKey) await deriveSharedKey(d.peerPubKey);
+        }
+      }, 2000);
+    } else {
+      const code = document.getElementById('code-input').value.trim().toLowerCase();
+      if (!code) { showErr('Please enter the room code'); resetSetupBtn(); return; }
+      const result = await api('/api/join', { name, code, pubKey });
+      if (result.error) { showErr(result.error); resetSetupBtn(); return; }
+      myToken = result.token;
+      roomCode = result.code;
+      lastMsgTs = Date.now(); // only get new messages from join time
+      saveSession(roomCode, myToken, myName);
+      document.getElementById('hdr-code').textContent = roomCode;
+      document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${roomCode}`;
+      showScreen('s-chat');
+      if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
+      enableInput(true);
+      playChime();
+      startPolling();
+      if (typingInterval) clearInterval(typingInterval);
+      typingInterval = setInterval(checkTyping, 2500);
+    }
+  } catch(e) {
+    showErr('Connection failed. Please try again.');
+    resetSetupBtn();
   }
-  sharedKey = null;
-  myKeyPair = null;
-  peerOnline = false;
-  document.getElementById('closed-sub').textContent = 'You left the room. The room is still active -- rejoin anytime with the same name and password.';
-  document.getElementById('closed-title').textContent = 'You left';
-  document.getElementById('closed-icon').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
-  document.getElementById('closed-btn').textContent = 'Rejoin room';
-  document.getElementById('closed-btn').onclick = rejoinRoom;
-  document.title = 'Vaulted';
-  showScreen('s-closed');
 }
 
-function rejoinRoom() {
-  // Go back to join flow with same room pre-filled
-  startJoin();
-  document.getElementById('code-input').value = roomCode;
-  // Reset for fresh connection
-  roomCode = roomCode; // keep it
+function resetSetupBtn() {
+  const btn = document.getElementById('setup-btn');
+  btn.disabled = false;
+  btn.textContent = mode === 'join' ? 'Join room' : 'Create room';
 }
 
-function closeRoom() {
-  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-  lastRoomCode = ''; lastMyName = ''; isReconnecting = false;
+// ── COPY CODE ───────────────────────────────────────────────────────────
+function copyCode() {
+  const code = document.getElementById('display-code').textContent;
+  navigator.clipboard.writeText(code).catch(() => {});
+  toast('Code copied');
+}
+
+// ── CLOSE / LEAVE ───────────────────────────────────────────────────────
+async function closeRoom() {
+  stopPolling();
+  if (roomCode && myToken) {
+    try { await api('/api/close', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
+  }
   clearSession();
-  clearSession();
-  if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type:'close_room' })); ws.close(); }
-  ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null;
-  resetClosedScreen();
+  resetState();
   document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
-  document.title = 'Vaulted';
   showScreen('s-closed');
 }
 
-function closeWithMessage(msg) {
-  if (ws) { try { ws.close(); } catch {} ws = null; }
-  document.getElementById('closed-sub').textContent = msg + ' All messages permanently deleted.';
-  document.title = 'Vaulted';
-  showScreen('s-closed');
+async function leaveRoom() {
+  stopPolling();
+  if (roomCode && myToken) {
+    try { await api('/api/leave', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
+  }
+  clearSession();
+  resetState();
+  showScreen('s-landing');
+  triggerLandingAnim();
 }
 
-function resetClosedScreen() {
-  document.getElementById('closed-title').textContent = 'Room erased';
-  document.getElementById('closed-icon').innerHTML = '<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
-  document.getElementById('closed-btn').textContent = 'Start a new room';
-  document.getElementById('closed-btn').onclick = startFresh;
+function resetState() {
+  myName = ''; myToken = ''; roomCode = '';
+  lastMsgTs = 0; sharedKey = null; unreadCount = 0;
+  peerWasOnline = false;
+  document.title = 'Vaulted';
+  const body = document.getElementById('chat-body');
+  if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
+  enableInput(false);
 }
 
 function startFresh() {
-  resetClosedScreen();
-  ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null; unreadCount = 0;
-  lastRoomCode = ''; lastMyName = ''; isReconnecting = false;
+  resetState();
   clearSession();
-  document.getElementById('chat-body').innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
-  document.getElementById('msg-input').value = '';
-  document.title = 'Vaulted';
   showScreen('s-landing');
+  triggerLandingAnim();
 }
 
-function toast(msg) {
-  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
-  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
-}
-
-// -- KEY HANDLERS ------------------------------------------------------
+// ── KEYBOARD ────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  ['name-input','code-input','named-input'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
-  });
+  document.getElementById('name-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
+  document.getElementById('code-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('msg-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
   });
-  document.getElementById('msg-input')?.addEventListener('input', () => {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type:'typing' }));
+  document.getElementById('msg-input')?.addEventListener('input', onTyping);
+});
+
+// ── iOS KEYBOARD FIX ────────────────────────────────────────────────────
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const chat = document.getElementById('s-chat');
+    if (chat && chat.classList.contains('active')) {
+      chat.style.height = window.visualViewport.height + 'px';
+      const body = document.getElementById('chat-body');
+      if (body) body.scrollTop = body.scrollHeight;
+    }
   });
+}
+
+// ── LANDING ANIMATION ───────────────────────────────────────────────────
+function triggerLandingAnim() {
+  document.getElementById('logoRule')?.classList.add('go');
+  document.getElementById('logoName')?.classList.add('go');
+  document.getElementById('logoSub')?.classList.add('go');
+  document.getElementById('logoTag')?.classList.add('go');
+  document.getElementById('cards')?.classList.add('go');
+}
+
+// ── PAGE LOAD ───────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  // Check for saved session (iOS page reload after backgrounding)
+  const session = loadSession();
+  if (session) {
+    myName = session.name;
+    myToken = session.token;
+    roomCode = session.code;
+    lastMsgTs = Date.now() - 10000; // get last 10s of messages
+
+    // Set up chat screen
+    const hdrCode = document.getElementById('hdr-code');
+    const welcomeMsg = document.getElementById('welcome-msg');
+    if (hdrCode) hdrCode.textContent = session.code;
+    if (welcomeMsg) welcomeMsg.textContent = `You're "${session.name}" - ${session.code}`;
+
+    // Try to rejoin
+    try {
+      const pubKey = await getOrGenerateKeyPair();
+      const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
+      if (!result.error) {
+        showScreen('s-chat');
+        setStatus(false, null);
+        enableInput(false);
+        if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
+        startPolling();
+        if (typingInterval) clearInterval(typingInterval);
+        typingInterval = setInterval(checkTyping, 2500);
+        return;
+      }
+    } catch(e) {}
+
+    // Rejoin failed — room expired
+    clearSession();
+  }
+
+  triggerLandingAnim();
 });
 </script>
 </body>
