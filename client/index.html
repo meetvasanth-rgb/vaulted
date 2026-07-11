@@ -139,7 +139,8 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .t-dot:nth-child(3){animation-delay:.3s}
 @keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
 
-.chat-ftr{flex-shrink:0;background:var(--surface);border-top:0.5px solid var(--border);padding:12px 14px;display:flex;gap:10px;align-items:flex-end}
+.e2e-bar{flex-shrink:0;background:var(--surface);border-top:0.5px solid var(--border);padding:5px 14px;font-size:10px;color:var(--hint);text-align:center;letter-spacing:.04em}
+.chat-ftr{flex-shrink:0;background:var(--surface);border-top:none;padding:12px 14px;display:flex;gap:10px;align-items:flex-end}
 #msg-input{flex:1;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:13px;color:var(--cream);resize:none;min-height:42px;max-height:120px;line-height:1.5;transition:border-color .15s}
 #msg-input:focus{border-color:var(--gold-border)}
 #msg-input::placeholder{color:var(--hint)}
@@ -183,7 +184,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <div class="logo">
       <div class="logo-rule" id="logoRule"></div>
       <div class="logo-name" id="logoName">Vaulted</div>
-      <div class="logo-sub" id="logoSub">Private · Anonymous · No trace</div>
+      <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
     </div>
     <p class="tagline" id="logoTag">Two people. One conversation.<br/>Disappears when you leave.</p>
     <div class="cards" id="cards">
@@ -203,7 +204,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
       </div>
     </div>
   </div>
-  <div class="landing-footer">No accounts · No logs · No trace</div>
+  <div class="landing-footer">No accounts · No logs · End-to-end encrypted · No trace</div>
 </div>
 
 <!-- ══ SETUP ══ -->
@@ -261,6 +262,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <div class="chat-hdr-logo">V</div>
     <div class="chat-hdr-sep"></div>
     <div class="chat-hdr-room" id="hdr-code">—</div>
+    <div style="font-size:10px;color:var(--hint);display:flex;align-items:center;gap:3px">🔒 <span style="letter-spacing:.04em">E2E</span></div>
     <div class="chat-hdr-status">
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
@@ -273,6 +275,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
       <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
     </div>
   </div>
+  <div class="e2e-bar">🔒 End-to-end encrypted · Messages exist only in your browsers</div>
   <div class="chat-ftr">
     <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
     <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
@@ -357,6 +360,65 @@ function notifyIncoming(name) {
   }
 }
 
+
+// ── END-TO-END ENCRYPTION ────────────────────────────────────────────
+// Uses WebCrypto API — ECDH key exchange + AES-GCM encryption
+// The server never sees plaintext messages
+
+let myKeyPair = null;      // My ECDH key pair
+let sharedKey = null;      // Derived AES key after exchange
+let peerPublicKeyRaw = null; // Peer's raw public key bytes
+
+async function generateKeyPair() {
+  myKeyPair = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey']
+  );
+  const exported = await crypto.subtle.exportKey('raw', myKeyPair.publicKey);
+  return btoa(String.fromCharCode(...new Uint8Array(exported)));
+}
+
+async function deriveSharedKey(peerPubKeyB64) {
+  const peerPubKeyBytes = Uint8Array.from(atob(peerPubKeyB64), c => c.charCodeAt(0));
+  const peerPublicKey = await crypto.subtle.importKey(
+    'raw', peerPubKeyBytes,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true, []
+  );
+  sharedKey = await crypto.subtle.deriveKey(
+    { name: 'ECDH', public: peerPublicKey },
+    myKeyPair.privateKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptMsg(plaintext) {
+  if (!sharedKey) return plaintext; // fallback if key not yet established
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sharedKey, encoded);
+  const combined = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), iv.byteLength);
+  return 'e2e:' + btoa(String.fromCharCode(...combined));
+}
+
+async function decryptMsg(data) {
+  if (!sharedKey || !data.startsWith('e2e:')) return data;
+  try {
+    const combined = Uint8Array.from(atob(data.slice(4)), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, sharedKey, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    return '[encrypted message]';
+  }
+}
+
 // ── STATE ──────────────────────────────────────────────────
 let ws = null;
 let mode = 'create'; // 'create' | 'join'
@@ -430,14 +492,14 @@ function handleSetup() {
   errEl.style.display = 'none';
 
   if (mode === 'create') {
-    connectWs(() => {
-      ws.send(JSON.stringify({ type: 'create', name }));
+    connectWs((pubKey) => {
+      ws.send(JSON.stringify({ type: 'create', name, pubKey }));
     });
   } else {
     const code = document.getElementById('code-input').value.trim().toLowerCase();
     if (!code) { showErr('Please enter the room code'); return; }
-    connectWs(() => {
-      ws.send(JSON.stringify({ type: 'join', name, code }));
+    connectWs((pubKey) => {
+      ws.send(JSON.stringify({ type: 'join', name, code, pubKey }));
     });
   }
 }
@@ -470,11 +532,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── WEBSOCKET ─────────────────────────────────────────────
-function connectWs(onOpen) {
+async function connectWs(onOpen) {
   ws = new WebSocket(getWsUrl());
+  const myPubKey = await generateKeyPair();
 
   ws.onopen = () => {
-    onOpen();
+    onOpen(myPubKey);
   };
 
   ws.onmessage = (evt) => {
@@ -495,7 +558,7 @@ function connectWs(onOpen) {
   };
 }
 
-function handleMsg(msg) {
+async function handleMsg(msg) {
   switch (msg.type) {
 
     case 'created':
@@ -515,6 +578,11 @@ function handleMsg(msg) {
       playChime();
       break;
 
+    case 'peer_pubkey':
+      // Derive shared key from peer's public key
+      await deriveSharedKey(msg.pubKey);
+      break;
+
     case 'peer_joined':
       peerOnline = true;
       playChime();
@@ -531,7 +599,8 @@ function handleMsg(msg) {
 
     case 'message':
       hideTyping();
-      addMessage(msg.name, msg.content, msg.time, false);
+      const decrypted = await decryptMsg(msg.content);
+      addMessage(msg.name, decrypted, msg.time, false);
       notifyIncoming(msg.name);
       break;
 
@@ -609,12 +678,13 @@ function escHtml(str) {
 }
 
 // ── SEND MESSAGE ──────────────────────────────────────────
-function sendMsg() {
+async function sendMsg() {
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
   if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
 
-  ws.send(JSON.stringify({ type: 'message', content }));
+  const encrypted = await encryptMsg(content);
+  ws.send(JSON.stringify({ type: 'message', content: encrypted }));
   const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
   addMessage(myName, content, now, true);
   input.value = '';

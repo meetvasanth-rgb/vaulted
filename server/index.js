@@ -90,13 +90,14 @@ wss.on('connection', (ws) => {
     if (msg.type === 'create') {
       const code = generateCode();
       const name = (msg.name || 'Stranger').substring(0, 24);
+      const pubKey = msg.pubKey || null;
       rooms.set(code, {
         clients: new Set(),
         createdAt: Date.now(),
         timer: setTimeout(() => cleanRoom(code), 24 * 60 * 60 * 1000), // 24h auto-close
       });
       const room = rooms.get(code);
-      clientRecord = { ws, name };
+      clientRecord = { ws, name, pubKey };
       room.clients.add(clientRecord);
       currentRoom = code;
 
@@ -120,11 +121,24 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      clientRecord = { ws, name };
+      const pubKey = msg.pubKey || null;
+      clientRecord = { ws, name, pubKey };
       room.clients.add(clientRecord);
       currentRoom = code;
 
       ws.send(JSON.stringify({ type: 'joined', code, name }));
+
+      // Exchange public keys for E2E encryption
+      if (pubKey) {
+        // Send joiner's pubkey to creator
+        broadcast(room, { type: 'peer_pubkey', pubKey }, ws);
+      }
+      // Send creator's pubkey to joiner
+      room.clients.forEach(({ ws: cws, pubKey: cPubKey }) => {
+        if (cws !== ws && cPubKey) {
+          ws.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
+        }
+      });
 
       // Notify the other person
       broadcast(room, { type: 'peer_joined', name }, ws);
