@@ -597,43 +597,51 @@ window.addEventListener('focus', () => {
   tabFocused = true;
   unreadCount = 0;
   document.title = 'Vaulted';
-  scheduleReconnect();
+  // Only trigger reconnect from focus if visibilitychange didn't already
+  if (!reconnectTimer) scheduleReconnect();
 });
 
 let reconnectTimer = null;
 function scheduleReconnect() {
-  // Small delay to let the network settle after unlock
+  // Small delay to let network settle, deduplicates focus+visibility firing together
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(tryReconnect, 500);
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; tryReconnect(1); }, 800);
 }
 
 async function tryReconnect(attempt = 1) {
   const inChat = document.getElementById('s-chat')?.classList.contains('active');
-  const wsDown = !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING;
+  const wsDown = !ws || ws.readyState !== WebSocket.OPEN;
   if (!inChat || !wsDown || !lastRoomCode || !lastMyName) return;
+  if (isReconnecting && attempt === 1) return; // already in progress
 
-  // Update status bar instead of adding sys message for quick reconnects
-  document.getElementById('status-txt').textContent = 'Reconnecting…';
   isReconnecting = true;
   myName = lastMyName;
 
-  try {
-    // Close any zombie connection first
-    if (ws) { try { ws.close(); } catch {} ws = null; }
-    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+  // Show reconnecting in status bar — not as a chat message
+  const statusEl = document.getElementById('status-txt');
+  if (statusEl) statusEl.textContent = attempt === 1 ? 'Reconnecting…' : `Retry ${attempt}/5…`;
 
+  try {
     await connectWs((pubKey) => {
-      ws.send(JSON.stringify({ type: 'join', name: lastMyName, code: lastRoomCode, pubKey }));
+      ws.send(JSON.stringify({
+        type: 'join',
+        name: lastMyName,
+        code: lastRoomCode,
+        pubKey
+      }));
     });
+    // connectWs resolved — WebSocket opened and join sent
+    // Wait for 'joined' response from server (handled in handleMsg)
   } catch (e) {
+    console.log(`Reconnect attempt ${attempt} failed:`, e.message);
     isReconnecting = false;
     if (attempt < 5) {
-      // Retry with backoff: 1s, 2s, 4s, 8s
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
       reconnectTimer = setTimeout(() => tryReconnect(attempt + 1), delay);
     } else {
       setPeerOffline();
-      addSysMsg('Could not reconnect. Tap here to rejoin manually.');
+      if (statusEl) statusEl.textContent = 'Disconnected';
+      addSysMsg('Could not reconnect — please rejoin manually.');
       enableInput(false);
     }
   }
@@ -760,38 +768,59 @@ function showErr(msg) {
 async function connectWs(onOpen) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const pubKey = await generateKeyPair();
-  ws = new WebSocket(`${proto}//${location.host}`);
 
-  ws.onopen = () => {
-    onOpen(pubKey);
-    // Start heartbeat ping every 30 seconds
-    if (heartbeatInterval) clearInterval(heartbeatInterval);
-    heartbeatInterval = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
+  return new Promise((resolve, reject) => {
+    // Close any existing zombie connection
+    if (ws) { try { ws.close(); } catch {} }
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+
+    ws = new WebSocket(`${proto}//${location.host}`);
+
+    // Timeout if connection doesn't open in 5 seconds
+    const openTimeout = setTimeout(() => {
+      reject(new Error('Connection timeout'));
+      try { ws.close(); } catch {}
+    }, 5000);
+
+    ws.onopen = () => {
+      clearTimeout(openTimeout);
+      try {
+        onOpen(pubKey);
+      } catch(e) {
+        reject(e); return;
       }
-    }, 30000);
-  };
+      // Start heartbeat
+      heartbeatInterval = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000);
+      resolve();
+    };
 
-  ws.onmessage = async (evt) => {
-    let msg; try { msg = JSON.parse(evt.data); } catch { return; }
-    await handleMsg(msg);
-  };
+    ws.onmessage = async (evt) => {
+      let msg; try { msg = JSON.parse(evt.data); } catch { return; }
+      await handleMsg(msg);
+    };
 
-  ws.onclose = () => {
-    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-    const chatEl = document.getElementById('s-chat');
-    if (chatEl && chatEl.classList.contains('active') && !isReconnecting) {
-      setPeerOffline();
-      enableInput(false);
-      addSysMsg('Connection lost. Will reconnect when you return…');
-    }
-  };
+    ws.onclose = (evt) => {
+      clearTimeout(openTimeout);
+      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+      const chatEl = document.getElementById('s-chat');
+      if (chatEl && chatEl.classList.contains('active') && !isReconnecting) {
+        setPeerOffline();
+        enableInput(false);
+        // Trigger silent reconnect attempt
+        scheduleReconnect();
+      }
+    };
 
-  ws.onerror = () => {
-    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
-    showErr('Connection failed. Please try again.');
-  };
+    ws.onerror = (err) => {
+      clearTimeout(openTimeout);
+      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+      reject(new Error('WebSocket error'));
+    };
+  });
 }
 
 async function handleMsg(msg) {
