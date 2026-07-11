@@ -587,6 +587,38 @@ let lastMyName = '';      // remember codename for reconnect
 let lastPubKey = null;    // remember pubkey for reconnect
 let isReconnecting = false;
 
+// ── SESSION PERSISTENCE ───────────────────────────────────────────────
+// Survives page reload on iOS browser resume
+const SESSION_KEY = 'vaulted_session';
+const SESSION_TTL = 5 * 60 * 1000; // 5 minutes
+
+function saveSession(roomCode, name) {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      roomCode, name, savedAt: Date.now()
+    }));
+  } catch(e) {}
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (Date.now() - s.savedAt > SESSION_TTL) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return s;
+  } catch(e) { return null; }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_KEY); } catch(e) {}
+}
+
+
+
 document.addEventListener('visibilitychange', () => {
   tabFocused = !document.hidden;
   if (!document.hidden) {
@@ -614,6 +646,11 @@ function scheduleReconnect() {
 }
 
 async function tryReconnect(attempt = 1) {
+  // Try to restore from localStorage if JS vars are empty (iOS reload)
+  if (!lastRoomCode || !lastMyName) {
+    const session = loadSession();
+    if (session) { lastRoomCode = session.roomCode; lastMyName = session.name; myName = session.name; } // localStorage fallback
+  }
   const inChat = document.getElementById('s-chat')?.classList.contains('active');
   const wsDown = !ws || ws.readyState !== WebSocket.OPEN;
   if (!inChat || !wsDown || !lastRoomCode || !lastMyName) return;
@@ -857,6 +894,7 @@ async function handleMsg(msg) {
       roomCode = msg.code;
       lastRoomCode = msg.code;
       lastMyName = myName;
+      saveSession(msg.code, myName);
       document.title = 'Vaulted';
       if (isReconnecting || msg.isReconnect) {
         // Silent reconnect — restore state without changing screen
@@ -1021,6 +1059,8 @@ function rejoinRoom() {
 function closeRoom() {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   lastRoomCode = ''; lastMyName = ''; isReconnecting = false;
+  clearSession();
+  clearSession();
   if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type:'close_room' })); ws.close(); }
   ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null;
   resetClosedScreen();
@@ -1047,6 +1087,7 @@ function startFresh() {
   resetClosedScreen();
   ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null; unreadCount = 0;
   lastRoomCode = ''; lastMyName = ''; isReconnecting = false;
+  clearSession();
   document.getElementById('chat-body').innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   document.getElementById('msg-input').value = '';
   document.title = 'Vaulted';

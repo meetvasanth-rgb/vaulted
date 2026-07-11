@@ -6,7 +6,7 @@ const fs = require('fs');
 const PORT = process.env.PORT || 3000;
 const HEARTBEAT_INTERVAL = 30000;  // ping every 30s
 const HEARTBEAT_TIMEOUT  = 65000;  // drop after 2 missed beats
-const GRACE_PERIOD       = 90000;  // wait 90s before announcing peer_left
+const GRACE_PERIOD       = 300000; // wait 5 mins before announcing peer_left
 
 const rooms = new Map();
 // disconnectedClients: Map of clientName+roomCode -> { timer, clientRecord, roomCode }
