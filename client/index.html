@@ -477,7 +477,7 @@ async function handleMsg(msg) {
       document.getElementById('display-code').textContent = msg.code;
       document.getElementById('display-code').style.fontSize = '26px';
       document.getElementById('w-title').textContent = 'Room ready';
-      document.getElementById('w-sub').textContent = 'Share this code with one person. They enter it, you're connected.';
+      document.getElementById('w-sub').textContent = 'Share this code with one person. They enter it and connect.';
       document.getElementById('w-note').textContent = 'Waiting for the other person... Room auto-closes in 24h.';
       showScreen('s-waiting');
       break;
@@ -489,7 +489,7 @@ async function handleMsg(msg) {
       document.getElementById('code-label').textContent = 'Room name';
       document.getElementById('w-title').textContent = 'Named room created';
       document.getElementById('w-sub').innerHTML = 'Your room <strong style="color:var(--gold)">' + msg.roomName + '</strong> is ready.<br/>Anyone with this name can join - anytime, from anywhere.';
-      document.getElementById('w-note').textContent = 'Room stays alive for 7 days. Return whenever you're ready.';
+      document.getElementById('w-note').textContent = 'Room stays alive for 7 days. Return anytime.';
       showScreen('s-waiting');
       break;
 
