@@ -95,11 +95,19 @@ const server = http.createServer((req, res) => {
 function handleApi(path, method, data, params, res) {
   // POST /api/create — create a new room
   if (path === '/api/create' && method === 'POST') {
-    const code = generateCode();
+    // Use namedCode if provided, otherwise generate random code
+    let code = data.namedCode
+      ? data.namedCode.toLowerCase().replace(/[^a-z0-9-]/g, '-').substring(0, 40)
+      : generateCode();
+    if (rooms.has(code)) {
+      return json(res, { error: `Room "${code}" already exists. Join it or pick another name.` }, 409);
+    }
     const token = generateToken();
     const name = (data.name || 'Stranger').substring(0, 24);
+    const password = data.password || null;
     rooms.set(code, {
       code, createdAt: Date.now(), lastActivity: Date.now(),
+      password,
       members: new Map([[token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null }]]),
       messages: [],
       pubKeys: new Map([[token, data.pubKey || null]])
@@ -113,6 +121,9 @@ function handleApi(path, method, data, params, res) {
     const code = (data.code || '').toLowerCase().trim();
     const room = rooms.get(code);
     if (!room) return json(res, { error: 'Room not found. Check the code and try again.' }, 404);
+    if (room.password && room.password !== (data.password || '')) {
+      return json(res, { error: 'Incorrect password.' }, 403);
+    }
     if (room.members.size >= 2 && !data.token) return json(res, { error: 'Room is full.' }, 403);
 
     // Rejoin with existing token

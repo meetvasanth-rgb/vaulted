@@ -403,7 +403,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 <!-- SETUP -->
 <div id="s-setup" class="screen">
   <div class="setup-card">
-    <button class="setup-back" onclick="showScreen('s-landing')">
+    <button class="setup-back" onclick="goBack()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Back
     </button>
     <div class="setup-logo"><div class="rule"></div><span>Vaulted</span></div>
@@ -464,7 +464,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
     </div>
-    <button class="leave-btn" onclick="leaveRoom()">Leave</button>
+    <button class="leave-btn" onclick="goBack()">Leave</button>
     <button class="destroy-btn" onclick="closeRoom()">Close &amp; erase</button>
   </div>
   <div class="e2e-bar">🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
@@ -781,6 +781,8 @@ function startCreate() {
   mode = 'create';
   document.getElementById('setup-title').textContent = 'Choose a codename';
   document.getElementById('join-field').style.display = 'none';
+  document.getElementById('named-field').style.display = 'none';
+  document.getElementById('password-field').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Create room';
   document.getElementById('name-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
@@ -792,8 +794,12 @@ function startNamed() {
   mode = 'named';
   document.getElementById('setup-title').textContent = 'Create a named room';
   document.getElementById('join-field').style.display = 'none';
+  document.getElementById('named-field').style.display = 'block';
+  document.getElementById('password-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Create named room';
   document.getElementById('name-input').value = '';
+  document.getElementById('named-input').value = '';
+  document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   showScreen('s-setup');
   setTimeout(() => document.getElementById('name-input').focus(), 100);
@@ -803,9 +809,12 @@ function startJoin() {
   mode = 'join';
   document.getElementById('setup-title').textContent = 'Join a room';
   document.getElementById('join-field').style.display = 'block';
+  document.getElementById('named-field').style.display = 'none';
+  document.getElementById('password-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Join room';
   document.getElementById('name-input').value = '';
   document.getElementById('code-input').value = '';
+  document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   showScreen('s-setup');
   setTimeout(() => document.getElementById('name-input').focus(), 100);
@@ -824,11 +833,16 @@ async function handleSetup() {
     const pubKey = await getOrGenerateKeyPair();
 
     if (mode === 'create' || mode === 'named') {
-      const result = await api('/api/create', { name, pubKey });
+      const namedCode = mode === 'named' ? document.getElementById('named-input')?.value.trim().toLowerCase() : null;
+      const password = document.getElementById('password-input')?.value.trim() || null;
+      if (mode === 'named' && !namedCode) { showErr('Please enter a room name'); resetSetupBtn(); return; }
+      const result = await api('/api/create', { name, pubKey, namedCode, password });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
       myToken = result.token;
       roomCode = result.code;
       document.getElementById('display-code').textContent = result.code;
+      const wNote = document.getElementById('w-note');
+      if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
       showScreen('s-waiting');
       saveSession(roomCode, myToken, myName);
       startPolling();
@@ -837,7 +851,6 @@ async function handleSetup() {
         const d = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=0`);
         if (d.peerOnline) {
           clearInterval(waitInterval);
-          // Transition to chat
           document.getElementById('hdr-code').textContent = roomCode;
           document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
           showScreen('s-chat');
@@ -848,8 +861,9 @@ async function handleSetup() {
       }, 2000);
     } else {
       const code = document.getElementById('code-input').value.trim().toLowerCase();
+      const password = document.getElementById('password-input')?.value.trim() || null;
       if (!code) { showErr('Please enter the room code'); resetSetupBtn(); return; }
-      const result = await api('/api/join', { name, code, pubKey });
+      const result = await api('/api/join', { name, code, pubKey, password });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
       myToken = result.token;
       roomCode = result.code;
@@ -874,7 +888,7 @@ async function handleSetup() {
 function resetSetupBtn() {
   const btn = document.getElementById('setup-btn');
   btn.disabled = false;
-  btn.textContent = mode === 'join' ? 'Join room' : 'Create room';
+  btn.textContent = mode === 'join' ? 'Join room' : mode === 'named' ? 'Create named room' : 'Create room';
 }
 
 // ── COPY CODE ───────────────────────────────────────────────────────────
@@ -915,6 +929,15 @@ function resetState() {
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   enableInput(false);
+}
+
+
+function goBack() {
+  stopPolling();
+  resetState();
+  clearSession();
+  showScreen('s-landing');
+  triggerLandingAnim();
 }
 
 function startFresh() {
