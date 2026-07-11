@@ -4,10 +4,22 @@ const path = require('path');
 const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
+const HEARTBEAT_INTERVAL = 30000;  // 30 seconds
+const HEARTBEAT_TIMEOUT  = 65000;  // 65 seconds — miss 2 beats = dead
+
 const rooms = new Map();
 
 function generateCode() {
-  const words = ['amber','arctic','azure','cedar','cloud','coral','dawn','delta','dusk','ember','fern','flame','frost','ghost','glass','gold','grove','haven','iron','jade','karma','lake','lemon','lime','lunar','maple','mist','moon','moss','nova','oak','opal','orbit','pearl','pine','prism','rain','raven','reed','ridge','river','rose','ruby','sage','salt','sand','shadow','shore','silk','silver','slate','smoke','snow','solar','spark','star','steel','storm','tide','timber','topaz','vale','vault','veil','wave','wild','wind','wolf'];
+  const words = [
+    'amber','arctic','azure','cedar','cloud','coral','dawn','delta','dusk','ember',
+    'fern','flame','frost','ghost','glass','gold','grove','haven','iron','jade',
+    'karma','lake','lemon','lime','lunar','maple','mist','moon','moss','nova',
+    'oak','opal','orbit','pearl','pine','prism','quartz','rain','raven','reed',
+    'ridge','river','rose','ruby','sage','salt','sand','shadow','shore','silk',
+    'silver','slate','smoke','snow','solar','sonic','spark','star','steel','storm',
+    'tide','timber','topaz','vale','vault','veil','wave','wild','wind','wolf',
+    'amber','birch','blaze','bloom','bolt','bone','brew','brick','brine','brook',
+  ];
   const pick = () => words[Math.floor(Math.random() * words.length)];
   return `${pick()}-${pick()}-${Math.floor(Math.random() * 90 + 10)}`;
 }
@@ -28,13 +40,32 @@ function broadcast(room, data, excludeWs = null) {
   });
 }
 
-function exchangeKeys(room, joinerWs, joinerPubKey) {
-  if (joinerPubKey) broadcast(room, { type: 'peer_pubkey', pubKey: joinerPubKey }, joinerWs);
-  room.clients.forEach(({ ws: cws, pubKey: cPubKey }) => {
-    if (cws !== joinerWs && cPubKey) joinerWs.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
-  });
+function broadcastAll(room, data) { broadcast(room, data, null); }
+
+// ── Heartbeat checker — runs every 30s ───────────────────────────────
+function startHeartbeatChecker() {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, room] of rooms.entries()) {
+      const timedOut = [];
+      for (const client of room.clients) {
+        if (now - client.lastSeen > HEARTBEAT_TIMEOUT) {
+          timedOut.push(client);
+        }
+      }
+      for (const client of timedOut) {
+        console.log(`Client ${client.name} timed out in room ${code}`);
+        room.clients.delete(client);
+        try { client.ws.close(); } catch {}
+        // Notify remaining peer
+        broadcast(room, { type: 'peer_timeout', name: client.name });
+        if (room.clients.size === 0) cleanRoom(code);
+      }
+    }
+  }, HEARTBEAT_INTERVAL);
 }
 
+// Serve static files
 const server = http.createServer((req, res) => {
   const url = req.url === '/' ? '/index.html' : req.url;
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
@@ -56,6 +87,7 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server });
+startHeartbeatChecker();
 
 wss.on('connection', (ws) => {
   let currentRoom = null;
@@ -65,77 +97,97 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
-    // ONE-TIME ROOM
+    // Update lastSeen on every message (including ping)
+    if (clientRecord) clientRecord.lastSeen = Date.now();
+
+    // ── PING / PONG ────────────────────────────────────────────────
+    if (msg.type === 'ping') {
+      ws.send(JSON.stringify({ type: 'pong' }));
+      return;
+    }
+
+    // ── CREATE ROOM ────────────────────────────────────────────────
     if (msg.type === 'create') {
       const code = generateCode();
       const name = (msg.name || 'Stranger').substring(0, 24);
       const pubKey = msg.pubKey || null;
-      rooms.set(code, { clients: new Set(), createdAt: Date.now(), named: false, password: null, timer: setTimeout(() => cleanRoom(code), 24 * 60 * 60 * 1000) });
+      rooms.set(code, {
+        clients: new Set(),
+        createdAt: Date.now(),
+        timer: setTimeout(() => cleanRoom(code), 24 * 60 * 60 * 1000),
+      });
       const room = rooms.get(code);
-      clientRecord = { ws, name, pubKey };
+      clientRecord = { ws, name, pubKey, lastSeen: Date.now() };
       room.clients.add(clientRecord);
       currentRoom = code;
       ws.send(JSON.stringify({ type: 'created', code, name }));
+      console.log(`Room created: ${code}`);
       return;
     }
 
-    // NAMED ROOM
+    // ── CREATE NAMED ROOM ──────────────────────────────────────────
     if (msg.type === 'create_named') {
-      const roomName = (msg.roomName || '').toLowerCase().replace(/[^a-z0-9-]/g, '-').substring(0, 48);
+      const roomName = (msg.roomName || '').toLowerCase().replace(/[^a-z0-9-]/g, '-').substring(0, 40);
       const name = (msg.name || 'Stranger').substring(0, 24);
       const password = msg.password || null;
       const pubKey = msg.pubKey || null;
-      if (!roomName) { ws.send(JSON.stringify({ type: 'error', message: 'Please enter a valid room name.' })); return; }
-
-      if (rooms.has(roomName)) {
-        const room = rooms.get(roomName);
-        if (room.clients.size >= 2) { ws.send(JSON.stringify({ type: 'error', message: 'Room is full — only two people allowed.' })); return; }
-        if (room.password && room.password !== password) { ws.send(JSON.stringify({ type: 'error', message: 'Wrong password for this room.' })); return; }
-        clientRecord = { ws, name, pubKey };
-        room.clients.add(clientRecord);
-        currentRoom = roomName;
-        ws.send(JSON.stringify({ type: 'joined', code: roomName, name }));
-        exchangeKeys(room, ws, pubKey);
-        broadcast(room, { type: 'peer_joined', name }, ws);
-        return;
-      }
-
-      rooms.set(roomName, { clients: new Set(), createdAt: Date.now(), password, named: true, timer: setTimeout(() => cleanRoom(roomName), 7 * 24 * 60 * 60 * 1000) });
+      if (!roomName) { ws.send(JSON.stringify({ type: 'error', message: 'Invalid room name.' })); return; }
+      if (rooms.has(roomName)) { ws.send(JSON.stringify({ type: 'error', message: `Room "${roomName}" already exists. Join it instead.` })); return; }
+      rooms.set(roomName, {
+        clients: new Set(),
+        createdAt: Date.now(),
+        password,
+        isNamed: true,
+        timer: setTimeout(() => cleanRoom(roomName), 7 * 24 * 60 * 60 * 1000),
+      });
       const room = rooms.get(roomName);
-      clientRecord = { ws, name, pubKey };
+      clientRecord = { ws, name, pubKey, lastSeen: Date.now() };
       room.clients.add(clientRecord);
       currentRoom = roomName;
       ws.send(JSON.stringify({ type: 'named_created', roomName, name }));
+      console.log(`Named room created: ${roomName}`);
       return;
     }
 
-    // JOIN
+    // ── JOIN ROOM ──────────────────────────────────────────────────
     if (msg.type === 'join') {
       const code = (msg.code || '').toLowerCase().trim();
       const name = (msg.name || 'Stranger').substring(0, 24);
+      const password = msg.password || null;
       const pubKey = msg.pubKey || null;
       const room = rooms.get(code);
       if (!room) { ws.send(JSON.stringify({ type: 'error', message: 'Room not found. Check the code and try again.' })); return; }
+      if (room.password && room.password !== password) { ws.send(JSON.stringify({ type: 'error', message: 'Incorrect password.' })); return; }
       if (room.clients.size >= 2) { ws.send(JSON.stringify({ type: 'error', message: 'Room is full — only two people allowed.' })); return; }
-      if (room.password && room.password !== (msg.password || null)) { ws.send(JSON.stringify({ type: 'error', message: 'Wrong password. Ask the room creator for the correct password.' })); return; }
-      clientRecord = { ws, name, pubKey };
+
+      clientRecord = { ws, name, pubKey, lastSeen: Date.now() };
       room.clients.add(clientRecord);
       currentRoom = code;
       ws.send(JSON.stringify({ type: 'joined', code, name }));
-      exchangeKeys(room, ws, pubKey);
+
+      // Exchange public keys
+      if (pubKey) broadcast(room, { type: 'peer_pubkey', pubKey }, ws);
+      room.clients.forEach(({ ws: cws, pubKey: cPubKey }) => {
+        if (cws !== ws && cPubKey) ws.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
+      });
+
       broadcast(room, { type: 'peer_joined', name }, ws);
+      console.log(`${name} joined room: ${code}`);
       return;
     }
 
+    // ── MESSAGE ────────────────────────────────────────────────────
     if (msg.type === 'message' && currentRoom) {
       const room = rooms.get(currentRoom);
       if (!room) return;
-      const content = (msg.content || '').substring(0, 4000);
+      const content = (msg.content || '').substring(0, 2000);
       if (!content.trim()) return;
-      broadcast(room, { type: 'message', content, name: clientRecord?.name ?? 'Stranger', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) }, ws);
+      const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      broadcast(room, { type: 'message', content, name: clientRecord?.name ?? 'Stranger', time: now }, ws);
       return;
     }
 
+    // ── TYPING ─────────────────────────────────────────────────────
     if (msg.type === 'typing' && currentRoom) {
       const room = rooms.get(currentRoom);
       if (!room) return;
@@ -143,23 +195,25 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // ── LEAVE ROOM (stay in server, just disconnect) ───────────────
     if (msg.type === 'leave_room' && currentRoom) {
       const room = rooms.get(currentRoom);
-      if (room) {
-        if (clientRecord) room.clients.delete(clientRecord);
-        broadcast(room, { type: 'peer_left', name: clientRecord?.name ?? 'Stranger' });
-        // Named rooms stay alive — one-time rooms close if empty
-        if (room.clients.size === 0 && !room.named) cleanRoom(currentRoom);
+      if (room && clientRecord) {
+        room.clients.delete(clientRecord);
+        broadcast(room, { type: 'peer_left', name: clientRecord.name });
       }
       currentRoom = null;
-      clientRecord = null;
-      ws.close();
       return;
     }
 
+    // ── CLOSE ROOM ─────────────────────────────────────────────────
     if (msg.type === 'close_room' && currentRoom) {
       const room = rooms.get(currentRoom);
-      if (room) { broadcast(room, { type: 'room_closed', message: 'Room closed by the other person.' }); cleanRoom(currentRoom); currentRoom = null; }
+      if (room) {
+        broadcastAll(room, { type: 'room_closed', message: 'Room was closed.' });
+        cleanRoom(currentRoom);
+        currentRoom = null;
+      }
       return;
     }
   });
@@ -170,11 +224,7 @@ wss.on('connection', (ws) => {
     if (!room) return;
     if (clientRecord) room.clients.delete(clientRecord);
     if (room.clients.size === 0) {
-      if (room.named) {
-        console.log(`Named room ${currentRoom} empty — persisting for 7 days`);
-      } else {
-        cleanRoom(currentRoom);
-      }
+      cleanRoom(currentRoom);
     } else {
       broadcast(room, { type: 'peer_left', name: clientRecord?.name ?? 'Stranger' });
     }
@@ -184,4 +234,6 @@ wss.on('connection', (ws) => {
   ws.on('error', () => {});
 });
 
-server.listen(PORT, () => { console.log(`Vaulted running on port ${PORT}`); });
+server.listen(PORT, () => {
+  console.log(`Vaulted running on port ${PORT}`);
+});

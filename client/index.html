@@ -576,6 +576,7 @@ let peerOnline = false;
 let typingTimer = null;
 let tabFocused = true;
 let unreadCount = 0;
+let heartbeatInterval = null;
 
 document.addEventListener('visibilitychange', () => {
   tabFocused = !document.hidden;
@@ -704,18 +705,36 @@ async function connectWs(onOpen) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const pubKey = await generateKeyPair();
   ws = new WebSocket(`${proto}//${location.host}`);
-  ws.onopen = () => onOpen(pubKey);
+
+  ws.onopen = () => {
+    onOpen(pubKey);
+    // Start heartbeat ping every 30 seconds
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    heartbeatInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, 30000);
+  };
+
   ws.onmessage = async (evt) => {
     let msg; try { msg = JSON.parse(evt.data); } catch { return; }
     await handleMsg(msg);
   };
+
   ws.onclose = () => {
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
     const chatEl = document.getElementById('s-chat');
     if (chatEl && chatEl.classList.contains('active')) {
-      setPeerOffline(); addSysMsg('Connection lost.');
+      setPeerOffline();
+      addSysMsg('Connection lost — the other person may have gone offline.');
     }
   };
-  ws.onerror = () => showErr('Connection failed. Please try again.');
+
+  ws.onerror = () => {
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+    showErr('Connection failed. Please try again.');
+  };
 }
 
 async function handleMsg(msg) {
@@ -750,6 +769,10 @@ async function handleMsg(msg) {
       showScreen('s-chat');
       setTimeout(() => enableInput(true), 100);
       playChime();
+      break;
+
+    case 'pong':
+      // Server confirmed alive — heartbeat acknowledged
       break;
 
     case 'peer_pubkey':
@@ -789,6 +812,12 @@ async function handleMsg(msg) {
     case 'peer_left':
       setPeerOffline();
       addSysMsg(`${msg.name} left the room`);
+      enableInput(false);
+      break;
+
+    case 'peer_timeout':
+      setPeerOffline();
+      addSysMsg(`${msg.name} lost connection — they may have locked their screen or lost signal.`);
       enableInput(false);
       break;
 
@@ -847,6 +876,7 @@ function copyCode() {
 }
 
 function leaveRoom() {
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   // Disconnect but keep room alive on server
   if (ws) {
     ws.send(JSON.stringify({ type: 'leave_room' }));
@@ -874,6 +904,7 @@ function rejoinRoom() {
 }
 
 function closeRoom() {
+  if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify({ type:'close_room' })); ws.close(); }
   ws = null; roomCode = ''; myName = ''; peerOnline = false; sharedKey = null;
   resetClosedScreen();
