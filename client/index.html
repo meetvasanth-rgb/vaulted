@@ -303,7 +303,14 @@ async function deriveSharedKey(peerPubKeyB64) {
 }
 
 async function encryptMsg(plaintext) {
-  if (!sharedKey) return plaintext;
+  if (!sharedKey) {
+    // Wait up to 3 seconds for key to be established
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (sharedKey) break;
+    }
+  }
+  if (!sharedKey) return plaintext; // fallback after timeout
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, sharedKey, new TextEncoder().encode(plaintext));
   const out = new Uint8Array(12 + ct.byteLength);
@@ -312,12 +319,21 @@ async function encryptMsg(plaintext) {
 }
 
 async function decryptMsg(data) {
-  if (!sharedKey || !data.startsWith('e2e:')) return data;
+  // If not encrypted prefix, return as plaintext (sent before key exchange)
+  if (!data.startsWith('e2e:')) return data;
+  if (!sharedKey) {
+    // Wait up to 3 seconds for key
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (sharedKey) break;
+    }
+  }
+  if (!sharedKey) return '[message received before encryption ready]';
   try {
     const buf = Uint8Array.from(atob(data.slice(4)), c => c.charCodeAt(0));
     const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: buf.slice(0,12) }, sharedKey, buf.slice(12));
     return new TextDecoder().decode(dec);
-  } catch { return '[encrypted message]'; }
+  } catch { return '[could not decrypt message]'; }
 }
 
 // -- STATE ------------------------------------------------------------
