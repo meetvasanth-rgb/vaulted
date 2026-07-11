@@ -1,674 +1,466 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Vaulted</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --black:#0A0908;
-  --surface:#131210;
-  --surface2:#1A1815;
-  --surface3:#222019;
-  --border:#252220;
-  --border2:#302C28;
-  --gold:#B8973E;
-  --gold-dim:rgba(184,151,62,0.12);
-  --gold-border:rgba(184,151,62,0.22);
-  --cream:#EDE7DC;
-  --cream2:#B8B0A6;
-  --muted:#6A6460;
-  --hint:#3A3632;
-  --green:#4A9B6F;
-  --green-dim:rgba(74,155,111,0.1);
-  --red:#C0392B;
-  --red-dim:rgba(192,57,43,0.1);
-}
-body{font-family:'Inter',sans-serif;background:var(--black);color:var(--cream);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-button{cursor:pointer;font-family:'Inter',sans-serif;border:none;outline:none}
-input,textarea{font-family:'Inter',sans-serif;outline:none}
-
-/* ── SCREENS ─────────────────────────────────────────── */
-.screen{display:none;min-height:100vh}
-.screen.active{display:flex}
-
-/* ══ LANDING ══════════════════════════════════════════ */
-#s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px}
-.landing-glow{position:absolute;inset:0;background:radial-gradient(ellipse 55% 45% at 50% 38%,rgba(184,151,62,0.035) 0%,transparent 68%);pointer-events:none}
-
-.logo{text-align:center;margin-bottom:52px}
-.logo-rule{height:1px;background:var(--gold);margin:0 auto 18px;width:0;transition:width .75s cubic-bezier(.4,0,.2,1)}
-.logo-rule.go{width:108px}
-.logo-name{font-family:'Cormorant Garamond',serif;font-size:clamp(56px,9vw,88px);font-weight:300;letter-spacing:.12em;color:var(--cream);opacity:0;transition:opacity .5s ease .72s}
-.logo-name.go{opacity:1}
-.logo-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:10px;opacity:0;transition:opacity .4s ease 1.1s}
-.logo-sub.go{opacity:1}
-
-.tagline{font-family:'Cormorant Garamond',serif;font-size:clamp(17px,2.6vw,26px);font-weight:300;font-style:italic;color:var(--cream2);text-align:center;line-height:1.5;max-width:480px;margin:0 auto 52px;opacity:0;transition:opacity .4s ease 1.25s}
-.tagline.go{opacity:1}
-
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:460px;opacity:0;transition:opacity .4s ease 1.4s}
-.cards.go{opacity:1}
-.card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:22px 20px;cursor:pointer;transition:all .15s;text-align:left}
-.card:hover{border-color:var(--gold-border);background:var(--surface2);transform:translateY(-1px)}
-.card-icon{width:36px;height:36px;border-radius:2px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
-.card-icon svg{width:18px;height:18px;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.card-title{font-size:13px;font-weight:500;color:var(--cream);margin-bottom:4px}
-.card-desc{font-size:11px;color:var(--muted);line-height:1.6}
-
-.landing-footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:10px;color:var(--hint);letter-spacing:.1em;text-transform:uppercase}
-
-/* ══ SETUP (name + action) ════════════════════════════ */
-#s-setup{flex-direction:column;align-items:center;justify-content:center;padding:24px}
-.setup-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:36px 32px;width:100%;max-width:360px}
-.setup-back{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin-bottom:24px;background:none;transition:color .15s;padding:0}
-.setup-back:hover{color:var(--cream2)}
-.setup-back svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.setup-logo{text-align:center;margin-bottom:24px}
-.setup-logo .rule{height:1px;background:var(--gold);width:60px;margin:0 auto 12px}
-.setup-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
-.setup-title{font-size:14px;font-weight:400;color:var(--cream2);margin-bottom:20px;text-align:center}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.field input{width:100%;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:13px;color:var(--cream);transition:border-color .15s}
-.field input:focus{border-color:var(--gold-border)}
-.field input::placeholder{color:var(--hint)}
-.field-note{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}
-.btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:13px;font-weight:500;letter-spacing:.05em;padding:12px;border-radius:2px;border:none;transition:background .15s;margin-top:6px}
-.btn-gold:hover{background:#C9A94A}
-.btn-gold:disabled{opacity:.5;cursor:not-allowed}
-.err-msg{font-size:12px;color:var(--red);margin-top:8px;text-align:center;display:none}
-
-/* ══ WAITING ══════════════════════════════════════════ */
-#s-waiting{flex-direction:column;align-items:center;justify-content:center;padding:24px}
-.waiting-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:40px 36px;width:100%;max-width:380px;text-align:center}
-.w-logo{margin-bottom:28px}
-.w-logo .rule{height:1px;background:var(--gold);width:60px;margin:0 auto 12px}
-.w-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
-.w-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--cream);margin-bottom:6px}
-.w-sub{font-size:12px;color:var(--muted);margin-bottom:28px;line-height:1.6}
-.code-box{background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:3px;padding:16px 20px;margin-bottom:20px}
-.code-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.code-value{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:400;letter-spacing:.08em;color:var(--gold)}
-.copy-btn{background:none;border:0.5px solid var(--border2);border-radius:2px;padding:7px 16px;font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:all .15s;margin-bottom:20px}
-.copy-btn:hover{border-color:var(--gold-border);color:var(--gold)}
-.copy-btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.w-pulse{display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:24px}
-.pulse-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);opacity:.3;animation:pulse-seq 1.4s infinite}
-.pulse-dot:nth-child(2){animation-delay:.2s}
-.pulse-dot:nth-child(3){animation-delay:.4s}
-@keyframes pulse-seq{0%,80%,100%{opacity:.3}40%{opacity:1}}
-.w-note{font-size:11px;color:var(--hint);line-height:1.6}
-.close-btn{background:none;border:0.5px solid var(--border);border-radius:2px;padding:8px 20px;font-size:11px;color:var(--muted);margin-top:20px;display:block;width:100%;transition:all .15s}
-.close-btn:hover{border-color:var(--red);color:var(--red)}
-
-/* ══ CHAT ════════════════════════════════════════════ */
-#s-chat{flex-direction:column;height:100vh;overflow:hidden}
-
-.chat-hdr{flex-shrink:0;background:var(--surface);border-bottom:0.5px solid var(--border);padding:0 16px;height:52px;display:flex;align-items:center;gap:12px}
-.chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:300;letter-spacing:.1em;color:var(--gold)}
-.chat-hdr-sep{width:1px;height:18px;background:var(--border2)}
-.chat-hdr-room{font-size:11px;color:var(--muted);font-family:monospace;letter-spacing:.04em}
-.chat-hdr-status{display:flex;align-items:center;gap:5px;margin-left:auto}
-.status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
-.status-dot.away{background:var(--muted)}
-.status-txt{font-size:11px;color:var(--muted)}
-.destroy-btn{background:none;border:0.5px solid var(--border);border-radius:2px;padding:5px 12px;font-size:10px;color:var(--muted);letter-spacing:.04em;transition:all .15s;margin-left:12px}
-.destroy-btn:hover{border-color:var(--red);color:var(--red)}
-
-.chat-body{flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:10px}
-
-.msg{display:flex;flex-direction:column;max-width:75%}
-.msg.me{align-self:flex-end;align-items:flex-end}
-.msg.them{align-self:flex-start;align-items:flex-start}
-.msg-name{font-size:10px;color:var(--muted);margin-bottom:3px;letter-spacing:.03em}
-.bubble{padding:10px 14px;border-radius:3px;font-size:13px;line-height:1.6;color:var(--cream);word-break:break-word}
-.msg.me .bubble{background:var(--gold-dim);border:0.5px solid var(--gold-border);border-bottom-right-radius:1px}
-.msg.them .bubble{background:var(--surface2);border:0.5px solid var(--border2);border-bottom-left-radius:1px}
-.msg-time{font-size:9px;color:var(--hint);margin-top:3px;font-family:monospace}
-
-.sys-msg{align-self:center;font-size:11px;color:var(--muted);background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:4px 14px;text-align:center;font-style:italic}
-
-.typing-indicator{align-self:flex-start;display:none;align-items:center;gap:3px;padding:10px 14px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:3px;border-bottom-left-radius:1px}
-.typing-indicator.show{display:flex}
-.t-dot{width:5px;height:5px;border-radius:50%;background:var(--muted);animation:typing-bounce .9s infinite}
-.t-dot:nth-child(2){animation-delay:.15s}
-.t-dot:nth-child(3){animation-delay:.3s}
-@keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
-
-.chat-ftr{flex-shrink:0;background:var(--surface);border-top:0.5px solid var(--border);padding:12px 14px;display:flex;gap:10px;align-items:flex-end}
-#msg-input{flex:1;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:13px;color:var(--cream);resize:none;min-height:42px;max-height:120px;line-height:1.5;transition:border-color .15s}
-#msg-input:focus{border-color:var(--gold-border)}
-#msg-input::placeholder{color:var(--hint)}
-#msg-input:disabled{opacity:.4;cursor:not-allowed}
-.send-btn{width:38px;height:38px;background:var(--gold);border-radius:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;border:none}
-.send-btn:hover{background:#C9A94A}
-.send-btn:disabled{opacity:.4;cursor:not-allowed}
-.send-btn svg{width:15px;height:15px;fill:none;stroke:var(--black);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-
-/* ══ ROOM CLOSED ══════════════════════════════════════ */
-#s-closed{flex-direction:column;align-items:center;justify-content:center;padding:24px}
-.closed-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:48px 40px;max-width:380px;width:100%;text-align:center}
-.closed-icon{width:48px;height:48px;border-radius:50%;background:var(--red-dim);border:0.5px solid rgba(192,57,43,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
-.closed-icon svg{width:22px;height:22px;fill:none;stroke:var(--red);stroke-width:1.6;stroke-linecap:round}
-.closed-title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:300;color:var(--cream);margin-bottom:8px}
-.closed-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:28px}
-.closed-note{font-size:11px;color:var(--hint);line-height:1.6;background:var(--surface2);border:0.5px solid var(--border);border-radius:2px;padding:12px 16px;margin-bottom:24px;text-align:left}
-.closed-note strong{color:var(--muted)}
-
-/* ══ TOAST ════════════════════════════════════════════ */
-.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:2px;padding:9px 16px;font-size:12px;color:var(--cream);z-index:999;animation:toast-in .2s ease;pointer-events:none}
-@keyframes toast-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-
-/* ══ SCROLLBAR ════════════════════════════════════════ */
-::-webkit-scrollbar{width:3px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-
-@media(max-width:480px){
-  .cards{grid-template-columns:1fr}
-  .setup-card,.waiting-card,.closed-card{padding:28px 22px}
-}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kairo — Cloud v6.2 (Supabase, White)</title>
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.js"></script>
 </head>
 <body>
-
-<!-- ══ LANDING ══ -->
-<div id="s-landing" class="screen active">
-  <div class="landing-glow"></div>
-  <div style="position:relative;z-index:1;text-align:center;width:100%;max-width:520px">
-    <div class="logo">
-      <div class="logo-rule" id="logoRule"></div>
-      <div class="logo-name" id="logoName">Vaulted</div>
-      <div class="logo-sub" id="logoSub">Private · Anonymous · No trace</div>
+  <header>
+    <div style="display:flex; align-items:center; gap:10px">
+      <strong>Kairo — Cloud v6.2</strong>
+      <span id="cloud-status" class="pill">Local</span>
     </div>
-    <p class="tagline" id="logoTag">Two people. One conversation.<br/>Disappears when you leave.</p>
-    <div class="cards" id="cards">
-      <div class="card" onclick="startCreate()">
-        <div class="card-icon" style="background:rgba(184,151,62,.08);border:0.5px solid rgba(184,151,62,.18)">
-          <svg viewBox="0 0 24 24" style="stroke:var(--gold)"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+    <nav>
+      <button data-tab="inventory" class="active">Inventory</button>
+      <button data-tab="formulations">Formulations</button>
+      <button data-tab="produce">Produce</button>
+      <button data-tab="history">History</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+  </header>
+  <main>
+    <div id="banner" style="display:none"></div>
+    <section id="tab-inventory" class="grid grid-2">
+      <div class="card">
+        <h2>Add / Update Material</h2>
+        <div class="grid">
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div><label>Name</label><input id="mat-name" placeholder="e.g., Hedione"></div>
+            <div><label>Unit</label><select id="mat-unit"><option>ml</option><option>g</option><option>kg</option><option>L</option></select></div>
+          </div>
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div><label>Stock</label><input id="mat-stock" type="number" step="0.0001" placeholder="0.00"></div>
+            <div><label>Reorder Level (optional)</label><input id="mat-reorder" type="number" step="0.01" placeholder="e.g., 100"></div>
+          </div>
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div><label>Notes</label><input id="mat-notes" placeholder="Supplier, batch, etc."></div>
+            <div><label>&nbsp;</label><button class="btn" id="save-material">Save Material</button></div>
+          </div>
         </div>
-        <div class="card-title">Create a room</div>
-        <div class="card-desc">Get a secret code. Share it with one person. Start talking.</div>
       </div>
-      <div class="card" onclick="startJoin()">
-        <div class="card-icon" style="background:rgba(74,155,111,.08);border:0.5px solid rgba(74,155,111,.18)">
-          <svg viewBox="0 0 24 24" style="stroke:var(--green)"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      <div class="card">
+        <h2>Materials</h2>
+        <div style="display:grid;gap:10px;grid-template-columns:1fr auto">
+          <input id="mat-search" placeholder="Search materials">
+          <button class="btn ghost mini" id="refresh">Refresh</button>
         </div>
-        <div class="card-title">Join a room</div>
-        <div class="card-desc">Enter the code someone shared with you. Connect instantly.</div>
+        <div id="materials-table"></div>
       </div>
-    </div>
-  </div>
-  <div class="landing-footer">No accounts · No logs · No trace</div>
-</div>
+    </section>
 
-<!-- ══ SETUP ══ -->
-<div id="s-setup" class="screen">
-  <div class="setup-card">
-    <button class="setup-back" onclick="showScreen('s-landing')">
-      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-      Back
-    </button>
-    <div class="setup-logo">
-      <div class="rule"></div>
-      <span>Vaulted</span>
-    </div>
-    <div class="setup-title" id="setup-title">Choose a codename</div>
-    <div class="field">
-      <label>Your codename</label>
-      <input type="text" id="name-input" placeholder="e.g. Shadow, Echo, Cipher…" maxlength="24" autocomplete="off"/>
-      <div class="field-note">This is how you appear in the room. Not your real name.</div>
-    </div>
-    <div id="join-field" class="field" style="display:none">
-      <label>Room code</label>
-      <input type="text" id="code-input" placeholder="e.g. amber-frost-42" autocomplete="off" style="font-family:monospace;letter-spacing:.04em"/>
-    </div>
-    <div class="err-msg" id="err-msg"></div>
-    <button class="btn-gold" id="setup-btn" onclick="handleSetup()">Continue</button>
-  </div>
-</div>
+    <section id="tab-formulations" class="grid grid-2" style="display:none">
+      <div class="card">
+        <h2>New / Edit Formulation</h2>
+        <div class="grid">
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div><label>Formula Name</label><input id="for-name" placeholder="e.g., Amber Test v2"></div>
+            <div><label>Notes</label><input id="for-notes" placeholder="e.g., concentrate @25%"></div>
+          </div>
+          <div>
+            <label style="display:flex;align-items:baseline;gap:8px">Ingredients (<span id="for-unit-label">%</span> of batch)<select id="for-unit-mode" class="unit-chip" style="margin-left:8px;width:72px;height:28px;padding:2px 6px;font-size:12px;border-radius:6px"><option value="%">%</option><option value="ml">ml</option></select></label>
+            <div id="for-items"></div>
+            <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+              <button class="btn ghost" id="for-add-row">+ Add Row</button>
+              <span class="pill" id="for-total">Total: 0%</span>
+            </div>
+          </div>
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div></div><div><button class="btn" id="for-save">Save Formulation</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Formulations</h2>
+        <div style="display:grid;gap:10px;grid-template-columns:1fr auto">
+          <input id="for-search" placeholder="Search formulations">
+          <button class="btn ghost mini" id="for-refresh">Refresh</button>
+        </div>
+        <div id="formulations-table"></div>
+      </div>
+    </section>
 
-<!-- ══ WAITING ══ -->
-<div id="s-waiting" class="screen">
-  <div class="waiting-card">
-    <div class="w-logo">
-      <div class="rule" style="height:1px;background:var(--gold);width:60px;margin:0 auto 12px"></div>
-      <span style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)">Vaulted</span>
-    </div>
-    <div class="w-title">Room ready</div>
-    <div class="w-sub">Share this code with one person.<br/>They enter it, you're connected.</div>
-    <div class="code-box">
-      <div class="code-label">Secret code</div>
-      <div class="code-value" id="display-code">—</div>
-    </div>
-    <button class="copy-btn" onclick="copyCode()">
-      <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      Copy code
-    </button>
-    <div class="w-pulse"><div class="pulse-dot"></div><div class="pulse-dot"></div><div class="pulse-dot"></div></div>
-    <div class="w-note">Waiting for the other person to join…<br/>Room auto-closes in 24 hours if unused.</div>
-    <button class="close-btn" onclick="closeRoom()">Cancel &amp; close room</button>
-  </div>
-</div>
+    <section id="tab-produce" class="grid grid-2" style="display:none">
+      <div class="card">
+        <h2>New Production / Test Run</h2>
+        <div class="grid">
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div><label>Formulation</label><select id="prod-formulation"></select></div>
+            <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+              <div><label>Batch Size</label><input id="prod-size" type="number" step="0.0001" placeholder="20"></div>
+              <div><label>Unit</label><select id="prod-unit"><option>ml</option><option>g</option></select></div>
+            </div>
+          </div>
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div><label>Run Type</label><select id="prod-type"><option value="test">Test (R&D)</option><option value="production">Production</option></select></div>
+            <div><label>Notes (optional)</label><input id="prod-notes" placeholder="e.g., tweak Hedione next time"></div>
+          </div>
+          <div><label>Requirements</label><div id="prod-reqs" class="muted">Choose formulation and size.</div></div>
+          <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+            <div></div><div><button class="btn" id="prod-confirm" disabled>Deduct & Log Run</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><h2>Low Stock Alerts</h2><div id="low-stock"></div></div>
+    </section>
 
-<!-- ══ CHAT ══ -->
-<div id="s-chat" class="screen">
-  <div class="chat-hdr">
-    <div class="chat-hdr-logo">V</div>
-    <div class="chat-hdr-sep"></div>
-    <div class="chat-hdr-room" id="hdr-code">—</div>
-    <div class="chat-hdr-status">
-      <div class="status-dot" id="status-dot"></div>
-      <div class="status-txt" id="status-txt">Connected</div>
-    </div>
-    <button class="destroy-btn" onclick="closeRoom()">Close &amp; erase</button>
-  </div>
-  <div class="chat-body" id="chat-body">
-    <div class="sys-msg" id="welcome-msg"></div>
-    <div class="typing-indicator" id="typing-indicator">
-      <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
-    </div>
-  </div>
-  <div class="chat-ftr">
-    <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
-    <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
-      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-    </button>
-  </div>
-</div>
+    <section id="tab-history" class="grid" style="display:none">
+      <div class="card"><h2>Run History</h2>
+        <div style="display:grid;gap:10px;grid-template-columns:1fr auto">
+          <input id="hist-search" placeholder="Search by name/type">
+          <button class="btn ghost mini" id="hist-refresh">Refresh</button>
+        </div>
+        <div id="history-table"></div>
+      </div>
+    </section>
 
-<!-- ══ CLOSED ══ -->
-<div id="s-closed" class="screen">
-  <div class="closed-card">
-    <div class="closed-icon">
-      <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-    </div>
-    <div class="closed-title">Room erased</div>
-    <div class="closed-sub" id="closed-sub">The conversation has been permanently deleted.</div>
-    <div class="closed-note">
-      <strong>What was erased:</strong><br/>
-      All messages · Room code · Connection details · Timestamps<br/><br/>
-      <strong>What was never stored:</strong><br/>
-      Your identity · Your device · Your location
-    </div>
-    <button class="btn-gold" onclick="startFresh()" style="width:100%">Start a new room</button>
-  </div>
-</div>
+    <section id="tab-settings" class="grid" style="display:none">
+      <div class="card">
+        <h2>Cloud (Supabase)</h2>
+        <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+          <div><label>SUPABASE_URL</label><input id="sb-url" placeholder="https://YOUR-PROJECT.supabase.co"></div>
+          <div><label>SUPABASE_ANON_KEY</label><input id="sb-key" placeholder="ey..."></div>
+        </div>
+        <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+          <div><button class="btn" id="sb-connect">Connect</button><button class="btn ghost" id="sb-disconnect">Disconnect</button></div>
+          <div style="text-align:right"><button class="btn ghost" id="create-org">Create Default Org</button></div>
+        </div>
+        <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+          <div>
+            <h3>Auth</h3>
+            <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr">
+              <input id="auth-email" placeholder="you@company.com"><input id="auth-password" type="password" placeholder="(optional) password">
+            </div>
+            <div style="display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:6px">
+              <button class="btn mini" id="sign-in">Sign in</button><button class="btn ghost mini" id="sign-out">Sign out</button>
+            </div>
+            <div id="me" class="muted">Not signed in</div>
+          </div>
+        </div>
 
-<script>
+        <div style="margin-top:10px">
+          <h3>Org Tools</h3>
+          <div style="display:grid;gap:10px;grid-template-columns:2fr auto">
+            <input id="org-id-input" placeholder="Paste org_id (UUID) and click Switch">
+            <button class="btn ghost mini" id="org-switch">Switch Org</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 
-// ── AUDIO + TAB AWARENESS ─────────────────────────────────
-let tabFocused = true;
-let unreadCount = 0;
-const originalTitle = 'Vaulted';
+  <footer>© Kairo Manufacturing — Cloud v6.2</footer>
 
-document.addEventListener('visibilitychange', () => {
-  tabFocused = !document.hidden;
-  if (!document.hidden) {
-    unreadCount = 0;
-    document.title = originalTitle;
-  }
-});
+  <script>
+    const $ = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
+    const uid = () => crypto.randomUUID();
+    const store = { get:(k,f)=>{ try { return JSON.parse(localStorage.getItem(k)) ?? f } catch(e){ return f }}, set:(k,v)=> localStorage.setItem(k, JSON.stringify(v)) };
 
-window.addEventListener('focus', () => {
-  tabFocused = true;
-  unreadCount = 0;
-  document.title = originalTitle;
-});
+    const banner = $("#banner");
+    const ok = (m) => { banner.textContent=m; banner.className="ok"; banner.style.display="block"; };
+    const err = (m) => { banner.textContent=m; banner.className="bad"; banner.style.display="block"; };
+    const clearBanner = () => { banner.style.display="none"; banner.textContent=""; banner.className=""; };
 
-window.addEventListener('blur', () => { tabFocused = false; });
+    $$("nav button").forEach(btn => btn.addEventListener("click", () => {
+      $$("nav button").forEach(b => b.classList.remove("active")); btn.classList.add("active");
+      const tab = btn.dataset.tab;
+      ["inventory","formulations","produce","history","settings"].forEach(t => $("#tab-"+t).style.display = (t === tab) ? "" : "none");
+      if (tab==="inventory") renderMaterials();
+      if (tab==="formulations") { loadFormulations(); fillMaterialOptions(); }
+      if (tab==="produce") { fillFormulationOptions(); renderLowStock(); renderRequirements(); }
+      if (tab==="history") loadHistory();
+    }));
 
-// Soft chime using Web Audio API — no file needed
-function playChime() {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // Two-tone soft chime
-    const tones = [
-      { freq: 830, start: 0,    dur: 0.18, vol: 0.18 },
-      { freq: 1050, start: 0.1, dur: 0.22, vol: 0.12 },
-    ];
-    tones.forEach(({ freq, start, dur, vol }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-      gain.gain.setValueAtTime(0, ctx.currentTime + start);
-      gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + dur + 0.05);
-    });
-    setTimeout(() => ctx.close(), 800);
-  } catch {}
-}
+    let materials = store.get("materials", []);
+    let formulations = [];
+    let history = [];
+    let orgId = store.get("org_id", null);
+    let supa = null;
 
-function notifyIncoming(name) {
-  // Play chime if tab not focused
-  if (!tabFocused || document.hidden) {
-    playChime();
-    unreadCount++;
-    document.title = `(${unreadCount}) ${name} — Vaulted`;
-  }
-}
-
-// ── STATE ──────────────────────────────────────────────────
-let ws = null;
-let mode = 'create'; // 'create' | 'join'
-let myName = '';
-let roomCode = '';
-let peerOnline = false;
-let typingTimer = null;
-
-// ── UTILS ─────────────────────────────────────────────────
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
-
-function toast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2200);
-}
-
-function getWsUrl() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}`;
-}
-
-// ── LANDING ANIMATION ─────────────────────────────────────
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    document.getElementById('logoRule').classList.add('go');
-    document.getElementById('logoName').classList.add('go');
-    document.getElementById('logoSub').classList.add('go');
-    document.getElementById('logoTag').classList.add('go');
-    document.getElementById('cards').classList.add('go');
-  }, 200);
-});
-
-// ── LANDING ACTIONS ───────────────────────────────────────
-function startCreate() {
-  mode = 'create';
-  document.getElementById('setup-title').textContent = 'Choose a codename';
-  document.getElementById('join-field').style.display = 'none';
-  document.getElementById('setup-btn').textContent = 'Create room';
-  document.getElementById('name-input').value = '';
-  document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
-}
-
-function startJoin() {
-  mode = 'join';
-  document.getElementById('setup-title').textContent = 'Join a room';
-  document.getElementById('join-field').style.display = 'block';
-  document.getElementById('setup-btn').textContent = 'Join room';
-  document.getElementById('name-input').value = '';
-  document.getElementById('code-input').value = '';
-  document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
-}
-
-// ── SETUP ─────────────────────────────────────────────────
-function handleSetup() {
-  const name = document.getElementById('name-input').value.trim();
-  const errEl = document.getElementById('err-msg');
-
-  if (!name) { showErr('Please enter a codename'); return; }
-
-  myName = name;
-  errEl.style.display = 'none';
-
-  if (mode === 'create') {
-    connectWs(() => {
-      ws.send(JSON.stringify({ type: 'create', name }));
-    });
-  } else {
-    const code = document.getElementById('code-input').value.trim().toLowerCase();
-    if (!code) { showErr('Please enter the room code'); return; }
-    connectWs(() => {
-      ws.send(JSON.stringify({ type: 'join', name, code }));
-    });
-  }
-}
-
-function showErr(msg) {
-  const el = document.getElementById('err-msg');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-
-// Enter key support on setup
-document.addEventListener('DOMContentLoaded', () => {
-  ['name-input', 'code-input'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') handleSetup();
-    });
-  });
-
-  document.getElementById('msg-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMsg();
+    function setCloudStatus(txt) {
+      const pill = $("#cloud-status");
+      pill.textContent = txt;
+      pill.className = "pill " + (txt === "Cloud" ? "ok" : "");
     }
-  });
+    const getCfg = () => ({ url: store.get("sb_url",""), key: store.get("sb_key","") });
 
-  document.getElementById('msg-input')?.addEventListener('input', () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'typing' }));
-  });
-});
-
-// ── WEBSOCKET ─────────────────────────────────────────────
-function connectWs(onOpen) {
-  ws = new WebSocket(getWsUrl());
-
-  ws.onopen = () => {
-    onOpen();
-  };
-
-  ws.onmessage = (evt) => {
-    let msg;
-    try { msg = JSON.parse(evt.data); } catch { return; }
-    handleMsg(msg);
-  };
-
-  ws.onclose = () => {
-    if (document.getElementById('s-chat').classList.contains('active')) {
-      setPeerOffline();
-      addSysMsg('Connection lost. The room may have been closed.');
+    async function connect() {
+      const { url, key } = getCfg();
+      if (!url || !key) return err("Enter SUPABASE_URL + ANON KEY");
+      if (!window.supabase || !window.supabase.createClient) return err("Supabase lib failed to load");
+      supa = window.supabase.createClient(url, key);
+      setCloudStatus("Cloud"); ok("Connected to Supabase ✅");
+      await refreshMaterials(); renderMaterials();
+      await loadFormulations(); fillFormulationOptions();
+      await loadHistory();
     }
-  };
+    function disconnect(){ supa=null; setCloudStatus("Local"); clearBanner(); }
 
-  ws.onerror = () => {
-    showErr('Connection failed. Please try again.');
-  };
-}
+    $("#sb-connect").addEventListener("click", async ()=>{ store.set("sb_url", $("#sb-url").value.trim()); store.set("sb_key", $("#sb-key").value.trim()); await connect(); });
+    $("#sb-disconnect").addEventListener("click", ()=>disconnect());
+    $("#sb-url").value = store.get("sb_url",""); $("#sb-key").value = store.get("sb_key","");
 
-function handleMsg(msg) {
-  switch (msg.type) {
+    async function me(){ if(!supa) return null; const { data:{ user } } = await supa.auth.getUser(); return user; }
+    $("#sign-in").addEventListener("click", async ()=>{
+      if (!supa) return err("Connect Supabase first");
+      const email=$("#auth-email").value.trim(); const password=$("#auth-password").value.trim();
+      if(!email) return err("Enter email");
+      let res;
+      if(password){ res=await supa.auth.signInWithPassword({email,password}); if(res.error) return err(res.error.message); }
+      else { res=await supa.auth.signInWithOtp({email, options:{emailRedirectTo: location.href}}); if(res.error) return err(res.error.message); ok("Magic link sent to "+email); }
+      const u=await me(); $("#me").textContent = u?("Signed in as "+u.email):"Not signed in";
+    });
+    $("#sign-out").addEventListener("click", async()=>{ if(!supa) return; await supa.auth.signOut(); $("#me").textContent="Not signed in"; ok("Signed out"); });
 
-    case 'created':
-      roomCode = msg.code;
-      document.getElementById('display-code').textContent = msg.code;
-      showScreen('s-waiting');
-      break;
+    $("#org-switch").addEventListener("click", ()=>{
+      const v = $("#org-id-input").value.trim();
+      if(!v) return err("Paste an org_id first");
+      try{ store.set("org_id", v); orgId=v; ok("Org set to: "+v); } catch(e){ return err("Invalid org id"); }
+    });
+    $("#create-org").addEventListener("click", async ()=>{
+      if(!supa) return err("Connect Supabase first");
+      const u=await me(); if(!u) return err("Sign in first");
+      try{
+        if(!orgId){
+          const { data:o, error:e } = await supa.from("orgs").insert({ name:"Kairo" }).select().single();
+          if(e) throw e; orgId=o.id; store.set("org_id", orgId);
+        }
+        await supa.from("org_members").upsert({ org_id:orgId, user_id:(await me()).id, role:"admin" });
+        ok("Org ready: "+orgId);
+      }catch(e){ err(e.message || e); }
+    });
 
-    case 'joined':
-      roomCode = msg.code;
-      document.getElementById('hdr-code').textContent = msg.code;
-      document.getElementById('welcome-msg').textContent = `You joined as "${myName}" · Room: ${msg.code}`;
-      document.title = 'Vaulted';
-      setPeerOffline(); // wait for peer_joined
-      showScreen('s-chat');
-      // Enable input immediately for joiner since creator is already there
-      break;
-
-    case 'peer_joined':
-      peerOnline = true;
-      playChime();
-      // If we're the creator, switch to chat
-      if (document.getElementById('s-waiting').classList.contains('active')) {
-        document.getElementById('hdr-code').textContent = roomCode;
-        document.getElementById('welcome-msg').textContent = `You're "${myName}" · Room: ${roomCode}`;
-        showScreen('s-chat');
+    function renderMaterials(){
+      const q = $("#mat-search").value?.trim().toLowerCase()||"";
+      const rows = materials.filter(m=>(m.name?.toLowerCase().includes(q)||(m.notes||"").toLowerCase().includes(q)));
+      if(!rows.length){ $("#materials-table").innerHTML='<div class="muted">No materials.</div>'; return; }
+      const t=['<table><thead><tr><th>Name</th><th class="right">Stock</th><th>Unit</th><th>Reorder</th><th>Notes</th><th></th></tr></thead><tbody>'];
+      for(const m of rows){
+        t.push(`<tr><td>${m.name}</td><td class="right">${(m.stock||0).toLocaleString(undefined,{maximumFractionDigits:4})}</td><td>${m.unit}</td><td>${m.reorder ?? '-'}</td><td class="muted">${m.notes||''}</td>
+        <td><button class="btn ghost mini" data-act="set" data-id="${m.id}">Set</button><button class="btn ghost mini" data-act="edit" data-id="${m.id}">Edit</button><button class="btn ghost mini" data-act="del" data-id="${m.id}">Delete</button></td></tr>`);
       }
-      setPeerOnline();
-      addSysMsg(`${msg.name} joined the room`);
-      enableInput(true);
-      break;
+      t.push('</tbody></table>'); $("#materials-table").innerHTML=t.join("");
+      $("#materials-table").querySelectorAll("button").forEach(b=>{
+        const id=b.getAttribute("data-id"), act=b.getAttribute("data-act");
+        b.addEventListener("click", async()=>{
+          const m = materials.find(x=>x.id===id); if(!m) return;
+          if(act==="set"){
+            const v=parseFloat(prompt("Set stock to:", m.stock||0)); if(isNaN(v)) return; m.stock=Math.round(v*10000)/10000;
+            if(supa){ await supa.from("materials").upsert({ id:m.id, org_id:orgId, name:m.name, unit:m.unit, stock:m.stock, reorder:m.reorder, notes:m.notes }); await refreshMaterials(); ok("Stock updated"); }
+            else { store.set("materials", materials); }
+            renderMaterials();
+          } else if(act==="edit"){
+            $("#mat-name").value=m.name; $("#mat-unit").value=m.unit; $("#mat-stock").value=m.stock||0; $("#mat-reorder").value=m.reorder||""; $("#mat-notes").value=m.notes||""; $("#save-material").dataset.editing=id; window.scrollTo({top:0,behavior:"smooth"});
+          } else if(act==="del"){
+            if(!confirm("Delete material?")) return;
+            if(supa){ await supa.from("materials").delete().eq("id",id).eq("org_id",orgId); await refreshMaterials(); ok("Deleted"); }
+            else { materials = materials.filter(x=>x.id!==id); store.set("materials", materials); }
+            renderMaterials();
+          }
+        });
+      });
+    }
+    $("#save-material").addEventListener("click", async()=>{
+      const name=$("#mat-name").value.trim(), unit=$("#mat-unit").value; const stock=parseFloat($("#mat-stock").value)||0; const reorder=$("#mat-reorder").value?parseFloat($("#mat-reorder").value):null; const notes=$("#mat-notes").value.trim();
+      if(!name) return err("Name required");
+      const editing=$("#save-material").dataset.editing;
+      if(supa){
+        if(!orgId) return err("Create Default Org first");
+        if(editing){ const m=materials.find(x=>x.id===editing); Object.assign(m,{name,unit,stock,reorder,notes}); await supa.from("materials").upsert({ id:m.id, org_id:orgId, name, unit, stock, reorder, notes }); $("#save-material").dataset.editing=""; }
+        else { await supa.from("materials").insert({ org_id:orgId, name, unit, stock, reorder, notes }); }
+        await refreshMaterials(); renderMaterials(); ok("Saved to cloud");
+      }else{
+        if(editing){ const m=materials.find(x=>x.id===editing); Object.assign(m,{name,unit,stock,reorder,notes}); $("#save-material").dataset.editing=""; }
+        else { materials.unshift({ id:uid(), name, unit, stock, reorder, notes }); }
+        store.set("materials", materials); renderMaterials(); ok("Saved locally");
+      }
+      $("#mat-name").value=""; $("#mat-unit").value="ml"; $("#mat-stock").value=""; $("#mat-reorder").value=""; $("#mat-notes").value="";
+    });
+    $("#mat-search").addEventListener("input", renderMaterials);
+    $("#refresh").addEventListener("click", async()=>{ await refreshMaterials(); renderMaterials(); });
 
-    case 'message':
-      hideTyping();
-      addMessage(msg.name, msg.content, msg.time, false);
-      notifyIncoming(msg.name);
-      break;
+    async function refreshMaterials(){
+      if(!supa) return;
+      const u=await me(); if(!u) { $("#materials-table").innerHTML='<div class="muted">Sign in to load cloud inventory.</div>'; return; }
+      if(!orgId){ $("#materials-table").innerHTML='<div class="muted">Set or Create an Org in Settings.</div>'; return; }
+      const { data, error } = await supa.from("materials").select("*").eq("org_id", orgId).order("name", {ascending:true});
+      if(error) return err(error.message);
+      materials = data || []; store.set("materials", materials);
+    }
 
-    case 'typing':
-      showTyping();
-      clearTimeout(typingTimer);
-      typingTimer = setTimeout(hideTyping, 2500);
-      break;
+    function rowItem(){ return `<div data-row style="display:grid;gap:8px;grid-template-columns:1.4fr 0.8fr auto"><select class="for-mat"></select><input class="for-qty" type="number" step="0.0001" placeholder="% of batch"><button class="btn ghost" data-act="del-row">Delete</button></div>`; }
+    function fillMaterialOptions(){ $$("#for-items select.for-mat").forEach(sel=>{ const keep=sel.value; sel.innerHTML=materials.map(m=>`<option value="${m.id}">${m.name} (${m.unit})</option>`).join(""); if(keep) sel.value=keep; }); }
+    function newForRow(){ $("#for-items").insertAdjacentHTML("beforeend", rowItem()); const row=$$("#for-items [data-row]").slice(-1)[0]; const sel=row.querySelector(".for-mat"); sel.innerHTML=materials.map(m=>`<option value="${m.id}">${m.name} (${m.unit})</option>`).join(""); row.querySelector('[data-act="del-row"]').addEventListener("click",()=>{ row.remove(); updateForTotal(); }); row.querySelector(".for-qty").addEventListener("input", updateForTotal); updateForTotal(); }
+    
+    function updateForTotal(){
+      const mode = (localStorage.getItem('formula_unit') || '%');
+      const qtys = Array.from(document.querySelectorAll('#for-items .for-qty')).map(x=>parseFloat(x.value)||0);
+      if(mode === '%'){
+        const p = qtys.reduce((a,b)=>a+b,0);
+        const pill=$("#for-total");
+        pill.textContent="Total: "+(Math.round(p*10000)/10000)+"%";
+        pill.className="pill "+(Math.abs(p-100)<0.0001?"ok":(p>100?"bad":"warn"));
+        const lab = $("#for-unit-label"); if(lab) lab.textContent = "%";
+        document.querySelectorAll('#for-items .for-qty').forEach(inp=>{inp.placeholder='% of batch'; inp.step='0.0001';});
+      } else {
+        const ml = qtys.reduce((a,b)=>a+b,0);
+        const pill=$("#for-total");
+        pill.textContent="Total: "+(Math.round(ml*10000)/10000)+" ml";
+        pill.className="pill "+(ml>0?"ok":"warn");
+        const lab = $("#for-unit-label"); if(lab) lab.textContent = "ml";
+        document.querySelectorAll('#for-items .for-qty').forEach(inp=>{inp.placeholder='ml of batch'; inp.step='0.0001';});
+      }
+    }
+    
+    $("#for-add-row").addEventListener("click", newForRow);
+    // Unit mode selector for formulation quantities
+    const forUnitSelHandler = () => {
+      const v = $("#for-unit-mode")?.value || '%';
+      localStorage.setItem('formula_unit', v);
+      updateForTotal();
+    };
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const saved = localStorage.getItem('formula_unit') || '%';
+      const sel = $("#for-unit-mode"); if(sel){ sel.value = saved; sel.addEventListener('change', forUnitSelHandler); }
+      updateForTotal();
+    });
 
-    case 'peer_left':
-      setPeerOffline();
-      addSysMsg(`${msg.name} left the room`);
-      enableInput(false);
-      break;
 
-    case 'room_closed':
-      closeWithMessage(msg.message || 'Room was closed.');
-      break;
+    async function loadFormulations(){
+      if(!supa || !orgId) { formulations=[]; renderFormulations(); return; }
+      const { data, error } = await supa.from("formulations").select("*").eq("org_id", orgId).order("created_at",{ascending:false});
+      if(error) return err(error.message);
+      formulations = data || []; renderFormulations();
+    }
+    function renderFormulations(){
+      const q=$("#for-search").value?.trim().toLowerCase()||"";
+      const rows=formulations.filter(f=>(f.name?.toLowerCase().includes(q) || (f.notes||"").toLowerCase().includes(q)));
+      if(!rows.length){ $("#formulations-table").innerHTML='<div class="muted">No formulations yet.</div>'; return; }
+      const t=['<table><thead><tr><th>Name</th><th>Notes</th><th></th></tr></thead><tbody>'];
+      rows.forEach(f=>t.push(`<tr><td><strong>${f.name}</strong></td><td class="muted">${f.notes||''}</td><td>
+        <button class="btn ghost mini" data-act="load" data-id="${f.id}">Edit</button>
+        <button class="btn ghost mini" data-act="del" data-id="${f.id}">Delete</button>
+      </td></tr>`));
+      t.push('</tbody></table>');
+      $("#formulations-table").innerHTML=t.join("");
+      $("#formulations-table").querySelectorAll("button").forEach(b=>{
+        const id=b.getAttribute("data-id"), act=b.getAttribute("data-act");
+        b.addEventListener("click", async()=>{
+          if(act==="del"){ if(!confirm("Delete formulation?")) return; await supa.from("formulations").delete().eq("id", id).eq("org_id", orgId); await loadFormulations(); ok("Deleted"); }
+          else if(act==="load"){ const f=formulations.find(x=>x.id===id); if(!f) return; $("#for-name").value=f.name; $("#for-notes").value=f.notes||""; $("#for-items").innerHTML="";
+            const { data:items } = await supa.from("formulation_items").select("*").eq("formulation_id", id);
+            (items||[]).forEach(it=>{ newForRow(); const row=$$("#for-items [data-row]").slice(-1)[0]; row.querySelector(".for-mat").value=it.material_id; row.querySelector(".for-qty").value=it.percent; });
+            updateForTotal();
+          }
+        });
+      });
+    }
+    $("#for-search").addEventListener("input", renderFormulations);
+    $("#for-refresh").addEventListener("click", async()=>{ await loadFormulations(); });
 
-    case 'error':
-      showErr(msg.message);
-      break;
-  }
-}
+    $("#for-save").addEventListener("click", async()=>{
+      const name=$("#for-name").value.trim(); if(!name) return err("Name required");
+      const rows=$$("#for-items [data-row]"); if(!rows.length) return err("Add ingredients");
+      const mode = (localStorage.getItem('formula_unit') || '%');
+      const raw = rows.map(r=>({ material_id:r.querySelector('.for-mat').value, qty:parseFloat(r.querySelector('.for-qty').value)||0 }));
+      let items;
+      if(mode === '%'){
+        const total = raw.reduce((a,b)=>a+b.qty,0);
+        if(Math.abs(total-100)>0.01) return err('Percentages must add to 100');
+        items = raw.map(it=>({ material_id: it.material_id, percent: it.qty }));
+      } else {
+        const totalMl = raw.reduce((a,b)=>a+b.qty,0);
+        if(totalMl <= 0) return err('Enter positive ml values');
+        items = raw.map(it=>({ material_id: it.material_id, percent: Math.round((it.qty/totalMl)*100*10000)/10000 }));
+      }
+      const notes=$("#for-notes").value.trim();
+      const { data:existing } = await supa.from("formulations").select("*").eq("org_id",orgId).eq("name",name).maybeSingle();
+      let fid = existing?.id;
+      if(!fid){ const ins = await supa.from("formulations").insert({ org_id:orgId, name, notes }).select().single(); if(ins.error) return err(ins.error.message); fid=ins.data.id; }
+      else { const up = await supa.from("formulations").update({ notes }).eq("id",fid); if(up.error) return err(up.error.message); await supa.from("formulation_items").delete().eq("formulation_id", fid); }
+      const rowsToInsert = items.map(it=>({ formulation_id: fid, material_id: it.material_id, percent: it.percent }));
+      const { error:e2 } = await supa.from("formulation_items").insert(rowsToInsert);
+      if(e2) return err(e2.message);
+      await loadFormulations(); ok("Formulation saved");
+      $("#for-name").value=""; $("#for-notes").value=""; $("#for-items").innerHTML=""; updateForTotal();
+    });
 
-// ── CHAT HELPERS ──────────────────────────────────────────
-function addMessage(name, content, time, isMe) {
-  const body = document.getElementById('chat-body');
-  const typing = document.getElementById('typing-indicator');
+    function fillFormulationOptions(){ $("#prod-formulation").innerHTML=formulations.map(f=>`<option value="${f.id}">${f.name}</option>`).join(""); }
+    async function renderRequirements(){
+      const id=$("#prod-formulation").value; const size=parseFloat($("#prod-size").value)||0; const unit=$("#prod-unit").value;
+      if(!id||!size){ $("#prod-reqs").innerHTML='<div class="muted">Select formulation and enter batch size.</div>'; $("#prod-confirm").disabled=true; return; }
+      const { data:items } = await supa.from("formulation_items").select("*").eq("formulation_id", id);
+      let okAll=true; const t=['<table><thead><tr><th>Material</th><th class="right">Required</th><th>Unit</th><th class="right">In Stock</th><th class="right">Balance</th></tr></thead><tbody>'];
+      for(const it of (items||[])){
+        const m = materials.find(x=>x.id===it.material_id); const req = Math.round(size*(it.percent/100)*10000)/10000; const bal = Math.round(((m?.stock||0)-req)*10000)/10000;
+        if(bal<0) okAll=false;
+        t.push(`<tr><td>${m?m.name:'Unknown'}</td><td class="right">${req}</td><td>${m?m.unit:unit}</td><td class="right">${(m?.stock||0)}</td><td class="right ${bal<0?'bad':''}">${bal}</td></tr>`);
+      }
+      t.push('</tbody></table>');
+      const status = okAll ? `<span class="pill ok">All good — you can produce</span>` : `<span class="pill bad">Insufficient stock</span>`;
+      $("#prod-reqs").innerHTML = status + t.join("");
+      $("#prod-confirm").disabled = !okAll;
+      $("#prod-confirm").dataset.fid = id; $("#prod-confirm").dataset.size=size; $("#prod-confirm").dataset.unit=unit;
+    }
+    $("#prod-formulation").addEventListener("change", renderRequirements);
+    $("#prod-size").addEventListener("input", renderRequirements);
+    $("#prod-unit").addEventListener("change", renderRequirements);
 
-  const div = document.createElement('div');
-  div.className = `msg ${isMe ? 'me' : 'them'}`;
-  div.innerHTML = `
-    <div class="msg-name">${escHtml(name)}</div>
-    <div class="bubble">${escHtml(content)}</div>
-    <div class="msg-time">${time}</div>
-  `;
-  body.insertBefore(div, typing);
-  body.scrollTop = body.scrollHeight;
-}
+    $("#prod-confirm").addEventListener("click", async()=>{
+      const fid = $("#prod-confirm").dataset.fid; const size = parseFloat($("#prod-confirm").dataset.size)||0; const unit=$("#prod-confirm").dataset.unit; const type=$("#prod-type").value; const notes=$("#prod-notes").value.trim();
+      if(!fid || size<=0) return err("Select formulation and size");
+      const { data:items, error:e } = await supa.from("formulation_items").select("*").eq("formulation_id", fid);
+      if(e) return err(e.message);
+      for(const it of items){ const m=materials.find(x=>x.id===it.material_id); const req=size*(it.percent/100); if((m?.stock||0) < req-1e-9) return err("Stock changed; refresh and try again"); }
+      const f = formulations.find(x=>x.id===fid);
+      const { data:runRes, error:eRun } = await supa.from("runs").insert({ org_id:orgId, formulation_id: fid, name: f.name, batch_size: size, unit, notes, type }).select().single();
+      if(eRun) return err(eRun.message);
+      const runId = runRes.id;
+      const deductions = [];
+      for(const it of items){
+        const m = materials.find(x=>x.id===it.material_id); const req=Math.round(size*(it.percent/100)*10000)/10000;
+        const newStock = Math.round(((m.stock||0)-req)*10000)/10000;
+        await supa.from("materials").update({ stock:newStock }).eq("id", m.id).eq("org_id", orgId);
+        deductions.push({ run_id: runId, material_id: m.id, amount: req, percent: it.percent });
+      }
+      if(deductions.length){ await supa.from("run_deductions").insert(deductions); }
+      await refreshMaterials(); renderMaterials(); await loadHistory(); ok("Run logged & stock deducted");
+      $("#prod-size").value=""; $("#prod-notes").value=""; renderRequirements();
+    });
 
-function addSysMsg(text) {
-  const body = document.getElementById('chat-body');
-  const typing = document.getElementById('typing-indicator');
-  const div = document.createElement('div');
-  div.className = 'sys-msg';
-  div.textContent = text;
-  body.insertBefore(div, typing);
-  body.scrollTop = body.scrollHeight;
-}
+    function renderLowStock(){
+      const low = materials.filter(m=>m.reorder && (m.stock||0)<=m.reorder);
+      if(!low.length){ $("#low-stock").innerHTML='<div class="muted">No low stock alerts.</div>'; return; }
+      const t=['<table><thead><tr><th>Material</th><th class="right">Stock</th><th>Reorder ≤</th><th>Unit</th></tr></thead><tbody>'];
+      low.forEach(m=>t.push(`<tr><td>${m.name}</td><td class="right bad">${m.stock}</td><td class="right">${m.reorder}</td><td>${m.unit}</td></tr>`));
+      t.push('</tbody></table>'); $("#low-stock").innerHTML=t.join("");
+    }
 
-function showTyping() { document.getElementById('typing-indicator').classList.add('show'); }
-function hideTyping() { document.getElementById('typing-indicator').classList.remove('show'); }
+    async function loadHistory(){
+      if(!supa || !orgId) { history=[]; renderHistory(); return; }
+      const { data, error } = await supa.from("runs").select("*").eq("org_id", orgId).order("created_at", {ascending:false}).limit(100);
+      if(error) return err(error.message); history = data || []; renderHistory();
+    }
+    function renderHistory(){
+      const q=$("#hist-search").value?.trim().toLowerCase()||"";
+      const rows = history.filter(h => (h.name?.toLowerCase().includes(q) || (h.type||'').toLowerCase().includes(q)));
+      if(!rows.length){ $("#history-table").innerHTML='<div class="muted">No runs yet.</div>'; return; }
+      const t=['<table><thead><tr><th>Date</th><th>Type</th><th>Formulation</th><th class="right">Batch</th><th>Unit</th><th>Notes</th></tr></thead><tbody>'];
+      rows.forEach(h=>{
+        const dt = h.created_at ? new Date(h.created_at).toLocaleString() : "";
+        t.push(`<tr><td>${dt}</td><td>${h.type||'production'}</td><td>${h.name}</td><td class="right">${h.batch_size}</td><td>${h.unit}</td><td class="muted">${h.notes||''}</td></tr>`);
+      });
+      t.push('</tbody></table>'); $("#history-table").innerHTML=t.join("");
+    }
+    $("#hist-search").addEventListener("input", renderHistory);
+    $("#hist-refresh").addEventListener("click", async()=>{ await loadHistory(); });
 
-function setPeerOnline() {
-  peerOnline = true;
-  document.getElementById('status-dot').className = 'status-dot';
-  document.getElementById('status-txt').textContent = 'Connected';
-}
-
-function setPeerOffline() {
-  peerOnline = false;
-  document.getElementById('status-dot').className = 'status-dot away';
-  document.getElementById('status-txt').textContent = 'Waiting for peer…';
-}
-
-function enableInput(enabled) {
-  document.getElementById('msg-input').disabled = !enabled;
-  document.getElementById('send-btn').disabled = !enabled;
-  if (enabled) document.getElementById('msg-input').focus();
-}
-
-function escHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-}
-
-// ── SEND MESSAGE ──────────────────────────────────────────
-function sendMsg() {
-  const input = document.getElementById('msg-input');
-  const content = input.value.trim();
-  if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
-
-  ws.send(JSON.stringify({ type: 'message', content }));
-  const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  addMessage(myName, content, now, true);
-  input.value = '';
-  input.style.height = 'auto';
-}
-
-// ── COPY CODE ─────────────────────────────────────────────
-function copyCode() {
-  navigator.clipboard.writeText(roomCode).then(() => toast('Code copied')).catch(() => {
-    // Fallback
-    const el = document.createElement('input');
-    el.value = roomCode;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    el.remove();
-    toast('Code copied');
-  });
-}
-
-// ── CLOSE ROOM ────────────────────────────────────────────
-function closeRoom() {
-  document.title = originalTitle;
-  unreadCount = 0;
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'close_room' }));
-    ws.close();
-  }
-  ws = null;
-  roomCode = '';
-  myName = '';
-  peerOnline = false;
-  document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
-  showScreen('s-closed');
-}
-
-function closeWithMessage(msg) {
-  if (ws) { try { ws.close(); } catch {} ws = null; }
-  document.getElementById('closed-sub').textContent = msg + ' The room and all messages have been permanently deleted.';
-  showScreen('s-closed');
-}
-
-// ── START FRESH ───────────────────────────────────────────
-function startFresh() {
-  document.title = originalTitle;
-  unreadCount = 0;
-  ws = null; roomCode = ''; myName = ''; peerOnline = false;
-  document.getElementById('chat-body').innerHTML = `
-    <div class="sys-msg" id="welcome-msg"></div>
-    <div class="typing-indicator" id="typing-indicator">
-      <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
-    </div>`;
-  document.getElementById('msg-input').value = '';
-  showScreen('s-landing');
-}
-</script>
+    if(getCfg().url && getCfg().key){ connect(); }
+  </script>
 </body>
 </html>
