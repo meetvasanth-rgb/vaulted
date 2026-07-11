@@ -143,6 +143,20 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'leave_room' && currentRoom) {
+      const room = rooms.get(currentRoom);
+      if (room) {
+        if (clientRecord) room.clients.delete(clientRecord);
+        broadcast(room, { type: 'peer_left', name: clientRecord?.name ?? 'Stranger' });
+        // Named rooms stay alive — one-time rooms close if empty
+        if (room.clients.size === 0 && !room.named) cleanRoom(currentRoom);
+      }
+      currentRoom = null;
+      clientRecord = null;
+      ws.close();
+      return;
+    }
+
     if (msg.type === 'close_room' && currentRoom) {
       const room = rooms.get(currentRoom);
       if (room) { broadcast(room, { type: 'room_closed', message: 'Room closed by the other person.' }); cleanRoom(currentRoom); currentRoom = null; }
