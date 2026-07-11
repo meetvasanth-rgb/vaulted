@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <title>Vaulted</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
@@ -17,11 +19,12 @@
   --red:#C0392B;--red-dim:rgba(192,57,43,0.1);
   --blue:#60A5FA;--blue-dim:rgba(96,165,250,0.1);
 }
-body{font-family:'Inter',sans-serif;background:var(--black);color:var(--cream);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body{font-family:'Inter',sans-serif;background:var(--black);color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;position:fixed;width:100%;}
 button{cursor:pointer;font-family:'Inter',sans-serif;border:none;outline:none}
 input,textarea{font-family:'Inter',sans-serif;outline:none}
-.screen{display:none;min-height:100vh}
+.screen{display:none;min-height:100vh;min-height:100dvh;overflow-y:auto}
 .screen.active{display:flex}
+#s-chat.active{overflow:hidden}
 
 /* -- LANDING -- */
 #s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px}
@@ -89,7 +92,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .close-btn:hover{border-color:var(--red);color:var(--red)}
 
 /* -- CHAT -- */
-#s-chat{flex-direction:column;height:100vh;overflow:hidden}
+#s-chat{flex-direction:column;height:100vh;height:100dvh;overflow:hidden;position:relative}
 .chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:0 20px;height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
 .chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
@@ -301,6 +304,19 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 </div>
 
 <script>
+// ── iOS KEYBOARD VIEWPORT FIX ────────────────────────────────────────
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const chat = document.getElementById('s-chat');
+    if (chat && chat.classList.contains('active')) {
+      chat.style.height = window.visualViewport.height + 'px';
+      const body = document.getElementById('chat-body');
+      if (body) body.scrollTop = body.scrollHeight;
+    }
+  });
+}
+
+
 window.onerror = function(msg, src, line, col, err) {
   console.error('Vaulted JS error:', msg, 'line:', line);
   return false;
