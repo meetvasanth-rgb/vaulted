@@ -779,6 +779,7 @@ async function checkTyping() {
 // ── LANDING ACTIONS ─────────────────────────────────────────────────────
 function startCreate() {
   mode = 'create';
+  showScreen('s-setup');
   document.getElementById('setup-title').textContent = 'Choose a codename';
   document.getElementById('join-field').style.display = 'none';
   document.getElementById('named-field').style.display = 'none';
@@ -786,12 +787,13 @@ function startCreate() {
   document.getElementById('setup-btn').textContent = 'Create room';
   document.getElementById('name-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
+  window.location.hash = '#create';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
 function startNamed() {
   mode = 'named';
+  showScreen('s-setup');
   document.getElementById('setup-title').textContent = 'Create a named room';
   document.getElementById('join-field').style.display = 'none';
   document.getElementById('named-field').style.display = 'block';
@@ -799,14 +801,15 @@ function startNamed() {
   document.getElementById('setup-btn').textContent = 'Create named room';
   document.getElementById('name-input').value = '';
   document.getElementById('named-input').value = '';
-  document.getElementById('password-input').value = '';
+  if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
+  window.location.hash = '#named';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
 function startJoin() {
   mode = 'join';
+  showScreen('s-setup');
   document.getElementById('setup-title').textContent = 'Join a room';
   document.getElementById('join-field').style.display = 'block';
   document.getElementById('named-field').style.display = 'none';
@@ -814,9 +817,9 @@ function startJoin() {
   document.getElementById('setup-btn').textContent = 'Join room';
   document.getElementById('name-input').value = '';
   document.getElementById('code-input').value = '';
-  document.getElementById('password-input').value = '';
+  if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
-  showScreen('s-setup');
+  window.location.hash = '#join';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -900,6 +903,7 @@ function copyCode() {
 
 // ── CLOSE / LEAVE ───────────────────────────────────────────────────────
 async function closeRoom() {
+  window.location.hash = '';
   stopPolling();
   if (roomCode && myToken) {
     try { await api('/api/close', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
@@ -911,6 +915,7 @@ async function closeRoom() {
 }
 
 async function leaveRoom() {
+  window.location.hash = '';
   stopPolling();
   if (roomCode && myToken) {
     try { await api('/api/leave', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
@@ -936,6 +941,7 @@ function goBack() {
   stopPolling();
   resetState();
   clearSession();
+  window.location.hash = '';
   showScreen('s-landing');
   triggerLandingAnim();
 }
