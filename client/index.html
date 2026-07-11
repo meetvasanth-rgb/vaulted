@@ -582,32 +582,62 @@ let lastMyName = '';      // remember codename for reconnect
 let lastPubKey = null;    // remember pubkey for reconnect
 let isReconnecting = false;
 
-document.addEventListener('visibilitychange', async () => {
+document.addEventListener('visibilitychange', () => {
   tabFocused = !document.hidden;
   if (!document.hidden) {
     unreadCount = 0;
     document.title = 'Vaulted';
-    // If we were in a chat and connection dropped while screen was locked
-    const inChat = document.getElementById('s-chat')?.classList.contains('active');
-    const wsDown = !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING;
-    if (inChat && wsDown && lastRoomCode && lastMyName) {
-      addSysMsg('Reconnecting…');
-      setPeerOffline();
-      enableInput(false);
-      isReconnecting = true;
-      myName = lastMyName;
-      try {
-        await connectWs((pubKey) => {
-          lastPubKey = pubKey;
-          ws.send(JSON.stringify({ type: 'join', name: lastMyName, code: lastRoomCode, pubKey }));
-        });
-      } catch {
-        addSysMsg('Could not reconnect. Please rejoin manually.');
-        isReconnecting = false;
-      }
-    }
+    // Trigger reconnect check when returning from background
+    scheduleReconnect();
   }
 });
+
+// Also reconnect on focus (catches tab switching on desktop)
+window.addEventListener('focus', () => {
+  tabFocused = true;
+  unreadCount = 0;
+  document.title = 'Vaulted';
+  scheduleReconnect();
+});
+
+let reconnectTimer = null;
+function scheduleReconnect() {
+  // Small delay to let the network settle after unlock
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(tryReconnect, 500);
+}
+
+async function tryReconnect(attempt = 1) {
+  const inChat = document.getElementById('s-chat')?.classList.contains('active');
+  const wsDown = !ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING;
+  if (!inChat || !wsDown || !lastRoomCode || !lastMyName) return;
+
+  // Update status bar instead of adding sys message for quick reconnects
+  document.getElementById('status-txt').textContent = 'Reconnecting…';
+  isReconnecting = true;
+  myName = lastMyName;
+
+  try {
+    // Close any zombie connection first
+    if (ws) { try { ws.close(); } catch {} ws = null; }
+    if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+
+    await connectWs((pubKey) => {
+      ws.send(JSON.stringify({ type: 'join', name: lastMyName, code: lastRoomCode, pubKey }));
+    });
+  } catch (e) {
+    isReconnecting = false;
+    if (attempt < 5) {
+      // Retry with backoff: 1s, 2s, 4s, 8s
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+      reconnectTimer = setTimeout(() => tryReconnect(attempt + 1), delay);
+    } else {
+      setPeerOffline();
+      addSysMsg('Could not reconnect. Tap here to rejoin manually.');
+      enableInput(false);
+    }
+  }
+}
 window.addEventListener('focus', () => { tabFocused = true; unreadCount = 0; document.title = 'Vaulted'; });
 window.addEventListener('blur', () => { tabFocused = false; });
 
@@ -791,14 +821,21 @@ async function handleMsg(msg) {
       roomCode = msg.code;
       lastRoomCode = msg.code;
       lastMyName = myName;
-      document.getElementById('hdr-code').textContent = msg.code;
-      document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${msg.code}`;
       document.title = 'Vaulted';
-      setPeerOnline();
-      showScreen('s-chat');
-      setTimeout(() => enableInput(true), 100);
-      if (!isReconnecting) playChime();
-      isReconnecting = false;
+      if (isReconnecting || msg.isReconnect) {
+        // Silent reconnect — just restore status, no screen change needed
+        setPeerOnline();
+        setTimeout(() => enableInput(true), 100);
+        document.getElementById('status-txt').textContent = 'Connected';
+        isReconnecting = false;
+      } else {
+        document.getElementById('hdr-code').textContent = msg.code;
+        document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${msg.code}`;
+        setPeerOnline();
+        showScreen('s-chat');
+        setTimeout(() => enableInput(true), 100);
+        playChime();
+      }
       break;
 
     case 'pong':

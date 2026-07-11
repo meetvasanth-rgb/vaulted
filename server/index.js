@@ -4,10 +4,13 @@ const path = require('path');
 const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
-const HEARTBEAT_INTERVAL = 30000;  // 30 seconds
-const HEARTBEAT_TIMEOUT  = 65000;  // 65 seconds — miss 2 beats = dead
+const HEARTBEAT_INTERVAL = 30000;  // ping every 30s
+const HEARTBEAT_TIMEOUT  = 65000;  // drop after 2 missed beats
+const GRACE_PERIOD       = 30000;  // wait 30s before announcing peer_left
 
 const rooms = new Map();
+// disconnectedClients: Map of clientName+roomCode -> { timer, clientRecord, roomCode }
+const reconnectGrace = new Map();
 
 function generateCode() {
   const words = [
@@ -18,7 +21,6 @@ function generateCode() {
     'ridge','river','rose','ruby','sage','salt','sand','shadow','shore','silk',
     'silver','slate','smoke','snow','solar','sonic','spark','star','steel','storm',
     'tide','timber','topaz','vale','vault','veil','wave','wild','wind','wolf',
-    'amber','birch','blaze','bloom','bolt','bone','brew','brick','brine','brook',
   ];
   const pick = () => words[Math.floor(Math.random() * words.length)];
   return `${pick()}-${pick()}-${Math.floor(Math.random() * 90 + 10)}`;
@@ -42,30 +44,52 @@ function broadcast(room, data, excludeWs = null) {
 
 function broadcastAll(room, data) { broadcast(room, data, null); }
 
-// ── Heartbeat checker — runs every 30s ───────────────────────────────
+function graceKey(name, code) { return `${name}::${code}`; }
+
+// Heartbeat checker
 function startHeartbeatChecker() {
   setInterval(() => {
     const now = Date.now();
     for (const [code, room] of rooms.entries()) {
-      const timedOut = [];
-      for (const client of room.clients) {
+      for (const client of [...room.clients]) {
         if (now - client.lastSeen > HEARTBEAT_TIMEOUT) {
-          timedOut.push(client);
+          console.log(`Heartbeat timeout: ${client.name} in ${code}`);
+          handleDisconnect(client, code, room, 'timeout');
         }
-      }
-      for (const client of timedOut) {
-        console.log(`Client ${client.name} timed out in room ${code}`);
-        room.clients.delete(client);
-        try { client.ws.close(); } catch {}
-        // Notify remaining peer
-        broadcast(room, { type: 'peer_timeout', name: client.name });
-        if (room.clients.size === 0) cleanRoom(code);
       }
     }
   }, HEARTBEAT_INTERVAL);
 }
 
-// Serve static files
+function handleDisconnect(clientRecord, code, room, reason) {
+  if (!clientRecord || !room) return;
+
+  // Remove from active clients
+  room.clients.delete(clientRecord);
+
+  const key = graceKey(clientRecord.name, code);
+
+  // If already in grace period, cancel old timer
+  if (reconnectGrace.has(key)) {
+    clearTimeout(reconnectGrace.get(key).timer);
+  }
+
+  // Start grace period — wait before announcing departure
+  const timer = setTimeout(() => {
+    reconnectGrace.delete(key);
+    // Only announce if room still exists
+    const r = rooms.get(code);
+    if (r) {
+      broadcast(r, { type: 'peer_left', name: clientRecord.name });
+      console.log(`${clientRecord.name} confirmed left room ${code} after grace period`);
+      if (r.clients.size === 0) cleanRoom(code);
+    }
+  }, GRACE_PERIOD);
+
+  reconnectGrace.set(key, { timer, clientRecord, code });
+  console.log(`${clientRecord.name} disconnected from ${code} — grace period started`);
+}
+
 const server = http.createServer((req, res) => {
   const url = req.url === '/' ? '/index.html' : req.url;
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
@@ -97,10 +121,10 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
-    // Update lastSeen on every message (including ping)
+    // Update lastSeen on every message
     if (clientRecord) clientRecord.lastSeen = Date.now();
 
-    // ── PING / PONG ────────────────────────────────────────────────
+    // ── PING ──────────────────────────────────────────────────────
     if (msg.type === 'ping') {
       ws.send(JSON.stringify({ type: 'pong' }));
       return;
@@ -156,14 +180,27 @@ wss.on('connection', (ws) => {
       const password = msg.password || null;
       const pubKey = msg.pubKey || null;
       const room = rooms.get(code);
+
       if (!room) { ws.send(JSON.stringify({ type: 'error', message: 'Room not found. Check the code and try again.' })); return; }
       if (room.password && room.password !== password) { ws.send(JSON.stringify({ type: 'error', message: 'Incorrect password.' })); return; }
       if (room.clients.size >= 2) { ws.send(JSON.stringify({ type: 'error', message: 'Room is full — only two people allowed.' })); return; }
 
+      // Check if this is a reconnect within grace period
+      const key = graceKey(name, code);
+      const isReconnect = reconnectGrace.has(key);
+
+      if (isReconnect) {
+        // Cancel the grace period timer — they're back
+        clearTimeout(reconnectGrace.get(key).timer);
+        reconnectGrace.delete(key);
+        console.log(`${name} reconnected to room ${code} within grace period`);
+      }
+
       clientRecord = { ws, name, pubKey, lastSeen: Date.now() };
       room.clients.add(clientRecord);
       currentRoom = code;
-      ws.send(JSON.stringify({ type: 'joined', code, name }));
+
+      ws.send(JSON.stringify({ type: 'joined', code, name, isReconnect }));
 
       // Exchange public keys
       if (pubKey) broadcast(room, { type: 'peer_pubkey', pubKey }, ws);
@@ -171,17 +208,12 @@ wss.on('connection', (ws) => {
         if (cws !== ws && cPubKey) ws.send(JSON.stringify({ type: 'peer_pubkey', pubKey: cPubKey }));
       });
 
-      // Check if this is a reconnect (same name rejoining)
-      let isReconnect = false;
-      // Check recent peer names to detect reconnect
-      room.clients.forEach(c => {
-        if (c.ws !== ws && c.name === name) isReconnect = true;
-      });
+      // Announce join/reconnect to peer
       broadcast(room, {
         type: isReconnect ? 'peer_reconnected' : 'peer_joined',
         name
       }, ws);
-      console.log(`${name} ${isReconnect ? 'reconnected to' : 'joined'} room: ${code}`);
+
       return;
     }
 
@@ -204,7 +236,7 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    // ── LEAVE ROOM (stay in server, just disconnect) ───────────────
+    // ── LEAVE ROOM ─────────────────────────────────────────────────
     if (msg.type === 'leave_room' && currentRoom) {
       const room = rooms.get(currentRoom);
       if (room && clientRecord) {
@@ -228,15 +260,11 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    if (!currentRoom) return;
+    if (!currentRoom || !clientRecord) return;
     const room = rooms.get(currentRoom);
     if (!room) return;
-    if (clientRecord) room.clients.delete(clientRecord);
-    if (room.clients.size === 0) {
-      cleanRoom(currentRoom);
-    } else {
-      broadcast(room, { type: 'peer_left', name: clientRecord?.name ?? 'Stranger' });
-    }
+    // Use grace period instead of immediate departure
+    handleDisconnect(clientRecord, currentRoom, room, 'close');
     currentRoom = null;
   });
 
