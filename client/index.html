@@ -23,7 +23,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .screen{display:none;min-height:100vh}
 .screen.active{display:flex}
 
-/* ── LANDING ── */
+/* -- LANDING -- */
 #s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px}
 .landing-glow{position:absolute;inset:0;background:radial-gradient(ellipse 55% 45% at 50% 38%,rgba(184,151,62,0.035) 0%,transparent 68%);pointer-events:none}
 .logo{text-align:center;margin-bottom:52px}
@@ -45,7 +45,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .card-desc{font-size:11px;color:var(--muted);line-height:1.6}
 .landing-footer{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:10px;color:var(--hint);letter-spacing:.1em;text-transform:uppercase}
 
-/* ── SETUP ── */
+/* -- SETUP -- */
 #s-setup{flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .setup-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:36px 32px;width:100%;max-width:380px}
 .setup-back{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin-bottom:24px;background:none;transition:color .15s;padding:0}
@@ -66,7 +66,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .btn-gold:disabled{opacity:.5;cursor:not-allowed}
 .err-msg{font-size:12px;color:var(--red);margin-top:8px;text-align:center;display:none}
 
-/* ── WAITING ── */
+/* -- WAITING -- */
 #s-waiting{flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .waiting-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:40px 36px;width:100%;max-width:380px;text-align:center}
 .w-logo{margin-bottom:28px}
@@ -88,7 +88,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .close-btn{background:none;border:0.5px solid var(--border);border-radius:2px;padding:8px 20px;font-size:11px;color:var(--muted);margin-top:20px;display:block;width:100%;transition:all .15s}
 .close-btn:hover{border-color:var(--red);color:var(--red)}
 
-/* ── CHAT ── */
+/* -- CHAT -- */
 #s-chat{flex-direction:column;height:100vh;overflow:hidden}
 .chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:0 20px;height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
@@ -127,7 +127,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .send-btn svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* ── CLOSED ── */
+/* -- CLOSED -- */
 #s-closed{flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .closed-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:48px 40px;max-width:380px;width:100%;text-align:center}
 .closed-icon{width:48px;height:48px;border-radius:50%;background:var(--red-dim);border:0.5px solid rgba(192,57,43,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
@@ -279,7 +279,11 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 </div>
 
 <script>
-// ── E2E ENCRYPTION (WebCrypto ECDH + AES-GCM) ───────────────────────
+window.onerror = function(msg, src, line, col, err) {
+  console.error('Vaulted JS error:', msg, 'line:', line);
+  return false;
+};
+// -- E2E ENCRYPTION (WebCrypto ECDH + AES-GCM) -----------------------
 let myKeyPair = null;
 let sharedKey = null;
 
@@ -316,7 +320,7 @@ async function decryptMsg(data) {
   } catch { return '[encrypted message]'; }
 }
 
-// ── STATE ────────────────────────────────────────────────────────────
+// -- STATE ------------------------------------------------------------
 let ws = null;
 let mode = 'create'; // 'create' | 'named' | 'join'
 let myName = '';
@@ -353,11 +357,11 @@ function notifyIncoming(name) {
   if (!tabFocused || document.hidden) {
     playChime();
     unreadCount++;
-    document.title = `(${unreadCount}) ${name} — Vaulted`;
+    document.title = `(${unreadCount}) ${name} - Vaulted`;
   }
 }
 
-// ── SCREENS ──────────────────────────────────────────────────────────
+// -- SCREENS ----------------------------------------------------------
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -370,7 +374,7 @@ function triggerLandingAnim() {
   document.getElementById('logoTag').classList.add('go');
   document.getElementById('cards').classList.add('go');
 }
-// Try immediately, on DOMContentLoaded, and on load — whichever fires first
+// Try immediately, on DOMContentLoaded, and on load - whichever fires first
 if (document.readyState !== 'loading') {
   setTimeout(triggerLandingAnim, 200);
 } else {
@@ -378,7 +382,7 @@ if (document.readyState !== 'loading') {
 }
 window.addEventListener('load', () => setTimeout(triggerLandingAnim, 100));
 
-// ── SETUP FLOWS ──────────────────────────────────────────────────────
+// -- SETUP FLOWS ------------------------------------------------------
 function startCreate() {
   mode = 'create';
   document.getElementById('setup-title').textContent = 'Choose a codename';
@@ -429,17 +433,17 @@ async function handleSetup() {
   document.getElementById('err-msg').style.display = 'none';
 
   if (mode === 'create') {
-    connectWs(pubKey => ws.send(JSON.stringify({ type:'create', name, pubKey })));
+    await connectWs(pubKey => ws.send(JSON.stringify({ type:'create', name, pubKey })));
   } else if (mode === 'named') {
     const roomName = document.getElementById('named-input').value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const password = document.getElementById('password-input').value.trim();
     if (!roomName) { showErr('Please enter a room name'); return; }
-    connectWs(pubKey => ws.send(JSON.stringify({ type:'create_named', name, roomName, password: password || null, pubKey })));
+    await connectWs(pubKey => ws.send(JSON.stringify({ type:'create_named', name, roomName, password: password || null, pubKey })));
   } else {
     const code = document.getElementById('code-input').value.trim().toLowerCase();
     const password = document.getElementById('password-input').value.trim();
     if (!code) { showErr('Please enter the room code or name'); return; }
-    connectWs(pubKey => ws.send(JSON.stringify({ type:'join', name, code, password: password || null, pubKey })));
+    await connectWs(pubKey => ws.send(JSON.stringify({ type:'join', name, code, password: password || null, pubKey })));
   }
 }
 
@@ -448,7 +452,7 @@ function showErr(msg) {
   el.textContent = msg; el.style.display = 'block';
 }
 
-// ── WEBSOCKET ─────────────────────────────────────────────────────────
+// -- WEBSOCKET ---------------------------------------------------------
 async function connectWs(onOpen) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const pubKey = await generateKeyPair();
@@ -474,7 +478,7 @@ async function handleMsg(msg) {
       document.getElementById('display-code').style.fontSize = '26px';
       document.getElementById('w-title').textContent = 'Room ready';
       document.getElementById('w-sub').textContent = 'Share this code with one person. They enter it, you're connected.';
-      document.getElementById('w-note').textContent = 'Waiting for the other person… Room auto-closes in 24h.';
+      document.getElementById('w-note').textContent = 'Waiting for the other person... Room auto-closes in 24h.';
       showScreen('s-waiting');
       break;
 
@@ -484,15 +488,15 @@ async function handleMsg(msg) {
       document.getElementById('display-code').style.fontSize = '22px';
       document.getElementById('code-label').textContent = 'Room name';
       document.getElementById('w-title').textContent = 'Named room created';
-      document.getElementById('w-sub').innerHTML = 'Your room <strong style="color:var(--gold)">' + msg.roomName + '</strong> is ready.<br/>Anyone with this name can join — anytime, from anywhere.';
-      document.getElementById('w-note').textContent = 'Room stays alive for 7 days. Return whenever you\'re ready.';
+      document.getElementById('w-sub').innerHTML = 'Your room <strong style="color:var(--gold)">' + msg.roomName + '</strong> is ready.<br/>Anyone with this name can join - anytime, from anywhere.';
+      document.getElementById('w-note').textContent = 'Room stays alive for 7 days. Return whenever you're ready.';
       showScreen('s-waiting');
       break;
 
     case 'joined':
       roomCode = msg.code;
       document.getElementById('hdr-code').textContent = msg.code;
-      document.getElementById('welcome-msg').textContent = `You joined as "${myName}" · ${msg.code}`;
+      document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${msg.code}`;
       document.title = 'Vaulted';
       setPeerOnline();
       showScreen('s-chat');
@@ -509,7 +513,7 @@ async function handleMsg(msg) {
       playChime();
       if (document.getElementById('s-waiting').classList.contains('active')) {
         document.getElementById('hdr-code').textContent = roomCode;
-        document.getElementById('welcome-msg').textContent = `You're "${myName}" · ${roomCode}`;
+        document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
         document.title = 'Vaulted';
         showScreen('s-chat');
       }
@@ -547,13 +551,13 @@ async function handleMsg(msg) {
   }
 }
 
-// ── CHAT HELPERS ──────────────────────────────────────────────────────
+// -- CHAT HELPERS ------------------------------------------------------
 function addMessage(name, content, time, isMe) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
   const div = document.createElement('div');
   div.className = `msg ${isMe ? 'me' : 'them'}`;
-  const ticks = isMe ? `<span class="msg-ticks">✓✓</span>` : '';
+  const ticks = isMe ? `<span class="msg-ticks">--</span>` : '';
   div.innerHTML = `<div class="msg-name">${escHtml(name)}</div><div class="bubble">${escHtml(content)}</div><div class="msg-time">${time}${ticks}</div>`;
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
@@ -571,11 +575,11 @@ function addSysMsg(text) {
 function showTyping() { document.getElementById('typing-indicator').classList.add('show'); }
 function hideTyping() { document.getElementById('typing-indicator').classList.remove('show'); }
 function setPeerOnline() { peerOnline = true; document.getElementById('status-dot').className = 'status-dot'; document.getElementById('status-txt').textContent = 'Connected'; }
-function setPeerOffline() { peerOnline = false; document.getElementById('status-dot').className = 'status-dot away'; document.getElementById('status-txt').textContent = 'Waiting…'; }
+function setPeerOffline() { peerOnline = false; document.getElementById('status-dot').className = 'status-dot away'; document.getElementById('status-txt').textContent = 'Waiting...'; }
 function enableInput(on) { document.getElementById('msg-input').disabled = !on; document.getElementById('send-btn').disabled = !on; if (on) document.getElementById('msg-input').focus(); }
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-// ── SEND MESSAGE ──────────────────────────────────────────────────────
+// -- SEND MESSAGE ------------------------------------------------------
 async function sendMsg() {
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
@@ -619,7 +623,7 @@ function toast(msg) {
   document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
 }
 
-// ── KEY HANDLERS ──────────────────────────────────────────────────────
+// -- KEY HANDLERS ------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
   ['name-input','code-input','named-input'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
