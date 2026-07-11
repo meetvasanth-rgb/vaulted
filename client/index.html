@@ -27,15 +27,15 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 #s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px}
 .landing-glow{position:absolute;inset:0;background:radial-gradient(ellipse 55% 45% at 50% 38%,rgba(184,151,62,0.035) 0%,transparent 68%);pointer-events:none}
 .logo{text-align:center;margin-bottom:52px}
-.logo-rule{height:1px;background:var(--gold);margin:0 auto 18px;width:0;transition:width .75s cubic-bezier(.4,0,.2,1)}
+.logo-rule{height:1px;background:var(--gold);margin:0 auto 18px;width:108px}
 .logo-rule.go{width:108px}
-.logo-name{font-family:'Cormorant Garamond',serif;font-size:clamp(52px,9vw,88px);font-weight:300;letter-spacing:.12em;color:var(--cream);opacity:0;transition:opacity .5s ease .72s}
+.logo-name{font-family:'Cormorant Garamond',serif;font-size:clamp(52px,9vw,88px);font-weight:300;letter-spacing:.12em;color:var(--cream);opacity:1}
 .logo-name.go{opacity:1}
-.logo-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:10px;opacity:0;transition:opacity .4s ease 1.1s}
+.logo-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:10px;opacity:1}
 .logo-sub.go{opacity:1}
-.tagline{font-family:'Cormorant Garamond',serif;font-size:clamp(17px,2.6vw,26px);font-weight:300;font-style:italic;color:var(--cream2);text-align:center;line-height:1.5;max-width:480px;margin:0 auto 52px;opacity:0;transition:opacity .4s ease 1.25s}
+.tagline{font-family:'Cormorant Garamond',serif;font-size:clamp(17px,2.6vw,26px);font-weight:300;font-style:italic;color:var(--cream2);text-align:center;line-height:1.5;max-width:480px;margin:0 auto 52px;opacity:1}
 .tagline.go{opacity:1}
-.cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;max-width:660px;opacity:0;transition:opacity .4s ease 1.4s}
+.cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;max-width:660px;opacity:1}
 .cards.go{opacity:1}
 .card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:20px 18px;cursor:pointer;transition:all .15s;text-align:left}
 .card:hover{border-color:var(--gold-border);background:var(--surface2);transform:translateY(-1px)}
@@ -363,15 +363,20 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    document.getElementById('logoRule').classList.add('go');
-    document.getElementById('logoName').classList.add('go');
-    document.getElementById('logoSub').classList.add('go');
-    document.getElementById('logoTag').classList.add('go');
-    document.getElementById('cards').classList.add('go');
-  }, 200);
-});
+function triggerLandingAnim() {
+  document.getElementById('logoRule').classList.add('go');
+  document.getElementById('logoName').classList.add('go');
+  document.getElementById('logoSub').classList.add('go');
+  document.getElementById('logoTag').classList.add('go');
+  document.getElementById('cards').classList.add('go');
+}
+// Try immediately, on DOMContentLoaded, and on load — whichever fires first
+if (document.readyState !== 'loading') {
+  setTimeout(triggerLandingAnim, 200);
+} else {
+  document.addEventListener('DOMContentLoaded', () => setTimeout(triggerLandingAnim, 200));
+}
+window.addEventListener('load', () => setTimeout(triggerLandingAnim, 100));
 
 // ── SETUP FLOWS ──────────────────────────────────────────────────────
 function startCreate() {
