@@ -35,9 +35,10 @@ function api(p,method,d,params,res){
     var nc=d.namedCode?d.namedCode.replace(/[^a-z0-9-]/g,'-').slice(0,40):null;
     if(nc&&rooms.has(nc))return err(res,'Room "'+nc+'" already exists.',409);
     var roomCode=nc||makeCode(),token=uid(),name=(d.name||'Stranger').slice(0,24);
-    rooms.set(roomCode,{lastActivity:Date.now(),deleteTimer:parseInt(d.deleteTimer)||0,password:d.password||null,seq:0,members:new Map([[token,{name:name,pubKey:d.pubKey||null,lastSeen:Date.now()}]]),msgs:[]});
+    var dt=parseInt(d.deleteTimer)||0;
+    rooms.set(roomCode,{lastActivity:Date.now(),deleteTimer:dt,password:d.password||null,seq:0,members:new Map([[token,{name:name,pubKey:d.pubKey||null,lastSeen:Date.now()}]]),msgs:[]});
     console.log('Room created: '+roomCode);
-    return ok(res,{code:roomCode,token:token,name:name,deleteTimer:parseInt(d.deleteTimer)||0});
+    return ok(res,{code:roomCode,token:token,name:name,deleteTimer:dt});
   }
   if(p==='/api/join'&&method==='POST'){
     var roomCode=(d.code||'').toLowerCase().trim();
