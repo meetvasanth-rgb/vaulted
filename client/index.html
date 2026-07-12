@@ -454,7 +454,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
         <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaulted</div>
       </div>
       <div class="logo-rule" id="logoRule" style="margin:0 auto 20px"></div>
-      <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
+      <div class="logo-sub" id="logoSub">Encrypted · Anonymous · No trace</div>
     </div>
 
     <p class="tagline" id="logoTag">Two people. One conversation.<br/>Disappears when you leave.</p>
@@ -583,7 +583,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <button class="leave-btn" onclick="goBack()">Leave</button>
     <button class="destroy-btn" onclick="closeRoom()">Close &amp; erase</button>
   </div>
-  <div class="e2e-bar">🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
+  <div class="e2e-bar">🔒 Encrypted in transit · Messages exist only in your browsers · No trace on server</div>
   <div class="chat-body" id="chat-body">
     <div class="sys-msg" id="welcome-msg"></div>
     <div class="typing-indicator" id="typing-indicator">
@@ -836,25 +836,11 @@ async function deriveSharedKey(peerPubKeyB64) {
 }
 
 async function encryptMsg(text) {
-  if (!sharedKey) return text;
-  try {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, sharedKey, new TextEncoder().encode(text));
-    const combined = new Uint8Array(iv.byteLength + enc.byteLength);
-    combined.set(iv); combined.set(new Uint8Array(enc), iv.byteLength);
-    return 'e2e:' + btoa(String.fromCharCode(...combined));
-  } catch(e) { return text; }
+  return text; // E2E temporarily disabled — HTTPS protects in transit
 }
 
 async function decryptMsg(data) {
-  if (!data) return '';
-  if (!data.startsWith('e2e:')) return data; // plaintext fallback
-  if (!sharedKey) return ''; // key not yet available — silently skip
-  try {
-    const combined = Uint8Array.from(atob(data.slice(4)), c => c.charCodeAt(0));
-    const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: combined.slice(0,12) }, sharedKey, combined.slice(12));
-    return new TextDecoder().decode(dec);
-  } catch(e) { return ''; } // decryption failed — silently skip
+  return data || ''; // E2E temporarily disabled — plaintext passthrough
 }
 
 // ── API HELPERS ─────────────────────────────────────────────────────────
@@ -1153,15 +1139,13 @@ async function sendMsg() {
   if (!content || !roomCode || !myToken) return;
   input.value = '';
 
-  const encrypted = await encryptMsg(content);
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-  // Generate a temp ID for tracking before server assigns real one
   const tempId = 'tmp-' + Date.now().toString(36);
   const el = addMessage(myName, content, time, true, tempId);
 
   try {
-    const result = await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
+    const result = await api('/api/send', { code: roomCode, token: myToken, content });
     // Update tracking with real msgId from server
     if (result && result.msgId && result.msgId !== tempId) {
       const tracked = sentMsgs.get(tempId);
@@ -1670,13 +1654,11 @@ async function handleFileSelect(event) {
   });
 
   // Encrypt the file payload
-  const encrypted = await encryptMsg(payload);
-
   // Show preview on sender side
   const el = addFileMessage(myName, file.name, file.type, base64, isImage, time, true, tempId);
 
   try {
-    const result = await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
+    const result = await api('/api/send', { code: roomCode, token: myToken, content: payload });
     if (result && result.msgId) {
       const tracked = sentMsgs.get(tempId);
       if (tracked) {
@@ -1792,20 +1774,19 @@ function viewImage(src) {
 // Patch the existing message handler to detect file payloads
 const _origDecrypt = decryptMsg;
 async function processIncomingContent(content, name, time, msgId) {
-  const decrypted = await decryptMsg(content);
-  if (!decrypted) return null;
+  if (!content) return null;
 
   // Check if it's a file payload
   try {
-    const parsed = JSON.parse(decrypted);
+    const parsed = JSON.parse(content);
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
       addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
-      return 'file'; // signal that file was handled
+      return 'file';
     }
   } catch(e) {}
 
-  return decrypted; // regular text message
+  return content; // regular text message
 }
 
 </script>
