@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Vaulted"/>
+<meta name="theme-color" content="#1A1916"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icons/icon-192.png"/>
 <title>Vaulted</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
@@ -106,6 +110,11 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .destroy-btn{background:none;border:1px solid #C0392B;border-radius:20px;padding:5px 10px;font-size:11px;color:#C0392B;letter-spacing:.03em;flex-shrink:0;white-space:nowrap;cursor:pointer;transition:all .15s;margin-left:8px}
 .destroy-btn:hover{border-color:#e53e3e;color:#e53e3e;background:#fff5f5}
 .e2e-bar{flex-shrink:0;background:#FFFBF0;border-top:1px solid #F0E8CC;border-bottom:1px solid #F0E8CC;padding:6px 14px;font-size:11px;color:#B8973E;text-align:center;letter-spacing:.04em;font-weight:500}
+.push-banner{display:none;flex-shrink:0;align-items:center;gap:10px;background:#F0EBE3;border-bottom:1px solid #E8E2DA;padding:8px 14px;font-size:12px;color:#4A3F35}
+.push-banner.show{display:flex}
+.push-banner span{flex:1}
+.push-banner button{background:#B8973E;color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:11px;cursor:pointer;white-space:nowrap}
+.push-banner button.secondary{background:none;color:#7A6E65;border:0.5px solid #D0CAC0}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
@@ -635,6 +644,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <button class="destroy-btn" onclick="closeRoom()">Close &amp; erase</button>
   </div>
   <div class="e2e-bar">🔒 🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
+  <div class="push-banner" id="push-banner"></div>
   <div class="chat-body" id="chat-body">
     <div class="sys-msg" id="welcome-msg"></div>
     <div class="typing-indicator" id="typing-indicator">
@@ -1112,11 +1122,121 @@ window.addEventListener('focus', () => {
 });
 window.addEventListener('blur', () => { tabFocused = false; });
 
+// ── PUSH NOTIFICATIONS ────────────────────────────────────────────────
+// The in-app chime (playChime, above) only fires while the tab's JS is
+// actually running — iOS suspends timers in a backgrounded browser tab, so a
+// message that arrives while you're out of the app never makes a sound.
+// Web Push fixes that, but iOS only grants the Push API to a web app that's
+// been added to the home screen from Safari (Chrome/Edge on iOS are WebKit
+// wrappers and can't offer that install step themselves — this is an Apple
+// platform restriction, not something we can route around). Everywhere else
+// (desktop Chrome, Android Chrome) push works from a normal browser tab.
+//
+// Server never sees plaintext, so the push payload it sends is always
+// generic ("New message") — see sw.js. That's intentional: keeping message
+// content out of push payloads preserves the zero-knowledge design.
+const VAPID_PUBLIC_KEY = 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
+let swRegistration = null;
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+function isStandalonePwa() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS masquerades as Mac
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    return swRegistration = await navigator.serviceWorker.register('/sw.js');
+  } catch (e) {
+    console.warn('SW registration failed:', e.message);
+    return null;
+  }
+}
+
+function hidePushBanner() {
+  document.getElementById('push-banner')?.classList.remove('show');
+}
+
+function showIosInstallBanner() {
+  const bar = document.getElementById('push-banner');
+  if (!bar || localStorage.getItem('vaulted_ios_banner_dismissed')) return;
+  bar.innerHTML = `<span>For message notifications on iPhone: open this page in Safari, tap Share, then "Add to Home Screen".</span>
+    <button type="button" class="secondary" id="push-banner-dismiss">Got it</button>`;
+  bar.classList.add('show');
+  document.getElementById('push-banner-dismiss').onclick = () => {
+    localStorage.setItem('vaulted_ios_banner_dismissed', '1');
+    hidePushBanner();
+  };
+}
+
+function showEnableNotificationsBanner(reg) {
+  const bar = document.getElementById('push-banner');
+  if (!bar || localStorage.getItem('vaulted_push_banner_dismissed')) return;
+  bar.innerHTML = `<span>Get notified here when a message arrives?</span>
+    <button type="button" id="push-banner-yes">Enable</button>
+    <button type="button" class="secondary" id="push-banner-no">Not now</button>`;
+  bar.classList.add('show');
+  document.getElementById('push-banner-yes').onclick = async () => {
+    hidePushBanner();
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') await subscribeToPush(reg);
+    } catch (e) {}
+  };
+  document.getElementById('push-banner-no').onclick = () => {
+    localStorage.setItem('vaulted_push_banner_dismissed', '1');
+    hidePushBanner();
+  };
+}
+
+async function subscribeToPush(reg) {
+  try {
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    await api('/api/push-subscribe', { code: roomCode, token: myToken, subscription: sub.toJSON() });
+  } catch (e) {
+    console.warn('Push subscribe failed:', e.message);
+  }
+}
+
+async function initPushForRoom() {
+  if (!roomCode || !myToken) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  if (isIOS() && !isStandalonePwa()) { showIosInstallBanner(); return; }
+  if (Notification.permission === 'denied') return;
+
+  const reg = swRegistration || await registerServiceWorker();
+  if (!reg) return;
+
+  if (Notification.permission === 'default') { showEnableNotificationsBanner(reg); return; }
+  await subscribeToPush(reg);
+}
+
 // ── POLLING ─────────────────────────────────────────────────────────────
 async function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(doPoll, 2000);
   doPoll(); // immediate first poll
+  initPushForRoom().catch(() => {});
 }
 
 async function doPoll() {
@@ -1467,6 +1587,7 @@ function resetState() {
   lastSeq = 0; sharedKey = null; unreadCount = 0;
   peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; seenMsgIds.clear(); isPollRunning = false; lastSeq = 0; lastReceiptSeq = 0;
   lastReactionSeq = 0; myReactions.clear(); peerReactions.clear(); closeAllMsgActions();
+  hidePushBanner();
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;

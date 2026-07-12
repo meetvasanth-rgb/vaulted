@@ -1,11 +1,25 @@
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const webpush = require('web-push');
 
 const PORT = process.env.PORT || 3000;
 const ROOM_TTL = 5 * 60 * 1000;
 
 const rooms = new Map();
+
+// VAPID keys identify this server to push services (Apple/Google/Mozilla's push
+// endpoints) — they are NOT related to the E2E message encryption keys, and the
+// server still never sees plaintext message content through this path (see the
+// generic payload in /api/send below). Defaults are baked in so push works out
+// of the box; for production hygiene, set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY
+// as Railway environment variables instead and remove the private key from
+// source. If you do override them, the client's VAPID_PUBLIC_KEY constant in
+// index.html must be updated to match, or existing subscriptions will silently
+// fail to deliver.
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'aMEjVlR3d-zpiZgTSJBzCy8LJ-3QbtaF5T1aKeVLph8';
+webpush.setVapidDetails('mailto:privacy@valuted.in', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
@@ -39,7 +53,7 @@ function serveStatic(req, res) {
         res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'}); res.end(d);
       }); return;
     }
-    const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon'};
+    const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.svg':'image/svg+xml'};
     res.writeHead(200,{'Content-Type':t[path.extname(url)]||'text/plain'}); res.end(data);
   });
 }
@@ -161,7 +175,33 @@ function api(path, method, d, p, res) {
     room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     // Trim — keep last 300 messages but seq numbers never reset
     if (room.msgs.length > 300) room.msgs.splice(0, room.msgs.length-300);
+
+    // Best-effort push notification to the peer if they've subscribed. The
+    // server can't decrypt d.content (E2E), so the payload is deliberately
+    // generic — only the sender's already-plaintext display name goes out,
+    // never message content. Fire-and-forget: a slow/failed push must never
+    // delay the send response.
+    for (const [t, mb] of room.members) {
+      if (t !== d.token && mb.pushSub) {
+        const payload = JSON.stringify({ title: 'Vaulted', body: `New message from ${m.name}`, tag: d.code });
+        webpush.sendNotification(mb.pushSub, payload).catch(err => {
+          if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null; // subscription expired/revoked
+          else console.warn('push send failed:', err.message);
+        });
+      }
+    }
+
     return res200(res, { ok: true, msgId, seq });
+  }
+
+  // POST /api/push-subscribe — store this member's Web Push subscription
+  if (path==='/api/push-subscribe' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    const m = room.members.get(d.token);
+    m.pushSub = d.subscription || null;
+    room.lastActivity = Date.now();
+    return res200(res, { ok: true });
   }
 
   // POST /api/react — toggle a single-emoji reaction from this member onto a message
