@@ -199,8 +199,10 @@ function handleApi(pathname, method, data, params, res) {
       if (msg.from === token) continue; // skip own messages
       newMsgs.push(msg);
 
-      // Don't auto-mark read — wait for client /api/read confirmation
-      // (this ensures double tick only fires after successful decryption)
+      // Mark delivered when receiver polls (device received it)
+      if (msg.type === 'message' && !msg.deliveredAt) {
+        msg.deliveredAt = Date.now();
+      }
     }
 
     // Read receipts for sender — messages they sent that were just read
@@ -208,8 +210,9 @@ function handleApi(pathname, method, data, params, res) {
     for (const msg of room.messages) {
       if (msg.from !== token) continue;
       if (msg.type !== 'message') continue;
-      if (msg.readAt && msg.readAt > since) {
-        myReadReceipts.push({ msgId: msg.id, readAt: msg.readAt });
+      // Delivered = receiver's device polled it
+      if (msg.deliveredAt && msg.deliveredAt > since) {
+        myReadReceipts.push({ msgId: msg.id, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null });
       }
     }
 

@@ -340,6 +340,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 /* ── READ RECEIPTS + DISAPPEARING MESSAGES ──────────────────────── */
 .msg-meta { display:flex; align-items:center; gap:5px; }
 .msg-receipt { font-size:11px; color:#B0A898; font-weight:400; }
+.msg-receipt.delivered { color:#7A6E65; font-weight:500; }
 .msg-receipt.read { color:#2196F3; font-weight:600; font-size:12px; }
 .msg-progress-wrap { height:2px; border-radius:1px; background:rgba(0,0,0,0.06); margin-top:3px; overflow:hidden; }
 .msg.me .msg-progress-wrap { background:rgba(184,151,62,0.15); }
@@ -1226,17 +1227,25 @@ function addMessage(name, content, time, isMe, msgId) {
 // Called when poll returns read receipts for our sent messages
 function handleReadReceipts(receipts) {
   if (!receipts || receipts.length === 0) return;
-  for (const { msgId, readAt } of receipts) {
+  for (const { msgId, deliveredAt, readAt } of receipts) {
     const receiptEl = document.getElementById(`receipt-${msgId}`);
-    if (receiptEl) {
+    if (!receiptEl) continue;
+
+    if (readAt) {
+      // ✓✓ blue — receiver opened and read it
       receiptEl.textContent = '✓✓';
+      receiptEl.classList.remove('delivered');
       receiptEl.classList.add('read');
-    }
-    const tracked = sentMsgs.get(msgId);
-    if (tracked && !tracked.timerStarted && deleteTimerSeconds > 0) {
-      tracked.timerStarted = true;
-      tracked.readAt = readAt;
-      startDeleteTimer(msgId, tracked.el, deleteTimerSeconds);
+      // Start delete timer on confirmed read
+      const tracked = sentMsgs.get(msgId);
+      if (tracked && !tracked.timerStarted && deleteTimerSeconds > 0) {
+        tracked.timerStarted = true;
+        startDeleteTimer(msgId, tracked.el, deleteTimerSeconds);
+      }
+    } else if (deliveredAt && !receiptEl.classList.contains('read')) {
+      // ✓✓ grey — delivered to receiver's device
+      receiptEl.textContent = '✓✓';
+      receiptEl.classList.add('delivered');
     }
   }
 }
