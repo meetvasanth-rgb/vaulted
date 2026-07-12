@@ -94,7 +94,7 @@ function handleApi(pathname, method, data, params, res) {
     rooms.set(code, {
       code, createdAt: Date.now(), lastActivity: Date.now(),
       deleteTimer, // message auto-delete duration in seconds
-      members: new Map([[token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null }]]),
+      members: new Map([[token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null, lastMsgIdx: 0 }]]),
       messages: [],
     });
     console.log(`Room created: ${code} (deleteTimer: ${deleteTimer}s)`);
@@ -118,6 +118,8 @@ function handleApi(pathname, method, data, params, res) {
       for (const [t, m] of room.members.entries()) {
         if (t !== data.token) peerPubKey = m.pubKey;
       }
+      // On rejoin, start from current position minus small lookback
+      member.lastMsgIdx = Math.max(0, room.messages.length - 10);
       return json(res, { code, token: data.token, name: member.name, isReconnect: true, peerPubKey, deleteTimer: room.deleteTimer });
     }
 
@@ -125,7 +127,7 @@ function handleApi(pathname, method, data, params, res) {
     const name = (data.name || 'Stranger').substring(0, 24);
     const password = data.password || null;
     if (room.password && room.password !== password) return json(res, { error: 'Incorrect password.' }, 403);
-    room.members.set(token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null });
+    room.members.set(token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null, lastMsgIdx: room.messages.length });
     room.lastActivity = Date.now();
     room.messages.push({ id: generateMsgId(), type: 'system', content: `${name} joined the room`, ts: Date.now() });
 
@@ -170,7 +172,6 @@ function handleApi(pathname, method, data, params, res) {
   if (pathname === '/api/poll' && method === 'GET') {
     const code = params.get('code');
     const token = params.get('token');
-    const since = parseFloat(params.get('since') || '0');
     const sinceReceipt = parseFloat(params.get('sinceReceipt') || '0');
     const room = rooms.get(code);
     if (!room) return json(res, { error: 'Room gone', roomGone: true });
@@ -191,27 +192,29 @@ function handleApi(pathname, method, data, params, res) {
       }
     }
 
-    // Messages for this receiver (from peer) since last poll
+    // INDEX-BASED filtering — completely eliminates duplicates
+    // member.lastMsgIdx tracks exactly which messages this member has received
+    const startIdx = member.lastMsgIdx || 0;
     const newMsgs = [];
-    const readReceipts = []; // messages the SENDER should know were read
 
-    for (const msg of room.messages) {
-      if (msg.ts <= since) continue;
-      if (msg.from === token) continue; // skip own messages
+    for (let i = startIdx; i < room.messages.length; i++) {
+      const msg = room.messages[i];
+      if (msg.from === token) { continue; } // skip own messages
       newMsgs.push(msg);
-
-      // Mark delivered when receiver polls (device received it)
+      // Mark delivered when receiver first polls this message
       if (msg.type === 'message' && !msg.deliveredAt) {
         msg.deliveredAt = Date.now();
       }
     }
 
-    // Read receipts for sender — messages they sent that were just read
+    // Advance member's index to current end of messages array
+    member.lastMsgIdx = room.messages.length;
+
+    // Read receipts for sender
     const myReadReceipts = [];
     for (const msg of room.messages) {
       if (msg.from !== token) continue;
       if (msg.type !== 'message') continue;
-      // Delivered = receiver's device polled it
       if (msg.deliveredAt && msg.deliveredAt > sinceReceipt) {
         myReadReceipts.push({ msgId: msg.id, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null });
       }
@@ -220,7 +223,7 @@ function handleApi(pathname, method, data, params, res) {
     return json(res, {
       messages: newMsgs,
       peerName, peerOnline, peerPubKey,
-      readReceipts: myReadReceipts, // tell sender their messages were read
+      readReceipts: myReadReceipts,
       serverTime: Date.now(),
       deleteTimer: room.deleteTimer,
     });

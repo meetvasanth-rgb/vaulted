@@ -581,6 +581,8 @@ let lastInteractionTime = Date.now(); // track user activity
 let lastReceiptTs = 0; // separate tracking for receipt timestamps
 const readConfirmIds = [];   // messages decrypted this poll
 const pendingReadIds = [];   // queued while tab was hidden
+const seenMsgIds = new Set(); // deduplicate received messages
+let isPollRunning = false;    // prevent concurrent polls
 let deleteTimerSeconds = 0; // 0 = off
 let msgTimers = new Map(); // msgId -> setTimeout handle
 
@@ -786,8 +788,10 @@ async function startPolling() {
 
 async function doPoll() {
   if (!roomCode || !myToken) return;
+  if (isPollRunning) return; // skip if previous poll still in progress
+  isPollRunning = true;
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=${lastMsgTs}&sinceReceipt=${lastReceiptTs}`);
+    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&sinceReceipt=${lastReceiptTs}`);
 
     if (data.roomGone) {
       stopPolling();
@@ -829,6 +833,14 @@ async function doPoll() {
     // Process new messages
     if (data.messages && data.messages.length > 0) {
       for (const msg of data.messages) {
+        // Skip already-processed messages (dedup across overlapping polls)
+        if (seenMsgIds.has(msg.id)) { continue; } // extra safety dedup
+        seenMsgIds.add(msg.id);
+        // Keep seenMsgIds from growing unbounded
+        if (seenMsgIds.size > 500) {
+          const first = seenMsgIds.values().next().value;
+          seenMsgIds.delete(first);
+        }
         if (msg.type === 'system') {
           addSysMsg(msg.content);
         } else if (msg.type === 'message') {
@@ -846,7 +858,7 @@ async function doPoll() {
             startReceiveDeleteTimer(msg.id, el, deleteTimerSeconds);
           }
         }
-        if (msg.ts > lastMsgTs) lastMsgTs = msg.ts;
+        // Index-based — no client timestamp tracking needed
       }
     }
 
@@ -869,6 +881,8 @@ async function doPoll() {
 
   } catch(e) {
     console.log('Poll error:', e.message);
+  } finally {
+    isPollRunning = false; // always release lock
   }
 }
 
@@ -1000,10 +1014,12 @@ async function handleSetup() {
       saveSession(roomCode, myToken, myName);
       startPolling();
       // Poll for peer joining
-      const waitInterval = setInterval(async () => {
-        const d = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=0`);
+      // Use pollInterval for waiting too — startPolling will clear it
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        const d = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&sinceReceipt=0`);
         if (d.peerOnline) {
-          clearInterval(waitInterval);
+          clearInterval(pollInterval); pollInterval = null;
           document.getElementById('hdr-code').textContent = roomCode;
           document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
     showScreen('s-chat');
@@ -1081,7 +1097,7 @@ async function leaveRoom() {
 function resetState() {
   myName = ''; myToken = ''; roomCode = '';
   lastMsgTs = 0; sharedKey = null; unreadCount = 0;
-  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; lastReceiptTs = 0;
+  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; lastReceiptTs = 0; seenMsgIds.clear(); isPollRunning = false;
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
@@ -1144,6 +1160,8 @@ window.addEventListener('load', async () => {
     myToken = session.token;
     roomCode = session.code;
     lastMsgTs = Date.now() - 120000; // get last 2 min of messages on restore
+    seenMsgIds.clear();
+    isPollRunning = false;
 
     // Set up chat screen
     const hdrCode = document.getElementById('hdr-code');
