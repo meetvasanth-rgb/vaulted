@@ -1124,9 +1124,9 @@ async function doPoll() {
     // Handle read receipts for my sent messages
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(data.readReceipts);
-      // Advance lastReceiptSeq to avoid reprocessing
+      // Only advance lastReceiptSeq past fully-read messages
       for (const r of data.readReceipts) {
-        if (r.seq && r.seq > lastReceiptSeq) lastReceiptSeq = r.seq;
+        if (r.readAt && r.seq && r.seq > lastReceiptSeq) lastReceiptSeq = r.seq;
       }
     }
 
