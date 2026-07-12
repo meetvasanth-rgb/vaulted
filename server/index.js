@@ -171,6 +171,7 @@ function handleApi(pathname, method, data, params, res) {
     const code = params.get('code');
     const token = params.get('token');
     const since = parseFloat(params.get('since') || '0');
+    const sinceReceipt = parseFloat(params.get('sinceReceipt') || '0');
     const room = rooms.get(code);
     if (!room) return json(res, { error: 'Room gone', roomGone: true });
     if (!room.members.has(token)) return json(res, { error: 'Not in room' }, 403);
@@ -211,7 +212,7 @@ function handleApi(pathname, method, data, params, res) {
       if (msg.from !== token) continue;
       if (msg.type !== 'message') continue;
       // Delivered = receiver's device polled it
-      if (msg.deliveredAt && msg.deliveredAt > since) {
+      if (msg.deliveredAt && msg.deliveredAt > sinceReceipt) {
         myReadReceipts.push({ msgId: msg.id, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null });
       }
     }

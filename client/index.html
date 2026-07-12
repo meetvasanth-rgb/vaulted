@@ -577,6 +577,8 @@ let tabFocused = true;
 let unreadCount = 0;
 let peerWasOnline = false;
 let lastKnownPeerPubKey = null; // detect key rotation on reconnect
+let lastInteractionTime = Date.now(); // track user activity
+let lastReceiptTs = 0; // separate tracking for receipt timestamps
 const readConfirmIds = [];   // messages decrypted this poll
 const pendingReadIds = [];   // queued while tab was hidden
 let deleteTimerSeconds = 0; // 0 = off
@@ -750,11 +752,14 @@ function playChime() {
 
 // ── TAB VISIBILITY ──────────────────────────────────────────────────────
 document.addEventListener('visibilitychange', () => {
-  tabFocused = !document.hidden;
-  if (!document.hidden) {
+  if (document.hidden) {
+    tabFocused = false; // force inactive when page hidden
+  } else {
+    tabFocused = true;
+    lastInteractionTime = Date.now();
     unreadCount = 0;
     document.title = 'Vaulted';
-    // Flush any pending read confirmations — user is now looking
+    // Flush pending read confirmations when user returns
     if (pendingReadIds.length > 0 && roomCode && myToken) {
       const toConfirm = [...pendingReadIds];
       pendingReadIds.length = 0;
@@ -782,7 +787,7 @@ async function startPolling() {
 async function doPoll() {
   if (!roomCode || !myToken) return;
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=${lastMsgTs}`);
+    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&since=${lastMsgTs}&sinceReceipt=${lastReceiptTs}`);
 
     if (data.roomGone) {
       stopPolling();
@@ -811,6 +816,11 @@ async function doPoll() {
     // Handle read receipts for my sent messages
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(data.readReceipts);
+      // Advance receipt timestamp so same receipts don't repeat
+      for (const r of data.readReceipts) {
+        const ts = r.readAt || r.deliveredAt || 0;
+        if (ts > lastReceiptTs) lastReceiptTs = ts;
+      }
     }
 
     // Store deleteTimer from server
@@ -842,8 +852,8 @@ async function doPoll() {
 
     // Send read confirmations only when user is actually looking
     if (readConfirmIds.length > 0) {
-      if (!document.hidden && tabFocused) {
-        // Tab visible — confirm immediately
+      if (isUserActive()) {
+        // User is actively looking at the page
         const toConfirm = [...readConfirmIds, ...pendingReadIds];
         readConfirmIds.length = 0;
         pendingReadIds.length = 0;
@@ -1071,7 +1081,7 @@ async function leaveRoom() {
 function resetState() {
   myName = ''; myToken = ''; roomCode = '';
   lastMsgTs = 0; sharedKey = null; unreadCount = 0;
-  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0;
+  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; lastReceiptTs = 0;
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
@@ -1172,6 +1182,21 @@ window.addEventListener('load', async () => {
 
   triggerLandingAnim();
 });
+
+
+// Track real user interaction — read receipts only fire when user is active
+['click','keydown','touchstart','mousemove'].forEach(evt => {
+  document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
+});
+
+function isUserActive() {
+  // User is active if:
+  // 1. Page is not hidden (document.hidden = false)
+  // 2. Tab has focus OR user interacted recently (within 5 seconds)
+  if (document.hidden) return false;
+  if (tabFocused) return true;
+  return (Date.now() - lastInteractionTime) < 5000;
+}
 
 // ── EMOJI PICKER ────────────────────────────────────────────────────
 const EMOJIS = ['😊','😂','❤️','👍','🙏','😍','🔥','✨','😭','🥺','💯','🎉','😅','🤔','😢','👋','💪','🌹','😎','🤣','💀','🤦','😤','🙌','💕','😩','🫡','🤗','😬','👀','💬','🫶','😏','🤝','✅','🚀','💎','🌙','☀️','🌊'];
