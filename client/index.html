@@ -554,7 +554,8 @@ let tabFocused = true;
 let unreadCount = 0;
 let peerWasOnline = false;
 let lastKnownPeerPubKey = null; // detect key rotation on reconnect
-const readConfirmIds = []; // batch read confirmations
+const readConfirmIds = [];   // messages decrypted this poll
+const pendingReadIds = [];   // queued while tab was hidden
 let deleteTimerSeconds = 0; // 0 = off
 let msgTimers = new Map(); // msgId -> setTimeout handle
 
@@ -727,9 +728,25 @@ function playChime() {
 // ── TAB VISIBILITY ──────────────────────────────────────────────────────
 document.addEventListener('visibilitychange', () => {
   tabFocused = !document.hidden;
-  if (!document.hidden) { unreadCount = 0; document.title = 'Vaulted'; }
+  if (!document.hidden) {
+    unreadCount = 0;
+    document.title = 'Vaulted';
+    // Flush any pending read confirmations — user is now looking
+    if (pendingReadIds.length > 0 && roomCode && myToken) {
+      const toConfirm = [...pendingReadIds];
+      pendingReadIds.length = 0;
+      api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
+    }
+  }
 });
-window.addEventListener('focus', () => { tabFocused = true; unreadCount = 0; document.title = 'Vaulted'; });
+window.addEventListener('focus', () => {
+  tabFocused = true; unreadCount = 0; document.title = 'Vaulted';
+  if (pendingReadIds.length > 0 && roomCode && myToken) {
+    const toConfirm = [...pendingReadIds];
+    pendingReadIds.length = 0;
+    api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
+  }
+});
 window.addEventListener('blur', () => { tabFocused = false; });
 
 // ── POLLING ─────────────────────────────────────────────────────────────
@@ -799,11 +816,21 @@ async function doPoll() {
       }
     }
 
-    // Send read confirmations for successfully decrypted messages
+    // Send read confirmations only when user is actually looking
     if (readConfirmIds.length > 0) {
-      const toConfirm = [...readConfirmIds];
-      readConfirmIds.length = 0;
-      api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
+      if (!document.hidden && tabFocused) {
+        // Tab visible — confirm immediately
+        const toConfirm = [...readConfirmIds, ...pendingReadIds];
+        readConfirmIds.length = 0;
+        pendingReadIds.length = 0;
+        if (toConfirm.length > 0) {
+          api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
+        }
+      } else {
+        // Tab hidden — queue for when user returns
+        pendingReadIds.push(...readConfirmIds);
+        readConfirmIds.length = 0;
+      }
     }
 
   } catch(e) {
@@ -1020,7 +1047,7 @@ async function leaveRoom() {
 function resetState() {
   myName = ''; myToken = ''; roomCode = '';
   lastMsgTs = 0; sharedKey = null; unreadCount = 0;
-  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0;
+  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0;
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
