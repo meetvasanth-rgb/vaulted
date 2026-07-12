@@ -789,6 +789,8 @@ const readConfirmIds = [];   // messages decrypted this poll
 const pendingReadIds = [];   // queued while tab was hidden
 const seenMsgIds = new Set(); // deduplicate received messages
 let isPollRunning = false;    // prevent concurrent polls
+let lastSeq = 0;
+let lastReceiptSeq = 0;
 let deleteTimerSeconds = 0; // 0 = off
 let msgTimers = new Map(); // msgId -> setTimeout handle
 
