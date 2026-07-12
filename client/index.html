@@ -93,7 +93,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 
 /* -- CHAT -- */
 #s-chat{flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
-.chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:0 20px;height:60px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:0 12px;height:56px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
 .chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
 .chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em}
@@ -101,9 +101,9 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 .status-dot.away{background:#CCC}
 .status-txt{font-size:11px;color:#888}
-.leave-btn{background:none;border:1px solid #E0E0E0;border-radius:20px;padding:5px 14px;font-size:11px;color:#999;letter-spacing:.03em;transition:all .15s;margin-left:12px}
+.leave-btn{background:none;border:1px solid #D0CAC0;border-radius:20px;padding:5px 10px;font-size:11px;color:#7A6E65;letter-spacing:.03em;transition:all;flex-shrink:0;white-space:nowrap;cursor:pointer;transition:.15s;margin-left:12px}
 .leave-btn:hover{border-color:#B8973E;color:#B8973E;background:rgba(184,151,62,0.05)}
-.destroy-btn{background:none;border:1px solid #E0E0E0;border-radius:20px;padding:5px 14px;font-size:11px;color:#999;letter-spacing:.03em;transition:all .15s;margin-left:8px}
+.destroy-btn{background:none;border:1px solid #C0392B;border-radius:20px;padding:5px 10px;font-size:11px;color:#C0392B;letter-spacing:.03em;flex-shrink:0;white-space:nowrap;cursor:pointer;transition:all .15s;margin-left:8px}
 .destroy-btn:hover{border-color:#e53e3e;color:#e53e3e;background:#fff5f5}
 .e2e-bar{flex-shrink:0;background:#FFFBF0;border-top:1px solid #F0E8CC;border-bottom:1px solid #F0E8CC;padding:6px 14px;font-size:11px;color:#B8973E;text-align:center;letter-spacing:.04em;font-weight:500}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
@@ -360,6 +360,24 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 /* ── DELETE TIMER SELECTOR ─────────────────────────────────────── */
 .timer-select { width:100%; background:#FFFFFF; border:0.5px solid #E0D9D0; border-radius:2px; padding:10px 13px; font-size:14px; color:#1A1510; margin-top:4px; }
 
+
+@media(max-width:480px){
+  .chat-hdr { padding:0 10px; gap:6px; height:52px; }
+  .chat-hdr-logo { font-size:15px; }
+  .chat-hdr-room { max-width:70px; font-size:10px; }
+  .leave-btn { padding:4px 8px; font-size:10px; }
+  .destroy-btn { padding:4px 8px; font-size:10px; }
+  .e2e-bar { font-size:9px; }
+}
+
+/* ── FILE ATTACHMENTS ─────────────────────────────────────────── */
+.attach-btn { width:34px; height:38px; background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0.5; transition:opacity 0.15s; padding:0; }
+.attach-btn:hover { opacity:0.9; }
+.attach-btn svg { width:18px; height:18px; fill:none; stroke:#7A6E65; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
+.msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; }
+.msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; flex-shrink:0; }
+.file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -513,6 +531,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <div class="emoji-grid" id="emoji-grid"></div>
   </div>
   <div class="chat-ftr">
+    <button class="attach-btn" onclick="triggerFileInput()" id="attach-btn" title="Attach file">
+      <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+    </button>
+    <input type="file" id="file-input" style="display:none" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <button class="emoji-btn" onclick="toggleEmoji()" id="emoji-btn">😊</button>
     <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
     <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
@@ -800,13 +822,14 @@ async function doPoll() {
         if (msg.type === 'system') {
           addSysMsg(msg.content);
         } else if (msg.type === 'message') {
-          const decrypted = await decryptMsg(msg.content);
-          if (!decrypted) { if (msg.ts > lastMsgTs) lastMsgTs = msg.ts; continue; } // skip undecryptable
           const rt = new Date();
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
-          const el = addMessage(msg.name, decrypted, rNow, false, msg.id);
+          const result = await processIncomingContent(msg.content, msg.name, rNow, msg.id);
+          if (!result) { if (msg.ts > lastMsgTs) lastMsgTs = msg.ts; continue; }
+          if (result !== 'file') {
+            addMessage(msg.name, result, rNow, false, msg.id);
+          }
           notifyMsg(msg.name);
-          // Confirm read to server — triggers blue tick on sender
           readConfirmIds.push(msg.id);
           // Start delete timer immediately on receive (= read)
           if (deleteTimerSeconds > 0) {
@@ -1306,6 +1329,152 @@ function formatDuration(s) {
 function showTimerField(show) {
   const tf = document.getElementById('timer-field');
   if (tf) tf.style.display = show ? 'block' : 'none';
+}
+
+
+// ── FILE ATTACHMENTS ─────────────────────────────────────────────────
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit
+
+function triggerFileInput() {
+  if (document.getElementById('msg-input').disabled) return;
+  document.getElementById('file-input').click();
+}
+
+async function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = ''; // reset so same file can be selected again
+
+  if (file.size > MAX_FILE_SIZE) {
+    toast('File too large — maximum 5MB');
+    return;
+  }
+
+  // Show uploading indicator
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  const tempId = 'file-' + Date.now().toString(36);
+
+  // Read file as base64
+  const base64 = await fileToBase64(file);
+  const isImage = file.type.startsWith('image/');
+
+  // Build file payload
+  const payload = JSON.stringify({
+    type: 'file',
+    name: file.name,
+    mime: file.type,
+    size: file.size,
+    data: base64,
+  });
+
+  // Encrypt the file payload
+  const encrypted = await encryptMsg(payload);
+
+  // Show preview on sender side
+  const el = addFileMessage(myName, file.name, file.type, base64, isImage, time, true, tempId);
+
+  try {
+    const result = await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
+    if (result && result.msgId) {
+      const tracked = sentMsgs.get(tempId);
+      if (tracked) {
+        sentMsgs.set(result.msgId, tracked);
+        sentMsgs.delete(tempId);
+        el.dataset.msgId = result.msgId;
+        const receipt = el.querySelector('.msg-receipt');
+        if (receipt) receipt.id = `receipt-${result.msgId}`;
+      }
+    }
+  } catch(e) {
+    toast('Failed to send file');
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function addFileMessage(name, fileName, mime, base64Data, isImage, time, isMe, msgId) {
+  const body = document.getElementById('chat-body');
+  const typing = document.getElementById('typing-indicator');
+  const div = document.createElement('div');
+  div.className = `msg ${isMe ? 'me' : 'them'}`;
+  if (msgId) div.dataset.msgId = msgId;
+
+  const receiptHtml = isMe
+    ? `<span class="msg-receipt" id="receipt-${msgId}">✓</span>`
+    : '';
+
+  let contentHtml = '';
+  if (isImage) {
+    contentHtml = `<img class="msg-image" src="data:${mime};base64,${base64Data}" alt="${escHtml(fileName)}" onclick="viewImage(this.src)"/>`;
+  } else {
+    const sizeStr = formatFileSize(0); // placeholder
+    contentHtml = `<a class="msg-file" href="data:${mime};base64,${base64Data}" download="${escHtml(fileName)}">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span>${escHtml(fileName)}</span>
+    </a>`;
+  }
+
+  div.innerHTML = `
+    <div class="msg-name">${escHtml(name)}</div>
+    ${contentHtml}
+    <div class="msg-meta">
+      <span class="msg-time">${time}</span>
+      ${receiptHtml}
+    </div>
+  `;
+
+  body.insertBefore(div, typing);
+  body.scrollTop = body.scrollHeight;
+
+  if (isMe && msgId) {
+    sentMsgs.set(msgId, { el: div, readAt: null, timerStarted: false });
+  }
+  return div;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function viewImage(src) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:999;cursor:zoom-out';
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:95vw;max-height:95vh;border-radius:4px;object-fit:contain';
+  overlay.appendChild(img);
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
+}
+
+// ── Override doPoll message processing to handle file messages ────────
+// Patch the existing message handler to detect file payloads
+const _origDecrypt = decryptMsg;
+async function processIncomingContent(content, name, time, msgId) {
+  const decrypted = await decryptMsg(content);
+  if (!decrypted) return null;
+
+  // Check if it's a file payload
+  try {
+    const parsed = JSON.parse(decrypted);
+    if (parsed.type === 'file' && parsed.data) {
+      const isImage = (parsed.mime || '').startsWith('image/');
+      addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
+      return 'file'; // signal that file was handled
+    }
+  } catch(e) {}
+
+  return decrypted; // regular text message
 }
 
 </script>
