@@ -110,12 +110,32 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
 .msg.them{align-self:flex-start;align-items:flex-start}
-.msg-name{font-size:11px;color:#555;margin-bottom:2px;font-weight:600;letter-spacing:.01em}
-.bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word}
+.msg-name{display:none} /* 1:1 rooms only ever have two people — a per-message name label is redundant */
+.bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative}
 .msg.me .bubble{background:#DCF8C6;border-bottom-right-radius:4px}
 .msg.them .bubble{background:#F0F0F0;border-bottom-left-radius:4px}
+.bubble.emoji-jumbo{background:none !important;padding:2px 4px;font-size:2.6em;line-height:1.15}
 .msg-time{font-size:11px;color:#999;margin-top:2px;display:flex;align-items:center;gap:3px}
 .msg-ticks{color:#53bdeb;font-size:13px;letter-spacing:-2px;margin-left:2px}
+
+/* Reply / React action row — shown under a message when tapped */
+.msg-actions{display:none;gap:6px;margin-top:3px}
+.msg-actions.show{display:flex}
+.msg.me .msg-actions{justify-content:flex-end}
+.msg-action-btn{background:#F0EBE3;border:0.5px solid #E8E2DA;border-radius:14px;padding:4px 11px;font-size:12px;color:#4A3F35;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .15s}
+.msg-action-btn:hover{background:#E8E2DA}
+
+/* Quick-reaction strip, opened from the React action */
+.reaction-picker{display:none;gap:4px;background:#fff;border:0.5px solid #E8E2DA;border-radius:20px;padding:5px 8px;margin-top:3px;box-shadow:0 2px 10px rgba(0,0,0,0.08);align-self:flex-start}
+.reaction-picker.show{display:flex}
+.msg.me .reaction-picker{align-self:flex-end}
+.reaction-picker span{font-size:19px;cursor:pointer;padding:2px;border-radius:50%;transition:transform .1s}
+.reaction-picker span:hover{transform:scale(1.25)}
+
+/* Reaction badge shown on the bubble once someone reacts */
+.msg-reactions{position:absolute;bottom:-11px;right:6px;display:flex;gap:2px}
+.msg.me .msg-reactions{right:auto;left:6px}
+.msg-reaction-badge{background:#fff;border:1px solid #E8E2DA;border-radius:10px;padding:1px 5px;font-size:16px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
 .sys-msg{align-self:center;font-size:12px;color:#999;background:rgba(0,0,0,0.04);border-radius:20px;padding:5px 16px;text-align:center;font-style:italic;margin:6px 0}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
 .typing-indicator.show{display:flex}
@@ -826,8 +846,10 @@ const seenMsgIds = new Set(); // deduplicate received messages
 let isPollRunning = false;    // prevent concurrent polls
 let lastSeq = 0;
 let lastReceiptSeq = 0;
+let lastReactionSeq = 0; // tracks synced message reactions, same pattern as read receipts
 let deleteTimerSeconds = 0; // 0 = off
 let msgTimers = new Map(); // msgId -> setTimeout handle
+let activeActionMsgId = null; // message currently showing its Reply/React action row
 
 // E2E encryption state
 let myKeyPair = null;
@@ -1102,7 +1124,7 @@ async function doPoll() {
   if (isPollRunning) return; // skip if previous poll still in progress
   isPollRunning = true;
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&lastSeq=${lastSeq}&lastReceiptSeq=${lastReceiptSeq}`);
+    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&lastSeq=${lastSeq}&lastReceiptSeq=${lastReceiptSeq}&lastReactionSeq=${lastReactionSeq}`);
     if (data.messages && data.messages.length > 0) console.log('POLL got', data.messages.length, 'msgs, lastSeq was', lastSeq);
 
     if (data.roomGone) {
@@ -1111,6 +1133,18 @@ async function doPoll() {
       document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
       clearSession();
       return;
+    }
+
+    // Rederive E2E key if peer's pubKey changed (they rejoined with new keys)
+    if (data.peerPubKey && data.peerPubKey !== lastKnownPeerPubKey) {
+      console.log('E2E: peer pubKey changed — rederiving sharedKey');
+      sharedKey = null;
+      try {
+        await deriveSharedKey(data.peerPubKey);
+        lastKnownPeerPubKey = data.peerPubKey;
+      } catch(e) {
+        console.warn('E2E: key rederivation failed:', e.message);
+      }
     }
 
     const wasOnline = peerWasOnline;
@@ -1127,6 +1161,18 @@ async function doPoll() {
       // Only advance lastReceiptSeq past fully-read messages
       for (const r of data.readReceipts) {
         if (r.readAt && r.seq && r.seq > lastReceiptSeq) lastReceiptSeq = r.seq;
+      }
+    }
+
+    // Sync the peer's reactions on messages (mirrors the read-receipt pattern above)
+    if (data.reactionUpdates && data.reactionUpdates.length > 0) {
+      for (const u of data.reactionUpdates) {
+        const peerEmoji = Object.entries(u.reactions || {})
+          .find(([token]) => token !== myToken)?.[1] || null;
+        if (peerEmoji) peerReactions.set(u.msgId, peerEmoji);
+        else peerReactions.delete(u.msgId);
+        renderReactions(u.msgId);
+        if (u.reactionSeq && u.reactionSeq > lastReactionSeq) lastReactionSeq = u.reactionSeq;
       }
     }
 
@@ -1151,9 +1197,17 @@ async function doPoll() {
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
           const result = await processIncomingContent(msg.content, msg.name, rNow, msg.id);
           if (!result) { console.log('DROPPED msg', msg.id, 'content:', msg.content?.substring(0,30)); if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq; continue; }
+          // processIncomingContent already rendered file/reply messages itself (it needs the
+          // parsed payload to build the right markup) and hands back the element it created.
+          // Plain text messages come back as a string and get rendered here instead. Either way
+          // we now always end up with msgEl, so the disappearing-message timer below (which
+          // previously only ran for plain text — reply and file messages never got a timer
+          // and would never vanish) fires for every message type.
           let msgEl = null;
-          if (result !== 'file' && result !== 'reply') {
+          if (typeof result === 'string') {
             msgEl = addMessage(msg.name, result, rNow, false, msg.id);
+          } else if (result && result.el) {
+            msgEl = result.el;
           }
           notifyMsg(msg.name);
           readConfirmIds.push(msg.id);
@@ -1211,24 +1265,23 @@ async function sendMsg() {
   const encrypted = await encryptMsg(msgData);
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-  const tempId = 'tmp-' + Date.now().toString(36);
-  const el = addMessage(myName, content, time, true, tempId, replyTo);
+  // Generate the real message id up front (instead of a temp id we rename
+  // later) and send it to the server. Previously the bubble was rendered
+  // optimistically with a temp id, then renamed to the server's id once
+  // /api/send resolved. If the peer's read receipt for this message came
+  // back on our own next poll BEFORE that rename happened — which could
+  // easily occur under any send latency, e.g. Railway cold start or the
+  // first send of a session — handleReadReceipts looked up `receipt-<realId>`,
+  // found nothing (still tagged with the temp id), and silently dropped the
+  // update. That both stranded the tick (never turned blue) and skipped
+  // starting the disappearing-message timer, since that only fires inside
+  // the same lookup. Using one stable id from the start removes the race.
+  const msgId = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const el = addMessage(myName, content, time, true, msgId, replyTo);
   cancelReply(); // clear reply bar after sending
 
   try {
-    const result = await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
-    // Update tracking with real msgId from server
-    if (result && result.msgId && result.msgId !== tempId) {
-      const tracked = sentMsgs.get(tempId);
-      if (tracked) {
-        sentMsgs.set(result.msgId, tracked);
-        sentMsgs.delete(tempId);
-        el.dataset.msgId = result.msgId;
-        // Update receipt element ID
-        const receipt = el.querySelector('.msg-receipt');
-        if (receipt) receipt.id = `receipt-${result.msgId}`;
-      }
-    }
+    await api('/api/send', { code: roomCode, token: myToken, content: encrypted, msgId });
   } catch(e) {}
 }
 
@@ -1318,6 +1371,8 @@ async function handleSetup() {
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
       myToken = result.token;
       roomCode = result.code;
+      if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
+      else deleteTimerSeconds = timerVal; // fallback to what we sent
       document.getElementById('display-code').textContent = result.code;
       const wNote = document.getElementById('w-note');
       if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
@@ -1411,6 +1466,7 @@ function resetState() {
   myName = ''; myToken = ''; roomCode = '';
   lastSeq = 0; sharedKey = null; unreadCount = 0;
   peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; seenMsgIds.clear(); isPollRunning = false; lastSeq = 0; lastReceiptSeq = 0;
+  lastReactionSeq = 0; myReactions.clear(); peerReactions.clear(); closeAllMsgActions();
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
@@ -1566,9 +1622,133 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// ── MESSAGE ACTIONS: REPLY + REACT ───────────────────────────────────
+// Tapping a bubble (either side — your own or theirs) reveals a small
+// action row instead of jumping straight into reply mode, matching the
+// Reply/React pattern from WhatsApp's message menu.
+const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
+const myReactions = new Map();   // msgId -> emoji (this device's own reaction, optimistic)
+const peerReactions = new Map(); // msgId -> emoji (synced in from poll)
+
+function buildMsgActionsHtml(msgId) {
+  return `
+    <div class="msg-actions" id="actions-${msgId}">
+      <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
+      <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
+    </div>
+    <div class="reaction-picker" id="picker-${msgId}">
+      ${QUICK_REACTIONS.map(e => `<span data-emoji="${e}">${e}</span>`).join('')}
+    </div>
+  `;
+}
+
+function closeAllMsgActions() {
+  document.querySelectorAll('.msg-actions.show').forEach(el => el.classList.remove('show'));
+  document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
+  activeActionMsgId = null;
+}
+
+function wireMsgActions(div, msgId, replyText) {
+  const bubble = div.querySelector('.bubble, .msg-image, .msg-file');
+  const actions = div.querySelector(`#actions-${msgId}`);
+  const picker = div.querySelector(`#picker-${msgId}`);
+  if (!bubble || !actions || !picker) return;
+
+  const toggleActions = () => {
+    const wasOpen = actions.classList.contains('show');
+    closeAllMsgActions();
+    if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
+  };
+
+  let touchStartX, touchStartY, touchStartTime;
+  bubble.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+  }, { passive: true });
+  bubble.addEventListener('touchend', (e) => {
+    const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    const dt = Date.now() - touchStartTime;
+    // Only trigger on short tap (not scroll or long press)
+    if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); toggleActions(); }
+  });
+  bubble.onclick = (e) => { e.stopPropagation(); toggleActions(); };
+
+  actions.querySelector('[data-action="reply"]').onclick = (e) => {
+    e.stopPropagation();
+    startReply(replyText, msgId);
+    closeAllMsgActions();
+  };
+  actions.querySelector('[data-action="react"]').onclick = (e) => {
+    e.stopPropagation();
+    picker.classList.toggle('show');
+  };
+  picker.querySelectorAll('span').forEach(span => {
+    span.onclick = (e) => {
+      e.stopPropagation();
+      sendReaction(msgId, span.dataset.emoji);
+      closeAllMsgActions();
+    };
+  });
+}
+
+// Close any open action row / reaction picker when tapping elsewhere
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.msg-actions') && !e.target.closest('.reaction-picker') &&
+      !e.target.closest('.bubble') && !e.target.closest('.msg-image') && !e.target.closest('.msg-file')) {
+    closeAllMsgActions();
+  }
+});
+
+async function sendReaction(msgId, emoji) {
+  if (!roomCode || !myToken || !msgId) return;
+  const current = myReactions.get(msgId);
+  const next = current === emoji ? null : emoji; // tapping the same emoji again clears it
+  if (next) myReactions.set(msgId, next); else myReactions.delete(msgId);
+  renderReactions(msgId);
+  try {
+    await api('/api/react', { code: roomCode, token: myToken, msgId, emoji: next });
+  } catch (e) {}
+}
+
+function renderReactions(msgId) {
+  const div = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
+  const target = div?.querySelector('.bubble, .msg-image, .msg-file');
+  if (!target) return;
+  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
+  let wrap = target.querySelector('.msg-reactions');
+  const mine = myReactions.get(msgId);
+  const theirs = peerReactions.get(msgId);
+  if (!mine && !theirs) { wrap?.remove(); return; }
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'msg-reactions';
+    target.appendChild(wrap);
+  }
+  wrap.innerHTML = [mine, theirs].filter(Boolean)
+    .map(e => `<span class="msg-reaction-badge">${e}</span>`).join('');
+}
+
 // ── READ RECEIPTS + DISAPPEARING MESSAGES ────────────────────────────
 // Track sent messages: msgId -> { el, readAt, timerStarted }
 const sentMsgs = new Map();
+
+// A message whose entire visible text is one emoji renders large with no bubble
+// background, matching the common chat-app convention (WhatsApp, iMessage, etc).
+function isSingleEmoji(str) {
+  const t = (str || '').trim();
+  if (!t) return false;
+  try {
+    const seg = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)];
+    return seg.length === 1 && /\p{Extended_Pictographic}/u.test(seg[0].segment);
+  } catch (e) {
+    // Intl.Segmenter isn't available on some older iOS/WebKit versions — fall back
+    // to a length heuristic (covers simple emoji; multi-codepoint ZWJ sequences may
+    // be missed there, which just means they render at normal size instead of jumbo).
+    return t.length <= 4 && /\p{Extended_Pictographic}/u.test(t);
+  }
+}
 
 function addMessage(name, content, time, isMe, msgId, replyData) {
   const body = document.getElementById('chat-body');
@@ -1589,41 +1769,21 @@ function addMessage(name, content, time, isMe, msgId, replyData) {
     ? `<div class="msg-reply-quote">${escHtml(replyData.text)}</div>`
     : '';
 
+  const jumbo = isSingleEmoji(content);
+
   div.innerHTML = `
     <div class="msg-name">${escHtml(name)}</div>
     ${replyHtml}
-    <div class="bubble">${escHtml(content)}</div>
+    <div class="bubble${jumbo ? ' emoji-jumbo' : ''}">${escHtml(content)}</div>
     <div class="msg-meta">
       <span class="msg-time">${time}</span>
       ${receiptHtml}
     </div>
     ${progressHtml}
+    ${msgId ? buildMsgActionsHtml(msgId) : ''}
   `;
 
-  // Tap bubble to reply (not on own messages)
-  if (!isMe) {
-    const bubble = div.querySelector('.bubble');
-    if (bubble) {
-      let touchStartX, touchStartY, touchStartTime;
-      bubble.addEventListener('touchstart', (e) => {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        touchStartTime = Date.now();
-      }, { passive: true });
-      bubble.addEventListener('touchend', (e) => {
-        const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-        const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
-        const dt = Date.now() - touchStartTime;
-        // Only trigger reply on short tap (not scroll or long press)
-        if (dx < 15 && dy < 15 && dt < 400) {
-          e.preventDefault();
-          startReply(content, msgId);
-        }
-      });
-      // Desktop click still works
-      bubble.onclick = (e) => { e.stopPropagation(); startReply(content, msgId); };
-    }
-  }
+  if (msgId) wireMsgActions(div, msgId, content);
 
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
@@ -1815,7 +1975,10 @@ function addFileMessage(name, fileName, mime, base64Data, isImage, time, isMe, m
       <span class="msg-time">${time}</span>
       ${receiptHtml}
     </div>
+    ${msgId ? buildMsgActionsHtml(msgId) : ''}
   `;
+
+  if (msgId) wireMsgActions(div, msgId, fileName);
 
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
@@ -2014,13 +2177,13 @@ async function processIncomingContent(content, name, time, msgId) {
     // File attachment
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
-      addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
-      return 'file';
+      const el = addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
+      return { el };
     }
     // Reply message
     if (parsed.text && parsed.reply) {
-      addMessage(name, parsed.text, time, false, msgId, parsed.reply);
-      return 'reply'; // signal it was handled
+      const el = addMessage(name, parsed.text, time, false, msgId, parsed.reply);
+      return { el };
     }
   } catch(e) {}
 

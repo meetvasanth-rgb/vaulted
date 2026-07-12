@@ -47,9 +47,12 @@ function serveStatic(req, res) {
 const srv = http.createServer((req, res) => {
   // Railway's edge terminates TLS and forwards decrypted traffic to this
   // process, setting x-forwarded-proto so we can tell which scheme the
-  // visitor actually used. Force the upgrade to https, and send HSTS once
-  // we know a request came in over https so browsers remember to always
-  // use https for this host, even from an old http:// link.
+  // visitor actually used. Confirmed by testing: valuted.in currently
+  // serves the full site over plain http:// with no redirect to https —
+  // that's what Chrome is flagging as "Not Secure" (whether or not https
+  // itself is configured correctly). Force the upgrade here, and send HSTS
+  // once we know a request came in over https so browsers remember to use
+  // https for this host next time, even if someone lands on an old http:// link.
   const proto = req.headers['x-forwarded-proto'];
   if (proto === 'http') {
     res.writeHead(301, { Location: `https://${req.headers.host}${req.url}` });
@@ -88,8 +91,9 @@ function api(path, method, d, p, res) {
       deleteTimer: parseInt(d.deleteTimer)||0,
       password: d.password||null,
       seq: 0,          // global message sequence counter
+      reactionSeq: 0,  // separate counter so reaction updates can be synced like read receipts
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
-      msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt }
+      msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
     });
     console.log(`Room created: ${roomCode}`);
     return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0 });
@@ -143,13 +147,36 @@ function api(path, method, d, p, res) {
     room.lastActivity = Date.now();
     const now = new Date();
     const time = now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+    // Use the client-supplied id when present so the sender's DOM element
+    // (rendered optimistically before this request completes) never needs
+    // to be renamed. That rename had a race: if a read-receipt for this
+    // message arrived on the sender's next poll before the /api/send
+    // response was processed, the receipt lookup (by real id) missed the
+    // element (still tagged with the temp id), the blue tick never applied,
+    // and the disappearing-message timer — which only starts from inside
+    // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
     const seq = ++room.seq;
-    room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null });
+    room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     // Trim — keep last 300 messages but seq numbers never reset
     if (room.msgs.length > 300) room.msgs.splice(0, room.msgs.length-300);
     return res200(res, { ok: true, msgId, seq });
+  }
+
+  // POST /api/react — toggle a single-emoji reaction from this member onto a message
+  if (path==='/api/react' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    const msg = room.msgs.find(mm => mm.id === d.msgId);
+    if (!msg) return resErr(res,'Message not found.',404);
+    if (!msg.reactions) msg.reactions = {};
+    if (d.emoji) msg.reactions[d.token] = String(d.emoji).slice(0,8);
+    else delete msg.reactions[d.token];
+    msg.reactionSeq = ++room.reactionSeq;
+    room.lastActivity = Date.now();
+    return res200(res, { ok: true });
   }
 
   // GET /api/poll — SIMPLE: return all messages with seq > clientLastSeq that are not from this user
@@ -158,6 +185,7 @@ function api(path, method, d, p, res) {
     const token = p.get('token');
     const clientLastSeq = parseInt(p.get('lastSeq')||'0');
     const lastReceiptSeq = parseInt(p.get('lastReceiptSeq')||'0');
+    const lastReactionSeq = parseInt(p.get('lastReactionSeq')||'0');
     const room = rooms.get(roomCode);
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in room.',403);
@@ -194,7 +222,17 @@ function api(path, method, d, p, res) {
       }
     }
 
-    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, deleteTimer: room.deleteTimer });
+    // Reaction updates — same seq-based sync pattern as read receipts, but its own
+    // counter so a reaction on an old message doesn't get lost behind lastReceiptSeq
+    const reactionUpdates = [];
+    for (const msg of room.msgs) {
+      if (msg.type !== 'message') continue;
+      if (msg.reactionSeq && msg.reactionSeq > lastReactionSeq) {
+        reactionUpdates.push({ msgId: msg.id, reactions: msg.reactions || {}, reactionSeq: msg.reactionSeq });
+      }
+    }
+
+    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deleteTimer: room.deleteTimer });
   }
 
   // POST /api/read
