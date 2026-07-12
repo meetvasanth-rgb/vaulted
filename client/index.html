@@ -436,6 +436,37 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 }
 .legal-contact { font-size:12px;color:#9A8C7E;border-top:0.5px solid #E8E2DA;padding-top:20px;margin-top:32px; }
 
+
+/* ── MESSAGE REPLY ────────────────────────────────────────────── */
+.reply-preview {
+  display:none;
+  background:#F0EBE3;
+  border-left:3px solid var(--gold);
+  border-radius:0 4px 4px 0;
+  padding:8px 12px;
+  margin:0 14px 0;
+  font-size:12px;
+  color:#4A3F35;
+  position:relative;
+  align-items:center;
+}
+.reply-preview.show { display:flex; }
+.reply-preview-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.reply-preview-name { font-weight:600; color:#1A1510; margin-right:6px; }
+.reply-close { background:none; border:none; color:#9A8C7E; font-size:16px; cursor:pointer; padding:0 0 0 10px; line-height:1; }
+.msg-reply-quote {
+  background:rgba(0,0,0,0.04);
+  border-left:2px solid var(--gold);
+  border-radius:0 3px 3px 0;
+  padding:4px 8px;
+  margin-bottom:4px;
+  font-size:11px;
+  color:#7A6E65;
+  cursor:pointer;
+}
+.msg-reply-quote strong { color:#4A3F35; font-weight:500; }
+.msg.me .msg-reply-quote { background:rgba(184,151,62,0.08); }
+
 </style>
 </head>
 <body>
@@ -591,6 +622,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     </div>
   </div>
   <div style="position:relative">
+  <div class="reply-preview" id="reply-preview">
+    <span class="reply-preview-text"><span class="reply-preview-name" id="reply-name"></span><span id="reply-text"></span></span>
+    <button class="reply-close" onclick="cancelReply()">×</button>
+  </div>
   <div class="emoji-panel" id="emoji-panel">
     <div class="emoji-grid" id="emoji-grid"></div>
   </div>
@@ -929,15 +964,7 @@ function showErr(msg) {
   if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
-function addMessage(name, content, time, isMe) {
-  const body = document.getElementById('chat-body');
-  const typing = document.getElementById('typing-indicator');
-  const div = document.createElement('div');
-  div.className = `msg ${isMe ? 'me' : 'them'}`;
-  div.innerHTML = `<div class="msg-name">${escHtml(name)}</div><div class="bubble">${escHtml(content)}</div><div class="msg-time">${time}</div>`;
-  body.insertBefore(div, typing);
-  body.scrollTop = body.scrollHeight;
-}
+// OLD addMessage removed — using the one with receipt support below
 
 function addSysMsg(text) {
   const body = document.getElementById('chat-body');
@@ -1125,7 +1152,7 @@ async function doPoll() {
           const result = await processIncomingContent(msg.content, msg.name, rNow, msg.id);
           if (!result) { console.log('DROPPED msg', msg.id, 'content:', msg.content?.substring(0,30)); if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq; continue; }
           let msgEl = null;
-          if (result !== 'file') {
+          if (result !== 'file' && result !== 'reply') {
             msgEl = addMessage(msg.name, result, rNow, false, msg.id);
           }
           notifyMsg(msg.name);
@@ -1177,11 +1204,16 @@ async function sendMsg() {
   if (!content || !roomCode || !myToken) return;
   input.value = '';
 
-  const encrypted = await encryptMsg(content);
+  // Build message with optional reply
+  const msgData = replyTo
+    ? JSON.stringify({ text: content, reply: replyTo })
+    : content;
+  const encrypted = await encryptMsg(msgData);
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const tempId = 'tmp-' + Date.now().toString(36);
-  const el = addMessage(myName, content, time, true, tempId);
+  const el = addMessage(myName, content, time, true, tempId, replyTo);
+  cancelReply(); // clear reply bar after sending
 
   try {
     const result = await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
@@ -1538,7 +1570,7 @@ document.addEventListener('click', (e) => {
 // Track sent messages: msgId -> { el, readAt, timerStarted }
 const sentMsgs = new Map();
 
-function addMessage(name, content, time, isMe, msgId) {
+function addMessage(name, content, time, isMe, msgId, replyData) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
   const div = document.createElement('div');
@@ -1553,8 +1585,13 @@ function addMessage(name, content, time, isMe, msgId) {
     ? `<div class="msg-progress-wrap"><div class="msg-progress" id="progress-${msgId}" style="width:100%"></div></div>`
     : '';
 
+  const replyHtml = replyData
+    ? `<div class="msg-reply-quote"><strong>${escHtml(replyData.name)}</strong> ${escHtml(replyData.text)}</div>`
+    : '';
+
   div.innerHTML = `
     <div class="msg-name">${escHtml(name)}</div>
+    ${replyHtml}
     <div class="bubble">${escHtml(content)}</div>
     <div class="msg-meta">
       <span class="msg-time">${time}</span>
@@ -1562,6 +1599,13 @@ function addMessage(name, content, time, isMe, msgId) {
     </div>
     ${progressHtml}
   `;
+
+  // Tap bubble to reply (not on own messages)
+  if (!isMe) {
+    const bubble = div.querySelector('.bubble');
+    if (bubble) bubble.onclick = () => startReply(name, content, msgId);
+  }
+
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
 
@@ -1816,21 +1860,43 @@ const _origDecrypt = decryptMsg;
 async function processIncomingContent(content, name, time, msgId) {
   if (!content) return null;
 
-  // Decrypt first
   const decrypted = await decryptMsg(content);
   if (!decrypted) return null;
 
-  // Check if it's a file payload (files are JSON-wrapped)
+  // Try parsing as JSON (could be reply, file, or plain text)
   try {
     const parsed = JSON.parse(decrypted);
+    // File attachment
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
       addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
       return 'file';
     }
+    // Reply message
+    if (parsed.text && parsed.reply) {
+      addMessage(name, parsed.text, time, false, msgId, parsed.reply);
+      return 'reply'; // signal it was handled
+    }
   } catch(e) {}
 
   return decrypted;
+}
+
+
+// ── MESSAGE REPLY ────────────────────────────────────────────────────
+let replyTo = null; // { msgId, name, text }
+
+function startReply(name, text, msgId) {
+  replyTo = { msgId, name, text: text.substring(0, 100) };
+  document.getElementById('reply-name').textContent = name + ': ';
+  document.getElementById('reply-text').textContent = replyTo.text;
+  document.getElementById('reply-preview').classList.add('show');
+  document.getElementById('msg-input').focus();
+}
+
+function cancelReply() {
+  replyTo = null;
+  document.getElementById('reply-preview').classList.remove('show');
 }
 
 </script>
