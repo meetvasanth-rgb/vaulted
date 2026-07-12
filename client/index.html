@@ -553,6 +553,8 @@ let typingTimer = null;
 let tabFocused = true;
 let unreadCount = 0;
 let peerWasOnline = false;
+let lastKnownPeerPubKey = null; // detect key rotation on reconnect
+const readConfirmIds = []; // batch read confirmations
 let deleteTimerSeconds = 0; // 0 = off
 let msgTimers = new Map(); // msgId -> setTimeout handle
 
@@ -751,8 +753,11 @@ async function doPoll() {
     }
 
     // Peer online status
-    if (data.peerPubKey && !sharedKey) {
+    // Rederive shared key if peer's pubKey changed (they refreshed/reconnected)
+    if (data.peerPubKey && data.peerPubKey !== lastKnownPeerPubKey) {
+      sharedKey = null; // force fresh derivation
       await deriveSharedKey(data.peerPubKey);
+      lastKnownPeerPubKey = data.peerPubKey;
     }
 
     const wasOnline = peerWasOnline;
@@ -783,6 +788,8 @@ async function doPoll() {
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
           const el = addMessage(msg.name, decrypted, rNow, false, msg.id);
           notifyMsg(msg.name);
+          // Confirm read to server — triggers blue tick on sender
+          readConfirmIds.push(msg.id);
           // Start delete timer immediately on receive (= read)
           if (deleteTimerSeconds > 0) {
             startReceiveDeleteTimer(msg.id, el, deleteTimerSeconds);
@@ -792,8 +799,14 @@ async function doPoll() {
       }
     }
 
+    // Send read confirmations for successfully decrypted messages
+    if (readConfirmIds.length > 0) {
+      const toConfirm = [...readConfirmIds];
+      readConfirmIds.length = 0;
+      api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
+    }
+
   } catch(e) {
-    // Network error — keep polling, don't show error
     console.log('Poll error:', e.message);
   }
 }
@@ -935,7 +948,7 @@ async function handleSetup() {
     showScreen('s-chat');
           enableInput(true);
           playChime();
-          if (d.peerPubKey) await deriveSharedKey(d.peerPubKey);
+          if (d.peerPubKey) { await deriveSharedKey(d.peerPubKey); lastKnownPeerPubKey = d.peerPubKey; }
           if (d.deleteTimer) deleteTimerSeconds = d.deleteTimer;
           if (typingInterval) clearInterval(typingInterval);
           typingInterval = setInterval(checkTyping, 2500);
@@ -954,7 +967,7 @@ async function handleSetup() {
       document.getElementById('hdr-code').textContent = roomCode;
       document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${roomCode}`;
       showScreen('s-chat');
-      if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
+      if (result.peerPubKey) { await deriveSharedKey(result.peerPubKey); lastKnownPeerPubKey = result.peerPubKey; }
       if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
       enableInput(true);
       playChime();
@@ -1007,7 +1020,7 @@ async function leaveRoom() {
 function resetState() {
   myName = ''; myToken = ''; roomCode = '';
   lastMsgTs = 0; sharedKey = null; unreadCount = 0;
-  peerWasOnline = false;
+  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0;
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
   if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
@@ -1069,7 +1082,7 @@ window.addEventListener('load', async () => {
     myName = session.name;
     myToken = session.token;
     roomCode = session.code;
-    lastMsgTs = Date.now() - 10000; // get last 10s of messages
+    lastMsgTs = Date.now() - 120000; // get last 2 min of messages on restore
 
     // Set up chat screen
     const hdrCode = document.getElementById('hdr-code');
@@ -1089,7 +1102,11 @@ window.addEventListener('load', async () => {
         const chatBody = document.getElementById('chat-body');
         if (chatBody) chatBody.innerHTML = '<div class="sys-msg">Reconnected — new session started</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
         sharedKey = null;
-        if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
+        lastKnownPeerPubKey = null; // force key rederivation
+        if (result.peerPubKey) {
+          await deriveSharedKey(result.peerPubKey);
+          lastKnownPeerPubKey = result.peerPubKey;
+        }
         if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
         startPolling();
         if (typingInterval) clearInterval(typingInterval);

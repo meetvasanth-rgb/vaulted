@@ -199,11 +199,8 @@ function handleApi(pathname, method, data, params, res) {
       if (msg.from === token) continue; // skip own messages
       newMsgs.push(msg);
 
-      // Mark message as read when receiver polls it
-      if (msg.type === 'message' && !msg.readAt) {
-        msg.readAt = Date.now();
-        readReceipts.push({ msgId: msg.id, readAt: msg.readAt });
-      }
+      // Don't auto-mark read — wait for client /api/read confirmation
+      // (this ensures double tick only fires after successful decryption)
     }
 
     // Read receipts for sender — messages they sent that were just read
@@ -258,6 +255,22 @@ function handleApi(pathname, method, data, params, res) {
       room.messages.push({ id: generateMsgId(), type: 'system', content: `${data.name} left the room`, ts: Date.now() });
       if (room.members.size === 0) rooms.delete(data.code);
     }
+    return json(res, { ok: true });
+  }
+
+  // POST /api/read — receiver confirms message was successfully decrypted
+  if (pathname === '/api/read' && method === 'POST') {
+    const room = rooms.get(data.code);
+    if (!room || !room.members.has(data.token)) return json(res, { ok: true });
+    // Mark specific messages as read
+    if (data.msgIds && Array.isArray(data.msgIds)) {
+      for (const msg of room.messages) {
+        if (data.msgIds.includes(msg.id) && !msg.readAt) {
+          msg.readAt = Date.now();
+        }
+      }
+    }
+    room.lastActivity = Date.now();
     return json(res, { ok: true });
   }
 
