@@ -1031,6 +1031,7 @@ async function doPoll() {
   isPollRunning = true;
   try {
     const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&lastSeq=${lastSeq}&lastReceiptSeq=${lastReceiptSeq}`);
+    if (data.messages && data.messages.length > 0) console.log('POLL got', data.messages.length, 'msgs, lastSeq was', lastSeq);
 
     if (data.roomGone) {
       stopPolling();
@@ -1038,14 +1039,6 @@ async function doPoll() {
       document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
       clearSession();
       return;
-    }
-
-    // Peer online status
-    // Rederive shared key if peer's pubKey changed (they refreshed/reconnected)
-    if (data.peerPubKey && data.peerPubKey !== lastKnownPeerPubKey) {
-      sharedKey = null; // force fresh derivation
-      await deriveSharedKey(data.peerPubKey);
-      lastKnownPeerPubKey = data.peerPubKey;
     }
 
     const wasOnline = peerWasOnline;
@@ -1085,7 +1078,7 @@ async function doPoll() {
           const rt = new Date();
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
           const result = await processIncomingContent(msg.content, msg.name, rNow, msg.id);
-          if (!result) { if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq; continue; }
+          if (!result) { console.log('DROPPED msg', msg.id, 'content:', msg.content?.substring(0,30)); if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq; continue; }
           let msgEl = null;
           if (result !== 'file') {
             msgEl = addMessage(msg.name, result, rNow, false, msg.id);
@@ -1120,7 +1113,7 @@ async function doPoll() {
     }
 
   } catch(e) {
-    console.log('Poll error:', e.message);
+    console.error('POLL ERROR:', e.message, e.stack);
   } finally {
     isPollRunning = false; // always release lock
   }
