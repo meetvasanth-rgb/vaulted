@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
 const ROOM_TTL = 5 * 60 * 1000;
-const MAX_MESSAGES = 200;
+const MAX_MESSAGES = 500; // higher limit, no shift() needed
 
 const rooms = new Map();
 
@@ -19,7 +19,7 @@ function generateToken() {
 }
 
 function generateMsgId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
 function cleanupRooms() {
@@ -55,7 +55,7 @@ function staticFile(req, res) {
       });
       return;
     }
-    const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.ico': 'image/x-icon' };
+    const types = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.ico':'image/x-icon' };
     res.writeHead(200, { 'Content-Type': types[path.extname(url)] || 'text/plain' });
     res.end(data);
   });
@@ -63,23 +63,27 @@ function staticFile(req, res) {
 
 const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST', 'Access-Control-Allow-Headers': 'Content-Type' });
+    res.writeHead(204, { 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Methods':'GET,POST', 'Access-Control-Allow-Headers':'Content-Type' });
     res.end(); return;
   }
   const url = new URL(req.url, 'http://localhost');
-  const pathname = url.pathname;
-  if (pathname.startsWith('/api/')) {
+  if (url.pathname.startsWith('/api/')) {
     let body = '';
     req.on('data', d => body += d);
     req.on('end', () => {
       let data = {};
       try { if (body) data = JSON.parse(body); } catch {}
-      handleApi(pathname, req.method, data, url.searchParams, res);
+      handleApi(url.pathname, req.method, data, url.searchParams, res);
     });
     return;
   }
   staticFile(req, res);
 });
+
+// ── Helper: create member record ──────────────────────────────────────
+function makeMember(name, pubKey, lastSeq = 0) {
+  return { name, lastSeen: Date.now(), pubKey: pubKey || null, lastSeq, lastReceiptSeq: 0 };
+}
 
 function handleApi(pathname, method, data, params, res) {
 
@@ -90,14 +94,15 @@ function handleApi(pathname, method, data, params, res) {
     const code = namedCode || generateCode();
     const token = generateToken();
     const name = (data.name || 'Stranger').substring(0, 24);
-    const deleteTimer = parseInt(data.deleteTimer) || 0; // seconds, 0 = off
+    const deleteTimer = parseInt(data.deleteTimer) || 0;
     rooms.set(code, {
       code, createdAt: Date.now(), lastActivity: Date.now(),
-      deleteTimer, // message auto-delete duration in seconds
-      members: new Map([[token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null, lastMsgIdx: 0 }]]),
+      deleteTimer, msgSeq: 0, // global sequence counter
+      members: new Map([[token, makeMember(name, data.pubKey)]]),
       messages: [],
+      password: data.password || null,
     });
-    console.log(`Room created: ${code} (deleteTimer: ${deleteTimer}s)`);
+    console.log(`Room created: ${code}`);
     return json(res, { code, token, name, deleteTimer });
   }
 
@@ -106,6 +111,7 @@ function handleApi(pathname, method, data, params, res) {
     const code = (data.code || '').toLowerCase().trim();
     const room = rooms.get(code);
     if (!room) return json(res, { error: 'Room not found. Check the code and try again.' }, 404);
+    if (room.password && room.password !== (data.password || null)) return json(res, { error: 'Incorrect password.' }, 403);
     if (room.members.size >= 2 && !data.token) return json(res, { error: 'Room is full.' }, 403);
 
     // Rejoin with existing token
@@ -113,23 +119,25 @@ function handleApi(pathname, method, data, params, res) {
       const member = room.members.get(data.token);
       member.lastSeen = Date.now();
       if (data.pubKey) member.pubKey = data.pubKey;
+      // On rejoin — reset lastSeq to get recent messages (last 10)
+      member.lastSeq = Math.max(0, room.msgSeq - 10);
       room.lastActivity = Date.now();
       let peerPubKey = null;
       for (const [t, m] of room.members.entries()) {
         if (t !== data.token) peerPubKey = m.pubKey;
       }
-      // On rejoin, start from current position minus small lookback
-      member.lastMsgIdx = Math.max(0, room.messages.length - 10);
       return json(res, { code, token: data.token, name: member.name, isReconnect: true, peerPubKey, deleteTimer: room.deleteTimer });
     }
 
     const token = generateToken();
     const name = (data.name || 'Stranger').substring(0, 24);
-    const password = data.password || null;
-    if (room.password && room.password !== password) return json(res, { error: 'Incorrect password.' }, 403);
-    room.members.set(token, { name, lastSeen: Date.now(), pubKey: data.pubKey || null, lastMsgIdx: room.messages.length });
+    room.members.set(token, makeMember(name, data.pubKey, room.msgSeq));
     room.lastActivity = Date.now();
-    room.messages.push({ id: generateMsgId(), type: 'system', content: `${name} joined the room`, ts: Date.now() });
+
+    // System message — joined
+    const joinMsg = { id: generateMsgId(), seq: ++room.msgSeq, type: 'system', content: `${name} joined the room`, ts: Date.now() };
+    room.messages.push(joinMsg);
+    if (room.messages.length > MAX_MESSAGES) room.messages.shift(); // safe — only trims old system msgs
 
     let peerPubKey = null;
     for (const [t, m] of room.members.entries()) {
@@ -152,27 +160,27 @@ function handleApi(pathname, method, data, params, res) {
     const now = new Date();
     const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
     const msgId = generateMsgId();
+    const seq = ++room.msgSeq;
 
     room.messages.push({
-      id: msgId,
-      type: 'message',
-      from: data.token,
-      name: member.name,
-      content: data.content,
-      time,
-      ts: Date.now(),
-      readAt: null,  // set when receiver polls this message
+      id: msgId, seq, type: 'message',
+      from: data.token, name: member.name,
+      content: data.content, time, ts: Date.now(),
+      deliveredAt: null, readAt: null,
     });
 
+    // Trim old messages — safe because we use seq not index
     if (room.messages.length > MAX_MESSAGES) room.messages.shift();
-    return json(res, { ok: true, msgId });
+
+    return json(res, { ok: true, msgId, seq });
   }
 
   // GET /api/poll
   if (pathname === '/api/poll' && method === 'GET') {
     const code = params.get('code');
     const token = params.get('token');
-    const sinceReceipt = parseFloat(params.get('sinceReceipt') || '0');
+    const lastSeq = parseInt(params.get('lastSeq') || '0');
+    const lastReceiptSeq = parseInt(params.get('lastReceiptSeq') || '0');
     const room = rooms.get(code);
     if (!room) return json(res, { error: 'Room gone', roomGone: true });
     if (!room.members.has(token)) return json(res, { error: 'Not in room' }, 403);
@@ -192,31 +200,39 @@ function handleApi(pathname, method, data, params, res) {
       }
     }
 
-    // INDEX-BASED filtering — completely eliminates duplicates
-    // member.lastMsgIdx tracks exactly which messages this member has received
-    const startIdx = member.lastMsgIdx || 0;
+    // SEQ-BASED filtering — use client's lastSeq directly
+    // This is reliable even after messages.shift()
+    const clientLastSeq = Math.max(lastSeq, member.lastSeq);
     const newMsgs = [];
 
-    for (let i = startIdx; i < room.messages.length; i++) {
-      const msg = room.messages[i];
-      if (msg.from === token) { continue; } // skip own messages
+    for (const msg of room.messages) {
+      if (msg.seq <= clientLastSeq) continue;
+      if (msg.from === token) continue; // skip own
       newMsgs.push(msg);
-      // Mark delivered when receiver first polls this message
+      // Mark delivered
       if (msg.type === 'message' && !msg.deliveredAt) {
         msg.deliveredAt = Date.now();
+        msg.deliveredSeq = msg.seq;
       }
     }
 
-    // Advance member's index to current end of messages array
-    member.lastMsgIdx = room.messages.length;
+    // Advance member's seq
+    if (newMsgs.length > 0) {
+      member.lastSeq = newMsgs[newMsgs.length - 1].seq;
+    }
 
-    // Read receipts for sender
+    // Read receipts for sender — use seq to avoid repeats
     const myReadReceipts = [];
     for (const msg of room.messages) {
       if (msg.from !== token) continue;
       if (msg.type !== 'message') continue;
-      if (msg.deliveredAt && msg.deliveredAt > sinceReceipt) {
-        myReadReceipts.push({ msgId: msg.id, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null });
+      if (msg.deliveredAt && msg.seq > lastReceiptSeq) {
+        myReadReceipts.push({
+          msgId: msg.id,
+          seq: msg.seq,
+          deliveredAt: msg.deliveredAt,
+          readAt: msg.readAt || null,
+        });
       }
     }
 
@@ -227,6 +243,21 @@ function handleApi(pathname, method, data, params, res) {
       serverTime: Date.now(),
       deleteTimer: room.deleteTimer,
     });
+  }
+
+  // POST /api/read — receiver confirms message read
+  if (pathname === '/api/read' && method === 'POST') {
+    const room = rooms.get(data.code);
+    if (!room || !room.members.has(data.token)) return json(res, { ok: true });
+    if (data.msgIds && Array.isArray(data.msgIds)) {
+      for (const msg of room.messages) {
+        if (data.msgIds.includes(msg.id) && !msg.readAt) {
+          msg.readAt = Date.now();
+        }
+      }
+    }
+    room.lastActivity = Date.now();
+    return json(res, { ok: true });
   }
 
   // POST /api/typing
@@ -259,25 +290,10 @@ function handleApi(pathname, method, data, params, res) {
     const room = rooms.get(data.code);
     if (room) {
       room.members.delete(data.token);
-      room.messages.push({ id: generateMsgId(), type: 'system', content: `${data.name} left the room`, ts: Date.now() });
+      const seq = ++room.msgSeq;
+      room.messages.push({ id: generateMsgId(), seq, type: 'system', content: `${data.name} left the room`, ts: Date.now() });
       if (room.members.size === 0) rooms.delete(data.code);
     }
-    return json(res, { ok: true });
-  }
-
-  // POST /api/read — receiver confirms message was successfully decrypted
-  if (pathname === '/api/read' && method === 'POST') {
-    const room = rooms.get(data.code);
-    if (!room || !room.members.has(data.token)) return json(res, { ok: true });
-    // Mark specific messages as read
-    if (data.msgIds && Array.isArray(data.msgIds)) {
-      for (const msg of room.messages) {
-        if (data.msgIds.includes(msg.id) && !msg.readAt) {
-          msg.readAt = Date.now();
-        }
-      }
-    }
-    room.lastActivity = Date.now();
     return json(res, { ok: true });
   }
 
