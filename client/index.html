@@ -339,8 +339,8 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 
 /* ── READ RECEIPTS + DISAPPEARING MESSAGES ──────────────────────── */
 .msg-meta { display:flex; align-items:center; gap:5px; }
-.msg-receipt { font-size:10px; color:var(--muted); }
-.msg-receipt.read { color:var(--gold); }
+.msg-receipt { font-size:11px; color:#B0A898; font-weight:400; }
+.msg-receipt.read { color:#2196F3; font-weight:600; font-size:12px; }
 .msg-progress-wrap { height:2px; border-radius:1px; background:rgba(0,0,0,0.06); margin-top:3px; overflow:hidden; }
 .msg.me .msg-progress-wrap { background:rgba(184,151,62,0.15); }
 .msg-progress { height:100%; border-radius:1px; background:var(--gold); transition:width 1s linear; }
@@ -611,12 +611,14 @@ async function encryptMsg(text) {
 }
 
 async function decryptMsg(data) {
-  if (!sharedKey || !data || !data.startsWith('e2e:')) return data;
+  if (!data) return '';
+  if (!data.startsWith('e2e:')) return data; // plaintext fallback
+  if (!sharedKey) return ''; // key not yet available — silently skip
   try {
     const combined = Uint8Array.from(atob(data.slice(4)), c => c.charCodeAt(0));
     const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: combined.slice(0,12) }, sharedKey, combined.slice(12));
     return new TextDecoder().decode(dec);
-  } catch(e) { return '[encrypted]'; }
+  } catch(e) { return ''; } // decryption failed — silently skip
 }
 
 // ── API HELPERS ─────────────────────────────────────────────────────────
@@ -776,6 +778,7 @@ async function doPoll() {
           addSysMsg(msg.content);
         } else if (msg.type === 'message') {
           const decrypted = await decryptMsg(msg.content);
+          if (!decrypted) { if (msg.ts > lastMsgTs) lastMsgTs = msg.ts; continue; } // skip undecryptable
           const rt = new Date();
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
           const el = addMessage(msg.name, decrypted, rNow, false, msg.id);
@@ -1079,10 +1082,15 @@ window.addEventListener('load', async () => {
       const pubKey = await getOrGenerateKeyPair();
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
       if (!result.error) {
-showScreen('s-chat');
+        showScreen('s-chat');
         setStatus(false, null);
         enableInput(false);
+        // Clear old messages — new session = new encryption keys
+        const chatBody = document.getElementById('chat-body');
+        if (chatBody) chatBody.innerHTML = '<div class="sys-msg">Reconnected — new session started</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+        sharedKey = null;
         if (result.peerPubKey) await deriveSharedKey(result.peerPubKey);
+        if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
         startPolling();
         if (typingInterval) clearInterval(typingInterval);
         typingInterval = setInterval(checkTyping, 2500);
