@@ -776,7 +776,7 @@ let roomCode = '';
 let mode = 'create';
 let pollInterval = null;
 let typingInterval = null;
-let lastMsgTs = 0;
+// lastMsgTs removed — using lastSeq
 let isTyping = false;
 let typingTimer = null;
 let tabFocused = true;
@@ -1099,15 +1099,16 @@ async function doPoll() {
           const rt = new Date();
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
           const result = await processIncomingContent(msg.content, msg.name, rNow, msg.id);
-          if (!result) { if (msg.ts > lastMsgTs) lastMsgTs = msg.ts; continue; }
+          if (!result) { if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq; continue; }
+          let msgEl = null;
           if (result !== 'file') {
-            addMessage(msg.name, result, rNow, false, msg.id);
+            msgEl = addMessage(msg.name, result, rNow, false, msg.id);
           }
           notifyMsg(msg.name);
           readConfirmIds.push(msg.id);
           // Start delete timer immediately on receive (= read)
-          if (deleteTimerSeconds > 0) {
-            startReceiveDeleteTimer(msg.id, el, deleteTimerSeconds);
+          if (deleteTimerSeconds > 0 && msgEl) {
+            startReceiveDeleteTimer(msg.id, msgEl, deleteTimerSeconds);
           }
         }
         // Advance seq tracker
@@ -1277,11 +1278,13 @@ async function handleSetup() {
           clearInterval(pollInterval); pollInterval = null;
           document.getElementById('hdr-code').textContent = roomCode;
           document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
-    showScreen('s-chat');
+          showScreen('s-chat');
           enableInput(true);
           playChime();
           if (d.peerPubKey) { await deriveSharedKey(d.peerPubKey); lastKnownPeerPubKey = d.peerPubKey; }
           if (d.deleteTimer) deleteTimerSeconds = d.deleteTimer;
+          // CRITICAL: restart real message polling — was missing entirely
+          startPolling();
           if (typingInterval) clearInterval(typingInterval);
           typingInterval = setInterval(checkTyping, 2500);
         }
@@ -1294,7 +1297,7 @@ async function handleSetup() {
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
       myToken = result.token;
       roomCode = result.code;
-      lastMsgTs = Date.now(); // only get new messages from join time
+      // lastSeq stays 0 — server tracks position
       saveSession(roomCode, myToken, myName);
       document.getElementById('hdr-code').textContent = roomCode;
       document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${roomCode}`;
@@ -1351,7 +1354,7 @@ async function leaveRoom() {
 
 function resetState() {
   myName = ''; myToken = ''; roomCode = '';
-  lastMsgTs = 0; sharedKey = null; unreadCount = 0;
+  lastSeq = 0; sharedKey = null; unreadCount = 0;
   peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; seenMsgIds.clear(); isPollRunning = false; lastSeq = 0; lastReceiptSeq = 0;
   document.title = 'Vaulted';
   const body = document.getElementById('chat-body');
@@ -1414,7 +1417,7 @@ window.addEventListener('load', async () => {
     myName = session.name;
     myToken = session.token;
     roomCode = session.code;
-    lastMsgTs = Date.now() - 120000; // get last 2 min of messages on restore
+    lastSeq = 0; // server resets to recent messages on rejoin
     seenMsgIds.clear();
     isPollRunning = false;
 
