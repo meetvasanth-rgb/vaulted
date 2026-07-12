@@ -942,19 +942,73 @@ function notifyMsg(name) {
 }
 
 // ── AUDIO ───────────────────────────────────────────────────────────────
+// ── AUDIO CONTEXT — persistent, unlocked on first gesture ───────────
+let _audioCtx = null;
+
+function getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === 'closed') {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // Resume if suspended (iOS requires this after page restore)
+  if (_audioCtx.state === 'suspended') {
+    _audioCtx.resume();
+  }
+  return _audioCtx;
+}
+
+// Unlock audio on first user interaction — critical for iOS
+function unlockAudio() {
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(() => {
+      // Play a silent buffer to fully unlock
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    });
+  }
+}
+
+// Attach unlock to every possible first gesture
+['touchstart', 'touchend', 'click', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    unlockAudio();
+    lastInteractionTime = Date.now();
+  }, { passive: true, once: false });
+});
+
 function playChime() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [{ freq:830, start:0, dur:0.18, vol:0.18 }, { freq:1050, start:0.1, dur:0.22, vol:0.12 }].forEach(({ freq, start, dur, vol }) => {
-      const osc = ctx.createOscillator(), gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.type = 'sine'; osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') {
+      // Queue chime to play after resume
+      ctx.resume().then(() => playChimeNow(ctx));
+      return;
+    }
+    playChimeNow(ctx);
+  } catch(e) {}
+}
+
+function playChimeNow(ctx) {
+  try {
+    [
+      { freq:830,  start:0,   dur:0.18, vol:0.18 },
+      { freq:1050, start:0.1, dur:0.22, vol:0.12 },
+    ].forEach(({ freq, start, dur, vol }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
       gain.gain.setValueAtTime(0, ctx.currentTime + start);
       gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.03);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-      osc.start(ctx.currentTime + start); osc.stop(ctx.currentTime + start + dur + 0.05);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.05);
     });
-    setTimeout(() => ctx.close(), 800);
   } catch(e) {}
 }
 
@@ -1099,6 +1153,7 @@ function stopPolling() {
 
 // ── SEND MESSAGE ────────────────────────────────────────────────────────
 async function sendMsg() {
+  unlockAudio();
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
   if (!content || !roomCode || !myToken) return;
@@ -1194,6 +1249,7 @@ function startJoin() {
 
 // ── SETUP ───────────────────────────────────────────────────────────────
 async function handleSetup() {
+  unlockAudio(); // unlock on first meaningful tap
   const name = document.getElementById('name-input').value.trim();
   if (!name) { showErr('Please enter a codename'); return; }
   myName = name;
