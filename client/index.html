@@ -454,7 +454,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
         <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaulted</div>
       </div>
       <div class="logo-rule" id="logoRule" style="margin:0 auto 20px"></div>
-      <div class="logo-sub" id="logoSub">Encrypted · Anonymous · No trace</div>
+      <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
     </div>
 
     <p class="tagline" id="logoTag">Two people. One conversation.<br/>Disappears when you leave.</p>
@@ -583,7 +583,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <button class="leave-btn" onclick="goBack()">Leave</button>
     <button class="destroy-btn" onclick="closeRoom()">Close &amp; erase</button>
   </div>
-  <div class="e2e-bar">🔒 Encrypted in transit · Messages exist only in your browsers · No trace on server</div>
+  <div class="e2e-bar">🔒 🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
   <div class="chat-body" id="chat-body">
     <div class="sys-msg" id="welcome-msg"></div>
     <div class="typing-indicator" id="typing-indicator">
@@ -826,23 +826,66 @@ async function getOrGenerateKeyPair() {
 }
 
 async function deriveSharedKey(peerPubKeyB64) {
-  if (!peerPubKeyB64 || !myKeyPair) return;
+  if (!peerPubKeyB64) { console.warn('E2E: deriveSharedKey called with no pubKey'); return; }
+  if (!myKeyPair) { console.warn('E2E: deriveSharedKey called but myKeyPair is null'); return; }
   try {
     const peerBytes = Uint8Array.from(atob(peerPubKeyB64), c => c.charCodeAt(0));
-    const peerKey = await crypto.subtle.importKey('raw', peerBytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
-    sharedKey = await crypto.subtle.deriveKey(
-      { name:'ECDH', public: peerKey }, myKeyPair.privateKey,
-      { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+    const peerKey = await crypto.subtle.importKey(
+      'raw', peerBytes,
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true, []
     );
-  } catch(e) { sharedKey = null; }
+    sharedKey = await crypto.subtle.deriveKey(
+      { name: 'ECDH', public: peerKey },
+      myKeyPair.privateKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    console.log('E2E: sharedKey derived successfully');
+  } catch(e) {
+    console.error('E2E: deriveSharedKey failed:', e.message);
+    sharedKey = null;
+  }
 }
 
 async function encryptMsg(text) {
-  return text; // E2E temporarily disabled — HTTPS protects in transit
+  if (!sharedKey) return text; // no key yet — send plaintext
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv }, sharedKey,
+      new TextEncoder().encode(text)
+    );
+    const out = new Uint8Array(12 + enc.byteLength);
+    out.set(iv);
+    out.set(new Uint8Array(enc), 12);
+    return 'v:' + btoa(String.fromCharCode(...out));
+  } catch(e) {
+    console.warn('E2E encrypt failed, sending plaintext:', e.message);
+    return text;
+  }
 }
 
 async function decryptMsg(data) {
-  return data || ''; // E2E temporarily disabled — plaintext passthrough
+  if (!data) return '';
+  if (!data.startsWith('v:')) return data; // plaintext — no key needed
+  if (!sharedKey) {
+    console.warn('E2E: got encrypted msg but no sharedKey yet');
+    return data; // return raw rather than dropping
+  }
+  try {
+    const raw = Uint8Array.from(atob(data.slice(2)), c => c.charCodeAt(0));
+    const dec = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: raw.slice(0, 12) },
+      sharedKey,
+      raw.slice(12)
+    );
+    return new TextDecoder().decode(dec);
+  } catch(e) {
+    console.warn('E2E decrypt failed:', e.message, '— showing raw');
+    return '[encrypted message — key mismatch]';
+  }
 }
 
 // ── API HELPERS ─────────────────────────────────────────────────────────
@@ -1134,13 +1177,14 @@ async function sendMsg() {
   if (!content || !roomCode || !myToken) return;
   input.value = '';
 
+  const encrypted = await encryptMsg(content);
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const tempId = 'tmp-' + Date.now().toString(36);
   const el = addMessage(myName, content, time, true, tempId);
 
   try {
-    const result = await api('/api/send', { code: roomCode, token: myToken, content });
+    const result = await api('/api/send', { code: roomCode, token: myToken, content: encrypted });
     // Update tracking with real msgId from server
     if (result && result.msgId && result.msgId !== tempId) {
       const tracked = sentMsgs.get(tempId);
@@ -1649,11 +1693,12 @@ async function handleFileSelect(event) {
   });
 
   // Encrypt the file payload
+  const encryptedPayload = await encryptMsg(payload);
   // Show preview on sender side
   const el = addFileMessage(myName, file.name, file.type, base64, isImage, time, true, tempId);
 
   try {
-    const result = await api('/api/send', { code: roomCode, token: myToken, content: payload });
+    const result = await api('/api/send', { code: roomCode, token: myToken, content: encryptedPayload });
     if (result && result.msgId) {
       const tracked = sentMsgs.get(tempId);
       if (tracked) {
@@ -1771,9 +1816,13 @@ const _origDecrypt = decryptMsg;
 async function processIncomingContent(content, name, time, msgId) {
   if (!content) return null;
 
-  // Check if it's a file payload
+  // Decrypt first
+  const decrypted = await decryptMsg(content);
+  if (!decrypted) return null;
+
+  // Check if it's a file payload (files are JSON-wrapped)
   try {
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(decrypted);
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
       addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
@@ -1781,7 +1830,7 @@ async function processIncomingContent(content, name, time, msgId) {
     }
   } catch(e) {}
 
-  return content; // regular text message
+  return decrypted;
 }
 
 </script>
