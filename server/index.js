@@ -184,9 +184,14 @@ function api(path, method, d, p, res) {
     for (const [t, mb] of room.members) {
       if (t !== d.token && mb.pushSub) {
         const payload = JSON.stringify({ title: 'Vaulted', body: `New message from ${m.name}`, tag: d.code });
-        webpush.sendNotification(mb.pushSub, payload).catch(err => {
+        // urgency:'high' asks the push service (Apple/Google's relay) to wake the
+        // device promptly instead of batching/deferring — matters most on iOS,
+        // which is more aggressive about delaying "normal" priority pushes to a
+        // locked, idle device. TTL is a 60s delivery window if the device is briefly
+        // unreachable (e.g. no signal), after which the push service drops it.
+        webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 60 }).catch(err => {
           if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null; // subscription expired/revoked
-          else console.warn('push send failed:', err.message);
+          else console.warn('push send failed:', err.statusCode, err.body || err.message);
         });
       }
     }
