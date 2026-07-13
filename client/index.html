@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<!-- The app's UI is light-themed only (no dark mode support). Without this,
+     iOS renders native form chrome — the keyboard's predictive-text/field-
+     navigation toolbar, scrollbars, date pickers — in dark styling whenever
+     the device itself is in Dark Mode, regardless of the page's own colors.
+     That's the black bar that showed up above the keyboard when typing. -->
+<meta name="color-scheme" content="light"/>
 <meta name="apple-mobile-web-app-title" content="Vaulted"/>
 <meta name="theme-color" content="#1A1916"/>
 <link rel="manifest" href="/manifest.json"/>
