@@ -52,3 +52,62 @@ self.addEventListener('notificationclick', (event) => {
     if (self.clients.openWindow) return self.clients.openWindow(url);
   })());
 });
+
+// iOS/WebKit can silently invalidate a push subscription while the app sits
+// idle in the background — unlike Android, which is backed by Google's
+// always-on FCM and doesn't have this problem. That's exactly the reported
+// symptom: notifications work right after subscribing, then stop once the
+// room's been idle a while, Android unaffected. pushsubscriptionchange is
+// the platform's hook for this: it fires when the browser/OS rotates or
+// drops a subscription, giving us a chance to get a new one and tell the
+// server before the old one goes fully dead. The service worker has no
+// access to the page's JS variables (roomCode/myToken), so those are read
+// from IndexedDB, written by the page whenever it successfully subscribes.
+const VAPID_PUBLIC_KEY = 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+function idbGetSession() {
+  return new Promise((resolve) => {
+    const req = indexedDB.open('vaulted-push', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction('kv', 'readonly');
+      const getReq = tx.objectStore('kv').get('session');
+      getReq.onsuccess = () => resolve(getReq.result || null);
+      getReq.onerror = () => resolve(null);
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    try {
+      const session = await idbGetSession();
+      if (!session || !session.roomCode || !session.myToken) return;
+
+      const sub = await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+
+      await fetch('/api/push-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: session.roomCode, token: session.myToken, subscription: sub.toJSON() }),
+      });
+    } catch (e) {
+      // Nothing more we can do from here — the page will re-subscribe
+      // normally next time it's opened in the foreground.
+    }
+  })());
+});

@@ -1246,6 +1246,25 @@ function showEnableNotificationsBanner(reg) {
   };
 }
 
+// Stash roomCode/myToken where the service worker can read them (localStorage
+// isn't reachable from a SW). This is what lets sw.js's pushsubscriptionchange
+// handler — see that file for why it exists — resubscribe and notify the
+// server on iOS's behalf while the app is backgrounded, with no page open.
+function idbPutSession(roomCode, myToken) {
+  return new Promise((resolve) => {
+    const req = indexedDB.open('vaulted-push', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put({ roomCode, myToken }, 'session');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    };
+    req.onerror = () => resolve();
+  });
+}
+
 async function subscribeToPush(reg) {
   try {
     let sub = await reg.pushManager.getSubscription();
@@ -1256,6 +1275,7 @@ async function subscribeToPush(reg) {
       });
     }
     await api('/api/push-subscribe', { code: roomCode, token: myToken, subscription: sub.toJSON() });
+    idbPutSession(roomCode, myToken).catch(() => {});
   } catch (e) {
     console.warn('Push subscribe failed:', e.message);
   }
