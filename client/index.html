@@ -121,6 +121,19 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .push-banner span{flex:1}
 .push-banner button{background:#B8973E;color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:11px;cursor:pointer;white-space:nowrap}
 .push-banner button.secondary{background:none;color:#7A6E65;border:0.5px solid #D0CAC0}
+
+/* -- ROOM SWITCHER (multi-room tabs) -- */
+.room-tabs{display:none;flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:6px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:center}
+.room-tabs.show{display:flex}
+.room-tabs::-webkit-scrollbar{height:0}
+.room-tab{position:relative;flex-shrink:0;display:flex;align-items:center;gap:6px;background:#F5F5F5;border:1px solid transparent;border-radius:16px;padding:6px 12px;font-size:12px;color:#666;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
+.room-tab.active{background:rgba(184,151,62,0.13);border-color:rgba(184,151,62,0.4);color:#1A1510;font-weight:500}
+.room-tab .rt-dot{width:6px;height:6px;border-radius:50%;background:#CCC;flex-shrink:0}
+.room-tab .rt-dot.online{background:var(--green)}
+.room-tab .rt-badge{background:#C0392B;color:#fff;border-radius:9px;min-width:16px;height:16px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;font-weight:600}
+.room-tab-add{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#fff;border:1px dashed #D0CAC0;color:#9A8C7E;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;padding:0}
+.room-tab-add:hover{border-color:var(--gold);color:var(--gold)}
+.room-tab-add:disabled{opacity:.4;cursor:not-allowed}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
@@ -637,9 +650,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
     </div>
-    <button class="leave-btn" onclick="goBack()">Leave</button>
-    <button class="destroy-btn" onclick="closeRoom()">Close &amp; erase</button>
+    <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
+    <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
   </div>
+  <div class="room-tabs" id="room-tabs"></div>
   <div class="e2e-bar">🔒 🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
   <div class="push-banner" id="push-banner"></div>
   <div class="chat-body" id="chat-body">
@@ -823,95 +837,148 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 </div>
 
 <script>
-// ── HTTP POLLING MESSENGER ────────────────────────────────────────────
-// No WebSockets — uses HTTP polling every 2s
-// Works on iOS even when browser is backgrounded
+// ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
+// No WebSockets — uses HTTP polling every 2s. Works on iOS even when the
+// browser is backgrounded.
+//
+// PHASE 1 MULTI-ROOM ARCHITECTURE
+// Everything that used to be a single set of global variables (roomCode,
+// myToken, sharedKey, lastSeq, msgTimers, …) is now bundled into one plain
+// object per open room ("Room"), held in the `rooms` Map keyed by room code.
+// Only ONE room is "active" at a time (`activeRoomCode`) — that's the room
+// whose messages are actually rendered into #chat-body. Every open room
+// keeps polling every 2s in the background regardless of which one is
+// active, independently accumulating its own `messages` array and `unread`
+// count. Switching tabs just re-renders #chat-body from the target room's
+// stored messages — no network round-trip needed to switch.
+// Web Push is explicitly out of scope for this phase (existing single-room
+// push code is preserved, just threaded through a `room` argument).
 
-// ── STATE ──────────────────────────────────────────────────────────────
-let myName = '';
-let myToken = '';
-let roomCode = '';
-let mode = 'create';
-let pollInterval = null;
-let typingInterval = null;
-// lastMsgTs removed — using lastSeq
-let isTyping = false;
-let typingTimer = null;
+// ── GLOBAL (page-level, not room-specific) STATE ───────────────────────
+let mode = 'create';               // setup screen flow: create | named | join
 let tabFocused = true;
-let unreadCount = 0;
-let peerWasOnline = false;
-let lastKnownPeerPubKey = null; // detect key rotation on reconnect
-let lastInteractionTime = Date.now(); // track user activity
-let lastReceiptTs = 0; // separate tracking for receipt timestamps
-const readConfirmIds = [];   // messages decrypted this poll
-const pendingReadIds = [];   // queued while tab was hidden
-const seenMsgIds = new Set(); // deduplicate received messages
-let isPollRunning = false;    // prevent concurrent polls
-let lastSeq = 0;
-let lastReceiptSeq = 0;
-let lastReactionSeq = 0; // tracks synced message reactions, same pattern as read receipts
-let deleteTimerSeconds = 0; // 0 = off
-let msgTimers = new Map(); // msgId -> setTimeout handle
-let activeActionMsgId = null; // message currently showing its Reply/React action row
+let lastInteractionTime = Date.now();
+let activeActionMsgId = null;      // message currently showing its Reply/React row
+let replyTo = null;                // { msgId, text } — composer reply state
+let pendingRoomCode = null;        // room code currently on s-waiting (not yet confirmed)
+let swRegistration = null;
 
-// E2E encryption state
-let myKeyPair = null;
-let sharedKey = null;
+const rooms = new Map();           // code -> Room
+let activeRoomCode = null;
 
-// Session persistence (survives iOS page reload)
-const SESSION_KEY = 'vaulted_session';
+const MAX_ROOMS = 5;
+const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
+const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 // This used to be 5 minutes, which meant closing the app/tab for longer than
 // that logged you out even from a named room meant to persist for days — the
-// server has its own authoritative TTL per room type (see NAMED_ROOM_TTL /
-// ONE_TIME_ROOM_TTL server-side) and will reject a stale rejoin with "Room
-// not found" on its own, so this local value just needs to be generously
-// long, not a safety mechanism in itself.
+// server has its own authoritative TTL per room type and will reject a stale
+// rejoin with "Room not found" on its own, so this local value just needs to
+// be generously long, not a safety mechanism in itself.
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit
 
-async function saveSession(code, token, name) {
+function makeRoom({ code, token, myName, deleteTimerSeconds }) {
+  return {
+    code, token, myName,
+    peerName: null, peerOnline: false,
+    lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0,
+    myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
+    deleteTimerSeconds: deleteTimerSeconds || 0,
+    messages: [],           // ordered array of message records (the "chat log")
+    seenMsgIds: new Set(),  // dedupe across overlapping polls
+    readConfirmIds: [], pendingReadIds: [],
+    msgTimers: new Map(),   // msgId -> setTimeout handle (disappearing messages)
+    pollInterval: null, typingInterval: null, typingTimer: null, waitInterval: null,
+    isPollRunning: false,
+    unread: 0,
+  };
+}
+
+function getActiveRoom() { return activeRoomCode ? rooms.get(activeRoomCode) : null; }
+function addRoomToState(room) { rooms.set(room.code, room); }
+
+function removeRoomFromState(code) {
+  const room = rooms.get(code);
+  if (room) {
+    if (room.pollInterval) clearInterval(room.pollInterval);
+    if (room.typingInterval) clearInterval(room.typingInterval);
+    if (room.waitInterval) clearInterval(room.waitInterval);
+    for (const h of room.msgTimers.values()) clearTimeout(h);
+  }
+  rooms.delete(code);
+  clearRoomStorage(code);
+}
+
+// ── PER-ROOM localStorage PERSISTENCE (max 5 rooms) ────────────────────
+function roomStorageKey(code) { return 'vaulted_room_' + code; }
+
+function loadRoomsIndex() {
+  try { return JSON.parse(localStorage.getItem(ROOMS_INDEX_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveRoomsIndex(codes) {
+  try { localStorage.setItem(ROOMS_INDEX_KEY, JSON.stringify(codes.slice(0, MAX_ROOMS))); } catch(e) {}
+}
+function saveActiveRoomCode(code) {
+  try { localStorage.setItem(ACTIVE_ROOM_KEY, code || ''); } catch(e) {}
+}
+function loadActiveRoomCode() {
+  try { return localStorage.getItem(ACTIVE_ROOM_KEY) || null; } catch(e) { return null; }
+}
+
+async function persistRoom(room) {
   try {
-    const keys = await exportKeyPairForStorage();
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ code, token, name, savedAt: Date.now(), ...keys }));
+    const keys = await exportKeyPairForStorage(room);
+    localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
+      code: room.code, token: room.token, name: room.myName,
+      deleteTimerSeconds: room.deleteTimerSeconds,
+      savedAt: Date.now(), ...keys,
+    }));
+    const idx = loadRoomsIndex().filter(c => c !== room.code);
+    idx.push(room.code);
+    saveRoomsIndex(idx);
   } catch(e) {}
 }
-function loadSession() {
+function clearRoomStorage(code) {
+  try { localStorage.removeItem(roomStorageKey(code)); } catch(e) {}
+  saveRoomsIndex(loadRoomsIndex().filter(c => c !== code));
+}
+function loadRoomSession(code) {
   try {
-    const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-    if (!s || Date.now() - s.savedAt > SESSION_TTL) { localStorage.removeItem(SESSION_KEY); return null; }
+    const s = JSON.parse(localStorage.getItem(roomStorageKey(code)) || 'null');
+    if (!s || Date.now() - s.savedAt > SESSION_TTL) { clearRoomStorage(code); return null; }
     return s;
   } catch(e) { return null; }
 }
-function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch(e) {} }
 
-// ── CRYPTO ─────────────────────────────────────────────────────────────
-// Export/import the ECDH keypair so it survives a page reload. Previously
-// every reload (iOS backgrounding a tab often kills and reloads it) called
-// getOrGenerateKeyPair() with myKeyPair reset to null, silently generating a
-// brand new keypair. That changes the ECDH shared secret with the peer, so
+// ── CRYPTO (per room) ──────────────────────────────────────────────────
+// Export/import the ECDH keypair so it survives a page reload. Every reload
+// (iOS backgrounding a tab often kills and reloads it) used to call
+// getOrGenerateKeyPair() with the keypair reset to null, silently generating
+// a brand new keypair. That changes the ECDH shared secret with the peer, so
 // every message encrypted under the old secret becomes permanently
-// undecryptable — shown as "[encrypted message — key mismatch]". Persisting
-// the private key (extractable, stored only in this browser's localStorage —
-// never sent anywhere) and reusing it on rejoin keeps the shared secret
-// stable for the life of the room, so old messages stay readable.
-async function exportKeyPairForStorage() {
-  if (!myKeyPair) return {};
+// undecryptable. Persisting the private key (extractable, stored only in
+// this browser's localStorage — never sent anywhere) per room and reusing it
+// on rejoin keeps the shared secret stable for the life of that room.
+async function exportKeyPairForStorage(room) {
+  if (!room.myKeyPair) return {};
   try {
     const [pubJwk, privJwk] = await Promise.all([
-      crypto.subtle.exportKey('jwk', myKeyPair.publicKey),
-      crypto.subtle.exportKey('jwk', myKeyPair.privateKey),
+      crypto.subtle.exportKey('jwk', room.myKeyPair.publicKey),
+      crypto.subtle.exportKey('jwk', room.myKeyPair.privateKey),
     ]);
     return { pubJwk, privJwk };
   } catch (e) { return {}; }
 }
 
-async function importKeyPairFromStorage(session) {
+async function importKeyPairFromStorage(room, session) {
   if (!session || !session.pubJwk || !session.privJwk) return false;
   try {
     const [publicKey, privateKey] = await Promise.all([
       crypto.subtle.importKey('jwk', session.pubJwk, { name:'ECDH', namedCurve:'P-256' }, true, []),
       crypto.subtle.importKey('jwk', session.privJwk, { name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey']),
     ]);
-    myKeyPair = { publicKey, privateKey };
+    room.myKeyPair = { publicKey, privateKey };
     return true;
   } catch (e) {
     console.warn('E2E: could not restore saved keypair, generating a fresh one:', e.message);
@@ -919,80 +986,59 @@ async function importKeyPairFromStorage(session) {
   }
 }
 
-async function getOrGenerateKeyPair() {
-  if (myKeyPair) {
-    const exported = await crypto.subtle.exportKey('raw', myKeyPair.publicKey);
+async function getOrGenerateKeyPair(room) {
+  if (room.myKeyPair) {
+    const exported = await crypto.subtle.exportKey('raw', room.myKeyPair.publicKey);
     return btoa(String.fromCharCode(...new Uint8Array(exported)));
   }
-  myKeyPair = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey']);
-  const exported = await crypto.subtle.exportKey('raw', myKeyPair.publicKey);
+  room.myKeyPair = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey']);
+  const exported = await crypto.subtle.exportKey('raw', room.myKeyPair.publicKey);
   return btoa(String.fromCharCode(...new Uint8Array(exported)));
 }
 
-async function deriveSharedKey(peerPubKeyB64) {
-  if (!peerPubKeyB64) { console.warn('E2E: deriveSharedKey called with no pubKey'); return; }
-  if (!myKeyPair) { console.warn('E2E: deriveSharedKey called but myKeyPair is null'); return; }
+async function deriveSharedKey(room, peerPubKeyB64) {
+  if (!peerPubKeyB64 || !room.myKeyPair) return;
   try {
     const peerBytes = Uint8Array.from(atob(peerPubKeyB64), c => c.charCodeAt(0));
-    const peerKey = await crypto.subtle.importKey(
-      'raw', peerBytes,
-      { name: 'ECDH', namedCurve: 'P-256' },
-      true, []
+    const peerKey = await crypto.subtle.importKey('raw', peerBytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
+    room.sharedKey = await crypto.subtle.deriveKey(
+      { name:'ECDH', public: peerKey },
+      room.myKeyPair.privateKey,
+      { name:'AES-GCM', length:256 },
+      false, ['encrypt','decrypt']
     );
-    sharedKey = await crypto.subtle.deriveKey(
-      { name: 'ECDH', public: peerKey },
-      myKeyPair.privateKey,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-    console.log('E2E: sharedKey derived successfully');
   } catch(e) {
     console.error('E2E: deriveSharedKey failed:', e.message);
-    sharedKey = null;
+    room.sharedKey = null;
   }
 }
 
-async function encryptMsg(text) {
-  if (!sharedKey) return text; // no key yet — send plaintext
+async function encryptMsg(room, text) {
+  if (!room.sharedKey) return text; // no key yet — send plaintext
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const enc = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv }, sharedKey,
-      new TextEncoder().encode(text)
-    );
+    const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, room.sharedKey, new TextEncoder().encode(text));
     const out = new Uint8Array(12 + enc.byteLength);
-    out.set(iv);
-    out.set(new Uint8Array(enc), 12);
+    out.set(iv); out.set(new Uint8Array(enc), 12);
     return 'v:' + btoa(String.fromCharCode(...out));
-  } catch(e) {
-    console.warn('E2E encrypt failed, sending plaintext:', e.message);
-    return text;
-  }
+  } catch(e) { return text; }
 }
 
-async function decryptMsg(data) {
+async function decryptMsg(room, data) {
   if (!data) return '';
   if (!data.startsWith('v:')) return data; // plaintext — no key needed
-  if (!sharedKey) {
-    console.warn('E2E: got encrypted msg but no sharedKey yet');
-    return data; // return raw rather than dropping
-  }
+  if (!room.sharedKey) return data;
   try {
     const raw = Uint8Array.from(atob(data.slice(2)), c => c.charCodeAt(0));
-    const dec = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: raw.slice(0, 12) },
-      sharedKey,
-      raw.slice(12)
-    );
+    const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, room.sharedKey, raw.slice(12));
     return new TextDecoder().decode(dec);
   } catch(e) {
-    console.warn('E2E decrypt failed:', e.message, '— showing raw');
+    console.warn('E2E decrypt failed:', e.message);
     return '[encrypted message — key mismatch]';
   }
 }
 
-// ── API HELPERS ─────────────────────────────────────────────────────────
+// ── API HELPER ──────────────────────────────────────────────────────────
 async function api(path, data = null) {
   const opts = data
     ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data) }
@@ -1005,13 +1051,9 @@ async function api(path, data = null) {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  if (id === 's-chat' && peerWasOnline) {
-    setTimeout(() => enableInput(true), 100);
-  }
   if (id === 's-setup') {
-    // Always reset the button when showing setup screen
     const btn = document.getElementById('setup-btn');
-    if (btn) { btn.disabled = false; }
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -1033,17 +1075,6 @@ function showErr(msg) {
   if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
-// OLD addMessage removed — using the one with receipt support below
-
-function addSysMsg(text) {
-  const body = document.getElementById('chat-body');
-  const typing = document.getElementById('typing-indicator');
-  const div = document.createElement('div');
-  div.className = 'sys-msg'; div.textContent = text;
-  body.insertBefore(div, typing);
-  body.scrollTop = body.scrollHeight;
-}
-
 function escHtml(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -1053,59 +1084,49 @@ function setStatus(online, name) {
   const txt = document.getElementById('status-txt');
   if (dot) dot.className = online ? 'status-dot' : 'status-dot away';
   if (txt) txt.textContent = online ? 'Connected' : (name ? `Waiting for ${name}…` : 'Waiting…');
-  peerWasOnline = online;
 }
 
 function showTypingIndicator(show) {
   document.getElementById('typing-indicator')?.classList.toggle('show', show);
 }
 
-function notifyMsg(name) {
-  if (!tabFocused || document.hidden) {
-    playChime();
-    unreadCount++;
-    document.title = `(${unreadCount}) ${name} — Vaulted`;
-  }
+// Chime for a message on `room` — unless that room is the one actively
+// visible on screen right now (in which case you're already watching it
+// arrive, no need to also make noise).
+function notifyMsg(room) {
+  const roomVisible = room.code === activeRoomCode && tabFocused && !document.hidden;
+  if (!roomVisible) playChime();
 }
 
-// ── AUDIO ───────────────────────────────────────────────────────────────
-// ── AUDIO — iOS-safe implementation ─────────────────────────────────
+function updateDocumentTitle() {
+  let total = 0;
+  for (const room of rooms.values()) if (room.code !== activeRoomCode) total += room.unread;
+  document.title = total > 0 ? `(${total}) Vaulted` : 'Vaulted';
+}
+
+// ── AUDIO — iOS-safe implementation ─────────────────────────────────────
 let _audioCtx = null;
 let _audioUnlocked = false;
 
 function unlockAudio() {
   if (_audioUnlocked) return;
   try {
-    if (!_audioCtx) {
-      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    // Synchronously resume and play silent buffer — iOS requires this
-    // to happen in the SAME call stack as the user gesture
-    if (_audioCtx.state === 'suspended') {
-      _audioCtx.resume();
-    }
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
     const buf = _audioCtx.createBuffer(1, 1, 22050);
     const src = _audioCtx.createBufferSource();
-    src.buffer = buf;
-    src.connect(_audioCtx.destination);
-    src.start(0);
+    src.buffer = buf; src.connect(_audioCtx.destination); src.start(0);
     _audioUnlocked = true;
   } catch(e) {}
 }
 
-// Attach to all gestures — synchronously, not deferred
 ['touchend', 'click', 'keydown'].forEach(evt => {
-  document.addEventListener(evt, (e) => {
-    unlockAudio();
-    lastInteractionTime = Date.now();
-  });
+  document.addEventListener(evt, () => { unlockAudio(); lastInteractionTime = Date.now(); });
 });
 
 function playChime() {
   try {
-    if (!_audioCtx) {
-      _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = _audioCtx;
     const doPlay = () => {
       [
@@ -1124,75 +1145,60 @@ function playChime() {
         osc.stop(ctx.currentTime + start + dur + 0.05);
       });
     };
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(doPlay);
-    } else {
-      doPlay();
-    }
+    if (ctx.state === 'suspended') ctx.resume().then(doPlay); else doPlay();
   } catch(e) {}
 }
 
-// ── TAB VISIBILITY ──────────────────────────────────────────────────────
-// While the app is genuinely backgrounded on iOS, no JS timer runs — the
-// setInterval(doPoll, 2000) loop is fully suspended by the OS, not just
-// slowed down, which is exactly why push notifications exist as the
-// background-delivery path. What we CAN control is the moment the app comes
-// back to the foreground: force an immediate poll right then instead of
-// waiting up to 2s for the interval to naturally tick again, so anything
-// push missed (or arrived while the room wasn't the active window) shows up
-// the instant you look at the app rather than a beat later.
+// ── TAB VISIBILITY / CATCH-UP POLL ──────────────────────────────────────
+// While the app is genuinely backgrounded on iOS, no JS timer runs — every
+// room's setInterval(doPoll, 2000) loop is fully suspended by the OS. What we
+// CAN control is the moment the app comes back to the foreground: force an
+// immediate poll of every open room right then instead of waiting up to 2s.
 function catchUpPoll() {
-  if (roomCode && myToken) doPoll();
+  for (const room of rooms.values()) doPoll(room);
 }
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    tabFocused = false; // force inactive when page hidden
+    tabFocused = false;
   } else {
     tabFocused = true;
     lastInteractionTime = Date.now();
-    unreadCount = 0;
-    document.title = 'Vaulted';
+    const active = getActiveRoom();
+    if (active) active.unread = 0;
+    updateDocumentTitle();
     catchUpPoll();
-    // Flush pending read confirmations when user returns
-    if (pendingReadIds.length > 0 && roomCode && myToken) {
-      const toConfirm = [...pendingReadIds];
-      pendingReadIds.length = 0;
-      api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
-    }
   }
 });
 window.addEventListener('focus', () => {
-  tabFocused = true; unreadCount = 0; document.title = 'Vaulted';
+  tabFocused = true; lastInteractionTime = Date.now();
+  const active = getActiveRoom();
+  if (active) active.unread = 0;
+  updateDocumentTitle();
   catchUpPoll();
-  if (pendingReadIds.length > 0 && roomCode && myToken) {
-    const toConfirm = [...pendingReadIds];
-    pendingReadIds.length = 0;
-    api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
-  }
 });
 window.addEventListener('blur', () => { tabFocused = false; });
 // iOS/WebKit restores a backgrounded tab from its page cache without firing
-// 'load' — pageshow (with persisted:true) is the reliable signal for that
-// case, so this catches resumes that visibilitychange/focus can occasionally
-// miss on iOS specifically.
+// 'load' — pageshow (with persisted:true) is the reliable signal for that.
 window.addEventListener('pageshow', (e) => { if (e.persisted) catchUpPoll(); });
 
-// ── PUSH NOTIFICATIONS ────────────────────────────────────────────────
-// The in-app chime (playChime, above) only fires while the tab's JS is
-// actually running — iOS suspends timers in a backgrounded browser tab, so a
-// message that arrives while you're out of the app never makes a sound.
-// Web Push fixes that, but iOS only grants the Push API to a web app that's
-// been added to the home screen from Safari (Chrome/Edge on iOS are WebKit
-// wrappers and can't offer that install step themselves — this is an Apple
-// platform restriction, not something we can route around). Everywhere else
-// (desktop Chrome, Android Chrome) push works from a normal browser tab.
-//
-// Server never sees plaintext, so the push payload it sends is always
-// generic ("New message") — see sw.js. That's intentional: keeping message
-// content out of push payloads preserves the zero-knowledge design.
+['click','keydown','touchstart','mousemove'].forEach(evt => {
+  document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
+});
+
+function isUserActive() {
+  if (document.hidden) return false;
+  if (tabFocused) return true;
+  return (Date.now() - lastInteractionTime) < 5000;
+}
+
+// ── PUSH NOTIFICATIONS (unchanged from single-room phase, threaded per room) ─
+// The in-app chime only fires while the tab's JS is actually running — iOS
+// suspends timers in a backgrounded browser tab. Web Push fixes that, but iOS
+// only grants the Push API to a web app added to the home screen from Safari.
+// Server never sees plaintext, so push payloads stay generic — see sw.js.
+// Not extended for multi-room correctness this phase (explicitly deferred).
 const VAPID_PUBLIC_KEY = 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
-let swRegistration = null;
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -1209,17 +1215,13 @@ function isStandalonePwa() {
 
 function isIOS() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS masquerades as Mac
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
-  try {
-    return swRegistration = await navigator.serviceWorker.register('/sw.js');
-  } catch (e) {
-    console.warn('SW registration failed:', e.message);
-    return null;
-  }
+  try { return swRegistration = await navigator.serviceWorker.register('/sw.js'); }
+  catch (e) { console.warn('SW registration failed:', e.message); return null; }
 }
 
 function hidePushBanner() {
@@ -1238,7 +1240,7 @@ function showIosInstallBanner() {
   };
 }
 
-function showEnableNotificationsBanner(reg) {
+function showEnableNotificationsBanner(room, reg) {
   const bar = document.getElementById('push-banner');
   if (!bar || localStorage.getItem('vaulted_push_banner_dismissed')) return;
   bar.innerHTML = `<span>Get notified here when a message arrives?</span>
@@ -1249,7 +1251,7 @@ function showEnableNotificationsBanner(reg) {
     hidePushBanner();
     try {
       const perm = await Notification.requestPermission();
-      if (perm === 'granted') await subscribeToPush(reg);
+      if (perm === 'granted') await subscribeToPush(room, reg);
     } catch (e) {}
   };
   document.getElementById('push-banner-no').onclick = () => {
@@ -1258,10 +1260,6 @@ function showEnableNotificationsBanner(reg) {
   };
 }
 
-// Stash roomCode/myToken where the service worker can read them (localStorage
-// isn't reachable from a SW). This is what lets sw.js's pushsubscriptionchange
-// handler — see that file for why it exists — resubscribe and notify the
-// server on iOS's behalf while the app is backgrounded, with no page open.
 function idbPutSession(roomCode, myToken) {
   return new Promise((resolve) => {
     const req = indexedDB.open('vaulted-push', 1);
@@ -1277,7 +1275,7 @@ function idbPutSession(roomCode, myToken) {
   });
 }
 
-async function subscribeToPush(reg) {
+async function subscribeToPush(room, reg) {
   try {
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -1286,219 +1284,550 @@ async function subscribeToPush(reg) {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
     }
-    await api('/api/push-subscribe', { code: roomCode, token: myToken, subscription: sub.toJSON() });
-    idbPutSession(roomCode, myToken).catch(() => {});
+    await api('/api/push-subscribe', { code: room.code, token: room.token, subscription: sub.toJSON() });
+    idbPutSession(room.code, room.token).catch(() => {});
   } catch (e) {
     console.warn('Push subscribe failed:', e.message);
   }
 }
 
-async function initPushForRoom() {
-  if (!roomCode || !myToken) return;
+async function initPushForRoom(room) {
+  if (!room.code || !room.token) return;
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-
   if (isIOS() && !isStandalonePwa()) { showIosInstallBanner(); return; }
   if (Notification.permission === 'denied') return;
-
   const reg = swRegistration || await registerServiceWorker();
   if (!reg) return;
-
-  if (Notification.permission === 'default') { showEnableNotificationsBanner(reg); return; }
-  await subscribeToPush(reg);
+  if (Notification.permission === 'default') { showEnableNotificationsBanner(room, reg); return; }
+  await subscribeToPush(room, reg);
 }
 
-// ── POLLING ─────────────────────────────────────────────────────────────
-async function startPolling() {
-  if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(doPoll, 2000);
-  doPoll(); // immediate first poll
-  initPushForRoom().catch(() => {});
+// ── ROOM SWITCHER UI (tabs/pills + unread badges) ──────────────────────
+function renderRoomTabs() {
+  const wrap = document.getElementById('room-tabs');
+  if (!wrap) return;
+  if (rooms.size === 0) { wrap.classList.remove('show'); wrap.innerHTML = ''; return; }
+  wrap.classList.add('show');
+  let html = '';
+  for (const room of rooms.values()) {
+    const active = room.code === activeRoomCode;
+    const label = room.code.length > 14 ? room.code.slice(0, 12) + '…' : room.code;
+    html += `<div class="room-tab${active ? ' active' : ''}" data-room="${room.code}">
+      <span class="rt-dot${room.peerOnline ? ' online' : ''}"></span>
+      <span>${escHtml(label)}</span>
+      ${room.unread > 0 && !active ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
+    </div>`;
+  }
+  html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add room"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>`;
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => setActiveRoom(el.dataset.room); });
+  const addBtn = document.getElementById('room-tab-add');
+  if (addBtn) addBtn.onclick = () => addRoomFlow();
 }
 
-async function doPoll() {
-  if (!roomCode || !myToken) return;
-  if (isPollRunning) return; // skip if previous poll still in progress
-  isPollRunning = true;
+function setActiveRoom(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  activeRoomCode = code;
+  saveActiveRoomCode(code);
+  room.unread = 0;
+  closeAllMsgActions();
+  cancelReply();
+  document.getElementById('hdr-code').textContent = room.code;
+  setStatus(room.peerOnline, room.peerName);
+  renderChatBody(room);
+  enableInput(room.peerOnline);
+  renderRoomTabs();
+  updateDocumentTitle();
+}
+
+function renderChatBody(room) {
+  const body = document.getElementById('chat-body');
+  body.innerHTML = `<div class="sys-msg" id="welcome-msg">You're "${escHtml(room.myName)}" — ${escHtml(room.code)}</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
+  for (const rec of room.messages) {
+    if (rec.deleted) continue;
+    renderMessageRecord(room, rec);
+  }
+  body.scrollTop = body.scrollHeight;
+}
+
+function addRoomFlow() {
+  if (rooms.size >= MAX_ROOMS) { toast(`Maximum ${MAX_ROOMS} rooms open`); return; }
+  showScreen('s-landing');
+  triggerLandingAnim();
+}
+
+function switchToNextRoomOrLanding() {
+  if (activeRoomCode && rooms.has(activeRoomCode)) {
+    setActiveRoom(activeRoomCode);
+    showScreen('s-chat');
+  } else {
+    const next = rooms.keys().next();
+    if (!next.done) { setActiveRoom(next.value); showScreen('s-chat'); }
+    else { activeRoomCode = null; showScreen('s-landing'); triggerLandingAnim(); }
+  }
+  renderRoomTabs();
+}
+
+// ── MESSAGE RENDERING (unified: text / file / system) ──────────────────
+// A message whose entire visible text is one emoji renders large with no
+// bubble background, matching WhatsApp/iMessage convention.
+function isSingleEmoji(str) {
+  const t = (str || '').trim();
+  if (!t) return false;
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&lastSeq=${lastSeq}&lastReceiptSeq=${lastReceiptSeq}&lastReactionSeq=${lastReactionSeq}`);
-    if (data.messages && data.messages.length > 0) console.log('POLL got', data.messages.length, 'msgs, lastSeq was', lastSeq);
+    const seg = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)];
+    return seg.length === 1 && /\p{Extended_Pictographic}/u.test(seg[0].segment);
+  } catch (e) {
+    return t.length <= 4 && /\p{Extended_Pictographic}/u.test(t);
+  }
+}
+
+function buildMsgActionsHtml(msgId) {
+  return `
+    <div class="msg-actions" id="actions-${msgId}">
+      <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
+      <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
+    </div>
+    <div class="reaction-picker" id="picker-${msgId}">
+      ${QUICK_REACTIONS.map(e => `<span data-emoji="${e}">${e}</span>`).join('')}
+    </div>
+  `;
+}
+
+function closeAllMsgActions() {
+  document.querySelectorAll('.msg-actions.show').forEach(el => el.classList.remove('show'));
+  document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
+  activeActionMsgId = null;
+}
+
+function wireMsgActions(div, room, msgId, replyText) {
+  // Text messages have a .bubble, which is what we tap to reveal Reply/React.
+  // File/image messages fall back to .msg-meta (the timestamp/tick row)
+  // instead of the image/file element itself — assigning onclick there would
+  // silently overwrite that element's own onclick="viewImage(...)" and break
+  // the zoomable full-view viewer.
+  const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
+  const actions = div.querySelector(`#actions-${msgId}`);
+  const picker = div.querySelector(`#picker-${msgId}`);
+  if (!bubble || !actions || !picker) return;
+
+  const toggleActions = () => {
+    const wasOpen = actions.classList.contains('show');
+    closeAllMsgActions();
+    if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
+  };
+
+  let touchStartX, touchStartY, touchStartTime;
+  bubble.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+  }, { passive: true });
+  bubble.addEventListener('touchend', (e) => {
+    const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    const dt = Date.now() - touchStartTime;
+    if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); toggleActions(); }
+  });
+  bubble.onclick = (e) => { e.stopPropagation(); toggleActions(); };
+
+  actions.querySelector('[data-action="reply"]').onclick = (e) => {
+    e.stopPropagation();
+    startReply(replyText, msgId);
+    closeAllMsgActions();
+  };
+  actions.querySelector('[data-action="react"]').onclick = (e) => {
+    e.stopPropagation();
+    picker.classList.toggle('show');
+  };
+  picker.querySelectorAll('span').forEach(span => {
+    span.onclick = (e) => {
+      e.stopPropagation();
+      sendReaction(room, msgId, span.dataset.emoji);
+      closeAllMsgActions();
+    };
+  });
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.msg-actions') && !e.target.closest('.reaction-picker') &&
+      !e.target.closest('.bubble') && !e.target.closest('.msg-image') && !e.target.closest('.msg-file')) {
+    closeAllMsgActions();
+  }
+});
+
+async function sendReaction(room, msgId, emoji) {
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec) return;
+  const next = rec.reactionMine === emoji ? null : emoji; // tapping same emoji again clears it
+  rec.reactionMine = next;
+  renderReactions(room, msgId);
+  try { await api('/api/react', { code: room.code, token: room.token, msgId, emoji: next }); } catch (e) {}
+}
+
+function renderReactionsForRec(div, rec) {
+  const target = div.querySelector('.bubble, .msg-image, .msg-file');
+  if (!target) return;
+  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
+  let wrap = target.querySelector('.msg-reactions');
+  if (!rec.reactionMine && !rec.reactionTheirs) { wrap?.remove(); return; }
+  if (!wrap) { wrap = document.createElement('div'); wrap.className = 'msg-reactions'; target.appendChild(wrap); }
+  wrap.innerHTML = [rec.reactionMine, rec.reactionTheirs].filter(Boolean)
+    .map(e => `<span class="msg-reaction-badge">${e}</span>`).join('');
+}
+
+function renderReactions(room, msgId) {
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec || room.code !== activeRoomCode) return; // only touch DOM if this room is visible
+  const div = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
+  if (!div) return;
+  renderReactionsForRec(div, rec);
+}
+
+function renderMessageRecord(room, rec) {
+  const body = document.getElementById('chat-body');
+  const typing = document.getElementById('typing-indicator');
+
+  if (rec.kind === 'sys') {
+    const div = document.createElement('div');
+    div.className = 'sys-msg';
+    div.textContent = rec.content;
+    body.insertBefore(div, typing);
+    body.scrollTop = body.scrollHeight;
+    return div;
+  }
+
+  const div = document.createElement('div');
+  div.className = `msg ${rec.isMe ? 'me' : 'them'}`;
+  div.dataset.msgId = rec.id;
+
+  const receiptHtml = rec.isMe
+    ? `<span class="msg-receipt${rec.receiptState === 'delivered' ? ' delivered' : ''}${rec.receiptState === 'read' ? ' read' : ''}" id="receipt-${rec.id}">${rec.receiptState ? '✓✓' : '✓'}</span>`
+    : '';
+
+  let contentHtml;
+  if (rec.kind === 'file') {
+    if (rec.isImage) {
+      contentHtml = `<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="viewImage(this.src)"/>`;
+    } else {
+      contentHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>${escHtml(rec.fileName)}</span>
+      </a>`;
+    }
+  } else {
+    const replyHtml = rec.replyData ? `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>` : '';
+    contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}">${escHtml(rec.content)}</div>`;
+  }
+
+  const progressHtml = room.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file'
+    ? `<div class="msg-progress-wrap"><div class="msg-progress" id="progress-${rec.id}" style="width:100%"></div></div>`
+    : '';
+
+  div.innerHTML = `
+    <div class="msg-name">${escHtml(rec.name)}</div>
+    ${contentHtml}
+    <div class="msg-meta">
+      <span class="msg-time">${rec.time}</span>
+      ${receiptHtml}
+    </div>
+    ${progressHtml}
+    ${buildMsgActionsHtml(rec.id)}
+  `;
+
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content);
+  body.insertBefore(div, typing);
+  body.scrollTop = body.scrollHeight;
+  renderReactionsForRec(div, rec);
+
+  // If a disappearing-message timer is already ticking (e.g. replaying after
+  // switching back to this room), resume the progress bar from where it
+  // actually is rather than restarting it from 100%.
+  if (rec.deleteAt && !rec.isMe) {
+    const remainMs = rec.deleteAt - Date.now();
+    const progress = document.getElementById(`progress-${rec.id}`);
+    if (progress && remainMs > 0) {
+      requestAnimationFrame(() => {
+        progress.style.transition = `width ${remainMs / 1000}s linear`;
+        progress.style.width = '0%';
+      });
+    }
+  }
+  return div;
+}
+
+// ── READ RECEIPTS + DISAPPEARING MESSAGES ───────────────────────────────
+function handleReadReceipts(room, receipts) {
+  if (!receipts || !receipts.length) return;
+  for (const { msgId, deliveredAt, readAt } of receipts) {
+    const rec = room.messages.find(m => m.id === msgId);
+    if (!rec) continue;
+    if (readAt) {
+      rec.receiptState = 'read';
+      if (room.code === activeRoomCode) {
+        const el = document.getElementById(`receipt-${msgId}`);
+        if (el) { el.textContent = '✓✓'; el.classList.remove('delivered'); el.classList.add('read'); }
+      }
+      if (!rec.timerStarted && room.deleteTimerSeconds > 0) {
+        rec.timerStarted = true;
+        startDeleteTimer(room, msgId, room.deleteTimerSeconds);
+      }
+    } else if (deliveredAt && rec.receiptState !== 'read') {
+      rec.receiptState = 'delivered';
+      if (room.code === activeRoomCode) {
+        const el = document.getElementById(`receipt-${msgId}`);
+        if (el) { el.textContent = '✓✓'; el.classList.add('delivered'); }
+      }
+    }
+  }
+}
+
+// Sender-side timer: starts once the peer has confirmed reading the message.
+function startDeleteTimer(room, msgId, seconds) {
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec) return;
+  rec.deleteAt = Date.now() + seconds * 1000;
+  if (room.code === activeRoomCode && seconds <= 3600) {
+    const bubble = document.querySelector(`.msg[data-msg-id="${msgId}"] .bubble`);
+    if (bubble) bubble.title = `Disappears in ${formatDuration(seconds)}`;
+  }
+  const handle = setTimeout(() => removeMessageRecord(room, msgId), seconds * 1000);
+  room.msgTimers.set(msgId, handle);
+}
+
+// Receiver-side timer: starts the instant we receive it (= read, in this app's model).
+function startReceiveDeleteTimer(room, msgId, seconds) {
+  if (!seconds) return;
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec) return;
+  rec.deleteAt = Date.now() + seconds * 1000;
+  if (room.code === activeRoomCode) {
+    const progress = document.getElementById(`progress-${msgId}`);
+    if (progress) {
+      setTimeout(() => {
+        progress.style.transition = `width ${seconds}s linear`;
+        progress.style.width = '0%';
+      }, 100);
+    }
+  }
+  const handle = setTimeout(() => removeMessageRecord(room, msgId), seconds * 1000);
+  room.msgTimers.set(msgId, handle);
+}
+
+// Runs on schedule regardless of which room is currently active — the
+// timer is data-driven (rec.deleteAt / setTimeout), not tied to a live DOM
+// element, so a message disappears on time even if you're looking at a
+// different room's tab when the countdown ends.
+function removeMessageRecord(room, msgId) {
+  const idx = room.messages.findIndex(m => m.id === msgId);
+  if (idx !== -1) room.messages.splice(idx, 1);
+  room.msgTimers.delete(msgId);
+  if (room.code === activeRoomCode) {
+    const el = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
+    if (el) { el.classList.add('msg-fade'); setTimeout(() => el.remove(), 500); }
+  }
+}
+
+function formatDuration(s) {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s/60)}m`;
+  return `${Math.floor(s/3600)}h`;
+}
+
+function showTimerField(show) {
+  const tf = document.getElementById('timer-field');
+  if (tf) tf.style.display = show ? 'block' : 'none';
+}
+
+// ── DECRYPT + CLASSIFY AN INCOMING MESSAGE INTO A RECORD ────────────────
+async function processIncomingContent(room, content, name, time, msgId) {
+  if (!content) return null;
+  const decrypted = await decryptMsg(room, content);
+  if (!decrypted) return null;
+
+  const base = { id: msgId, isMe: false, name, time, receiptState: null, reactionMine: null, reactionTheirs: null, deleteAt: null };
+
+  try {
+    const parsed = JSON.parse(decrypted);
+    if (parsed.type === 'file' && parsed.data) {
+      const isImage = (parsed.mime || '').startsWith('image/');
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage };
+    }
+    if (parsed.text && parsed.reply) {
+      return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };
+    }
+  } catch (e) {}
+
+  return { ...base, kind: 'text', content: decrypted, replyData: null, jumbo: isSingleEmoji(decrypted) };
+}
+
+// ── POLLING (per room) ──────────────────────────────────────────────────
+function startRoomPolling(room) {
+  if (room.pollInterval) clearInterval(room.pollInterval);
+  room.pollInterval = setInterval(() => doPoll(room), 2000);
+  doPoll(room); // immediate first poll
+  if (room.typingInterval) clearInterval(room.typingInterval);
+  room.typingInterval = setInterval(() => checkTyping(room), 2500);
+  initPushForRoom(room).catch(() => {});
+}
+
+async function doPoll(room) {
+  if (!room.code || !room.token) return;
+  if (room.isPollRunning) return; // skip if previous poll for this room still in progress
+  room.isPollRunning = true;
+  try {
+    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=${room.lastSeq}&lastReceiptSeq=${room.lastReceiptSeq}&lastReactionSeq=${room.lastReactionSeq}`);
 
     if (data.roomGone) {
-      stopPolling();
-      showScreen('s-closed');
-      document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
-      clearSession();
+      const wasActive = room.code === activeRoomCode;
+      removeRoomFromState(room.code);
+      if (wasActive) {
+        const next = rooms.keys().next();
+        if (!next.done) {
+          setActiveRoom(next.value);
+          showScreen('s-chat');
+        } else {
+          activeRoomCode = null;
+          showScreen('s-closed');
+          document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
+        }
+      }
+      renderRoomTabs();
       return;
     }
 
     // Rederive E2E key if peer's pubKey changed (they rejoined with new keys)
-    if (data.peerPubKey && data.peerPubKey !== lastKnownPeerPubKey) {
-      console.log('E2E: peer pubKey changed — rederiving sharedKey');
-      sharedKey = null;
-      try {
-        await deriveSharedKey(data.peerPubKey);
-        lastKnownPeerPubKey = data.peerPubKey;
-      } catch(e) {
-        console.warn('E2E: key rederivation failed:', e.message);
-      }
+    if (data.peerPubKey && data.peerPubKey !== room.lastKnownPeerPubKey) {
+      room.sharedKey = null;
+      try { await deriveSharedKey(room, data.peerPubKey); room.lastKnownPeerPubKey = data.peerPubKey; } catch(e) {}
     }
 
-    const wasOnline = peerWasOnline;
-    setStatus(data.peerOnline, data.peerName);
+    const wasOnline = room.peerOnline;
+    room.peerOnline = data.peerOnline;
+    room.peerName = data.peerName;
+    if (room.code === activeRoomCode) setStatus(data.peerOnline, data.peerName);
+    if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { enableInput(true); playChime(); }
 
-    if (!wasOnline && data.peerOnline) {
-      enableInput(true);
-      playChime();
-    }
-
-    // Handle read receipts for my sent messages
     if (data.readReceipts && data.readReceipts.length > 0) {
-      handleReadReceipts(data.readReceipts);
-      // Only advance lastReceiptSeq past fully-read messages
-      for (const r of data.readReceipts) {
-        if (r.readAt && r.seq && r.seq > lastReceiptSeq) lastReceiptSeq = r.seq;
-      }
+      handleReadReceipts(room, data.readReceipts);
+      for (const r of data.readReceipts) if (r.readAt && r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
     }
 
-    // Sync the peer's reactions on messages (mirrors the read-receipt pattern above)
     if (data.reactionUpdates && data.reactionUpdates.length > 0) {
       for (const u of data.reactionUpdates) {
-        const peerEmoji = Object.entries(u.reactions || {})
-          .find(([token]) => token !== myToken)?.[1] || null;
-        if (peerEmoji) peerReactions.set(u.msgId, peerEmoji);
-        else peerReactions.delete(u.msgId);
-        renderReactions(u.msgId);
-        if (u.reactionSeq && u.reactionSeq > lastReactionSeq) lastReactionSeq = u.reactionSeq;
+        const rec = room.messages.find(m => m.id === u.msgId);
+        if (rec) {
+          rec.reactionTheirs = Object.entries(u.reactions || {}).find(([token]) => token !== room.token)?.[1] || null;
+          renderReactions(room, u.msgId);
+        }
+        if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
       }
     }
 
-    // Store deleteTimer from server
-    if (data.deleteTimer !== undefined) deleteTimerSeconds = data.deleteTimer;
+    if (data.deleteTimer !== undefined) room.deleteTimerSeconds = data.deleteTimer;
 
-    // Process new messages
     if (data.messages && data.messages.length > 0) {
       for (const msg of data.messages) {
-        // Skip already-processed messages (dedup across overlapping polls)
-        if (seenMsgIds.has(msg.id)) { continue; } // extra safety dedup
-        seenMsgIds.add(msg.id);
-        // Keep seenMsgIds from growing unbounded
-        if (seenMsgIds.size > 500) {
-          const first = seenMsgIds.values().next().value;
-          seenMsgIds.delete(first);
-        }
+        if (room.seenMsgIds.has(msg.id)) continue;
+        room.seenMsgIds.add(msg.id);
+        if (room.seenMsgIds.size > 500) { const first = room.seenMsgIds.values().next().value; room.seenMsgIds.delete(first); }
+
         if (msg.type === 'system') {
-          addSysMsg(msg.content);
+          const rec = { id: 'sys-' + msg.id, kind: 'sys', content: msg.content };
+          room.messages.push(rec);
+          if (room.code === activeRoomCode) renderMessageRecord(room, rec);
         } else if (msg.type === 'message') {
           const rt = new Date();
           const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
-          const result = await processIncomingContent(msg.content, msg.name, rNow, msg.id);
-          if (!result) { console.log('DROPPED msg', msg.id, 'content:', msg.content?.substring(0,30)); if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq; continue; }
-          // processIncomingContent already rendered file/reply messages itself (it needs the
-          // parsed payload to build the right markup) and hands back the element it created.
-          // Plain text messages come back as a string and get rendered here instead. Either way
-          // we now always end up with msgEl, so the disappearing-message timer below (which
-          // previously only ran for plain text — reply and file messages never got a timer
-          // and would never vanish) fires for every message type.
-          let msgEl = null;
-          if (typeof result === 'string') {
-            msgEl = addMessage(msg.name, result, rNow, false, msg.id);
-          } else if (result && result.el) {
-            msgEl = result.el;
-          }
-          notifyMsg(msg.name);
-          readConfirmIds.push(msg.id);
-          // Start delete timer immediately on receive (= read)
-          if (deleteTimerSeconds > 0 && msgEl) {
-            startReceiveDeleteTimer(msg.id, msgEl, deleteTimerSeconds);
+          const rec = await processIncomingContent(room, msg.content, msg.name, rNow, msg.id);
+          if (rec) {
+            room.messages.push(rec);
+            if (room.code === activeRoomCode) renderMessageRecord(room, rec);
+            else room.unread++;
+            notifyMsg(room);
+            room.readConfirmIds.push(msg.id);
+            if (room.deleteTimerSeconds > 0) startReceiveDeleteTimer(room, msg.id, room.deleteTimerSeconds);
           }
         }
-        // Advance seq tracker
-        if (msg.seq && msg.seq > lastSeq) lastSeq = msg.seq;
+        if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
       }
     }
 
-    // Send read confirmations only when user is actually looking
-    if (readConfirmIds.length > 0) {
-      if (isUserActive()) {
-        // User is actively looking at the page
-        const toConfirm = [...readConfirmIds, ...pendingReadIds];
-        readConfirmIds.length = 0;
-        pendingReadIds.length = 0;
-        if (toConfirm.length > 0) {
-          api('/api/read', { code: roomCode, token: myToken, msgIds: toConfirm }).catch(() => {});
-        }
+    // Send read confirmations only when the user is actually looking at THIS room
+    if (room.readConfirmIds.length > 0) {
+      if (room.code === activeRoomCode && isUserActive()) {
+        const toConfirm = [...room.readConfirmIds, ...room.pendingReadIds];
+        room.readConfirmIds.length = 0; room.pendingReadIds.length = 0;
+        if (toConfirm.length > 0) api('/api/read', { code: room.code, token: room.token, msgIds: toConfirm }).catch(() => {});
       } else {
-        // Tab hidden — queue for when user returns
-        pendingReadIds.push(...readConfirmIds);
-        readConfirmIds.length = 0;
+        room.pendingReadIds.push(...room.readConfirmIds);
+        room.readConfirmIds.length = 0;
       }
     }
 
+    renderRoomTabs();
+    updateDocumentTitle();
   } catch(e) {
-    console.error('POLL ERROR:', e.message, e.stack);
+    console.error('POLL ERROR', room.code, e.message);
   } finally {
-    isPollRunning = false; // always release lock
+    room.isPollRunning = false;
   }
 }
 
-function stopPolling() {
-  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-  if (typingInterval) { clearInterval(typingInterval); typingInterval = null; }
-}
-
-// ── SEND MESSAGE ────────────────────────────────────────────────────────
+// ── SEND MESSAGE ─────────────────────────────────────────────────────────
 async function sendMsg() {
   unlockAudio();
+  const room = getActiveRoom();
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
-  if (!content || !roomCode || !myToken) return;
+  if (!content || !room) return;
   input.value = '';
 
-  // Build message with optional reply
   const msgData = replyTo
     ? JSON.stringify({ text: content, reply: { text: replyTo.text } })
     : content;
-  const encrypted = await encryptMsg(msgData);
+  const encrypted = await encryptMsg(room, msgData);
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-  // Generate the real message id up front (instead of a temp id we rename
-  // later) and send it to the server. Previously the bubble was rendered
-  // optimistically with a temp id, then renamed to the server's id once
-  // /api/send resolved. If the peer's read receipt for this message came
-  // back on our own next poll BEFORE that rename happened — which could
-  // easily occur under any send latency, e.g. Railway cold start or the
-  // first send of a session — handleReadReceipts looked up `receipt-<realId>`,
-  // found nothing (still tagged with the temp id), and silently dropped the
-  // update. That both stranded the tick (never turned blue) and skipped
-  // starting the disappearing-message timer, since that only fires inside
-  // the same lookup. Using one stable id from the start removes the race.
+  // One stable client-generated id from the start (no temp-id-then-rename)
+  // avoids a race where a read receipt for this message arrives before a
+  // rename would have happened, stranding the tick and skipping the
+  // disappearing-message timer.
   const msgId = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const el = addMessage(myName, content, time, true, msgId, replyTo);
-  cancelReply(); // clear reply bar after sending
 
-  try {
-    await api('/api/send', { code: roomCode, token: myToken, content: encrypted, msgId });
-  } catch(e) {}
+  const rec = {
+    id: msgId, kind: 'text', isMe: true, name: room.myName, time, content,
+    replyData: replyTo ? { text: replyTo.text } : null,
+    jumbo: isSingleEmoji(content),
+    receiptState: null, timerStarted: false,
+    reactionMine: null, reactionTheirs: null, deleteAt: null,
+  };
+  room.messages.push(rec);
+  renderMessageRecord(room, rec);
+  cancelReply();
+
+  try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
 }
 
-// ── TYPING ──────────────────────────────────────────────────────────────
+// ── TYPING ────────────────────────────────────────────────────────────
 function onTyping() {
-  if (!roomCode || !myToken) return;
-  if (typingTimer) clearTimeout(typingTimer);
-  api('/api/typing', { code: roomCode, token: myToken }).catch(() => {});
-  typingTimer = setTimeout(() => { isTyping = false; }, 3000);
+  const room = getActiveRoom();
+  if (!room) return;
+  if (room.typingTimer) clearTimeout(room.typingTimer);
+  api('/api/typing', { code: room.code, token: room.token }).catch(() => {});
+  room.typingTimer = setTimeout(() => {}, 3000);
 }
 
-// Typing indicator polling (separate from message poll)
-async function checkTyping() {
-  if (!roomCode || !myToken) return;
+async function checkTyping(room) {
+  if (!room.code || !room.token) return;
   try {
-    const data = await api(`/api/check_typing?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}`);
-    showTypingIndicator(data.typing);
+    const data = await api(`/api/check_typing?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}`);
+    if (room.code === activeRoomCode) showTypingIndicator(data.typing);
   } catch(e) {}
 }
 
-// ── LANDING ACTIONS ─────────────────────────────────────────────────────
+// ── LANDING ACTIONS ──────────────────────────────────────────────────────
 function startCreate() {
   mode = 'create';
   showScreen('s-setup');
@@ -1509,13 +1838,6 @@ function startCreate() {
   document.getElementById('password-field').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Create room';
   document.getElementById('name-input').value = '';
-  // Quick rooms never show a password field, but the input element itself
-  // stays in the DOM (just hidden) — if the user had visited Named room or
-  // Join first and typed a password there, that leftover value silently rode
-  // along into this room's /api/create call, setting a password nobody knew
-  // about and nobody could later enter. Clear it defensively here too (the
-  // real fix is in handleSetup, which now ignores this field entirely in
-  // create mode).
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
@@ -1553,82 +1875,89 @@ function startJoin() {
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
-// ── SETUP ───────────────────────────────────────────────────────────────
+// ── SETUP: create / join a room, ADDING it alongside any already open ──
 async function handleSetup() {
-  unlockAudio(); // unlock on first meaningful tap
+  unlockAudio();
   const name = document.getElementById('name-input').value.trim();
   if (!name) { showErr('Please enter a codename'); return; }
-  myName = name;
   document.getElementById('err-msg').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Connecting…';
   document.getElementById('setup-btn').disabled = true;
 
-  try {
-    const pubKey = await getOrGenerateKeyPair();
+  if (rooms.size >= MAX_ROOMS) {
+    showErr(`You already have ${MAX_ROOMS} rooms open — leave one first.`);
+    resetSetupBtn();
+    return;
+  }
 
+  try {
     if (mode === 'create' || mode === 'named') {
       const namedCode = mode === 'named' ? document.getElementById('named-input')?.value.trim().toLowerCase() : null;
-      // Quick rooms (mode 'create') never show a password field, so they must
-      // never send one either — reading the shared #password-input here
-      // regardless of mode meant a value left over from an earlier visit to
-      // Named room or Join could silently attach a password to a "New room"
-      // the user never saw an option for, then the other person's join would
-      // fail with "Incorrect password" for a password nobody knew existed.
+      // Quick rooms never show a password field, so they must never send one
+      // either — reading the shared #password-input regardless of mode meant
+      // a leftover value from an earlier Named/Join visit could silently
+      // attach a password to a room nobody saw an option for.
       const password = mode === 'named' ? (document.getElementById('password-input')?.value.trim() || null) : null;
       if (mode === 'named' && !namedCode) { showErr('Please enter a room name'); resetSetupBtn(); return; }
       const timerVal = parseInt(document.getElementById('timer-select')?.value || '0');
+
+      const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal });
+      const pubKey = await getOrGenerateKeyPair(room);
       const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
-      myToken = result.token;
-      roomCode = result.code;
-      if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
-      else deleteTimerSeconds = timerVal; // fallback to what we sent
+
+      room.code = result.code;
+      room.token = result.token;
+      room.deleteTimerSeconds = result.deleteTimer || timerVal;
+      addRoomToState(room);
+      persistRoom(room);
+      pendingRoomCode = room.code;
+
       document.getElementById('display-code').textContent = result.code;
       const wNote = document.getElementById('w-note');
       if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
       showScreen('s-waiting');
-      saveSession(roomCode, myToken, myName);
-      startPolling();
-      // Poll for peer joining
-      // Use pollInterval for waiting too — startPolling will clear it
-      if (pollInterval) clearInterval(pollInterval);
-      pollInterval = setInterval(async () => {
-        const d = await api(`/api/poll?code=${encodeURIComponent(roomCode)}&token=${encodeURIComponent(myToken)}&lastSeq=0&lastReceiptSeq=0`);
+
+      if (room.waitInterval) clearInterval(room.waitInterval);
+      room.waitInterval = setInterval(async () => {
+        const d = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=0&lastReceiptSeq=0`);
         if (d.peerOnline) {
-          clearInterval(pollInterval); pollInterval = null;
-          document.getElementById('hdr-code').textContent = roomCode;
-          document.getElementById('welcome-msg').textContent = `You're "${myName}" - ${roomCode}`;
+          clearInterval(room.waitInterval); room.waitInterval = null;
+          pendingRoomCode = null;
+          room.peerOnline = true; room.peerName = d.peerName;
+          if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
+          if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
+          setActiveRoom(room.code);
           showScreen('s-chat');
           enableInput(true);
           playChime();
-          if (d.peerPubKey) { await deriveSharedKey(d.peerPubKey); lastKnownPeerPubKey = d.peerPubKey; }
-          if (d.deleteTimer) deleteTimerSeconds = d.deleteTimer;
-          // CRITICAL: restart real message polling — was missing entirely
-          startPolling();
-          if (typingInterval) clearInterval(typingInterval);
-          typingInterval = setInterval(checkTyping, 2500);
+          startRoomPolling(room);
         }
       }, 2000);
     } else {
       const code = document.getElementById('code-input').value.trim().toLowerCase();
       const password = document.getElementById('password-input')?.value.trim() || null;
       if (!code) { showErr('Please enter the room code'); resetSetupBtn(); return; }
+      if (rooms.has(code)) { showErr('That room is already open.'); resetSetupBtn(); return; }
+
+      const room = makeRoom({ code: null, token: null, myName: name });
+      const pubKey = await getOrGenerateKeyPair(room);
       const result = await api('/api/join', { name, code, pubKey, password });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
-      myToken = result.token;
-      roomCode = result.code;
-      // lastSeq stays 0 — server tracks position
-      saveSession(roomCode, myToken, myName);
-      document.getElementById('hdr-code').textContent = roomCode;
-      document.getElementById('welcome-msg').textContent = `You joined as "${myName}" - ${roomCode}`;
+
+      room.code = result.code;
+      room.token = result.token;
+      if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
+      addRoomToState(room);
+      persistRoom(room);
+
+      if (result.peerPubKey) { await deriveSharedKey(room, result.peerPubKey); room.lastKnownPeerPubKey = result.peerPubKey; }
+
       showScreen('s-chat');
-      if (result.peerPubKey) { await deriveSharedKey(result.peerPubKey); lastKnownPeerPubKey = result.peerPubKey; }
-      if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
+      setActiveRoom(room.code);
       enableInput(true);
       playChime();
-      startPolling();
-      if (typingInterval) clearInterval(typingInterval);
-      typingInterval = setInterval(checkTyping, 2500);
+      startRoomPolling(room);
     }
   } catch(e) {
     showErr('Connection failed. Please try again.');
@@ -1642,65 +1971,71 @@ function resetSetupBtn() {
   btn.textContent = mode === 'join' ? 'Join room' : mode === 'named' ? 'Create named room' : 'Create room';
 }
 
-// ── COPY CODE ───────────────────────────────────────────────────────────
+// ── COPY CODE ─────────────────────────────────────────────────────────
 function copyCode() {
   const code = document.getElementById('display-code').textContent;
   navigator.clipboard.writeText(code).catch(() => {});
   toast('Code copied');
 }
 
-// ── CLOSE / LEAVE ───────────────────────────────────────────────────────
+// ── CLOSE / LEAVE (scoped to a single room) ────────────────────────────
 async function closeRoom() {
-  stopPolling();
-  if (roomCode && myToken) {
-    try { await api('/api/close', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
+  // "Cancel & close room" on the s-waiting screen — cancels the room
+  // currently pending confirmation, which may not be the active room if the
+  // user opened this as an additional room via the "+" tab.
+  const code = pendingRoomCode;
+  const room = code ? rooms.get(code) : null;
+  if (room) {
+    try { await api('/api/close', { code: room.code, token: room.token }); } catch(e) {}
+    removeRoomFromState(room.code);
   }
-  clearSession();
-  resetState();
-  document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
-  showScreen('s-closed');
+  pendingRoomCode = null;
+  switchToNextRoomOrLanding();
 }
 
-async function leaveRoom() {
-  stopPolling();
-  if (roomCode && myToken) {
-    try { await api('/api/leave', { code: roomCode, token: myToken, name: myName }); } catch(e) {}
+async function leaveActiveRoom() {
+  const room = getActiveRoom();
+  if (!room) return;
+  try { await api('/api/leave', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
+  removeRoomFromState(room.code);
+  switchToNextRoomOrLanding();
+}
+
+async function closeActiveRoom() {
+  const room = getActiveRoom();
+  if (!room) return;
+  try { await api('/api/close', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
+  removeRoomFromState(room.code);
+  if (rooms.size === 0) {
+    activeRoomCode = null;
+    showScreen('s-closed');
+    document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
+  } else {
+    toast('Room erased');
+    switchToNextRoomOrLanding();
   }
-  clearSession();
-  resetState();
-  showScreen('s-landing');
-  triggerLandingAnim();
 }
-
-function resetState() {
-  myName = ''; myToken = ''; roomCode = '';
-  lastSeq = 0; sharedKey = null; unreadCount = 0;
-  peerWasOnline = false; lastKnownPeerPubKey = null; readConfirmIds.length = 0; pendingReadIds.length = 0; seenMsgIds.clear(); isPollRunning = false; lastSeq = 0; lastReceiptSeq = 0;
-  lastReactionSeq = 0; myReactions.clear(); peerReactions.clear(); closeAllMsgActions();
-  hidePushBanner();
-  document.title = 'Vaulted';
-  const body = document.getElementById('chat-body');
-  if (body) body.innerHTML = `<div class="sys-msg" id="welcome-msg"></div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
-  enableInput(false);
-}
-
 
 function goBack() {
-  stopPolling();
-  resetState();
-  clearSession();
-  showScreen('s-landing');
-  triggerLandingAnim();
+  // "Back" from the setup screen — never tears down rooms that are already
+  // open; just returns to wherever we came from (an active chat if this was
+  // opened via the "+" tab, otherwise the landing page).
+  if (rooms.size > 0 && activeRoomCode) {
+    setActiveRoom(activeRoomCode);
+    showScreen('s-chat');
+  } else {
+    showScreen('s-landing');
+    triggerLandingAnim();
+  }
 }
 
 function startFresh() {
-  resetState();
-  clearSession();
+  // Reached only from s-closed, which only shows once every room is gone.
   showScreen('s-landing');
   triggerLandingAnim();
 }
 
-// ── KEYBOARD ────────────────────────────────────────────────────────────
+// ── KEYBOARD ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('name-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('code-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
@@ -1710,7 +2045,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('msg-input')?.addEventListener('input', onTyping);
 });
 
-// ── iOS KEYBOARD FIX ────────────────────────────────────────────────────
+// ── iOS KEYBOARD FIX ─────────────────────────────────────────────────────
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
     const chat = document.getElementById('s-chat');
@@ -1722,7 +2057,7 @@ if (window.visualViewport) {
   });
 }
 
-// ── LANDING ANIMATION ───────────────────────────────────────────────────
+// ── LANDING ANIMATION ────────────────────────────────────────────────────
 function triggerLandingAnim() {
   document.getElementById('logoRule')?.classList.add('go');
   document.getElementById('logoName')?.classList.add('go');
@@ -1731,392 +2066,80 @@ function triggerLandingAnim() {
   document.getElementById('cards')?.classList.add('go');
 }
 
-// ── PAGE LOAD ───────────────────────────────────────────────────────────
+// ── PAGE LOAD: restore every saved room and reconnect each independently ──
 window.addEventListener('load', async () => {
-  // Check for saved session (iOS page reload after backgrounding)
-  const session = loadSession();
-  if (session) {
-    myName = session.name;
-    myToken = session.token;
-    roomCode = session.code;
-    lastSeq = 0; // server resets to recent messages on rejoin
-    seenMsgIds.clear();
-    isPollRunning = false;
+  const idx = loadRoomsIndex();
+  let restoredAny = false;
 
-    // Set up chat screen
-    const hdrCode = document.getElementById('hdr-code');
-    const welcomeMsg = document.getElementById('welcome-msg');
-    if (hdrCode) hdrCode.textContent = session.code;
-    if (welcomeMsg) welcomeMsg.textContent = `You're "${session.name}" - ${session.code}`;
-
-    // Try to rejoin
+  for (const code of idx) {
+    const session = loadRoomSession(code);
+    if (!session) continue;
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds });
     try {
-      await importKeyPairFromStorage(session); // reuse the same keypair so old messages stay decryptable
-      const pubKey = await getOrGenerateKeyPair();
+      await importKeyPairFromStorage(room, session); // reuse the same keypair so old messages stay decryptable
+      const pubKey = await getOrGenerateKeyPair(room);
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
-      if (!result.error) {
-        showScreen('s-chat');
-        setStatus(false, null);
-        enableInput(false);
-        const chatBody = document.getElementById('chat-body');
-        if (chatBody) chatBody.innerHTML = '<div class="sys-msg">Reconnected</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
-        sharedKey = null;
-        lastKnownPeerPubKey = null; // force key rederivation
-        if (result.peerPubKey) {
-          await deriveSharedKey(result.peerPubKey);
-          lastKnownPeerPubKey = result.peerPubKey;
-        }
-        if (result.deleteTimer) deleteTimerSeconds = result.deleteTimer;
-        startPolling();
-        if (typingInterval) clearInterval(typingInterval);
-        typingInterval = setInterval(checkTyping, 2500);
-        return;
-      }
-    } catch(e) {}
-
-    // Rejoin failed — room expired
-    clearSession();
+      if (result.error) { clearRoomStorage(code); continue; }
+      room.sharedKey = null;
+      room.lastKnownPeerPubKey = null; // force key rederivation
+      if (result.peerPubKey) { await deriveSharedKey(room, result.peerPubKey); room.lastKnownPeerPubKey = result.peerPubKey; }
+      if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
+      addRoomToState(room);
+      restoredAny = true;
+    } catch(e) { /* leave this room's storage in place for a later retry */ }
   }
 
-  triggerLandingAnim();
-});
-
-
-// Track real user interaction — read receipts only fire when user is active
-['click','keydown','touchstart','mousemove'].forEach(evt => {
-  document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
-});
-
-function isUserActive() {
-  // User is active if:
-  // 1. Page is not hidden (document.hidden = false)
-  // 2. Tab has focus OR user interacted recently (within 5 seconds)
-  if (document.hidden) return false;
-  if (tabFocused) return true;
-  return (Date.now() - lastInteractionTime) < 5000;
-}
-
-// The composer used to have its own emoji picker button, but every phone
-// keyboard already has one built in (the globe/emoji key), so it was just
-// eating horizontal space from the actual text input for no benefit — removed
-// in favor of giving #msg-input the full width. Message reactions (below)
-// have their own separate quick-emoji picker and are unaffected by this.
-
-// ── MESSAGE ACTIONS: REPLY + REACT ───────────────────────────────────
-// Tapping a bubble (either side — your own or theirs) reveals a small
-// action row instead of jumping straight into reply mode, matching the
-// Reply/React pattern from WhatsApp's message menu.
-const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
-const myReactions = new Map();   // msgId -> emoji (this device's own reaction, optimistic)
-const peerReactions = new Map(); // msgId -> emoji (synced in from poll)
-
-function buildMsgActionsHtml(msgId) {
-  return `
-    <div class="msg-actions" id="actions-${msgId}">
-      <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
-      <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
-    </div>
-    <div class="reaction-picker" id="picker-${msgId}">
-      ${QUICK_REACTIONS.map(e => `<span data-emoji="${e}">${e}</span>`).join('')}
-    </div>
-  `;
-}
-
-function closeAllMsgActions() {
-  document.querySelectorAll('.msg-actions.show').forEach(el => el.classList.remove('show'));
-  document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
-  activeActionMsgId = null;
-}
-
-function wireMsgActions(div, msgId, replyText) {
-  // Text messages have a .bubble, which is what we tap to reveal Reply/React.
-  // File/image messages don't — they were previously falling back to
-  // .msg-image/.msg-file directly, which silently overwrote that element's
-  // own onclick="viewImage(...)" (a plain JS property assignment replaces
-  // any prior handler on the same element) and even suppressed it on touch
-  // devices via preventDefault() in the touchend handler below. That broke
-  // opening a received photo in the zoomable full-view viewer entirely.
-  // Falling back to .msg-meta (the timestamp/tick row) instead keeps Reply/
-  // React reachable without ever touching the image or file link's own
-  // click behavior.
-  const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
-  const actions = div.querySelector(`#actions-${msgId}`);
-  const picker = div.querySelector(`#picker-${msgId}`);
-  if (!bubble || !actions || !picker) return;
-
-  const toggleActions = () => {
-    const wasOpen = actions.classList.contains('show');
-    closeAllMsgActions();
-    if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
-  };
-
-  let touchStartX, touchStartY, touchStartTime;
-  bubble.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchStartTime = Date.now();
-  }, { passive: true });
-  bubble.addEventListener('touchend', (e) => {
-    const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
-    const dt = Date.now() - touchStartTime;
-    // Only trigger on short tap (not scroll or long press)
-    if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); toggleActions(); }
-  });
-  bubble.onclick = (e) => { e.stopPropagation(); toggleActions(); };
-
-  actions.querySelector('[data-action="reply"]').onclick = (e) => {
-    e.stopPropagation();
-    startReply(replyText, msgId);
-    closeAllMsgActions();
-  };
-  actions.querySelector('[data-action="react"]').onclick = (e) => {
-    e.stopPropagation();
-    picker.classList.toggle('show');
-  };
-  picker.querySelectorAll('span').forEach(span => {
-    span.onclick = (e) => {
-      e.stopPropagation();
-      sendReaction(msgId, span.dataset.emoji);
-      closeAllMsgActions();
-    };
-  });
-}
-
-// Close any open action row / reaction picker when tapping elsewhere
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.msg-actions') && !e.target.closest('.reaction-picker') &&
-      !e.target.closest('.bubble') && !e.target.closest('.msg-image') && !e.target.closest('.msg-file')) {
-    closeAllMsgActions();
-  }
-});
-
-async function sendReaction(msgId, emoji) {
-  if (!roomCode || !myToken || !msgId) return;
-  const current = myReactions.get(msgId);
-  const next = current === emoji ? null : emoji; // tapping the same emoji again clears it
-  if (next) myReactions.set(msgId, next); else myReactions.delete(msgId);
-  renderReactions(msgId);
-  try {
-    await api('/api/react', { code: roomCode, token: myToken, msgId, emoji: next });
-  } catch (e) {}
-}
-
-function renderReactions(msgId) {
-  const div = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
-  const target = div?.querySelector('.bubble, .msg-image, .msg-file');
-  if (!target) return;
-  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
-  let wrap = target.querySelector('.msg-reactions');
-  const mine = myReactions.get(msgId);
-  const theirs = peerReactions.get(msgId);
-  if (!mine && !theirs) { wrap?.remove(); return; }
-  if (!wrap) {
-    wrap = document.createElement('div');
-    wrap.className = 'msg-reactions';
-    target.appendChild(wrap);
-  }
-  wrap.innerHTML = [mine, theirs].filter(Boolean)
-    .map(e => `<span class="msg-reaction-badge">${e}</span>`).join('');
-}
-
-// ── READ RECEIPTS + DISAPPEARING MESSAGES ────────────────────────────
-// Track sent messages: msgId -> { el, readAt, timerStarted }
-const sentMsgs = new Map();
-
-// A message whose entire visible text is one emoji renders large with no bubble
-// background, matching the common chat-app convention (WhatsApp, iMessage, etc).
-function isSingleEmoji(str) {
-  const t = (str || '').trim();
-  if (!t) return false;
-  try {
-    const seg = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(t)];
-    return seg.length === 1 && /\p{Extended_Pictographic}/u.test(seg[0].segment);
-  } catch (e) {
-    // Intl.Segmenter isn't available on some older iOS/WebKit versions — fall back
-    // to a length heuristic (covers simple emoji; multi-codepoint ZWJ sequences may
-    // be missed there, which just means they render at normal size instead of jumbo).
-    return t.length <= 4 && /\p{Extended_Pictographic}/u.test(t);
-  }
-}
-
-function addMessage(name, content, time, isMe, msgId, replyData) {
-  const body = document.getElementById('chat-body');
-  const typing = document.getElementById('typing-indicator');
-  const div = document.createElement('div');
-  div.className = `msg ${isMe ? 'me' : 'them'}`;
-  if (msgId) div.dataset.msgId = msgId;
-
-  const receiptHtml = isMe
-    ? `<span class="msg-receipt" id="receipt-${msgId}">✓</span>`
-    : '';
-
-  const progressHtml = deleteTimerSeconds > 0 && !isMe
-    ? `<div class="msg-progress-wrap"><div class="msg-progress" id="progress-${msgId}" style="width:100%"></div></div>`
-    : '';
-
-  const replyHtml = replyData
-    ? `<div class="msg-reply-quote">${escHtml(replyData.text)}</div>`
-    : '';
-
-  const jumbo = isSingleEmoji(content);
-
-  div.innerHTML = `
-    <div class="msg-name">${escHtml(name)}</div>
-    ${replyHtml}
-    <div class="bubble${jumbo ? ' emoji-jumbo' : ''}">${escHtml(content)}</div>
-    <div class="msg-meta">
-      <span class="msg-time">${time}</span>
-      ${receiptHtml}
-    </div>
-    ${progressHtml}
-    ${msgId ? buildMsgActionsHtml(msgId) : ''}
-  `;
-
-  if (msgId) wireMsgActions(div, msgId, content);
-
-  body.insertBefore(div, typing);
-  body.scrollTop = body.scrollHeight;
-
-  if (isMe && msgId) {
-    sentMsgs.set(msgId, { el: div, readAt: null, timerStarted: false });
-  }
-  return div;
-}
-
-// Called when poll returns read receipts for our sent messages
-function handleReadReceipts(receipts) {
-  if (!receipts || receipts.length === 0) return;
-  for (const { msgId, deliveredAt, readAt } of receipts) {
-    const receiptEl = document.getElementById(`receipt-${msgId}`);
-    if (!receiptEl) continue;
-
-    if (readAt) {
-      // ✓✓ blue — receiver opened and read it
-      receiptEl.textContent = '✓✓';
-      receiptEl.classList.remove('delivered');
-      receiptEl.classList.add('read');
-      // Start delete timer on confirmed read
-      const tracked = sentMsgs.get(msgId);
-      if (tracked && !tracked.timerStarted && deleteTimerSeconds > 0) {
-        tracked.timerStarted = true;
-        startDeleteTimer(msgId, tracked.el, deleteTimerSeconds);
-      }
-    } else if (deliveredAt && !receiptEl.classList.contains('read')) {
-      // ✓✓ grey — delivered to receiver's device
-      receiptEl.textContent = '✓✓';
-      receiptEl.classList.add('delivered');
+  if (restoredAny) {
+    for (const room of rooms.values()) {
+      room.messages.push({ id: 'sys-reconnect-' + room.code, kind: 'sys', content: 'Reconnected' });
     }
+    const preferred = loadActiveRoomCode();
+    const activate = (preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value;
+    showScreen('s-chat');
+    setActiveRoom(activate);
+    for (const room of rooms.values()) startRoomPolling(room);
+  } else {
+    triggerLandingAnim();
   }
-}
+});
 
-// Start disappear timer on a message element
-function startDeleteTimer(msgId, el, seconds) {
-  if (!el) return;
-
-  // Animate progress bar on sender's side (no progress bar for sender)
-  // Add a subtle countdown on the bubble
-  if (seconds <= 3600) {
-    const bubble = el.querySelector('.bubble');
-    if (bubble) {
-      bubble.title = `Disappears in ${formatDuration(seconds)}`;
-    }
-  }
-
-  const handle = setTimeout(() => {
-    el.classList.add('msg-fade');
-    setTimeout(() => el.remove(), 500);
-    sentMsgs.delete(msgId);
-    msgTimers.delete(msgId);
-  }, seconds * 1000);
-
-  msgTimers.set(msgId, handle);
-}
-
-// Start disappear timer on received message (starts when we receive it = read)
-function startReceiveDeleteTimer(msgId, el, seconds) {
-  if (!el || seconds === 0) return;
-
-  // Animate progress bar
-  const progress = document.getElementById(`progress-${msgId}`);
-  if (progress) {
-    // Small delay so transition is visible
-    setTimeout(() => {
-      progress.style.transition = `width ${seconds}s linear`;
-      progress.style.width = '0%';
-    }, 100);
-  }
-
-  const handle = setTimeout(() => {
-    el.classList.add('msg-fade');
-    setTimeout(() => el.remove(), 500);
-    msgTimers.delete(msgId);
-  }, seconds * 1000);
-
-  msgTimers.set(msgId, handle);
-}
-
-function formatDuration(s) {
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s/60)}m`;
-  return `${Math.floor(s/3600)}h`;
-}
-
-// ── SHOW TIMER-FIELD in startNamed ───────────────────────────────────
-function showTimerField(show) {
-  const tf = document.getElementById('timer-field');
-  if (tf) tf.style.display = show ? 'block' : 'none';
-}
-
-
-// ── FILE ATTACHMENTS ─────────────────────────────────────────────────
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit
-
+// ── FILE ATTACHMENTS ─────────────────────────────────────────────────────
 function triggerFileInput() {
   if (document.getElementById('msg-input').disabled) return;
   document.getElementById('file-input').click();
 }
 
 async function handleFileSelect(event) {
+  const room = getActiveRoom();
   const file = event.target.files[0];
-  if (!file) return;
+  if (!file || !room) return;
   event.target.value = ''; // reset so same file can be selected again
 
-  if (file.size > MAX_FILE_SIZE) {
-    toast('File too large — maximum 5MB');
-    return;
-  }
+  if (file.size > MAX_FILE_SIZE) { toast('File too large — maximum 5MB'); return; }
 
-  // Show uploading indicator
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-  const tempId = 'file-' + Date.now().toString(36);
-
-  // Read file as base64
   const base64 = await fileToBase64(file);
   const isImage = file.type.startsWith('image/');
 
-  // Build file payload
-  const payload = JSON.stringify({
-    type: 'file',
-    name: file.name,
-    mime: file.type,
-    size: file.size,
-    data: base64,
-  });
+  const payload = JSON.stringify({ type: 'file', name: file.name, mime: file.type, size: file.size, data: base64 });
+  const encryptedPayload = await encryptMsg(room, payload);
 
-  // Encrypt the file payload
-  const encryptedPayload = await encryptMsg(payload);
-  // Show preview on sender side
-  const el = addFileMessage(myName, file.name, file.type, base64, isImage, time, true, tempId);
+  const tempId = 'file-' + Date.now().toString(36);
+  const rec = {
+    id: tempId, kind: 'file', isMe: true, name: room.myName, time,
+    fileName: file.name, mime: file.type, base64, isImage,
+    receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
+  };
+  room.messages.push(rec);
+  renderMessageRecord(room, rec);
 
   try {
-    const result = await api('/api/send', { code: roomCode, token: myToken, content: encryptedPayload });
+    const result = await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload });
     if (result && result.msgId) {
-      const tracked = sentMsgs.get(tempId);
-      if (tracked) {
-        sentMsgs.set(result.msgId, tracked);
-        sentMsgs.delete(tempId);
+      rec.id = result.msgId;
+      const el = document.querySelector(`.msg[data-msg-id="${tempId}"]`);
+      if (el) {
         el.dataset.msgId = result.msgId;
         const receipt = el.querySelector('.msg-receipt');
         if (receipt) receipt.id = `receipt-${result.msgId}`;
@@ -2136,49 +2159,6 @@ function fileToBase64(file) {
   });
 }
 
-function addFileMessage(name, fileName, mime, base64Data, isImage, time, isMe, msgId) {
-  const body = document.getElementById('chat-body');
-  const typing = document.getElementById('typing-indicator');
-  const div = document.createElement('div');
-  div.className = `msg ${isMe ? 'me' : 'them'}`;
-  if (msgId) div.dataset.msgId = msgId;
-
-  const receiptHtml = isMe
-    ? `<span class="msg-receipt" id="receipt-${msgId}">✓</span>`
-    : '';
-
-  let contentHtml = '';
-  if (isImage) {
-    contentHtml = `<img class="msg-image" src="data:${mime};base64,${base64Data}" alt="${escHtml(fileName)}" onclick="viewImage(this.src)"/>`;
-  } else {
-    const sizeStr = formatFileSize(0); // placeholder
-    contentHtml = `<a class="msg-file" href="data:${mime};base64,${base64Data}" download="${escHtml(fileName)}">
-      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span>${escHtml(fileName)}</span>
-    </a>`;
-  }
-
-  div.innerHTML = `
-    <div class="msg-name">${escHtml(name)}</div>
-    ${contentHtml}
-    <div class="msg-meta">
-      <span class="msg-time">${time}</span>
-      ${receiptHtml}
-    </div>
-    ${msgId ? buildMsgActionsHtml(msgId) : ''}
-  `;
-
-  if (msgId) wireMsgActions(div, msgId, fileName);
-
-  body.insertBefore(div, typing);
-  body.scrollTop = body.scrollHeight;
-
-  if (isMe && msgId) {
-    sentMsgs.set(msgId, { el: div, readAt: null, timerStarted: false });
-  }
-  return div;
-}
-
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -2192,7 +2172,6 @@ function viewImage(src) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;overflow:hidden;touch-action:none;';
 
-  // Top bar
   const bar = document.createElement('div');
   bar.style.cssText = 'position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;gap:8px;z-index:1001;';
 
@@ -2202,7 +2181,6 @@ function viewImage(src) {
   backBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
   bar.appendChild(backBtn);
 
-  // Zoom buttons
   const zoomIn = document.createElement('button');
   zoomIn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:16px;padding:6px 12px;border-radius:20px;cursor:pointer;margin-left:auto;';
   zoomIn.textContent = '+';
@@ -2231,7 +2209,6 @@ function viewImage(src) {
 
   overlay.appendChild(bar);
 
-  // Image container
   const imgWrap = document.createElement('div');
   imgWrap.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;overflow:hidden;';
 
@@ -2242,40 +2219,30 @@ function viewImage(src) {
   imgWrap.appendChild(img);
   overlay.appendChild(imgWrap);
 
-  function updateTransform() {
-    img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
-  }
-
+  function updateTransform() { img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; }
   function setZoom(newScale) {
     scale = Math.max(0.5, Math.min(newScale, 8));
     if (scale <= 1) { posX = 0; posY = 0; }
     updateTransform();
   }
 
-  // Mouse wheel zoom (desktop)
   overlay.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     const delta = e.deltaY > 0 ? 0.85 : 1.18;
     setZoom(scale * delta);
   }, { passive: false });
 
-  // Double tap/click to zoom
   let lastTap = 0;
   overlay.addEventListener('click', (e) => {
     if (e.target === backBtn || e.target === zoomIn || e.target === zoomOut || e.target === resetBtn || e.target === dlBtn) return;
     const now = Date.now();
     if (now - lastTap < 300) {
-      // Double tap — toggle zoom
       if (scale > 1.2) { scale = 1; posX = 0; posY = 0; } else { scale = 3; }
       updateTransform();
       lastTap = 0;
-    } else {
-      lastTap = now;
-    }
+    } else { lastTap = now; }
   });
 
-  // Pinch zoom (mobile)
   function getTouchDist(touches) {
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
@@ -2283,13 +2250,9 @@ function viewImage(src) {
   }
 
   overlay.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      lastTouchDist = getTouchDist(e.touches);
-      e.preventDefault();
-    } else if (e.touches.length === 1 && scale > 1) {
-      isDragging = true;
-      startX = e.touches[0].clientX - posX;
-      startY = e.touches[0].clientY - posY;
+    if (e.touches.length === 2) { lastTouchDist = getTouchDist(e.touches); e.preventDefault(); }
+    else if (e.touches.length === 1 && scale > 1) {
+      isDragging = true; startX = e.touches[0].clientX - posX; startY = e.touches[0].clientY - posY;
     }
   }, { passive: false });
 
@@ -2297,93 +2260,38 @@ function viewImage(src) {
     if (e.touches.length === 2) {
       e.preventDefault();
       const dist = getTouchDist(e.touches);
-      if (lastTouchDist > 0) {
-        const ratio = dist / lastTouchDist;
-        setZoom(scale * ratio);
-      }
+      if (lastTouchDist > 0) setZoom(scale * (dist / lastTouchDist));
       lastTouchDist = dist;
     } else if (e.touches.length === 1 && isDragging && scale > 1) {
       e.preventDefault();
-      posX = e.touches[0].clientX - startX;
-      posY = e.touches[0].clientY - startY;
-      img.style.transition = 'none';
-      updateTransform();
-      img.style.transition = 'transform 0.15s ease';
+      posX = e.touches[0].clientX - startX; posY = e.touches[0].clientY - startY;
+      img.style.transition = 'none'; updateTransform(); img.style.transition = 'transform 0.15s ease';
     }
   }, { passive: false });
 
-  overlay.addEventListener('touchend', (e) => {
-    isDragging = false;
-    lastTouchDist = 0;
-  });
+  overlay.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 0; });
 
-  // Mouse drag when zoomed (desktop)
   overlay.addEventListener('mousedown', (e) => {
     if (scale > 1 && e.target === img) {
-      isDragging = true;
-      startX = e.clientX - posX;
-      startY = e.clientY - posY;
-      img.style.cursor = 'grabbing';
+      isDragging = true; startX = e.clientX - posX; startY = e.clientY - posY; img.style.cursor = 'grabbing';
     }
   });
   overlay.addEventListener('mousemove', (e) => {
     if (isDragging && scale > 1) {
-      posX = e.clientX - startX;
-      posY = e.clientY - startY;
-      img.style.transition = 'none';
-      updateTransform();
-      img.style.transition = 'transform 0.15s ease';
+      posX = e.clientX - startX; posY = e.clientY - startY;
+      img.style.transition = 'none'; updateTransform(); img.style.transition = 'transform 0.15s ease';
     }
   });
-  overlay.addEventListener('mouseup', () => {
-    isDragging = false;
-    img.style.cursor = 'default';
-  });
+  overlay.addEventListener('mouseup', () => { isDragging = false; img.style.cursor = 'default'; });
 
-  // ESC to close
   const escHandler = (e) => { if (e.key === 'Escape') cleanup(); };
   document.addEventListener('keydown', escHandler);
-
-  function cleanup() {
-    document.removeEventListener('keydown', escHandler);
-    overlay.remove();
-  }
+  function cleanup() { document.removeEventListener('keydown', escHandler); overlay.remove(); }
 
   document.body.appendChild(overlay);
 }
 
-// ── Override doPoll message processing to handle file messages ────────
-// Patch the existing message handler to detect file payloads
-const _origDecrypt = decryptMsg;
-async function processIncomingContent(content, name, time, msgId) {
-  if (!content) return null;
-
-  const decrypted = await decryptMsg(content);
-  if (!decrypted) return null;
-
-  // Try parsing as JSON (could be reply, file, or plain text)
-  try {
-    const parsed = JSON.parse(decrypted);
-    // File attachment
-    if (parsed.type === 'file' && parsed.data) {
-      const isImage = (parsed.mime || '').startsWith('image/');
-      const el = addFileMessage(name, parsed.name, parsed.mime, parsed.data, isImage, time, false, msgId);
-      return { el };
-    }
-    // Reply message
-    if (parsed.text && parsed.reply) {
-      const el = addMessage(name, parsed.text, time, false, msgId, parsed.reply);
-      return { el };
-    }
-  } catch(e) {}
-
-  return decrypted;
-}
-
-
-// ── MESSAGE REPLY ────────────────────────────────────────────────────
-let replyTo = null; // { msgId, name, text }
-
+// ── MESSAGE REPLY ────────────────────────────────────────────────────────
 function startReply(text, msgId) {
   replyTo = { msgId, text: text.substring(0, 100) };
   document.getElementById('reply-name').textContent = '';
