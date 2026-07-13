@@ -2188,7 +2188,7 @@ function viewImage(src) {
 
   // Top bar
   const bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:14px 16px;gap:8px;z-index:1001;';
+  bar.style.cssText = 'position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;gap:8px;z-index:1001;';
 
   const backBtn = document.createElement('button');
   backBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:13px;padding:7px 16px;border-radius:20px;cursor:pointer;font-family:Inter,sans-serif;';
