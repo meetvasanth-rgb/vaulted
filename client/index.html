@@ -1140,6 +1140,18 @@ function playChime() {
 }
 
 // ── TAB VISIBILITY ──────────────────────────────────────────────────────
+// While the app is genuinely backgrounded on iOS, no JS timer runs — the
+// setInterval(doPoll, 2000) loop is fully suspended by the OS, not just
+// slowed down, which is exactly why push notifications exist as the
+// background-delivery path. What we CAN control is the moment the app comes
+// back to the foreground: force an immediate poll right then instead of
+// waiting up to 2s for the interval to naturally tick again, so anything
+// push missed (or arrived while the room wasn't the active window) shows up
+// the instant you look at the app rather than a beat later.
+function catchUpPoll() {
+  if (roomCode && myToken) doPoll();
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     tabFocused = false; // force inactive when page hidden
@@ -1148,6 +1160,7 @@ document.addEventListener('visibilitychange', () => {
     lastInteractionTime = Date.now();
     unreadCount = 0;
     document.title = 'Vaulted';
+    catchUpPoll();
     // Flush pending read confirmations when user returns
     if (pendingReadIds.length > 0 && roomCode && myToken) {
       const toConfirm = [...pendingReadIds];
@@ -1158,6 +1171,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('focus', () => {
   tabFocused = true; unreadCount = 0; document.title = 'Vaulted';
+  catchUpPoll();
   if (pendingReadIds.length > 0 && roomCode && myToken) {
     const toConfirm = [...pendingReadIds];
     pendingReadIds.length = 0;
@@ -1165,6 +1179,11 @@ window.addEventListener('focus', () => {
   }
 });
 window.addEventListener('blur', () => { tabFocused = false; });
+// iOS/WebKit restores a backgrounded tab from its page cache without firing
+// 'load' — pageshow (with persisted:true) is the reliable signal for that
+// case, so this catches resumes that visibilitychange/focus can occasionally
+// miss on iOS specifically.
+window.addEventListener('pageshow', (e) => { if (e.persisted) catchUpPoll(); });
 
 // ── PUSH NOTIFICATIONS ────────────────────────────────────────────────
 // The in-app chime (playChime, above) only fires while the tab's JS is
