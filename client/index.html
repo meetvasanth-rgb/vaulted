@@ -1823,7 +1823,17 @@ function closeAllMsgActions() {
 }
 
 function wireMsgActions(div, msgId, replyText) {
-  const bubble = div.querySelector('.bubble, .msg-image, .msg-file');
+  // Text messages have a .bubble, which is what we tap to reveal Reply/React.
+  // File/image messages don't — they were previously falling back to
+  // .msg-image/.msg-file directly, which silently overwrote that element's
+  // own onclick="viewImage(...)" (a plain JS property assignment replaces
+  // any prior handler on the same element) and even suppressed it on touch
+  // devices via preventDefault() in the touchend handler below. That broke
+  // opening a received photo in the zoomable full-view viewer entirely.
+  // Falling back to .msg-meta (the timestamp/tick row) instead keeps Reply/
+  // React reachable without ever touching the image or file link's own
+  // click behavior.
+  const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
   const actions = div.querySelector(`#actions-${msgId}`);
   const picker = div.querySelector(`#picker-${msgId}`);
   if (!bubble || !actions || !picker) return;
