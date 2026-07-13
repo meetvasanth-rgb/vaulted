@@ -4,7 +4,13 @@ const fs = require('fs');
 const webpush = require('web-push');
 
 const PORT = process.env.PORT || 3000;
-const ROOM_TTL = 5 * 60 * 1000;
+// Named rooms are meant to persist for 7 days of inactivity, one-time
+// (auto-generated code) rooms for 24 hours — per the product spec. This used
+// to be a single flat 5-minute TTL for every room regardless of type, which
+// silently deleted named rooms (and logged everyone out of them) within
+// minutes of going idle. room.isNamed (set at creation) picks the right one.
+const NAMED_ROOM_TTL = 7 * 24 * 60 * 60 * 1000;
+const ONE_TIME_ROOM_TTL = 24 * 60 * 60 * 1000;
 
 const rooms = new Map();
 
@@ -31,7 +37,10 @@ function code() {
 
 setInterval(() => {
   const now = Date.now();
-  for (const [k,r] of rooms) if (now - r.lastActivity > ROOM_TTL) { rooms.delete(k); console.log(`Room ${k} expired`); }
+  for (const [k,r] of rooms) {
+    const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
+    if (now - r.lastActivity > ttl) { rooms.delete(k); console.log(`Room ${k} expired`); }
+  }
 }, 30000);
 
 function res200(res, data) {
@@ -102,6 +111,7 @@ function api(path, method, d, p, res) {
     const name = (d.name||'Stranger').slice(0,24);
     rooms.set(roomCode, {
       lastActivity: Date.now(),
+      isNamed: !!namedCode,
       deleteTimer: parseInt(d.deleteTimer)||0,
       password: d.password||null,
       seq: 0,          // global message sequence counter

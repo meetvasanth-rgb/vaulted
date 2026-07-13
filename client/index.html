@@ -867,10 +867,19 @@ let sharedKey = null;
 
 // Session persistence (survives iOS page reload)
 const SESSION_KEY = 'vaulted_session';
-const SESSION_TTL = 5 * 60 * 1000; // 5 minutes
+// This used to be 5 minutes, which meant closing the app/tab for longer than
+// that logged you out even from a named room meant to persist for days — the
+// server has its own authoritative TTL per room type (see NAMED_ROOM_TTL /
+// ONE_TIME_ROOM_TTL server-side) and will reject a stale rejoin with "Room
+// not found" on its own, so this local value just needs to be generously
+// long, not a safety mechanism in itself.
+const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-function saveSession(code, token, name) {
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ code, token, name, savedAt: Date.now() })); } catch(e) {}
+async function saveSession(code, token, name) {
+  try {
+    const keys = await exportKeyPairForStorage();
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ code, token, name, savedAt: Date.now(), ...keys }));
+  } catch(e) {}
 }
 function loadSession() {
   try {
@@ -882,6 +891,41 @@ function loadSession() {
 function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch(e) {} }
 
 // ── CRYPTO ─────────────────────────────────────────────────────────────
+// Export/import the ECDH keypair so it survives a page reload. Previously
+// every reload (iOS backgrounding a tab often kills and reloads it) called
+// getOrGenerateKeyPair() with myKeyPair reset to null, silently generating a
+// brand new keypair. That changes the ECDH shared secret with the peer, so
+// every message encrypted under the old secret becomes permanently
+// undecryptable — shown as "[encrypted message — key mismatch]". Persisting
+// the private key (extractable, stored only in this browser's localStorage —
+// never sent anywhere) and reusing it on rejoin keeps the shared secret
+// stable for the life of the room, so old messages stay readable.
+async function exportKeyPairForStorage() {
+  if (!myKeyPair) return {};
+  try {
+    const [pubJwk, privJwk] = await Promise.all([
+      crypto.subtle.exportKey('jwk', myKeyPair.publicKey),
+      crypto.subtle.exportKey('jwk', myKeyPair.privateKey),
+    ]);
+    return { pubJwk, privJwk };
+  } catch (e) { return {}; }
+}
+
+async function importKeyPairFromStorage(session) {
+  if (!session || !session.pubJwk || !session.privJwk) return false;
+  try {
+    const [publicKey, privateKey] = await Promise.all([
+      crypto.subtle.importKey('jwk', session.pubJwk, { name:'ECDH', namedCurve:'P-256' }, true, []),
+      crypto.subtle.importKey('jwk', session.privJwk, { name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey']),
+    ]);
+    myKeyPair = { publicKey, privateKey };
+    return true;
+  } catch (e) {
+    console.warn('E2E: could not restore saved keypair, generating a fresh one:', e.message);
+    return false;
+  }
+}
+
 async function getOrGenerateKeyPair() {
   if (myKeyPair) {
     const exported = await crypto.subtle.exportKey('raw', myKeyPair.publicKey);
@@ -1433,6 +1477,14 @@ function startCreate() {
   document.getElementById('password-field').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Create room';
   document.getElementById('name-input').value = '';
+  // Quick rooms never show a password field, but the input element itself
+  // stays in the DOM (just hidden) — if the user had visited Named room or
+  // Join first and typed a password there, that leftover value silently rode
+  // along into this room's /api/create call, setting a password nobody knew
+  // about and nobody could later enter. Clear it defensively here too (the
+  // real fix is in handleSetup, which now ignores this field entirely in
+  // create mode).
+  if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
@@ -1484,7 +1536,13 @@ async function handleSetup() {
 
     if (mode === 'create' || mode === 'named') {
       const namedCode = mode === 'named' ? document.getElementById('named-input')?.value.trim().toLowerCase() : null;
-      const password = document.getElementById('password-input')?.value.trim() || null;
+      // Quick rooms (mode 'create') never show a password field, so they must
+      // never send one either — reading the shared #password-input here
+      // regardless of mode meant a value left over from an earlier visit to
+      // Named room or Join could silently attach a password to a "New room"
+      // the user never saw an option for, then the other person's join would
+      // fail with "Incorrect password" for a password nobody knew existed.
+      const password = mode === 'named' ? (document.getElementById('password-input')?.value.trim() || null) : null;
       if (mode === 'named' && !namedCode) { showErr('Please enter a room name'); resetSetupBtn(); return; }
       const timerVal = parseInt(document.getElementById('timer-select')?.value || '0');
       const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal });
@@ -1661,15 +1719,15 @@ window.addEventListener('load', async () => {
 
     // Try to rejoin
     try {
+      await importKeyPairFromStorage(session); // reuse the same keypair so old messages stay decryptable
       const pubKey = await getOrGenerateKeyPair();
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
       if (!result.error) {
         showScreen('s-chat');
         setStatus(false, null);
         enableInput(false);
-        // Clear old messages — new session = new encryption keys
         const chatBody = document.getElementById('chat-body');
-        if (chatBody) chatBody.innerHTML = '<div class="sys-msg">Reconnected — new session started</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+        if (chatBody) chatBody.innerHTML = '<div class="sys-msg">Reconnected</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
         sharedKey = null;
         lastKnownPeerPubKey = null; // force key rederivation
         if (result.peerPubKey) {
