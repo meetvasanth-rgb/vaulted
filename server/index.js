@@ -29,6 +29,14 @@ webpush.setVapidDetails('mailto:privacy@valuted.in', VAPID_PUBLIC_KEY, VAPID_PRI
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
+function formatTimerLabel(seconds) {
+  if (!seconds) return 'off';
+  if (seconds < 60) return `${seconds} seconds`;
+  if (seconds < 3600) { const m = Math.floor(seconds/60); return `${m} minute${m===1?'':'s'}`; }
+  if (seconds < 86400) { const h = Math.floor(seconds/3600); return `${h} hour${h===1?'':'s'}`; }
+  const days = Math.floor(seconds/86400); return `${days} day${days===1?'':'s'}`;
+}
+
 function code() {
   const w = ['amber','arctic','azure','cedar','cloud','coral','dawn','delta','dusk','ember','fern','flame','frost','ghost','gold','grove','haven','iron','jade','karma','lake','lemon','lime','lunar','maple','mist','moon','moss','nova','oak','opal','pearl','pine','rain','raven','reed','ridge','river','rose','ruby','sage','salt','sand','shadow','shore','silver','slate','smoke','snow','spark','star','steel','storm','tide','timber','topaz','vault','veil','wave','wild','wind','wolf'];
   const p = () => w[Math.floor(Math.random()*w.length)];
@@ -232,6 +240,30 @@ function api(path, method, d, p, res) {
     msg.reactionSeq = ++room.reactionSeq;
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
+  }
+
+  // POST /api/set-timer — change the disappearing-message duration for this
+  // room at any point in the conversation, not just at creation. Either
+  // member can change it; a system message announces the new setting to
+  // both, and the value itself rides the existing deleteTimer field already
+  // returned on every /api/poll response, so both clients pick it up within
+  // one poll cycle without any extra sync mechanism.
+  if (path==='/api/set-timer' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    const m = room.members.get(d.token);
+    if (!m) return resErr(res,'Not in room.',403);
+    const val = parseInt(d.deleteTimer);
+    room.deleteTimer = (isNaN(val) || val < 0) ? 0 : val;
+    room.lastActivity = Date.now();
+    room.msgs.push({
+      seq: ++room.seq, id: uid(), type:'system',
+      content: room.deleteTimer
+        ? `${m.name} set disappearing messages to ${formatTimerLabel(room.deleteTimer)}`
+        : `${m.name} turned off disappearing messages`,
+      ts: Date.now(),
+    });
+    return res200(res, { ok: true, deleteTimer: room.deleteTimer });
   }
 
   // GET /api/poll — SIMPLE: return all messages with seq > clientLastSeq that are not from this user

@@ -151,6 +151,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .room-tab-add{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#fff;border:1px dashed #D0CAC0;color:#9A8C7E;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;padding:0}
 .room-tab-add:hover{border-color:var(--gold);color:var(--gold)}
 .room-tab-add:disabled{opacity:.4;cursor:not-allowed}
+/* -- IN-ROOM DISAPPEARING-TIMER CONTROL -- */
+.timer-bar{flex-shrink:0;background:#FAF8F4;border-bottom:1px solid #F0E8CC;padding:6px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.timer-bar-label{font-size:11px;color:#7A6E65;letter-spacing:.02em}
+#timer-bar-select{font-size:11px;color:#4A3F35;background:#fff;border:0.5px solid #E0D9D0;border-radius:12px;padding:3px 8px;font-family:inherit;cursor:pointer}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
@@ -691,6 +695,16 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
   </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="e2e-bar">🔒 🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
+  <div class="timer-bar">
+    <span class="timer-bar-label">⏱ Disappearing messages</span>
+    <select id="timer-bar-select" onchange="changeRoomTimer(this.value)">
+      <option value="0">Off</option>
+      <option value="30">30 seconds</option>
+      <option value="300">5 minutes</option>
+      <option value="3600">1 hour</option>
+      <option value="86400">24 hours</option>
+    </select>
+  </div>
   <div class="push-banner" id="push-banner"></div>
   <div class="chat-body" id="chat-body">
     <div class="sys-msg" id="welcome-msg"></div>
@@ -1478,6 +1492,42 @@ function setActiveRoom(code) {
   enableInput(room.everOnline, true);
   renderRoomTabs();
   updateDocumentTitle();
+  updateTimerBar(room);
+}
+
+// Reflects the active room's current disappearing-message setting in the
+// selector, without triggering its own onchange handler (which would fire
+// another /api/set-timer call and post a spurious "changed" system message
+// every time you just switch rooms or a poll happens to sync the value).
+function updateTimerBar(room) {
+  const select = document.getElementById('timer-bar-select');
+  if (!select || !room) return;
+  const value = String(room.deleteTimerSeconds || 0);
+  if (select.value !== value) select.value = value;
+}
+
+async function changeRoomTimer(value) {
+  const room = getActiveRoom();
+  if (!room) return;
+  const seconds = parseInt(value) || 0;
+  const previous = room.deleteTimerSeconds;
+  room.deleteTimerSeconds = seconds; // optimistic — server confirms/corrects below
+  try {
+    const result = await api('/api/set-timer', { code: room.code, token: room.token, deleteTimer: seconds });
+    if (result && result.error) {
+      room.deleteTimerSeconds = previous;
+      updateTimerBar(room);
+      toast(result.error);
+      return;
+    }
+    persistRoom(room);
+    // Both participants also see this reflected as a system message in the
+    // chat itself (posted server-side), so no local toast needed here.
+  } catch (e) {
+    room.deleteTimerSeconds = previous;
+    updateTimerBar(room);
+    toast('Failed to update timer');
+  }
 }
 
 function renderChatBody(room) {
@@ -1874,7 +1924,10 @@ async function doPoll(room) {
       }
     }
 
-    if (data.deleteTimer !== undefined) room.deleteTimerSeconds = data.deleteTimer;
+    if (data.deleteTimer !== undefined) {
+      room.deleteTimerSeconds = data.deleteTimer;
+      if (room.code === activeRoomCode) updateTimerBar(room);
+    }
 
     // Safety net: a scheduled disappearing-message setTimeout can get
     // silently dropped if the browser freezes/throttles JS while the tab is
