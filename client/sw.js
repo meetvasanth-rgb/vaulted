@@ -74,37 +74,48 @@ function urlBase64ToUint8Array(base64String) {
   return arr;
 }
 
-function idbGetSession() {
+// Multi-room: the page can have several rooms open at once, and the push
+// subscription itself is one-per-browser (not one-per-room), so what the
+// page writes here is now a LIST of {roomCode, myToken} pairs — one per open
+// room — instead of a single session. Storing just one used to mean that
+// whichever room subscribed last silently overwrote the others; if the
+// subscription then rotated while idle, only that last room got reported to
+// the server and every other open room went dark on push until the app was
+// manually reopened.
+function idbGetSessions() {
   return new Promise((resolve) => {
     const req = indexedDB.open('vaulted-push', 1);
     req.onupgradeneeded = () => req.result.createObjectStore('kv');
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction('kv', 'readonly');
-      const getReq = tx.objectStore('kv').get('session');
-      getReq.onsuccess = () => resolve(getReq.result || null);
-      getReq.onerror = () => resolve(null);
+      const getReq = tx.objectStore('kv').get('sessions');
+      getReq.onsuccess = () => resolve(Array.isArray(getReq.result) ? getReq.result : []);
+      getReq.onerror = () => resolve([]);
     };
-    req.onerror = () => resolve(null);
+    req.onerror = () => resolve([]);
   });
 }
 
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil((async () => {
     try {
-      const session = await idbGetSession();
-      if (!session || !session.roomCode || !session.myToken) return;
+      const sessions = await idbGetSessions();
+      if (!sessions.length) return;
 
       const sub = await self.registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
 
-      await fetch('/api/push-subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: session.roomCode, token: session.myToken, subscription: sub.toJSON() }),
-      });
+      // One new subscription, reported to the server once per open room.
+      await Promise.all(sessions.map(s =>
+        fetch('/api/push-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: s.roomCode, token: s.myToken, subscription: sub.toJSON() }),
+        }).catch(() => {})
+      ));
     } catch (e) {
       // Nothing more we can do from here — the page will re-subscribe
       // normally next time it's opened in the foreground.

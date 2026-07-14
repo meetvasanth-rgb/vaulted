@@ -920,6 +920,7 @@ function removeRoomFromState(code) {
   }
   rooms.delete(code);
   clearRoomStorage(code);
+  idbRemoveSession(code).catch(() => {});
 }
 
 // ── PER-ROOM localStorage PERSISTENCE (max 5 rooms) ────────────────────
@@ -1272,6 +1273,12 @@ function showEnableNotificationsBanner(room, reg) {
   };
 }
 
+// Multi-room: the push subscription is one-per-browser, not one-per-room, so
+// the service worker needs to know about EVERY open room, not just the one
+// that happened to subscribe most recently — otherwise when iOS silently
+// rotates the subscription after idle (see sw.js's pushsubscriptionchange
+// handler), only the last-written room gets re-registered with the server
+// and every other open room goes dark on push until manually reopened.
 function idbPutSession(roomCode, myToken) {
   return new Promise((resolve) => {
     const req = indexedDB.open('vaulted-push', 1);
@@ -1279,7 +1286,33 @@ function idbPutSession(roomCode, myToken) {
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction('kv', 'readwrite');
-      tx.objectStore('kv').put({ roomCode, myToken }, 'session');
+      const store = tx.objectStore('kv');
+      const getReq = store.get('sessions');
+      getReq.onsuccess = () => {
+        const list = (Array.isArray(getReq.result) ? getReq.result : []).filter(s => s.roomCode !== roomCode);
+        list.push({ roomCode, myToken });
+        store.put(list, 'sessions');
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    };
+    req.onerror = () => resolve();
+  });
+}
+
+function idbRemoveSession(roomCode) {
+  return new Promise((resolve) => {
+    const req = indexedDB.open('vaulted-push', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => {
+      const db = req.result;
+      const tx = db.transaction('kv', 'readwrite');
+      const store = tx.objectStore('kv');
+      const getReq = store.get('sessions');
+      getReq.onsuccess = () => {
+        const list = (Array.isArray(getReq.result) ? getReq.result : []).filter(s => s.roomCode !== roomCode);
+        store.put(list, 'sessions');
+      };
       tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
     };
