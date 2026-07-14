@@ -112,11 +112,22 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:env(safe-area-inset-top) 12px 0;height:calc(56px + env(safe-area-inset-top));display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
 .chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
-.chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em}
-.chat-hdr-status{display:flex;align-items:center;gap:5px;margin-left:auto}
+.chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;flex-shrink:1;min-width:0}
+.chat-hdr-status{display:flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 .status-dot.away{background:#CCC}
 .status-txt{font-size:11px;color:#888}
+/* Header can overflow on narrower phones once the room switcher/status text
+   are all fighting for space with the two action buttons — the status word
+   ("Connected"/"Waiting for X…") is the least essential piece (the dot
+   already conveys it, and the room tabs below repeat it per room), so it's
+   the first thing to go, freeing enough width to keep both buttons visible
+   rather than letting the last one clip off the edge of the screen. */
+@media(max-width:640px){
+  .status-txt{display:none}
+  .leave-btn{margin-left:6px}
+  .destroy-btn{margin-left:4px}
+}
 .leave-btn{background:none;border:1px solid #D0CAC0;border-radius:20px;padding:5px 10px;font-size:11px;color:#7A6E65;letter-spacing:.03em;transition:all;flex-shrink:0;white-space:nowrap;cursor:pointer;transition:.15s;margin-left:12px}
 .leave-btn:hover{border-color:#B8973E;color:#B8973E;background:rgba(184,151,62,0.05)}
 .destroy-btn{background:none;border:1px solid #C0392B;border-radius:20px;padding:5px 10px;font-size:11px;color:#C0392B;letter-spacing:.03em;flex-shrink:0;white-space:nowrap;cursor:pointer;transition:all .15s;margin-left:8px}
@@ -409,9 +420,9 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 @media(max-width:480px){
   .chat-hdr { padding:env(safe-area-inset-top) 10px 0; gap:6px; height:calc(52px + env(safe-area-inset-top)); }
   .chat-hdr-logo { font-size:15px; }
-  .chat-hdr-room { max-width:70px; font-size:10px; }
-  .leave-btn { padding:4px 8px; font-size:10px; }
-  .destroy-btn { padding:4px 8px; font-size:10px; }
+  .chat-hdr-room { max-width:56px; font-size:10px; }
+  .leave-btn { padding:4px 8px; font-size:10px; margin-left:6px; }
+  .destroy-btn { padding:4px 8px; font-size:10px; margin-left:4px; }
   .e2e-bar { font-size:9px; }
 }
 
@@ -973,11 +984,32 @@ async function persistRoom(room) {
     localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
       code: room.code, token: room.token, name: room.myName,
       deleteTimerSeconds: room.deleteTimerSeconds,
+      lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq,
       savedAt: Date.now(), ...keys,
     }));
     const idx = loadRoomsIndex().filter(c => c !== room.code);
     idx.push(room.code);
     saveRoomsIndex(idx);
+  } catch(e) {}
+}
+// Lightweight update called every poll — deliberately skips the async JWK
+// key export (persistRoom does that once at connect time; re-deriving it
+// every 2s per room would be wasteful). Without this, a reload/reconnect
+// always reset lastSeq to 0 and re-fetched the ENTIRE remaining server-side
+// message history — including messages whose disappearing-message timer had
+// already fired and removed them locally, resurrecting them as a jumbled mix
+// alongside genuinely new messages. Persisting the seq positions means a
+// reconnect only re-fetches what was actually missed.
+function persistRoomSeq(room) {
+  try {
+    const key = roomStorageKey(room.code);
+    const existing = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!existing) return; // not persisted yet (still connecting) — nothing to update
+    existing.lastSeq = room.lastSeq;
+    existing.lastReceiptSeq = room.lastReceiptSeq;
+    existing.lastReactionSeq = room.lastReactionSeq;
+    existing.savedAt = Date.now();
+    localStorage.setItem(key, JSON.stringify(existing));
   } catch(e) {}
 }
 function clearRoomStorage(code) {
@@ -1879,6 +1911,7 @@ async function doPoll(room) {
 
     renderRoomTabs();
     updateDocumentTitle();
+    persistRoomSeq(room);
   } catch(e) {
     console.error('POLL ERROR', room.code, e.message);
   } finally {
@@ -2187,6 +2220,15 @@ window.addEventListener('load', async () => {
     const session = loadRoomSession(code);
     if (!session) continue;
     const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds });
+    // Resume from where we left off instead of re-fetching the entire
+    // remaining server-side history — the server never deletes messages
+    // (only the client's disappearing-message timer removes them locally),
+    // so starting back at seq 0 would resurrect already-vanished old
+    // messages mixed in with new ones. Only genuinely-missed messages (seq
+    // beyond what we'd already seen) come back now.
+    room.lastSeq = session.lastSeq || 0;
+    room.lastReceiptSeq = session.lastReceiptSeq || 0;
+    room.lastReactionSeq = session.lastReactionSeq || 0;
     try {
       await importKeyPairFromStorage(room, session); // reuse the same keypair so old messages stay decryptable
       const pubKey = await getOrGenerateKeyPair(room);
