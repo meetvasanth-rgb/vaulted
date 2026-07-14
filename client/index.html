@@ -512,6 +512,25 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg-reply-quote strong { color:#4A3F35; font-weight:500; }
 .msg.me .msg-reply-quote { background:rgba(184,151,62,0.08); }
 
+/* ── PRIVACY COVER ─────────────────────────────────────────────────── */
+#privacy-cover{
+  display:none;
+  position:fixed; inset:0; z-index:99999;
+  background:var(--black);
+  flex-direction:column; align-items:center; justify-content:center; gap:14px;
+}
+#privacy-cover.show{ display:flex; }
+.pc-mark{
+  width:56px; height:56px; border-radius:50%;
+  border:0.5px solid var(--gold-border); background:var(--gold-dim);
+  display:flex; align-items:center; justify-content:center;
+}
+.pc-mark svg{ width:24px; height:24px; fill:var(--gold); }
+.pc-word{
+  font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:300;
+  letter-spacing:.14em; color:var(--cream);
+}
+
 </style>
 </head>
 <body>
@@ -840,6 +859,15 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
       valuted.in · Anonymous Private Messaging · Chennai, India
     </div>
   </div>
+</div>
+
+<!-- Privacy cover: snapped over everything the instant the app is backgrounded,
+     so the OS app-switcher thumbnail never captures plaintext chat content. -->
+<div id="privacy-cover">
+  <div class="pc-mark">
+    <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3z"/></svg>
+  </div>
+  <div class="pc-word">Vaulted</div>
 </div>
 
 <script>
@@ -1171,10 +1199,27 @@ function catchUpPoll() {
   for (const room of rooms.values()) doPoll(room);
 }
 
+// ── PRIVACY COVER (app-switcher screenshot protection) ─────────────────
+// iOS/Android take a snapshot of whatever's on screen the instant you swipe
+// to the app switcher, to use as the preview thumbnail — that snapshot could
+// otherwise capture plaintext messages. There's no way to block the OS from
+// taking it, but we CAN make sure there's nothing sensitive visible to
+// capture: the moment the page goes hidden, snap an opaque branded cover on
+// top, before the transition completes. It's not a lab-grade guarantee
+// (the OS could theoretically snapshot mid-transition on some devices), but
+// it's the same best-effort approach banking/messaging apps use, and it's
+// solid opaque (not a CSS blur) so nothing legible can bleed through even if
+// timing is imperfect.
+function showPrivacyCover() { document.getElementById('privacy-cover')?.classList.add('show'); }
+function hidePrivacyCover() { document.getElementById('privacy-cover')?.classList.remove('show'); }
+window.addEventListener('pagehide', () => { showPrivacyCover(); });
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    showPrivacyCover();
     tabFocused = false;
   } else {
+    hidePrivacyCover();
     tabFocused = true;
     lastInteractionTime = Date.now();
     const active = getActiveRoom();
@@ -1184,6 +1229,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('focus', () => {
+  hidePrivacyCover();
   tabFocused = true; lastInteractionTime = Date.now();
   const active = getActiveRoom();
   if (active) active.unread = 0;
