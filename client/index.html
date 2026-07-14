@@ -170,7 +170,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .t-dot{width:5px;height:5px;border-radius:50%;background:#AAA;animation:typing-bounce .9s infinite}
 .t-dot:nth-child(2){animation-delay:.15s}.t-dot:nth-child(3){animation-delay:.3s}
 @keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
-.chat-ftr{flex-shrink:0;background:#fff;border-top:1px solid #EFEFEF;padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:flex-end}
+.chat-ftr{flex-shrink:0;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:4px;align-items:flex-end}
 #msg-input{flex:1;background:#F5F5F5;border:1.5px solid #E8E8E8;border-radius:24px;padding:10px 18px;font-size:15px;color:#111;resize:none;min-height:44px;max-height:120px;line-height:1.5;transition:border-color .15s}
 #msg-input:focus{border-color:#B8973E;background:#fff}
 #msg-input::placeholder{color:#BBB}
@@ -410,7 +410,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 }
 
 /* ── FILE ATTACHMENTS ─────────────────────────────────────────── */
-.attach-btn { width:34px; height:38px; background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0.5; transition:opacity 0.15s; padding:0; }
+.attach-btn { width:28px; height:38px; background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0.5; transition:opacity 0.15s; padding:0; }
 .attach-btn:hover { opacity:0.9; }
 .attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
@@ -1064,10 +1064,10 @@ function toast(msg) {
   setTimeout(() => t.remove(), 2200);
 }
 
-function enableInput(on) {
+function enableInput(on, focus) {
   document.getElementById('msg-input').disabled = !on;
   document.getElementById('send-btn').disabled = !on;
-  if (on) document.getElementById('msg-input').focus();
+  if (on && focus) document.getElementById('msg-input').focus();
 }
 
 function showErr(msg) {
@@ -1336,7 +1336,7 @@ function setActiveRoom(code) {
   document.getElementById('hdr-code').textContent = room.code;
   setStatus(room.peerOnline, room.peerName);
   renderChatBody(room);
-  enableInput(room.peerOnline);
+  enableInput(room.peerOnline, true);
   renderRoomTabs();
   updateDocumentTitle();
 }
@@ -1706,8 +1706,15 @@ async function doPoll(room) {
     const wasOnline = room.peerOnline;
     room.peerOnline = data.peerOnline;
     room.peerName = data.peerName;
-    if (room.code === activeRoomCode) setStatus(data.peerOnline, data.peerName);
-    if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { enableInput(true); playChime(); }
+    if (room.code === activeRoomCode) {
+      setStatus(data.peerOnline, data.peerName);
+      // Re-sync every poll (not just on the offline→online edge) so the
+      // composer can never get stuck disabled — e.g. if a poll was missed
+      // or throttled while the tab was idle/backgrounded, this catches up
+      // and self-heals within one poll cycle once we're back.
+      enableInput(data.peerOnline);
+    }
+    if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { playChime(); }
 
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
@@ -1726,6 +1733,16 @@ async function doPoll(room) {
     }
 
     if (data.deleteTimer !== undefined) room.deleteTimerSeconds = data.deleteTimer;
+
+    // Safety net: a scheduled disappearing-message setTimeout can get
+    // silently dropped if the browser freezes/throttles JS while the tab is
+    // backgrounded (the timer never fires, but the room's own poll resumes
+    // once foregrounded again). Catch anything whose time has already
+    // passed here so it can't get stuck on screen indefinitely.
+    const nowTs = Date.now();
+    for (const rec of [...room.messages]) {
+      if (rec.deleteAt && nowTs >= rec.deleteAt) removeMessageRecord(room, rec.id);
+    }
 
     if (data.messages && data.messages.length > 0) {
       for (const msg of data.messages) {
@@ -1929,7 +1946,7 @@ async function handleSetup() {
           if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
           setActiveRoom(room.code);
           showScreen('s-chat');
-          enableInput(true);
+          enableInput(true, true);
           playChime();
           startRoomPolling(room);
         }
@@ -1955,7 +1972,7 @@ async function handleSetup() {
 
       showScreen('s-chat');
       setActiveRoom(room.code);
-      enableInput(true);
+      enableInput(true, true);
       playChime();
       startRoomPolling(room);
     }
@@ -2125,9 +2142,17 @@ async function handleFileSelect(event) {
   const payload = JSON.stringify({ type: 'file', name: file.name, mime: file.type, size: file.size, data: base64 });
   const encryptedPayload = await encryptMsg(room, payload);
 
-  const tempId = 'file-' + Date.now().toString(36);
+  // Same fix as text messages: generate the real id up front and send it to
+  // the server instead of a temp-id-then-rename. File sends previously kept
+  // the old temp-id pattern — if a read receipt for this message came back
+  // on our own next poll before the /api/send response (and its rename) had
+  // landed, handleReadReceipts looked it up by the real server id, found no
+  // matching record (still tagged with the temp id), and silently dropped
+  // it. The server never re-sends a receipt once reported, so that message's
+  // disappearing timer would never start — it just sat on screen forever.
+  const msgId = 'file' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const rec = {
-    id: tempId, kind: 'file', isMe: true, name: room.myName, time,
+    id: msgId, kind: 'file', isMe: true, name: room.myName, time,
     fileName: file.name, mime: file.type, base64, isImage,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
@@ -2135,16 +2160,7 @@ async function handleFileSelect(event) {
   renderMessageRecord(room, rec);
 
   try {
-    const result = await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload });
-    if (result && result.msgId) {
-      rec.id = result.msgId;
-      const el = document.querySelector(`.msg[data-msg-id="${tempId}"]`);
-      if (el) {
-        el.dataset.msgId = result.msgId;
-        const receipt = el.querySelector('.msg-receipt');
-        if (receipt) receipt.id = `receipt-${result.msgId}`;
-      }
-    }
+    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
   } catch(e) {
     toast('Failed to send file');
   }
