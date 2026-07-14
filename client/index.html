@@ -29,7 +29,13 @@
   --red:#C0392B;--red-dim:rgba(192,57,43,0.1);
   --blue:#60A5FA;--blue-dim:rgba(96,165,250,0.1);
 }
-body{font-family:'Inter',sans-serif;background:var(--black);color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+body{font-family:'Inter',sans-serif;background:#fff;color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+/* Every screen already sets its own background (all white/gold themed now),
+   so the document background is only ever visible in brief rendering gaps —
+   e.g. the on-screen keyboard resizing the visual viewport faster than
+   #s-chat's children can re-tile. It used to be black here, which showed up
+   as a black strip above the keyboard on Android/Gboard in exactly that gap;
+   white blends in instead. */
 button{cursor:pointer;font-family:'Inter',sans-serif;border:none;outline:none}
 input,textarea{font-family:'Inter',sans-serif;outline:none}
 .screen{display:none;min-height:100vh;overflow-y:auto}
@@ -102,7 +108,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .close-btn:hover{border-color:var(--red);color:var(--red)}
 
 /* -- CHAT -- */
-#s-chat{flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+#s-chat{flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:#fff}
 .chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:env(safe-area-inset-top) 12px 0;height:calc(56px + env(safe-area-inset-top));display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
 .chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
@@ -882,6 +888,12 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
   return {
     code, token, myName,
     peerName: null, peerOnline: false,
+    // Set once we've ever confirmed the peer present in this room (join
+    // success, or the first poll after that). Once true it stays true —
+    // the composer gates on this, not on peerOnline, so a momentary
+    // heartbeat lapse (peer's phone screen locks, brief backgrounding)
+    // doesn't lock you out of typing mid-conversation.
+    everOnline: false,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
     deleteTimerSeconds: deleteTimerSeconds || 0,
@@ -1336,7 +1348,7 @@ function setActiveRoom(code) {
   document.getElementById('hdr-code').textContent = room.code;
   setStatus(room.peerOnline, room.peerName);
   renderChatBody(room);
-  enableInput(room.peerOnline, true);
+  enableInput(room.everOnline, true);
   renderRoomTabs();
   updateDocumentTitle();
 }
@@ -1706,13 +1718,16 @@ async function doPoll(room) {
     const wasOnline = room.peerOnline;
     room.peerOnline = data.peerOnline;
     room.peerName = data.peerName;
+    if (data.peerOnline) room.everOnline = true;
     if (room.code === activeRoomCode) {
       setStatus(data.peerOnline, data.peerName);
-      // Re-sync every poll (not just on the offline→online edge) so the
-      // composer can never get stuck disabled — e.g. if a poll was missed
-      // or throttled while the tab was idle/backgrounded, this catches up
-      // and self-heals within one poll cycle once we're back.
-      enableInput(data.peerOnline);
+      // Gate the composer on "has the peer ever been confirmed present in
+      // this room" rather than their live 8s heartbeat — otherwise a brief
+      // screen-lock or backgrounding on their end grays out your composer
+      // mid-conversation, which is what was actually being reported as
+      // "composer inaccessible". Re-asserted every poll so it also self-
+      // heals in the rarer case it was left disabled some other way.
+      if (room.everOnline) enableInput(true);
     }
     if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { playChime(); }
 
@@ -1941,7 +1956,7 @@ async function handleSetup() {
         if (d.peerOnline) {
           clearInterval(room.waitInterval); room.waitInterval = null;
           pendingRoomCode = null;
-          room.peerOnline = true; room.peerName = d.peerName;
+          room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
           if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
           if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
           setActiveRoom(room.code);
@@ -1969,6 +1984,7 @@ async function handleSetup() {
       persistRoom(room);
 
       if (result.peerPubKey) { await deriveSharedKey(room, result.peerPubKey); room.lastKnownPeerPubKey = result.peerPubKey; }
+      room.peerOnline = true; room.everOnline = true;
 
       showScreen('s-chat');
       setActiveRoom(room.code);
@@ -2099,7 +2115,11 @@ window.addEventListener('load', async () => {
       if (result.error) { clearRoomStorage(code); continue; }
       room.sharedKey = null;
       room.lastKnownPeerPubKey = null; // force key rederivation
-      if (result.peerPubKey) { await deriveSharedKey(room, result.peerPubKey); room.lastKnownPeerPubKey = result.peerPubKey; }
+      if (result.peerPubKey) {
+        await deriveSharedKey(room, result.peerPubKey);
+        room.lastKnownPeerPubKey = result.peerPubKey;
+        room.everOnline = true; // peer's pubKey on file means they've been in this room before
+      }
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
       addRoomToState(room);
       restoredAny = true;
