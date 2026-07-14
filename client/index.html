@@ -1246,6 +1246,21 @@ function showPrivacyCover() { document.getElementById('privacy-cover')?.classLis
 function hidePrivacyCover() { document.getElementById('privacy-cover')?.classList.remove('show'); }
 window.addEventListener('pagehide', () => { showPrivacyCover(); });
 
+// Read confirmations queued while the tab was hidden/inactive (or while a
+// room sat in the background behind another one) only get sent from inside
+// doPoll's own flush, which is gated behind "a new message also arrived in
+// this exact poll cycle" — if nothing new comes in right when you return or
+// switch to that room, anything already queued would sit unsent forever, the
+// sender never gets a readAt receipt, and their sent message's disappearing
+// timer never starts (it just stays on screen indefinitely). This flushes
+// on demand instead of waiting for that coincidence.
+function flushPendingReads(room) {
+  if (!room || room.pendingReadIds.length === 0) return;
+  const toConfirm = [...room.pendingReadIds];
+  room.pendingReadIds.length = 0;
+  api('/api/read', { code: room.code, token: room.token, msgIds: toConfirm }).catch(() => {});
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     showPrivacyCover();
@@ -1255,7 +1270,7 @@ document.addEventListener('visibilitychange', () => {
     tabFocused = true;
     lastInteractionTime = Date.now();
     const active = getActiveRoom();
-    if (active) active.unread = 0;
+    if (active) { active.unread = 0; flushPendingReads(active); }
     updateDocumentTitle();
     catchUpPoll();
   }
@@ -1264,7 +1279,7 @@ window.addEventListener('focus', () => {
   hidePrivacyCover();
   tabFocused = true; lastInteractionTime = Date.now();
   const active = getActiveRoom();
-  if (active) active.unread = 0;
+  if (active) { active.unread = 0; flushPendingReads(active); }
   updateDocumentTitle();
   catchUpPoll();
 });
@@ -1454,6 +1469,7 @@ function setActiveRoom(code) {
   activeRoomCode = code;
   saveActiveRoomCode(code);
   room.unread = 0;
+  flushPendingReads(room);
   closeAllMsgActions();
   cancelReply();
   document.getElementById('hdr-code').textContent = room.code;
