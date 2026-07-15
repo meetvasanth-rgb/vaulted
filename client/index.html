@@ -1272,7 +1272,22 @@ function flushPendingReads(room) {
   if (!room || room.pendingReadIds.length === 0) return;
   const toConfirm = [...room.pendingReadIds];
   room.pendingReadIds.length = 0;
-  api('/api/read', { code: room.code, token: room.token, msgIds: toConfirm }).catch(() => {});
+  confirmRead(room, toConfirm);
+}
+
+// The single place a message actually gets marked "read": sends the read
+// receipt to the server AND — this is the fix — starts each message's
+// disappearing-message timer right here, not the instant it was delivered.
+// Previously the receive-side timer started as soon as a message arrived
+// via poll, regardless of whether the recipient had the room open and
+// visible. Tying it to the same moment the read receipt itself goes out
+// means "disappears after being read" actually means read, not delivered.
+function confirmRead(room, msgIds) {
+  if (!msgIds || !msgIds.length) return;
+  api('/api/read', { code: room.code, token: room.token, msgIds }).catch(() => {});
+  if (room.deleteTimerSeconds > 0) {
+    for (const id of msgIds) startReceiveDeleteTimer(room, id, room.deleteTimerSeconds);
+  }
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -1958,8 +1973,16 @@ async function doPoll(room) {
             if (room.code === activeRoomCode) renderMessageRecord(room, rec);
             else room.unread++;
             notifyMsg(room);
+            // Note: the disappearing-message timer does NOT start here. It
+            // used to fire the instant a message was delivered via poll,
+            // regardless of whether anyone had actually looked at it — on
+            // Android in particular (background polling keeps running more
+            // readily than iOS), that meant messages could be well into
+            // their countdown, or already gone, before the recipient ever
+            // opened the chat. It now only starts at the point the message
+            // is genuinely confirmed read — see confirmRead() below, called
+            // from the exact same place the read receipt itself is sent.
             room.readConfirmIds.push(msg.id);
-            if (room.deleteTimerSeconds > 0) startReceiveDeleteTimer(room, msg.id, room.deleteTimerSeconds);
           }
         }
         if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
@@ -1971,7 +1994,7 @@ async function doPoll(room) {
       if (room.code === activeRoomCode && isUserActive()) {
         const toConfirm = [...room.readConfirmIds, ...room.pendingReadIds];
         room.readConfirmIds.length = 0; room.pendingReadIds.length = 0;
-        if (toConfirm.length > 0) api('/api/read', { code: room.code, token: room.token, msgIds: toConfirm }).catch(() => {});
+        confirmRead(room, toConfirm);
       } else {
         room.pendingReadIds.push(...room.readConfirmIds);
         room.readConfirmIds.length = 0;
