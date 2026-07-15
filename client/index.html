@@ -159,7 +159,13 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
 .msg.them{align-self:flex-start;align-items:flex-start}
-.msg-name{display:none} /* 1:1 rooms only ever have two people — a per-message name label is redundant */
+/* Own messages: no label needed, you know you sent them (and they're on
+   the right). Their messages: show who it's from, small and muted above
+   the bubble — this is what was actually being asked for; showing it on
+   both sides again would bring back the redundancy the original removal
+   was trying to avoid. */
+.msg.me .msg-name{display:none}
+.msg.them .msg-name{font-size:11px;color:#9A8C7E;margin:0 2px 2px;letter-spacing:.02em}
 .bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative}
 .msg.me .bubble{background:#DCF8C6;border-bottom-right-radius:4px}
 .msg.them .bubble{background:#F0F0F0;border-bottom-left-radius:4px}
