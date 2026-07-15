@@ -685,7 +685,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <div class="chat-hdr-logo">V</div>
     <div class="chat-hdr-sep"></div>
     <div class="chat-hdr-room" id="hdr-code">—</div>
-    <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500">🔒 E2E</div>
+    <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption">🔒 E2E</div>
     <div class="chat-hdr-status">
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
@@ -1123,6 +1123,84 @@ async function decryptMsg(room, data) {
     console.warn('E2E decrypt failed:', e.message);
     return '[encrypted message — key mismatch]';
   }
+}
+
+// ── KEY VERIFICATION ────────────────────────────────────────────────────
+// Lets both people confirm their apps derived the shared key from each
+// other's real public key, not one substituted mid-handshake by a
+// man-in-the-middle. Purely local and read-only: it only hashes public key
+// bytes already sitting in memory (room.myKeyPair, room.lastKnownPeerPubKey
+// — both already tracked for other reasons) and returns a short display
+// code. It never touches encryptMsg/decryptMsg, never talks to the server,
+// and has no persisted state of its own — nothing here can affect message
+// delivery, decryption, or the disappearing-timer machinery.
+async function computeFingerprint(room) {
+  if (!room || !room.myKeyPair || !room.lastKnownPeerPubKey) return null;
+  try {
+    const myPubB64 = await getOrGenerateKeyPair(room);
+    const myBytes = Uint8Array.from(atob(myPubB64), c => c.charCodeAt(0));
+    const peerBytes = Uint8Array.from(atob(room.lastKnownPeerPubKey), c => c.charCodeAt(0));
+    // Canonical order: whichever raw key is byte-wise smaller goes first, so
+    // both sides hash the pair in the identical order regardless of which
+    // one is "me" locally. Without this, the two apps would each compute a
+    // different-looking (but equally "correct") code from the same two
+    // keys, which would look like a mismatch even when nothing was
+    // tampered with — this is the one detail that actually matters here.
+    let first = myBytes, second = peerBytes;
+    for (let i = 0; i < Math.min(myBytes.length, peerBytes.length); i++) {
+      if (myBytes[i] !== peerBytes[i]) {
+        if (myBytes[i] > peerBytes[i]) { first = peerBytes; second = myBytes; }
+        break;
+      }
+    }
+    const combined = new Uint8Array(first.length + second.length);
+    combined.set(first); combined.set(second, first.length);
+    const digest = await crypto.subtle.digest('SHA-256', combined);
+    const bytes = new Uint8Array(digest);
+    // 6 groups of 3 digits: short enough to read aloud or eyeball-compare,
+    // with enough combined entropy (~60 bits) that no one could plausibly
+    // land on a matching code by chance during a live handshake.
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      const n = ((bytes[i * 2] << 8) | bytes[i * 2 + 1]) % 1000;
+      code += String(n).padStart(3, '0');
+      if (i < 5) code += '  ';
+    }
+    return code;
+  } catch(e) {
+    console.error('E2E: computeFingerprint failed:', e.message);
+    return null;
+  }
+}
+
+function closeVerifyPanel() {
+  document.getElementById('verify-overlay')?.remove();
+  document.removeEventListener('keydown', verifyEscHandler);
+}
+function verifyEscHandler(e) { if (e.key === 'Escape') closeVerifyPanel(); }
+
+async function showVerifyPanel() {
+  const room = rooms.get(activeRoomCode);
+  if (!room) return;
+  closeVerifyPanel();
+  const code = await computeFingerprint(room);
+  const overlay = document.createElement('div');
+  overlay.id = 'verify-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:340px;width:100%;text-align:center;font-family:inherit">
+      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:8px">Verify this conversation</div>
+      <div style="font-size:12.5px;color:#7A6E65;line-height:1.55;margin-bottom:16px">
+        ${code
+          ? 'Compare this code with the other person through a different channel — read it aloud, or send it another way. If it matches on both sides, no one is sitting in the middle of your connection.'
+          : 'A code will appear here once the other person has joined this room.'}
+      </div>
+      ${code ? `<div style="font-family:ui-monospace,monospace;font-size:18px;letter-spacing:.04em;color:#1A1916;background:#F7F5F1;border:1px solid #EFEFEF;border-radius:10px;padding:14px 8px;margin-bottom:16px">${code}</div>` : ''}
+      <button style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:13px;cursor:pointer" onclick="closeVerifyPanel()">Close</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeVerifyPanel(); });
+  document.addEventListener('keydown', verifyEscHandler);
 }
 
 // ── API HELPER ──────────────────────────────────────────────────────────
