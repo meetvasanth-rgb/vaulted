@@ -438,6 +438,12 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; flex-shrink:0; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
+.msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
+.msg-viewonce svg { flex-shrink:0; fill:none; stroke:#D9B94E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.msg-viewonce span { font-size:12px; color:#EDE7DC; letter-spacing:.01em; }
+.msg-viewonce-opened { background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; cursor:default; width:auto; }
+.msg-viewonce-opened span { color:#9A8C7E; }
+.msg-viewonce-badge { font-size:10px; color:#B8973E; margin-top:4px; letter-spacing:.02em; }
 
 /* ── LEGAL PAGES ──────────────────────────────────────────────── */
 #s-privacy, #s-terms {
@@ -951,6 +957,12 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
     deleteTimerSeconds: deleteTimerSeconds || 0,
     messages: [],           // ordered array of message records (the "chat log")
+    // msgId -> deleteAt (ms epoch). The only thing about a message's history
+    // that survives a reload — never the decrypted content itself. Lets a
+    // restored session tell "already disappeared before you closed the app"
+    // apart from "never had a timer running" without keeping any plaintext
+    // (or images) sitting in storage between sessions.
+    deleteLedger: new Map(),
     seenMsgIds: new Set(),  // dedupe across overlapping polls
     readConfirmIds: [], pendingReadIds: [],
     msgTimers: new Map(),   // msgId -> setTimeout handle (disappearing messages)
@@ -999,6 +1011,12 @@ async function persistRoom(room) {
       code: room.code, token: room.token, name: room.myName,
       deleteTimerSeconds: room.deleteTimerSeconds,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq,
+      // This is a full overwrite of the stored blob, so the in-memory
+      // ledger has to be carried along explicitly — otherwise a persistRoom()
+      // call after persistDeleteLedger() had already written entries (e.g.
+      // changeRoomTimer persists after a timer is already ticking) would
+      // silently drop them from storage even though nothing changed in memory.
+      deleteLedger: Object.fromEntries(room.deleteLedger),
       savedAt: Date.now(), ...keys,
     }));
     const idx = loadRoomsIndex().filter(c => c !== room.code);
@@ -1023,6 +1041,24 @@ function persistRoomSeq(room) {
     existing.lastReceiptSeq = room.lastReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
     existing.savedAt = Date.now();
+    localStorage.setItem(key, JSON.stringify(existing));
+  } catch(e) {}
+}
+// Same lightweight read-modify-write as persistRoomSeq, but for the delete
+// ledger — called whenever a message's deleteAt gets set, so a reload right
+// after can tell it apart from a message whose timer never started. Entries
+// older than 48h are dropped on the way out: the server only ever keeps the
+// last 300 messages per room anyway, so anything this old could never be
+// re-fetched and resurrected regardless.
+function persistDeleteLedger(room) {
+  try {
+    const key = roomStorageKey(room.code);
+    const existing = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!existing) return;
+    const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+    const out = {};
+    for (const [id, at] of room.deleteLedger) if (at >= cutoff) out[id] = at;
+    existing.deleteLedger = out;
     localStorage.setItem(key, JSON.stringify(existing));
   } catch(e) {}
 }
@@ -1790,8 +1826,18 @@ function renderMessageRecord(room, rec) {
 
   let contentHtml;
   if (rec.kind === 'file') {
-    if (rec.isImage) {
-      contentHtml = `<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="viewImage(this.src)"/>`;
+    if (rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed) {
+      // Hidden by default — this is the entire point of view-once: unlike
+      // the regular disappearing timer, which leaves an image sitting
+      // visible in the scroll for its whole countdown, this never renders
+      // until someone deliberately taps it, and disappears shortly after.
+      contentHtml = `<div class="msg-viewonce" onclick="revealViewOnce('${rec.id}')">
+        <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
+        <span>Photo · Tap to view once</span>
+      </div>`;
+    } else if (rec.isImage) {
+      const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
+      contentHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="viewImage(this.src)"/>`;
     } else {
       contentHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -1870,6 +1916,8 @@ function startDeleteTimer(room, msgId, seconds) {
   const rec = room.messages.find(m => m.id === msgId);
   if (!rec) return;
   rec.deleteAt = Date.now() + seconds * 1000;
+  room.deleteLedger.set(msgId, rec.deleteAt);
+  persistDeleteLedger(room);
   if (room.code === activeRoomCode && seconds <= 3600) {
     const bubble = document.querySelector(`.msg[data-msg-id="${msgId}"] .bubble`);
     if (bubble) bubble.title = `Disappears in ${formatDuration(seconds)}`;
@@ -1884,6 +1932,8 @@ function startReceiveDeleteTimer(room, msgId, seconds) {
   const rec = room.messages.find(m => m.id === msgId);
   if (!rec) return;
   rec.deleteAt = Date.now() + seconds * 1000;
+  room.deleteLedger.set(msgId, rec.deleteAt);
+  persistDeleteLedger(room);
   if (room.code === activeRoomCode) {
     const progress = document.getElementById(`progress-${msgId}`);
     if (progress) {
@@ -1917,6 +1967,43 @@ function formatDuration(s) {
   return `${Math.floor(s/3600)}h`;
 }
 
+// View-once: a separate, independent deletion trigger from the room's
+// disappearing-message timer — this one fires from the recipient actually
+// opening the photo, not from a clock. Finds the room itself rather than
+// taking one as a param since it's wired up from an inline onclick, which
+// only has the message id to go on.
+function revealViewOnce(msgId) {
+  let room = null, rec = null;
+  for (const r of rooms.values()) {
+    const found = r.messages.find(m => m.id === msgId);
+    if (found) { room = r; rec = found; break; }
+  }
+  if (!room || !rec || rec.viewed) return;
+  rec.viewed = true;
+  if (room.code === activeRoomCode) {
+    const el = document.querySelector(`.msg[data-msg-id="${msgId}"] .msg-viewonce`);
+    if (el) el.outerHTML = '<div class="msg-viewonce msg-viewonce-opened"><span>Opened</span></div>';
+  }
+  viewImage(`data:${rec.mime};base64,${rec.base64}`, {
+    hideDownload: true,
+    onClose: () => scheduleViewOnceDelete(room, msgId),
+  });
+}
+
+function scheduleViewOnceDelete(room, msgId) {
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec) return;
+  // A short grace window so the message doesn't vanish out from under the
+  // closing animation — long enough to not feel abrupt, short enough that
+  // it's clearly gone right after, not just "eventually".
+  const seconds = 2;
+  rec.deleteAt = Date.now() + seconds * 1000;
+  room.deleteLedger.set(msgId, rec.deleteAt);
+  persistDeleteLedger(room);
+  const handle = setTimeout(() => removeMessageRecord(room, msgId), seconds * 1000);
+  room.msgTimers.set(msgId, handle);
+}
+
 function showTimerField(show) {
   const tf = document.getElementById('timer-field');
   if (tf) tf.style.display = show ? 'block' : 'none';
@@ -1928,13 +2015,13 @@ async function processIncomingContent(room, content, name, time, msgId) {
   const decrypted = await decryptMsg(room, content);
   if (!decrypted) return null;
 
-  const base = { id: msgId, isMe: false, name, time, receiptState: null, reactionMine: null, reactionTheirs: null, deleteAt: null };
+  const base = { id: msgId, isMe: false, name, time, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
 
   try {
     const parsed = JSON.parse(decrypted);
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage };
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, viewOnce: !!parsed.viewOnce, viewed: false };
     }
     if (parsed.text && parsed.reply) {
       return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };
@@ -1942,6 +2029,75 @@ async function processIncomingContent(room, content, name, time, msgId) {
   } catch (e) {}
 
   return { ...base, kind: 'text', content: decrypted, replyData: null, jumbo: isSingleEmoji(decrypted) };
+}
+
+// ── REBUILD CHAT LOG AFTER A RELOAD ─────────────────────────────────────
+// room.messages is never persisted — only the room session (keys, seq
+// positions) and the small delete ledger (msgId -> deleteAt) are. So right
+// after rejoining, do one bootstrap fetch of everything the server still
+// has (it caps history at 300 messages per room) — including this device's
+// own past sends, which normal incremental polling always excludes since a
+// live session already has those in memory. Each message gets re-decrypted
+// fresh from the server's ciphertext, exactly like a message arriving for
+// the first time — nothing decrypted was ever sitting in storage. The
+// delete ledger is what stops an already-expired message from resurrecting
+// while still letting anything that's still genuinely live come back and
+// resume its countdown from wherever it actually was.
+async function restoreRoomHistory(room) {
+  try {
+    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=0&lastReceiptSeq=0&lastReactionSeq=0&full=1`);
+    if (!data || data.roomGone) return;
+    const nowTs = Date.now();
+
+    if (data.messages && data.messages.length > 0) {
+      for (const msg of data.messages) {
+        if (room.seenMsgIds.has(msg.id)) continue;
+        room.seenMsgIds.add(msg.id);
+
+        let rec = null;
+        if (msg.type === 'system') {
+          rec = { id: 'sys-' + msg.id, kind: 'sys', content: msg.content };
+        } else if (msg.type === 'message') {
+          rec = await processIncomingContent(room, msg.content, msg.name, msg.time || '', msg.id);
+          if (rec) rec.isMe = msg.from === room.token;
+        }
+        if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
+        if (!rec) continue;
+
+        const ledgerDeleteAt = room.deleteLedger.get(msg.id);
+        if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) continue; // already expired before this reload — stays gone
+
+        room.messages.push(rec);
+        if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
+          // Timer was already counting down when the app last closed —
+          // resume with the time actually left instead of restarting it.
+          rec.deleteAt = ledgerDeleteAt;
+          rec.timerStarted = true; // stop handleReadReceipts below from restarting it fresh
+          const handle = setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs);
+          room.msgTimers.set(msg.id, handle);
+        } else if (!rec.isMe && msg.type === 'message') {
+          // Never read/confirmed before the reload — queue it the same way
+          // a freshly-arrived message would be, so it still gets marked
+          // read (and its receiver-side timer, if any, still starts) the
+          // normal way once this room is actually looked at.
+          room.readConfirmIds.push(msg.id);
+        }
+      }
+    }
+
+    if (data.readReceipts && data.readReceipts.length > 0) {
+      handleReadReceipts(room, data.readReceipts);
+      for (const r of data.readReceipts) if (r.readAt && r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
+    }
+    if (data.reactionUpdates && data.reactionUpdates.length > 0) {
+      for (const u of data.reactionUpdates) {
+        const rec = room.messages.find(m => m.id === u.msgId);
+        if (rec) rec.reactionTheirs = Object.entries(u.reactions || {}).find(([t]) => t !== room.token)?.[1] || null;
+        if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
+      }
+    }
+    persistRoomSeq(room);
+  } catch(e) { console.error('E2E: restoreRoomHistory failed:', e.message); }
 }
 
 // ── POLLING (per room) ──────────────────────────────────────────────────
@@ -2390,15 +2546,19 @@ window.addEventListener('load', async () => {
     const session = loadRoomSession(code);
     if (!session) continue;
     const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds });
-    // Resume from where we left off instead of re-fetching the entire
-    // remaining server-side history — the server never deletes messages
-    // (only the client's disappearing-message timer removes them locally),
-    // so starting back at seq 0 would resurrect already-vanished old
-    // messages mixed in with new ones. Only genuinely-missed messages (seq
-    // beyond what we'd already seen) come back now.
+    // These get overwritten by restoreRoomHistory() below once the chat log
+    // is rebuilt from a full server fetch; set here only as a fallback in
+    // case that call fails partway through (e.g. offline on load) so normal
+    // incremental polling still has a sane position to resume from.
     room.lastSeq = session.lastSeq || 0;
     room.lastReceiptSeq = session.lastReceiptSeq || 0;
     room.lastReactionSeq = session.lastReactionSeq || 0;
+    // The delete ledger is the one thing that survives a reload for message
+    // history purposes — msgId -> deleteAt only, never content. Everything
+    // else about the chat log itself gets rebuilt fresh below by re-fetching
+    // and re-decrypting from the server, same as it would on any other
+    // device joining this room for the first time.
+    room.deleteLedger = new Map(Object.entries(session.deleteLedger || {}).map(([k, v]) => [k, Number(v)]));
     try {
       await importKeyPairFromStorage(room, session); // reuse the same keypair so old messages stay decryptable
       const pubKey = await getOrGenerateKeyPair(room);
@@ -2412,6 +2572,7 @@ window.addEventListener('load', async () => {
         room.everOnline = true; // peer's pubKey on file means they've been in this room before
       }
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
+      if (room.sharedKey) await restoreRoomHistory(room);
       addRoomToState(room);
       restoredAny = true;
     } catch(e) { /* leave this room's storage in place for a later retry */ }
@@ -2445,12 +2606,27 @@ async function handleFileSelect(event) {
 
   if (file.size > MAX_FILE_SIZE) { toast('File too large — maximum 5MB'); return; }
 
-  const now = new Date();
-  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const base64 = await fileToBase64(file);
   const isImage = file.type.startsWith('image/');
 
-  const payload = JSON.stringify({ type: 'file', name: file.name, mime: file.type, size: file.size, data: base64 });
+  // Only photos get the view-once choice — it's not a meaningful concept
+  // for a PDF or a zip. Everything else keeps sending immediately, exactly
+  // as before.
+  if (isImage) {
+    showSendImageOptions(room, file, base64);
+  } else {
+    await sendFileMessage(room, file, base64, isImage, false);
+  }
+}
+
+// One shared send path for both the normal attach button and the view-once
+// choice below, so the message-id/optimistic-render/API-call logic (and its
+// existing race-condition fix) only exists in one place.
+async function sendFileMessage(room, file, base64, isImage, viewOnce) {
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+
+  const payload = JSON.stringify({ type: 'file', name: file.name, mime: file.type, size: file.size, data: base64, viewOnce: !!viewOnce });
   const encryptedPayload = await encryptMsg(room, payload);
 
   // Same fix as text messages: generate the real id up front and send it to
@@ -2464,7 +2640,7 @@ async function handleFileSelect(event) {
   const msgId = 'file' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time,
-    fileName: file.name, mime: file.type, base64, isImage,
+    fileName: file.name, mime: file.type, base64, isImage, viewOnce: !!viewOnce, viewed: false,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
@@ -2475,6 +2651,33 @@ async function handleFileSelect(event) {
   } catch(e) {
     toast('Failed to send file');
   }
+}
+
+// Small confirm step, image sends only: lets you pick between a normal
+// photo (behaves exactly like today) and view-once (hidden behind a "tap to
+// view" card for the recipient, gone shortly after they open it once). The
+// sender's own copy always renders normally either way, same as WhatsApp —
+// only the recipient's side is gated.
+function showSendImageOptions(room, file, base64) {
+  const overlay = document.createElement('div');
+  overlay.id = 'send-img-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;text-align:center;font-family:inherit">
+      <img src="data:${file.type};base64,${base64}" style="max-width:100%;max-height:280px;border-radius:10px;margin-bottom:16px;object-fit:contain"/>
+      <div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">Send this photo normally, or as view-once — hidden until opened, then removed shortly after.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="send-img-once" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">👁 Send view-once</button>
+        <button id="send-img-normal" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send normally</button>
+        <button id="send-img-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#send-img-once').onclick = () => { close(); sendFileMessage(room, file, base64, true, true); };
+  overlay.querySelector('#send-img-normal').onclick = () => { close(); sendFileMessage(room, file, base64, true, false); };
+  overlay.querySelector('#send-img-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
 
 function fileToBase64(file) {
@@ -2492,7 +2695,8 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-function viewImage(src) {
+function viewImage(src, opts) {
+  const { onClose, hideDownload } = opts || {};
   let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
   let lastTouchDist = 0;
 
@@ -2526,13 +2730,16 @@ function viewImage(src) {
   resetBtn.onclick = (e) => { e.stopPropagation(); scale=1; posX=0; posY=0; updateTransform(); };
   bar.appendChild(resetBtn);
 
-  const dlBtn = document.createElement('a');
-  dlBtn.href = src;
-  dlBtn.download = 'vaulted-image';
-  dlBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:13px;padding:7px 14px;border-radius:20px;text-decoration:none;font-family:Inter,sans-serif;';
-  dlBtn.textContent = '↓ Save';
-  dlBtn.onclick = (e) => e.stopPropagation();
-  bar.appendChild(dlBtn);
+  let dlBtn = null;
+  if (!hideDownload) {
+    dlBtn = document.createElement('a');
+    dlBtn.href = src;
+    dlBtn.download = 'vaulted-image';
+    dlBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:13px;padding:7px 14px;border-radius:20px;text-decoration:none;font-family:Inter,sans-serif;';
+    dlBtn.textContent = '↓ Save';
+    dlBtn.onclick = (e) => e.stopPropagation();
+    bar.appendChild(dlBtn);
+  }
 
   overlay.appendChild(bar);
 
@@ -2613,7 +2820,11 @@ function viewImage(src) {
 
   const escHandler = (e) => { if (e.key === 'Escape') cleanup(); };
   document.addEventListener('keydown', escHandler);
-  function cleanup() { document.removeEventListener('keydown', escHandler); overlay.remove(); }
+  function cleanup() {
+    document.removeEventListener('keydown', escHandler);
+    overlay.remove();
+    if (onClose) onClose();
+  }
 
   document.body.appendChild(overlay);
 }

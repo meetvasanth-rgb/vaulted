@@ -273,6 +273,13 @@ function api(path, method, d, p, res) {
     const clientLastSeq = parseInt(p.get('lastSeq')||'0');
     const lastReceiptSeq = parseInt(p.get('lastReceiptSeq')||'0');
     const lastReactionSeq = parseInt(p.get('lastReactionSeq')||'0');
+    // full=1 is only ever sent once, right after a reload, to rebuild the
+    // chat log from scratch (the client never persists message content
+    // locally — only the room session and a small expiry ledger). Normal
+    // incremental polling never sets this and keeps excluding the caller's
+    // own messages exactly as before, since the client already has those
+    // from its own optimistic send.
+    const includeOwn = p.get('full') === '1';
     const room = rooms.get(roomCode);
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in room.',403);
@@ -290,8 +297,11 @@ function api(path, method, d, p, res) {
       }
     }
 
-    // Messages since clientLastSeq, excluding own
-    const newMsgs = room.msgs.filter(msg => msg.seq > clientLastSeq && msg.from !== token);
+    // Messages since clientLastSeq, excluding own (unless this is the
+    // one-time post-reload bootstrap fetch, which needs everything back —
+    // the server is the only place a client's own sent messages still
+    // exist once its in-memory chat log has been cleared by a reload).
+    const newMsgs = room.msgs.filter(msg => msg.seq > clientLastSeq && (includeOwn || msg.from !== token));
 
     // Mark delivered
     for (const msg of newMsgs) {
