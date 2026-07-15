@@ -307,7 +307,17 @@ function api(path, method, d, p, res) {
     // one-time post-reload bootstrap fetch, which needs everything back —
     // the server is the only place a client's own sent messages still
     // exist once its in-memory chat log has been cleared by a reload).
-    const newMsgs = room.msgs.filter(msg => msg.seq > clientLastSeq && (includeOwn || msg.from !== token));
+    // System messages are the one exception to includeOwn: a "joined"
+    // announcement caused by this same client has nothing to recover (it's
+    // not content, there's no other copy of it anywhere worth restoring) —
+    // letting includeOwn pull it back in on every reload just reintroduces
+    // the exact self-echo ("X joined" shown to X) the from-tagging above
+    // was added to prevent, since it bypassed that tag entirely.
+    const newMsgs = room.msgs.filter(msg => {
+      if (msg.seq <= clientLastSeq) return false;
+      if (msg.type === 'system') return msg.from !== token;
+      return includeOwn || msg.from !== token;
+    });
 
     // Mark delivered
     for (const msg of newMsgs) {
