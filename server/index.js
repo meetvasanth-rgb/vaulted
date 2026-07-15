@@ -160,8 +160,14 @@ function api(path, method, d, p, res) {
     room.members.set(token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() });
     room.lastActivity = Date.now();
 
-    // System message
-    room.msgs.push({ seq: ++room.seq, id: uid(), type:'system', content:`${name} joined`, ts: Date.now() });
+    // System message — tagged with `from` so the poll filter (which already
+    // excludes a caller's own messages) also excludes this one for the
+    // joiner themselves. Without it, system messages had no sender at all,
+    // so the "X joined" announcement got echoed back to X's own client too
+    // — confusing since the app had just told them "You're X" a moment
+    // earlier. The other member still gets it normally, which is the whole
+    // point of the message.
+    room.msgs.push({ seq: ++room.seq, id: uid(), type:'system', content:`${name} joined`, ts: Date.now(), from: token });
 
     let peerPubKey = null;
     for (const [t,mb] of room.members) if (t!==token) peerPubKey = mb.pubKey;
