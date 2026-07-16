@@ -733,7 +733,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     <button class="attach-btn" onclick="triggerFileInput()" id="attach-btn" title="Attach file">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
-    <input type="file" id="file-input" style="display:none" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
+    <input type="file" id="file-input" multiple style="display:none" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
     <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -2618,23 +2618,37 @@ function triggerFileInput() {
 
 async function handleFileSelect(event) {
   const room = getActiveRoom();
-  const file = event.target.files[0];
-  if (!file || !room) return;
-  event.target.value = ''; // reset so same file can be selected again
+  const files = Array.from(event.target.files || []);
+  event.target.value = ''; // reset so the same file(s) can be selected again
+  if (!files.length || !room) return;
 
-  if (file.size > MAX_FILE_SIZE) { toast('File too large — maximum 5MB'); return; }
-
-  const base64 = await fileToBase64(file);
-  const isImage = file.type.startsWith('image/');
-
-  // Only photos get the view-once choice — it's not a meaningful concept
-  // for a PDF or a zip. Everything else keeps sending immediately, exactly
-  // as before.
-  if (isImage) {
-    showSendImageOptions(room, file, base64);
-  } else {
-    await sendFileMessage(room, file, base64, isImage, false);
+  const valid = [];
+  const tooLarge = [];
+  for (const file of files) {
+    if (file.size > MAX_FILE_SIZE) tooLarge.push(file.name); else valid.push(file);
   }
+  if (tooLarge.length) {
+    toast(tooLarge.length === 1 ? `"${tooLarge[0]}" too large — maximum 5MB` : `${tooLarge.length} files skipped — maximum 5MB each`);
+  }
+  if (!valid.length) return;
+
+  const images = [];
+  const others = [];
+  for (const file of valid) {
+    const base64 = await fileToBase64(file);
+    (file.type.startsWith('image/') ? images : others).push({ file, base64 });
+  }
+
+  // Non-image files send immediately, one after another — view-once isn't a
+  // meaningful concept for a PDF or a zip, so no picker needed for these.
+  for (const { file, base64 } of others) {
+    await sendFileMessage(room, file, base64, false, false);
+  }
+
+  // Photos get the view-once choice, asked once for the whole batch (not
+  // once per photo — that'd be tedious for a multi-select) and applied to
+  // every image in the selection.
+  if (images.length) showSendImageOptions(room, images);
 }
 
 // One shared send path for both the normal attach button and the view-once
@@ -2671,19 +2685,29 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce) {
   }
 }
 
-// Small confirm step, image sends only: lets you pick between a normal
-// photo (behaves exactly like today) and view-once (hidden behind a "tap to
+// Small confirm step, image sends only: lets you pick between normal
+// photos (behaves exactly like today) and view-once (hidden behind a "tap to
 // view" card for the recipient, gone shortly after they open it once). The
 // sender's own copy always renders normally either way, same as WhatsApp —
 // only the recipient's side is gated.
-function showSendImageOptions(room, file, base64) {
+// items: array of { file, base64 } — one photo or several from a
+// multi-select all share the single choice made here.
+function showSendImageOptions(room, items) {
   const overlay = document.createElement('div');
   overlay.id = 'send-img-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  const first = items[0];
+  const countBadge = items.length > 1
+    ? `<div style="position:absolute;top:8px;right:8px;background:#1A1916;color:#fff;font-size:11px;padding:3px 8px;border-radius:12px">+${items.length - 1} more</div>`
+    : '';
+  const copy = items.length > 1 ? `Send these ${items.length} photos normally, or as view-once` : 'Send this photo normally, or as view-once';
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;text-align:center;font-family:inherit">
-      <img src="data:${file.type};base64,${base64}" style="max-width:100%;max-height:280px;border-radius:10px;margin-bottom:16px;object-fit:contain"/>
-      <div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">Send this photo normally, or as view-once — hidden until opened, then removed shortly after.</div>
+      <div style="position:relative;margin-bottom:16px">
+        <img src="data:${first.file.type};base64,${first.base64}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>
+        ${countBadge}
+      </div>
+      <div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">${copy} — hidden until opened, then removed shortly after.</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <button id="send-img-once" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">👁 Send view-once</button>
         <button id="send-img-normal" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send normally</button>
@@ -2692,8 +2716,14 @@ function showSendImageOptions(room, file, base64) {
     </div>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
-  overlay.querySelector('#send-img-once').onclick = () => { close(); sendFileMessage(room, file, base64, true, true); };
-  overlay.querySelector('#send-img-normal').onclick = () => { close(); sendFileMessage(room, file, base64, true, false); };
+  const sendAll = async (viewOnce) => {
+    close();
+    for (const { file, base64 } of items) {
+      await sendFileMessage(room, file, base64, true, viewOnce);
+    }
+  };
+  overlay.querySelector('#send-img-once').onclick = () => sendAll(true);
+  overlay.querySelector('#send-img-normal').onclick = () => sendAll(false);
   overlay.querySelector('#send-img-cancel').onclick = close;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
