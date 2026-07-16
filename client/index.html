@@ -201,10 +201,26 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg.me .msg-reactions{right:auto;left:6px}
 .msg-reaction-badge{background:#fff;border:1px solid #E8E2DA;border-radius:10px;padding:1px 5px;font-size:16px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
 
-/* Multi-select mode: a checkmark badge + highlight ring on chosen messages */
-.msg.msg-selected .bubble,.msg.msg-selected .msg-image,.msg.msg-selected .msg-file,.msg.msg-selected .msg-viewonce{outline:2px solid #B8973E;outline-offset:2px}
-.msg-select-badge{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#B8973E;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.25);z-index:2}
+/* Media messages (image/file/view-once) get a wrapper so a small always-
+   visible "more" button, the selection checkbox, and the reaction badge all
+   have somewhere to anchor — an <img>/<a> can't usefully host absolutely
+   positioned children of its own. */
+.msg-media-wrap{position:relative;display:inline-block;max-width:100%}
+.msg-more-btn{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.45);color:#fff;border:none;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3}
+.msg-more-btn:hover{background:rgba(0,0,0,0.62)}
+.msg.them .msg-more-btn{right:auto;left:6px}
+
+/* Multi-select mode: once active, every message shows an empty checkbox;
+   picking one fills it in gold and brings that message back to full
+   opacity while the rest dim slightly, the same visual language as
+   WhatsApp/Telegram's multi-select. */
+.msg-select-badge{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #D0CAC0;color:transparent;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.15);z-index:4;transition:background-color .15s,border-color .15s}
+.msg-select-badge.checked{background:#B8973E;border-color:#B8973E;color:#fff}
 .msg.them .msg-select-badge{right:auto;left:-8px}
+body.select-mode #chat-body .msg{opacity:.55;transition:opacity .15s}
+body.select-mode #chat-body .msg.msg-selected{opacity:1}
+body.select-mode .msg-more-btn{display:none}
+body.select-mode .chat-ftr{display:none}
 .sys-msg{align-self:center;font-size:12px;color:#999;background:rgba(0,0,0,0.04);border-radius:20px;padding:5px 16px;text-align:center;font-style:italic;margin:6px 0}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
 .typing-indicator.show{display:flex}
@@ -1762,29 +1778,43 @@ function closeAllMsgActions() {
   activeActionMsgId = null;
 }
 
+// Shared by the bubble tap (wireMsgActions) and the media "⋮" button
+// (handleMoreTap) so there's one place that knows how to open/close the
+// Reply/React/Select/Delete row for a given message.
+function toggleMsgActions(msgId) {
+  const actions = document.getElementById(`actions-${msgId}`);
+  if (!actions) return;
+  const wasOpen = actions.classList.contains('show');
+  closeAllMsgActions();
+  if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
+}
+
+// The always-visible "more" button on image/file messages — tapping the
+// media itself opens the viewer or starts a download, so this is the only
+// direct route to Reply/React/Select/Delete on those (previously only the
+// thin timestamp row underneath opened it, easy to miss entirely).
+function handleMoreTap(msgId) {
+  if (selectMode) { toggleMessageSelection(msgId); return; }
+  toggleMsgActions(msgId);
+}
+
 function wireMsgActions(div, room, msgId, replyText, isMe) {
   // Text messages have a .bubble, which is what we tap to reveal Reply/React.
-  // File/image messages fall back to .msg-meta (the timestamp/tick row)
-  // instead of the image/file element itself — assigning onclick there would
-  // silently overwrite that element's own onclick="viewImage(...)" and break
-  // the zoomable full-view viewer.
+  // File/image messages fall back to .msg-meta (the timestamp/tick row) —
+  // the media itself has its own onclick (view/download) and now its own
+  // "⋮" button (handleMoreTap above), so this is a secondary way in, not
+  // the primary one.
   const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
   const actions = div.querySelector(`#actions-${msgId}`);
   const picker = div.querySelector(`#picker-${msgId}`);
   if (!bubble || !actions || !picker) return;
-
-  const toggleActions = () => {
-    const wasOpen = actions.classList.contains('show');
-    closeAllMsgActions();
-    if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
-  };
 
   // While a multi-select is in progress, tapping any message toggles its
   // selection instead of opening the Reply/React/Delete row — checked first
   // so it takes over the same tap gesture rather than needing a separate one.
   const handleTap = () => {
     if (selectMode) { toggleMessageSelection(msgId); return; }
-    toggleActions();
+    toggleMsgActions(msgId);
   };
 
   let touchStartX, touchStartY, touchStartTime;
@@ -1831,7 +1861,7 @@ function wireMsgActions(div, room, msgId, replyText, isMe) {
 
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.msg-actions') && !e.target.closest('.reaction-picker') &&
-      !e.target.closest('.bubble') && !e.target.closest('.msg-image') && !e.target.closest('.msg-file')) {
+      !e.target.closest('.bubble') && !e.target.closest('.msg-media-wrap')) {
     closeAllMsgActions();
   }
 });
@@ -1922,8 +1952,14 @@ let selectedMsgIds = new Set();
 function enterSelectMode(msgId) {
   selectMode = true;
   selectedMsgIds = new Set([msgId]);
+  document.body.classList.add('select-mode');
   document.querySelector('.chat-hdr')?.classList.add('hidden');
   document.getElementById('select-bar')?.classList.add('show');
+  cancelReply(); // the reply composer doesn't make sense mid-selection
+  // Every message gets an (empty) checkbox once selection starts, not just
+  // the one that was tapped to enter it — otherwise it's unclear which
+  // other messages are even selectable until you've already picked one.
+  document.querySelectorAll('#chat-body .msg[data-msg-id]').forEach(ensureSelectBadge);
   updateMessageSelectionVisual(msgId);
   updateSelectionBar();
 }
@@ -1931,11 +1967,12 @@ function enterSelectMode(msgId) {
 function exitSelectMode() {
   if (!selectMode) return;
   selectMode = false;
-  const ids = [...selectedMsgIds];
   selectedMsgIds = new Set();
+  document.body.classList.remove('select-mode');
   document.querySelector('.chat-hdr')?.classList.remove('hidden');
   document.getElementById('select-bar')?.classList.remove('show');
-  for (const id of ids) updateMessageSelectionVisual(id);
+  document.querySelectorAll('#chat-body .msg-select-badge').forEach(b => b.remove());
+  document.querySelectorAll('#chat-body .msg.msg-selected').forEach(d => d.classList.remove('msg-selected'));
 }
 
 function toggleMessageSelection(msgId) {
@@ -1946,25 +1983,30 @@ function toggleMessageSelection(msgId) {
   updateSelectionBar();
 }
 
+// Adds the empty (unchecked) selection badge to a message, if it doesn't
+// already have one — called for every message when select mode starts, and
+// for any message rendered while select mode is already active (a live
+// incoming message shouldn't be the one thing on screen without a checkbox).
+function ensureSelectBadge(div) {
+  const target = div.querySelector('.bubble, .msg-media-wrap');
+  if (!target) return;
+  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
+  if (!target.querySelector('.msg-select-badge')) {
+    const badge = document.createElement('div');
+    badge.className = 'msg-select-badge';
+    target.appendChild(badge);
+  }
+}
+
 function updateMessageSelectionVisual(msgId) {
   const div = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
   if (!div) return;
   const selected = selectedMsgIds.has(msgId);
   div.classList.toggle('msg-selected', selected);
-  const target = div.querySelector('.bubble, .msg-image, .msg-file, .msg-viewonce');
-  if (!target) return;
-  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
-  let badge = target.querySelector('.msg-select-badge');
-  if (selected) {
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.className = 'msg-select-badge';
-      badge.textContent = '✓';
-      target.appendChild(badge);
-    }
-  } else if (badge) {
-    badge.remove();
-  }
+  ensureSelectBadge(div);
+  const target = div.querySelector('.bubble, .msg-media-wrap');
+  const badge = target?.querySelector('.msg-select-badge');
+  if (badge) { badge.classList.toggle('checked', selected); badge.textContent = selected ? '✓' : ''; }
 }
 
 function updateSelectionBar() {
@@ -1993,7 +2035,9 @@ async function sendReaction(room, msgId, emoji) {
 }
 
 function renderReactionsForRec(div, rec) {
-  const target = div.querySelector('.bubble, .msg-image, .msg-file');
+  // .msg-media-wrap (not .msg-image/.msg-file directly) — an <img>/<a> can't
+  // usefully host an absolutely positioned child badge of its own.
+  const target = div.querySelector('.bubble, .msg-media-wrap');
   if (!target) return;
   if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
   let wrap = target.querySelector('.msg-reactions');
@@ -2034,24 +2078,30 @@ function renderMessageRecord(room, rec) {
 
   let contentHtml;
   if (rec.kind === 'file') {
+    let mediaHtml;
     if (rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed) {
       // Hidden by default — this is the entire point of view-once: unlike
       // the regular disappearing timer, which leaves an image sitting
       // visible in the scroll for its whole countdown, this never renders
       // until someone deliberately taps it, and disappears shortly after.
-      contentHtml = `<div class="msg-viewonce" onclick="revealViewOnce('${rec.id}')">
+      mediaHtml = `<div class="msg-viewonce" onclick="revealViewOnce('${rec.id}')">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
         <span>Photo · Tap to view once</span>
       </div>`;
     } else if (rec.isImage) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
-      contentHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')"/>`;
+      mediaHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')"/>`;
     } else {
-      contentHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}" onclick="return handleFileTap(event, '${rec.id}')">
+      mediaHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}" onclick="return handleFileTap(event, '${rec.id}')">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>${escHtml(rec.fileName)}</span>
       </a>`;
     }
+    // Tapping the image opens the viewer and tapping the file downloads it,
+    // so neither gave any way to reach Reply/React/Select/Delete — this "⋮"
+    // is what actually makes those reachable on media messages, the same
+    // way tapping the bubble already does for text.
+    contentHtml = `<div class="msg-media-wrap">${mediaHtml}<button type="button" class="msg-more-btn" onclick="event.stopPropagation(); handleMoreTap('${rec.id}')" title="More">⋮</button></div>`;
   } else {
     const replyHtml = rec.replyData ? `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>` : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}">${escHtml(rec.content)}</div>`;
@@ -2076,6 +2126,10 @@ function renderMessageRecord(room, rec) {
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   renderReactionsForRec(div, rec);
+  // A message arriving (or being scrolled into view) while a selection is
+  // already in progress should look like every other message in that mode
+  // — an empty checkbox, ready to be picked.
+  if (selectMode) ensureSelectBadge(div);
 
   // If a disappearing-message timer is already ticking (e.g. replaying after
   // switching back to this room), resume the progress bar from where it
