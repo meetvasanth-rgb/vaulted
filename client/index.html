@@ -609,6 +609,17 @@ body.select-mode .chat-ftr{display:none}
   letter-spacing:.14em; color:var(--cream);
 }
 
+/* iOS-only nudge: -webkit-touch-callout is a WebKit/iOS Safari-specific
+   property, unsupported anywhere else, so @supports on it is a reliable way
+   to target iOS specifically without a JS user-agent check. Android was
+   already reported as fine at the previous sizes — this only touches iOS. */
+@supports (-webkit-touch-callout: none) {
+  .bubble{font-size:16px}
+  .msg.them .msg-name{font-size:12px}
+  .msg-time{font-size:12px}
+  .e2e-bar{font-size:12px}
+  .sys-msg{font-size:13px}
+}
 </style>
 </head>
 <body>
@@ -787,10 +798,16 @@ body.select-mode .chat-ftr{display:none}
     <button class="reply-close" onclick="cancelReply()">×</button>
   </div>
   <div class="chat-ftr">
-    <button class="attach-btn" onclick="triggerFileInput()" id="attach-btn" title="Attach file">
+    <button class="attach-btn" onclick="showAttachOptions()" id="attach-btn" title="Attach file">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
-    <input type="file" id="file-input" multiple style="display:none" accept="image/*,application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
+    <!-- Two separate inputs, not one with a mixed accept list — Android's
+         file chooser only offers the Gallery/Photos app as a direct option
+         when it can tell the request is image-only; a mixed
+         "image/*,application/pdf,..." accept tends to fall back to a
+         generic Files browser instead. -->
+    <input type="file" id="image-input" multiple style="display:none" accept="image/*" onchange="handleFileSelect(event)"/>
+    <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
     <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -3031,9 +3048,29 @@ window.addEventListener('load', async () => {
 });
 
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────
-function triggerFileInput() {
+// Same overlay style as showDeleteOptions/showSendImageOptions. Two
+// dedicated inputs sit behind this (see the HTML) rather than one input
+// with every accept type mixed together, since that mix is what stopped
+// Android's chooser from offering the Gallery/Photos app directly.
+function showAttachOptions() {
   if (document.getElementById('msg-input').disabled) return;
-  document.getElementById('file-input').click();
+  const overlay = document.createElement('div');
+  overlay.id = 'attach-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:300px;width:100%;text-align:center;font-family:inherit">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="attach-photo" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">🖼 Photo or Video</button>
+        <button id="attach-doc" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">📄 Document</button>
+        <button id="attach-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#attach-photo').onclick = () => { close(); document.getElementById('image-input').click(); };
+  overlay.querySelector('#attach-doc').onclick = () => { close(); document.getElementById('file-input').click(); };
+  overlay.querySelector('#attach-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
 
 async function handleFileSelect(event) {
