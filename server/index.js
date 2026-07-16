@@ -1,7 +1,11 @@
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const { promisify } = require('util');
 const webpush = require('web-push');
+
+const scryptAsync = promisify(crypto.scrypt);
 
 const PORT = process.env.PORT || 3000;
 // Named rooms are meant to persist for 7 days of inactivity, one-time
@@ -25,9 +29,35 @@ const rooms = new Map();
 // fail to deliver.
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'aMEjVlR3d-zpiZgTSJBzCy8LJ-3QbtaF5T1aKeVLph8';
-webpush.setVapidDetails('mailto:privacy@valuted.in', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+webpush.setVapidDetails('mailto:privacy@vaultlix.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+// Math.random() is not a CSPRNG — predictable enough in theory that it has
+// no business generating anything used as a credential. This is used for
+// room auth tokens (the bearer credential behind every /api/poll, /api/send,
+// /api/read call for a room) and message ids, so it needs real randomness.
+function uid() { return crypto.randomBytes(16).toString('hex'); }
+
+// Room passwords are hashed with scrypt (memory-hard, built into Node's core
+// crypto module — no new dependency) plus a random per-room salt, rather
+// than stored and compared as a plain string. Stored as "saltHex:hashHex" in
+// a single field so there's nothing extra to persist or migrate.
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = await scryptAsync(password, salt, 64);
+  return salt.toString('hex') + ':' + hash.toString('hex');
+}
+
+// Constant-time comparison (crypto.timingSafeEqual) instead of !== so a
+// response-timing difference can't be used to infer the password character
+// by character. Returns true if no password was ever set on the room.
+async function verifyPassword(attempt, stored) {
+  if (!stored) return true;
+  const [saltHex, hashHex] = stored.split(':');
+  const salt = Buffer.from(saltHex, 'hex');
+  const expected = Buffer.from(hashHex, 'hex');
+  const actual = await scryptAsync(attempt || '', salt, 64);
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
 
 function formatTimerLabel(seconds) {
   if (!seconds) return 'off';
@@ -75,15 +105,33 @@ function serveStatic(req, res) {
   });
 }
 
+// Migrated from valuted.in to vaultlix.com. Both domains need to stay
+// attached to this same Railway service (don't remove valuted.in from
+// Railway's domain settings) — the redirect below only fires if a request
+// for the old domain actually reaches this process.
+const OLD_DOMAINS = new Set(['valuted.in', 'www.valuted.in']);
+const NEW_DOMAIN = 'vaultlix.com';
+
 const srv = http.createServer((req, res) => {
+  const host = (req.headers.host || '').toLowerCase();
+
+  // Send anyone still landing on the old domain — an old bookmark, a
+  // previously-shared room link, a home-screen shortcut installed before the
+  // move — straight to the new one, already over https, in a single hop.
+  // This has to run before the http-to-https upgrade below; otherwise an
+  // old-domain http:// request would upgrade to old-domain https:// first
+  // and only reach the new domain on a second round trip.
+  if (OLD_DOMAINS.has(host)) {
+    res.writeHead(301, { Location: `https://${NEW_DOMAIN}${req.url}` });
+    res.end();
+    return;
+  }
+
   // Railway's edge terminates TLS and forwards decrypted traffic to this
   // process, setting x-forwarded-proto so we can tell which scheme the
-  // visitor actually used. Confirmed by testing: valuted.in currently
-  // serves the full site over plain http:// with no redirect to https —
-  // that's what Chrome is flagging as "Not Secure" (whether or not https
-  // itself is configured correctly). Force the upgrade here, and send HSTS
-  // once we know a request came in over https so browsers remember to use
-  // https for this host next time, even if someone lands on an old http:// link.
+  // visitor actually used. Force the upgrade here, and send HSTS once we
+  // know a request came in over https so browsers remember to use https for
+  // this host next time, even if someone lands on an old http:// link.
   const proto = req.headers['x-forwarded-proto'];
   if (proto === 'http') {
     res.writeHead(301, { Location: `https://${req.headers.host}${req.url}` });
@@ -104,11 +152,19 @@ const srv = http.createServer((req, res) => {
   req.on('end',()=>{
     let d={};
     try { if(body) d=JSON.parse(body); } catch{}
-    api(u.pathname, req.method, d, u.searchParams, res);
+    // api() is async now (password hashing awaits scrypt) but still responds
+    // entirely through the res object rather than a return value, so this
+    // stays fire-and-forget — just needs a catch so a thrown error (a
+    // malformed password field, scrypt failing, etc.) can't crash the
+    // process or hang the request with no response ever sent.
+    api(u.pathname, req.method, d, u.searchParams, res).catch(err => {
+      console.error('API error:', err.message);
+      try { resErr(res, 'Internal error.', 500); } catch(e) {}
+    });
   });
 });
 
-function api(path, method, d, p, res) {
+async function api(path, method, d, p, res) {
 
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
@@ -117,11 +173,12 @@ function api(path, method, d, p, res) {
     const roomCode = namedCode || code();
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
+    const passwordHash = d.password ? await hashPassword(d.password) : null;
     rooms.set(roomCode, {
       lastActivity: Date.now(),
       isNamed: !!namedCode,
       deleteTimer: parseInt(d.deleteTimer)||0,
-      password: d.password||null,
+      passwordHash,
       seq: 0,          // global message sequence counter
       reactionSeq: 0,  // separate counter so reaction updates can be synced like read receipts
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
@@ -136,9 +193,15 @@ function api(path, method, d, p, res) {
     const roomCode = (d.code||'').toLowerCase().trim();
     const room = rooms.get(roomCode);
     if (!room) return resErr(res,'Room not found.',404);
-    if (room.password && room.password !== (d.password||null)) return resErr(res,'Incorrect password.',403);
 
-    // Rejoin with saved token
+    // Rejoin with saved token — an existing session token is itself the
+    // credential for continued access, so this branch intentionally comes
+    // before the password check below. Password re-verification used to
+    // apply here too, which silently broke reconnecting to any
+    // password-protected room: a page reload never re-sends the password
+    // (it isn't kept in memory across a reload), so every reload of one of
+    // these rooms was rejected as "Incorrect password" even with a
+    // perfectly valid saved session.
     if (d.token && room.members.has(d.token)) {
       const m = room.members.get(d.token);
       m.lastSeen = Date.now();
@@ -148,6 +211,8 @@ function api(path, method, d, p, res) {
       for (const [t,mb] of room.members) if (t!==d.token) peerPubKey = mb.pubKey;
       return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, deleteTimer: room.deleteTimer });
     }
+
+    if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);
 
     // Clean stale members (disconnected without calling /api/leave)
     const staleThreshold = Date.now() - 30000; // 30 seconds
@@ -207,7 +272,7 @@ function api(path, method, d, p, res) {
     // delay the send response.
     for (const [t, mb] of room.members) {
       if (t !== d.token && mb.pushSub) {
-        const payload = JSON.stringify({ title: 'Vaulted', body: `New message from ${m.name}`, tag: d.code });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: d.code });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
@@ -400,4 +465,4 @@ function api(path, method, d, p, res) {
   resErr(res,'Not found.',404);
 }
 
-srv.listen(PORT, () => console.log(`Vaulted on port ${PORT}`));
+srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));

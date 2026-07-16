@@ -1,4 +1,4 @@
-// Vaulted service worker — exists solely to receive Web Push events and show
+// Vaultlix service worker — exists solely to receive Web Push events and show
 // a notification. It does NOT cache app files (this app has no offline mode;
 // every session needs a live connection to relay E2E-encrypted messages), so
 // there's no fetch handler here beyond letting requests pass straight through.
@@ -19,9 +19,9 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) {}
 
-  const title = data.title || 'Vaulted';
+  const title = data.title || 'Vaultlix';
   const body = data.body || 'New message';
-  const tag = data.tag || 'vaulted-message';
+  const tag = data.tag || 'vaultlix-message';
 
   event.waitUntil((async () => {
     // If the room is already open and focused, the in-app chime/UI already
