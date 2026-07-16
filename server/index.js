@@ -92,6 +92,10 @@ function resErr(res, msg, status=400) {
 
 function serveStatic(req, res) {
   let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+  // Extension-less route for the install page — without this, a request for
+  // "/install" (no ".html") misses the readFile below, falls through to the
+  // SPA catch-all, and silently serves the main app instead of install.html.
+  if (url === '/install') url = '/install.html';
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
   fs.readFile(path.join(__dirname,'../client',url), (err,data) => {
     if (err) {

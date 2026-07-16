@@ -339,6 +339,29 @@ body.select-mode .chat-ftr{display:none}
   stroke: #C4B8AC !important;
 }
 
+/* ── PWA INSTALL UI ───────────────────────────────────────────────── */
+.install-btn{margin:32px auto 0;display:flex;align-items:center;justify-content:center;gap:6px;background:transparent;border:1px solid #B8973E;color:#B8973E;border-radius:20px;padding:9px 20px;font-family:'Inter',sans-serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;}
+.install-btn:active{background:rgba(184,151,62,.08)}
+.install-note{margin:20px auto 0;font-size:11px;color:#9A8C7E;letter-spacing:.03em;text-align:center}
+
+.ios-install-banner{position:fixed;left:0;right:0;bottom:36px;z-index:50;display:none;align-items:center;gap:10px;background:#FFFFFF;border-top:2px solid #B8973E;box-shadow:0 -4px 16px rgba(26,21,16,.08);padding:10px 14px;font-family:'Inter',sans-serif;font-size:11px;color:#4A3F35;line-height:1.4;}
+.ios-install-banner .ios-banner-text{flex:1}
+.ios-install-banner svg{stroke:#B8973E;vertical-align:-2px}
+.ios-banner-close{flex-shrink:0;background:none;border:none;color:#B8973E;font-size:18px;line-height:1;padding:2px 4px;}
+
+.ios-sheet-overlay{position:fixed;inset:0;background:rgba(26,21,16,.55);z-index:1000;display:flex;align-items:flex-end;justify-content:center;opacity:0;transition:opacity .22s ease;}
+.ios-sheet-overlay.open{opacity:1}
+.ios-sheet{background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:24px 24px calc(22px + env(safe-area-inset-bottom));text-align:center;transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);}
+.ios-sheet-overlay.open .ios-sheet{transform:translateY(0)}
+.ios-sheet-rule{width:36px;height:2px;background:var(--gold);margin:0 auto 10px}
+.ios-sheet-word{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;letter-spacing:.12em;color:#1A1510;margin-bottom:18px}
+.ios-sheet-title{font-size:15px;font-weight:500;color:#1A1510;margin-bottom:16px}
+.ios-sheet-step{display:flex;align-items:flex-start;gap:12px;text-align:left;font-size:13px;color:#4A3F35;padding:9px 0;line-height:1.45}
+.ios-sheet-num{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(184,151,62,.1);border:0.5px solid rgba(184,151,62,.3);color:#B8973E;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.ios-sheet-divider{height:1px;background:#EFEAE3;margin:16px 0}
+.ios-sheet-hint{font-size:11px;color:#9A8C7E;margin-bottom:18px}
+.ios-sheet-btn{width:100%;background:#B8973E;color:#fff;border:none;border-radius:22px;padding:13px;font-size:13px;font-weight:500;letter-spacing:.03em}
+
 
 /* ── SETUP / WAITING / CLOSED — WHITE + GOLD PALETTE ─────────────── */
 #s-setup, #s-waiting, #s-closed {
@@ -687,6 +710,14 @@ body.select-mode .chat-ftr{display:none}
       </div>
 
     </div>
+
+    <!-- PWA install affordance — platform-aware, populated by refreshInstallUI() -->
+    <button id="install-btn" class="install-btn" style="display:none" onclick="handleInstallClick()">
+      <svg viewBox="0 0 24 24" width="12" height="12" style="stroke:#B8973E;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/></svg>
+      Install Vaultlix
+    </button>
+    <div id="install-note" class="install-note" style="display:none">Open in Safari to install Vaultlix</div>
+
   </div>
   <div class="landing-footer">
   No accounts · No logs · E2E encrypted · No trace
@@ -695,6 +726,14 @@ body.select-mode .chat-ftr{display:none}
   <span style="margin:0 4px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-terms')">Terms</span>
 </div>
+
+  <!-- iOS Safari persistent install banner — lives inside #s-landing so it
+       auto-hides whenever the landing screen isn't the active .screen -->
+  <div id="ios-install-banner" class="ios-install-banner">
+    <span>📱</span>
+    <span class="ios-banner-text">Install Vaultlix for the best experience · Tap Share <svg viewBox="0 0 24 24" width="11" height="11" style="fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12"/><polyline points="7 8 12 3 17 8"/></svg> → Add to Home Screen</span>
+    <button class="ios-banner-close" onclick="dismissIOSBanner()">×</button>
+  </div>
 </div>
 
 <!-- SETUP -->
@@ -1345,6 +1384,7 @@ function showScreen(id) {
     const btn = document.getElementById('setup-btn');
     if (btn) btn.disabled = false;
   }
+  if (id === 's-landing') refreshInstallUI();
 }
 
 function toast(msg) {
@@ -2967,6 +3007,124 @@ function startFresh() {
   showScreen('s-landing');
   triggerLandingAnim();
 }
+
+// ── PWA INSTALL ──────────────────────────────────────────────────────────
+// Platform-aware install affordance on the landing page: a pill button
+// below the three cards (Android → native beforeinstallprompt, iOS Safari →
+// our own instruction bottom sheet, iOS Chrome → a note since iOS only
+// allows installing from Safari), plus a dismissible persistent banner for
+// iOS Safari visitors who haven't installed yet.
+(function () {
+  const ua = navigator.userAgent.toLowerCase();
+  window.isIOSDevice = /iphone|ipad|ipod/i.test(ua);
+  window.isAndroidDevice = /android/i.test(ua);
+  window.isIOSSafariBrowser = window.isIOSDevice && /safari/i.test(navigator.userAgent) && !/crios|fxios|opios|mercury/i.test(navigator.userAgent);
+  window.isIOSChromeBrowser = window.isIOSDevice && /crios/i.test(navigator.userAgent);
+  window.isStandaloneApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+})();
+
+let deferredInstallPrompt = null;
+const INSTALL_DISMISS_KEY = 'vaultlix_install_dismissed';
+const INSTALL_DISMISS_DAYS = 7;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  refreshInstallUI();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  window.isStandaloneApp = true;
+  refreshInstallUI();
+});
+
+function isInstallDismissed() {
+  try {
+    const dismissedAt = parseInt(localStorage.getItem(INSTALL_DISMISS_KEY) || '', 10);
+    if (!dismissedAt) return false;
+    return (Date.now() - dismissedAt) < INSTALL_DISMISS_DAYS * 24 * 60 * 60 * 1000;
+  } catch (e) { return false; }
+}
+
+function dismissIOSBanner() {
+  try { localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now())); } catch (e) {}
+  const banner = document.getElementById('ios-install-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function refreshInstallUI() {
+  const btn = document.getElementById('install-btn');
+  const note = document.getElementById('install-note');
+  const banner = document.getElementById('ios-install-banner');
+  if (!btn || !note || !banner) return;
+
+  if (window.isStandaloneApp) {
+    btn.style.display = 'none';
+    note.style.display = 'none';
+    banner.style.display = 'none';
+    return;
+  }
+
+  if (window.isAndroidDevice) {
+    btn.style.display = deferredInstallPrompt ? 'flex' : 'none';
+    note.style.display = 'none';
+  } else if (window.isIOSSafariBrowser) {
+    btn.style.display = 'flex';
+    note.style.display = 'none';
+  } else if (window.isIOSChromeBrowser) {
+    btn.style.display = 'none';
+    note.style.display = 'block';
+  } else {
+    // Desktop / other browsers — no install path, hide entirely
+    btn.style.display = 'none';
+    note.style.display = 'none';
+  }
+
+  banner.style.display = (window.isIOSSafariBrowser && !isInstallDismissed()) ? 'flex' : 'none';
+}
+
+async function handleInstallClick() {
+  if (window.isAndroidDevice && deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    const { outcome } = await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    if (outcome === 'accepted') refreshInstallUI();
+  } else if (window.isIOSSafariBrowser) {
+    openIOSSheet();
+  }
+}
+
+function openIOSSheet() {
+  closeIOSSheet();
+  const overlay = document.createElement('div');
+  overlay.id = 'ios-install-sheet';
+  overlay.className = 'ios-sheet-overlay';
+  overlay.innerHTML = `
+    <div class="ios-sheet">
+      <div class="ios-sheet-rule"></div>
+      <div class="ios-sheet-word">Vaultlix</div>
+      <div class="ios-sheet-title">Add to your Home Screen</div>
+      <div class="ios-sheet-step"><span class="ios-sheet-num">1</span><span>Tap the Share button <svg viewBox="0 0 24 24" width="13" height="13" style="stroke:#B8973E;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px"><path d="M12 3v12"/><polyline points="7 8 12 3 17 8"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> at the bottom of Safari</span></div>
+      <div class="ios-sheet-step"><span class="ios-sheet-num">2</span><span>Scroll down and tap "Add to Home Screen" <svg viewBox="0 0 24 24" width="13" height="13" style="stroke:#B8973E;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span></div>
+      <div class="ios-sheet-step"><span class="ios-sheet-num">3</span><span>Tap "Add" in the top right</span></div>
+      <div class="ios-sheet-divider"></div>
+      <div class="ios-sheet-hint">For notifications, install via Safari (not Chrome)</div>
+      <button type="button" class="ios-sheet-btn" id="ios-sheet-close">Got it</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#ios-sheet-close').onclick = closeIOSSheet;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeIOSSheet(); });
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
+}
+
+function closeIOSSheet() {
+  const overlay = document.getElementById('ios-install-sheet');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  setTimeout(() => overlay.remove(), 260);
+}
+
+document.addEventListener('DOMContentLoaded', refreshInstallUI);
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {

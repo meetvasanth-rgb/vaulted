@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,maximum-scale=1.0"/>
+<meta name="theme-color" content="#1A1916"/>
+<meta name="description" content="Install Vaultlix — the anonymous, end-to-end encrypted private messenger."/>
+<title>Install Vaultlix</title>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icons/icon-1024.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+body{
+  font-family:'Inter',sans-serif;
+  background:#FFFFFF;
+  color:#1A1510;
+  min-height:100vh;
+  min-height:100dvh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:32px 20px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{width:100%;max-width:420px;text-align:center}
+
+.brand-rule{width:80px;height:1px;background:#B8973E;margin:0 auto 18px}
+.brand-name{font-family:'Cormorant Garamond',serif;font-size:38px;font-weight:300;letter-spacing:.12em;color:#1A1510;margin-bottom:8px}
+.brand-sub{font-size:12px;color:#9A8C7E;letter-spacing:.06em;text-transform:uppercase;margin-bottom:32px}
+
+.divider{height:1px;background:#EFEAE3;margin:28px 0}
+
+.section{display:none}
+.section.active{display:block}
+
+.section-title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:400;color:#1A1510;margin-bottom:18px}
+
+.install-cta{
+  display:inline-block;background:#B8973E;color:#fff;border:none;border-radius:24px;
+  padding:14px 36px;font-family:'Inter',sans-serif;font-size:14px;font-weight:500;
+  letter-spacing:.04em;cursor:pointer;margin-bottom:14px;
+}
+.install-cta:active{background:#A3843A}
+.install-hint{font-size:12px;color:#9A8C7E;margin-bottom:26px}
+
+.or-divider{display:flex;align-items:center;gap:12px;font-size:11px;color:#C4B8AC;text-transform:uppercase;letter-spacing:.08em;margin:22px 0}
+.or-divider::before,.or-divider::after{content:'';flex:1;height:1px;background:#EFEAE3}
+
+.steps{text-align:left;max-width:300px;margin:0 auto}
+.step{display:flex;align-items:flex-start;gap:12px;font-size:14px;color:#4A3F35;line-height:1.5;padding:9px 0}
+.step-num{
+  flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(184,151,62,.1);
+  border:0.5px solid rgba(184,151,62,.3);color:#B8973E;font-size:12px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;margin-top:1px;
+}
+.step svg{stroke:#B8973E;vertical-align:-2px}
+
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+.install-arrow{font-size:32px;animation:bounce 1.2s ease-in-out infinite;display:block;text-align:center;margin:24px 0 4px;color:#B8973E}
+
+.copy-btn{
+  background:transparent;border:1px solid #B8973E;color:#B8973E;border-radius:20px;
+  padding:10px 22px;font-family:'Inter',sans-serif;font-size:13px;letter-spacing:.03em;
+  cursor:pointer;margin:16px 0 18px;
+}
+.copy-btn:active{background:rgba(184,151,62,.08)}
+.copy-note{font-size:12px;color:#9A8C7E;line-height:1.5}
+
+.qr-box{width:180px;height:180px;margin:20px auto;padding:10px;background:#fff;border:0.5px solid #E8E2DA;border-radius:8px}
+.desktop-note{font-size:12px;color:#9A8C7E;margin-top:16px}
+
+.installed-check{font-size:32px;color:#4A9B6F;margin-bottom:10px}
+.open-link{
+  display:inline-block;margin-top:14px;color:#B8973E;font-size:14px;font-weight:500;
+  text-decoration:none;border-bottom:1px solid rgba(184,151,62,.4);padding-bottom:2px;
+}
+
+.page-footer{margin-top:8px;font-size:11px;color:#C4B8AC;letter-spacing:.04em}
+.page-footer a{color:#9A8C7E;text-decoration:underline;text-underline-offset:2px}
+.page-footer .sep{margin:0 6px}
+.page-footer .free-line{margin-top:6px;color:#C4B8AC}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="brand-rule"></div>
+  <div class="brand-name">Vaultlix</div>
+  <div class="brand-sub">Anonymous private messenger</div>
+
+  <div class="divider"></div>
+
+  <!-- ANDROID CHROME -->
+  <div id="section-android" class="section">
+    <div class="section-title">Install Vaultlix</div>
+    <button id="android-install-btn" class="install-cta" style="display:none">Install</button>
+    <div class="install-hint">Takes 3 seconds. No account needed.</div>
+    <div class="or-divider">or manually</div>
+    <div class="steps">
+      <div class="step"><span class="step-num">1</span><span>Tap <strong>⋮</strong> in Chrome</span></div>
+      <div class="step"><span class="step-num">2</span><span>Tap "Add to Home Screen"</span></div>
+      <div class="step"><span class="step-num">3</span><span>Tap "Install"</span></div>
+    </div>
+  </div>
+
+  <!-- iOS SAFARI -->
+  <div id="section-ios-safari" class="section">
+    <div class="section-title">Add to your Home Screen</div>
+    <div class="steps">
+      <div class="step"><span class="step-num">1</span><span>Tap Share <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 8 12 3 17 8"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> below</span></div>
+      <div class="step"><span class="step-num">2</span><span>Tap "Add to Home Screen" <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span></div>
+      <div class="step"><span class="step-num">3</span><span>Tap "Add"</span></div>
+    </div>
+    <span class="install-arrow">↓</span>
+  </div>
+
+  <!-- iOS CHROME -->
+  <div id="section-ios-chrome" class="section">
+    <div class="section-title">Open in Safari to Install</div>
+    <div class="install-hint" style="margin-bottom:20px">iPhone only supports installation from the Safari browser.</div>
+    <button id="copy-link-btn" class="copy-btn">Copy Link</button>
+    <div class="copy-note">Then paste in Safari and follow the instructions there.</div>
+  </div>
+
+  <!-- DESKTOP -->
+  <div id="section-desktop" class="section">
+    <div class="section-title">Vaultlix works best on mobile</div>
+    <div class="install-hint">Scan with your phone to install:</div>
+    <div class="qr-box"><div id="qr"></div></div>
+    <div class="desktop-note">Or visit <strong>vaultlix.com</strong> on your phone</div>
+  </div>
+
+  <!-- ALREADY INSTALLED -->
+  <div id="section-installed" class="section">
+    <div class="installed-check">✓</div>
+    <div class="section-title" style="margin-bottom:6px">Vaultlix is installed</div>
+    <a class="open-link" href="https://vaultlix.com">Open Vaultlix →</a>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="page-footer">
+    <span>Privacy</span>
+    <span class="sep">·</span>
+    <span>Terms</span>
+    <span class="sep">·</span>
+    <span>vaultlix.com</span>
+    <div class="free-line">Free. Anonymous. No account needed.</div>
+  </div>
+</div>
+
+<script>
+const ua = navigator.userAgent.toLowerCase();
+const isIOSDevice = /iphone|ipad|ipod/i.test(ua);
+const isAndroidDevice = /android/i.test(ua);
+const isIOSSafariBrowser = isIOSDevice && /safari/i.test(navigator.userAgent) && !/crios|fxios|opios|mercury/i.test(navigator.userAgent);
+const isIOSChromeBrowser = isIOSDevice && /crios/i.test(navigator.userAgent);
+const isStandaloneApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+if (isStandaloneApp) {
+  showSection('section-installed');
+} else if (isAndroidDevice) {
+  showSection('section-android');
+} else if (isIOSSafariBrowser) {
+  showSection('section-ios-safari');
+} else if (isIOSChromeBrowser) {
+  showSection('section-ios-chrome');
+} else {
+  showSection('section-desktop');
+  if (window.QRCode) {
+    new QRCode(document.getElementById('qr'), {
+      text: 'https://vaultlix.com/install',
+      width: 180,
+      height: 180,
+      colorDark: '#1A1510',
+      colorLight: '#FFFFFF',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+}
+
+// Android native install prompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('android-install-btn');
+  if (btn) btn.style.display = 'block';
+});
+
+const androidBtn = document.getElementById('android-install-btn');
+if (androidBtn) {
+  androidBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      document.getElementById('section-android').innerHTML =
+        '<p style="color:#4A9B6F;font-size:14px;">✓ Vaultlix installed successfully</p>';
+    }
+    deferredPrompt = null;
+  });
+}
+
+window.addEventListener('appinstalled', () => {
+  showSection('section-installed');
+});
+
+// Copy link (iOS Chrome fallback)
+const copyBtn = document.getElementById('copy-link-btn');
+if (copyBtn) {
+  copyBtn.addEventListener('click', async () => {
+    const url = 'https://vaultlix.com/install';
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e2) {}
+      ta.remove();
+    }
+    const original = copyBtn.textContent;
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = original; }, 1800);
+  });
+}
+</script>
+
+</body>
+</html>
