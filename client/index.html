@@ -488,6 +488,13 @@ body.select-mode .chat-ftr{display:none}
 .attach-btn { width:28px; height:38px; background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0.5; transition:opacity 0.15s; padding:0; }
 .attach-btn:hover { opacity:0.9; }
 .attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+.attach-popover { position:fixed; display:flex; gap:6px; background:#fff; border-radius:18px; padding:8px; box-shadow:0 4px 20px rgba(26,25,22,0.22); z-index:999; animation:attachPopIn 0.14s ease; }
+@keyframes attachPopIn { from{ opacity:0; transform:translateY(6px) scale(0.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
+.attach-opt { display:flex; flex-direction:column; align-items:center; gap:4px; background:none; border:none; cursor:pointer; padding:6px 8px; width:60px; }
+.attach-opt-icon { width:42px; height:42px; border-radius:50%; background:#F3EEE6; display:flex; align-items:center; justify-content:center; transition:background 0.15s; }
+.attach-opt:active .attach-opt-icon { background:#E5DED2; }
+.attach-opt-icon svg { width:20px; height:20px; fill:none; stroke:#4A4038; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.attach-opt-label { font-size:10px; color:#8A7F72; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; flex-shrink:0; }
@@ -808,6 +815,7 @@ body.select-mode .chat-ftr{display:none}
          generic Files browser instead. -->
     <input type="file" id="image-input" multiple style="display:none" accept="image/*" onchange="handleFileSelect(event)"/>
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
+    <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
     <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -3048,29 +3056,52 @@ window.addEventListener('load', async () => {
 });
 
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────
-// Same overlay style as showDeleteOptions/showSendImageOptions. Two
-// dedicated inputs sit behind this (see the HTML) rather than one input
-// with every accept type mixed together, since that mix is what stopped
-// Android's chooser from offering the Gallery/Photos app directly.
+// Small icon popover anchored right above the + button (no full-screen
+// overlay). Three dedicated inputs sit behind this (see the HTML): a
+// camera-capture input, an image-only input, and a document-only input —
+// kept separate (rather than one input with every accept type mixed
+// together) since that mix is what stopped Android's chooser from
+// offering the Gallery/Photos app directly.
 function showAttachOptions() {
   if (document.getElementById('msg-input').disabled) return;
-  const overlay = document.createElement('div');
-  overlay.id = 'attach-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
-  overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:20px;max-width:300px;width:100%;text-align:center;font-family:inherit">
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <button id="attach-photo" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">🖼 Photo or Video</button>
-        <button id="attach-doc" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">📄 Document</button>
-        <button id="attach-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  const close = () => overlay.remove();
-  overlay.querySelector('#attach-photo').onclick = () => { close(); document.getElementById('image-input').click(); };
-  overlay.querySelector('#attach-doc').onclick = () => { close(); document.getElementById('file-input').click(); };
-  overlay.querySelector('#attach-cancel').onclick = close;
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  closeAttachOptions();
+  const btn = document.getElementById('attach-btn');
+  const rect = btn.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.id = 'attach-popover';
+  pop.className = 'attach-popover';
+  pop.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+  pop.style.left = Math.max(8, rect.left - 4) + 'px';
+  pop.innerHTML = `
+    <button type="button" class="attach-opt" id="attach-camera">
+      <span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5l1.6-2.4c.2-.3.5-.6.9-.6h6c.4 0 .7.3.9.6L20.5 6H21a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.8"/></svg></span>
+      <span class="attach-opt-label">Camera</span>
+    </button>
+    <button type="button" class="attach-opt" id="attach-gallery">
+      <span class="attach-opt-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.7"/><path d="M21 15l-5.5-5.5a1.5 1.5 0 0 0-2.1 0L5 18"/></svg></span>
+      <span class="attach-opt-label">Gallery</span>
+    </button>
+    <button type="button" class="attach-opt" id="attach-doc">
+      <span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span>
+      <span class="attach-opt-label">File</span>
+    </button>
+  `;
+  document.body.appendChild(pop);
+  pop.querySelector('#attach-camera').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('camera-input').click(); };
+  pop.querySelector('#attach-gallery').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('image-input').click(); };
+  pop.querySelector('#attach-doc').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('file-input').click(); };
+  setTimeout(() => document.addEventListener('click', handleAttachOutsideClick), 0);
+}
+
+function closeAttachOptions() {
+  const pop = document.getElementById('attach-popover');
+  if (pop) pop.remove();
+  document.removeEventListener('click', handleAttachOutsideClick);
+}
+
+function handleAttachOutsideClick(e) {
+  const pop = document.getElementById('attach-popover');
+  if (pop && !pop.contains(e.target) && !e.target.closest('#attach-btn')) closeAttachOptions();
 }
 
 async function handleFileSelect(event) {
