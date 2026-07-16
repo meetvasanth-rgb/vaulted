@@ -181,6 +181,7 @@ async function api(path, method, d, p, res) {
       passwordHash,
       seq: 0,          // global message sequence counter
       reactionSeq: 0,  // separate counter so reaction updates can be synced like read receipts
+      deletionSeq: 0,  // same pattern again, for "delete for everyone" — see /api/delete-message
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
     });
@@ -313,6 +314,31 @@ async function api(path, method, d, p, res) {
     return res200(res, { ok: true });
   }
 
+  // POST /api/delete-message — "delete for me" needs no server involvement
+  // at all (purely local removal on the client, since nothing is persisted
+  // there beyond msgId/timestamp anyway). This is "delete for everyone":
+  // only the original sender may invoke it, and only on a real message (not
+  // a system line). Content is stripped rather than the message being
+  // spliced out of the array, so seq numbering for anything else in the
+  // room is untouched. deletionSeq mirrors reactionSeq's sync pattern —
+  // it's what lets an already-open peer session remove the message live via
+  // /api/poll's `deletions` list; anyone who hasn't reached its seq yet
+  // simply never receives it, since the poll filter below skips deleted
+  // messages outright.
+  if (path==='/api/delete-message' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
+    if (!msg) return resErr(res,'Message not found.',404);
+    if (msg.from !== d.token) return resErr(res,'Only the sender can delete this for everyone.',403);
+    msg.content = null;
+    msg.deleted = true;
+    msg.deletionSeq = ++room.deletionSeq;
+    room.lastActivity = Date.now();
+    return res200(res, { ok: true });
+  }
+
   // POST /api/set-timer — change the disappearing-message duration for this
   // room at any point in the conversation, not just at creation. Either
   // member can change it; a system message announces the new setting to
@@ -344,6 +370,7 @@ async function api(path, method, d, p, res) {
     const clientLastSeq = parseInt(p.get('lastSeq')||'0');
     const lastReceiptSeq = parseInt(p.get('lastReceiptSeq')||'0');
     const lastReactionSeq = parseInt(p.get('lastReactionSeq')||'0');
+    const lastDeletionSeq = parseInt(p.get('lastDeletionSeq')||'0');
     // full=1 is only ever sent once, right after a reload, to rebuild the
     // chat log from scratch (the client never persists message content
     // locally — only the room session and a small expiry ledger). Normal
@@ -380,6 +407,7 @@ async function api(path, method, d, p, res) {
     // was added to prevent, since it bypassed that tag entirely.
     const newMsgs = room.msgs.filter(msg => {
       if (msg.seq <= clientLastSeq) return false;
+      if (msg.deleted) return false; // deleted-for-everyone — nothing left to recover
       if (msg.type === 'system') return msg.from !== token;
       return includeOwn || msg.from !== token;
     });
@@ -410,7 +438,19 @@ async function api(path, method, d, p, res) {
       }
     }
 
-    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deleteTimer: room.deleteTimer });
+    // Deletions — same seq-based sync pattern as reactions/receipts. This is
+    // what tells a peer whose session is already open (and who may have
+    // already rendered this message, ahead of the seq-based filter above)
+    // to remove it live; someone who hasn't reached its seq yet doesn't
+    // need this at all, since the filter already keeps it out of `messages`.
+    const deletions = [];
+    for (const msg of room.msgs) {
+      if (msg.deleted && msg.deletionSeq > lastDeletionSeq) {
+        deletions.push({ msgId: msg.id, deletionSeq: msg.deletionSeq });
+      }
+    }
+
+    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer });
   }
 
   // POST /api/read

@@ -1840,9 +1840,17 @@ async function deleteMessage(room, msgId, forEveryone) {
   persistDeleteLedger(room);
   if (forEveryone) {
     try {
-      await api('/api/delete-message', { code: room.code, token: room.token, msgId });
+      // fetch() doesn't reject on a non-2xx HTTP status, only on a genuine
+      // network failure — the server still answers a 403/404 with a valid
+      // { error: '...' } JSON body. Without checking result.error explicitly
+      // here, a real server-side rejection (wrong sender, message already
+      // gone, stale/mismatched token) would silently look like success on
+      // this side while the peer never got the deletion at all.
+      const result = await api('/api/delete-message', { code: room.code, token: room.token, msgId });
+      if (result && result.error) throw new Error(result.error);
     } catch (e) {
       toast("Removed on your side — couldn't confirm removal for the other person");
+      console.error('E2E: delete-for-everyone failed:', e.message);
     }
   }
 }
