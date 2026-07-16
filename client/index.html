@@ -110,6 +110,15 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 /* -- CHAT -- */
 #s-chat{flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:#fff}
 .chat-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:env(safe-area-inset-top) 12px 0;height:calc(56px + env(safe-area-inset-top));display:flex;align-items:center;gap:8px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.chat-hdr.hidden{display:none}
+/* Multi-select bar — replaces the normal header while picking messages to delete */
+.select-bar{display:none;flex-shrink:0;align-items:center;gap:10px;background:#1A1916;color:#fff;padding:env(safe-area-inset-top) 14px 0;height:calc(56px + env(safe-area-inset-top))}
+.select-bar.show{display:flex}
+.select-bar-cancel{background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;padding:4px 6px;opacity:.85}
+.select-bar-cancel:hover{opacity:1}
+.select-bar-count{flex:1;font-size:14px;font-weight:500}
+.select-bar-delete{background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:16px;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.select-bar-delete:disabled{opacity:.35;cursor:not-allowed}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
 .chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
 .chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;flex-shrink:1;min-width:0}
@@ -191,6 +200,11 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg-reactions{position:absolute;bottom:-11px;right:6px;display:flex;gap:2px}
 .msg.me .msg-reactions{right:auto;left:6px}
 .msg-reaction-badge{background:#fff;border:1px solid #E8E2DA;border-radius:10px;padding:1px 5px;font-size:16px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+
+/* Multi-select mode: a checkmark badge + highlight ring on chosen messages */
+.msg.msg-selected .bubble,.msg.msg-selected .msg-image,.msg.msg-selected .msg-file,.msg.msg-selected .msg-viewonce{outline:2px solid #B8973E;outline-offset:2px}
+.msg-select-badge{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#B8973E;color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.25);z-index:2}
+.msg.them .msg-select-badge{right:auto;left:-8px}
 .sys-msg{align-self:center;font-size:12px;color:#999;background:rgba(0,0,0,0.04);border-radius:20px;padding:5px 16px;text-align:center;font-style:italic;margin:6px 0}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
 .typing-indicator.show{display:flex}
@@ -704,6 +718,11 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
     </div>
     <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
     <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
+  </div>
+  <div class="select-bar" id="select-bar">
+    <button class="select-bar-cancel" onclick="exitSelectMode()" title="Cancel">✕</button>
+    <div class="select-bar-count" id="select-bar-count">1 selected</div>
+    <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
   </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="e2e-bar">🔒 🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
@@ -1621,6 +1640,7 @@ function setActiveRoom(code) {
   room.unread = 0;
   flushPendingReads(room);
   closeAllMsgActions();
+  exitSelectMode();
   cancelReply();
   document.getElementById('hdr-code').textContent = room.code;
   setStatus(room.peerOnline, room.peerName);
@@ -1727,6 +1747,7 @@ function buildMsgActionsHtml(msgId) {
     <div class="msg-actions" id="actions-${msgId}">
       <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
       <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
+      <button type="button" class="msg-action-btn" data-action="select">☑ Select</button>
       <button type="button" class="msg-action-btn" data-action="delete">🗑 Delete</button>
     </div>
     <div class="reaction-picker" id="picker-${msgId}">
@@ -1758,6 +1779,14 @@ function wireMsgActions(div, room, msgId, replyText, isMe) {
     if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
   };
 
+  // While a multi-select is in progress, tapping any message toggles its
+  // selection instead of opening the Reply/React/Delete row — checked first
+  // so it takes over the same tap gesture rather than needing a separate one.
+  const handleTap = () => {
+    if (selectMode) { toggleMessageSelection(msgId); return; }
+    toggleActions();
+  };
+
   let touchStartX, touchStartY, touchStartTime;
   bubble.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
@@ -1768,9 +1797,9 @@ function wireMsgActions(div, room, msgId, replyText, isMe) {
     const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
     const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
     const dt = Date.now() - touchStartTime;
-    if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); toggleActions(); }
+    if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); handleTap(); }
   });
-  bubble.onclick = (e) => { e.stopPropagation(); toggleActions(); };
+  bubble.onclick = (e) => { e.stopPropagation(); handleTap(); };
 
   actions.querySelector('[data-action="reply"]').onclick = (e) => {
     e.stopPropagation();
@@ -1793,6 +1822,11 @@ function wireMsgActions(div, room, msgId, replyText, isMe) {
     closeAllMsgActions();
     showDeleteOptions(room, msgId, isMe);
   };
+  actions.querySelector('[data-action="select"]').onclick = (e) => {
+    e.stopPropagation();
+    closeAllMsgActions();
+    enterSelectMode(msgId);
+  };
 }
 
 document.addEventListener('click', (e) => {
@@ -1803,16 +1837,21 @@ document.addEventListener('click', (e) => {
 });
 
 // Small confirm step, same visual pattern as the view-once send picker.
-// "Delete for everyone" only shows on your own messages — same as every
-// other messenger, you can't unilaterally strip content from the other
-// person's screen for something they sent.
-function showDeleteOptions(room, msgId, isMe) {
+// "Delete for everyone" only shows if it's a fair offer — on a single
+// message that means it's your own; on a multi-select (msgIdOrIds is an
+// array) it means EVERY selected message is your own, since there's no
+// partial "for everyone" — the other person would end up with an
+// inconsistent, confusing mix of removed/kept messages otherwise.
+function showDeleteOptions(room, msgIdOrIds, isMe) {
+  const ids = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
+  if (!ids.length) return;
   const overlay = document.createElement('div');
   overlay.id = 'delete-msg-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  const label = ids.length > 1 ? `Delete ${ids.length} messages?` : 'Delete this message?';
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:20px;max-width:320px;width:100%;text-align:center;font-family:inherit">
-      <div style="font-size:13.5px;color:#4A4038;line-height:1.5;margin-bottom:16px">Delete this message?</div>
+      <div style="font-size:13.5px;color:#4A4038;line-height:1.5;margin-bottom:16px">${label}</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${isMe ? `<button id="del-everyone" style="background:#C0392B;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Delete for everyone</button>` : ''}
         <button id="del-me" style="background:${isMe ? 'none' : '#1A1916'};color:${isMe ? '#4A4038' : '#fff'};border:${isMe ? '1px solid #D0CAC0' : 'none'};border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Delete for me</button>
@@ -1821,9 +1860,10 @@ function showDeleteOptions(room, msgId, isMe) {
     </div>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
-  if (isMe) overlay.querySelector('#del-everyone').onclick = () => { close(); deleteMessage(room, msgId, true); };
-  overlay.querySelector('#del-me').onclick = () => { close(); deleteMessage(room, msgId, false); };
-  overlay.querySelector('#del-cancel').onclick = close;
+  const confirmDelete = (forEveryone) => { close(); exitSelectMode(); deleteMessage(room, ids, forEveryone); };
+  if (isMe) overlay.querySelector('#del-everyone').onclick = () => confirmDelete(true);
+  overlay.querySelector('#del-me').onclick = () => confirmDelete(false);
+  overlay.querySelector('#del-cancel').onclick = close; // cancelling leaves an in-progress selection intact
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
 
@@ -1833,26 +1873,114 @@ function showDeleteOptions(room, msgId, isMe) {
 // back to. deleteLedger (already built for the disappearing-timer and
 // view-once features) is reused as-is: an already-past deleteAt is exactly
 // its existing "stays gone across a reload" case, no new persisted concept
-// needed.
-async function deleteMessage(room, msgId, forEveryone) {
-  removeMessageRecord(room, msgId);
-  room.deleteLedger.set(msgId, Date.now());
+// needed. msgIdOrIds accepts a single id or an array so the same function
+// serves both the single-message and multi-select delete flows.
+async function deleteMessage(room, msgIdOrIds, forEveryone) {
+  const ids = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
+  for (const msgId of ids) {
+    removeMessageRecord(room, msgId);
+    room.deleteLedger.set(msgId, Date.now());
+  }
   persistDeleteLedger(room);
   if (forEveryone) {
-    try {
-      // fetch() doesn't reject on a non-2xx HTTP status, only on a genuine
-      // network failure — the server still answers a 403/404 with a valid
-      // { error: '...' } JSON body. Without checking result.error explicitly
-      // here, a real server-side rejection (wrong sender, message already
-      // gone, stale/mismatched token) would silently look like success on
-      // this side while the peer never got the deletion at all.
-      const result = await api('/api/delete-message', { code: room.code, token: room.token, msgId });
-      if (result && result.error) throw new Error(result.error);
-    } catch (e) {
-      toast("Removed on your side — couldn't confirm removal for the other person");
-      console.error('E2E: delete-for-everyone failed:', e.message);
+    // Sequential, not parallel — a multi-select batch shouldn't fire a burst
+    // of simultaneous requests at the server.
+    const failures = [];
+    for (const msgId of ids) {
+      try {
+        // fetch() doesn't reject on a non-2xx HTTP status, only on a genuine
+        // network failure — the server still answers a 403/404 with a valid
+        // { error: '...' } JSON body. Without checking result.error
+        // explicitly here, a real server-side rejection (wrong sender,
+        // message already gone, stale/mismatched token) would silently look
+        // like success on this side while the peer never got the deletion.
+        const result = await api('/api/delete-message', { code: room.code, token: room.token, msgId });
+        if (result && result.error) throw new Error(result.error);
+      } catch (e) {
+        failures.push(msgId);
+        console.error('E2E: delete-for-everyone failed for', msgId, e.message);
+      }
+    }
+    if (failures.length) {
+      toast(failures.length === ids.length
+        ? "Removed on your side — couldn't confirm removal for the other person"
+        : `Removed on your side — ${failures.length} of ${ids.length} couldn't be confirmed for the other person`);
     }
   }
+}
+
+// ── MULTI-SELECT DELETE ──────────────────────────────────────────────────
+// A lightweight selection mode layered on top of the existing single-message
+// Delete: long-press → Select starts it, tapping other messages toggles
+// them in, and the header swaps to a count/cancel/delete bar. Deliberately
+// reuses showDeleteOptions/deleteMessage above rather than duplicating the
+// confirm-modal or the delete logic — only the "which message ids" input
+// differs between the single and multi paths.
+let selectMode = false;
+let selectedMsgIds = new Set();
+
+function enterSelectMode(msgId) {
+  selectMode = true;
+  selectedMsgIds = new Set([msgId]);
+  document.querySelector('.chat-hdr')?.classList.add('hidden');
+  document.getElementById('select-bar')?.classList.add('show');
+  updateMessageSelectionVisual(msgId);
+  updateSelectionBar();
+}
+
+function exitSelectMode() {
+  if (!selectMode) return;
+  selectMode = false;
+  const ids = [...selectedMsgIds];
+  selectedMsgIds = new Set();
+  document.querySelector('.chat-hdr')?.classList.remove('hidden');
+  document.getElementById('select-bar')?.classList.remove('show');
+  for (const id of ids) updateMessageSelectionVisual(id);
+}
+
+function toggleMessageSelection(msgId) {
+  if (selectedMsgIds.has(msgId)) selectedMsgIds.delete(msgId);
+  else selectedMsgIds.add(msgId);
+  updateMessageSelectionVisual(msgId);
+  if (selectedMsgIds.size === 0) { exitSelectMode(); return; } // deselecting the last one backs all the way out
+  updateSelectionBar();
+}
+
+function updateMessageSelectionVisual(msgId) {
+  const div = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
+  if (!div) return;
+  const selected = selectedMsgIds.has(msgId);
+  div.classList.toggle('msg-selected', selected);
+  const target = div.querySelector('.bubble, .msg-image, .msg-file, .msg-viewonce');
+  if (!target) return;
+  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
+  let badge = target.querySelector('.msg-select-badge');
+  if (selected) {
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'msg-select-badge';
+      badge.textContent = '✓';
+      target.appendChild(badge);
+    }
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
+function updateSelectionBar() {
+  const count = selectedMsgIds.size;
+  const countEl = document.getElementById('select-bar-count');
+  if (countEl) countEl.textContent = `${count} selected`;
+  const delBtn = document.getElementById('select-bar-delete');
+  if (delBtn) delBtn.disabled = count === 0;
+}
+
+function confirmDeleteSelected() {
+  const room = getActiveRoom();
+  if (!room || selectedMsgIds.size === 0) return;
+  const ids = [...selectedMsgIds];
+  const allMine = ids.every(id => room.messages.find(m => m.id === id)?.isMe);
+  showDeleteOptions(room, ids, allMine);
 }
 
 async function sendReaction(room, msgId, emoji) {
@@ -1917,9 +2045,9 @@ function renderMessageRecord(room, rec) {
       </div>`;
     } else if (rec.isImage) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
-      contentHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="viewImage(this.src)"/>`;
+      contentHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')"/>`;
     } else {
-      contentHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}">
+      contentHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}" onclick="return handleFileTap(event, '${rec.id}')">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>${escHtml(rec.fileName)}</span>
       </a>`;
@@ -2047,12 +2175,27 @@ function formatDuration(s) {
   return `${Math.floor(s/3600)}h`;
 }
 
+// Image/file taps go through inline onclick handlers (not wireMsgActions'
+// bubble, per the comment above) so they need their own select-mode check:
+// while picking messages to delete, tapping the photo/file itself should
+// toggle its selection rather than opening the viewer or starting a
+// download.
+function handleImageTap(src, msgId) {
+  if (selectMode) { toggleMessageSelection(msgId); return; }
+  viewImage(src);
+}
+function handleFileTap(e, msgId) {
+  if (selectMode) { e.preventDefault(); toggleMessageSelection(msgId); return false; }
+  return true;
+}
+
 // View-once: a separate, independent deletion trigger from the room's
 // disappearing-message timer — this one fires from the recipient actually
 // opening the photo, not from a clock. Finds the room itself rather than
 // taking one as a param since it's wired up from an inline onclick, which
 // only has the message id to go on.
 function revealViewOnce(msgId) {
+  if (selectMode) { toggleMessageSelection(msgId); return; }
   let room = null, rec = null;
   for (const r of rooms.values()) {
     const found = r.messages.find(m => m.id === msgId);
