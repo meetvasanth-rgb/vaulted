@@ -959,7 +959,7 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // heartbeat lapse (peer's phone screen locks, brief backgrounding)
     // doesn't lock you out of typing mid-conversation.
     everOnline: false,
-    lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0,
+    lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
     deleteTimerSeconds: deleteTimerSeconds || 0,
     messages: [],           // ordered array of message records (the "chat log")
@@ -1016,7 +1016,7 @@ async function persistRoom(room) {
     localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
       code: room.code, token: room.token, name: room.myName,
       deleteTimerSeconds: room.deleteTimerSeconds,
-      lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq,
+      lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
       // call after persistDeleteLedger() had already written entries (e.g.
@@ -1046,6 +1046,7 @@ function persistRoomSeq(room) {
     existing.lastSeq = room.lastSeq;
     existing.lastReceiptSeq = room.lastReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
+    existing.lastDeletionSeq = room.lastDeletionSeq;
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
   } catch(e) {}
@@ -1726,6 +1727,7 @@ function buildMsgActionsHtml(msgId) {
     <div class="msg-actions" id="actions-${msgId}">
       <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
       <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
+      <button type="button" class="msg-action-btn" data-action="delete">🗑 Delete</button>
     </div>
     <div class="reaction-picker" id="picker-${msgId}">
       ${QUICK_REACTIONS.map(e => `<span data-emoji="${e}">${e}</span>`).join('')}
@@ -1739,7 +1741,7 @@ function closeAllMsgActions() {
   activeActionMsgId = null;
 }
 
-function wireMsgActions(div, room, msgId, replyText) {
+function wireMsgActions(div, room, msgId, replyText, isMe) {
   // Text messages have a .bubble, which is what we tap to reveal Reply/React.
   // File/image messages fall back to .msg-meta (the timestamp/tick row)
   // instead of the image/file element itself — assigning onclick there would
@@ -1786,6 +1788,11 @@ function wireMsgActions(div, room, msgId, replyText) {
       closeAllMsgActions();
     };
   });
+  actions.querySelector('[data-action="delete"]').onclick = (e) => {
+    e.stopPropagation();
+    closeAllMsgActions();
+    showDeleteOptions(room, msgId, isMe);
+  };
 }
 
 document.addEventListener('click', (e) => {
@@ -1794,6 +1801,51 @@ document.addEventListener('click', (e) => {
     closeAllMsgActions();
   }
 });
+
+// Small confirm step, same visual pattern as the view-once send picker.
+// "Delete for everyone" only shows on your own messages — same as every
+// other messenger, you can't unilaterally strip content from the other
+// person's screen for something they sent.
+function showDeleteOptions(room, msgId, isMe) {
+  const overlay = document.createElement('div');
+  overlay.id = 'delete-msg-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:320px;width:100%;text-align:center;font-family:inherit">
+      <div style="font-size:13.5px;color:#4A4038;line-height:1.5;margin-bottom:16px">Delete this message?</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${isMe ? `<button id="del-everyone" style="background:#C0392B;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Delete for everyone</button>` : ''}
+        <button id="del-me" style="background:${isMe ? 'none' : '#1A1916'};color:${isMe ? '#4A4038' : '#fff'};border:${isMe ? '1px solid #D0CAC0' : 'none'};border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Delete for me</button>
+        <button id="del-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  if (isMe) overlay.querySelector('#del-everyone').onclick = () => { close(); deleteMessage(room, msgId, true); };
+  overlay.querySelector('#del-me').onclick = () => { close(); deleteMessage(room, msgId, false); };
+  overlay.querySelector('#del-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+}
+
+// Removed locally immediately either way — even a failed "for everyone"
+// call still means the user wanted it off their own screen, and there's no
+// clean way to un-delete a spliced-out record/removed DOM element to roll
+// back to. deleteLedger (already built for the disappearing-timer and
+// view-once features) is reused as-is: an already-past deleteAt is exactly
+// its existing "stays gone across a reload" case, no new persisted concept
+// needed.
+async function deleteMessage(room, msgId, forEveryone) {
+  removeMessageRecord(room, msgId);
+  room.deleteLedger.set(msgId, Date.now());
+  persistDeleteLedger(room);
+  if (forEveryone) {
+    try {
+      await api('/api/delete-message', { code: room.code, token: room.token, msgId });
+    } catch (e) {
+      toast("Removed on your side — couldn't confirm removal for the other person");
+    }
+  }
+}
 
 async function sendReaction(room, msgId, emoji) {
   const rec = room.messages.find(m => m.id === msgId);
@@ -1884,7 +1936,7 @@ function renderMessageRecord(room, rec) {
     ${buildMsgActionsHtml(rec.id)}
   `;
 
-  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content);
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content, rec.isMe);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   renderReactionsForRec(div, rec);
@@ -2065,7 +2117,7 @@ async function processIncomingContent(room, content, name, time, msgId) {
 // resume its countdown from wherever it actually was.
 async function restoreRoomHistory(room) {
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=0&lastReceiptSeq=0&lastReactionSeq=0&full=1`);
+    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=0&lastReceiptSeq=0&lastReactionSeq=0&lastDeletionSeq=0&full=1`);
     if (!data || data.roomGone) return;
     const nowTs = Date.now();
 
@@ -2116,6 +2168,15 @@ async function restoreRoomHistory(room) {
         if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
       }
     }
+    // Nothing to remove locally here — a deleted-for-everyone message was
+    // already excluded from data.messages above by the server. This just
+    // fast-forwards the counter so the very next incremental poll doesn't
+    // re-fetch and re-process the same already-known deletions forever.
+    if (data.deletions && data.deletions.length > 0) {
+      for (const del of data.deletions) {
+        if (del.deletionSeq > room.lastDeletionSeq) room.lastDeletionSeq = del.deletionSeq;
+      }
+    }
     persistRoomSeq(room);
   } catch(e) { console.error('E2E: restoreRoomHistory failed:', e.message); }
 }
@@ -2135,7 +2196,7 @@ async function doPoll(room) {
   if (room.isPollRunning) return; // skip if previous poll for this room still in progress
   room.isPollRunning = true;
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=${room.lastSeq}&lastReceiptSeq=${room.lastReceiptSeq}&lastReactionSeq=${room.lastReactionSeq}`);
+    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=${room.lastSeq}&lastReceiptSeq=${room.lastReceiptSeq}&lastReactionSeq=${room.lastReactionSeq}&lastDeletionSeq=${room.lastDeletionSeq}`);
 
     if (data.roomGone) {
       const wasActive = room.code === activeRoomCode;
@@ -2191,6 +2252,20 @@ async function doPoll(room) {
         }
         if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
       }
+    }
+
+    // A "delete for everyone" landing while this session is already open —
+    // remove it live the same way an expired disappearing message goes, and
+    // record it in the ledger so a future reload doesn't try to resurrect
+    // it (the server already won't send it again, but the ledger check in
+    // restoreRoomHistory is a cheap belt-and-suspenders match either way).
+    if (data.deletions && data.deletions.length > 0) {
+      for (const del of data.deletions) {
+        removeMessageRecord(room, del.msgId);
+        room.deleteLedger.set(del.msgId, Date.now());
+        if (del.deletionSeq > room.lastDeletionSeq) room.lastDeletionSeq = del.deletionSeq;
+      }
+      persistDeleteLedger(room);
     }
 
     if (data.deleteTimer !== undefined) {
@@ -2571,6 +2646,7 @@ window.addEventListener('load', async () => {
     room.lastSeq = session.lastSeq || 0;
     room.lastReceiptSeq = session.lastReceiptSeq || 0;
     room.lastReactionSeq = session.lastReactionSeq || 0;
+    room.lastDeletionSeq = session.lastDeletionSeq || 0;
     // The delete ledger is the one thing that survives a reload for message
     // history purposes — msgId -> deleteAt only, never content. Everything
     // else about the chat log itself gets rebuilt fresh below by re-fetching
