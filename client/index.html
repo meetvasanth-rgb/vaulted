@@ -1694,6 +1694,20 @@ function switchToNextRoomOrLanding() {
 }
 
 // ── MESSAGE RENDERING (unified: text / file / system) ──────────────────
+// Display time must always be derived from the message's own epoch
+// timestamp (ts), formatted in THIS device's local timezone. Two other
+// sources used to leak in instead: the server's own pre-formatted "time"
+// string (computed in the server's timezone, UTC on Railway — wrong for
+// anyone not in UTC) and, on live delivery, the receiving device's clock
+// at the moment of receipt rather than the moment of send. Either one
+// disagreeing with the sender's own local send-time bubble is what made a
+// message's timestamp appear to change after a refresh.
+function formatMsgTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
 // A message whose entire visible text is one emoji renders large with no
 // bubble background, matching WhatsApp/iMessage convention.
 function isSingleEmoji(str) {
@@ -2064,7 +2078,7 @@ async function restoreRoomHistory(room) {
         if (msg.type === 'system') {
           rec = { id: 'sys-' + msg.id, kind: 'sys', content: msg.content };
         } else if (msg.type === 'message') {
-          rec = await processIncomingContent(room, msg.content, msg.name, msg.time || '', msg.id);
+          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id);
           if (rec) rec.isMe = msg.from === room.token;
         }
         if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
@@ -2205,9 +2219,7 @@ async function doPoll(room) {
           room.messages.push(rec);
           if (room.code === activeRoomCode) renderMessageRecord(room, rec);
         } else if (msg.type === 'message') {
-          const rt = new Date();
-          const rNow = rt.getHours().toString().padStart(2,'0') + ':' + rt.getMinutes().toString().padStart(2,'0');
-          const rec = await processIncomingContent(room, msg.content, msg.name, rNow, msg.id);
+          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id);
           if (rec) {
             room.messages.push(rec);
             if (room.code === activeRoomCode) renderMessageRecord(room, rec);
