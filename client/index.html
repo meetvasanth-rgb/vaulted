@@ -206,15 +206,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg.me .msg-reactions{right:auto;left:6px}
 .msg-reaction-badge{background:#fff;border:1px solid #E8E2DA;border-radius:10px;padding:1px 5px;font-size:16px;line-height:1.3;box-shadow:0 1px 3px rgba(0,0,0,0.1)}
 
-/* Media messages (image/file/view-once) get a wrapper so a small always-
-   visible "more" button, the selection checkbox, and the reaction badge all
-   have somewhere to anchor — an <img>/<a> can't usefully host absolutely
-   positioned children of its own. */
+/* Media messages (image/file/view-once) get a wrapper so the selection
+   checkbox and the reaction badge have somewhere to anchor — an <img>/<a>
+   can't usefully host absolutely positioned children of its own. */
 .msg-media-wrap{position:relative;display:inline-block;max-width:100%}
-.msg-more-btn{position:absolute;top:7px;right:7px;width:30px;height:30px;border-radius:50%;background:rgba(20,18,15,0.72);color:#fff;border:1.5px solid rgba(255,255,255,0.55);box-shadow:0 1px 5px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5}
-.msg-more-btn svg{width:16px;height:16px;fill:#fff}
-.msg-more-btn:hover{background:rgba(20,18,15,0.9)}
-.msg.them .msg-more-btn{right:auto;left:7px}
 /* The browser's own "save/copy/share image" long-press menu (both iOS
    Safari's callout and Android Chrome's context menu) would otherwise pop
    up on top of / instead of the app's own action row. Long-press is now a
@@ -231,7 +226,6 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg.them .msg-select-badge{right:auto;left:-8px}
 body.select-mode #chat-body .msg{opacity:.55;transition:opacity .15s}
 body.select-mode #chat-body .msg.msg-selected{opacity:1}
-body.select-mode .msg-more-btn{display:none}
 body.select-mode .chat-ftr{display:none}
 .sys-msg{align-self:center;font-size:12px;color:#999;background:rgba(0,0,0,0.04);border-radius:20px;padding:5px 16px;text-align:center;font-style:italic;margin:6px 0}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
@@ -1802,24 +1796,15 @@ function closeAllMsgActions() {
   activeActionMsgId = null;
 }
 
-// Shared by the bubble tap (wireMsgActions) and the media "⋮" button
-// (handleMoreTap) so there's one place that knows how to open/close the
-// Reply/React/Select/Delete row for a given message.
+// Shared by the bubble tap and media long-press (attachLongPress below) so
+// there's one place that knows how to open/close the Reply/React/Select/
+// Delete row for a given message.
 function toggleMsgActions(msgId) {
   const actions = document.getElementById(`actions-${msgId}`);
   if (!actions) return;
   const wasOpen = actions.classList.contains('show');
   closeAllMsgActions();
   if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
-}
-
-// The always-visible "more" button on image/file messages — tapping the
-// media itself opens the viewer or starts a download, so this is the only
-// direct route to Reply/React/Select/Delete on those (previously only the
-// thin timestamp row underneath opened it, easy to miss entirely).
-function handleMoreTap(msgId) {
-  if (selectMode) { toggleMessageSelection(msgId); return; }
-  toggleMsgActions(msgId);
 }
 
 // A short-lived flag, not per-element state: a long-press firing sets it,
@@ -1875,9 +1860,9 @@ function attachLongPress(el, msgId) {
 function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // Text messages have a .bubble, which is what we tap to reveal Reply/React.
   // File/image messages fall back to .msg-meta (the timestamp/tick row) —
-  // the media itself has its own onclick (view/download), its own "⋮"
-  // button (handleMoreTap above), and now long-press too, so this is a
-  // secondary way in, not the primary one.
+  // the media itself has its own onclick (view/download) plus long-press
+  // (attachLongPress below), so this is a secondary way in, not the primary
+  // one.
   const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
   const actions = div.querySelector(`#actions-${msgId}`);
   const picker = div.querySelector(`#picker-${msgId}`);
@@ -2203,15 +2188,11 @@ function renderMessageRecord(room, rec) {
         <span>${escHtml(rec.fileName)}</span>
       </div>`;
     }
-    // Tapping the image opens the viewer and tapping the file downloads it,
-    // so neither gave any way to reach Reply/React/Select/Delete — this
-    // button is what actually makes those reachable on media messages, the
-    // same way tapping the bubble already does for text. A crisp SVG dot
-    // icon instead of the "⋮" glyph, which rendered thin/hard to see
-    // against a busy photo on some devices.
-    contentHtml = `<div class="msg-media-wrap">${mediaHtml}<button type="button" class="msg-more-btn" onclick="event.stopPropagation(); handleMoreTap('${rec.id}')" title="More">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-    </button></div>`;
+    // Tapping the image opens the viewer and tapping the file downloads it;
+    // Reply/React/Select/Delete are reached via long-press (attachLongPress
+    // below) or the thin timestamp row underneath, same as the bubble tap
+    // does for text.
+    contentHtml = `<div class="msg-media-wrap">${mediaHtml}</div>`;
   } else {
     // A reply to an image shows a compact "📷 Photo" indicator here rather
     // than the original filename — but does show the actual (tiny,
