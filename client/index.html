@@ -175,7 +175,12 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
    was trying to avoid. */
 .msg.me .msg-name{display:none}
 .msg.them .msg-name{font-size:11px;color:#9A8C7E;margin:0 2px 2px;letter-spacing:.02em}
-.bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative}
+/* Long-pressing text is the same gesture that opens Reply/React/Select/
+   Delete (see the quick-tap handler in wireMsgActions) — without this, the
+   phone's own text-selection callout popped up on top of/instead of that
+   menu on a slightly longer press. Copy is still reachable, just via the
+   app's own action row now instead of native selection. */
+.bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .msg.me .bubble{background:#DCF8C6;border-bottom-right-radius:4px}
 .msg.them .bubble{background:#F0F0F0;border-bottom-left-radius:4px}
 .bubble.emoji-jumbo{background:none !important;padding:2px 4px;font-size:2.6em;line-height:1.15}
@@ -560,6 +565,7 @@ body.select-mode .chat-ftr{display:none}
   align-items:center;
 }
 .reply-preview.show { display:flex; }
+.reply-preview-thumb { width:34px; height:34px; object-fit:cover; border-radius:5px; margin-right:8px; flex-shrink:0; }
 .reply-preview-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .reply-preview-name { font-weight:600; color:#1A1510; margin-right:6px; }
 .reply-close { background:none; border:none; color:#9A8C7E; font-size:16px; cursor:pointer; padding:0 0 0 10px; line-height:1; }
@@ -768,6 +774,7 @@ body.select-mode .chat-ftr{display:none}
   </div>
   <div style="position:relative">
   <div class="reply-preview" id="reply-preview">
+    <img class="reply-preview-thumb" id="reply-thumb" style="display:none" alt=""/>
     <span class="reply-preview-text"><span class="reply-preview-name" id="reply-name"></span><span id="reply-text"></span></span>
     <button class="reply-close" onclick="cancelReply()">×</button>
   </div>
@@ -972,7 +979,7 @@ let mode = 'create';               // setup screen flow: create | named | join
 let tabFocused = true;
 let lastInteractionTime = Date.now();
 let activeActionMsgId = null;      // message currently showing its Reply/React row
-let replyTo = null;                // { msgId, text } — composer reply state
+let replyTo = null;                // { msgId, text, isImage } — composer reply state
 let pendingRoomCode = null;        // room code currently on s-waiting (not yet confirmed)
 let swRegistration = null;
 
@@ -1770,6 +1777,7 @@ function buildMsgActionsHtml(msgId) {
     <div class="msg-actions" id="actions-${msgId}">
       <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
       <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
+      <button type="button" class="msg-action-btn" data-action="copy">📋 Copy</button>
       <button type="button" class="msg-action-btn" data-action="select">☑ Select</button>
       <button type="button" class="msg-action-btn" data-action="delete">🗑 Delete</button>
     </div>
@@ -1855,7 +1863,7 @@ function attachLongPress(el, msgId) {
   el.addEventListener('mouseleave', clearTimer);
 }
 
-function wireMsgActions(div, room, msgId, replyText, isMe) {
+function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // Text messages have a .bubble, which is what we tap to reveal Reply/React.
   // File/image messages fall back to .msg-meta (the timestamp/tick row) —
   // the media itself has its own onclick (view/download), its own "⋮"
@@ -1893,7 +1901,7 @@ function wireMsgActions(div, room, msgId, replyText, isMe) {
 
   actions.querySelector('[data-action="reply"]').onclick = (e) => {
     e.stopPropagation();
-    startReply(replyText, msgId);
+    startReply(rec, msgId, replyText);
     closeAllMsgActions();
   };
   actions.querySelector('[data-action="react"]').onclick = (e) => {
@@ -1917,6 +1925,22 @@ function wireMsgActions(div, room, msgId, replyText, isMe) {
     closeAllMsgActions();
     enterSelectMode(msgId);
   };
+  // Native text selection is turned off on .bubble (see CSS) so long-press
+  // consistently opens this row instead of the OS's own copy popup — Copy
+  // lives here now so that capability isn't lost, just moved.
+  const copyBtn = actions.querySelector('[data-action="copy"]');
+  if (copyBtn) {
+    copyBtn.onclick = async (e) => {
+      e.stopPropagation();
+      closeAllMsgActions();
+      try {
+        await navigator.clipboard.writeText(replyText || '');
+        toast('Copied');
+      } catch (err) {
+        toast('Could not copy');
+      }
+    };
+  }
 }
 
 document.addEventListener('click', (e) => {
@@ -2167,8 +2191,16 @@ function renderMessageRecord(room, rec) {
       <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
     </button></div>`;
   } else {
-    const replyHtml = rec.replyData ? `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>` : '';
-    contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}">${escHtml(rec.content)}</div>`;
+    // A reply to an image shows a compact "📷 Photo" indicator here rather
+    // than the original filename — the actual thumbnail only exists locally
+    // on whichever device sent that image, so showing real pixels in this
+    // quote would mean re-sending the image bytes inside every reply to it.
+    // The live composer preview (startReply) doesn't have that constraint
+    // and shows a real thumbnail, since it's reading its own local copy.
+    const replyHtml = rec.replyData
+      ? `<div class="msg-reply-quote">${rec.replyData.isImage ? '📷 Photo' : escHtml(rec.replyData.text)}</div>`
+      : '';
+    contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
   }
 
   const progressHtml = room.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file'
@@ -2186,7 +2218,7 @@ function renderMessageRecord(room, rec) {
     ${buildMsgActionsHtml(rec.id)}
   `;
 
-  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content, rec.isMe);
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content, rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   renderReactionsForRec(div, rec);
@@ -2621,7 +2653,7 @@ async function sendMsg() {
   input.value = '';
 
   const msgData = replyTo
-    ? JSON.stringify({ text: content, reply: { text: replyTo.text } })
+    ? JSON.stringify({ text: content, reply: { text: replyTo.text, isImage: !!replyTo.isImage } })
     : content;
   const encrypted = await encryptMsg(room, msgData);
   const now = new Date();
@@ -2634,7 +2666,7 @@ async function sendMsg() {
 
   const rec = {
     id: msgId, kind: 'text', isMe: true, name: room.myName, time, content,
-    replyData: replyTo ? { text: replyTo.text } : null,
+    replyData: replyTo ? { text: replyTo.text, isImage: !!replyTo.isImage } : null,
     jumbo: isSingleEmoji(content),
     receiptState: null, timerStarted: false,
     reactionMine: null, reactionTheirs: null, deleteAt: null,
@@ -3257,10 +3289,28 @@ function viewImage(src, opts) {
 }
 
 // ── MESSAGE REPLY ────────────────────────────────────────────────────────
-function startReply(text, msgId) {
-  replyTo = { msgId, text: text.substring(0, 100) };
+// rec is the full message record being replied to — needed (rather than
+// just its text) so an image reply can show a real thumbnail here, read
+// straight from rec.base64 already sitting in memory on this device. That
+// only works locally: the quote shown once the reply is actually sent
+// (msg-reply-quote, in renderMessageRecord) can't assume the viewer has
+// this same rec, so it falls back to a plain "📷 Photo" label instead of
+// trying to carry image bytes through the message payload.
+function startReply(rec, msgId, replyText) {
+  const isImageReply = !!(rec && rec.kind === 'file' && rec.isImage);
+  const text = (replyText || '').substring(0, 100);
+  replyTo = { msgId, text: isImageReply ? (rec.fileName || 'Photo') : text, isImage: isImageReply };
+
+  const thumbEl = document.getElementById('reply-thumb');
+  const textEl = document.getElementById('reply-text');
   document.getElementById('reply-name').textContent = '';
-  document.getElementById('reply-text').textContent = replyTo.text;
+  if (isImageReply) {
+    if (thumbEl) { thumbEl.src = `data:${rec.mime};base64,${rec.base64}`; thumbEl.style.display = 'block'; }
+    if (textEl) textEl.textContent = '📷 Photo';
+  } else {
+    if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
+    if (textEl) textEl.textContent = replyTo.text;
+  }
   document.getElementById('reply-preview').classList.add('show');
   document.getElementById('msg-input').focus();
 }
@@ -3268,6 +3318,8 @@ function startReply(text, msgId) {
 function cancelReply() {
   replyTo = null;
   document.getElementById('reply-preview').classList.remove('show');
+  const thumbEl = document.getElementById('reply-thumb');
+  if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
 }
 
 </script>
