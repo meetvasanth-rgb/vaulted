@@ -483,7 +483,7 @@ body.select-mode .chat-ftr{display:none}
 .attach-btn:hover { opacity:0.9; }
 .attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
-.msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; }
+.msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; flex-shrink:0; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 .msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
@@ -1774,12 +1774,19 @@ function isSingleEmoji(str) {
   }
 }
 
-function buildMsgActionsHtml(msgId) {
+// Text messages get Copy (copies the text); file/image messages get Save
+// (downloads via downloadDataUri) instead — Copy on a file only ever copied
+// its filename as text, which wasn't the useful action there.
+function buildMsgActionsHtml(msgId, kind) {
+  const isMedia = kind === 'file';
+  const thirdAction = isMedia
+    ? `<button type="button" class="msg-action-btn" data-action="save">💾 Save</button>`
+    : `<button type="button" class="msg-action-btn" data-action="copy">📋 Copy</button>`;
   return `
     <div class="msg-actions" id="actions-${msgId}">
       <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
       <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
-      <button type="button" class="msg-action-btn" data-action="copy">📋 Copy</button>
+      ${thirdAction}
       <button type="button" class="msg-action-btn" data-action="select">☑ Select</button>
       <button type="button" class="msg-action-btn" data-action="delete">🗑 Delete</button>
     </div>
@@ -1941,6 +1948,14 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
       } catch (err) {
         toast('Could not copy');
       }
+    };
+  }
+  const saveBtn = actions.querySelector('[data-action="save"]');
+  if (saveBtn) {
+    saveBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeAllMsgActions();
+      if (rec) downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
     };
   }
 }
@@ -2178,10 +2193,15 @@ function renderMessageRecord(room, rec) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
       mediaHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`;
     } else {
-      mediaHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}" onclick="return handleFileTap(event, '${rec.id}')" oncontextmenu="return false">
+      // Was an <a href="data:..." download>, which some mobile browsers
+      // (Chrome on Android in particular) silently refuse to trigger for a
+      // large data: URI — that's what made tapping a received file look
+      // like it did nothing. handleFileTap now saves via downloadDataUri
+      // (Blob + object-URL) instead of relying on native anchor behavior.
+      mediaHtml = `<div class="msg-file" onclick="handleFileTap('${rec.id}')" oncontextmenu="return false">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>${escHtml(rec.fileName)}</span>
-      </a>`;
+      </div>`;
     }
     // Tapping the image opens the viewer and tapping the file downloads it,
     // so neither gave any way to reach Reply/React/Select/Delete — this
@@ -2218,7 +2238,7 @@ function renderMessageRecord(room, rec) {
       ${receiptHtml}
     </div>
     ${progressHtml}
-    ${buildMsgActionsHtml(rec.id)}
+    ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
 
   wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content, rec.isMe, rec);
@@ -2339,10 +2359,22 @@ function handleImageTap(src, msgId) {
   if (selectMode) { toggleMessageSelection(msgId); return; }
   viewImage(src);
 }
-function handleFileTap(e, msgId) {
-  if (wasJustLongPressed()) { e.preventDefault(); return false; }
-  if (selectMode) { e.preventDefault(); toggleMessageSelection(msgId); return false; }
-  return true;
+// Looks a message record up by id across every open room — used from inline
+// onclick handlers (file tap, view-once) that only have the id to go on.
+function findMessageRec(msgId) {
+  for (const r of rooms.values()) {
+    const found = r.messages.find(m => m.id === msgId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function handleFileTap(msgId) {
+  if (wasJustLongPressed()) return;
+  if (selectMode) { toggleMessageSelection(msgId); return; }
+  const rec = findMessageRec(msgId);
+  if (!rec) return;
+  downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
 }
 
 // View-once: a separate, independent deletion trigger from the room's
@@ -3132,6 +3164,34 @@ function fileToBase64(file) {
   });
 }
 
+// Saves a data: URI to disk via a Blob + temporary object-URL anchor,
+// rather than pointing an <a download> directly at the data: URI. Some
+// mobile browsers (Chrome on Android especially) silently do nothing when
+// asked to download a large data: URI through the download attribute —
+// which is exactly what made saving a received file or photo look broken.
+// A Blob doesn't have that ceiling.
+function downloadDataUri(dataUri, filename) {
+  try {
+    const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUri);
+    if (!match) { toast('Could not save file'); return; }
+    const mime = match[1], base64 = match[2];
+    const byteChars = atob(base64);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'vaultlix-file';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch (e) {
+    toast('Could not save file');
+  }
+}
+
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -3159,13 +3219,21 @@ function viewImage(src, opts) {
   // Save, for when the recipient wants to keep a copy.
   let dlBtn = null;
   if (!hideDownload) {
-    dlBtn = document.createElement('a');
-    dlBtn.href = src;
-    dlBtn.download = 'vaultlix-image';
+    dlBtn = document.createElement('button');
+    dlBtn.type = 'button';
     dlBtn.title = 'Save image';
-    dlBtn.style.cssText = 'position:absolute;top:calc(16px + env(safe-area-inset-top));right:16px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;z-index:1001;cursor:pointer;';
+    dlBtn.style.cssText = 'position:absolute;top:calc(16px + env(safe-area-inset-top));right:16px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;z-index:1001;cursor:pointer;border:none;';
     dlBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
-    dlBtn.onclick = (e) => e.stopPropagation();
+    // A plain href+download anchor on a raw data: URI is what this used to
+    // be — some mobile browsers (Chrome on Android in particular) silently
+    // do nothing when that URI is large, which looked like the save button
+    // just not working. downloadDataUri converts to a Blob/object-URL first,
+    // which doesn't have that size ceiling.
+    dlBtn.onclick = (e) => {
+      e.stopPropagation();
+      const ext = (src.match(/^data:image\/(\w+)/) || [])[1] || 'jpg';
+      downloadDataUri(src, `vaultlix-image.${ext}`);
+    };
     overlay.appendChild(dlBtn);
   }
 
