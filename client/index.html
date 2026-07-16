@@ -581,6 +581,8 @@ body.select-mode .chat-ftr{display:none}
 }
 .msg-reply-quote strong { color:#4A3F35; font-weight:500; }
 .msg.me .msg-reply-quote { background:rgba(184,151,62,0.08); }
+.msg-reply-quote-photo { display:flex; align-items:center; gap:6px; }
+.msg-reply-quote-thumb { width:26px; height:26px; object-fit:cover; border-radius:4px; flex-shrink:0; }
 
 /* ── PRIVACY COVER ─────────────────────────────────────────────────── */
 #privacy-cover{
@@ -2192,13 +2194,14 @@ function renderMessageRecord(room, rec) {
     </button></div>`;
   } else {
     // A reply to an image shows a compact "📷 Photo" indicator here rather
-    // than the original filename — the actual thumbnail only exists locally
-    // on whichever device sent that image, so showing real pixels in this
-    // quote would mean re-sending the image bytes inside every reply to it.
-    // The live composer preview (startReply) doesn't have that constraint
-    // and shows a real thumbnail, since it's reading its own local copy.
+    // than the original filename — but does show the actual (tiny,
+    // separately-compressed) thumbnail that travels with the reply, see
+    // makeTinyThumbnail/startReply. Falls back to just the label if that
+    // thumbnail didn't make it (an older message, or generation failed).
     const replyHtml = rec.replyData
-      ? `<div class="msg-reply-quote">${rec.replyData.isImage ? '📷 Photo' : escHtml(rec.replyData.text)}</div>`
+      ? (rec.replyData.isImage
+          ? `<div class="msg-reply-quote msg-reply-quote-photo">${rec.replyData.thumb ? `<img class="msg-reply-quote-thumb" src="data:${rec.replyData.thumbMime || 'image/jpeg'};base64,${rec.replyData.thumb}" alt=""/>` : ''}<span>📷 Photo</span></div>`
+          : `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>`)
       : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
   }
@@ -2652,8 +2655,19 @@ async function sendMsg() {
   if (!content || !room) return;
   input.value = '';
 
-  const msgData = replyTo
-    ? JSON.stringify({ text: content, reply: { text: replyTo.text, isImage: !!replyTo.isImage } })
+  // The tiny re-compressed thumbnail (see makeTinyThumbnail/startReply)
+  // finishes in the background; await it here so it's actually ready by
+  // the time the reply goes out, in case send happens right after tapping
+  // Reply. resolves to null for a text reply, or if generation failed.
+  let replySnapshot = null;
+  if (replyTo) {
+    let thumb = null;
+    if (replyTo.isImage && replyTo.thumbPromise) { try { thumb = await replyTo.thumbPromise; } catch (e) {} }
+    replySnapshot = { text: replyTo.text, isImage: !!replyTo.isImage, thumb, thumbMime: replyTo.thumbMime || null };
+  }
+
+  const msgData = replySnapshot
+    ? JSON.stringify({ text: content, reply: replySnapshot })
     : content;
   const encrypted = await encryptMsg(room, msgData);
   const now = new Date();
@@ -2666,7 +2680,7 @@ async function sendMsg() {
 
   const rec = {
     id: msgId, kind: 'text', isMe: true, name: room.myName, time, content,
-    replyData: replyTo ? { text: replyTo.text, isImage: !!replyTo.isImage } : null,
+    replyData: replySnapshot,
     jumbo: isSingleEmoji(content),
     receiptState: null, timerStarted: false,
     reactionMine: null, reactionTheirs: null, deleteAt: null,
@@ -3289,17 +3303,46 @@ function viewImage(src, opts) {
 }
 
 // ── MESSAGE REPLY ────────────────────────────────────────────────────────
+// Re-compresses an image down to a tiny (~64px) JPEG thumbnail — small
+// enough (typically 1-3KB base64) to actually send along with a reply so
+// the recipient's in-thread quote can show real pixels too, without
+// re-transmitting the full original photo inside every reply to it.
+function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]); }
+        catch (e) { resolve(null); } // e.g. a tainted canvas — fall back to no thumbnail
+      };
+      img.onerror = () => resolve(null);
+      img.src = `data:${mime};base64,${base64}`;
+    } catch (e) { resolve(null); }
+  });
+}
+
 // rec is the full message record being replied to — needed (rather than
 // just its text) so an image reply can show a real thumbnail here, read
-// straight from rec.base64 already sitting in memory on this device. That
-// only works locally: the quote shown once the reply is actually sent
-// (msg-reply-quote, in renderMessageRecord) can't assume the viewer has
-// this same rec, so it falls back to a plain "📷 Photo" label instead of
-// trying to carry image bytes through the message payload.
+// straight from rec.base64 already sitting in memory on this device. The
+// full-resolution image is what's shown in this local preview bar; a
+// separately re-compressed tiny copy (thumbPromise, resolved in the
+// background) is what actually travels with the reply once sent, so the
+// in-thread quote on both ends can show real pixels without the payload
+// carrying the whole original photo.
 function startReply(rec, msgId, replyText) {
   const isImageReply = !!(rec && rec.kind === 'file' && rec.isImage);
   const text = (replyText || '').substring(0, 100);
-  replyTo = { msgId, text: isImageReply ? (rec.fileName || 'Photo') : text, isImage: isImageReply };
+  replyTo = {
+    msgId, text: isImageReply ? (rec.fileName || 'Photo') : text, isImage: isImageReply,
+    thumbMime: 'image/jpeg', thumbPromise: isImageReply ? makeTinyThumbnail(rec.base64, rec.mime) : null,
+  };
 
   const thumbEl = document.getElementById('reply-thumb');
   const textEl = document.getElementById('reply-text');
