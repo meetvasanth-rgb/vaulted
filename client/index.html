@@ -29,7 +29,11 @@
   --red:#C0392B;--red-dim:rgba(192,57,43,0.1);
   --blue:#60A5FA;--blue-dim:rgba(96,165,250,0.1);
 }
-body{font-family:'Inter',sans-serif;background:#fff;color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+/* Keeps declared font sizes rendering the same on iOS Safari as everywhere
+   else — without this, Safari's own text-size heuristics can adjust
+   rendered size independently of the CSS px value in some layouts. */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+body{font-family:'Inter',sans-serif;background:#fff;color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 /* Every screen already sets its own background (all white/gold themed now),
    so the document background is only ever visible in brief rendering gaps —
    e.g. the on-screen keyboard resizing the visual viewport faster than
@@ -234,7 +238,10 @@ body.select-mode .chat-ftr{display:none}
 .t-dot:nth-child(2){animation-delay:.15s}.t-dot:nth-child(3){animation-delay:.3s}
 @keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
 .chat-ftr{flex-shrink:0;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:4px;align-items:flex-end}
-#msg-input{flex:1;background:#F5F5F5;border:1.5px solid #E8E8E8;border-radius:24px;padding:10px 18px;font-size:15px;color:#111;resize:none;min-height:44px;max-height:120px;line-height:1.5;transition:border-color .15s}
+/* 16px, not 15 — anything smaller than 16px on a text input makes iOS
+   Safari auto-zoom the whole page in on focus, which is a likely
+   contributor to text looking off afterward. */
+#msg-input{flex:1;background:#F5F5F5;border:1.5px solid #E8E8E8;border-radius:24px;padding:10px 18px;font-size:16px;color:#111;resize:none;min-height:44px;max-height:120px;line-height:1.5;transition:border-color .15s}
 #msg-input:focus{border-color:#B8973E;background:#fff}
 #msg-input::placeholder{color:#BBB}
 #msg-input:disabled{opacity:.35;cursor:not-allowed}
@@ -269,9 +276,14 @@ body.select-mode .chat-ftr{display:none}
   .code-value{font-size:22px}
   .chat-hdr{height:calc(46px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 12px 0}
   .chat-hdr-logo{font-size:16px}
-  .bubble{font-size:13px;padding:9px 12px}
-  .msg-input{font-size:14px}
-  .e2e-bar{font-size:9px;padding:4px 12px}
+  /* Message text is what people actually spend their time reading — this
+     used to drop it from the 15px base down to 13px on any screen under
+     480px CSS-wide, which is most phones. Keep the tighter side padding for
+     narrow screens, but leave the text size alone. (.msg-input below was a
+     dead rule too: the composer textarea only ever had id="msg-input", so
+     it never matched — the real #msg-input rule is set once, above.) */
+  .bubble{padding:9px 12px}
+  .e2e-bar{font-size:10px;padding:4px 12px}
   .w-title{font-size:18px}
   .call-name{font-size:22px}
   .closed-title{font-size:20px}
