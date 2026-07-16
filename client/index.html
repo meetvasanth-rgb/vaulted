@@ -206,9 +206,16 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
    have somewhere to anchor — an <img>/<a> can't usefully host absolutely
    positioned children of its own. */
 .msg-media-wrap{position:relative;display:inline-block;max-width:100%}
-.msg-more-btn{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.45);color:#fff;border:none;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3}
-.msg-more-btn:hover{background:rgba(0,0,0,0.62)}
-.msg.them .msg-more-btn{right:auto;left:6px}
+.msg-more-btn{position:absolute;top:7px;right:7px;width:30px;height:30px;border-radius:50%;background:rgba(20,18,15,0.72);color:#fff;border:1.5px solid rgba(255,255,255,0.55);box-shadow:0 1px 5px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:5}
+.msg-more-btn svg{width:16px;height:16px;fill:#fff}
+.msg-more-btn:hover{background:rgba(20,18,15,0.9)}
+.msg.them .msg-more-btn{right:auto;left:7px}
+/* The browser's own "save/copy/share image" long-press menu (both iOS
+   Safari's callout and Android Chrome's context menu) would otherwise pop
+   up on top of / instead of the app's own action row. Long-press is now a
+   deliberate app gesture (see attachLongPress), so the native one needs to
+   be turned off on the media elements it would normally trigger on. */
+.msg-image,.msg-file,.msg-viewonce{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 
 /* Multi-select mode: once active, every message shows an empty checkbox;
    picking one fills it in gold and brings that message back to full
@@ -1798,16 +1805,69 @@ function handleMoreTap(msgId) {
   toggleMsgActions(msgId);
 }
 
+// A short-lived flag, not per-element state: a long-press firing sets it,
+// and the tap handlers that would otherwise run right after (view image /
+// download file / reveal view-once) check it and bail out for that one
+// gesture. Needed because on mouse (not touch), a real click event still
+// follows mouseup regardless of how long the button was held — touch is
+// handled separately below by preventDefault-ing the touchend itself, which
+// suppresses the browser's synthetic click outright.
+let lastLongPressAt = 0;
+function wasJustLongPressed() { return Date.now() - lastLongPressAt < 350; }
+
+// Long-press (touch-and-hold, or a slow mouse-down/up on desktop) opens the
+// same Reply/React/Select/Delete row as tapping a text bubble does — this
+// is what WhatsApp/Telegram do on a photo or file, and it's the gesture
+// people actually reach for, rather than hunting for a small corner button.
+// It also doubles as what suppresses the browser's own native "save/copy/
+// share image" long-press menu, since -webkit-touch-callout is turned off
+// on these elements specifically because this gesture now means something.
+function attachLongPress(el, msgId) {
+  const THRESHOLD = 450;
+  let timer = null, sx = 0, sy = 0, longPressed = false;
+  const clearTimer = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const fire = () => {
+    longPressed = true;
+    lastLongPressAt = Date.now();
+    if (navigator.vibrate) navigator.vibrate(12);
+    if (selectMode) toggleMessageSelection(msgId); else toggleMsgActions(msgId);
+  };
+  el.addEventListener('touchstart', (e) => {
+    longPressed = false;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    timer = setTimeout(fire, THRESHOLD);
+  }, { passive: true });
+  el.addEventListener('touchmove', (e) => {
+    if (Math.abs(e.touches[0].clientX - sx) > 12 || Math.abs(e.touches[0].clientY - sy) > 12) clearTimer();
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    clearTimer();
+    if (longPressed) e.preventDefault(); // swallow the trailing synthetic click
+  });
+  el.addEventListener('touchcancel', clearTimer);
+  el.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    longPressed = false;
+    timer = setTimeout(fire, THRESHOLD);
+  });
+  el.addEventListener('mouseup', clearTimer);
+  el.addEventListener('mouseleave', clearTimer);
+}
+
 function wireMsgActions(div, room, msgId, replyText, isMe) {
   // Text messages have a .bubble, which is what we tap to reveal Reply/React.
   // File/image messages fall back to .msg-meta (the timestamp/tick row) —
-  // the media itself has its own onclick (view/download) and now its own
-  // "⋮" button (handleMoreTap above), so this is a secondary way in, not
-  // the primary one.
+  // the media itself has its own onclick (view/download), its own "⋮"
+  // button (handleMoreTap above), and now long-press too, so this is a
+  // secondary way in, not the primary one.
   const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
   const actions = div.querySelector(`#actions-${msgId}`);
   const picker = div.querySelector(`#picker-${msgId}`);
   if (!bubble || !actions || !picker) return;
+
+  const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce');
+  if (media) attachLongPress(media, msgId);
 
   // While a multi-select is in progress, tapping any message toggles its
   // selection instead of opening the Reply/React/Delete row — checked first
@@ -2084,24 +2144,28 @@ function renderMessageRecord(room, rec) {
       // the regular disappearing timer, which leaves an image sitting
       // visible in the scroll for its whole countdown, this never renders
       // until someone deliberately taps it, and disappears shortly after.
-      mediaHtml = `<div class="msg-viewonce" onclick="revealViewOnce('${rec.id}')">
+      mediaHtml = `<div class="msg-viewonce" onclick="revealViewOnce('${rec.id}')" oncontextmenu="return false">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg>
         <span>Photo · Tap to view once</span>
       </div>`;
     } else if (rec.isImage) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
-      mediaHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')"/>`;
+      mediaHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`;
     } else {
-      mediaHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}" onclick="return handleFileTap(event, '${rec.id}')">
+      mediaHtml = `<a class="msg-file" href="data:${rec.mime};base64,${rec.base64}" download="${escHtml(rec.fileName)}" onclick="return handleFileTap(event, '${rec.id}')" oncontextmenu="return false">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>${escHtml(rec.fileName)}</span>
       </a>`;
     }
     // Tapping the image opens the viewer and tapping the file downloads it,
-    // so neither gave any way to reach Reply/React/Select/Delete — this "⋮"
-    // is what actually makes those reachable on media messages, the same
-    // way tapping the bubble already does for text.
-    contentHtml = `<div class="msg-media-wrap">${mediaHtml}<button type="button" class="msg-more-btn" onclick="event.stopPropagation(); handleMoreTap('${rec.id}')" title="More">⋮</button></div>`;
+    // so neither gave any way to reach Reply/React/Select/Delete — this
+    // button is what actually makes those reachable on media messages, the
+    // same way tapping the bubble already does for text. A crisp SVG dot
+    // icon instead of the "⋮" glyph, which rendered thin/hard to see
+    // against a busy photo on some devices.
+    contentHtml = `<div class="msg-media-wrap">${mediaHtml}<button type="button" class="msg-more-btn" onclick="event.stopPropagation(); handleMoreTap('${rec.id}')" title="More">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+    </button></div>`;
   } else {
     const replyHtml = rec.replyData ? `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>` : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}">${escHtml(rec.content)}</div>`;
@@ -2230,15 +2294,18 @@ function formatDuration(s) {
 }
 
 // Image/file taps go through inline onclick handlers (not wireMsgActions'
-// bubble, per the comment above) so they need their own select-mode check:
-// while picking messages to delete, tapping the photo/file itself should
-// toggle its selection rather than opening the viewer or starting a
-// download.
+// bubble, per the comment above) so they need their own guards: while
+// picking messages to delete, tapping the photo/file toggles its selection
+// instead of opening the viewer/download, and right after a long-press
+// (which already opened the actions menu via attachLongPress) the trailing
+// tap shouldn't ALSO open the viewer/download on top of that.
 function handleImageTap(src, msgId) {
+  if (wasJustLongPressed()) return;
   if (selectMode) { toggleMessageSelection(msgId); return; }
   viewImage(src);
 }
 function handleFileTap(e, msgId) {
+  if (wasJustLongPressed()) { e.preventDefault(); return false; }
   if (selectMode) { e.preventDefault(); toggleMessageSelection(msgId); return false; }
   return true;
 }
@@ -2249,6 +2316,7 @@ function handleFileTap(e, msgId) {
 // taking one as a param since it's wired up from an inline onclick, which
 // only has the message id to go on.
 function revealViewOnce(msgId) {
+  if (wasJustLongPressed()) return;
   if (selectMode) { toggleMessageSelection(msgId); return; }
   let room = null, rec = null;
   for (const r of rooms.values()) {
