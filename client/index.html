@@ -2747,49 +2747,32 @@ function viewImage(src, opts) {
   const { onClose, hideDownload } = opts || {};
   let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
   let lastTouchDist = 0;
+  // Swipe-to-dismiss: a vertical drag/scroll while not zoomed in closes the
+  // viewer and returns to the room, same as Instagram/WhatsApp. Only active
+  // at scale<=1 — once zoomed, a single-finger drag pans the image instead.
+  let isSwiping = false, swipeStartY = 0, swipeDeltaY = 0;
+  let wheelAccum = 0, wheelResetTimer = null;
+  const SWIPE_CLOSE_THRESHOLD = 90;
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;overflow:hidden;touch-action:none;';
 
-  const bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;gap:8px;z-index:1001;';
-
-  const backBtn = document.createElement('button');
-  backBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:13px;padding:7px 16px;border-radius:20px;cursor:pointer;font-family:Inter,sans-serif;';
-  backBtn.textContent = '← Back';
-  backBtn.onclick = (e) => { e.stopPropagation(); cleanup(); };
-  bar.appendChild(backBtn);
-
-  const zoomIn = document.createElement('button');
-  zoomIn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:16px;padding:6px 12px;border-radius:20px;cursor:pointer;margin-left:auto;';
-  zoomIn.textContent = '+';
-  zoomIn.onclick = (e) => { e.stopPropagation(); setZoom(scale * 1.4); };
-  bar.appendChild(zoomIn);
-
-  const zoomOut = document.createElement('button');
-  zoomOut.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:16px;padding:6px 12px;border-radius:20px;cursor:pointer;';
-  zoomOut.textContent = '−';
-  zoomOut.onclick = (e) => { e.stopPropagation(); setZoom(scale / 1.4); };
-  bar.appendChild(zoomOut);
-
-  const resetBtn = document.createElement('button');
-  resetBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:12px;padding:6px 12px;border-radius:20px;cursor:pointer;';
-  resetBtn.textContent = 'Reset';
-  resetBtn.onclick = (e) => { e.stopPropagation(); scale=1; posX=0; posY=0; updateTransform(); };
-  bar.appendChild(resetBtn);
-
+  // Zoom is handled entirely by pinch (touch) or ctrl+wheel/trackpad-pinch
+  // (desktop) — no on-screen +/− controls needed. Closing is handled by a
+  // vertical swipe, a plain two-finger scroll, tapping outside the photo,
+  // or Escape — no back button needed either. The only visible control is
+  // Save, for when the recipient wants to keep a copy.
   let dlBtn = null;
   if (!hideDownload) {
     dlBtn = document.createElement('a');
     dlBtn.href = src;
-    dlBtn.download = 'vaulted-image';
-    dlBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:13px;padding:7px 14px;border-radius:20px;text-decoration:none;font-family:Inter,sans-serif;';
-    dlBtn.textContent = '↓ Save';
+    dlBtn.download = 'vaultlix-image';
+    dlBtn.title = 'Save image';
+    dlBtn.style.cssText = 'position:absolute;top:calc(16px + env(safe-area-inset-top));right:16px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;z-index:1001;cursor:pointer;';
+    dlBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
     dlBtn.onclick = (e) => e.stopPropagation();
-    bar.appendChild(dlBtn);
+    overlay.appendChild(dlBtn);
   }
-
-  overlay.appendChild(bar);
 
   const imgWrap = document.createElement('div');
   imgWrap.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;overflow:hidden;';
@@ -2808,15 +2791,42 @@ function viewImage(src, opts) {
     updateTransform();
   }
 
+  function beginSwipe(y) { isSwiping = true; swipeStartY = y; swipeDeltaY = 0; img.style.transition = 'none'; }
+  function moveSwipe(y) {
+    swipeDeltaY = y - swipeStartY;
+    img.style.transform = `translateY(${swipeDeltaY}px) scale(${Math.max(1 - Math.abs(swipeDeltaY) / 1000, 0.85)})`;
+    overlay.style.background = `rgba(0,0,0,${Math.max(0.95 - Math.abs(swipeDeltaY) / 300, 0.35)})`;
+  }
+  function endSwipe() {
+    if (!isSwiping) return;
+    isSwiping = false;
+    img.style.transition = 'transform 0.2s ease';
+    if (Math.abs(swipeDeltaY) > SWIPE_CLOSE_THRESHOLD) { cleanup(); return; }
+    overlay.style.transition = 'background-color 0.2s ease';
+    overlay.style.background = 'rgba(0,0,0,0.95)';
+    updateTransform();
+  }
+
   overlay.addEventListener('wheel', (e) => {
     e.preventDefault(); e.stopPropagation();
-    const delta = e.deltaY > 0 ? 0.85 : 1.18;
-    setZoom(scale * delta);
+    if (e.ctrlKey) {
+      // Pinch-to-zoom on a trackpad (and ctrl+wheel on a mouse) arrives as a
+      // wheel event with ctrlKey set — the browser's own convention.
+      const delta = e.deltaY > 0 ? 0.85 : 1.18;
+      setZoom(scale * delta);
+      return;
+    }
+    // A plain two-finger scroll — treat it the same as a touch swipe.
+    wheelAccum += e.deltaY;
+    clearTimeout(wheelResetTimer);
+    wheelResetTimer = setTimeout(() => { wheelAccum = 0; }, 250);
+    if (Math.abs(wheelAccum) > 140) { wheelAccum = 0; cleanup(); }
   }, { passive: false });
 
   let lastTap = 0;
   overlay.addEventListener('click', (e) => {
-    if (e.target === backBtn || e.target === zoomIn || e.target === zoomOut || e.target === resetBtn || e.target === dlBtn) return;
+    if (e.target === dlBtn || (dlBtn && dlBtn.contains(e.target))) return;
+    if (e.target !== img) { cleanup(); return; } // tap outside the photo closes it
     const now = Date.now();
     if (now - lastTap < 300) {
       if (scale > 1.2) { scale = 1; posX = 0; posY = 0; } else { scale = 3; }
@@ -2832,9 +2842,14 @@ function viewImage(src, opts) {
   }
 
   overlay.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) { lastTouchDist = getTouchDist(e.touches); e.preventDefault(); }
-    else if (e.touches.length === 1 && scale > 1) {
-      isDragging = true; startX = e.touches[0].clientX - posX; startY = e.touches[0].clientY - posY;
+    if (e.touches.length === 2) {
+      lastTouchDist = getTouchDist(e.touches); e.preventDefault();
+    } else if (e.touches.length === 1) {
+      if (scale > 1) {
+        isDragging = true; startX = e.touches[0].clientX - posX; startY = e.touches[0].clientY - posY;
+      } else {
+        beginSwipe(e.touches[0].clientY);
+      }
     }
   }, { passive: false });
 
@@ -2848,28 +2863,43 @@ function viewImage(src, opts) {
       e.preventDefault();
       posX = e.touches[0].clientX - startX; posY = e.touches[0].clientY - startY;
       img.style.transition = 'none'; updateTransform(); img.style.transition = 'transform 0.15s ease';
+    } else if (e.touches.length === 1 && isSwiping) {
+      e.preventDefault();
+      moveSwipe(e.touches[0].clientY);
     }
   }, { passive: false });
 
-  overlay.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 0; });
+  overlay.addEventListener('touchend', () => {
+    isDragging = false; lastTouchDist = 0;
+    endSwipe();
+  });
 
   overlay.addEventListener('mousedown', (e) => {
+    if (e.target === dlBtn || (dlBtn && dlBtn.contains(e.target))) return;
     if (scale > 1 && e.target === img) {
       isDragging = true; startX = e.clientX - posX; startY = e.clientY - posY; img.style.cursor = 'grabbing';
+    } else if (scale <= 1 && e.target === img) {
+      beginSwipe(e.clientY);
     }
   });
   overlay.addEventListener('mousemove', (e) => {
     if (isDragging && scale > 1) {
       posX = e.clientX - startX; posY = e.clientY - startY;
       img.style.transition = 'none'; updateTransform(); img.style.transition = 'transform 0.15s ease';
+    } else if (isSwiping) {
+      moveSwipe(e.clientY);
     }
   });
-  overlay.addEventListener('mouseup', () => { isDragging = false; img.style.cursor = 'default'; });
+  overlay.addEventListener('mouseup', () => {
+    isDragging = false; img.style.cursor = 'default';
+    endSwipe();
+  });
 
   const escHandler = (e) => { if (e.key === 'Escape') cleanup(); };
   document.addEventListener('keydown', escHandler);
   function cleanup() {
     document.removeEventListener('keydown', escHandler);
+    clearTimeout(wheelResetTimer);
     overlay.remove();
     if (onClose) onClose();
   }
