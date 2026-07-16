@@ -947,7 +947,7 @@ const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 // be generously long, not a safety mechanism in itself.
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
 function makeRoom({ code, token, myName, deleteTimerSeconds }) {
   return {
@@ -2628,7 +2628,7 @@ async function handleFileSelect(event) {
     if (file.size > MAX_FILE_SIZE) tooLarge.push(file.name); else valid.push(file);
   }
   if (tooLarge.length) {
-    toast(tooLarge.length === 1 ? `"${tooLarge[0]}" too large — maximum 5MB` : `${tooLarge.length} files skipped — maximum 5MB each`);
+    toast(tooLarge.length === 1 ? `"${tooLarge[0]}" too large — maximum 10MB` : `${tooLarge.length} files skipped — maximum 10MB each`);
   }
   if (!valid.length) return;
 
