@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { promisify } = require('util');
 const webpush = require('web-push');
+const { WebSocketServer } = require('ws');
 
 const scryptAsync = promisify(crypto.scrypt);
 
@@ -549,5 +550,106 @@ async function api(path, method, d, p, res) {
 
   resErr(res,'Not found.',404);
 }
+
+// ── CALL SIGNALING (WebSocket) ───────────────────────────────────────────
+// Carries offer/answer/ICE candidates for calling — added alongside the
+// existing HTTP polling above, not replacing it. Messages, reactions,
+// receipts and deletes all still go through /api/poll exactly as before;
+// this channel exists only because call setup needs to be near-instant in
+// a way a 2-second poll loop can't deliver.
+//
+// The server here is a dumb, blind relay, on purpose: every message this
+// forwards has its real content (SDP, ICE candidates) already encrypted
+// client-side with the room's existing E2E key before it ever reaches this
+// process — see encryptSignalPayload/decryptSignalEnvelope in the client.
+// What this process sees is `{ type, envelope }`, where `envelope` is
+// opaque ciphertext it cannot read or usefully tamper with. That matters
+// specifically for calling: a WebRTC call's DTLS fingerprint travels inside
+// the SDP, and whoever controls the signaling channel unencrypted could
+// otherwise substitute their own fingerprint and sit in the middle of a
+// call that still looks end-to-end encrypted at the media layer. Keeping
+// this server blind to the payload is what closes that gap.
+const wss = new WebSocketServer({ noServer: true });
+
+// One live socket per participant, keyed by their room token — not by room
+// code, since a signaling message needs to reach one specific person, not
+// broadcast to a room. Same token space /api/poll already authenticates
+// against; nothing new to trust here.
+const signalingSockets = new Map();
+
+srv.on('upgrade', (req, socket, head) => {
+  let u;
+  try { u = new URL(req.url, 'http://x'); } catch (e) { socket.destroy(); return; }
+  if (u.pathname !== '/ws/signal') { socket.destroy(); return; }
+
+  const code = (u.searchParams.get('code') || '').toLowerCase().trim();
+  const token = u.searchParams.get('token') || '';
+  const room = rooms.get(code);
+  if (!room || !token || !room.members.has(token)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.roomCode = code;
+    ws.token = token;
+    wss.emit('connection', ws, req);
+  });
+});
+
+wss.on('connection', (ws) => {
+  const { roomCode, token } = ws;
+
+  // A reconnect (network switch, tab backgrounded and resumed, etc.)
+  // replaces the old socket for this token rather than stacking up dead
+  // connections that'd otherwise both "successfully" receive a relay.
+  const existing = signalingSockets.get(token);
+  if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
+  signalingSockets.set(token, ws);
+
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch (e) { return; }
+    if (!msg || typeof msg.type !== 'string' || typeof msg.envelope !== 'string') return;
+
+    const room = rooms.get(roomCode);
+    if (!room || !room.members.has(token)) { try { ws.close(4001, 'No longer in room'); } catch(e) {} return; }
+    room.lastActivity = Date.now();
+
+    // 1:1 rooms only ever have one other member — relay to them if they
+    // currently have a live socket. If they don't (call app not open on
+    // their end right now), the message is simply dropped; there's no
+    // queue, no retry, no persistence — same "never stored" posture as
+    // everything else in this app.
+    for (const [tok] of room.members) {
+      if (tok === token) continue;
+      const peerWs = signalingSockets.get(tok);
+      if (peerWs && peerWs.readyState === peerWs.OPEN) {
+        peerWs.send(JSON.stringify({ type: msg.type, from: token, envelope: msg.envelope }));
+      }
+      break;
+    }
+  });
+
+  ws.on('close', () => {
+    if (signalingSockets.get(token) === ws) signalingSockets.delete(token);
+  });
+});
+
+// Railway's proxy (and mobile carriers) will silently drop an idle
+// WebSocket connection without either side finding out. Ping every 25s and
+// terminate anything that didn't pong back since the last sweep — the
+// client's reconnect-with-backoff logic picks it back up from there.
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) { ws.terminate(); return; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) {}
+  });
+}, 25000);
 
 srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));

@@ -1153,6 +1153,7 @@ function removeRoomFromState(code) {
     if (room.typingInterval) clearInterval(room.typingInterval);
     if (room.waitInterval) clearInterval(room.waitInterval);
     for (const h of room.msgTimers.values()) clearTimeout(h);
+    disconnectSignaling(room);
   }
   rooms.delete(code);
   clearRoomStorage(code);
@@ -1345,6 +1346,111 @@ async function decryptMsg(room, data) {
     console.warn('E2E decrypt failed:', e.message);
     return '[encrypted message — key mismatch]';
   }
+}
+
+// ── CALL SIGNALING ───────────────────────────────────────────────────────
+// A WebSocket per open room, additive to the existing 2s poll loop — poll
+// still carries messages/reactions/receipts/deletes exactly as before, this
+// only carries call setup (offer/answer/ICE/hangup), which needs to be near-
+// instant in a way polling can't be.
+//
+// Every payload is encrypted with the room's existing E2E key
+// (encryptMsg/decryptMsg, the same AES-256-GCM key already used for
+// messages) before it ever touches the socket. The server only ever sees
+// `{ type, envelope }` and relays blind — see the matching comment in
+// server_index.js. This matters specifically for calling: a WebRTC call's
+// DTLS fingerprint travels inside the SDP payload here, and whoever can
+// read/modify that in transit could otherwise MITM a call that still looks
+// end-to-end encrypted at the media layer. A compromised or coerced server
+// gets nothing usable from this channel, same as it gets nothing from
+// message content.
+//
+// Each envelope also carries a monotonic per-room sequence number and a
+// timestamp, checked on receipt — cheap replay protection so a captured
+// "offer" or "ice-candidate" message can't be replayed later.
+
+function signalingUrl(room) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${location.host}/ws/signal?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}`;
+}
+
+async function encryptSignalPayload(room, payload) {
+  room.signalSeqOut = (room.signalSeqOut || 0) + 1;
+  const wrapped = { seq: room.signalSeqOut, ts: Date.now(), payload };
+  return encryptMsg(room, JSON.stringify(wrapped));
+}
+
+// Returns the inner payload, or null if the envelope was undecryptable,
+// malformed, or a replay/out-of-order message (seq not strictly increasing).
+async function decryptSignalEnvelope(room, envelope) {
+  const decrypted = await decryptMsg(room, envelope);
+  let wrapped;
+  try { wrapped = JSON.parse(decrypted); } catch (e) { return null; }
+  if (!wrapped || typeof wrapped.seq !== 'number' || typeof wrapped.ts !== 'number') return null;
+  if (wrapped.seq <= (room.signalSeqIn || 0)) return null; // replay or reordered — drop
+  room.signalSeqIn = wrapped.seq;
+  return wrapped.payload;
+}
+
+function connectSignaling(room) {
+  if (!room.code || !room.token) return;
+  if (room.signalWs && (room.signalWs.readyState === WebSocket.OPEN || room.signalWs.readyState === WebSocket.CONNECTING)) return;
+  if (room.signalReconnectTimer) { clearTimeout(room.signalReconnectTimer); room.signalReconnectTimer = null; }
+
+  let ws;
+  try { ws = new WebSocket(signalingUrl(room)); } catch (e) { return; }
+  room.signalWs = ws;
+
+  ws.onopen = () => {
+    room.signalReconnectAttempts = 0;
+  };
+
+  ws.onmessage = async (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (!msg || typeof msg.type !== 'string' || typeof msg.envelope !== 'string') return;
+    const payload = await decryptSignalEnvelope(room, msg.envelope);
+    if (payload == null) return;
+    handleSignalMessage(room, msg.type, payload);
+  };
+
+  ws.onclose = () => {
+    if (room.signalWs !== ws) return; // superseded by a newer connection already
+    room.signalWs = null;
+    if (!rooms.has(room.code)) return; // room was torn down — don't reconnect
+    room.signalReconnectAttempts = (room.signalReconnectAttempts || 0) + 1;
+    const delayMs = Math.min(30000, 1000 * Math.pow(2, room.signalReconnectAttempts));
+    room.signalReconnectTimer = setTimeout(() => connectSignaling(room), delayMs);
+  };
+
+  ws.onerror = () => { /* onclose fires right after and handles reconnect */ };
+}
+
+function disconnectSignaling(room) {
+  if (room.signalReconnectTimer) { clearTimeout(room.signalReconnectTimer); room.signalReconnectTimer = null; }
+  if (room.signalWs) {
+    const ws = room.signalWs;
+    room.signalWs = null; // set first so the onclose handler above doesn't try to reconnect
+    try { ws.close(); } catch (e) {}
+  }
+}
+
+// Encrypts and sends one signaling message over this room's socket. Returns
+// false (and sends nothing) if there's no live connection or no E2E key yet
+// to encrypt with — callers should treat that as "calling unavailable right
+// now" rather than silently failing later.
+async function sendSignal(room, type, payload) {
+  if (!room.signalWs || room.signalWs.readyState !== WebSocket.OPEN) return false;
+  if (!room.sharedKey) return false;
+  const envelope = await encryptSignalPayload(room, payload);
+  room.signalWs.send(JSON.stringify({ type, envelope }));
+  return true;
+}
+
+// Placeholder — replaced once call state/UI exists. For now this just makes
+// the signaling layer observable while it's being tested standalone.
+function handleSignalMessage(room, type, payload) {
+  console.log('[signal]', room.code, type, payload);
 }
 
 // ── KEY VERIFICATION ────────────────────────────────────────────────────
@@ -2642,6 +2748,7 @@ function startRoomPolling(room) {
   if (room.pollInterval) clearInterval(room.pollInterval);
   room.pollInterval = setInterval(() => doPoll(room), 2000);
   doPoll(room); // immediate first poll
+  connectSignaling(room);
   if (room.typingInterval) clearInterval(room.typingInterval);
   room.typingInterval = setInterval(() => checkTyping(room), 2500);
   initPushForRoom(room).catch(() => {});
