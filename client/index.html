@@ -304,13 +304,18 @@ body.select-mode .chat-ftr{display:none}
 .closed-note strong{color:var(--muted)}
 .toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:2px;padding:9px 16px;font-size:12px;color:var(--cream);z-index:999;animation:toast-in .2s ease;pointer-events:none;display:flex;align-items:center;gap:8px}
 @keyframes toast-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-/* "Busy" toast (peer's on another call) gets its own beat: a quick two-buzz
-   shake — like a busy signal — instead of the plain fade-in every other
-   toast uses, plus a small pulsing dot so it reads as a call outcome at a
-   glance rather than a generic status message. */
-.toast-busy{border-color:rgba(192,57,43,0.4);animation:toast-in .2s ease,toast-busy-shake .42s ease .2s}
+/* "Busy" toast (peer's on another call) gets its own beat and its own
+   position: dead center of the screen rather than the corner, like a real
+   call outcome you can't miss, plus a quick two-buzz shake — like a busy
+   signal — and a small pulsing dot instead of the plain fade-in every other
+   toast uses. All positioning below (top/left/transform) has to be baked
+   into the shake keyframes too, since an in-progress CSS animation fully
+   owns the transform property for its duration — anything set outside it
+   would get clobbered the moment the shake starts. */
+.toast-busy{position:fixed;top:50%;left:50%;bottom:auto;right:auto;transform:translate(-50%,-50%);border-color:rgba(192,57,43,0.4);padding:14px 22px;font-size:13px;border-radius:4px;box-shadow:0 8px 28px rgba(0,0,0,0.18);animation:toast-in-center .2s ease,toast-busy-shake .42s ease .2s}
 .toast-busy-dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;animation:toast-busy-pulse 1s ease-in-out infinite}
-@keyframes toast-busy-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(1px)}}
+@keyframes toast-in-center{from{opacity:0;transform:translate(-50%,-46%)}to{opacity:1;transform:translate(-50%,-50%)}}
+@keyframes toast-busy-shake{0%,100%{transform:translate(-50%,-50%)}20%{transform:translate(calc(-50% - 4px),-50%)}40%{transform:translate(calc(-50% + 3px),-50%)}60%{transform:translate(calc(-50% - 2px),-50%)}80%{transform:translate(calc(-50% + 1px),-50%)}}
 @keyframes toast-busy-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(0.8)}}
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-track{background:transparent}
