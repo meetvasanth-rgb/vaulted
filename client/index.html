@@ -1256,6 +1256,9 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // finds a switchable output device (mainly Android Chrome; never on iOS
     // Safari, which has no API for this at all).
     speakerAvailable: false, speakerOn: false, speakerDeviceId: null,
+    // Answerer-side only: an offer that arrived before room.pc existed yet
+    // (setupPeerConnection is async) — see processOffer/acceptCall.
+    pendingOffer: null,
     signalWs: null, signalReconnectTimer: null, signalReconnectAttempts: 0,
     signalSeqIn: 0, signalSeqOut: 0,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
@@ -1644,19 +1647,21 @@ async function handleSignalMessage(room, type, payload) {
     const wasIncoming = room.callState === 'incoming';
     endCall(room, wasIncoming ? 'Missed call.' : null, wasIncoming ? 'Missed call' : null);
   } else if (type === 'offer') {
-    // Only the answerer (callee) should ever receive an offer, and only
-    // once they've already set up their side via acceptCall().
-    if (room.callState !== 'active' || !room.pc) return;
-    try {
-      await room.pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
-      await flushPendingIceCandidates(room);
-      const answer = await room.pc.createAnswer();
-      await room.pc.setLocalDescription(answer);
-      await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
-    } catch (e) {
-      sendSignal(room, 'call-hangup', {});
-      endCall(room, 'Could not connect the call.');
-    }
+    // Only the answerer (callee) should ever receive an offer. Normally
+    // room.pc already exists by the time this arrives — acceptCall() sets
+    // it up before this message is even sent. But acceptCall()'s setup is
+    // async (fetch TURN credentials, then getUserMedia), and right after a
+    // page reload those first network/media calls run slower on a "cold"
+    // session than they do once everything's warmed up — widening the
+    // window where the caller's offer can arrive before room.pc is ready.
+    // Previously that offer was just silently dropped here with nothing to
+    // ever retry it, which is exactly what left a reload-and-reconnected
+    // callee stuck showing an active call that never actually connects.
+    // Buffering it (same idea as pendingIceCandidates below) and flushing
+    // it once setupPeerConnection() finishes closes that gap.
+    if (room.callState !== 'active') return;
+    if (!room.pc) { room.pendingOffer = payload; return; }
+    await processOffer(room, payload);
   } else if (type === 'answer') {
     if (!room.pc) return;
     try {
@@ -1736,12 +1741,24 @@ async function acceptCall() {
   renderCallOverlay(room);
   refreshCallButton();
 
-  // Set up as the answerer now, before the caller's offer even arrives —
-  // by the time 'offer' comes in over signaling, room.pc is already ready
-  // to receive it.
+  // Set up as the answerer now — the intent is for room.pc to already be
+  // ready by the time the caller's offer arrives over signaling. That's not
+  // guaranteed, though: setupPeerConnection() involves a TURN credential
+  // fetch and a getUserMedia call, both of which run slower on a "cold"
+  // page (e.g. right after a reload) than on a warm session, so the offer
+  // can genuinely win the race. handleSignalMessage buffers that case into
+  // room.pendingOffer instead of dropping it — flush it here once room.pc
+  // actually exists, otherwise a reload-and-reconnected callee just sits on
+  // an "active" call that never gets the SDP it needed to actually connect.
   const pc = await setupPeerConnection(room);
   if (!pc || room.callState !== 'active') {
     if (room.callState === 'active') { sendSignal(room, 'call-hangup', {}); endCall(room, 'Couldn’t access your microphone.'); }
+    return;
+  }
+  if (room.pendingOffer) {
+    const offer = room.pendingOffer;
+    room.pendingOffer = null;
+    await processOffer(room, offer);
   }
 }
 
@@ -2097,6 +2114,7 @@ function teardownPeerConnection(room) {
   const audioEl = document.getElementById('call-remote-audio');
   if (audioEl) audioEl.remove();
   room.pendingIceCandidates = [];
+  room.pendingOffer = null;
   room.callMuted = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
@@ -2147,6 +2165,23 @@ async function toggleSpeaker() {
     toast('Speaker switching isn’t available on this device.');
   }
   renderCallOverlay(room);
+}
+
+// The answerer's side of the offer/answer exchange — factored out so both
+// the live-arrival path (handleSignalMessage) and the buffered-flush path
+// (acceptCall, once room.pc actually exists) run the exact same logic.
+async function processOffer(room, payload) {
+  if (!room.pc) return;
+  try {
+    await room.pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+    await flushPendingIceCandidates(room);
+    const answer = await room.pc.createAnswer();
+    await room.pc.setLocalDescription(answer);
+    await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
+  } catch (e) {
+    sendSignal(room, 'call-hangup', {});
+    endCall(room, 'Could not connect the call.');
+  }
 }
 
 // ICE candidates can arrive over signaling before setRemoteDescription has
