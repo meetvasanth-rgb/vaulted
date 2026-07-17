@@ -22,6 +22,7 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Vaultlix';
   const body = data.body || 'New message';
   const tag = data.tag || 'vaultlix-message';
+  const isCall = !!data.isCall;
 
   event.waitUntil((async () => {
     // If the room is already open and focused, the in-app chime/UI already
@@ -36,7 +37,13 @@ self.addEventListener('push', (event) => {
       renotify: true,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { url: '/' },
+      // Incoming calls get treated like a ring, not a ping: stay on screen
+      // until the person deals with it (default notifications on some
+      // platforms auto-dismiss after a few seconds) and vibrate in a
+      // phone-ringing-ish pattern rather than a single buzz.
+      requireInteraction: isCall,
+      vibrate: isCall ? [300, 150, 300, 150, 300, 150, 600] : undefined,
+      data: { url: '/', isCall },
     });
   })());
 });

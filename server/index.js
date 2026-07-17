@@ -630,7 +630,7 @@ wss.on('connection', (ws) => {
     // their end right now), the message is simply dropped; there's no
     // queue, no retry, no persistence — same "never stored" posture as
     // everything else in this app.
-    for (const [tok] of room.members) {
+    for (const [tok, peerMember] of room.members) {
       if (tok === token) continue;
       const peerWs = signalingSockets.get(tok);
       if (peerWs && peerWs.readyState === peerWs.OPEN) {
@@ -640,6 +640,29 @@ wss.on('connection', (ws) => {
         console.log(`Signal relayed: room ${roomCode} type ${msg.type}`);
       } else {
         console.log(`Signal dropped (peer not connected): room ${roomCode} type ${msg.type}`);
+      }
+
+      // A dropped call-invite means the receiver's phone was locked or the
+      // app was backgrounded/killed — their signaling socket wasn't open to
+      // catch it. Same problem messages already solved with Web Push: wake
+      // the device so its client reconnects the socket, then the client's
+      // own re-announce loop (every 3s while ringing) delivers a live
+      // invite once that reconnect lands. Payload stays generic — no caller
+      // name, same posture as message push — and only fires once per ring
+      // (not on every 3s retry) so a locked phone doesn't buzz repeatedly.
+      if (msg.type === 'call-invite') {
+        const now = Date.now();
+        const alreadyRinging = room.ringingUntil && room.ringingUntil > now;
+        room.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
+        if (!alreadyRinging && peerMember.pushSub) {
+          const payload = JSON.stringify({ title: 'Vaultlix', body: 'Incoming call', tag: `vaultlix-call-${roomCode}`, isCall: true });
+          webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
+            if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
+            else console.warn('call push send failed:', err.statusCode, err.body || err.message);
+          });
+        }
+      } else if (msg.type === 'call-accept' || msg.type === 'call-decline' || msg.type === 'call-busy' || msg.type === 'call-hangup') {
+        room.ringingUntil = 0;
       }
       break;
     }

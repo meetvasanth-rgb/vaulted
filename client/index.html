@@ -1157,7 +1157,7 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // Call state — see the CALL STATE section. 'idle' unless a call is
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null,
-    callTimerInterval: null, callTimeoutTimer: null,
+    callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
     signalWs: null, signalReconnectTimer: null, signalReconnectAttempts: 0,
     signalSeqIn: 0, signalSeqOut: 0,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
@@ -1509,6 +1509,7 @@ async function handleSignalMessage(room, type, payload) {
   } else if (type === 'call-accept') {
     if (room.callState !== 'outgoing') return;
     clearCallTimeout(room);
+    clearCallRingInterval(room);
     room.callState = 'active';
     room.callStartedAt = Date.now();
     startCallTimer(room);
@@ -1606,6 +1607,17 @@ async function startCall() {
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
   renderCallOverlay(room);
   refreshCallButton();
+  // Keep re-announcing the call while it rings. If the receiver's phone was
+  // locked/backgrounded, their signaling socket was dead when the first
+  // invite above went out — the server drops it (no queue, nothing stored).
+  // A push notification (sent server-side) wakes their device and their app
+  // reconnects the socket, but that reconnect can land anywhere in a
+  // multi-second window. Resending every 3s means whenever they do come
+  // back online, a live invite is waiting within a few seconds rather than
+  // never arriving at all.
+  room.callRingInterval = setInterval(() => {
+    if (room.callState === 'outgoing') sendSignal(room, 'call-invite', { from: room.myName });
+  }, 3000);
   room.callTimeoutTimer = setTimeout(() => {
     if (room.callState === 'outgoing') { sendSignal(room, 'call-hangup', {}); endCall(room, 'No answer.'); }
   }, CALL_RING_TIMEOUT_MS);
@@ -1648,9 +1660,14 @@ function clearCallTimeout(room) {
   if (room.callTimeoutTimer) { clearTimeout(room.callTimeoutTimer); room.callTimeoutTimer = null; }
 }
 
+function clearCallRingInterval(room) {
+  if (room.callRingInterval) { clearInterval(room.callRingInterval); room.callRingInterval = null; }
+}
+
 function endCall(room, toastMsg) {
   if (!room) return;
   clearCallTimeout(room);
+  clearCallRingInterval(room);
   stopCallTimer(room);
   teardownPeerConnection(room);
   room.callState = 'idle';
