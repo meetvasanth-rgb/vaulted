@@ -703,25 +703,68 @@ body.select-mode .chat-ftr{display:none}
 .vanish-line1{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.7);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
 .vanish-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);letter-spacing:.1em;text-transform:uppercase}
 
-/* ── CALL OVERLAY (outgoing / incoming / active) ─────────────────────── */
-.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9997;opacity:0;transition:opacity .3s ease;padding:24px;}
+/* ── CALL SCREENS (outgoing / incoming / active) ─────────────────────── */
+.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease;padding:56px 32px 72px;box-sizing:border-box}
 .call-overlay.visible{opacity:1}
-.call-rule{width:40px;height:1px;background:#B8973E;margin-bottom:20px}
-.call-v{font-family:'Cormorant Garamond',serif;font-size:56px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;margin-bottom:18px}
-.call-status-label{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.75);letter-spacing:.04em;margin-bottom:34px;text-align:center;max-width:300px}
-.call-timer{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.4);letter-spacing:.08em;margin:-20px 0 34px}
-.call-actions{display:flex;gap:36px}
-.call-accept-btn,.call-decline-btn,.call-end-btn{width:56px;height:56px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:transform .1s}
-.call-accept-btn:active,.call-decline-btn:active,.call-end-btn:active{transform:scale(0.94)}
-.call-accept-btn{background:#4A9B6F}
-.call-accept-btn svg{width:22px;height:22px;fill:#fff;stroke:none}
-.call-decline-btn,.call-end-btn{background:#C0392B}
-.call-decline-btn svg,.call-end-btn svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round}
-.call-mute-btn{width:56px;height:56px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:transform .1s,background .15s,border-color .15s;box-sizing:border-box}
-.call-mute-btn:active{transform:scale(0.94)}
-.call-mute-btn svg{width:20px;height:20px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.call-mute-btn.muted{background:#B8973E;border-color:#B8973E}
-.call-mute-btn.muted svg{stroke:#0A0908}
+
+.call-hdr-block{text-align:center}
+.call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 12px}
+.call-hdr-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:rgba(255,255,255,.6)}
+
+.call-identity{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;min-height:0}
+.call-peer-name{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:#fff;letter-spacing:.06em}
+.call-status{font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.4)}
+.call-status.pulsing{animation:call-status-pulse 1.5s ease-in-out infinite}
+@keyframes call-status-pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.call-timer-display{font-family:'Inter',sans-serif;font-size:34px;font-weight:300;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums;margin-top:4px}
+.call-tagline{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.1em;margin-top:6px}
+
+/* Incoming — three concentric gold rings pulsing outward from a center dot */
+.ring-container{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.ring-dot{width:12px;height:12px;border-radius:50%;background:#B8973E;position:relative;z-index:2}
+.ring-wave{position:absolute;width:12px;height:12px;border-radius:50%;background:#B8973E;animation:ring-expand 2s ease-out infinite}
+.ring-wave:nth-child(2){animation-delay:.6s}
+.ring-wave:nth-child(3){animation-delay:1.2s}
+@keyframes ring-expand{0%{transform:scale(1);opacity:.6}100%{transform:scale(5);opacity:0}}
+
+/* Outgoing — hollow gold dot, slow pulse */
+.call-hollow-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid #B8973E;background:transparent;box-sizing:border-box;margin-bottom:6px;animation:hollow-pulse 1.8s ease-in-out infinite}
+@keyframes hollow-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.3)}}
+
+/* Active — filled gold dot, slow breathing rhythm; goes static grey when muted */
+.call-live-dot{width:10px;height:10px;border-radius:50%;background:#B8973E;display:inline-block;vertical-align:middle;margin-right:10px;animation:live-breathe 2s ease-in-out infinite}
+.call-live-dot.muted{animation:none;background:rgba(255,255,255,.2)}
+@keyframes live-breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
+
+.call-actions{display:flex;gap:48px;align-items:flex-start;justify-content:center}
+.call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+.call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.08em;text-align:center;max-width:90px}
+
+.call-accept-btn,.call-decline-btn,.call-end-btn{border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;box-sizing:border-box}
+
+/* Accept — green, pulsing glow, phone icon nudges upward */
+.call-accept-btn{width:72px;height:72px;background:#27AE60;box-shadow:0 0 0 0 rgba(39,174,96,.4),0 4px 24px rgba(39,174,96,.4);animation:accept-pulse 1.5s ease-out infinite}
+@keyframes accept-pulse{0%{box-shadow:0 0 0 0 rgba(39,174,96,.5),0 4px 24px rgba(39,174,96,.3)}50%{box-shadow:0 0 0 16px rgba(39,174,96,0),0 4px 32px rgba(39,174,96,.5)}100%{box-shadow:0 0 0 0 rgba(39,174,96,0),0 4px 24px rgba(39,174,96,.3)}}
+.call-accept-btn svg{width:28px;height:28px;fill:#fff;stroke:none;animation:phone-up 1.2s ease-in-out infinite}
+@keyframes phone-up{0%,100%{transform:translateY(2px) rotate(-15deg)}40%{transform:translateY(-4px) rotate(-15deg)}60%{transform:translateY(-2px) rotate(-15deg)}}
+
+/* Decline — red, pulsing glow offset from accept, phone icon nudges downward */
+.call-decline-btn{width:72px;height:72px;background:#C0392B;box-shadow:0 0 0 0 rgba(192,57,43,.4),0 4px 24px rgba(192,57,43,.3);animation:decline-pulse 1.5s ease-out infinite;animation-delay:.75s}
+@keyframes decline-pulse{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5),0 4px 24px rgba(192,57,43,.3)}50%{box-shadow:0 0 0 16px rgba(192,57,43,0),0 4px 32px rgba(192,57,43,.5)}100%{box-shadow:0 0 0 0 rgba(192,57,43,0),0 4px 24px rgba(192,57,43,.3)}}
+.call-decline-btn svg{width:28px;height:28px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform:rotate(135deg);animation:phone-down 1.2s ease-in-out infinite;animation-delay:.3s}
+@keyframes phone-down{0%,100%{transform:translateY(-2px) rotate(135deg)}40%{transform:translateY(4px) rotate(135deg)}60%{transform:translateY(2px) rotate(135deg)}}
+
+/* End / Cancel — red, steady glow pulse, no icon animation */
+.call-end-btn{width:64px;height:64px;background:#C0392B;box-shadow:0 4px 20px rgba(192,57,43,.4);animation:end-glow 2s ease-in-out infinite;transition:transform .15s,box-shadow .15s}
+@keyframes end-glow{0%,100%{box-shadow:0 4px 20px rgba(192,57,43,.3)}50%{box-shadow:0 4px 32px rgba(192,57,43,.6)}}
+.call-end-btn svg{width:24px;height:24px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform:rotate(135deg)}
+.call-end-btn:active{transform:scale(.92);box-shadow:0 2px 10px rgba(192,57,43,.3)}
+
+/* Mute — outlined ghost button, fills gold when active */
+.call-mute-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
+.call-mute-btn.muted{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
+.call-mute-btn:active{transform:scale(.92)}
+.call-mute-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
 </style>
 </head>
 <body>
@@ -1541,10 +1584,11 @@ async function handleSignalMessage(room, type, payload) {
   } else if (type === 'call-hangup') {
     if (room.callState === 'idle') return;
     // If we were still on the incoming-call screen when the other side hung
-    // up, we never actually answered — that's a missed call, not just "the
-    // call ended" (which reads more like a normal completed call).
+    // up, we never actually answered — that's a missed call. If a real
+    // (active) call is ending, endCall() detects that itself and plays the
+    // vanish moment instead of a toast — nothing to pass for that case.
     const wasIncoming = room.callState === 'incoming';
-    endCall(room, wasIncoming ? 'Missed call.' : 'Call ended.', wasIncoming ? 'Missed call' : null);
+    endCall(room, wasIncoming ? 'Missed call.' : null, wasIncoming ? 'Missed call' : null);
   } else if (type === 'offer') {
     // Only the answerer (callee) should ever receive an offer, and only
     // once they've already set up their side via acceptCall().
@@ -1681,13 +1725,25 @@ function clearCallRingInterval(room) {
 // never sent to or stored on the server — consistent with "no call history
 // persisted anywhere" from the calling security design.
 function addCallSysMsg(room, text) {
-  const rec = { id: 'sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), kind: 'sys', content: text };
+  // Stamped with a clock time, same as the roadmap's original "Missed call
+  // · 11:42" design — a bare "Missed call" a scrollback-length later gives
+  // no sense of when, and the toast that announced it in the moment is long
+  // gone by then.
+  const stamped = `${text} · ${formatMsgTime(Date.now())}`;
+  const rec = { id: 'sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), kind: 'sys', content: stamped };
   room.messages.push(rec);
   if (room.code === activeRoomCode) renderMessageRecord(room, rec);
 }
 
-function endCall(room, toastMsg, sysMsgText) {
+async function endCall(room, toastMsg, sysMsgText) {
   if (!room) return;
+  // Capture before the state reset below — this is the only point that
+  // still knows whether a real, connected call is what's ending here (as
+  // opposed to a ring that was declined/missed/canceled before anyone ever
+  // picked up).
+  const wasActive = room.callState === 'active' && !!room.callStartedAt;
+  const duration = wasActive ? Math.max(0, Math.floor((Date.now() - room.callStartedAt) / 1000)) : 0;
+
   clearCallTimeout(room);
   clearCallRingInterval(room);
   stopCallTimer(room);
@@ -1696,10 +1752,21 @@ function endCall(room, toastMsg, sysMsgText) {
   room.callPeerName = null;
   room.callStartedAt = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
-  hideCallOverlay();
   refreshCallButton();
-  if (sysMsgText) addCallSysMsg(room, sysMsgText);
-  if (toastMsg) toast(toastMsg);
+
+  if (wasActive) {
+    // A real connected call just ended — the vanish moment carries that
+    // instead of a toast, echoing the same "this never existed" language
+    // used everywhere else in the app. toastMsg (if any — e.g. a mid-call
+    // connection failure) still surfaces afterward so the reason isn't lost.
+    addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`);
+    await triggerCallVanish(duration);
+    if (toastMsg) toast(toastMsg);
+  } else {
+    hideCallOverlay();
+    if (sysMsgText) addCallSysMsg(room, sysMsgText);
+    if (toastMsg) toast(toastMsg);
+  }
 }
 
 function startCallTimer(room) {
@@ -1712,13 +1779,79 @@ function stopCallTimer(room) {
   if (room.callTimerInterval) { clearInterval(room.callTimerInterval); room.callTimerInterval = null; }
 }
 
+function formatCallTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+  return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+
 function updateCallTimerDisplay(room) {
   const el = document.getElementById('call-timer');
   if (!el || room.callState !== 'active' || !room.callStartedAt) return;
   const secs = Math.max(0, Math.floor((Date.now() - room.callStartedAt) / 1000));
-  const m = Math.floor(secs / 60).toString().padStart(2, '0');
-  const s = (secs % 60).toString().padStart(2, '0');
-  el.textContent = `${m}:${s}`;
+  el.textContent = formatCallTime(secs);
+}
+
+// Same phone-handset glyph for every button — accept, decline, cancel, and
+// end all just rotate/orient it differently (the classic "answer vs. hang
+// up" visual convention), rather than shipping a second icon.
+const CALL_PHONE_ICON = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+
+function callHeaderBlock() {
+  return `<div class="call-hdr-block"><div class="call-hdr-rule"></div><div class="call-hdr-name">Vaultlix</div></div>`;
+}
+
+// Shared drag-to-trigger gesture for the accept/decline/cancel buttons —
+// direction 'up' (accept) tracks upward drag distance, 'down' (decline/
+// cancel) tracks downward. Falls back to a plain click/tap on desktop or
+// anywhere touch isn't used. Re-attached fresh on every render since
+// overlay.innerHTML replacement above tears down any previous listeners.
+function wireCallSwipeButton(id, direction, onTrigger) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  const threshold = 60;
+  const glowColor = direction === 'up' ? '39,174,96' : '192,57,43';
+  let startY = null, dragging = false;
+
+  btn.addEventListener('touchstart', (e) => {
+    startY = e.touches[0].clientY;
+    dragging = true;
+    btn.style.transition = 'none';
+  }, { passive: true });
+
+  btn.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    const raw = e.touches[0].clientY - startY; // positive = finger moved down
+    const dy = direction === 'up' ? -raw : raw; // dy > 0 = moving toward trigger
+    if (dy > 0) {
+      btn.style.transform = `translateY(${direction === 'up' ? -dy : dy}px)`;
+      const progress = Math.min(dy / threshold, 1);
+      btn.style.boxShadow = `0 0 ${20 + progress * 20}px rgba(${glowColor},${0.4 + progress * 0.4})`;
+    }
+  }, { passive: true });
+
+  btn.addEventListener('touchend', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const raw = e.changedTouches[0].clientY - startY;
+    const dy = direction === 'up' ? -raw : raw;
+    btn.style.transition = 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    if (dy > threshold) {
+      btn.style.transform = `translateY(${direction === 'up' ? -120 : 120}px)`;
+      btn.style.opacity = '0';
+      setTimeout(onTrigger, 300);
+    } else {
+      btn.style.transform = 'translateY(0)';
+      btn.style.boxShadow = '';
+    }
+  });
+
+  // acceptCall/declineCall/hangupCall all guard on room.callState already,
+  // so a click firing in addition to a touch-drag that already triggered is
+  // harmless — the second call is just a no-op.
+  btn.addEventListener('click', onTrigger);
 }
 
 function renderCallOverlay(room) {
@@ -1732,36 +1865,67 @@ function renderCallOverlay(room) {
   }
 
   const name = escHtml(room.callPeerName || room.peerName || 'them');
-  const xIcon = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-  const phoneIcon = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
   if (room.callState === 'outgoing') {
     overlay.innerHTML = `
-      <div class="call-rule"></div>
-      <div class="call-v">V</div>
-      <div class="call-status-label">Calling ${name}…</div>
-      <button class="call-end-btn" onclick="hangupCall()" title="Cancel">${xIcon}</button>`;
+      ${callHeaderBlock()}
+      <div class="call-identity">
+        <div class="call-hollow-dot"></div>
+        <div class="call-peer-name">${name}</div>
+        <div class="call-status pulsing">Calling…</div>
+        <div class="call-status">End-to-end encrypted</div>
+      </div>
+      <div class="call-actions">
+        <div class="call-btn-wrap">
+          <button class="call-end-btn" id="call-cancel-btn" title="Cancel">${CALL_PHONE_ICON}</button>
+          <div class="call-btn-label">Slide down to cancel</div>
+        </div>
+      </div>`;
+    wireCallSwipeButton('call-cancel-btn', 'down', hangupCall);
   } else if (room.callState === 'incoming') {
     overlay.innerHTML = `
-      <div class="call-rule"></div>
-      <div class="call-v">V</div>
-      <div class="call-status-label">${name} is calling…</div>
+      ${callHeaderBlock()}
+      <div class="call-identity">
+        <div class="ring-container">
+          <div class="ring-wave"></div><div class="ring-wave"></div><div class="ring-wave"></div>
+          <div class="ring-dot"></div>
+        </div>
+        <div class="call-peer-name">${name}</div>
+        <div class="call-status">Incoming encrypted call</div>
+      </div>
       <div class="call-actions">
-        <button class="call-decline-btn" onclick="declineCall()" title="Decline">${xIcon}</button>
-        <button class="call-accept-btn" onclick="acceptCall()" title="Accept">${phoneIcon}</button>
+        <div class="call-btn-wrap">
+          <button class="call-decline-btn" id="call-decline-btn" title="Decline">${CALL_PHONE_ICON}</button>
+          <div class="call-btn-label">↓ Slide down to decline</div>
+        </div>
+        <div class="call-btn-wrap">
+          <button class="call-accept-btn" id="call-accept-btn" title="Accept">${CALL_PHONE_ICON}</button>
+          <div class="call-btn-label">↑ Slide up to answer</div>
+        </div>
       </div>`;
+    wireCallSwipeButton('call-decline-btn', 'down', declineCall);
+    wireCallSwipeButton('call-accept-btn', 'up', acceptCall);
   } else if (room.callState === 'active') {
     const micIcon = room.callMuted
       ? '<svg viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     overlay.innerHTML = `
-      <div class="call-rule"></div>
-      <div class="call-v">V</div>
-      <div class="call-status-label">${name}</div>
-      <div class="call-timer" id="call-timer">00:00</div>
+      ${callHeaderBlock()}
+      <div class="call-identity">
+        <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
+        <div class="call-status">End-to-end encrypted call</div>
+        <div class="call-timer-display" id="call-timer">00:00</div>
+        <div class="call-tagline">This call never existed.</div>
+      </div>
       <div class="call-actions">
-        <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
-        <button class="call-end-btn" onclick="hangupCall()" title="End call">${xIcon}</button>
+        <div class="call-btn-wrap">
+          <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
+          <div class="call-btn-label">${room.callMuted ? 'Unmute' : 'Mute'}</div>
+        </div>
+        <div class="call-btn-wrap">
+          <button class="call-end-btn" onclick="hangupCall()" title="End call">${CALL_PHONE_ICON}</button>
+          <div class="call-btn-label">End</div>
+        </div>
       </div>`;
   }
 
@@ -3697,15 +3861,15 @@ async function triggerVanishMoment(callback) {
   if (callback) callback();
 }
 
-function showVanishOverlay() {
+function showVanishOverlay(line1, line2) {
   const overlay = document.createElement('div');
   overlay.id = 'vanish-overlay';
   overlay.innerHTML = `
     <div class="vanish-rule"></div>
     <div class="vanish-v" id="vanish-v-mark">V</div>
     <div class="vanish-text">
-      <div class="vanish-line1">Conversation erased.</div>
-      <div class="vanish-line2">No trace remains.</div>
+      <div class="vanish-line1">${escHtml(line1 || 'Conversation erased.')}</div>
+      <div class="vanish-line2">${escHtml(line2 || 'No trace remains.')}</div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -3727,6 +3891,21 @@ function hideVanishOverlay() {
     overlay.classList.add('hiding');
     setTimeout(() => overlay.remove(), 600);
   }
+}
+
+// The end of a real (connected) call gets the same "V" vanish language as
+// erasing a conversation — reusing the exact overlay/CSS above with call-
+// specific lines, rather than inventing a second visual moment. The call
+// screen underneath is the same solid #0A0908 as the vanish overlay, so
+// dropping it the instant the overlay appears is invisible — no flash, no
+// separate fade choreography needed for it.
+async function triggerCallVanish(duration) {
+  showVanishOverlay(`Call ended · ${formatCallTime(duration)}`, 'This call never existed.');
+  const callScreen = document.getElementById('call-overlay');
+  if (callScreen) callScreen.remove();
+  await delay(2200);
+  hideVanishOverlay();
+  await delay(500);
 }
 
 // ── PWA INSTALL ──────────────────────────────────────────────────────────
