@@ -3061,7 +3061,13 @@ function attachLongPress(el, msgId) {
   }, { passive: true });
   el.addEventListener('touchend', (e) => {
     clearTimer();
-    if (longPressed) e.preventDefault(); // swallow the trailing synthetic click
+    // Refresh the guard timestamp right here, at release, not just back
+    // when fire() originally crossed the threshold — a press held well
+    // past 450ms before lifting the finger would otherwise leave
+    // handleImageTap's wasJustLongPressed() 350ms window already expired
+    // by the time the trailing click landed, letting the preview open on
+    // top of the actions row that had just opened.
+    if (longPressed) { lastLongPressAt = Date.now(); e.preventDefault(); } // swallow the trailing synthetic click too
   });
   el.addEventListener('touchcancel', clearTimer);
   el.addEventListener('contextmenu', (e) => { e.preventDefault(); });
@@ -3070,7 +3076,14 @@ function attachLongPress(el, msgId) {
     longPressed = false;
     timer = setTimeout(fire, THRESHOLD);
   });
-  el.addEventListener('mouseup', clearTimer);
+  el.addEventListener('mouseup', () => {
+    clearTimer();
+    // Mouse has no preventDefault-suppressible synthetic click the way
+    // touch does — this refresh is the only thing standing between a
+    // long mousedown-hold and handleImageTap's click-following firing
+    // right after.
+    if (longPressed) lastLongPressAt = Date.now();
+  });
   el.addEventListener('mouseleave', clearTimer);
 }
 
