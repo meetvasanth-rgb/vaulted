@@ -302,8 +302,16 @@ body.select-mode .chat-ftr{display:none}
 .closed-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:28px}
 .closed-note{font-size:11px;color:var(--hint);line-height:1.6;background:var(--surface2);border:0.5px solid var(--border);border-radius:2px;padding:12px 16px;margin-bottom:24px;text-align:left}
 .closed-note strong{color:var(--muted)}
-.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:2px;padding:9px 16px;font-size:12px;color:var(--cream);z-index:999;animation:toast-in .2s ease;pointer-events:none}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:2px;padding:9px 16px;font-size:12px;color:var(--cream);z-index:999;animation:toast-in .2s ease;pointer-events:none;display:flex;align-items:center;gap:8px}
 @keyframes toast-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+/* "Busy" toast (peer's on another call) gets its own beat: a quick two-buzz
+   shake — like a busy signal — instead of the plain fade-in every other
+   toast uses, plus a small pulsing dot so it reads as a call outcome at a
+   glance rather than a generic status message. */
+.toast-busy{border-color:rgba(192,57,43,0.4);animation:toast-in .2s ease,toast-busy-shake .42s ease .2s}
+.toast-busy-dot{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;animation:toast-busy-pulse 1s ease-in-out infinite}
+@keyframes toast-busy-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(1px)}}
+@keyframes toast-busy-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(0.8)}}
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#E0E0E0;border-radius:2px}
@@ -1691,7 +1699,8 @@ async function handleSignalMessage(room, type, payload) {
     endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
   } else if (type === 'call-busy') {
     if (room.callState !== 'outgoing') return;
-    endCall(room, `${room.callPeerName || 'They'}'re on another call.`);
+    const busyMsg = room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.';
+    endCall(room, busyMsg, null, 'busy');
   } else if (type === 'call-hangup') {
     if (room.callState === 'idle') return;
     // If we were still on the incoming-call screen when the other side hung
@@ -1912,7 +1921,7 @@ function checkStaleIncomingCalls() {
   }
 }
 
-async function endCall(room, toastMsg, sysMsgText) {
+async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (!room) return;
   // Capture before the state reset below — this is the only point that
   // still knows whether a real, connected call is what's ending here (as
@@ -1941,11 +1950,11 @@ async function endCall(room, toastMsg, sysMsgText) {
     // connection failure) still surfaces afterward so the reason isn't lost.
     addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`);
     await triggerCallVanish(duration);
-    if (toastMsg) toast(toastMsg);
+    if (toastMsg) toast(toastMsg, toastVariant);
   } else {
     hideCallOverlay();
     if (sysMsgText) addCallSysMsg(room, sysMsgText);
-    if (toastMsg) toast(toastMsg);
+    if (toastMsg) toast(toastMsg, toastVariant);
   }
 }
 
@@ -2435,9 +2444,20 @@ function showScreen(id) {
   if (id === 's-landing') refreshInstallUI();
 }
 
-function toast(msg) {
+function toast(msg, variant) {
   const t = document.createElement('div');
-  t.className = 'toast'; t.textContent = msg;
+  t.className = variant ? `toast toast-${variant}` : 'toast';
+  if (variant === 'busy') {
+    // Give the busy toast a small pulsing dot alongside the shake — a plain
+    // text toast reads as routine status, this needs to register as "the
+    // call didn't happen" at a glance.
+    const dot = document.createElement('span');
+    dot.className = 'toast-busy-dot';
+    t.appendChild(dot);
+  }
+  const text = document.createElement('span');
+  text.textContent = msg;
+  t.appendChild(text);
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2200);
 }
