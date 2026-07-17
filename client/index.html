@@ -1252,6 +1252,8 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
+    // Answerer-side resend loop for 'call-accept' — see acceptCall().
+    callAcceptRetryInterval: null, callAcceptRetryTimeout: null, callAcceptConfirmed: false,
     // Speaker toggle — only meaningful where detectSpeakerToggle() actually
     // finds a switchable output device (mainly Android Chrome; never on iOS
     // Safari, which has no API for this at all).
@@ -1660,6 +1662,11 @@ async function handleSignalMessage(room, type, payload) {
     // Buffering it (same idea as pendingIceCandidates below) and flushing
     // it once setupPeerConnection() finishes closes that gap.
     if (room.callState !== 'active') return;
+    // Any offer arriving at all is proof the caller received our
+    // call-accept — that's what the resend loop in acceptCall() is
+    // actually waiting to hear before it stops.
+    room.callAcceptConfirmed = true;
+    clearCallAcceptRetry(room);
     if (!room.pc) { room.pendingOffer = payload; return; }
     await processOffer(room, payload);
   } else if (type === 'answer') {
@@ -1741,6 +1748,26 @@ async function acceptCall() {
   renderCallOverlay(room);
   refreshCallButton();
 
+  // sendSignal() above can fail silently (socket mid-reconnect right after
+  // a reload, brief network blip) and nothing here was checking its return
+  // value — the local UI still went fully "active" and the timer still
+  // started regardless, but the caller never actually heard about it and
+  // sat on "Calling…" forever. Unlike a lost ICE candidate (there are many,
+  // losing one is fine) this is a single critical message, so it gets the
+  // same treatment startCall() already gives call-invite: keep resending
+  // until there's proof it landed. The only real proof is the caller's
+  // offer actually arriving — room.callAcceptConfirmed is set true right
+  // where that happens in handleSignalMessage, which is also what clears
+  // this loop. (room.pc existing is NOT that proof — we create our own pc
+  // below regardless of whether the caller ever heard from us.)
+  room.callAcceptConfirmed = false;
+  clearCallAcceptRetry(room);
+  room.callAcceptRetryInterval = setInterval(() => {
+    if (room.callState === 'active' && !room.callAcceptConfirmed) sendSignal(room, 'call-accept', {});
+    else clearCallAcceptRetry(room);
+  }, 2000);
+  room.callAcceptRetryTimeout = setTimeout(() => clearCallAcceptRetry(room), 20000);
+
   // Set up as the answerer now — the intent is for room.pc to already be
   // ready by the time the caller's offer arrives over signaling. That's not
   // guaranteed, though: setupPeerConnection() involves a TURN credential
@@ -1788,6 +1815,11 @@ function clearCallRingInterval(room) {
   if (room.callRingInterval) { clearInterval(room.callRingInterval); room.callRingInterval = null; }
 }
 
+function clearCallAcceptRetry(room) {
+  if (room.callAcceptRetryInterval) { clearInterval(room.callAcceptRetryInterval); room.callAcceptRetryInterval = null; }
+  if (room.callAcceptRetryTimeout) { clearTimeout(room.callAcceptRetryTimeout); room.callAcceptRetryTimeout = null; }
+}
+
 // Missed/declined/unanswered calls get a small permanent-feeling trace in
 // the chat itself — a toast alone disappears in a couple seconds and is
 // easy to miss (the exact problem it's meant to solve). This is local-only,
@@ -1817,6 +1849,7 @@ async function endCall(room, toastMsg, sysMsgText) {
 
   clearCallTimeout(room);
   clearCallRingInterval(room);
+  clearCallAcceptRetry(room);
   stopCallTimer(room);
   teardownPeerConnection(room);
   room.callState = 'idle';
@@ -2115,6 +2148,7 @@ function teardownPeerConnection(room) {
   if (audioEl) audioEl.remove();
   room.pendingIceCandidates = [];
   room.pendingOffer = null;
+  room.callAcceptConfirmed = false;
   room.callMuted = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
