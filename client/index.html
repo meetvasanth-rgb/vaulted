@@ -780,6 +780,28 @@ body.select-mode .chat-ftr{display:none}
 .call-live-dot.muted{animation:none;background:rgba(255,255,255,.2)}
 @keyframes live-breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
 
+/* Float & Fade — call-end dissolve. Applied via JS in staggered order (see
+   dissolveCallScreen); transform+opacity only, transition-driven rather
+   than keyframed so the JS can control per-element timing. display:inline-
+   block is forced because a couple of the targeted elements (call-peer-
+   name) are plain inline spans, and CSS transforms on inline boxes are
+   inconsistent across engines. */
+.call-float-fade{display:inline-block;transition:transform .6s ease-out,opacity .6s ease-out;transform:translateY(-24px);opacity:0}
+.call-sink-fade{display:inline-block;transition:transform .5s ease-out,opacity .5s ease-out;transform:translateY(24px);opacity:0}
+/* Higher specificity than .call-live-dot so animation:none actually wins
+   and stops the infinite live-breathe keyframe — otherwise the running
+   animation would keep overriding the transform this transition needs. */
+.call-live-dot.call-dot-expand{animation:none;transition:transform .5s ease-out,opacity .5s ease-out;transform:scale(3);opacity:0}
+.call-overlay.dissolving{background:transparent;transition:background .6s ease;pointer-events:none}
+
+.call-vanish-mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity .5s ease,transform .8s ease-out}
+.call-vanish-mark.visible{opacity:1}
+.call-vanish-mark .v-glyph{font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;transform:scale(.8);transition:transform .4s ease-out}
+.call-vanish-mark.visible .v-glyph{transform:scale(1)}
+.call-vanish-mark .v-glyph.pulse{animation:vanish-pulse .5s ease-in-out}
+.call-vanish-mark .v-line1{font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.65);letter-spacing:.12em;text-transform:uppercase;margin-top:20px}
+.call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;margin-top:6px}
+
 .call-actions{display:flex;gap:36px;align-items:flex-start;justify-content:center}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.08em;text-align:center;max-width:90px}
@@ -1949,12 +1971,12 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   refreshCallButton();
 
   if (wasActive) {
-    // A real connected call just ended — the vanish moment carries that
-    // instead of a toast, echoing the same "this never existed" language
-    // used everywhere else in the app. toastMsg (if any — e.g. a mid-call
-    // connection failure) still surfaces afterward so the reason isn't lost.
-    addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`);
-    await triggerCallVanish(duration);
+    // A real connected call just ended — the Float & Fade dissolve carries
+    // that instead of a toast (see dissolveCallScreen), and it's the one
+    // that adds the "Encrypted call · MM:SS" system message once the room
+    // is visible again. toastMsg (if any — e.g. a mid-call connection
+    // failure) still surfaces afterward so the reason isn't lost.
+    await dissolveCallScreen(room, duration);
     if (toastMsg) toast(toastMsg, toastVariant);
   } else {
     hideCallOverlay();
@@ -4231,19 +4253,74 @@ function hideVanishOverlay() {
   }
 }
 
-// The end of a real (connected) call gets the same "V" vanish language as
-// erasing a conversation — reusing the exact overlay/CSS above with call-
-// specific lines, rather than inventing a second visual moment. The call
-// screen underneath is the same solid #0A0908 as the vanish overlay, so
-// dropping it the instant the overlay appears is invisible — no flash, no
-// separate fade choreography needed for it.
-async function triggerCallVanish(duration) {
-  showVanishOverlay(`Call ended · ${formatCallTime(duration)}`, 'This call never existed.');
-  const callScreen = document.getElementById('call-overlay');
-  if (callScreen) callScreen.remove();
-  await delay(2200);
-  hideVanishOverlay();
+// Float & Fade — the end of a real (connected) call dissolves rather than
+// cuts. Instead of snapping straight to the flat dark "V" vanish screen
+// (still used for Close & erase above), every element of the call UI
+// leaves independently, in a different direction, on its own beat: the
+// tagline goes first, then the status line, then the timer, then the peer
+// name (slower, larger) alongside the live dot doing one last "heartbeat"
+// expansion outward, then the action buttons sink away, then the header
+// rises last. Only transform/opacity are ever touched, so it stays GPU-
+// accelerated and smooth even on older iPhones — no layout reflow. Once
+// the screen is empty its background itself fades to transparent,
+// revealing the chat room was there underneath the whole time; a small
+// gold "V" appears centered over it as punctuation — the call happened,
+// it's over — then dissolves upward itself, and only then does the room's
+// system message land. The moment always reads as call → silence →
+// memory, never a hard cut.
+async function dissolveCallScreen(room, duration) {
+  const overlay = document.getElementById('call-overlay');
+  if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`); return; }
+
+  const floatOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-float-fade'); };
+
+  floatOut('.call-tagline');
+  await delay(200);
+  floatOut('.call-status');
+  await delay(200);
+  floatOut('.call-timer-display');
+  await delay(200);
+  const dot = overlay.querySelector('.call-live-dot');
+  if (dot) dot.classList.add('call-dot-expand');
+  floatOut('.call-peer-name');
+  await delay(300);
+  overlay.querySelectorAll('.call-btn-wrap').forEach(el => el.classList.add('call-sink-fade'));
+  await delay(400);
+  floatOut('.call-hdr-block');
+  await delay(400);
+
+  // Screen empty now — let the background itself go, revealing the room
+  // was already there underneath.
+  overlay.classList.add('dissolving');
   await delay(500);
+
+  const mark = document.createElement('div');
+  mark.className = 'call-vanish-mark';
+  mark.innerHTML = `
+    <div class="v-glyph" id="call-vanish-v">V</div>
+    <div class="v-line1">Call ended · ${escHtml(formatCallTime(duration))}</div>
+    <div class="v-line2">This call never existed.</div>
+  `;
+  overlay.appendChild(mark);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      mark.classList.add('visible');
+      setTimeout(() => {
+        const v = document.getElementById('call-vanish-v');
+        if (v) v.classList.add('pulse');
+      }, 400);
+    });
+  });
+  await delay(1500);
+
+  // The V's own final float-up-and-dissolve — same release as everything
+  // that came before it.
+  mark.style.transform = 'translateY(-24px)';
+  mark.style.opacity = '0';
+  await delay(500);
+
+  overlay.remove();
+  addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`);
 }
 
 // ── PWA INSTALL ──────────────────────────────────────────────────────────
