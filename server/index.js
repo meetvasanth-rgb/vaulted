@@ -607,6 +607,11 @@ wss.on('connection', (ws) => {
   const existing = signalingSockets.get(token);
   if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
   signalingSockets.set(token, ws);
+  // Room code + a truncated token only — enough to confirm connectivity
+  // during testing without logging anything that identifies a person or
+  // any message/signal content, same posture as the existing "Room
+  // created: <code>" log below.
+  console.log(`Signal socket connected: room ${roomCode} token ${token.slice(0,6)}…`);
 
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
@@ -630,6 +635,11 @@ wss.on('connection', (ws) => {
       const peerWs = signalingSockets.get(tok);
       if (peerWs && peerWs.readyState === peerWs.OPEN) {
         peerWs.send(JSON.stringify({ type: msg.type, from: token, envelope: msg.envelope }));
+        // `msg.type` only — envelope is opaque ciphertext this process
+        // never decrypts, so there's nothing content-bearing to log here.
+        console.log(`Signal relayed: room ${roomCode} type ${msg.type}`);
+      } else {
+        console.log(`Signal dropped (peer not connected): room ${roomCode} type ${msg.type}`);
       }
       break;
     }
