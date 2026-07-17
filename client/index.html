@@ -1918,14 +1918,37 @@ async function endCall(room, toastMsg, sysMsgText) {
   }
 }
 
+// The Screen Orientation lock API only actually works when the app is
+// running installed/standalone (or in the Fullscreen API) — a plain browser
+// tab throws a SecurityError on lock(), which is expected there, not a
+// failure worth surfacing. iOS Safari has no equivalent API at all, so this
+// is silently a no-op on iPhones regardless of how the app is running —
+// same "best-effort, disappears where unsupported" posture as the speaker
+// toggle.
+async function lockCallOrientation() {
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      await screen.orientation.lock('portrait');
+    }
+  } catch (e) { /* not installed standalone / not fullscreen — expected */ }
+}
+
+function unlockCallOrientation() {
+  try {
+    if (screen.orientation && typeof screen.orientation.unlock === 'function') screen.orientation.unlock();
+  } catch (e) {}
+}
+
 function startCallTimer(room) {
   stopCallTimer(room);
   room.callTimerInterval = setInterval(() => updateCallTimerDisplay(room), 1000);
   updateCallTimerDisplay(room);
+  lockCallOrientation();
 }
 
 function stopCallTimer(room) {
   if (room.callTimerInterval) { clearInterval(room.callTimerInterval); room.callTimerInterval = null; }
+  unlockCallOrientation();
 }
 
 function formatCallTime(seconds) {
