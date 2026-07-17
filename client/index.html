@@ -767,7 +767,7 @@ body.select-mode .chat-ftr{display:none}
 .call-live-dot.muted{animation:none;background:rgba(255,255,255,.2)}
 @keyframes live-breathe{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.85)}}
 
-.call-actions{display:flex;gap:48px;align-items:flex-start;justify-content:center}
+.call-actions{display:flex;gap:36px;align-items:flex-start;justify-content:center}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.08em;text-align:center;max-width:90px}
 
@@ -791,11 +791,17 @@ body.select-mode .chat-ftr{display:none}
 .call-end-btn svg{width:24px;height:24px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform:rotate(135deg)}
 .call-end-btn:active{transform:scale(.92);box-shadow:0 2px 10px rgba(192,57,43,.3)}
 
-/* Mute — outlined ghost button, fills gold when active */
-.call-mute-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
-.call-mute-btn.muted{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
-.call-mute-btn:active{transform:scale(.92)}
-.call-mute-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
+/* Mute / Speaker — same outlined ghost button, fills gold when active.
+   Speaker is only ever shown when the browser/device combo actually
+   supports switching output devices (see detectSpeakerToggle) — an
+   always-visible button that silently does nothing on unsupported
+   platforms (iOS Safari has no equivalent API at all) is worse than no
+   button. */
+.call-mute-btn,.call-speaker-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
+.call-mute-btn.muted,.call-speaker-btn.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
+.call-mute-btn:active,.call-speaker-btn:active{transform:scale(.92)}
+.call-mute-btn svg,.call-speaker-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
+.call-speaker-btn svg{fill:rgba(255,255,255,.85);stroke:rgba(255,255,255,.85)}
 </style>
 </head>
 <body>
@@ -1246,6 +1252,10 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
+    // Speaker toggle — only meaningful where detectSpeakerToggle() actually
+    // finds a switchable output device (mainly Android Chrome; never on iOS
+    // Safari, which has no API for this at all).
+    speakerAvailable: false, speakerOn: false, speakerDeviceId: null,
     signalWs: null, signalReconnectTimer: null, signalReconnectAttempts: 0,
     signalSeqIn: 0, signalSeqOut: 0,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
@@ -1953,6 +1963,16 @@ function renderCallOverlay(room) {
     const micIcon = room.callMuted
       ? '<svg viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+    // Only rendered at all once detectSpeakerToggle() has confirmed this
+    // browser/device can actually switch output devices — see the
+    // definition of that function for why this can't just always be shown.
+    const speakerBtnHtml = room.speakerAvailable ? `
+        <div class="call-btn-wrap">
+          <button class="call-speaker-btn${room.speakerOn ? ' active' : ''}" onclick="toggleSpeaker()" title="${room.speakerOn ? 'Speaker on' : 'Speaker off'}">
+            <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" fill="none"/></svg>
+          </button>
+          <div class="call-btn-label">${room.speakerOn ? 'Speaker' : 'Phone'}</div>
+        </div>` : '';
     overlay.innerHTML = `
       ${callHeaderBlock()}
       <div class="call-identity">
@@ -1965,7 +1985,7 @@ function renderCallOverlay(room) {
         <div class="call-btn-wrap">
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
           <div class="call-btn-label">${room.callMuted ? 'Unmute' : 'Mute'}</div>
-        </div>
+        </div>${speakerBtnHtml}
         <div class="call-btn-wrap">
           <button class="call-end-btn" onclick="hangupCall()" title="End call">${CALL_PHONE_ICON}</button>
           <div class="call-btn-label">End</div>
@@ -2022,6 +2042,13 @@ async function setupPeerConnection(room) {
   room.localStream = stream;
   room.callMuted = false;
 
+  // Mic permission is granted now, which is also what unlocks real device
+  // labels from enumerateDevices() (before that they're blank strings) —
+  // so this is the earliest point detection can actually work.
+  detectSpeakerToggle(room).then(() => {
+    if (room.callState === 'active') renderCallOverlay(room);
+  });
+
   const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
   room.pc = pc;
   room.pendingIceCandidates = [];
@@ -2071,6 +2098,55 @@ function teardownPeerConnection(room) {
   if (audioEl) audioEl.remove();
   room.pendingIceCandidates = [];
   room.callMuted = false;
+  room.speakerAvailable = false;
+  room.speakerOn = false;
+  room.speakerDeviceId = null;
+}
+
+// Best-effort only: mobile browsers generally don't expose "earpiece" vs
+// "loudspeaker" as a clean pair of selectable output devices the way
+// desktop OSes expose sound cards. Android Chrome sometimes does (device/
+// OEM/version-dependent), iOS Safari never does (no setSinkId at all) — so
+// this either finds a real, working toggle or the button just never
+// appears. Silently doing nothing on tap would be worse than not offering
+// it.
+async function detectSpeakerToggle(room) {
+  room.speakerAvailable = false;
+  room.speakerOn = false;
+  room.speakerDeviceId = null;
+  try {
+    if (typeof HTMLMediaElement === 'undefined' || typeof HTMLMediaElement.prototype.setSinkId !== 'function') return;
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') return;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const outputs = devices.filter(d => d.kind === 'audiooutput');
+    const speaker = outputs.find(d => /speaker/i.test(d.label));
+    if (speaker && speaker.deviceId) {
+      room.speakerAvailable = true;
+      room.speakerDeviceId = speaker.deviceId;
+    }
+  } catch (e) {
+    // enumerateDevices can throw in odd permission states — leave the
+    // toggle unavailable rather than surface an error for a nice-to-have.
+  }
+}
+
+async function toggleSpeaker() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || !room.speakerAvailable) return;
+  const audioEl = document.getElementById('call-remote-audio');
+  if (!audioEl) return;
+  const targetSinkId = room.speakerOn ? '' : room.speakerDeviceId; // '' = system default output
+  try {
+    await audioEl.setSinkId(targetSinkId);
+    room.speakerOn = !room.speakerOn;
+  } catch (e) {
+    // The browser claimed support but the actual switch failed on this
+    // device — don't leave a toggle visible that looks live but does
+    // nothing when tapped again.
+    room.speakerAvailable = false;
+    toast('Speaker switching isn’t available on this device.');
+  }
+  renderCallOverlay(room);
 }
 
 // ICE candidates can arrive over signaling before setRemoteDescription has
