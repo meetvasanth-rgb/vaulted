@@ -244,9 +244,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg-actions{display:none;gap:6px;margin-top:3px}
 .msg-actions.show{display:flex}
 .msg.me .msg-actions{justify-content:flex-end}
-.msg-action-btn{background:#FAF7F1;border:1px solid rgba(184,151,62,.22);border-radius:20px;padding:4px 12px 4px 4px;font-size:12px;font-weight:500;color:#5C5145;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:background .15s,border-color .15s,transform .12s,box-shadow .15s}
-.msg-action-icon{width:22px;height:22px;border-radius:50%;background:rgba(184,151,62,.13);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,transform .18s}
-.msg-action-icon svg{width:12px;height:12px;fill:none;stroke:#B8973E;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.msg-action-btn{background:#FAF7F1;border:1px solid rgba(184,151,62,.22);border-radius:14px;padding:7px 10px 6px;font-size:12px;font-weight:500;color:#5C5145;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:50px;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:background .15s,border-color .15s,transform .12s,box-shadow .15s}
+.msg-action-icon{width:24px;height:24px;border-radius:50%;background:rgba(184,151,62,.13);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,transform .18s}
+.msg-action-icon svg{width:13px;height:13px;fill:none;stroke:#B8973E;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.msg-action-label{font-size:10px;line-height:1}
 .msg-action-btn:hover{background:#F3ECDD;border-color:rgba(184,151,62,.4);box-shadow:0 2px 6px rgba(0,0,0,.08)}
 .msg-action-btn:hover .msg-action-icon{background:rgba(184,151,62,.22)}
 .msg-action-btn:active{transform:scale(.93)}
@@ -2983,7 +2984,7 @@ const MSG_ACTION_ICONS = {
   delete: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
 };
 function msgActionBtn(action, label) {
-  return `<button type="button" class="msg-action-btn" data-action="${action}"><span class="msg-action-icon"><svg viewBox="0 0 24 24">${MSG_ACTION_ICONS[action]}</svg></span>${label}</button>`;
+  return `<button type="button" class="msg-action-btn" data-action="${action}"><span class="msg-action-icon"><svg viewBox="0 0 24 24">${MSG_ACTION_ICONS[action]}</svg></span><span class="msg-action-label">${label}</span></button>`;
 }
 
 // Text messages get Copy (copies the text); file/image messages get Save
