@@ -1267,6 +1267,15 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     pendingOffer: null,
     signalWs: null, signalReconnectTimer: null, signalReconnectAttempts: 0,
     signalSeqIn: 0, signalSeqOut: 0,
+    // A random ID for this room object's lifetime — i.e. it only changes on
+    // a genuine page reload (a fresh makeRoom() call), never on a mere
+    // socket reconnect within the same page session. Sent alongside every
+    // signal envelope so the peer can tell "this is a continuation of the
+    // session I already know" from "this side just restarted from scratch
+    // and its seq numbers are back at 1" — see decryptSignalEnvelope for
+    // why that distinction matters.
+    mySignalSessionId: 'sg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
+    peerSignalSessionId: null,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
     deleteTimerSeconds: deleteTimerSeconds || 0,
@@ -1556,6 +1565,16 @@ function connectSignaling(room) {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (!msg || typeof msg.type !== 'string' || typeof msg.envelope !== 'string') return;
+    // The peer reloading resets THEIR signalSeqOut back to 1 — if my own
+    // signalSeqIn is still sitting at a high watermark from earlier in this
+    // page session, every message they send afterward looks like a replay
+    // and gets silently dropped forever (seq 1, 2, 3... are all <= whatever
+    // I last saw). A changed sessionId is proof this is a fresh session on
+    // their end, so it's safe — and necessary — to reset that watermark.
+    if (typeof msg.sessionId === 'string' && msg.sessionId !== room.peerSignalSessionId) {
+      room.peerSignalSessionId = msg.sessionId;
+      room.signalSeqIn = 0;
+    }
     const payload = await decryptSignalEnvelope(room, msg.envelope);
     if (payload == null) return;
     handleSignalMessage(room, msg.type, payload);
@@ -1596,7 +1615,11 @@ async function sendSignal(room, type, payload) {
   if (!room.signalWs || room.signalWs.readyState !== WebSocket.OPEN) return false;
   if (!room.sharedKey) return false;
   const envelope = await encryptSignalPayload(room, payload);
-  room.signalWs.send(JSON.stringify({ type, envelope }));
+  // sessionId travels outside the encrypted envelope — it's a random nonce
+  // with no meaning beyond "did this side restart," nothing sensitive to
+  // protect, and the peer needs to read it before it can even decrypt
+  // anything (see ws.onmessage).
+  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, envelope }));
   return true;
 }
 

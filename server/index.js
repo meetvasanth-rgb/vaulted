@@ -634,7 +634,11 @@ wss.on('connection', (ws) => {
       if (tok === token) continue;
       const peerWs = signalingSockets.get(tok);
       if (peerWs && peerWs.readyState === peerWs.OPEN) {
-        peerWs.send(JSON.stringify({ type: msg.type, from: token, envelope: msg.envelope }));
+        // sessionId is a random per-page-load nonce the client uses to tell
+        // "the peer's session actually restarted" apart from "this looks
+        // like a replay" in its own sequence-number check — meaningless to
+        // this server, just forwarded along with everything else opaque.
+        peerWs.send(JSON.stringify({ type: msg.type, from: token, sessionId: msg.sessionId, envelope: msg.envelope }));
         // `msg.type` only — envelope is opaque ciphertext this process
         // never decrypts, so there's nothing content-bearing to log here.
         console.log(`Signal relayed: room ${roomCode} type ${msg.type}`);
