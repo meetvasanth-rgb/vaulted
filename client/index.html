@@ -151,6 +151,12 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .leave-btn:hover{border-color:#B8973E;color:#B8973E;background:rgba(184,151,62,0.05)}
 .destroy-btn{background:none;border:1px solid #C0392B;border-radius:20px;padding:5px 10px;font-size:11px;color:#C0392B;letter-spacing:.03em;flex-shrink:0;white-space:nowrap;cursor:pointer;transition:all .15s;margin-left:8px}
 .destroy-btn:hover{border-color:#e53e3e;color:#e53e3e;background:#fff5f5}
+
+.call-btn{background:none;border:1px solid rgba(184,151,62,.4);border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-left:8px;transition:.15s;padding:0}
+.call-btn svg{width:14px;height:14px;fill:none;stroke:#B8973E;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.call-btn:hover{background:rgba(184,151,62,.08)}
+.call-btn:disabled{opacity:.3;cursor:not-allowed}
+.call-btn:disabled:hover{background:none}
 .e2e-bar{flex-shrink:0;background:#FFFBF0;border-top:1px solid #F0E8CC;border-bottom:1px solid #F0E8CC;padding:6px 14px;font-size:11px;color:#B8973E;text-align:center;letter-spacing:.04em;font-weight:500}
 .push-banner{display:none;flex-shrink:0;align-items:center;gap:10px;background:#F0EBE3;border-bottom:1px solid #E8E2DA;padding:8px 14px;font-size:12px;color:#4A3F35}
 .push-banner.show{display:flex}
@@ -511,6 +517,8 @@ body.select-mode .chat-ftr{display:none}
   .chat-hdr-room { max-width:56px; font-size:10px; }
   .leave-btn { padding:4px 8px; font-size:10px; margin-left:6px; }
   .destroy-btn { padding:4px 8px; font-size:10px; margin-left:4px; }
+  .call-btn { width:24px; height:24px; margin-left:6px; }
+  .call-btn svg { width:12px; height:12px; }
   .e2e-bar { font-size:9px; }
 }
 
@@ -694,6 +702,21 @@ body.select-mode .chat-ftr{display:none}
 #vanish-overlay.visible .vanish-text{opacity:1}
 .vanish-line1{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.7);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
 .vanish-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);letter-spacing:.1em;text-transform:uppercase}
+
+/* ── CALL OVERLAY (outgoing / incoming / active) ─────────────────────── */
+.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9997;opacity:0;transition:opacity .3s ease;padding:24px;}
+.call-overlay.visible{opacity:1}
+.call-rule{width:40px;height:1px;background:#B8973E;margin-bottom:20px}
+.call-v{font-family:'Cormorant Garamond',serif;font-size:56px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;margin-bottom:18px}
+.call-status-label{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.75);letter-spacing:.04em;margin-bottom:34px;text-align:center;max-width:300px}
+.call-timer{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.4);letter-spacing:.08em;margin:-20px 0 34px}
+.call-actions{display:flex;gap:36px}
+.call-accept-btn,.call-decline-btn,.call-end-btn{width:56px;height:56px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:transform .1s}
+.call-accept-btn:active,.call-decline-btn:active,.call-end-btn:active{transform:scale(0.94)}
+.call-accept-btn{background:#4A9B6F}
+.call-accept-btn svg{width:22px;height:22px;fill:#fff;stroke:none}
+.call-decline-btn,.call-end-btn{background:#C0392B}
+.call-decline-btn svg,.call-end-btn svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round}
 </style>
 </head>
 <body>
@@ -854,6 +877,9 @@ body.select-mode .chat-ftr{display:none}
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
     </div>
+    <button class="call-btn" id="call-btn" onclick="startCall()" title="Voice call" disabled>
+      <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+    </button>
     <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
     <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
   </div>
@@ -1124,6 +1150,12 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // heartbeat lapse (peer's phone screen locks, brief backgrounding)
     // doesn't lock you out of typing mid-conversation.
     everOnline: false,
+    // Call state — see the CALL STATE section. 'idle' unless a call is
+    // actively ringing/connected in this room.
+    callState: 'idle', callPeerName: null, callStartedAt: null,
+    callTimerInterval: null, callTimeoutTimer: null,
+    signalWs: null, signalReconnectTimer: null, signalReconnectAttempts: 0,
+    signalSeqIn: 0, signalSeqOut: 0,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
     deleteTimerSeconds: deleteTimerSeconds || 0,
@@ -1154,6 +1186,9 @@ function removeRoomFromState(code) {
     if (room.waitInterval) clearInterval(room.waitInterval);
     for (const h of room.msgTimers.values()) clearTimeout(h);
     disconnectSignaling(room);
+    // Leaving/closing a room mid-call shouldn't leave a dangling overlay,
+    // running timer, or the app permanently thinking a call is in progress.
+    if (room.callState !== 'idle') endCall(room);
   }
   rooms.delete(code);
   clearRoomStorage(code);
@@ -1403,6 +1438,7 @@ function connectSignaling(room) {
 
   ws.onopen = () => {
     room.signalReconnectAttempts = 0;
+    refreshCallButton();
   };
 
   ws.onmessage = async (ev) => {
@@ -1417,6 +1453,12 @@ function connectSignaling(room) {
   ws.onclose = () => {
     if (room.signalWs !== ws) return; // superseded by a newer connection already
     room.signalWs = null;
+    refreshCallButton();
+    // Deliberately not ending an in-progress call here: once Phase 3 adds a
+    // real RTCPeerConnection, audio keeps flowing independently of this
+    // channel even if it drops mid-call — same as the roadmap calls out.
+    // Reconnect-with-backoff below just gets signaling back for the next
+    // hangup/accept/decline; it doesn't gate whether the call is "up".
     if (!rooms.has(room.code)) return; // room was torn down — don't reconnect
     room.signalReconnectAttempts = (room.signalReconnectAttempts || 0) + 1;
     const delayMs = Math.min(30000, 1000 * Math.pow(2, room.signalReconnectAttempts));
@@ -1447,10 +1489,184 @@ async function sendSignal(room, type, payload) {
   return true;
 }
 
-// Placeholder — replaced once call state/UI exists. For now this just makes
-// the signaling layer observable while it's being tested standalone.
 function handleSignalMessage(room, type, payload) {
-  console.log('[signal]', room.code, type, payload);
+  if (type === 'call-invite') {
+    // Already mid-call somewhere else (this app only ever handles one call
+    // at a time, same as a phone) — tell the caller we're busy rather than
+    // silently ignoring them.
+    if (activeCallRoomCode && activeCallRoomCode !== room.code) { sendSignal(room, 'call-busy', {}); return; }
+    if (room.callState !== 'idle') return; // stray/duplicate invite — ignore
+    activeCallRoomCode = room.code;
+    room.callState = 'incoming';
+    room.callPeerName = (payload && payload.from) || room.peerName || 'them';
+    renderCallOverlay(room);
+    refreshCallButton();
+    playChime();
+  } else if (type === 'call-accept') {
+    if (room.callState !== 'outgoing') return;
+    clearCallTimeout(room);
+    room.callState = 'active';
+    room.callStartedAt = Date.now();
+    startCallTimer(room);
+    renderCallOverlay(room);
+    refreshCallButton();
+  } else if (type === 'call-decline') {
+    if (room.callState !== 'outgoing') return;
+    endCall(room, `${room.callPeerName || 'They'} declined the call.`);
+  } else if (type === 'call-busy') {
+    if (room.callState !== 'outgoing') return;
+    endCall(room, `${room.callPeerName || 'They'}'re on another call.`);
+  } else if (type === 'call-hangup') {
+    if (room.callState === 'idle') return;
+    endCall(room, 'Call ended.');
+  }
+}
+
+// ── CALL STATE ───────────────────────────────────────────────────────────
+// Phase 2: the call state machine and UI, running entirely over the
+// encrypted signaling channel above. No microphone access and no
+// RTCPeerConnection yet — that's the next phase, wired on top of this once
+// invite/accept/decline/hangup is confirmed working end to end.
+//
+// Only one call across the whole app at a time (like a real phone), tracked
+// here rather than per-room, since a person can only actually talk on one
+// call regardless of how many rooms they have open.
+let activeCallRoomCode = null;
+const CALL_RING_TIMEOUT_MS = 30000;
+
+function canStartCall(room) {
+  return !!room && !!room.signalWs && room.signalWs.readyState === WebSocket.OPEN
+    && room.callState === 'idle' && !activeCallRoomCode;
+}
+
+function refreshCallButton() {
+  const btn = document.getElementById('call-btn');
+  if (!btn) return;
+  btn.disabled = !canStartCall(getActiveRoom());
+}
+
+async function startCall() {
+  const room = getActiveRoom();
+  if (!canStartCall(room)) return;
+  activeCallRoomCode = room.code;
+  room.callState = 'outgoing';
+  room.callPeerName = room.peerName || 'them';
+  const sent = await sendSignal(room, 'call-invite', { from: room.myName });
+  if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
+  renderCallOverlay(room);
+  refreshCallButton();
+  room.callTimeoutTimer = setTimeout(() => {
+    if (room.callState === 'outgoing') { sendSignal(room, 'call-hangup', {}); endCall(room, 'No answer.'); }
+  }, CALL_RING_TIMEOUT_MS);
+}
+
+function acceptCall() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || room.callState !== 'incoming') return;
+  room.callState = 'active';
+  room.callStartedAt = Date.now();
+  sendSignal(room, 'call-accept', {});
+  startCallTimer(room);
+  renderCallOverlay(room);
+  refreshCallButton();
+}
+
+function declineCall() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || room.callState !== 'incoming') return;
+  sendSignal(room, 'call-decline', {});
+  endCall(room);
+}
+
+function hangupCall() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || room.callState === 'idle') return;
+  sendSignal(room, 'call-hangup', {});
+  endCall(room);
+}
+
+function clearCallTimeout(room) {
+  if (room.callTimeoutTimer) { clearTimeout(room.callTimeoutTimer); room.callTimeoutTimer = null; }
+}
+
+function endCall(room, toastMsg) {
+  if (!room) return;
+  clearCallTimeout(room);
+  stopCallTimer(room);
+  room.callState = 'idle';
+  room.callPeerName = null;
+  room.callStartedAt = null;
+  if (activeCallRoomCode === room.code) activeCallRoomCode = null;
+  hideCallOverlay();
+  refreshCallButton();
+  if (toastMsg) toast(toastMsg);
+}
+
+function startCallTimer(room) {
+  stopCallTimer(room);
+  room.callTimerInterval = setInterval(() => updateCallTimerDisplay(room), 1000);
+  updateCallTimerDisplay(room);
+}
+
+function stopCallTimer(room) {
+  if (room.callTimerInterval) { clearInterval(room.callTimerInterval); room.callTimerInterval = null; }
+}
+
+function updateCallTimerDisplay(room) {
+  const el = document.getElementById('call-timer');
+  if (!el || room.callState !== 'active' || !room.callStartedAt) return;
+  const secs = Math.max(0, Math.floor((Date.now() - room.callStartedAt) / 1000));
+  const m = Math.floor(secs / 60).toString().padStart(2, '0');
+  const s = (secs % 60).toString().padStart(2, '0');
+  el.textContent = `${m}:${s}`;
+}
+
+function renderCallOverlay(room) {
+  let overlay = document.getElementById('call-overlay');
+  const isNew = !overlay;
+  if (isNew) {
+    overlay = document.createElement('div');
+    overlay.id = 'call-overlay';
+    overlay.className = 'call-overlay';
+    document.body.appendChild(overlay);
+  }
+
+  const name = escHtml(room.callPeerName || room.peerName || 'them');
+  const xIcon = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  const phoneIcon = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+
+  if (room.callState === 'outgoing') {
+    overlay.innerHTML = `
+      <div class="call-rule"></div>
+      <div class="call-v">V</div>
+      <div class="call-status-label">Calling ${name}…</div>
+      <button class="call-end-btn" onclick="hangupCall()" title="Cancel">${xIcon}</button>`;
+  } else if (room.callState === 'incoming') {
+    overlay.innerHTML = `
+      <div class="call-rule"></div>
+      <div class="call-v">V</div>
+      <div class="call-status-label">${name} is calling…</div>
+      <div class="call-actions">
+        <button class="call-decline-btn" onclick="declineCall()" title="Decline">${xIcon}</button>
+        <button class="call-accept-btn" onclick="acceptCall()" title="Accept">${phoneIcon}</button>
+      </div>`;
+  } else if (room.callState === 'active') {
+    overlay.innerHTML = `
+      <div class="call-rule"></div>
+      <div class="call-v">V</div>
+      <div class="call-status-label">${name}</div>
+      <div class="call-timer" id="call-timer">00:00</div>
+      <button class="call-end-btn" onclick="hangupCall()" title="End call">${xIcon}</button>`;
+  }
+
+  if (isNew) requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('visible')));
+}
+
+function hideCallOverlay() {
+  const overlay = document.getElementById('call-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('visible');
+  setTimeout(() => overlay.remove(), 300);
 }
 
 // ── KEY VERIFICATION ────────────────────────────────────────────────────
@@ -1916,6 +2132,7 @@ function setActiveRoom(code) {
   renderRoomTabs();
   updateDocumentTitle();
   updateTimerBar(room);
+  refreshCallButton();
 }
 
 // Reflects the active room's current disappearing-message setting in the
