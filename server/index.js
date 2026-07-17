@@ -303,6 +303,47 @@ async function api(path, method, d, p, res) {
     return res200(res, { ok: true });
   }
 
+  // POST /api/turn-credentials — mints a short-lived Cloudflare TURN
+  // credential for an authenticated room member. The long-lived
+  // CF_TURN_KEY_API_TOKEN never leaves this server; only the resulting
+  // iceServers array (a one-time username/credential pair good for TTL
+  // seconds) goes back to the client. Same auth check as every other
+  // room-scoped endpoint — a token that isn't in room.members gets nothing.
+  if (path==='/api/turn-credentials' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!process.env.CF_TURN_KEY_ID || !process.env.CF_TURN_KEY_API_TOKEN) {
+      console.error('TURN credentials requested but CF_TURN_KEY_ID/CF_TURN_KEY_API_TOKEN not set.');
+      return resErr(res,'Calling is not configured.',503);
+    }
+    try {
+      const cfRes = await fetch(
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${process.env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.CF_TURN_KEY_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          // 1 hour — long enough for essentially any call, short enough that
+          // a leaked credential is worthless soon after. Refresh mid-call via
+          // RTCPeerConnection.setConfiguration() rather than issuing longer.
+          body: JSON.stringify({ ttl: 3600 }),
+        }
+      );
+      if (!cfRes.ok) {
+        console.error('Cloudflare TURN credential request failed:', cfRes.status, await cfRes.text().catch(()=>''));
+        return resErr(res,'Could not reach calling service.',502);
+      }
+      const cfData = await cfRes.json();
+      room.lastActivity = Date.now();
+      return res200(res, { iceServers: cfData.iceServers });
+    } catch (e) {
+      console.error('TURN credential request error:', e.message);
+      return resErr(res,'Could not reach calling service.',502);
+    }
+  }
+
   // POST /api/react — toggle a single-emoji reaction from this member onto a message
   if (path==='/api/react' && method==='POST') {
     const room = rooms.get(d.code);
