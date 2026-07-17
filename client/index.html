@@ -821,13 +821,25 @@ body.select-mode .chat-ftr{display:none}
 .call-live-dot.call-dot-expand{animation:none;transition:transform .5s ease-out,opacity .5s ease-out;transform:scale(3);opacity:0}
 .call-overlay.dissolving{background:transparent;transition:background .6s ease;pointer-events:none}
 
+/* This mark appears AFTER the call screen's own dark background has
+   already faded to transparent (see dissolveCallScreen), so it's sitting
+   directly on the room's white/cream chat background, not the #0A0908 the
+   original vanish-overlay text colors were tuned for. White-on-white would
+   have been unreadable right when it matters most — the one line that's
+   actually meant to reassure the person reading it. Dark, warm-toned text
+   instead, and the two lines stagger in one after another (glyph settles
+   and pulses, then "Call ended · MM:SS", then "This call never existed."
+   last) so the whole sequence deliberately ends on that line rather than
+   everything landing at once. */
 .call-vanish-mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity .5s ease,transform .8s ease-out}
 .call-vanish-mark.visible{opacity:1}
 .call-vanish-mark .v-glyph{font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;transform:scale(.8);transition:transform .4s ease-out}
 .call-vanish-mark.visible .v-glyph{transform:scale(1)}
 .call-vanish-mark .v-glyph.pulse{animation:vanish-pulse .5s ease-in-out}
-.call-vanish-mark .v-line1{font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.65);letter-spacing:.12em;text-transform:uppercase;margin-top:20px}
-.call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.3);letter-spacing:.1em;text-transform:uppercase;margin-top:6px}
+.call-vanish-mark .v-line1{font-family:'Inter',sans-serif;font-size:12px;color:rgba(58,50,42,.72);letter-spacing:.12em;text-transform:uppercase;margin-top:20px;opacity:0;transition:opacity .4s ease .5s}
+.call-vanish-mark.visible .v-line1{opacity:1}
+.call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(58,50,42,.55);letter-spacing:.1em;text-transform:uppercase;margin-top:6px;opacity:0;transition:opacity .4s ease .95s}
+.call-vanish-mark.visible .v-line2{opacity:1}
 
 .call-actions{display:flex;gap:36px;align-items:flex-start;justify-content:center}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
@@ -4366,7 +4378,11 @@ async function dissolveCallScreen(room, duration) {
       }, 400);
     });
   });
-  await delay(1500);
+  // Long enough for the staggered v-line1/v-line2 reveal above (finishes
+  // fading in ~1.35s after .visible is added) to actually land and be read
+  // before anything starts leaving again — the whole point is to end on
+  // "This call never existed.", not clip past it.
+  await delay(1900);
 
   // The V's own final float-up-and-dissolve — same release as everything
   // that came before it.
