@@ -58,6 +58,7 @@ body{
   display:flex;align-items:center;justify-content:center;margin-top:1px;
 }
 .step svg{stroke:#B8973E;vertical-align:-2px}
+.dots-badge{display:inline-flex;align-items:center;justify-content:center;padding:1px 7px;border-radius:8px;background:rgba(184,151,62,.1);border:0.5px solid rgba(184,151,62,.3);color:#B8973E;font-weight:700;letter-spacing:1px;font-size:12px;vertical-align:-1px}
 
 @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
 .install-arrow{font-size:32px;animation:bounce 1.2s ease-in-out infinite;display:block;text-align:center;margin:24px 0 4px;color:#B8973E}
@@ -111,8 +112,8 @@ body{
   <div id="section-ios-safari" class="section">
     <div class="section-title">Add to your Home Screen</div>
     <div class="steps">
-      <div class="step"><span class="step-num">1</span><span>Tap Share <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 8 12 3 17 8"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg> below</span></div>
-      <div class="step"><span class="step-num">2</span><span>Tap "Add to Home Screen" <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span></div>
+      <div class="step"><span class="step-num">1</span><span>Tap <strong class="dots-badge">•••</strong> in Safari's toolbar below</span></div>
+      <div class="step"><span class="step-num">2</span><span>Tap "Share", then "Add to Home Screen"</span></div>
       <div class="step"><span class="step-num">3</span><span>Tap "Add"</span></div>
     </div>
     <span class="install-arrow">↓</span>
