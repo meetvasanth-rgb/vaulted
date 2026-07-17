@@ -42,7 +42,14 @@ body{font-family:'Inter',sans-serif;background:#fff;color:var(--cream);min-heigh
    white blends in instead. */
 button{cursor:pointer;font-family:'Inter',sans-serif;border:none;outline:none}
 input,textarea{font-family:'Inter',sans-serif;outline:none}
-.screen{display:none;min-height:100vh;overflow-y:auto}
+/* min-height:100dvh (not just 100vh) matters specifically on Android
+   Chrome: 100vh there is sized against the viewport with the address bar
+   hidden, but on first load the address bar is visible, so the actually
+   visible area is shorter than 100vh — a min-height:100vh box then extends
+   past the bottom of what's on screen, forcing a scroll even though nothing
+   is really "overflowing" in the usual sense. 100dvh tracks the real
+   currently-visible viewport instead. */
+.screen{display:none;min-height:100vh;min-height:100dvh;overflow-y:auto}
 .screen.active{display:flex}
 #s-chat.active{overflow:hidden;height:100vh;height:100dvh}
 
@@ -55,7 +62,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
    room so centered content never gets covered. */
 #s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px 24px calc(92px + env(safe-area-inset-bottom));}
 .landing-glow{position:absolute;inset:0;background:radial-gradient(ellipse 55% 45% at 50% 38%,rgba(184,151,62,0.04) 0%,transparent 68%);pointer-events:none}
-.logo{text-align:center;margin-bottom:52px}
+/* margin-bottom lives on the class (not inline on the element) specifically
+   so the height-based media queries below can override it — an inline
+   style would always win over a media-query rule regardless of viewport. */
+.logo{text-align:center;margin-bottom:44px}
 .logo-rule{height:1px;background:var(--gold);margin:0 auto 18px;width:108px}
 .logo-rule.go{width:108px}
 .logo-name{font-family:'Cormorant Garamond',serif;font-size:clamp(52px,9vw,88px);font-weight:300;letter-spacing:.12em;color:var(--cream);opacity:1}
@@ -73,6 +83,24 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .card-title{font-size:13px;font-weight:500;color:var(--cream);margin-bottom:4px}
 .card-desc{font-size:11px;color:var(--muted);line-height:1.6}
 .landing-footer{position:fixed;bottom:0;left:0;right:0;text-align:center;font-size:10px;color:var(--hint);letter-spacing:.08em;text-transform:uppercase;padding:14px;background:linear-gradient(transparent,var(--black) 40%);}
+
+/* On a shorter viewport (most phones once the browser chrome/address bar
+   is accounted for) the logo + tagline + three cards + footer-clearance
+   padding add up to more than fits without scrolling. Rather than shrink
+   text (readability matters more), tighten the vertical gaps between
+   sections — the content itself doesn't need to change size, just sit
+   closer together. */
+@media(max-height:700px){
+  #s-landing{padding-top:16px}
+  .logo{margin-bottom:24px}
+  .logo-rule{margin-bottom:12px}
+  .card{padding:14px 16px}
+}
+@media(max-height:600px){
+  #s-landing{padding-top:12px}
+  .logo{margin-bottom:16px}
+  .tagline{font-size:15px}
+}
 
 /* -- SETUP -- */
 #s-setup{flex-direction:column;align-items:center;justify-content:center;padding:24px}
@@ -707,12 +735,12 @@ body.select-mode .chat-ftr{display:none}
 .vanish-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);letter-spacing:.1em;text-transform:uppercase}
 
 /* ── CALL SCREENS (outgoing / incoming / active) ─────────────────────── */
-.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease;padding:56px 32px 72px;box-sizing:border-box}
+.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease;padding:calc(84px + env(safe-area-inset-top)) 32px 72px;box-sizing:border-box}
 .call-overlay.visible{opacity:1}
 
 .call-hdr-block{text-align:center}
-.call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 12px}
-.call-hdr-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:rgba(255,255,255,.6)}
+.call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 14px}
+.call-hdr-name{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;letter-spacing:.12em;color:rgba(255,255,255,.7)}
 
 .call-identity{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;min-height:0}
 .call-peer-name{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:#fff;letter-spacing:.06em}
@@ -720,7 +748,7 @@ body.select-mode .chat-ftr{display:none}
 .call-status.pulsing{animation:call-status-pulse 1.5s ease-in-out infinite}
 @keyframes call-status-pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .call-timer-display{font-family:'Inter',sans-serif;font-size:34px;font-weight:300;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums;margin-top:4px}
-.call-tagline{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.1em;margin-top:6px}
+.call-tagline{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-top:8px}
 
 /* Incoming — three concentric gold rings pulsing outward from a center dot */
 .ring-container{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
@@ -778,7 +806,7 @@ body.select-mode .chat-ftr{display:none}
   <div style="position:relative;z-index:1;text-align:center;width:100%;max-width:460px;padding:0 20px">
 
     <!-- Logo block matching messenger sidebar -->
-    <div class="logo" style="margin-bottom:44px">
+    <div class="logo">
       <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:20px">
         <div style="width:32px;height:32px;border:0.5px solid var(--gold-border);border-radius:3px;display:flex;align-items:center;justify-content:center">
           <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:400;color:var(--gold)">V</span>
@@ -789,11 +817,15 @@ body.select-mode .chat-ftr{display:none}
       <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
     </div>
 
-    <p class="tagline" id="logoTag">Two people. One conversation.<br/>Disappears when you leave.</p>
+    <p class="tagline" id="logoTag" style="margin-bottom:14px">Two people. One conversation.<br/>Disappears when you leave.</p>
 
     <!-- Clarifies who does what before the cards below — the create/join
-         split isn't obvious on a first visit with no prior context. -->
-    <div style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:-28px auto 24px;max-width:340px;line-height:1.6">Starting the conversation? Create or name a room, then send the code. Already have one? Join.</div>
+         split isn't obvious on a first visit with no prior context. Uses
+         normal flow spacing (not a negative margin pulling it up against
+         the tagline above) so it holds together regardless of how much the
+         height-based media queries below compress the tagline's own margin
+         on shorter screens. -->
+    <div style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:0 auto 24px;max-width:340px;line-height:1.6">Starting the conversation? Create or name a room, then send the code. Already have one? Join.</div>
 
     <!-- Cards matching messenger surface -->
     <div class="cards" id="cards" style="grid-template-columns:1fr;gap:8px;max-width:360px;margin:0 auto">
