@@ -167,27 +167,44 @@ function showSection(id) {
   if (el) el.classList.add('active');
 }
 
-if (isStandaloneApp) {
-  showSection('section-installed');
-} else if (isAndroidDevice) {
-  showSection('section-android');
-} else if (isIOSSafariBrowser) {
-  showSection('section-ios-safari');
-} else if (isIOSChromeBrowser) {
-  showSection('section-ios-chrome');
-} else {
-  showSection('section-desktop');
-  if (window.QRCode) {
-    new QRCode(document.getElementById('qr'), {
-      text: 'https://vaultlix.com/install',
-      width: 180,
-      height: 180,
-      colorDark: '#1A1510',
-      colorLight: '#FFFFFF',
-      correctLevel: QRCode.CorrectLevel.M
-    });
+// isStandaloneApp only tells us this window was launched from the home
+// screen — it says nothing about whether the PWA is already installed and
+// this is just a normal browser tab. getInstalledRelatedApps() (Android/
+// Chrome only, requires the manifest's self-referencing
+// "related_applications" entry) fills that gap; nothing is shown until
+// this resolves, so there's no flash of the wrong section.
+async function decideSection() {
+  let androidInstalled = false;
+  if (isAndroidDevice && 'getInstalledRelatedApps' in navigator) {
+    try {
+      const related = await navigator.getInstalledRelatedApps();
+      androidInstalled = Array.isArray(related) && related.length > 0;
+    } catch (e) {}
+  }
+
+  if (isStandaloneApp || androidInstalled) {
+    showSection('section-installed');
+  } else if (isAndroidDevice) {
+    showSection('section-android');
+  } else if (isIOSSafariBrowser) {
+    showSection('section-ios-safari');
+  } else if (isIOSChromeBrowser) {
+    showSection('section-ios-chrome');
+  } else {
+    showSection('section-desktop');
+    if (window.QRCode) {
+      new QRCode(document.getElementById('qr'), {
+        text: 'https://vaultlix.com/install',
+        width: 180,
+        height: 180,
+        colorDark: '#1A1510',
+        colorLight: '#FFFFFF',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
   }
 }
+decideSection();
 
 // Android native install prompt
 let deferredPrompt = null;

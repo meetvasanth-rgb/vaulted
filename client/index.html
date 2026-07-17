@@ -47,7 +47,13 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 #s-chat.active{overflow:hidden;height:100vh;height:100dvh}
 
 /* -- LANDING -- */
-#s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px}
+/* Bottom padding is intentionally larger than the sides — .landing-footer
+   is position:fixed at the very bottom of the viewport, and on shorter
+   screens (many Android phones, especially with the install button now
+   always visible there) the vertically-centered content column could
+   otherwise grow tall enough to sit underneath it. This reserves enough
+   room so centered content never gets covered. */
+#s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px 24px calc(92px + env(safe-area-inset-bottom));}
 .landing-glow{position:absolute;inset:0;background:radial-gradient(ellipse 55% 45% at 50% 38%,rgba(184,151,62,0.04) 0%,transparent 68%);pointer-events:none}
 .logo{text-align:center;margin-bottom:52px}
 .logo-rule{height:1px;background:var(--gold);margin:0 auto 18px;width:108px}
@@ -3195,11 +3201,32 @@ function hideVanishOverlay() {
   window.isIOSSafariBrowser = window.isIOSDevice && /safari/i.test(navigator.userAgent) && !/crios|fxios|opios|mercury/i.test(navigator.userAgent);
   window.isIOSChromeBrowser = window.isIOSDevice && /crios/i.test(navigator.userAgent);
   window.isStandaloneApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  // display-mode only tells us whether *this window* was launched from the
+  // home screen — it says nothing about whether the PWA is already
+  // installed elsewhere on the device and this is just a normal browser
+  // tab. window.isAndroidInstalled fills that gap (Android/Chrome only;
+  // there's no equivalent API on iOS) and starts false until the async
+  // check below resolves.
+  window.isAndroidInstalled = false;
 })();
 
 let deferredInstallPrompt = null;
 const INSTALL_DISMISS_KEY = 'vaultlix_install_dismissed';
 const INSTALL_DISMISS_DAYS = 7;
+
+// Requires the manifest's self-referencing "related_applications" entry
+// (platform: "webapp", url: this app's own manifest.json) — that's what
+// lets Chrome match "an installed related app" back to this same PWA.
+async function checkAndroidInstalledStatus() {
+  if (!window.isAndroidDevice || !('getInstalledRelatedApps' in navigator)) return;
+  try {
+    const related = await navigator.getInstalledRelatedApps();
+    window.isAndroidInstalled = Array.isArray(related) && related.length > 0;
+  } catch (e) {
+    window.isAndroidInstalled = false;
+  }
+  refreshInstallUI();
+}
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
@@ -3232,7 +3259,7 @@ function refreshInstallUI() {
   const banner = document.getElementById('ios-install-banner');
   if (!btn || !note || !banner) return;
 
-  if (window.isStandaloneApp) {
+  if (window.isStandaloneApp || window.isAndroidInstalled) {
     btn.style.display = 'none';
     note.style.display = 'none';
     banner.style.display = 'none';
@@ -3335,7 +3362,10 @@ function closeIOSSheet() {
   setTimeout(() => overlay.remove(), 260);
 }
 
-document.addEventListener('DOMContentLoaded', refreshInstallUI);
+document.addEventListener('DOMContentLoaded', () => {
+  refreshInstallUI();
+  checkAndroidInstalledStatus(); // async — re-runs refreshInstallUI once it resolves
+});
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
