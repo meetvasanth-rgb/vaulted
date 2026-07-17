@@ -650,6 +650,43 @@ body.select-mode .chat-ftr{display:none}
   .e2e-bar{font-size:12px}
   .sys-msg{font-size:13px}
 }
+
+/* ── ENCRYPTION PULSE ─────────────────────────────────────────────── */
+@keyframes e2e-pulse {
+  0% { background-color:#FFFBF0; border-color:#F0E8CC; color:#B8973E; }
+  40% { background-color:rgba(184,151,62,0.15); border-color:rgba(184,151,62,0.6); color:#9A7830; box-shadow:0 0 12px rgba(184,151,62,0.2); }
+  100% { background-color:#FFFBF0; border-color:#F0E8CC; color:#B8973E; box-shadow:none; }
+}
+.e2e-bar.pulse { animation:e2e-pulse 0.8s ease-in-out forwards; }
+
+/* ── CONNECTION MOMENT ────────────────────────────────────────────── */
+#connect-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;opacity:0;transition:opacity .3s ease;}
+#connect-overlay.visible{opacity:1}
+#connect-overlay.hiding{opacity:0;transition:opacity .4s ease}
+.connect-dots{display:flex;align-items:center;gap:0;width:160px;position:relative;justify-content:space-between}
+.connect-dot{width:10px;height:10px;border-radius:50%;background:#B8973E;opacity:0;transform:scale(0);transition:all .3s ease-out;flex-shrink:0}
+.connect-dot.left{transition-delay:.1s}
+.connect-dot.right{transition-delay:.3s}
+#connect-overlay.visible .connect-dot{opacity:1;transform:scale(1)}
+.connect-line{position:absolute;left:14px;right:14px;height:1px;background:#B8973E;transform-origin:left center;transform:scaleX(0);transition:transform .35s ease-out .6s;opacity:.6}
+#connect-overlay.visible .connect-line{transform:scaleX(1)}
+.connect-label{margin-top:28px;font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:.14em;text-transform:uppercase;opacity:0;transition:opacity .3s ease 1.0s}
+#connect-overlay.visible .connect-label{opacity:1}
+
+/* ── VANISH MOMENT ────────────────────────────────────────────────── */
+#vanish-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;opacity:0;transition:opacity .4s ease;}
+#vanish-overlay.visible{opacity:1}
+#vanish-overlay.hiding{opacity:0;transition:opacity .6s ease}
+.vanish-rule{width:40px;height:1px;background:#B8973E;margin-bottom:20px;opacity:0;transition:opacity .4s ease .2s}
+#vanish-overlay.visible .vanish-rule{opacity:1}
+.vanish-v{font-family:'Cormorant Garamond',serif;font-size:72px;font-weight:300;color:#B8973E;letter-spacing:.1em;transform:scale(0.8);opacity:0;transition:transform .4s ease-out,opacity .4s ease-out;line-height:1}
+#vanish-overlay.visible .vanish-v{transform:scale(1);opacity:1}
+.vanish-v.pulse{animation:vanish-pulse .5s ease-in-out}
+@keyframes vanish-pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+.vanish-text{margin-top:24px;text-align:center;opacity:0;transition:opacity .4s ease .8s}
+#vanish-overlay.visible .vanish-text{opacity:1}
+.vanish-line1{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,0.7);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
+.vanish-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);letter-spacing:.1em;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -1258,10 +1295,24 @@ async function deriveSharedKey(room, peerPubKeyB64) {
       { name:'AES-GCM', length:256 },
       false, ['encrypt','decrypt']
     );
+    // Only pulse the bar if it's actually showing this room right now —
+    // deriveSharedKey also runs for background rooms (page-load restore,
+    // background rekey on a non-active tab), and pulsing the one shared
+    // .e2e-bar element for those would look like it fired at random.
+    if (room.code === activeRoomCode) triggerEncryptionPulse();
   } catch(e) {
     console.error('E2E: deriveSharedKey failed:', e.message);
     room.sharedKey = null;
   }
+}
+
+function triggerEncryptionPulse() {
+  const bar = document.querySelector('.e2e-bar');
+  if (!bar) return;
+  bar.classList.remove('pulse');
+  void bar.offsetWidth; // force reflow so the animation restarts if re-triggered quickly
+  bar.classList.add('pulse');
+  setTimeout(() => bar.classList.remove('pulse'), 900);
 }
 
 async function encryptMsg(room, text) {
@@ -2600,15 +2651,22 @@ async function doPoll(room) {
       const wasActive = room.code === activeRoomCode;
       removeRoomFromState(room.code);
       if (wasActive) {
-        const next = rooms.keys().next();
-        if (!next.done) {
-          setActiveRoom(next.value);
-          showScreen('s-chat');
-        } else {
-          activeRoomCode = null;
-          showScreen('s-closed');
-          document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
-        }
+        // Room closed "naturally" (peer erased it, or it expired) while this
+        // was the room on screen — same vanish ceremony as tapping Close &
+        // erase yourself, using #chat-body's still-rendered messages.
+        await triggerVanishMoment(() => {
+          const next = rooms.keys().next();
+          if (!next.done) {
+            setActiveRoom(next.value);
+            showScreen('s-chat');
+          } else {
+            activeRoomCode = null;
+            showScreen('s-closed');
+            document.getElementById('closed-sub').textContent = 'This room has expired or been closed.';
+          }
+          const chatScreen = document.getElementById('s-chat');
+          if (chatScreen) { chatScreen.style.opacity = ''; chatScreen.style.transition = ''; }
+        });
       }
       renderRoomTabs();
       return;
@@ -2900,9 +2958,11 @@ async function handleSetup() {
           if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
           if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
           setActiveRoom(room.code);
-          showScreen('s-chat');
-          enableInput(true, true);
-          playChime();
+          await triggerConnectionMoment(() => {
+            showScreen('s-chat');
+            enableInput(true, true);
+            playChime();
+          });
           startRoomPolling(room);
         }
       }, 2000);
@@ -2926,10 +2986,12 @@ async function handleSetup() {
       if (result.peerPubKey) { await deriveSharedKey(room, result.peerPubKey); room.lastKnownPeerPubKey = result.peerPubKey; }
       room.peerOnline = true; room.everOnline = true;
 
-      showScreen('s-chat');
       setActiveRoom(room.code);
-      enableInput(true, true);
-      playChime();
+      await triggerConnectionMoment(() => {
+        showScreen('s-chat');
+        enableInput(true, true);
+        playChime();
+      });
       startRoomPolling(room);
     }
   } catch(e) {
@@ -2979,14 +3041,22 @@ async function closeActiveRoom() {
   if (!room) return;
   try { await api('/api/close', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
   removeRoomFromState(room.code);
-  if (rooms.size === 0) {
-    activeRoomCode = null;
-    showScreen('s-closed');
-    document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
-  } else {
-    toast('Room erased');
-    switchToNextRoomOrLanding();
-  }
+  // #chat-body still shows this room's messages at this point — the vanish
+  // ceremony plays over them before we swap to whatever screen comes next
+  // (closed screen if that was the last room, otherwise the next tab).
+  await triggerVanishMoment(() => {
+    if (rooms.size === 0) {
+      activeRoomCode = null;
+      showScreen('s-closed');
+      document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
+    } else {
+      toast('Room erased');
+      switchToNextRoomOrLanding();
+    }
+    // Reset chat screen opacity/transition for its next use
+    const chatScreen = document.getElementById('s-chat');
+    if (chatScreen) { chatScreen.style.opacity = ''; chatScreen.style.transition = ''; }
+  });
 }
 
 function goBack() {
@@ -3006,6 +3076,110 @@ function startFresh() {
   // Reached only from s-closed, which only shows once every room is gone.
   showScreen('s-landing');
   triggerLandingAnim();
+}
+
+// ── DOPAMINE MOMENTS: connection + vanish ────────────────────────────────
+// triggerEncryptionPulse() lives up by deriveSharedKey(), where it's called.
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// Played when the peer is first confirmed present — the room creator's
+// waitInterval success handler, and the joiner's own join-flow success.
+// Deliberately NOT played on page-load restore/reconnect (that path goes
+// straight to showScreen('s-chat') without this) — it's a one-time "the
+// secure line just connected" beat, not something to replay every reload.
+async function triggerConnectionMoment(callback) {
+  const overlay = document.createElement('div');
+  overlay.id = 'connect-overlay';
+  overlay.innerHTML = `
+    <div class="connect-dots">
+      <div class="connect-dot left"></div>
+      <div class="connect-line"></div>
+      <div class="connect-dot right"></div>
+    </div>
+    <div class="connect-label">Connected · End-to-end encrypted</div>
+  `;
+  document.body.appendChild(overlay);
+
+  await delay(50);
+  overlay.classList.add('visible');
+
+  await delay(1800);
+  overlay.classList.add('hiding');
+  await delay(400);
+  overlay.remove();
+
+  if (callback) callback();
+}
+
+// Played on "Close & erase" — closeActiveRoom() always acts on the room
+// currently being viewed, so #chat-body still holds that room's rendered
+// messages at the moment this is called.
+async function triggerVanishMoment(callback) {
+  const chatBody = document.getElementById('chat-body');
+  const messages = chatBody ? chatBody.querySelectorAll('.msg, .sys-msg') : [];
+
+  // Step 1 — messages float up and fade, bottom to top, staggered
+  const msgArray = Array.from(messages).reverse();
+  msgArray.forEach((el, i) => {
+    setTimeout(() => {
+      el.style.transition = 'all 0.4s ease-out';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(-20px)';
+    }, i * 80);
+  });
+  const totalMsgTime = msgArray.length * 80 + 400;
+
+  // Step 2 — chat screen fades out entirely
+  await delay(Math.max(totalMsgTime, 400));
+  const chatScreen = document.getElementById('s-chat');
+  if (chatScreen) {
+    chatScreen.style.transition = 'opacity 0.4s';
+    chatScreen.style.opacity = '0';
+  }
+
+  // Step 3 — vanish overlay (V mark) appears
+  await delay(400);
+  showVanishOverlay();
+
+  // Steps 4-5 happen inside showVanishOverlay (pulse, then text); hold,
+  // then Step 6 — fade the whole overlay out and reveal whatever's beneath.
+  await delay(2600);
+  hideVanishOverlay();
+  await delay(500);
+
+  if (callback) callback();
+}
+
+function showVanishOverlay() {
+  const overlay = document.createElement('div');
+  overlay.id = 'vanish-overlay';
+  overlay.innerHTML = `
+    <div class="vanish-rule"></div>
+    <div class="vanish-v" id="vanish-v-mark">V</div>
+    <div class="vanish-text">
+      <div class="vanish-line1">Conversation erased.</div>
+      <div class="vanish-line2">No trace remains.</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      overlay.classList.add('visible');
+      // Step 4 — the V settles in (~0.4s), then pulses once
+      setTimeout(() => {
+        const v = document.getElementById('vanish-v-mark');
+        if (v) v.classList.add('pulse');
+      }, 400);
+    });
+  });
+}
+
+function hideVanishOverlay() {
+  const overlay = document.getElementById('vanish-overlay');
+  if (overlay) {
+    overlay.classList.add('hiding');
+    setTimeout(() => overlay.remove(), 600);
+  }
 }
 
 // ── PWA INSTALL ──────────────────────────────────────────────────────────
