@@ -1256,6 +1256,9 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // outgoing screen from "Calling…" to "Ringing…" — see the call-invite/
     // call-ringing handling in handleSignalMessage.
     callRinging: false,
+    // Callee-side only: wall-clock time the incoming call first arrived —
+    // see checkStaleIncomingCalls.
+    callInviteReceivedAt: null,
     // Answerer-side resend loop for 'call-accept' — see acceptCall().
     callAcceptRetryInterval: null, callAcceptRetryTimeout: null, callAcceptConfirmed: false,
     // Speaker toggle — only meaningful where detectSpeakerToggle() actually
@@ -1633,6 +1636,12 @@ async function handleSignalMessage(room, type, payload) {
       activeCallRoomCode = room.code;
       room.callState = 'incoming';
       room.callPeerName = (payload && payload.from) || room.peerName || 'them';
+      // Wall-clock timestamp, not a setTimeout — see checkStaleIncomingCalls.
+      // A timer alone isn't reliable here: if this device gets backgrounded
+      // for the rest of the ring window, the timer may never fire (or fire
+      // very late) while the tab is frozen, but the elapsed real time is
+      // still knowable the moment the app comes back to the foreground.
+      room.callInviteReceivedAt = Date.now();
       renderCallOverlay(room);
       refreshCallButton();
       playChime();
@@ -1882,6 +1891,27 @@ function addCallSysMsg(room, text) {
   if (room.code === activeRoomCode) renderMessageRecord(room, rec);
 }
 
+// Callee-side safety net: normally an incoming-call screen is cleared by a
+// live 'call-hangup' arriving from the caller once THEIR ring timeout fires.
+// That message can go missing entirely if we were backgrounded/closed at
+// that exact moment (dead socket, nothing listening) — leaving us stuck
+// showing "someone is calling you" long after the caller already gave up
+// and walked away. A setTimeout can't be trusted to cover this: mobile OSes
+// throttle/freeze timers in backgrounded tabs, so it may simply never fire.
+// Instead we stamp the wall-clock time the invite arrived (callInviteReceivedAt)
+// and re-check it against CALL_RING_TIMEOUT_MS every time the app comes back
+// to the foreground — reusing the existing resume hooks below rather than
+// adding a new timer of our own.
+function checkStaleIncomingCalls() {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    if (room.callState === 'incoming' && room.callInviteReceivedAt &&
+        (now - room.callInviteReceivedAt) > CALL_RING_TIMEOUT_MS) {
+      endCall(room, null, 'Missed call');
+    }
+  }
+}
+
 async function endCall(room, toastMsg, sysMsgText) {
   if (!room) return;
   // Capture before the state reset below — this is the only point that
@@ -1900,6 +1930,7 @@ async function endCall(room, toastMsg, sysMsgText) {
   room.callPeerName = null;
   room.callStartedAt = null;
   room.callRinging = false;
+  room.callInviteReceivedAt = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
 
@@ -2562,6 +2593,7 @@ document.addEventListener('visibilitychange', () => {
     if (active) { active.unread = 0; flushPendingReads(active); }
     updateDocumentTitle();
     catchUpPoll();
+    checkStaleIncomingCalls();
   }
 });
 window.addEventListener('focus', () => {
@@ -2571,11 +2603,12 @@ window.addEventListener('focus', () => {
   if (active) { active.unread = 0; flushPendingReads(active); }
   updateDocumentTitle();
   catchUpPoll();
+  checkStaleIncomingCalls();
 });
 window.addEventListener('blur', () => { tabFocused = false; });
 // iOS/WebKit restores a backgrounded tab from its page cache without firing
 // 'load' — pageshow (with persisted:true) is the reliable signal for that.
-window.addEventListener('pageshow', (e) => { if (e.persisted) catchUpPoll(); });
+window.addEventListener('pageshow', (e) => { if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); } });
 
 ['click','keydown','touchstart','mousemove'].forEach(evt => {
   document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
