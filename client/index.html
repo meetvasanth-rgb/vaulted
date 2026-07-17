@@ -3240,7 +3240,15 @@ function refreshInstallUI() {
   }
 
   if (window.isAndroidDevice) {
-    btn.style.display = deferredInstallPrompt ? 'flex' : 'none';
+    // Always show the button on Android — don't gate visibility on
+    // beforeinstallprompt having fired. Chrome only fires that event once
+    // its own engagement heuristics are satisfied (and stays silent if the
+    // prompt was dismissed recently, or on some Chrome-based browsers
+    // entirely), so a real visit can easily never see it fire. Hiding the
+    // button until then made install look broken on Android. handleInstallClick()
+    // uses the native prompt when it's available and falls back to manual
+    // instructions otherwise.
+    btn.style.display = 'flex';
     note.style.display = 'none';
   } else if (window.isIOSSafariBrowser) {
     btn.style.display = 'flex';
@@ -3258,14 +3266,43 @@ function refreshInstallUI() {
 }
 
 async function handleInstallClick() {
-  if (window.isAndroidDevice && deferredInstallPrompt) {
-    deferredInstallPrompt.prompt();
-    const { outcome } = await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = null;
-    if (outcome === 'accepted') refreshInstallUI();
+  if (window.isAndroidDevice) {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      if (outcome === 'accepted') refreshInstallUI();
+    } else {
+      // Native prompt hasn't fired (or this isn't actually Chrome) —
+      // fall back to manual instructions instead of doing nothing.
+      openAndroidSheet();
+    }
   } else if (window.isIOSSafariBrowser) {
     openIOSSheet();
   }
+}
+
+function openAndroidSheet() {
+  const existing = document.getElementById('ios-install-sheet');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'ios-install-sheet';
+  overlay.className = 'ios-sheet-overlay';
+  overlay.innerHTML = `
+    <div class="ios-sheet">
+      <div class="ios-sheet-rule"></div>
+      <div class="ios-sheet-word">Vaultlix</div>
+      <div class="ios-sheet-title">Add to your Home Screen</div>
+      <div class="ios-sheet-step"><span class="ios-sheet-num">1</span><span>Tap <strong>⋮</strong> in the top-right corner, next to the address bar</span></div>
+      <div class="ios-sheet-step"><span class="ios-sheet-num">2</span><span>Tap "Add to Home screen" or "Install app"</span></div>
+      <div class="ios-sheet-step"><span class="ios-sheet-num">3</span><span>Tap "Install" to confirm</span></div>
+      <div class="ios-sheet-divider"></div>
+      <button type="button" class="ios-sheet-btn" id="android-sheet-close">Got it</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#android-sheet-close').onclick = closeIOSSheet;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeIOSSheet(); });
+  requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('open')));
 }
 
 function openIOSSheet() {
