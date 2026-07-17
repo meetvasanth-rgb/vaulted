@@ -1252,6 +1252,10 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
+    // Caller-side only: has the callee acked our invite yet? Flips the
+    // outgoing screen from "Calling…" to "Ringing…" — see the call-invite/
+    // call-ringing handling in handleSignalMessage.
+    callRinging: false,
     // Answerer-side resend loop for 'call-accept' — see acceptCall().
     callAcceptRetryInterval: null, callAcceptRetryTimeout: null, callAcceptConfirmed: false,
     // Speaker toggle — only meaningful where detectSpeakerToggle() actually
@@ -1602,13 +1606,29 @@ async function handleSignalMessage(room, type, payload) {
     // at a time, same as a phone) — tell the caller we're busy rather than
     // silently ignoring them.
     if (activeCallRoomCode && activeCallRoomCode !== room.code) { sendSignal(room, 'call-busy', {}); return; }
-    if (room.callState !== 'idle') return; // stray/duplicate invite — ignore
-    activeCallRoomCode = room.code;
-    room.callState = 'incoming';
-    room.callPeerName = (payload && payload.from) || room.peerName || 'them';
+    if (room.callState === 'idle') {
+      activeCallRoomCode = room.code;
+      room.callState = 'incoming';
+      room.callPeerName = (payload && payload.from) || room.peerName || 'them';
+      renderCallOverlay(room);
+      refreshCallButton();
+      playChime();
+    }
+    // Ack receipt so the caller can show "Ringing…" instead of a flat
+    // "Calling…" the whole way through — same idea as WhatsApp distinguishing
+    // "still trying to reach them" from "their phone is actually ringing".
+    // Sent on every invite that arrives while we're genuinely still on the
+    // incoming screen, not just the first — startCall()'s own 3s invite
+    // retry loop means a lost ack just gets another chance next round,
+    // without this needing a dedicated resend loop of its own.
+    if (room.callState === 'incoming') sendSignal(room, 'call-ringing', {});
+  } else if (type === 'call-ringing') {
+    // Caller-side only. The first ack flips "Calling…" to "Ringing…" on the
+    // outgoing screen; later ones (retries) are harmless no-ops since the
+    // state's already flipped.
+    if (room.callState !== 'outgoing' || room.callRinging) return;
+    room.callRinging = true;
     renderCallOverlay(room);
-    refreshCallButton();
-    playChime();
   } else if (type === 'call-accept') {
     if (room.callState !== 'outgoing') return;
     clearCallTimeout(room);
@@ -1718,6 +1738,7 @@ async function startCall() {
   activeCallRoomCode = room.code;
   room.callState = 'outgoing';
   room.callPeerName = room.peerName || 'them';
+  room.callRinging = false;
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
   renderCallOverlay(room);
@@ -1855,6 +1876,7 @@ async function endCall(room, toastMsg, sysMsgText) {
   room.callState = 'idle';
   room.callPeerName = null;
   room.callStartedAt = null;
+  room.callRinging = false;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
 
@@ -1976,7 +1998,7 @@ function renderCallOverlay(room) {
       <div class="call-identity">
         <div class="call-hollow-dot"></div>
         <div class="call-peer-name">${name}</div>
-        <div class="call-status pulsing">Calling…</div>
+        <div class="call-status pulsing">${room.callRinging ? 'Ringing…' : 'Calling…'}</div>
         <div class="call-status">End-to-end encrypted</div>
       </div>
       <div class="call-actions">
