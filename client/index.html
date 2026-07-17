@@ -1534,13 +1534,17 @@ async function handleSignalMessage(room, type, payload) {
     }
   } else if (type === 'call-decline') {
     if (room.callState !== 'outgoing') return;
-    endCall(room, `${room.callPeerName || 'They'} declined the call.`);
+    endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
   } else if (type === 'call-busy') {
     if (room.callState !== 'outgoing') return;
     endCall(room, `${room.callPeerName || 'They'}'re on another call.`);
   } else if (type === 'call-hangup') {
     if (room.callState === 'idle') return;
-    endCall(room, 'Call ended.');
+    // If we were still on the incoming-call screen when the other side hung
+    // up, we never actually answered — that's a missed call, not just "the
+    // call ended" (which reads more like a normal completed call).
+    const wasIncoming = room.callState === 'incoming';
+    endCall(room, wasIncoming ? 'Missed call.' : 'Call ended.', wasIncoming ? 'Missed call' : null);
   } else if (type === 'offer') {
     // Only the answerer (callee) should ever receive an offer, and only
     // once they've already set up their side via acceptCall().
@@ -1620,7 +1624,7 @@ async function startCall() {
     if (room.callState === 'outgoing') sendSignal(room, 'call-invite', { from: room.myName });
   }, 3000);
   room.callTimeoutTimer = setTimeout(() => {
-    if (room.callState === 'outgoing') { sendSignal(room, 'call-hangup', {}); endCall(room, 'No answer.'); }
+    if (room.callState === 'outgoing') { sendSignal(room, 'call-hangup', {}); endCall(room, 'No answer.', 'Call not answered'); }
   }, CALL_RING_TIMEOUT_MS);
 }
 
@@ -1647,14 +1651,18 @@ function declineCall() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
   sendSignal(room, 'call-decline', {});
-  endCall(room);
+  endCall(room, null, 'Declined call');
 }
 
 function hangupCall() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState === 'idle') return;
   sendSignal(room, 'call-hangup', {});
-  endCall(room);
+  // Canceling my own outgoing call before it's answered is worth a record
+  // too — ending an already-active call is the normal/expected way calls
+  // finish, so that case gets no sys message (nothing "missed" about it).
+  const wasOutgoing = room.callState === 'outgoing';
+  endCall(room, null, wasOutgoing ? 'Call canceled' : null);
 }
 
 function clearCallTimeout(room) {
@@ -1665,7 +1673,20 @@ function clearCallRingInterval(room) {
   if (room.callRingInterval) { clearInterval(room.callRingInterval); room.callRingInterval = null; }
 }
 
-function endCall(room, toastMsg) {
+// Missed/declined/unanswered calls get a small permanent-feeling trace in
+// the chat itself — a toast alone disappears in a couple seconds and is
+// easy to miss (the exact problem it's meant to solve). This is local-only,
+// same as the existing "Reconnected"/"X joined" system messages: pushed
+// into room.messages so it survives switching tabs and scrolling back, but
+// never sent to or stored on the server — consistent with "no call history
+// persisted anywhere" from the calling security design.
+function addCallSysMsg(room, text) {
+  const rec = { id: 'sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), kind: 'sys', content: text };
+  room.messages.push(rec);
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec);
+}
+
+function endCall(room, toastMsg, sysMsgText) {
   if (!room) return;
   clearCallTimeout(room);
   clearCallRingInterval(room);
@@ -1677,6 +1698,7 @@ function endCall(room, toastMsg) {
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   hideCallOverlay();
   refreshCallButton();
+  if (sysMsgText) addCallSysMsg(room, sysMsgText);
   if (toastMsg) toast(toastMsg);
 }
 
