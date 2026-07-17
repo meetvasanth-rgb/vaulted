@@ -77,23 +77,23 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 /* -- SETUP -- */
 #s-setup{flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .setup-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:36px 32px;width:100%;max-width:380px}
-.setup-back{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;margin-bottom:24px;background:none;transition:color .15s;padding:0}
+.setup-back{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:24px;background:none;transition:color .15s;padding:0}
 .setup-back:hover{color:var(--cream2)}
 .setup-back svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 .setup-logo{text-align:center;margin-bottom:24px}
 .setup-logo .rule{height:1px;background:var(--gold);width:60px;margin:0 auto 12px}
 .setup-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
-.setup-title{font-size:14px;font-weight:400;color:var(--cream2);margin-bottom:20px;text-align:center}
+.setup-title{font-size:16px;font-weight:400;color:var(--cream2);margin-bottom:20px;text-align:center}
 .field{margin-bottom:14px}
-.field label{display:block;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.field label{display:block;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .field input{width:100%;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:16px;color:var(--cream);transition:border-color .15s}
 .field input:focus{border-color:var(--gold-border)}
 .field input::placeholder{color:var(--hint)}
-.field-note{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}
-.btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:13px;font-weight:500;letter-spacing:.05em;padding:12px;border-radius:2px;border:none;transition:background .15s;margin-top:6px}
+.field-note{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
+.btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:15px;font-weight:500;letter-spacing:.05em;padding:13px;border-radius:2px;border:none;transition:background .15s;margin-top:6px}
 .btn-gold:hover{background:#C9A94A}
 .btn-gold:disabled{opacity:.5;cursor:not-allowed}
-.err-msg{font-size:12px;color:var(--red);margin-top:8px;text-align:center;display:none}
+.err-msg{font-size:13px;color:var(--red);margin-top:8px;text-align:center;display:none}
 
 /* -- WAITING -- */
 #s-waiting{flex-direction:column;align-items:center;justify-content:center;padding:24px}
@@ -102,19 +102,22 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .w-logo .rule{height:1px;background:var(--gold);width:60px;margin:0 auto 12px}
 .w-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
 .w-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--cream);margin-bottom:6px}
-.w-sub{font-size:12px;color:var(--muted);margin-bottom:28px;line-height:1.6}
+.w-sub{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6}
 .code-box{background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:3px;padding:16px 20px;margin-bottom:20px}
-.code-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.code-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .code-value{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:400;letter-spacing:.08em;color:var(--gold);word-break:break-all}
-.copy-btn{background:none;border:0.5px solid var(--border2);border-radius:2px;padding:7px 16px;font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:all .15s;margin-bottom:20px}
-.copy-btn:hover{border-color:var(--gold-border);color:var(--gold)}
-.copy-btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.code-actions{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
+.copy-btn,.share-btn{background:none;border:0.5px solid var(--border2);border-radius:2px;padding:7px 16px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:all .15s}
+.copy-btn:hover,.share-btn:hover{border-color:var(--gold-border);color:var(--gold)}
+.copy-btn svg,.share-btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.share-btn{background:var(--gold);border-color:var(--gold);color:var(--black)}
+.share-btn:hover{background:#C9A94A;color:var(--black)}
 .w-pulse{display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:24px}
 .pulse-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);opacity:.3;animation:pulse-seq 1.4s infinite}
 .pulse-dot:nth-child(2){animation-delay:.2s}.pulse-dot:nth-child(3){animation-delay:.4s}
 @keyframes pulse-seq{0%,80%,100%{opacity:.3}40%{opacity:1}}
-.w-note{font-size:11px;color:var(--hint);line-height:1.6}
-.close-btn{background:none;border:0.5px solid var(--border);border-radius:2px;padding:8px 20px;font-size:11px;color:var(--muted);margin-top:20px;display:block;width:100%;transition:all .15s}
+.w-note{font-size:12px;color:var(--hint);line-height:1.6}
+.close-btn{background:none;border:0.5px solid var(--border);border-radius:2px;padding:8px 20px;font-size:12px;color:var(--muted);margin-top:20px;display:block;width:100%;transition:all .15s}
 .close-btn:hover{border-color:var(--red);color:var(--red)}
 
 /* -- CHAT -- */
@@ -282,8 +285,8 @@ body.select-mode .chat-ftr{display:none}
   .logo-name{font-size:52px !important}
   .tagline{font-size:16px !important;margin-bottom:36px}
   .card{padding:16px 14px}
-  .card-title{font-size:12px}
-  .card-desc{font-size:10px}
+  .card-title{font-size:13px}
+  .card-desc{font-size:12px}
   .setup-card,.waiting-card,.closed-card{padding:24px 18px}
   .code-value{font-size:22px}
   .chat-hdr{height:calc(46px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 12px 0}
@@ -788,6 +791,10 @@ body.select-mode .chat-ftr{display:none}
 
     <p class="tagline" id="logoTag">Two people. One conversation.<br/>Disappears when you leave.</p>
 
+    <!-- Clarifies who does what before the cards below — the create/join
+         split isn't obvious on a first visit with no prior context. -->
+    <div style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:-28px auto 24px;max-width:340px;line-height:1.6">Starting the conversation? Create or name a room, then send the code. Already have one? Join.</div>
+
     <!-- Cards matching messenger surface -->
     <div class="cards" id="cards" style="grid-template-columns:1fr;gap:8px;max-width:360px;margin:0 auto">
 
@@ -905,9 +912,14 @@ body.select-mode .chat-ftr{display:none}
       <div class="code-label" id="code-label">Secret code</div>
       <div class="code-value" id="display-code">—</div>
     </div>
-    <button class="copy-btn" onclick="copyCode()">
-      <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy
-    </button>
+    <div class="code-actions">
+      <button class="share-btn" id="share-code-btn" onclick="shareCode()" style="display:none">
+        <svg viewBox="0 0 24 24"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>Share
+      </button>
+      <button class="copy-btn" onclick="copyCode()">
+        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy
+      </button>
+    </div>
     <div class="w-pulse"><div class="pulse-dot"></div><div class="pulse-dot"></div><div class="pulse-dot"></div></div>
     <div class="w-note" id="w-note">Waiting for the other person to join…</div>
     <button class="close-btn" onclick="closeRoom()">Cancel &amp; close room</button>
@@ -3657,6 +3669,13 @@ async function handleSetup() {
       document.getElementById('display-code').textContent = result.code;
       const wNote = document.getElementById('w-note');
       if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
+      // Web Share API is the whole point — one tap into WhatsApp/Messages/
+      // whatever they already have open, instead of copy → switch apps →
+      // find the chat → paste. Not every browser supports it (desktop
+      // Chrome/Firefox mostly don't), so Copy stays as the universal
+      // fallback rather than replacing it.
+      const shareBtn = document.getElementById('share-code-btn');
+      if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
       showScreen('s-waiting');
 
       if (room.waitInterval) clearInterval(room.waitInterval);
@@ -3717,11 +3736,27 @@ function resetSetupBtn() {
   btn.textContent = mode === 'join' ? 'Join room' : mode === 'named' ? 'Create named room' : 'Create room';
 }
 
-// ── COPY CODE ─────────────────────────────────────────────────────────
+// ── COPY / SHARE CODE ────────────────────────────────────────────────
 function copyCode() {
   const code = document.getElementById('display-code').textContent;
   navigator.clipboard.writeText(code).catch(() => {});
   toast('Code copied');
+}
+
+// Hands the code to the OS share sheet — the person picks WhatsApp, iMessage,
+// email, whatever they'd already use to reach the other person, in one tap
+// instead of copy, leave the app, find the chat, paste. The code itself is
+// still the only thing that gets shared (no link, no room metadata) — this
+// doesn't change what's being disclosed, just how many steps it takes.
+async function shareCode() {
+  const code = document.getElementById('display-code').textContent;
+  if (!code || code === '—') return;
+  try {
+    await navigator.share({ text: `Join me on Vaultlix — an anonymous, encrypted chat. Code: ${code}` });
+  } catch (e) {
+    // AbortError just means they closed the share sheet without picking
+    // anything — not a failure worth surfacing.
+  }
 }
 
 // ── CLOSE / LEAVE (scoped to a single room) ────────────────────────────
