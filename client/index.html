@@ -717,6 +717,10 @@ body.select-mode .chat-ftr{display:none}
 .call-accept-btn svg{width:22px;height:22px;fill:#fff;stroke:none}
 .call-decline-btn,.call-end-btn{background:#C0392B}
 .call-decline-btn svg,.call-end-btn svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round}
+.call-mute-btn{width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:.15s}
+.call-mute-btn svg{width:18px;height:18px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.call-mute-btn.muted{background:#B8973E;border-color:#B8973E}
+.call-mute-btn.muted svg{stroke:#0A0908}
 </style>
 </head>
 <body>
@@ -1489,7 +1493,7 @@ async function sendSignal(room, type, payload) {
   return true;
 }
 
-function handleSignalMessage(room, type, payload) {
+async function handleSignalMessage(room, type, payload) {
   if (type === 'call-invite') {
     // Already mid-call somewhere else (this app only ever handles one call
     // at a time, same as a phone) — tell the caller we're busy rather than
@@ -1510,6 +1514,22 @@ function handleSignalMessage(room, type, payload) {
     startCallTimer(room);
     renderCallOverlay(room);
     refreshCallButton();
+    // Both sides have now agreed to the call — the caller becomes the
+    // offerer. (The callee already set up their side as the answerer back
+    // in acceptCall(), before this message was even sent.)
+    const pc = await setupPeerConnection(room);
+    if (!pc || room.callState !== 'active') {
+      if (room.callState === 'active') { sendSignal(room, 'call-hangup', {}); endCall(room, 'Couldn’t access your microphone.'); }
+      return;
+    }
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
+    } catch (e) {
+      sendSignal(room, 'call-hangup', {});
+      endCall(room, 'Could not start the call.');
+    }
   } else if (type === 'call-decline') {
     if (room.callState !== 'outgoing') return;
     endCall(room, `${room.callPeerName || 'They'} declined the call.`);
@@ -1519,6 +1539,37 @@ function handleSignalMessage(room, type, payload) {
   } else if (type === 'call-hangup') {
     if (room.callState === 'idle') return;
     endCall(room, 'Call ended.');
+  } else if (type === 'offer') {
+    // Only the answerer (callee) should ever receive an offer, and only
+    // once they've already set up their side via acceptCall().
+    if (room.callState !== 'active' || !room.pc) return;
+    try {
+      await room.pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+      await flushPendingIceCandidates(room);
+      const answer = await room.pc.createAnswer();
+      await room.pc.setLocalDescription(answer);
+      await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
+    } catch (e) {
+      sendSignal(room, 'call-hangup', {});
+      endCall(room, 'Could not connect the call.');
+    }
+  } else if (type === 'answer') {
+    if (!room.pc) return;
+    try {
+      await room.pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+      await flushPendingIceCandidates(room);
+    } catch (e) {
+      sendSignal(room, 'call-hangup', {});
+      endCall(room, 'Could not connect the call.');
+    }
+  } else if (type === 'ice-candidate') {
+    if (!payload || !payload.candidate || !room.pc) return;
+    if (room.pc.remoteDescription) {
+      try { await room.pc.addIceCandidate(payload.candidate); } catch (e) {}
+    } else {
+      room.pendingIceCandidates = room.pendingIceCandidates || [];
+      room.pendingIceCandidates.push(payload.candidate);
+    }
   }
 }
 
@@ -1560,7 +1611,7 @@ async function startCall() {
   }, CALL_RING_TIMEOUT_MS);
 }
 
-function acceptCall() {
+async function acceptCall() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
   room.callState = 'active';
@@ -1569,6 +1620,14 @@ function acceptCall() {
   startCallTimer(room);
   renderCallOverlay(room);
   refreshCallButton();
+
+  // Set up as the answerer now, before the caller's offer even arrives —
+  // by the time 'offer' comes in over signaling, room.pc is already ready
+  // to receive it.
+  const pc = await setupPeerConnection(room);
+  if (!pc || room.callState !== 'active') {
+    if (room.callState === 'active') { sendSignal(room, 'call-hangup', {}); endCall(room, 'Couldn’t access your microphone.'); }
+  }
 }
 
 function declineCall() {
@@ -1593,6 +1652,7 @@ function endCall(room, toastMsg) {
   if (!room) return;
   clearCallTimeout(room);
   stopCallTimer(room);
+  teardownPeerConnection(room);
   room.callState = 'idle';
   room.callPeerName = null;
   room.callStartedAt = null;
@@ -1651,12 +1711,18 @@ function renderCallOverlay(room) {
         <button class="call-accept-btn" onclick="acceptCall()" title="Accept">${phoneIcon}</button>
       </div>`;
   } else if (room.callState === 'active') {
+    const micIcon = room.callMuted
+      ? '<svg viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
     overlay.innerHTML = `
       <div class="call-rule"></div>
       <div class="call-v">V</div>
       <div class="call-status-label">${name}</div>
       <div class="call-timer" id="call-timer">00:00</div>
-      <button class="call-end-btn" onclick="hangupCall()" title="End call">${xIcon}</button>`;
+      <div class="call-actions">
+        <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
+        <button class="call-end-btn" onclick="hangupCall()" title="End call">${xIcon}</button>
+      </div>`;
   }
 
   if (isNew) requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('visible')));
@@ -1667,6 +1733,116 @@ function hideCallOverlay() {
   if (!overlay) return;
   overlay.classList.remove('visible');
   setTimeout(() => overlay.remove(), 300);
+}
+
+// ── REAL AUDIO (RTCPeerConnection) ───────────────────────────────────────
+// Phase 3: wires actual media on top of the Phase 2 call state machine.
+// iceTransportPolicy is forced to 'relay' unconditionally — every call goes
+// through the Cloudflare TURN relay, never a direct peer-to-peer path. That
+// one setting is what actually delivers "your IP is never exposed to the
+// other participant," per the security architecture doc; it is not
+// something to make configurable or relax later.
+//
+// Offer/answer/ICE all travel over the same encrypted signaling channel
+// from Phase 1 (sendSignal/handleSignalMessage) — nothing new to trust
+// there. getUserMedia is requested only once a call is actually being
+// connected (after 'call-accept'), never on page load or on ringing alone.
+
+async function fetchTurnCredentials(room) {
+  try {
+    const result = await api('/api/turn-credentials', { code: room.code, token: room.token });
+    if (result.error || !Array.isArray(result.iceServers)) return null;
+    return result.iceServers;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Returns the RTCPeerConnection, or null if setup failed (mic permission
+// denied, no TURN credentials available, etc.) — callers should treat null
+// as "end the call," not retry silently.
+async function setupPeerConnection(room) {
+  const iceServers = await fetchTurnCredentials(room);
+  if (!iceServers) return null;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    return null; // permission denied, no mic, or insecure context
+  }
+  room.localStream = stream;
+  room.callMuted = false;
+
+  const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
+  room.pc = pc;
+  room.pendingIceCandidates = [];
+
+  stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+  pc.onicecandidate = (ev) => {
+    if (ev.candidate) sendSignal(room, 'ice-candidate', { candidate: ev.candidate.toJSON() });
+  };
+
+  pc.ontrack = (ev) => {
+    let audioEl = document.getElementById('call-remote-audio');
+    if (!audioEl) {
+      audioEl = document.createElement('audio');
+      audioEl.id = 'call-remote-audio';
+      audioEl.autoplay = true;
+      audioEl.playsInline = true;
+      audioEl.style.display = 'none';
+      document.body.appendChild(audioEl);
+    }
+    audioEl.srcObject = ev.streams[0];
+    audioEl.play().catch(() => {}); // WebRTC audio generally isn't subject to
+    // iOS's stricter autoplay block since it follows the user gesture that
+    // started the call, but this is a harmless belt-and-suspenders retry.
+  };
+
+  // 'disconnected' is often transient (brief network blip) and can recover
+  // on its own — only actually end the call on 'failed', which means ICE
+  // genuinely gave up.
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'failed') endCall(room, 'Call connection lost.');
+  };
+
+  return pc;
+}
+
+function teardownPeerConnection(room) {
+  if (room.pc) {
+    try { room.pc.close(); } catch (e) {}
+    room.pc = null;
+  }
+  if (room.localStream) {
+    room.localStream.getTracks().forEach(t => t.stop());
+    room.localStream = null;
+  }
+  const audioEl = document.getElementById('call-remote-audio');
+  if (audioEl) audioEl.remove();
+  room.pendingIceCandidates = [];
+  room.callMuted = false;
+}
+
+// ICE candidates can arrive over signaling before setRemoteDescription has
+// run (perfectly normal ordering-wise) — buffer them and flush once there's
+// a remote description to add them against.
+async function flushPendingIceCandidates(room) {
+  if (!room.pc || !room.pc.remoteDescription) return;
+  const queued = room.pendingIceCandidates || [];
+  room.pendingIceCandidates = [];
+  for (const c of queued) {
+    try { await room.pc.addIceCandidate(c); } catch (e) {}
+  }
+}
+
+function toggleMute() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || !room.localStream) return;
+  room.callMuted = !room.callMuted;
+  room.localStream.getAudioTracks().forEach(t => { t.enabled = !room.callMuted; });
+  renderCallOverlay(room);
 }
 
 // ── KEY VERIFICATION ────────────────────────────────────────────────────
