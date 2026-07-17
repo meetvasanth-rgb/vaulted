@@ -234,12 +234,38 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg-time{font-size:11px;color:#999;margin-top:2px;display:flex;align-items:center;gap:3px}
 .msg-ticks{color:#53bdeb;font-size:13px;letter-spacing:-2px;margin-left:2px}
 
-/* Reply / React action row — shown under a message when tapped */
+/* Reply / React action row — shown under a message when tapped. Icons used
+   to be raw Unicode glyphs (↩ ☑ etc) which render through the OS's plain
+   symbol font on a lot of devices — exactly the "old Windows icon" look —
+   instead of anything drawn by the app. Replaced with the same thin-stroke
+   SVG style used everywhere else (mic/speaker/copy icons), each sitting in
+   its own small tinted chip so the row reads as a set of graphical actions
+   rather than a line of text with emoji glued on. */
 .msg-actions{display:none;gap:6px;margin-top:3px}
 .msg-actions.show{display:flex}
 .msg.me .msg-actions{justify-content:flex-end}
-.msg-action-btn{background:#F0EBE3;border:0.5px solid #E8E2DA;border-radius:14px;padding:4px 11px;font-size:12px;color:#4A3F35;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .15s}
-.msg-action-btn:hover{background:#E8E2DA}
+.msg-action-btn{background:#FAF7F1;border:1px solid rgba(184,151,62,.22);border-radius:20px;padding:4px 12px 4px 4px;font-size:12px;font-weight:500;color:#5C5145;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:background .15s,border-color .15s,transform .12s,box-shadow .15s}
+.msg-action-icon{width:22px;height:22px;border-radius:50%;background:rgba(184,151,62,.13);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,transform .18s}
+.msg-action-icon svg{width:12px;height:12px;fill:none;stroke:#B8973E;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.msg-action-btn:hover{background:#F3ECDD;border-color:rgba(184,151,62,.4);box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.msg-action-btn:hover .msg-action-icon{background:rgba(184,151,62,.22)}
+.msg-action-btn:active{transform:scale(.93)}
+.msg-action-btn:active .msg-action-icon{transform:scale(.88)}
+.msg-action-btn[data-action="delete"]{color:#C0392B}
+.msg-action-btn[data-action="delete"] .msg-action-icon{background:rgba(192,57,43,.1)}
+.msg-action-btn[data-action="delete"] .msg-action-icon svg{stroke:#C0392B}
+.msg-action-btn[data-action="delete"]:hover{background:#FDF0EE;border-color:rgba(192,57,43,.35)}
+.msg-action-btn[data-action="delete"]:hover .msg-action-icon{background:rgba(192,57,43,.2)}
+/* Entrance — each button pops in on its own beat instead of the whole row
+   snapping into view at once; a small spring overshoot (the cubic-bezier)
+   is what reads as "alive" rather than a flat fade. */
+.msg-actions.show .msg-action-btn{animation:msg-action-pop .32s cubic-bezier(.34,1.56,.64,1) both}
+.msg-actions.show .msg-action-btn:nth-child(1){animation-delay:0ms}
+.msg-actions.show .msg-action-btn:nth-child(2){animation-delay:35ms}
+.msg-actions.show .msg-action-btn:nth-child(3){animation-delay:70ms}
+.msg-actions.show .msg-action-btn:nth-child(4){animation-delay:105ms}
+.msg-actions.show .msg-action-btn:nth-child(5){animation-delay:140ms}
+@keyframes msg-action-pop{from{opacity:0;transform:translateY(6px) scale(.8)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 /* Quick-reaction strip, opened from the React action */
 .reaction-picker{display:none;gap:4px;background:#fff;border:0.5px solid #E8E2DA;border-radius:20px;padding:5px 8px;margin-top:3px;box-shadow:0 2px 10px rgba(0,0,0,0.08);align-self:flex-start}
@@ -2943,21 +2969,36 @@ function isSingleEmoji(str) {
   }
 }
 
+// Small line-icon set for the action row — same thin-stroke SVG style used
+// for mic/speaker/copy icons elsewhere in the app, swapped in for what used
+// to be raw Unicode glyphs (↩ ☑ etc). Those render through the OS's plain
+// symbol font on a lot of devices rather than anything the app actually
+// drew, which is what read as dated/"old Windows icon"-ish.
+const MSG_ACTION_ICONS = {
+  reply: '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
+  react: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  save: '<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/>',
+  select: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  delete: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+};
+function msgActionBtn(action, label) {
+  return `<button type="button" class="msg-action-btn" data-action="${action}"><span class="msg-action-icon"><svg viewBox="0 0 24 24">${MSG_ACTION_ICONS[action]}</svg></span>${label}</button>`;
+}
+
 // Text messages get Copy (copies the text); file/image messages get Save
 // (downloads via downloadDataUri) instead — Copy on a file only ever copied
 // its filename as text, which wasn't the useful action there.
 function buildMsgActionsHtml(msgId, kind) {
   const isMedia = kind === 'file';
-  const thirdAction = isMedia
-    ? `<button type="button" class="msg-action-btn" data-action="save">💾 Save</button>`
-    : `<button type="button" class="msg-action-btn" data-action="copy">📋 Copy</button>`;
+  const thirdAction = isMedia ? msgActionBtn('save', 'Save') : msgActionBtn('copy', 'Copy');
   return `
     <div class="msg-actions" id="actions-${msgId}">
-      <button type="button" class="msg-action-btn" data-action="reply">↩ Reply</button>
-      <button type="button" class="msg-action-btn" data-action="react">😊 React</button>
+      ${msgActionBtn('reply', 'Reply')}
+      ${msgActionBtn('react', 'React')}
       ${thirdAction}
-      <button type="button" class="msg-action-btn" data-action="select">☑ Select</button>
-      <button type="button" class="msg-action-btn" data-action="delete">🗑 Delete</button>
+      ${msgActionBtn('select', 'Select')}
+      ${msgActionBtn('delete', 'Delete')}
     </div>
     <div class="reaction-picker" id="picker-${msgId}">
       ${QUICK_REACTIONS.map(e => `<span data-emoji="${e}">${e}</span>`).join('')}
