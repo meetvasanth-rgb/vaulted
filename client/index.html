@@ -196,37 +196,17 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .push-banner button.secondary{background:none;color:#7A6E65;border:0.5px solid #D0CAC0}
 
 /* -- ROOM SWITCHER (multi-room tabs) -- */
-.room-tabs{display:none;flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:6px 10px;gap:6px;align-items:center;position:relative}
+.room-tabs{display:none;flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:6px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:center}
 .room-tabs.show{display:flex}
-/* Single collapsed "current room" chip, not a scrolling row of pills — a
-   row of tabs got cramped/hard to scan once several rooms were open at
-   once. Tapping the chip drops down the full vertical list below instead
-   (.room-list-dropdown), which scales to MAX_ROOMS without squeezing
-   anything. */
-.room-switch-chip{display:flex;align-items:center;gap:6px;background:#F5F5F5;border:1px solid transparent;border-radius:16px;padding:6px 12px;font-size:12px;color:#1A1510;font-weight:500;cursor:pointer;transition:all .15s;font-family:inherit;flex:1;min-width:0}
-.room-switch-chip:hover{border-color:rgba(184,151,62,0.3)}
-.room-switch-chip .rsc-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:left}
-.room-switch-chip .rsc-caret{flex-shrink:0;transition:transform .2s;color:#9A8C7E}
-.room-switch-chip.open .rsc-caret{transform:rotate(180deg)}
-.room-switch-chip .rt-dot, .room-list-row .rt-dot{width:6px;height:6px;border-radius:50%;background:#CCC;flex-shrink:0}
-.room-switch-chip .rt-dot.online, .room-list-row .rt-dot.online{background:var(--green)}
-.room-switch-chip .rt-badge, .room-list-row .rt-badge{background:#C0392B;color:#fff;border-radius:9px;min-width:16px;height:16px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;font-weight:600;flex-shrink:0}
+.room-tabs::-webkit-scrollbar{height:0}
+.room-tab{position:relative;flex-shrink:0;display:flex;align-items:center;gap:6px;background:#F5F5F5;border:1px solid transparent;border-radius:16px;padding:6px 12px;font-size:12px;color:#666;cursor:pointer;white-space:nowrap;transition:all .15s;font-family:inherit}
+.room-tab.active{background:rgba(184,151,62,0.13);border-color:rgba(184,151,62,0.4);color:#1A1510;font-weight:500}
+.room-tab .rt-dot{width:6px;height:6px;border-radius:50%;background:#CCC;flex-shrink:0}
+.room-tab .rt-dot.online{background:var(--green)}
+.room-tab .rt-badge{background:#C0392B;color:#fff;border-radius:9px;min-width:16px;height:16px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;font-weight:600}
 .room-tab-add{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#fff;border:1px dashed #D0CAC0;color:#9A8C7E;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;padding:0}
 .room-tab-add:hover{border-color:var(--gold);color:var(--gold)}
 .room-tab-add:disabled{opacity:.4;cursor:not-allowed}
-/* Deliberately no message-content preview in any row here (name/code, online
-   dot, unread count, last-activity time only) — this app's whole point is
-   that nothing about a conversation lingers as visible evidence outside the
-   room itself, so the switcher shouldn't leak more than the old pills did. */
-.room-list-dropdown{position:absolute;top:100%;left:10px;right:10px;background:#fff;border:1px solid #EFEFEF;border-radius:14px;box-shadow:0 10px 30px rgba(26,21,16,0.16);margin-top:6px;opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:50;max-height:280px;overflow-y:auto}
-.room-list-dropdown.show{opacity:1;transform:translateY(0);pointer-events:auto}
-.room-list-row{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;border-bottom:1px solid #F5F2ED;transition:background .12s}
-.room-list-row:last-child{border-bottom:none}
-.room-list-row:hover{background:#FAF8F4}
-.room-list-row.active{background:rgba(184,151,62,0.08)}
-.room-list-row .rlr-name{flex:1;font-size:13.5px;color:#1A1510;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.room-list-row .rlr-meta{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.room-list-row .rlr-time{font-size:11px;color:#B0A89C}
 /* -- IN-ROOM DISAPPEARING-TIMER CONTROL -- */
 .timer-bar{flex-shrink:0;background:#FAF8F4;border-bottom:1px solid #F0E8CC;padding:6px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .timer-bar-label{font-size:11px;color:#7A6E65;letter-spacing:.02em}
@@ -2955,73 +2935,28 @@ async function initPushForRoom(room) {
   await subscribeToPush(room, reg);
 }
 
-// ── ROOM SWITCHER UI (collapsed chip + vertical dropdown list) ──────────
-// Used to be a horizontally-scrolling row of pills, one per open room —
-// fine for 2, cramped and hard to scan once you had 4-5 open at once. Now
-// the bar always shows just the active room as a single chip; tapping it
-// drops down the full list below (still capped at MAX_ROOMS rows, so it
-// never needs its own scroll-within-scroll). Each row surfaces exactly what
-// a pill already did — name/code, online dot, unread count, last-activity
-// time — and deliberately nothing about message content, consistent with
-// this app never leaving a visible trace of what was actually said.
-let roomListOpen = false;
-
+// ── ROOM SWITCHER UI (tabs/pills + unread badges) ──────────────────────
 function renderRoomTabs() {
   const wrap = document.getElementById('room-tabs');
   if (!wrap) return;
-  if (rooms.size === 0) { wrap.classList.remove('show'); wrap.innerHTML = ''; roomListOpen = false; return; }
+  if (rooms.size === 0) { wrap.classList.remove('show'); wrap.innerHTML = ''; return; }
   wrap.classList.add('show');
-
-  const active = getActiveRoom();
-  let otherUnread = 0;
-  for (const room of rooms.values()) if (room.code !== activeRoomCode) otherUnread += room.unread;
-  const activeLabel = active ? (active.code.length > 14 ? active.code.slice(0, 12) + '…' : active.code) : '—';
-  const canExpand = rooms.size > 1;
-
-  let rowsHtml = '';
+  let html = '';
   for (const room of rooms.values()) {
-    const isActive = room.code === activeRoomCode;
-    const label = room.code.length > 22 ? room.code.slice(0, 20) + '…' : room.code;
-    const lastTime = room.messages.length ? room.messages[room.messages.length - 1].time : '';
-    rowsHtml += `<div class="room-list-row${isActive ? ' active' : ''}" data-room="${room.code}">
+    const active = room.code === activeRoomCode;
+    const label = room.code.length > 14 ? room.code.slice(0, 12) + '…' : room.code;
+    html += `<div class="room-tab${active ? ' active' : ''}" data-room="${room.code}">
       <span class="rt-dot${room.peerOnline ? ' online' : ''}"></span>
-      <span class="rlr-name">${escHtml(label)}</span>
-      <span class="rlr-meta">
-        ${room.unread > 0 && !isActive ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
-        ${lastTime ? `<span class="rlr-time">${lastTime}</span>` : ''}
-      </span>
+      <span>${escHtml(label)}</span>
+      ${room.unread > 0 && !active ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
     </div>`;
   }
-
-  wrap.innerHTML = `
-    <button type="button" class="room-switch-chip${roomListOpen ? ' open' : ''}" id="room-switch-chip">
-      <span class="rt-dot${active && active.peerOnline ? ' online' : ''}"></span>
-      <span class="rsc-label">${escHtml(activeLabel)}</span>
-      ${otherUnread > 0 ? `<span class="rt-badge">${otherUnread > 9 ? '9+' : otherUnread}</span>` : ''}
-      ${canExpand ? '<svg class="rsc-caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>' : ''}
-    </button>
-    <button type="button" class="room-tab-add" id="room-tab-add" title="Add room"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>
-    <div class="room-list-dropdown${roomListOpen ? ' show' : ''}" id="room-list-dropdown">${rowsHtml}</div>
-  `;
-
-  const chip = document.getElementById('room-switch-chip');
-  if (chip) {
-    chip.style.cursor = canExpand ? 'pointer' : 'default';
-    if (canExpand) chip.onclick = () => { roomListOpen = !roomListOpen; renderRoomTabs(); };
-  }
-  wrap.querySelectorAll('.room-list-row').forEach(el => {
-    el.onclick = () => { roomListOpen = false; setActiveRoom(el.dataset.room); };
-  });
+  html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add room"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>`;
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => setActiveRoom(el.dataset.room); });
   const addBtn = document.getElementById('room-tab-add');
-  if (addBtn) addBtn.onclick = () => { roomListOpen = false; addRoomFlow(); };
+  if (addBtn) addBtn.onclick = () => addRoomFlow();
 }
-
-document.addEventListener('click', (e) => {
-  if (roomListOpen && !e.target.closest('#room-tabs')) {
-    roomListOpen = false;
-    renderRoomTabs();
-  }
-});
 
 function setActiveRoom(code) {
   const room = rooms.get(code);
