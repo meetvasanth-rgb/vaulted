@@ -162,7 +162,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .select-bar-delete:disabled{opacity:.35;cursor:not-allowed}
 .chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
 .chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
-.chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;flex-shrink:1;min-width:0}
+.chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;flex-shrink:1;min-width:0;cursor:pointer}
 .chat-hdr-status{display:flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 .status-dot.away{background:#CCC}
@@ -1151,7 +1151,7 @@ body.select-mode .chat-ftr{display:none}
   <div class="chat-hdr">
     <div class="chat-hdr-logo">V</div>
     <div class="chat-hdr-sep"></div>
-    <div class="chat-hdr-room" id="hdr-code">—</div>
+    <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this room (only visible to you)">—</div>
     <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption">🔒 E2E</div>
     <div class="chat-hdr-status">
       <div class="status-dot" id="status-dot"></div>
@@ -1540,6 +1540,11 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 function makeRoom({ code, token, myName, deleteTimerSeconds }) {
   return {
     code, token, myName,
+    // A private label the user can set for this room — never sent to the
+    // peer or the server (persisted only in this device's own localStorage
+    // blob, see persistRoom). Takes priority over the peer's own chosen
+    // display name when both exist; see roomDisplayLabel().
+    nickname: null,
     peerName: null, peerOnline: false,
     // Set once we've ever confirmed the peer present in this room (join
     // success, or the first poll after that). Once true it stays true —
@@ -1638,6 +1643,7 @@ async function persistRoom(room) {
     const keys = await exportKeyPairForStorage(room);
     localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
       code: room.code, token: room.token, name: room.myName,
+      nickname: room.nickname,
       deleteTimerSeconds: room.deleteTimerSeconds,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
@@ -2715,6 +2721,66 @@ async function showVerifyPanel() {
   document.addEventListener('keydown', verifyEscHandler);
 }
 
+// Private room nickname: a local-only label so a person in several
+// auto-generated rooms at once can tell them apart, without exposing
+// anything extra to the peer or the server. See roomDisplayLabel().
+function closeRenameRoomPanel() {
+  document.getElementById('rename-room-overlay')?.remove();
+  document.removeEventListener('keydown', renameRoomEscHandler);
+}
+function renameRoomEscHandler(e) { if (e.key === 'Escape') closeRenameRoomPanel(); }
+
+function setRoomNickname(room, nickname) {
+  const trimmed = (nickname || '').trim();
+  room.nickname = trimmed || null;
+  persistRoom(room);
+  renderRoomTabs();
+  updateHeaderRoomLabel(room);
+}
+
+function showRenameRoomPanel() {
+  const room = rooms.get(activeRoomCode);
+  if (!room) return;
+  closeRenameRoomPanel();
+  const placeholder = room.peerName || room.code;
+  const hasNickname = !!room.nickname;
+  const overlay = document.createElement('div');
+  overlay.id = 'rename-room-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:340px;width:100%;text-align:center;font-family:inherit">
+      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:8px">Label this room</div>
+      <div style="font-size:12.5px;color:#7A6E65;line-height:1.55;margin-bottom:16px">
+        Only visible to you on this device — never sent to the other person or the server. Handy for telling rooms apart when you have a few open at once.
+      </div>
+      <input id="rename-room-input" type="text" maxlength="24" placeholder="${escHtml(placeholder)}" value="${escHtml(room.nickname || '')}"
+        style="width:100%;box-sizing:border-box;font-size:14px;color:#1A1916;background:#F7F5F1;border:1px solid #EFEFEF;border-radius:10px;padding:11px 12px;margin-bottom:16px;font-family:inherit;text-align:center" />
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        ${hasNickname ? `<button id="rename-room-remove" style="background:none;color:#B3473F;border:1px solid #EFEFEF;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer">Remove label</button>` : ''}
+        <button style="background:none;color:#7A6E65;border:1px solid #EFEFEF;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer" onclick="closeRenameRoomPanel()">Cancel</button>
+        <button id="rename-room-save" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRenameRoomPanel(); });
+  document.addEventListener('keydown', renameRoomEscHandler);
+
+  const input = document.getElementById('rename-room-input');
+  input.focus();
+  input.select();
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { setRoomNickname(room, input.value); closeRenameRoomPanel(); }
+  });
+  document.getElementById('rename-room-save').addEventListener('click', () => {
+    setRoomNickname(room, input.value);
+    closeRenameRoomPanel();
+  });
+  document.getElementById('rename-room-remove')?.addEventListener('click', () => {
+    setRoomNickname(room, null);
+    closeRenameRoomPanel();
+  });
+}
+
 // ── API HELPER ──────────────────────────────────────────────────────────
 async function api(path, data = null) {
   const opts = data
@@ -3211,6 +3277,20 @@ async function initPushForRoom(room) {
 }
 
 // ── ROOM SWITCHER UI (tabs/pills + unread badges) ──────────────────────
+// What to call a room when there's more than one word-salad code to tell
+// apart: a nickname the user set themselves (never shared with the peer or
+// server — see setRoomNickname/persistRoom) beats the peer's own chosen
+// display name (available once they've joined), which in turn beats the
+// raw auto-generated code (all there is before that).
+function roomDisplayLabel(room) {
+  return room.nickname || room.peerName || room.code;
+}
+
+function updateHeaderRoomLabel(room) {
+  const el = document.getElementById('hdr-code');
+  if (el) el.textContent = roomDisplayLabel(room);
+}
+
 function renderRoomTabs() {
   const wrap = document.getElementById('room-tabs');
   if (!wrap) return;
@@ -3219,7 +3299,8 @@ function renderRoomTabs() {
   let html = '';
   for (const room of rooms.values()) {
     const active = room.code === activeRoomCode;
-    const label = room.code.length > 14 ? room.code.slice(0, 12) + '…' : room.code;
+    const rawLabel = roomDisplayLabel(room);
+    const label = rawLabel.length > 14 ? rawLabel.slice(0, 12) + '…' : rawLabel;
     html += `<div class="room-tab${active ? ' active' : ''}" data-room="${room.code}">
       <span class="rt-dot${room.peerOnline ? ' online' : ''}"></span>
       <span>${escHtml(label)}</span>
@@ -3243,7 +3324,7 @@ function setActiveRoom(code) {
   closeAllMsgActions();
   exitSelectMode();
   cancelReply();
-  document.getElementById('hdr-code').textContent = room.code;
+  updateHeaderRoomLabel(room);
   setStatus(room.peerOnline, room.peerName);
   renderChatBody(room);
   enableInput(room.everOnline, true);
@@ -4317,6 +4398,7 @@ async function doPoll(room) {
     if (data.peerOnline) room.everOnline = true;
     if (room.code === activeRoomCode) {
       setStatus(data.peerOnline, data.peerName);
+      updateHeaderRoomLabel(room); // picks up the peer's name the moment it's first known, unless a nickname overrides it
       // Gate the composer on "has the peer ever been confirmed present in
       // this room" rather than their live 8s heartbeat — otherwise a brief
       // screen-lock or backgrounding on their end grays out your composer
@@ -5157,6 +5239,7 @@ window.addEventListener('load', async () => {
     const session = loadRoomSession(code);
     if (!session) continue;
     const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds });
+    room.nickname = session.nickname || null;
     // These get overwritten by restoreRoomHistory() below once the chat log
     // is rebuilt from a full server fetch; set here only as a fallback in
     // case that call fails partway through (e.g. offline on load) so normal
