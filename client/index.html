@@ -53,6 +53,18 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .screen.active{display:flex}
 #s-chat.active{overflow:hidden;height:100vh;height:100dvh}
 
+/* Restore skeleton — shown the instant there's a saved room to reconnect
+   to, on top of whatever screen is currently sitting there (the static
+   landing page, until the reload finishes), so a slow reconnect reads as
+   "getting your conversation back" instead of a silent stall followed by a
+   sudden snap to a full chat log. Removed the moment showRestoreSkeleton's
+   caller actually shows s-chat (or gives up and shows the landing page). */
+#restore-skeleton-overlay{position:fixed;inset:0;z-index:500;background:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:16px;gap:8px}
+.skeleton-bubble{height:38px;border-radius:18px;border-bottom-right-radius:4px;background:linear-gradient(90deg,#F4F1EC 25%,#F1E4C2 37%,#F4F1EC 63%);background-size:400% 100%;animation:skeleton-shimmer 1.4s ease-in-out infinite}
+.skeleton-bubble.them{align-self:flex-start;border-bottom-left-radius:4px;border-bottom-right-radius:18px}
+.skeleton-bubble.me{align-self:flex-end}
+@keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
 /* -- LANDING -- */
 /* Bottom padding is intentionally larger than the sides — .landing-footer
    is position:fixed at the very bottom of the viewport, and on shorter
@@ -107,7 +119,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .setup-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:36px 32px;width:100%;max-width:380px}
 .setup-back{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:24px;background:none;transition:color .15s;padding:0}
 .setup-back:hover{color:var(--cream2)}
-.setup-back svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.setup-back svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .setup-logo{text-align:center;margin-bottom:24px}
 .setup-logo .rule{height:1px;background:var(--gold);width:60px;margin:0 auto 12px}
 .setup-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
@@ -137,7 +149,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .code-actions{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
 .copy-btn,.share-btn{background:none;border:0.5px solid var(--border2);border-radius:2px;padding:7px 16px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:all .15s}
 .copy-btn:hover,.share-btn:hover{border-color:var(--gold-border);color:var(--gold)}
-.copy-btn svg,.share-btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.copy-btn svg,.share-btn svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .share-btn{background:var(--gold);border-color:var(--gold);color:var(--black)}
 .share-btn:hover{background:#C9A94A;color:var(--black)}
 .w-pulse{display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:24px}
@@ -223,6 +235,13 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .timer-bar-label{font-size:11px;color:#7A6E65;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 #timer-bar-select{font-size:11px;color:#4A3F35;background:#fff;border:0.5px solid #E0D9D0;border-radius:12px;padding:3px 8px;font-family:inherit;cursor:pointer;flex-shrink:0}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
+/* Settle-in for a message that just genuinely arrived (sent or received
+   live) — see renderMessageRecord's animate param. A gentle scale+rise
+   rather than a hard cut, matching the care already put into the bigger
+   ceremonial moments (V-entrance, vanish) but for the everyday rhythm of
+   the app instead of just its bookends. */
+.msg-enter{animation:msg-settle .28s cubic-bezier(0.22,1,0.36,1)}
+@keyframes msg-settle{0%{opacity:0;transform:translateY(8px) scale(0.96)}100%{opacity:1;transform:translateY(0) scale(1)}}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
 .msg.them{align-self:flex-start;align-items:flex-start}
@@ -239,8 +258,14 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
    menu on a slightly longer press. Copy is still reachable, just via the
    app's own action row now instead of native selection. */
 .bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-.msg.me .bubble{background:#DCF8C6;border-bottom-right-radius:4px}
-.msg.them .bubble{background:#F0F0F0;border-bottom-left-radius:4px}
+/* Sent/received bubbles used to be WhatsApp's stock green/grey — every other
+   screen in the app (landing, calls, settings, the V ceremonies) has been
+   deliberately rebuilt in Vaultlix's own gold-on-cream palette, but the one
+   surface people actually spend their time looking at was never touched.
+   Warm gold-tinted cream for "me", a lighter neutral oatmeal for "them" —
+   still readable at a glance which is which, now actually on-brand. */
+.msg.me .bubble{background:#F1E4C2;border-bottom-right-radius:4px}
+.msg.them .bubble{background:#F4F1EC;border-bottom-left-radius:4px}
 .bubble.emoji-jumbo{background:none !important;padding:2px 4px;font-size:2.6em;line-height:1.15}
 .msg-time{font-size:11px;color:#999;margin-top:2px;display:flex;align-items:center;gap:3px}
 .msg-ticks{color:#53bdeb;font-size:13px;letter-spacing:-2px;margin-left:2px}
@@ -257,7 +282,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .msg.me .msg-actions{justify-content:flex-end}
 .msg-action-btn{background:#FAF7F1;border:1px solid rgba(184,151,62,.22);border-radius:14px;padding:7px 10px 6px;font-size:12px;font-weight:500;color:#5C5145;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:50px;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:background .15s,border-color .15s,transform .12s,box-shadow .15s}
 .msg-action-icon{width:24px;height:24px;border-radius:50%;background:rgba(184,151,62,.13);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,transform .18s}
-.msg-action-icon svg{width:13px;height:13px;fill:none;stroke:#B8973E;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.msg-action-icon svg{width:13px;height:13px;fill:none;stroke:#B8973E;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .msg-action-label{font-size:10px;line-height:1}
 .msg-action-btn:hover{background:#F3ECDD;border-color:rgba(184,151,62,.4);box-shadow:0 2px 6px rgba(0,0,0,.08)}
 .msg-action-btn:hover .msg-action-icon{background:rgba(184,151,62,.22)}
@@ -356,7 +381,7 @@ body.select-mode .chat-ftr{display:none}
 #s-closed{flex-direction:column;align-items:center;justify-content:center;padding:24px}
 .closed-card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:48px 40px;max-width:380px;width:100%;text-align:center}
 .closed-icon{width:48px;height:48px;border-radius:50%;background:var(--red-dim);border:0.5px solid rgba(192,57,43,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
-.closed-icon svg{width:22px;height:22px;fill:none;stroke:var(--red);stroke-width:1.6;stroke-linecap:round}
+.closed-icon svg{width:22px;height:22px;fill:none;stroke:var(--red);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .closed-title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:300;color:var(--cream);margin-bottom:8px}
 .closed-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:28px}
 .closed-note{font-size:11px;color:var(--hint);line-height:1.6;background:var(--surface2);border:0.5px solid var(--border);border-radius:2px;padding:12px 16px;margin-bottom:24px;text-align:left}
@@ -603,7 +628,7 @@ body.select-mode .chat-ftr{display:none}
 .msg-meta { display:flex; align-items:center; gap:5px; }
 .msg-receipt { font-size:11px; color:#B0A898; font-weight:400; }
 .msg-receipt.delivered { color:#7A6E65; font-weight:500; }
-.msg-receipt.read { color:#2196F3; font-weight:600; font-size:12px; }
+.msg-receipt.read { color:#B8973E; font-weight:600; font-size:12px; }
 .msg-progress-wrap { height:2px; border-radius:1px; background:rgba(0,0,0,0.06); margin-top:3px; overflow:hidden; }
 .msg.me .msg-progress-wrap { background:rgba(184,151,62,0.15); }
 .msg-progress { height:100%; border-radius:1px; background:var(--gold); transition:width 1s linear; }
@@ -628,7 +653,7 @@ body.select-mode .chat-ftr{display:none}
 /* ── FILE ATTACHMENTS ─────────────────────────────────────────── */
 .attach-btn { width:28px; height:38px; background:none; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0.5; transition:opacity 0.15s; padding:0; }
 .attach-btn:hover { opacity:0.9; }
-.attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+.attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .attach-popover { position:fixed; display:flex; gap:6px; background:#fff; border-radius:18px; padding:8px; box-shadow:0 4px 20px rgba(26,25,22,0.22); z-index:999; animation:attachPopIn 0.14s ease; }
 @keyframes attachPopIn { from{ opacity:0; transform:translateY(6px) scale(0.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
 .attach-opt { display:flex; flex-direction:column; align-items:center; gap:4px; background:none; border:none; cursor:pointer; padding:6px 8px; width:60px; }
@@ -638,7 +663,7 @@ body.select-mode .chat-ftr{display:none}
 .attach-opt-label { font-size:10px; color:#8A7F72; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
-.msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; flex-shrink:0; }
+.msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 .msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
 .msg-viewonce svg { flex-shrink:0; fill:none; stroke:#D9B94E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
@@ -996,7 +1021,7 @@ body.select-mode .chat-ftr{display:none}
 .settings-link-row{display:flex;align-items:center;padding:14px 20px;gap:12px;cursor:pointer;transition:background .15s;text-decoration:none}
 .settings-link-row:active{background:#F7F4F0}
 .settings-link-chevron{color:#C4B8AC;flex-shrink:0}
-.settings-link-chevron svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.settings-link-chevron svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 .settings-version{padding:20px 20px 0;font-family:'Inter',sans-serif;font-size:11px;color:#C4B8AC;text-align:center}
 
@@ -2213,7 +2238,7 @@ function addCallSysMsg(room, text) {
   const stamped = `${text} · ${formatMsgTime(Date.now())}`;
   const rec = { id: 'sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), kind: 'sys', content: stamped };
   room.messages.push(rec);
-  if (room.code === activeRoomCode) renderMessageRecord(room, rec);
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
 }
 
 // Callee-side safety net: normally an incoming-call screen is cleared by a
@@ -3899,13 +3924,17 @@ function buildAlbumGridHtml(rec) {
   return `${badge}<div class="${gridClass}">${tiles}</div>`;
 }
 
-function renderMessageRecord(room, rec) {
+// animate=true is passed only from genuinely live arrivals (a message you
+// just sent, or one just landing via poll) — NOT from renderChatBody's bulk
+// repaint when opening/switching to a room, which would otherwise replay
+// the settle-in for the entire scrollback every time you switch tabs.
+function renderMessageRecord(room, rec, animate) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
 
   if (rec.kind === 'sys') {
     const div = document.createElement('div');
-    div.className = 'sys-msg';
+    div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
     div.textContent = rec.content;
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
@@ -3913,7 +3942,7 @@ function renderMessageRecord(room, rec) {
   }
 
   const div = document.createElement('div');
-  div.className = `msg ${rec.isMe ? 'me' : 'them'}`;
+  div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
   div.dataset.msgId = rec.id;
 
   const receiptHtml = rec.isMe
@@ -4482,12 +4511,12 @@ async function doPoll(room) {
         if (msg.type === 'system') {
           const rec = { id: 'sys-' + msg.id, kind: 'sys', content: msg.content };
           room.messages.push(rec);
-          if (room.code === activeRoomCode) renderMessageRecord(room, rec);
+          if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
         } else if (msg.type === 'message') {
           const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id);
           if (rec) {
             room.messages.push(rec);
-            if (room.code === activeRoomCode) renderMessageRecord(room, rec);
+            if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
             else room.unread++;
             notifyMsg(room);
             // Note: the disappearing-message timer does NOT start here. It
@@ -4569,7 +4598,7 @@ async function sendMsg() {
     reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
-  renderMessageRecord(room, rec);
+  renderMessageRecord(room, rec, true);
   cancelReply();
 
   try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
@@ -5260,8 +5289,29 @@ function triggerLandingAnim() {
 }
 
 // ── PAGE LOAD: restore every saved room and reconnect each independently ──
+// A few ghost bubbles standing in for messages that haven't come back from
+// the server yet — widths/alignment vary so it reads as "a conversation",
+// not a row of identical grey bars.
+function showRestoreSkeleton() {
+  const overlay = document.createElement('div');
+  overlay.id = 'restore-skeleton-overlay';
+  overlay.innerHTML = `
+    <div class="skeleton-bubble them" style="width:58%"></div>
+    <div class="skeleton-bubble me" style="width:38%"></div>
+    <div class="skeleton-bubble them" style="width:44%"></div>
+    <div class="skeleton-bubble me" style="width:50%"></div>
+    <div class="skeleton-bubble them" style="width:32%"></div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function hideRestoreSkeleton() {
+  document.getElementById('restore-skeleton-overlay')?.remove();
+}
+
 window.addEventListener('load', async () => {
   const idx = loadRoomsIndex();
+  if (idx.length > 0) showRestoreSkeleton();
   let restoredAny = false;
 
   for (const code of idx) {
@@ -5310,8 +5360,10 @@ window.addEventListener('load', async () => {
     const activate = (preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value;
     showScreen('s-chat');
     setActiveRoom(activate);
+    hideRestoreSkeleton();
     for (const room of rooms.values()) startRoomPolling(room);
   } else {
+    hideRestoreSkeleton();
     triggerLandingAnim();
   }
 });
@@ -5439,7 +5491,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
-  renderMessageRecord(room, rec);
+  renderMessageRecord(room, rec, true);
 
   try {
     await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
@@ -5478,7 +5530,7 @@ async function sendAlbumMessage(room, items, viewOnce) {
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
-  renderMessageRecord(room, rec);
+  renderMessageRecord(room, rec, true);
 
   try {
     await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
@@ -5614,7 +5666,7 @@ async function sendVoiceMessage(room, blob, durationSeconds, mime) {
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
-  renderMessageRecord(room, rec);
+  renderMessageRecord(room, rec, true);
 
   try {
     await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
