@@ -4063,15 +4063,36 @@ function scheduleViewOnceDelete(room, msgId) {
   room.msgTimers.set(msgId, handle);
 }
 
-// Per-photo tap inside an album grid (buildAlbumGridHtml): a plain photo
-// opens the full-screen viewer directly. A still-hidden view-once photo
-// reveals just that one tile and, once the viewer closes, schedules only
-// THAT photo's removal from the album's images[] a couple seconds later —
-// the rest of the album, and any photos in it that aren't view-once, are
-// untouched. Looks the photo up by its stable id rather than array
+// Shared by a direct tile tap and by swipe-navigating to a sibling photo
+// from inside an already-open viewer (see the `gallery` mode in
+// viewImage): reveals one photo in an album, marking it viewed and
+// updating its grid tile the same way whichever route got there. Returns
+// null if the photo can't be found (e.g. the album shrank from under an
+// open viewer). Looks the photo up by its stable id rather than array
 // position (see the id comment in processIncomingContent/sendAlbumMessage)
 // so two view-once photos opened close together in the same album can't
 // have one's later splice shift what the other's pending timer targets.
+function revealAlbumImage(room, msgId, imgId) {
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec || !rec.images) return null;
+  const img = rec.images.find(im => im.id === imgId);
+  if (!img) return null;
+  const wasHiddenViewOnce = !!(img.viewOnce && !rec.isMe && !img.viewed);
+  if (wasHiddenViewOnce) {
+    img.viewed = true;
+    if (room.code === activeRoomCode) {
+      const tile = document.querySelector(`.msg[data-msg-id="${msgId}"] .msg-album-tile[data-img-id="${imgId}"]`);
+      if (tile) tile.innerHTML = '<div class="msg-viewonce msg-viewonce-opened"><span>Opened</span></div>';
+    }
+  }
+  return { src: `data:${img.mime};base64,${img.base64}`, wasHiddenViewOnce };
+}
+
+// Per-photo tap inside an album grid (buildAlbumGridHtml) opens the
+// full-screen viewer in "gallery" mode — swiping left/right there moves
+// between the other photos in the same album (see viewImage's `gallery`
+// option) instead of each photo only ever being reachable one at a time
+// from the grid.
 function handleAlbumImageTap(msgId, imgId) {
   if (wasJustLongPressed()) return;
   if (selectMode) { toggleMessageSelection(msgId); return; }
@@ -4081,22 +4102,7 @@ function handleAlbumImageTap(msgId, imgId) {
     if (found) { room = r; rec = found; break; }
   }
   if (!room || !rec || !rec.images) return;
-  const img = rec.images.find(im => im.id === imgId);
-  if (!img) return;
-
-  if (img.viewOnce && !rec.isMe && !img.viewed) {
-    img.viewed = true;
-    if (room.code === activeRoomCode) {
-      const tile = document.querySelector(`.msg[data-msg-id="${msgId}"] .msg-album-tile[data-img-id="${imgId}"]`);
-      if (tile) tile.innerHTML = '<div class="msg-viewonce msg-viewonce-opened"><span>Opened</span></div>';
-    }
-    viewImage(`data:${img.mime};base64,${img.base64}`, {
-      hideDownload: true,
-      onClose: () => scheduleAlbumImageDelete(room, msgId, imgId),
-    });
-    return;
-  }
-  viewImage(`data:${img.mime};base64,${img.base64}`);
+  viewImage(null, { gallery: { room, rec, startImgId: imgId } });
 }
 
 function scheduleAlbumImageDelete(room, msgId, imgId) {
@@ -5727,16 +5733,47 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// `opts.gallery`, when present, is `{ room, rec, startImgId }` — the album
+// message record being viewed. Swiping horizontally (or ArrowLeft/Right)
+// then moves between the OTHER photos in that same rec.images[] without
+// closing and reopening the viewer, reusing revealAlbumImage for each
+// photo landed on so a still-hidden view-once photo gets the exact same
+// reveal treatment swiping past it as tapping its tile directly would.
+// Every photo revealed this way across the whole viewer session (not just
+// whichever one happens to be showing when it closes) gets its grace-timer
+// deletion scheduled in cleanup() below.
 function viewImage(src, opts) {
-  const { onClose, hideDownload } = opts || {};
+  const { onClose, hideDownload, gallery } = opts || {};
   let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
   let lastTouchDist = 0;
   // Swipe-to-dismiss: a vertical drag/scroll while not zoomed in closes the
   // viewer and returns to the room, same as Instagram/WhatsApp. Only active
   // at scale<=1 — once zoomed, a single-finger drag pans the image instead.
+  // In gallery mode a horizontal drag is claimed for photo-to-photo
+  // navigation instead — see the axis-lock in the touch handlers below.
   let isSwiping = false, swipeStartY = 0, swipeDeltaY = 0;
   let wheelAccum = 0, wheelResetTimer = null;
   const SWIPE_CLOSE_THRESHOLD = 90;
+  const H_SWIPE_THRESHOLD = 60;
+  let swipeAxisPending = false, swipeAxisLocked = null, hNavStartX = 0, hNavStartY = 0, hNavDeltaX = 0;
+
+  let currentImgId = null;
+  const revealedThisSession = new Set();
+  let currentSrc = src;
+  let effectiveHideDownload = hideDownload;
+
+  if (gallery) {
+    const first = revealAlbumImage(gallery.room, gallery.rec.id, gallery.startImgId);
+    if (!first) return; // photo no longer there — nothing to open
+    currentImgId = gallery.startImgId;
+    currentSrc = first.src;
+    if (first.wasHiddenViewOnce) revealedThisSession.add(currentImgId);
+    // A whole album is view-once or it isn't (set once for the entire
+    // batch at send time) — so unlike a per-photo reveal state, this is a
+    // fixed property of the session, not something that needs to be
+    // recomputed on every photo navigated to.
+    effectiveHideDownload = !!(gallery.rec.viewOnce && !gallery.rec.isMe);
+  }
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;overflow:hidden;touch-action:none;';
@@ -5747,7 +5784,7 @@ function viewImage(src, opts) {
   // or Escape — no back button needed either. The only visible control is
   // Save, for when the recipient wants to keep a copy.
   let dlBtn = null;
-  if (!hideDownload) {
+  if (!effectiveHideDownload) {
     dlBtn = document.createElement('button');
     dlBtn.type = 'button';
     dlBtn.title = 'Save image';
@@ -5760,17 +5797,26 @@ function viewImage(src, opts) {
     // which doesn't have that size ceiling.
     dlBtn.onclick = (e) => {
       e.stopPropagation();
-      const ext = (src.match(/^data:image\/(\w+)/) || [])[1] || 'jpg';
-      downloadDataUri(src, `vaultlix-image.${ext}`);
+      const ext = (currentSrc.match(/^data:image\/(\w+)/) || [])[1] || 'jpg';
+      downloadDataUri(currentSrc, `vaultlix-image.${ext}`);
     };
     overlay.appendChild(dlBtn);
+  }
+
+  // "2 / 5" — only present in gallery mode, so a lone photo (or a single
+  // view-once reveal) looks exactly as it always has.
+  let counterEl = null;
+  if (gallery) {
+    counterEl = document.createElement('div');
+    counterEl.style.cssText = 'position:absolute;top:calc(16px + env(safe-area-inset-top));left:0;right:0;text-align:center;color:rgba(255,255,255,.85);font-family:Inter,sans-serif;font-size:13px;font-weight:500;letter-spacing:.03em;z-index:1001;pointer-events:none;';
+    overlay.appendChild(counterEl);
   }
 
   const imgWrap = document.createElement('div');
   imgWrap.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;overflow:hidden;';
 
   const img = document.createElement('img');
-  img.src = src;
+  img.src = currentSrc;
   img.style.cssText = 'max-width:95vw;max-height:85vh;border-radius:4px;object-fit:contain;transform-origin:center center;transition:transform 0.15s ease;user-select:none;-webkit-user-drag:none;';
   img.ondragstart = (e) => e.preventDefault();
   imgWrap.appendChild(img);
@@ -5781,6 +5827,38 @@ function viewImage(src, opts) {
     scale = Math.max(0.5, Math.min(newScale, 8));
     if (scale <= 1) { posX = 0; posY = 0; }
     updateTransform();
+  }
+
+  function updateCounter() {
+    if (!counterEl) return;
+    const imgs = gallery.rec.images;
+    const idx = Array.isArray(imgs) ? imgs.findIndex(im => im.id === currentImgId) : -1;
+    counterEl.textContent = (idx === -1) ? '' : `${idx + 1} / ${imgs.length}`;
+  }
+  updateCounter();
+
+  // delta is +1 (next) or -1 (previous). Returns false (and leaves
+  // everything untouched) at either end of the album, or if the photo
+  // landed on has since vanished from under the viewer.
+  function navigateTo(delta) {
+    if (!gallery) return false;
+    const imgs = gallery.rec.images;
+    if (!Array.isArray(imgs) || !imgs.length) return false;
+    const idx = imgs.findIndex(im => im.id === currentImgId);
+    if (idx === -1) return false;
+    const newIdx = idx + delta;
+    if (newIdx < 0 || newIdx >= imgs.length) return false;
+    const target = imgs[newIdx];
+    const revealed = revealAlbumImage(gallery.room, gallery.rec.id, target.id);
+    if (!revealed) return false;
+    if (revealed.wasHiddenViewOnce) revealedThisSession.add(target.id);
+    currentImgId = target.id;
+    currentSrc = revealed.src;
+    scale = 1; posX = 0; posY = 0;
+    img.src = currentSrc;
+    updateTransform();
+    updateCounter();
+    return true;
   }
 
   function beginSwipe(y) { isSwiping = true; swipeStartY = y; swipeDeltaY = 0; img.style.transition = 'none'; }
@@ -5839,6 +5917,13 @@ function viewImage(src, opts) {
     } else if (e.touches.length === 1) {
       if (scale > 1) {
         isDragging = true; startX = e.touches[0].clientX - posX; startY = e.touches[0].clientY - posY;
+      } else if (gallery) {
+        // Don't commit to vertical-dismiss vs horizontal-navigate yet —
+        // decided on the first move, once the drag actually shows a
+        // direction (see touchmove below).
+        swipeAxisPending = true; swipeAxisLocked = null;
+        hNavStartX = e.touches[0].clientX; hNavStartY = e.touches[0].clientY; hNavDeltaX = 0;
+        img.style.transition = 'none';
       } else {
         beginSwipe(e.touches[0].clientY);
       }
@@ -5855,6 +5940,21 @@ function viewImage(src, opts) {
       e.preventDefault();
       posX = e.touches[0].clientX - startX; posY = e.touches[0].clientY - startY;
       img.style.transition = 'none'; updateTransform(); img.style.transition = 'transform 0.15s ease';
+    } else if (e.touches.length === 1 && gallery && swipeAxisPending) {
+      const dx = e.touches[0].clientX - hNavStartX;
+      const dy = e.touches[0].clientY - hNavStartY;
+      if (swipeAxisLocked === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        swipeAxisLocked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+        if (swipeAxisLocked === 'v') beginSwipe(hNavStartY);
+      }
+      if (swipeAxisLocked === 'h') {
+        e.preventDefault();
+        hNavDeltaX = dx;
+        img.style.transform = `translateX(${dx}px)`;
+      } else if (swipeAxisLocked === 'v') {
+        e.preventDefault();
+        moveSwipe(e.touches[0].clientY);
+      }
     } else if (e.touches.length === 1 && isSwiping) {
       e.preventDefault();
       moveSwipe(e.touches[0].clientY);
@@ -5863,6 +5963,18 @@ function viewImage(src, opts) {
 
   overlay.addEventListener('touchend', () => {
     isDragging = false; lastTouchDist = 0;
+    if (gallery && swipeAxisPending) {
+      swipeAxisPending = false;
+      if (swipeAxisLocked === 'h') {
+        img.style.transition = 'transform 0.2s ease';
+        const dx = hNavDeltaX;
+        swipeAxisLocked = null;
+        const moved = Math.abs(dx) > H_SWIPE_THRESHOLD && navigateTo(dx < 0 ? 1 : -1);
+        if (!moved) updateTransform();
+        return;
+      }
+      swipeAxisLocked = null;
+    }
     endSwipe();
   });
 
@@ -5887,13 +5999,26 @@ function viewImage(src, opts) {
     endSwipe();
   });
 
-  const escHandler = (e) => { if (e.key === 'Escape') cleanup(); };
+  const escHandler = (e) => {
+    if (e.key === 'Escape') { cleanup(); return; }
+    if (gallery) {
+      if (e.key === 'ArrowRight') navigateTo(1);
+      else if (e.key === 'ArrowLeft') navigateTo(-1);
+    }
+  };
   document.addEventListener('keydown', escHandler);
   function cleanup() {
     document.removeEventListener('keydown', escHandler);
     clearTimeout(wheelResetTimer);
     overlay.remove();
-    if (onClose) onClose();
+    if (gallery) {
+      // Every photo actually revealed during this viewer session gets its
+      // grace-window deletion scheduled now — not just whichever one
+      // happened to be on screen when the viewer closed.
+      for (const id of revealedThisSession) scheduleAlbumImageDelete(gallery.room, gallery.rec.id, id);
+    } else if (onClose) {
+      onClose();
+    }
   }
 
   document.body.appendChild(overlay);
