@@ -1405,25 +1405,6 @@ body.select-mode .chat-ftr{display:none}
   </div>
 
   <div class="settings-body">
-    <div class="settings-section-label">Privacy</div>
-
-    <div class="settings-row">
-      <div class="settings-row-icon" style="background:#F0EBE3;color:#B8973E;">
-        <svg viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-      </div>
-      <div class="settings-row-text">
-        <div class="settings-row-title">Read receipts</div>
-        <div class="settings-row-sub">Let sender know when you've read their message</div>
-      </div>
-      <label class="toggle-switch">
-        <input type="checkbox" id="toggle-read-receipts" checked onchange="toggleReadReceipts(this.checked)"/>
-        <div class="toggle-track"></div>
-        <div class="toggle-thumb"></div>
-      </label>
-    </div>
-
-    <div class="settings-divider"></div>
-
     <div class="settings-section-label">Notifications</div>
 
     <div class="settings-row">
@@ -2845,7 +2826,6 @@ function unlockAudio() {
 // never keeping a trace of what was actually said.
 const SETTINGS_KEY = 'vaultlix_settings';
 let settingsOpen = false;
-let readReceiptsEnabled = true;
 let chimeEnabled = true;
 
 function toggleSettings() { settingsOpen ? closeSettings() : openSettings(); }
@@ -2872,8 +2852,6 @@ document.addEventListener('keydown', (e) => {
 function loadSettingsState() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    const rrToggle = document.getElementById('toggle-read-receipts');
-    if (rrToggle) { rrToggle.checked = saved.readReceipts !== false; readReceiptsEnabled = rrToggle.checked; }
     const chimeToggle = document.getElementById('toggle-chime');
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
     const pushToggle = document.getElementById('toggle-push');
@@ -2898,29 +2876,14 @@ function saveSetting(key, value) {
 }
 
 // Read at the very top of the file, before any room connects, so a chime
-// or a read receipt doesn't slip through at default-on before the panel's
-// ever been opened once this session.
+// doesn't slip through at default-on before the panel's ever been opened
+// once this session.
 (function initSettingsFromStorage() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    readReceiptsEnabled = saved.readReceipts !== false;
     chimeEnabled = saved.chime !== false;
   } catch (e) {}
 })();
-
-function toggleReadReceipts(enabled) {
-  readReceiptsEnabled = enabled;
-  saveSetting('readReceipts', enabled);
-  // Disabling mid-session: drop anything already queued rather than let it
-  // fire the moment the setting is flipped back on later — matches "no
-  // blue ticks sent while this is off", not "delayed blue ticks".
-  if (!enabled) {
-    for (const room of rooms.values()) {
-      room.readConfirmIds.length = 0;
-      room.pendingReadIds.length = 0;
-    }
-  }
-}
 
 function toggleChime(enabled) {
   chimeEnabled = enabled;
@@ -4419,17 +4382,9 @@ async function doPoll(room) {
       }
     }
 
-    // Send read confirmations only when the user is actually looking at THIS
-    // room, and only if Settings > Read receipts is on. Disabled: drop them
-    // rather than queue — sender's tick stays at delivered (grey), never
-    // flips to read (blue), and it also means the disappearing-message
-    // timer (which starts from confirmRead) won't fire for this room while
-    // the setting is off. See toggleReadReceipts.
+    // Send read confirmations only when the user is actually looking at THIS room
     if (room.readConfirmIds.length > 0) {
-      if (!readReceiptsEnabled) {
-        room.readConfirmIds.length = 0;
-        room.pendingReadIds.length = 0;
-      } else if (room.code === activeRoomCode && isUserActive()) {
+      if (room.code === activeRoomCode && isUserActive()) {
         const toConfirm = [...room.readConfirmIds, ...room.pendingReadIds];
         room.readConfirmIds.length = 0; room.pendingReadIds.length = 0;
         confirmRead(room, toConfirm);
