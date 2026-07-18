@@ -651,22 +651,56 @@ wss.on('connection', (ws) => {
       // catch it. Same problem messages already solved with Web Push: wake
       // the device so its client reconnects the socket, then the client's
       // own re-announce loop (every 3s while ringing) delivers a live
-      // invite once that reconnect lands. Payload stays generic — no caller
-      // name, same posture as message push — and only fires once per ring
-      // (not on every 3s retry) so a locked phone doesn't buzz repeatedly.
+      // invite once that reconnect lands. Only fires once per ring (not on
+      // every 3s retry) so a locked phone doesn't buzz repeatedly. The
+      // caller's chosen name is already plaintext on this server (room
+      // membership records — same field the ordinary message push above
+      // already puts in "New message from X"), so it's safe to name them
+      // here too instead of a generic "Incoming call".
       if (msg.type === 'call-invite') {
         const now = Date.now();
         const alreadyRinging = room.ringingUntil && room.ringingUntil > now;
         room.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
         if (!alreadyRinging && peerMember.pushSub) {
-          const payload = JSON.stringify({ title: 'Vaultlix', body: 'Incoming call', tag: `vaultlix-call-${roomCode}`, isCall: true });
+          const caller = room.members.get(token);
+          const payload = JSON.stringify({
+            title: 'Vaultlix',
+            body: caller && caller.name ? `${caller.name} is calling` : 'Incoming call',
+            tag: `vaultlix-call-${roomCode}`,
+            isCall: true,
+          });
           webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
             if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
             else console.warn('call push send failed:', err.statusCode, err.body || err.message);
           });
         }
-      } else if (msg.type === 'call-accept' || msg.type === 'call-decline' || msg.type === 'call-busy' || msg.type === 'call-hangup') {
+      } else if (msg.type === 'call-accept' || msg.type === 'call-decline' || msg.type === 'call-busy') {
         room.ringingUntil = 0;
+      } else if (msg.type === 'call-hangup') {
+        // A hangup landing while the ring window is still open means
+        // nobody ever answered — the caller gave up (their own 30s ring
+        // timeout, or a manual cancel) before the callee picked up. That's
+        // a missed call from the callee's side, and worth a second, distinct
+        // push beyond the original "Incoming call" one: their device may
+        // have been locked/backgrounded through the whole ring and never
+        // surfaced anything past that first notification — same as a phone
+        // showing a missed-call notification separate from the ringing one.
+        const now = Date.now();
+        const wasStillRinging = room.ringingUntil && room.ringingUntil > now;
+        room.ringingUntil = 0;
+        if (wasStillRinging && peerMember.pushSub) {
+          const caller = room.members.get(token);
+          const missedPayload = JSON.stringify({
+            title: 'Vaultlix',
+            body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
+            tag: `vaultlix-missed-${roomCode}-${now}`,
+            isCall: false,
+          });
+          webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600 }).catch(err => {
+            if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
+            else console.warn('missed-call push send failed:', err.statusCode, err.body || err.message);
+          });
+        }
       }
       break;
     }
