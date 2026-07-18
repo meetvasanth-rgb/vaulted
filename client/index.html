@@ -923,6 +923,54 @@ body.select-mode .chat-ftr{display:none}
 .call-mute-btn:active,.call-speaker-btn:active{transform:scale(.92)}
 .call-mute-btn svg,.call-speaker-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
 .call-speaker-btn svg{fill:rgba(255,255,255,.85);stroke:rgba(255,255,255,.85)}
+
+/* ── SETTINGS PANEL + GEAR ICON ──────────────────────────────────────── */
+.settings-btn{width:34px;height:34px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9A8C7E;border-radius:50%;transition:all .2s ease;flex-shrink:0;padding:0;margin-left:4px}
+.settings-btn:hover{color:#B8973E;background:rgba(184,151,62,0.08)}
+.settings-btn svg{width:18px;height:18px;transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
+.settings-btn:hover svg{transform:rotate(45deg)}
+.settings-btn.active svg{transform:rotate(90deg);color:#B8973E}
+
+.settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:400;opacity:0;transition:opacity .25s ease;pointer-events:none;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.settings-overlay.open{opacity:1;pointer-events:all}
+.settings-panel{position:fixed;top:0;right:0;bottom:0;width:min(360px,100vw);background:#FFFFFF;z-index:401;transform:translateX(100%);transition:transform .3s cubic-bezier(.34,1.56,.64,1);display:flex;flex-direction:column;overflow-y:auto;box-shadow:-4px 0 32px rgba(0,0,0,0.15)}
+.settings-panel.open{transform:translateX(0)}
+
+.settings-header{display:flex;align-items:center;gap:12px;padding:calc(20px + env(safe-area-inset-top)) 20px 16px;border-bottom:0.5px solid #F0EBE3;flex-shrink:0}
+.settings-back{width:32px;height:32px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9A8C7E;border-radius:50%;transition:all .15s;padding:0;flex-shrink:0}
+.settings-back:hover{background:#F7F4F0;color:#4A3F35}
+.settings-back svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.settings-header-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:400;color:#1A1510;letter-spacing:.06em;flex:1}
+
+.settings-body{flex:1;padding:8px 0 40px;overflow-y:auto}
+.settings-section-label{font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#B0A498;padding:20px 20px 8px}
+.settings-row{display:flex;align-items:center;padding:14px 20px;gap:12px;transition:background .15s}
+.settings-row:active{background:#F7F4F0}
+.settings-row-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.settings-row-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.settings-row-text{flex:1;min-width:0}
+.settings-row-title{font-family:'Inter',sans-serif;font-size:14px;font-weight:500;color:#1A1510;margin-bottom:2px}
+.settings-row-sub{font-family:'Inter',sans-serif;font-size:11px;color:#9A8C7E;line-height:1.4}
+
+.toggle-switch{position:relative;width:44px;height:26px;flex-shrink:0;display:block}
+.toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+.toggle-track{position:absolute;inset:0;border-radius:13px;background:#E0D9D0;transition:background .25s ease;cursor:pointer}
+.toggle-switch input:checked + .toggle-track{background:#B8973E}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#FFFFFF;transition:transform .25s cubic-bezier(.34,1.56,.64,1);box-shadow:0 1px 4px rgba(0,0,0,0.15);pointer-events:none}
+.toggle-switch input:checked ~ .toggle-thumb{transform:translateX(18px)}
+
+.settings-divider{height:0.5px;background:#F0EBE3;margin:4px 20px}
+
+.settings-link-row{display:flex;align-items:center;padding:14px 20px;gap:12px;cursor:pointer;transition:background .15s;text-decoration:none}
+.settings-link-row:active{background:#F7F4F0}
+.settings-link-chevron{color:#C4B8AC;flex-shrink:0}
+.settings-link-chevron svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
+.settings-version{padding:20px 20px 0;font-family:'Inter',sans-serif;font-size:11px;color:#C4B8AC;text-align:center}
+
+.settings-about-badge{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px 20px;margin:8px 20px;background:#F7F4F0;border-radius:8px;border:0.5px solid #E8E2DA}
+.settings-about-rule{width:30px;height:1px;background:#B8973E}
+.settings-about-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:#1A1510}
 </style>
 </head>
 <body>
@@ -1096,6 +1144,12 @@ body.select-mode .chat-ftr{display:none}
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
     </div>
+    <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
     <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
     <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
   </div>
@@ -1338,6 +1392,117 @@ body.select-mode .chat-ftr{display:none}
     <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3z"/></svg>
   </div>
   <div class="pc-word">Vaultlix</div>
+</div>
+
+<!-- Settings overlay + panel -->
+<div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
+<div class="settings-panel" id="settings-panel">
+  <div class="settings-header">
+    <button class="settings-back" onclick="closeSettings()">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <span class="settings-header-title">Settings</span>
+  </div>
+
+  <div class="settings-body">
+    <div class="settings-section-label">Privacy</div>
+
+    <div class="settings-row">
+      <div class="settings-row-icon" style="background:#F0EBE3;color:#B8973E;">
+        <svg viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Read receipts</div>
+        <div class="settings-row-sub">Let sender know when you've read their message</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggle-read-receipts" checked onchange="toggleReadReceipts(this.checked)"/>
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-section-label">Notifications</div>
+
+    <div class="settings-row">
+      <div class="settings-row-icon" style="background:#F0F7F3;color:#4A9B6F;">
+        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Message chime</div>
+        <div class="settings-row-sub">Play sound when a message arrives</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggle-chime" checked onchange="toggleChime(this.checked)"/>
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row">
+      <div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1;">
+        <svg viewBox="0 0 24 24"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><circle cx="19" cy="5" r="3" fill="currentColor" stroke="none"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Push notifications</div>
+        <div class="settings-row-sub">Notify when messages arrive while away</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="toggle-push" onchange="togglePushNotifications(this.checked)"/>
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-section-label">About</div>
+
+    <div class="settings-about-badge">
+      <div class="settings-about-rule"></div>
+      <div class="settings-about-name">Vaultlix</div>
+      <div class="settings-about-rule"></div>
+    </div>
+
+    <div class="settings-link-row" onclick="showScreen('s-privacy'); closeSettings();">
+      <div class="settings-row-icon" style="background:#F7F4F0;color:#9A8C7E;">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Privacy Policy</div>
+        <div class="settings-row-sub">How we handle your data</div>
+      </div>
+      <div class="settings-link-chevron">
+        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-link-row" onclick="showScreen('s-terms'); closeSettings();">
+      <div class="settings-row-icon" style="background:#F7F4F0;color:#9A8C7E;">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Terms of Service</div>
+        <div class="settings-row-sub">Rules for using Vaultlix</div>
+      </div>
+      <div class="settings-link-chevron">
+        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-version">
+      Vaultlix · Version 1.0<br/>
+      <span style="color:#C4B8AC;">Anonymous · Encrypted · No trace</span>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -2672,7 +2837,125 @@ function unlockAudio() {
   document.addEventListener(evt, () => { unlockAudio(); lastInteractionTime = Date.now(); });
 });
 
+// ── SETTINGS PANEL ───────────────────────────────────────────────────────
+// Purely local preferences — read receipts / chime / push are the only
+// things persisted here (SETTINGS_KEY), deliberately separate from a room's
+// own session data. Nothing about a conversation (messages, room codes,
+// peer identity) is ever written to this key, consistent with the app
+// never keeping a trace of what was actually said.
+const SETTINGS_KEY = 'vaultlix_settings';
+let settingsOpen = false;
+let readReceiptsEnabled = true;
+let chimeEnabled = true;
+
+function toggleSettings() { settingsOpen ? closeSettings() : openSettings(); }
+
+function openSettings() {
+  settingsOpen = true;
+  document.getElementById('settings-overlay').classList.add('open');
+  document.getElementById('settings-panel').classList.add('open');
+  document.getElementById('settings-btn').classList.add('active');
+  loadSettingsState();
+}
+
+function closeSettings() {
+  settingsOpen = false;
+  document.getElementById('settings-overlay').classList.remove('open');
+  document.getElementById('settings-panel').classList.remove('open');
+  document.getElementById('settings-btn').classList.remove('active');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && settingsOpen) closeSettings();
+});
+
+function loadSettingsState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    const rrToggle = document.getElementById('toggle-read-receipts');
+    if (rrToggle) { rrToggle.checked = saved.readReceipts !== false; readReceiptsEnabled = rrToggle.checked; }
+    const chimeToggle = document.getElementById('toggle-chime');
+    if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
+    const pushToggle = document.getElementById('toggle-push');
+    if (pushToggle) {
+      // Reflects the browser's actual notification permission, not just
+      // whatever was last saved here — the app already offers to enable
+      // push automatically per room (showEnableNotificationsBanner), so
+      // permission can already be granted before this panel is ever opened,
+      // and a stale localStorage flag shouldn't show the toggle as off when
+      // push already works.
+      pushToggle.checked = (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+    }
+  } catch (e) {}
+}
+
+function saveSetting(key, value) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    saved[key] = value;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(saved));
+  } catch (e) {}
+}
+
+// Read at the very top of the file, before any room connects, so a chime
+// or a read receipt doesn't slip through at default-on before the panel's
+// ever been opened once this session.
+(function initSettingsFromStorage() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    readReceiptsEnabled = saved.readReceipts !== false;
+    chimeEnabled = saved.chime !== false;
+  } catch (e) {}
+})();
+
+function toggleReadReceipts(enabled) {
+  readReceiptsEnabled = enabled;
+  saveSetting('readReceipts', enabled);
+  // Disabling mid-session: drop anything already queued rather than let it
+  // fire the moment the setting is flipped back on later — matches "no
+  // blue ticks sent while this is off", not "delayed blue ticks".
+  if (!enabled) {
+    for (const room of rooms.values()) {
+      room.readConfirmIds.length = 0;
+      room.pendingReadIds.length = 0;
+    }
+  }
+}
+
+function toggleChime(enabled) {
+  chimeEnabled = enabled;
+  saveSetting('chime', enabled);
+}
+
+async function togglePushNotifications(enabled) {
+  saveSetting('push', enabled);
+  if (!enabled) return; // no unsubscribe flow — Notification.permission can't be revoked from the page anyway, only via the browser/OS
+  const revert = () => {
+    const t = document.getElementById('toggle-push');
+    if (t) t.checked = false;
+    saveSetting('push', false);
+  };
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    toast('Push notifications aren’t supported on this browser.');
+    revert();
+    return;
+  }
+  if (isIOS() && !isStandalonePwa()) {
+    revert();
+    showIosInstallBanner();
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { revert(); return; }
+    refreshPushForAllRooms();
+  } catch (e) {
+    revert();
+  }
+}
+
 function playChime() {
+  if (!chimeEnabled) return;
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = _audioCtx;
@@ -4136,9 +4419,17 @@ async function doPoll(room) {
       }
     }
 
-    // Send read confirmations only when the user is actually looking at THIS room
+    // Send read confirmations only when the user is actually looking at THIS
+    // room, and only if Settings > Read receipts is on. Disabled: drop them
+    // rather than queue — sender's tick stays at delivered (grey), never
+    // flips to read (blue), and it also means the disappearing-message
+    // timer (which starts from confirmRead) won't fire for this room while
+    // the setting is off. See toggleReadReceipts.
     if (room.readConfirmIds.length > 0) {
-      if (room.code === activeRoomCode && isUserActive()) {
+      if (!readReceiptsEnabled) {
+        room.readConfirmIds.length = 0;
+        room.pendingReadIds.length = 0;
+      } else if (room.code === activeRoomCode && isUserActive()) {
         const toConfirm = [...room.readConfirmIds, ...room.pendingReadIds];
         room.readConfirmIds.length = 0; room.pendingReadIds.length = 0;
         confirmRead(room, toConfirm);
