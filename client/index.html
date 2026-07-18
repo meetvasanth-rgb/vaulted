@@ -4421,7 +4421,12 @@ async function dissolveCallScreen(room, duration) {
   const line1 = mark.querySelector('.v-line1');
   if (vGlyph) vGlyph.classList.add('call-float-fade');
   if (line1) line1.classList.add('call-float-fade');
-  await delay(350);
+  // Wait for the full .call-float-fade transition (.6s, see its CSS rule)
+  // to actually finish before the sand effect starts — 350ms here used to
+  // clip it, so "Call ended · MM:SS" was still visibly mid-fade while
+  // "This call never existed." had already started coming apart. The two
+  // should never overlap: one fully gone, then the other begins.
+  await delay(650);
 
   const line2 = document.getElementById('call-vanish-line2');
   if (line2) line2.querySelectorAll('.sand-char').forEach(c => c.classList.add('sand-disintegrate'));
