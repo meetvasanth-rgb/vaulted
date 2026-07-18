@@ -959,6 +959,19 @@ body.select-mode .chat-ftr{display:none}
 .toggle-thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#FFFFFF;transition:transform .25s cubic-bezier(.34,1.56,.64,1);box-shadow:0 1px 4px rgba(0,0,0,0.15);pointer-events:none}
 .toggle-switch input:checked ~ .toggle-thumb{transform:translateX(18px)}
 
+/* Push notifications is status-only, not a toggle — the OS/browser
+   permission it reflects can't actually be revoked from this page once
+   granted, so a toggle that appeared to turn it "off" would be lying. The
+   automatic per-room banner (showEnableNotificationsBanner) already does
+   the real work of asking; this row just reports the true state and, when
+   there's something the user can still do (grant it / add to home
+   screen), lets them do that from here too. */
+.settings-status{flex-shrink:0;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-align:right;white-space:nowrap}
+.settings-status-on{color:#4A9B6F}
+.settings-status-off{color:#B0A498}
+.settings-status-action{color:#B8973E;cursor:pointer}
+.settings-status-action:hover{text-decoration:underline}
+
 .settings-divider{height:0.5px;background:#F0EBE3;margin:4px 20px}
 
 .settings-link-row{display:flex;align-items:center;padding:14px 20px;gap:12px;cursor:pointer;transition:background .15s;text-decoration:none}
@@ -1432,11 +1445,7 @@ body.select-mode .chat-ftr{display:none}
         <div class="settings-row-title">Push notifications</div>
         <div class="settings-row-sub">Notify when messages arrive while away</div>
       </div>
-      <label class="toggle-switch">
-        <input type="checkbox" id="toggle-push" onchange="togglePushNotifications(this.checked)"/>
-        <div class="toggle-track"></div>
-        <div class="toggle-thumb"></div>
-      </label>
+      <div class="settings-status" id="push-status">Checking…</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -2854,17 +2863,42 @@ function loadSettingsState() {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     const chimeToggle = document.getElementById('toggle-chime');
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
-    const pushToggle = document.getElementById('toggle-push');
-    if (pushToggle) {
-      // Reflects the browser's actual notification permission, not just
-      // whatever was last saved here — the app already offers to enable
-      // push automatically per room (showEnableNotificationsBanner), so
-      // permission can already be granted before this panel is ever opened,
-      // and a stale localStorage flag shouldn't show the toggle as off when
-      // push already works.
-      pushToggle.checked = (typeof Notification !== 'undefined' && Notification.permission === 'granted');
-    }
   } catch (e) {}
+  updatePushStatus();
+}
+
+// Always derived live from the platform, never from a stored flag — there's
+// nothing to "load" here, just the current truth at the moment the panel
+// is opened.
+function updatePushStatus() {
+  const el = document.getElementById('push-status');
+  if (!el) return;
+  const supported = (typeof Notification !== 'undefined') && ('serviceWorker' in navigator) && ('PushManager' in window);
+  if (!supported) {
+    el.textContent = 'Not supported';
+    el.className = 'settings-status settings-status-off';
+    el.onclick = null;
+    return;
+  }
+  if (isIOS() && !isStandalonePwa()) {
+    el.textContent = 'Add to Home Screen';
+    el.className = 'settings-status settings-status-action';
+    el.onclick = () => showIosInstallBanner();
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    el.textContent = 'Enabled';
+    el.className = 'settings-status settings-status-on';
+    el.onclick = null;
+  } else if (Notification.permission === 'denied') {
+    el.textContent = 'Blocked in browser';
+    el.className = 'settings-status settings-status-off';
+    el.onclick = () => toast('Notifications are blocked — enable them for this site in your browser settings.');
+  } else {
+    el.textContent = 'Tap to enable';
+    el.className = 'settings-status settings-status-action';
+    el.onclick = () => requestPushPermission();
+  }
 }
 
 function saveSetting(key, value) {
@@ -2890,31 +2924,14 @@ function toggleChime(enabled) {
   saveSetting('chime', enabled);
 }
 
-async function togglePushNotifications(enabled) {
-  saveSetting('push', enabled);
-  if (!enabled) return; // no unsubscribe flow — Notification.permission can't be revoked from the page anyway, only via the browser/OS
-  const revert = () => {
-    const t = document.getElementById('toggle-push');
-    if (t) t.checked = false;
-    saveSetting('push', false);
-  };
-  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-    toast('Push notifications aren’t supported on this browser.');
-    revert();
-    return;
-  }
-  if (isIOS() && !isStandalonePwa()) {
-    revert();
-    showIosInstallBanner();
-    return;
-  }
+// Only reachable when updatePushStatus() decided there's still something to
+// grant (i.e. permission is 'default', not already granted or denied).
+async function requestPushPermission() {
   try {
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') { revert(); return; }
-    refreshPushForAllRooms();
-  } catch (e) {
-    revert();
-  }
+    if (permission === 'granted') refreshPushForAllRooms();
+  } catch (e) {}
+  updatePushStatus();
 }
 
 function playChime() {
