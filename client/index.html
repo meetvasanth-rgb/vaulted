@@ -207,8 +207,12 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .room-tab-add{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#fff;border:1px dashed #D0CAC0;color:#9A8C7E;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;padding:0}
 .room-tab-add:hover{border-color:var(--gold);color:var(--gold)}
 .room-tab-add:disabled{opacity:.4;cursor:not-allowed}
-/* -- IN-ROOM DISAPPEARING-TIMER CONTROL -- */
-.timer-bar{flex-shrink:0;background:#FAF8F4;border-bottom:1px solid #F0E8CC;padding:6px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+/* -- IN-ROOM DISAPPEARING-TIMER CONTROL (+ call button) -- */
+/* space-between rather than center now that the call button lives here too
+   — keeps the timer control grouped on one side and the call button
+   anchored to the other, instead of all three items bunching in the middle. */
+.timer-bar{flex-shrink:0;background:#FAF8F4;border-bottom:1px solid #F0E8CC;padding:6px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.timer-bar-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .timer-bar-label{font-size:11px;color:#7A6E65;letter-spacing:.02em}
 #timer-bar-select{font-size:11px;color:#4A3F35;background:#fff;border:0.5px solid #E0D9D0;border-radius:12px;padding:3px 8px;font-family:inherit;cursor:pointer}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
@@ -1092,9 +1096,6 @@ body.select-mode .chat-ftr{display:none}
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
     </div>
-    <button class="call-btn" id="call-btn" onclick="startCall()" title="Voice call" disabled>
-      <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-    </button>
     <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
     <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
   </div>
@@ -1105,15 +1106,26 @@ body.select-mode .chat-ftr{display:none}
   </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="e2e-bar">🔒 🔒 End-to-end encrypted · Messages exist only in your browsers · No trace on server</div>
+  <!-- Call button lives here now, inside the current room's own content area
+       (below the room-tabs switcher) rather than in the shared header —
+       with multiple rooms open, having it in the header made it ambiguous
+       which room a tap would actually call into. Grouping it with the
+       disappearing-messages control (also per-room, also sits right below
+       the tabs) makes "this acts on the room you're looking at" clear. -->
   <div class="timer-bar">
-    <span class="timer-bar-label">⏱ Disappearing messages</span>
-    <select id="timer-bar-select" onchange="changeRoomTimer(this.value)">
-      <option value="0">Off</option>
-      <option value="30">30 seconds</option>
-      <option value="300">5 minutes</option>
-      <option value="3600">1 hour</option>
-      <option value="86400">24 hours</option>
-    </select>
+    <div class="timer-bar-controls">
+      <span class="timer-bar-label">⏱ Disappearing messages</span>
+      <select id="timer-bar-select" onchange="changeRoomTimer(this.value)">
+        <option value="0">Off</option>
+        <option value="30">30 seconds</option>
+        <option value="300">5 minutes</option>
+        <option value="3600">1 hour</option>
+        <option value="86400">24 hours</option>
+      </select>
+    </div>
+    <button class="call-btn" id="call-btn" onclick="startCall()" title="Voice call" disabled>
+      <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+    </button>
   </div>
   <div class="push-banner" id="push-banner"></div>
   <div class="chat-body" id="chat-body">
