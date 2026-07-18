@@ -785,18 +785,30 @@ body.select-mode .chat-ftr{display:none}
 .e2e-bar.pulse { animation:e2e-pulse 0.8s ease-in-out forwards; }
 
 /* ── CONNECTION MOMENT ────────────────────────────────────────────── */
-#connect-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;opacity:0;transition:opacity .3s ease;}
+/* V-entrance — the same V mark that closes a conversation (.vanish-v below)
+   now also opens one, so the mark bookends the whole experience: this V
+   for "you're in, it's encrypted," that V for "it's gone, no trace." Kept
+   the same size/font/color as .vanish-v on purpose — a different size here
+   would break the bookend read. */
+#connect-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;opacity:0;transition:opacity .4s ease;}
 #connect-overlay.visible{opacity:1}
-#connect-overlay.hiding{opacity:0;transition:opacity .4s ease}
-.connect-dots{display:flex;align-items:center;gap:0;width:160px;position:relative;justify-content:space-between}
-.connect-dot{width:10px;height:10px;border-radius:50%;background:#B8973E;opacity:0;transform:scale(0);transition:all .3s ease-out;flex-shrink:0}
-.connect-dot.left{transition-delay:.1s}
-.connect-dot.right{transition-delay:.3s}
-#connect-overlay.visible .connect-dot{opacity:1;transform:scale(1)}
-.connect-line{position:absolute;left:14px;right:14px;height:1px;background:#B8973E;transform-origin:left center;transform:scaleX(0);transition:transform .35s ease-out .6s;opacity:.6}
-#connect-overlay.visible .connect-line{transform:scaleX(1)}
-.connect-label{margin-top:28px;font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:.14em;text-transform:uppercase;opacity:0;transition:opacity .3s ease 1.0s}
-#connect-overlay.visible .connect-label{opacity:1}
+#connect-overlay.hiding{opacity:0;transform:translateY(-20px);transition:opacity .4s ease,transform .4s ease}
+
+.connect-v-mark{font-family:'Cormorant Garamond',serif;font-size:72px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;transform:scale(0.6);opacity:0;transition:transform .5s cubic-bezier(0.34,1.56,0.64,1),opacity .5s cubic-bezier(0.34,1.56,0.64,1)}
+#connect-overlay.visible .connect-v-mark{transform:scale(1);opacity:1}
+.connect-v-mark.pulse{animation:vanish-pulse .5s ease-in-out}
+
+.connect-rule{width:0;height:1px;background:#B8973E;margin:18px 0 16px;transition:width .35s ease-out .55s}
+#connect-overlay.visible .connect-rule{width:60px}
+
+.connect-wordmark{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.16em;color:rgba(255,255,255,.7);opacity:0;transform:translateY(8px);transition:opacity .35s ease .9s,transform .35s ease .9s}
+#connect-overlay.visible .connect-wordmark{opacity:1;transform:translateY(0)}
+
+.connect-context{margin-top:16px;font-family:'Inter',sans-serif;font-size:12px;color:rgba(255,255,255,.5);letter-spacing:.04em;opacity:0;transition:opacity .35s ease 1.2s}
+#connect-overlay.visible .connect-context{opacity:1}
+
+.connect-status{margin-top:10px;font-family:'Inter',sans-serif;font-size:11px;letter-spacing:.1em;color:rgba(255,255,255,.4);opacity:0;transition:opacity .35s ease 1.5s}
+#connect-overlay.visible .connect-status{opacity:1}
 
 /* ── VANISH MOMENT ────────────────────────────────────────────────── */
 #vanish-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;opacity:0;transition:opacity .4s ease;}
@@ -4682,7 +4694,7 @@ async function handleSetup() {
           if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
           if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
           setActiveRoom(room.code);
-          await triggerConnectionMoment(() => {
+          await triggerConnectionMoment('peer_joined', () => {
             showScreen('s-chat');
             enableInput(true, true);
             playChime();
@@ -4711,7 +4723,7 @@ async function handleSetup() {
       room.peerOnline = true; room.everOnline = true;
 
       setActiveRoom(room.code);
-      await triggerConnectionMoment(() => {
+      await triggerConnectionMoment('joined', () => {
         showScreen('s-chat');
         enableInput(true, true);
         playChime();
@@ -4827,23 +4839,33 @@ function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 // Deliberately NOT played on page-load restore/reconnect (that path goes
 // straight to showScreen('s-chat') without this) — it's a one-time "the
 // secure line just connected" beat, not something to replay every reload.
-async function triggerConnectionMoment(callback) {
+// variant is 'peer_joined' (you created the room, they just arrived) or
+// 'joined' (you're the one who just joined) — same V, same rule, same
+// dissolve either way, only the context line changes.
+async function triggerConnectionMoment(variant, callback) {
+  const contextLine = variant === 'peer_joined' ? 'Someone joined your room' : "You're in";
+
   const overlay = document.createElement('div');
   overlay.id = 'connect-overlay';
   overlay.innerHTML = `
-    <div class="connect-dots">
-      <div class="connect-dot left"></div>
-      <div class="connect-line"></div>
-      <div class="connect-dot right"></div>
-    </div>
-    <div class="connect-label">Connected · End-to-end encrypted</div>
+    <div class="connect-v-mark" id="connect-v-mark">V</div>
+    <div class="connect-rule"></div>
+    <div class="connect-wordmark">Vaultlix</div>
+    <div class="connect-context">${escHtml(contextLine)}</div>
+    <div class="connect-status">🔒 Encrypted · Connected</div>
   `;
   document.body.appendChild(overlay);
 
   await delay(50);
   overlay.classList.add('visible');
 
-  await delay(1800);
+  // The V settles in and holds, then pulses once — the same beat as the
+  // vanish moment's V (see showVanishOverlay), so the mark reads as one
+  // consistent signature at both ends of a conversation.
+  await delay(1900);
+  document.getElementById('connect-v-mark')?.classList.add('pulse');
+
+  await delay(500);
   overlay.classList.add('hiding');
   await delay(400);
   overlay.remove();
