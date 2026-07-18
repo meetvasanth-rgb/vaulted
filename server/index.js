@@ -71,7 +71,17 @@ function formatTimerLabel(seconds) {
 function code() {
   const w = ['amber','arctic','azure','cedar','cloud','coral','dawn','delta','dusk','ember','fern','flame','frost','ghost','gold','grove','haven','iron','jade','karma','lake','lemon','lime','lunar','maple','mist','moon','moss','nova','oak','opal','pearl','pine','rain','raven','reed','ridge','river','rose','ruby','sage','salt','sand','shadow','shore','silver','slate','smoke','snow','spark','star','steel','storm','tide','timber','topaz','vault','veil','wave','wild','wind','wolf'];
   const p = () => w[Math.floor(Math.random()*w.length)];
-  return `${p()}-${p()}-${Math.floor(Math.random()*90+10)}`;
+  const nn = () => Math.floor(Math.random()*90+10);
+  // A few different shapes instead of always "word-word-NN" — every
+  // auto-generated code looking visually identical made them blur together
+  // for anyone juggling a few open rooms at once.
+  const formats = [
+    () => `${p()}-${p()}-${nn()}`,
+    () => `${p()}-${nn()}-${p()}`,
+    () => `${nn()}-${p()}-${p()}`,
+    () => `${p()}-${p()}-${p()}`,
+  ];
+  return formats[Math.floor(Math.random()*formats.length)]();
 }
 
 setInterval(() => {
