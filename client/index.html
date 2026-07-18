@@ -211,10 +211,17 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 /* space-between rather than center now that the call button lives here too
    — keeps the timer control grouped on one side and the call button
    anchored to the other, instead of all three items bunching in the middle. */
-.timer-bar{flex-shrink:0;background:#FAF8F4;border-bottom:1px solid #F0E8CC;padding:6px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.timer-bar-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.timer-bar-label{font-size:11px;color:#7A6E65;letter-spacing:.02em}
-#timer-bar-select{font-size:11px;color:#4A3F35;background:#fff;border:0.5px solid #E0D9D0;border-radius:12px;padding:3px 8px;font-family:inherit;cursor:pointer}
+/* flex-wrap intentionally NOT set here — the call button used to drop onto
+   its own orphan line on some Android devices (OnePlus 13s reported) once
+   the label+select pair got too wide for the row, which defeats the point
+   of the button living next to the disappearing-messages control in the
+   first place. Instead the label (least important part — purely a
+   description) truncates with an ellipsis so the select and call button
+   always stay pinned on one line, in view, at a fixed size. */
+.timer-bar{flex-shrink:0;background:#FAF8F4;border-bottom:1px solid #F0E8CC;padding:6px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap}
+.timer-bar-controls{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;flex:1 1 auto;min-width:0}
+.timer-bar-label{font-size:11px;color:#7A6E65;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#timer-bar-select{font-size:11px;color:#4A3F35;background:#fff;border:0.5px solid #E0D9D0;border-radius:12px;padding:3px 8px;font-family:inherit;cursor:pointer;flex-shrink:0}
 .chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px;background:#fff}
 .msg{display:flex;flex-direction:column;max-width:72%;margin-bottom:2px}
 .msg.me{align-self:flex-end;align-items:flex-end}
