@@ -2694,6 +2694,19 @@ function catchUpPoll() {
   for (const room of rooms.values()) doPoll(room);
 }
 
+// WebKit's 'pushsubscriptionchange' event (the platform's own hook for "your
+// subscription got rotated/dropped, go get a new one" — wired up in sw.js)
+// is documented but historically unreliable in Safari, sometimes never
+// firing at all when a subscription is silently invalidated in the
+// background. Re-checking/re-registering every time the app comes back to
+// the foreground is a cheap, redundant safety net that doesn't depend on
+// that event firing: getSubscription() is a fast local check, subscribe()
+// only actually contacts the push service if there's no live subscription,
+// and the /api/push-subscribe POST is idempotent either way.
+function refreshPushForAllRooms() {
+  for (const room of rooms.values()) initPushForRoom(room).catch(() => {});
+}
+
 // ── PRIVACY COVER (app-switcher screenshot protection) ─────────────────
 // iOS/Android take a snapshot of whatever's on screen the instant you swipe
 // to the app switcher, to use as the preview thumbnail — that snapshot could
@@ -2752,6 +2765,7 @@ document.addEventListener('visibilitychange', () => {
     updateDocumentTitle();
     catchUpPoll();
     checkStaleIncomingCalls();
+    refreshPushForAllRooms();
   }
 });
 window.addEventListener('focus', () => {
@@ -2762,11 +2776,12 @@ window.addEventListener('focus', () => {
   updateDocumentTitle();
   catchUpPoll();
   checkStaleIncomingCalls();
+  refreshPushForAllRooms();
 });
 window.addEventListener('blur', () => { tabFocused = false; });
 // iOS/WebKit restores a backgrounded tab from its page cache without firing
 // 'load' — pageshow (with persisted:true) is the reliable signal for that.
-window.addEventListener('pageshow', (e) => { if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); } });
+window.addEventListener('pageshow', (e) => { if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); refreshPushForAllRooms(); } });
 
 ['click','keydown','touchstart','mousemove'].forEach(evt => {
   document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });

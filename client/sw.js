@@ -25,11 +25,22 @@ self.addEventListener('push', (event) => {
   const isCall = !!data.isCall;
 
   event.waitUntil((async () => {
-    // If the room is already open and focused, the in-app chime/UI already
-    // covers it — skip the system notification to avoid a duplicate ping.
+    // iOS Safari REQUIRES every push event to result in a visible
+    // notification (that's what userVisibleOnly:true in the subscribe call
+    // promises the platform). Skipping showNotification() here — as the
+    // previous version did whenever the room was already focused, to avoid
+    // a duplicate ping — counts as a "silent push". Safari tracks these,
+    // and after a small number of them (observed as few as 3) it silently
+    // revokes the entire push subscription with no error surfaced anywhere
+    // in this app. That matches the reported symptom exactly: notifications
+    // work for a while, then calls AND messages both go dark, because the
+    // subscription itself is dead — not because any individual push failed.
+    // So: always show it now. If the app is already open and focused, we
+    // still show it (to satisfy the platform contract) but close it again a
+    // moment later so it doesn't linger as a visible duplicate of the
+    // in-app chime/UI.
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const hasFocusedClient = clientsList.some(c => c.focused);
-    if (hasFocusedClient) return;
 
     await self.registration.showNotification(title, {
       body,
@@ -45,6 +56,11 @@ self.addEventListener('push', (event) => {
       vibrate: isCall ? [300, 150, 300, 150, 300, 150, 600] : undefined,
       data: { url: '/', isCall },
     });
+
+    if (hasFocusedClient) {
+      const shown = await self.registration.getNotifications({ tag });
+      shown.forEach(n => n.close());
+    }
   })());
 });
 
