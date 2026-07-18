@@ -840,6 +840,16 @@ body.select-mode .chat-ftr{display:none}
 .call-vanish-mark.visible .v-line1{opacity:1}
 .call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(58,50,42,.55);letter-spacing:.1em;text-transform:uppercase;margin-top:6px;opacity:0;transition:opacity .4s ease .95s}
 .call-vanish-mark.visible .v-line2{opacity:1}
+/* Sand-disintegrate — "This call never existed." is the one line built to
+   be believed, so instead of floating off like everything before it, it
+   comes apart letter by letter: each character carries its own randomized
+   drift/rotation/delay (set inline per-char in wrapSandChars) so the line
+   crumbles unevenly, like sand losing its shape, rather than moving as one
+   block. transform+opacity+filter only — no layout properties — so it
+   stays smooth even on older phones. */
+.sand-char{display:inline-block}
+.sand-char.sand-disintegrate{animation:sand-fall .85s ease-in forwards;animation-delay:var(--delay)}
+@keyframes sand-fall{0%{opacity:1;transform:translate(0,0) rotate(0deg);filter:blur(0)}35%{opacity:.8}100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--rot));filter:blur(2px)}}
 
 .call-actions{display:flex;gap:36px;align-items:flex-start;justify-content:center}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
@@ -4335,6 +4345,23 @@ function hideVanishOverlay() {
 // it's over — then dissolves upward itself, and only then does the room's
 // system message land. The moment always reads as call → silence →
 // memory, never a hard cut.
+// Splits a line of text into individually-animatable characters, each
+// carrying its own randomized drift/rotation/timing as CSS custom
+// properties — the raw material for the sand-disintegrate effect on "This
+// call never existed." (see dissolveCallScreen). Only ever called with a
+// fixed literal string, never user content, so no escaping concerns beyond
+// the routine escHtml-per-character below.
+function wrapSandChars(text) {
+  return [...text].map((ch, i) => {
+    if (ch === ' ') return ' ';
+    const dx = (Math.random() * 34 - 17).toFixed(1);      // drift left/right as it comes apart
+    const dy = (16 + Math.random() * 26).toFixed(1);       // sand falls, so mostly downward
+    const rot = (Math.random() * 60 - 30).toFixed(1);      // each grain tumbles its own way
+    const delay = Math.round(i * 16 + Math.random() * 45); // left-to-right sweep, not uniform
+    return `<span class="sand-char" style="--dx:${dx}px;--dy:${dy}px;--rot:${rot}deg;--delay:${delay}ms">${escHtml(ch)}</span>`;
+  }).join('');
+}
+
 async function dissolveCallScreen(room, duration) {
   const overlay = document.getElementById('call-overlay');
   if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`); return; }
@@ -4366,7 +4393,7 @@ async function dissolveCallScreen(room, duration) {
   mark.innerHTML = `
     <div class="v-glyph" id="call-vanish-v">V</div>
     <div class="v-line1">Call ended · ${escHtml(formatCallTime(duration))}</div>
-    <div class="v-line2">This call never existed.</div>
+    <div class="v-line2" id="call-vanish-line2">${wrapSandChars('This call never existed.')}</div>
   `;
   overlay.appendChild(mark);
   requestAnimationFrame(() => {
@@ -4384,11 +4411,21 @@ async function dissolveCallScreen(room, duration) {
   // "This call never existed.", not clip past it.
   await delay(1900);
 
-  // The V's own final float-up-and-dissolve — same release as everything
-  // that came before it.
-  mark.style.transform = 'translateY(-24px)';
-  mark.style.opacity = '0';
-  await delay(500);
+  // The V and "Call ended · MM:SS" float away first, same release as
+  // everything that came before them — but "This call never existed."
+  // doesn't join them. It gets its own ending: the one line built to be
+  // believed comes apart letter by letter, like sand losing its shape,
+  // rather than just politely fading like everything else did. It's
+  // deliberately the very last thing on screen.
+  const vGlyph = document.getElementById('call-vanish-v');
+  const line1 = mark.querySelector('.v-line1');
+  if (vGlyph) vGlyph.classList.add('call-float-fade');
+  if (line1) line1.classList.add('call-float-fade');
+  await delay(350);
+
+  const line2 = document.getElementById('call-vanish-line2');
+  if (line2) line2.querySelectorAll('.sand-char').forEach(c => c.classList.add('sand-disintegrate'));
+  await delay(1150);
 
   overlay.remove();
   addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`);
