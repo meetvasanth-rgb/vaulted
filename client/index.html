@@ -827,18 +827,16 @@ body.select-mode .chat-ftr{display:none}
    original vanish-overlay text colors were tuned for. White-on-white would
    have been unreadable right when it matters most — the one line that's
    actually meant to reassure the person reading it. Dark, warm-toned text
-   instead, and the two lines stagger in one after another (glyph settles
-   and pulses, then "Call ended · MM:SS", then "This call never existed."
-   last) so the whole sequence deliberately ends on that line rather than
-   everything landing at once. */
+   instead. Just the V and "This call never existed." here — the call
+   duration isn't shown on this transient screen at all (it still lands in
+   the room afterward via the "Encrypted call · MM:SS" system message), so
+   there's nothing to stage before the one line that matters. */
 .call-vanish-mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity .5s ease,transform .8s ease-out}
 .call-vanish-mark.visible{opacity:1}
 .call-vanish-mark .v-glyph{font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;transform:scale(.8);transition:transform .4s ease-out}
 .call-vanish-mark.visible .v-glyph{transform:scale(1)}
 .call-vanish-mark .v-glyph.pulse{animation:vanish-pulse .5s ease-in-out}
-.call-vanish-mark .v-line1{font-family:'Inter',sans-serif;font-size:12px;color:rgba(58,50,42,.72);letter-spacing:.12em;text-transform:uppercase;margin-top:20px;opacity:0;transition:opacity .4s ease .5s}
-.call-vanish-mark.visible .v-line1{opacity:1}
-.call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(58,50,42,.55);letter-spacing:.1em;text-transform:uppercase;margin-top:6px;opacity:0;transition:opacity .4s ease .95s}
+.call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(58,50,42,.55);letter-spacing:.1em;text-transform:uppercase;margin-top:20px;opacity:0;transition:opacity .4s ease .55s}
 .call-vanish-mark.visible .v-line2{opacity:1}
 /* Sand-disintegrate — "This call never existed." is the one line built to
    be believed, so instead of floating off like everything before it, it
@@ -4392,7 +4390,6 @@ async function dissolveCallScreen(room, duration) {
   mark.className = 'call-vanish-mark';
   mark.innerHTML = `
     <div class="v-glyph" id="call-vanish-v">V</div>
-    <div class="v-line1">Call ended · ${escHtml(formatCallTime(duration))}</div>
     <div class="v-line2" id="call-vanish-line2">${wrapSandChars('This call never existed.')}</div>
   `;
   overlay.appendChild(mark);
@@ -4405,27 +4402,20 @@ async function dissolveCallScreen(room, duration) {
       }, 400);
     });
   });
-  // Long enough for the staggered v-line1/v-line2 reveal above (finishes
-  // fading in ~1.35s after .visible is added) to actually land and be read
-  // before anything starts leaving again — the whole point is to end on
-  // "This call never existed.", not clip past it.
-  await delay(1900);
+  // Long enough for the tagline reveal above (finishes fading in ~.95s
+  // after .visible is added) to actually land and be read before anything
+  // starts leaving again.
+  await delay(1700);
 
-  // The V and "Call ended · MM:SS" float away first, same release as
-  // everything that came before them — but "This call never existed."
-  // doesn't join them. It gets its own ending: the one line built to be
-  // believed comes apart letter by letter, like sand losing its shape,
-  // rather than just politely fading like everything else did. It's
-  // deliberately the very last thing on screen.
+  // The V fades away first — "This call never existed." doesn't join it.
+  // That line gets its own ending: it comes apart letter by letter, like
+  // sand losing its shape, rather than just politely fading like the V
+  // did. Deliberately the very last thing on screen; the two never
+  // overlap, one is fully gone before the other begins.
   const vGlyph = document.getElementById('call-vanish-v');
-  const line1 = mark.querySelector('.v-line1');
   if (vGlyph) vGlyph.classList.add('call-float-fade');
-  if (line1) line1.classList.add('call-float-fade');
   // Wait for the full .call-float-fade transition (.6s, see its CSS rule)
-  // to actually finish before the sand effect starts — 350ms here used to
-  // clip it, so "Call ended · MM:SS" was still visibly mid-fade while
-  // "This call never existed." had already started coming apart. The two
-  // should never overlap: one fully gone, then the other begins.
+  // to actually finish before the sand effect starts.
   await delay(650);
 
   const line2 = document.getElementById('call-vanish-line2');
