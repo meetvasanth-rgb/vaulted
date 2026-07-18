@@ -319,6 +319,27 @@ body.select-mode .chat-ftr{display:none}
 .send-btn:hover{background:#C9A94A;transform:scale(1.05)}
 .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .send-btn svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mic-btn{width:44px;height:44px;background:#B8973E;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;border:none;box-shadow:0 2px 8px rgba(184,151,62,0.3)}
+.mic-btn:hover{background:#C9A94A;transform:scale(1.05)}
+.mic-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.mic-btn:active{transform:scale(.92)}
+.mic-btn svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.voice-record-bar{display:none;align-items:center;gap:10px;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+.voice-record-bar.show{display:flex}
+.voice-cancel-btn,.voice-send-btn{width:38px;height:38px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+.voice-cancel-btn{background:rgba(0,0,0,0.05)}
+.voice-cancel-btn svg{width:16px;height:16px;fill:none;stroke:#9A8C7E;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.voice-send-btn{background:#B8973E;box-shadow:0 2px 8px rgba(184,151,62,0.3)}
+.voice-send-btn svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.voice-record-indicator{flex:1;display:flex;align-items:center;gap:8px;font-size:14px;color:#4A4038;font-variant-numeric:tabular-nums}
+.voice-record-dot{width:9px;height:9px;border-radius:50%;background:#C0392B;animation:voice-rec-pulse 1s ease-in-out infinite}
+@keyframes voice-rec-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.msg-voice{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,0.04);border:0.5px solid #E0D9D0;border-radius:20px;padding:8px 12px 8px 8px;margin-top:4px;min-width:180px;max-width:220px}
+.voice-play-btn{width:32px;height:32px;border-radius:50%;background:#B8973E;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+.voice-play-btn svg{width:14px;height:14px;fill:#fff;stroke:none}
+.voice-track{flex:1;height:3px;background:#D9D2C6;border-radius:2px;cursor:pointer;position:relative}
+.voice-track-fill{position:absolute;top:0;left:0;height:100%;background:#B8973E;border-radius:2px;width:0%}
+.voice-duration{font-size:11px;color:#8A7F72;font-variant-numeric:tabular-nums;flex-shrink:0}
 
 /* -- CLOSED -- */
 #s-closed{flex-direction:column;align-items:center;justify-content:center;padding:24px}
@@ -614,6 +635,20 @@ body.select-mode .chat-ftr{display:none}
 .msg-viewonce-opened { background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; cursor:default; width:auto; }
 .msg-viewonce-opened span { color:#9A8C7E; }
 .msg-viewonce-badge { font-size:10px; color:#B8973E; margin-top:4px; letter-spacing:.02em; }
+
+/* Album grid — several photos picked together land as one grid bubble
+   (see sendAlbumMessage/buildAlbumGridHtml) instead of a wall of separate
+   image messages. 2 columns by default (2 photos = one row of 2, 4 photos
+   = 2x2); 3 photos gets its own override to a single row of 3 rather than
+   an awkward 2-then-1. Square tiles (aspect-ratio:1) with object-fit:cover
+   keep the grid tidy regardless of each photo's original proportions. */
+.msg-album-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:2px;max-width:240px;border-radius:8px;overflow:hidden;margin-top:4px}
+.msg-album-grid-3{grid-template-columns:repeat(3,1fr)}
+.msg-album-tile{position:relative;aspect-ratio:1;overflow:hidden;cursor:pointer;background:#EAEAEA}
+.msg-album-tile .msg-image{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover;border-radius:0;margin-top:0;display:block}
+.msg-album-more{position:absolute;inset:0;background:rgba(0,0,0,0.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:500}
+.msg-album-viewonce{position:absolute;inset:0;background:#1A1916;display:flex;align-items:center;justify-content:center}
+.msg-album-viewonce svg{stroke:#D9B94E;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
 /* ── LEGAL PAGES ──────────────────────────────────────────────── */
 #s-privacy, #s-terms {
@@ -1093,7 +1128,7 @@ body.select-mode .chat-ftr{display:none}
     <span class="reply-preview-text"><span class="reply-preview-name" id="reply-name"></span><span id="reply-text"></span></span>
     <button class="reply-close" onclick="cancelReply()">×</button>
   </div>
-  <div class="chat-ftr">
+  <div class="chat-ftr" id="chat-ftr">
     <button class="attach-btn" onclick="showAttachOptions()" id="attach-btn" title="Attach file">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
@@ -1106,8 +1141,23 @@ body.select-mode .chat-ftr{display:none}
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
-    <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled>
+    <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled style="display:none">
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+    <button class="mic-btn" id="mic-btn" onclick="startVoiceRecording()" disabled title="Record voice note">
+      <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </button>
+  </div>
+  <div class="voice-record-bar" id="voice-record-bar">
+    <button class="voice-cancel-btn" onclick="cancelVoiceRecording()" title="Cancel">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </button>
+    <div class="voice-record-indicator">
+      <span class="voice-record-dot"></span>
+      <span class="voice-record-time" id="voice-record-time">0:00</span>
+    </div>
+    <button class="voice-send-btn" onclick="finishVoiceRecording()" title="Send">
+      <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
     </button>
   </div>
 </div>
@@ -2539,7 +2589,21 @@ function toast(msg, variant) {
 function enableInput(on, focus) {
   document.getElementById('msg-input').disabled = !on;
   document.getElementById('send-btn').disabled = !on;
+  const micBtn = document.getElementById('mic-btn');
+  if (micBtn) micBtn.disabled = !on;
+  updateComposerButtons();
   if (on && focus) document.getElementById('msg-input').focus();
+}
+
+// Mic/send morph: WhatsApp-style — the composer shows a mic button when
+// there's no text typed, and swaps to the send arrow the moment there is.
+function updateComposerButtons() {
+  const input = document.getElementById('msg-input');
+  const hasText = !!(input && input.value.trim().length > 0);
+  const sendBtn = document.getElementById('send-btn');
+  const micBtn = document.getElementById('mic-btn');
+  if (sendBtn) sendBtn.style.display = hasText ? 'flex' : 'none';
+  if (micBtn) micBtn.style.display = hasText ? 'none' : 'flex';
 }
 
 function showErr(msg) {
@@ -3011,7 +3075,7 @@ function msgActionBtn(action, label) {
 // (downloads via downloadDataUri) instead — Copy on a file only ever copied
 // its filename as text, which wasn't the useful action there.
 function buildMsgActionsHtml(msgId, kind) {
-  const isMedia = kind === 'file';
+  const isMedia = kind === 'file' || kind === 'album' || kind === 'voice';
   const thirdAction = isMedia ? msgActionBtn('save', 'Save') : msgActionBtn('copy', 'Copy');
   return `
     <div class="msg-actions" id="actions-${msgId}">
@@ -3118,7 +3182,12 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   const picker = div.querySelector(`#picker-${msgId}`);
   if (!bubble || !actions || !picker) return;
 
-  const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce');
+  // .msg-album-grid stands in for the whole album here — long-pressing
+  // anywhere on the grid opens Reply/React/Save/Select/Delete for the
+  // message as a whole, same as it would for a single photo; a quick tap
+  // on an individual tile (handleAlbumImageTap) is a separate gesture that
+  // opens just that one photo.
+  const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce, .msg-album-grid, .msg-voice');
   if (media) attachLongPress(media, msgId);
 
   // While a multi-select is in progress, tapping any message toggles its
@@ -3190,7 +3259,22 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
     saveBtn.onclick = (e) => {
       e.stopPropagation();
       closeAllMsgActions();
-      if (rec) downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
+      if (!rec) return;
+      if (rec.kind === 'album') {
+        // Downloads currently in the album (already-consumed view-once
+        // photos are gone from images[] by this point, same as a single
+        // view-once photo has nothing left to save once it's expired).
+        // Staggered slightly — some browsers silently drop download
+        // triggers fired in a tight synchronous burst.
+        rec.images.forEach((img, i) => {
+          setTimeout(() => downloadDataUri(`data:${img.mime};base64,${img.base64}`, img.fileName), i * 200);
+        });
+      } else if (rec.kind === 'voice') {
+        const ext = (rec.mime || '').includes('mp4') ? 'm4a' : (rec.mime || '').includes('ogg') ? 'ogg' : 'webm';
+        downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, `voice-note.${ext}`);
+      } else {
+        downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
+      }
     };
   }
 }
@@ -3391,6 +3475,40 @@ function renderReactions(room, msgId) {
   renderReactionsForRec(div, rec);
 }
 
+// WhatsApp-style grid for a multi-photo album message: up to 4 tiles
+// visible (2x2), with a "+N" overlay on the last visible tile if there are
+// more than that. Each tile is its own tap target (handleAlbumImageTap),
+// so per-photo view-once still behaves exactly like a single image does —
+// grouping only changes how the SEND happens, each photo in the grid keeps
+// its own hidden/opened state on receipt.
+function buildAlbumGridHtml(rec) {
+  const MAX_TILES = 4;
+  const total = rec.images.length;
+  const visibleCount = Math.min(total, MAX_TILES);
+  const remaining = total - MAX_TILES;
+  const gridClass = `msg-album-grid msg-album-grid-${visibleCount}`;
+  let tiles = '';
+  for (let i = 0; i < visibleCount; i++) {
+    const img = rec.images[i];
+    const overlay = (i === visibleCount - 1 && remaining > 0) ? `<div class="msg-album-more">+${remaining}</div>` : '';
+    const hidden = img.viewOnce && !rec.isMe && !img.viewed;
+    const inner = hidden
+      ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
+      : `<img class="msg-image" src="data:${img.mime};base64,${img.base64}" alt="" draggable="false"/>`;
+    // Keyed off img.id (a stable local id), not the loop position i —
+    // opening two view-once photos in the same album close together would
+    // otherwise let the first one's later array splice shift which photo
+    // the second one's pending timer thinks it's targeting.
+    tiles += `<div class="msg-album-tile" data-img-id="${img.id}" onclick="handleAlbumImageTap('${rec.id}', '${img.id}')" oncontextmenu="return false">${inner}${overlay}</div>`;
+  }
+  // No "· Opened" qualifier here the way a single view-once photo's badge
+  // has one — each tile now tracks its own opened state independently, so
+  // a single message-level qualifier would be misleading for a partially-
+  // opened album.
+  const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once</div>` : '';
+  return `${badge}<div class="${gridClass}">${tiles}</div>`;
+}
+
 function renderMessageRecord(room, rec) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
@@ -3443,21 +3561,29 @@ function renderMessageRecord(room, rec) {
     // below) or the thin timestamp row underneath, same as the bubble tap
     // does for text.
     contentHtml = `<div class="msg-media-wrap">${mediaHtml}</div>`;
+  } else if (rec.kind === 'album') {
+    // Several photos sent together — one grid bubble, not a wall of
+    // separate image messages (see sendAlbumMessage/buildAlbumGridHtml).
+    contentHtml = `<div class="msg-media-wrap">${buildAlbumGridHtml(rec)}</div>`;
+  } else if (rec.kind === 'voice') {
+    contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
   } else {
-    // A reply to an image shows a compact "📷 Photo" indicator here rather
-    // than the original filename — but does show the actual (tiny,
-    // separately-compressed) thumbnail that travels with the reply, see
-    // makeTinyThumbnail/startReply. Falls back to just the label if that
-    // thumbnail didn't make it (an older message, or generation failed).
+    // A reply to an image (or album — replyData.text already carries "N
+    // photos" for that case, see startReply) shows a compact "📷 ..."
+    // indicator here rather than the original filename — but does show the
+    // actual (tiny, separately-compressed) thumbnail that travels with the
+    // reply, see makeTinyThumbnail/startReply. Falls back to just the
+    // label if that thumbnail didn't make it (an older message, or
+    // generation failed).
     const replyHtml = rec.replyData
       ? (rec.replyData.isImage
-          ? `<div class="msg-reply-quote msg-reply-quote-photo">${rec.replyData.thumb ? `<img class="msg-reply-quote-thumb" src="data:${rec.replyData.thumbMime || 'image/jpeg'};base64,${rec.replyData.thumb}" alt=""/>` : ''}<span>📷 Photo</span></div>`
+          ? `<div class="msg-reply-quote msg-reply-quote-photo">${rec.replyData.thumb ? `<img class="msg-reply-quote-thumb" src="data:${rec.replyData.thumbMime || 'image/jpeg'};base64,${rec.replyData.thumb}" alt=""/>` : ''}<span>📷 ${escHtml(rec.replyData.text || 'Photo')}</span></div>`
           : `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>`)
       : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
   }
 
-  const progressHtml = room.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file'
+  const progressHtml = room.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file' && rec.kind !== 'album' && rec.kind !== 'voice'
     ? `<div class="msg-progress-wrap"><div class="msg-progress" id="progress-${rec.id}" style="width:100%"></div></div>`
     : '';
 
@@ -3472,7 +3598,7 @@ function renderMessageRecord(room, rec) {
     ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
 
-  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : rec.content, rec.isMe, rec);
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : ((rec.kind === 'album' || rec.kind === 'voice') ? '' : rec.content), rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   renderReactionsForRec(div, rec);
@@ -3647,6 +3773,73 @@ function scheduleViewOnceDelete(room, msgId) {
   room.msgTimers.set(msgId, handle);
 }
 
+// Per-photo tap inside an album grid (buildAlbumGridHtml): a plain photo
+// opens the full-screen viewer directly. A still-hidden view-once photo
+// reveals just that one tile and, once the viewer closes, schedules only
+// THAT photo's removal from the album's images[] a couple seconds later —
+// the rest of the album, and any photos in it that aren't view-once, are
+// untouched. Looks the photo up by its stable id rather than array
+// position (see the id comment in processIncomingContent/sendAlbumMessage)
+// so two view-once photos opened close together in the same album can't
+// have one's later splice shift what the other's pending timer targets.
+function handleAlbumImageTap(msgId, imgId) {
+  if (wasJustLongPressed()) return;
+  if (selectMode) { toggleMessageSelection(msgId); return; }
+  let room = null, rec = null;
+  for (const r of rooms.values()) {
+    const found = r.messages.find(m => m.id === msgId);
+    if (found) { room = r; rec = found; break; }
+  }
+  if (!room || !rec || !rec.images) return;
+  const img = rec.images.find(im => im.id === imgId);
+  if (!img) return;
+
+  if (img.viewOnce && !rec.isMe && !img.viewed) {
+    img.viewed = true;
+    if (room.code === activeRoomCode) {
+      const tile = document.querySelector(`.msg[data-msg-id="${msgId}"] .msg-album-tile[data-img-id="${imgId}"]`);
+      if (tile) tile.innerHTML = '<div class="msg-viewonce msg-viewonce-opened"><span>Opened</span></div>';
+    }
+    viewImage(`data:${img.mime};base64,${img.base64}`, {
+      hideDownload: true,
+      onClose: () => scheduleAlbumImageDelete(room, msgId, imgId),
+    });
+    return;
+  }
+  viewImage(`data:${img.mime};base64,${img.base64}`);
+}
+
+function scheduleAlbumImageDelete(room, msgId, imgId) {
+  const seconds = 2; // same grace window as a single view-once photo
+  setTimeout(() => removeAlbumImage(room, msgId, imgId), seconds * 1000);
+}
+
+// Splices one photo out of an album's images[] once its grace window has
+// passed. If that was the last photo left, the whole message goes away —
+// same moment a single view-once photo would — and only THEN is it worth
+// recording in the delete ledger: a partially-consumed album's message
+// record is still legitimately alive with photos left to show, so there's
+// nothing yet to protect against resurrecting on a reload.
+function removeAlbumImage(room, msgId, imgId) {
+  const rec = room.messages.find(m => m.id === msgId);
+  if (!rec || !rec.images) return;
+  const idx = rec.images.findIndex(im => im.id === imgId);
+  if (idx === -1) return;
+  rec.images.splice(idx, 1);
+  if (!rec.images.length) {
+    rec.deleteAt = Date.now();
+    room.deleteLedger.set(msgId, rec.deleteAt);
+    persistDeleteLedger(room);
+    removeMessageRecord(room, msgId);
+    return;
+  }
+  if (room.code === activeRoomCode) {
+    const el = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
+    const mediaWrap = el && el.querySelector('.msg-media-wrap');
+    if (mediaWrap) mediaWrap.innerHTML = buildAlbumGridHtml(rec);
+  }
+}
+
 function showTimerField(show) {
   const tf = document.getElementById('timer-field');
   if (tf) tf.style.display = show ? 'block' : 'none';
@@ -3665,6 +3858,27 @@ async function processIncomingContent(room, content, name, time, msgId) {
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
       return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, viewOnce: !!parsed.viewOnce, viewed: false };
+    }
+    // Several photos picked together arrive as ONE message with an
+    // images[] array (see sendAlbumMessage) rather than one message per
+    // photo — this is what lets them render as a single WhatsApp-style
+    // grid bubble instead of a wall of separate image messages.
+    if (parsed.type === 'album' && Array.isArray(parsed.images)) {
+      return {
+        ...base, kind: 'album', viewOnce: !!parsed.viewOnce,
+        // id here is a local-only lookup key (never sent over the wire) —
+        // see handleAlbumImageTap/removeAlbumImage, which key off it
+        // instead of array position so opening two view-once photos in the
+        // same album close together can't shift indices out from under
+        // each other's pending timers.
+        images: parsed.images.map((img, i) => ({
+          id: 'ai' + i + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+          fileName: img.name, mime: img.mime, base64: img.data, viewOnce: !!parsed.viewOnce, viewed: false,
+        })),
+      };
+    }
+    if (parsed.type === 'voice' && parsed.data) {
+      return { ...base, kind: 'voice', mime: parsed.mime, base64: parsed.data, duration: parsed.duration || 0 };
     }
     if (parsed.text && parsed.reply) {
       return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };
@@ -3925,6 +4139,7 @@ async function sendMsg() {
   const content = input.value.trim();
   if (!content || !room) return;
   input.value = '';
+  updateComposerButtons();
 
   // The tiny re-compressed thumbnail (see makeTinyThumbnail/startReply)
   // finishes in the background; await it here so it's actually ready by
@@ -3965,6 +4180,7 @@ async function sendMsg() {
 
 // ── TYPING ────────────────────────────────────────────────────────────
 function onTyping() {
+  updateComposerButtons();
   const room = getActiveRoom();
   if (!room) return;
   if (room.typingTimer) clearTimeout(room.typingTimer);
@@ -4760,8 +4976,16 @@ async function handleFileSelect(event) {
   const images = [];
   const others = [];
   for (const file of valid) {
-    const base64 = await fileToBase64(file);
-    (file.type.startsWith('image/') ? images : others).push({ file, base64 });
+    if (file.type.startsWith('image/')) {
+      // Compressed here, before anything else touches it — base64/encrypt/
+      // send all work on the already-shrunk bytes, and so does the picker
+      // preview below.
+      const { base64, mime } = await compressImageFile(file);
+      images.push({ file, base64, mime });
+    } else {
+      const base64 = await fileToBase64(file);
+      others.push({ file, base64 });
+    }
   }
 
   // Non-image files send immediately, one after another — view-once isn't a
@@ -4778,12 +5002,18 @@ async function handleFileSelect(event) {
 
 // One shared send path for both the normal attach button and the view-once
 // choice below, so the message-id/optimistic-render/API-call logic (and its
-// existing race-condition fix) only exists in one place.
-async function sendFileMessage(room, file, base64, isImage, viewOnce) {
+// existing race-condition fix) only exists in one place. mimeOverride lets
+// a compressed image (now actually a JPEG, whatever it started as) report
+// its real post-compression type instead of the original file's — and size
+// is always derived from the base64 actually being sent rather than
+// file.size, since compression means those two routinely no longer match.
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride) {
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  const mime = mimeOverride || file.type;
+  const sizeBytes = Math.ceil(base64.length * 3 / 4);
 
-  const payload = JSON.stringify({ type: 'file', name: file.name, mime: file.type, size: file.size, data: base64, viewOnce: !!viewOnce });
+  const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, viewOnce: !!viewOnce });
   const encryptedPayload = await encryptMsg(room, payload);
 
   // Same fix as text messages: generate the real id up front and send it to
@@ -4797,7 +5027,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce) {
   const msgId = 'file' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time,
-    fileName: file.name, mime: file.type, base64, isImage, viewOnce: !!viewOnce, viewed: false,
+    fileName: file.name, mime, base64, isImage, viewOnce: !!viewOnce, viewed: false,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
@@ -4810,12 +5040,270 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce) {
   }
 }
 
+// Multiple photos picked together send as ONE encrypted message carrying
+// an images[] array, rather than one message per photo — that's what lets
+// them land as a single WhatsApp-style grid bubble on the receiving side
+// (see renderMessageRecord's 'album' branch and buildAlbumGridHtml) instead
+// of a wall of separate image messages. A single photo still goes through
+// sendFileMessage as its own normal message; grouping only makes sense
+// once there's more than one.
+async function sendAlbumMessage(room, items, viewOnce) {
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+
+  const payload = JSON.stringify({
+    type: 'album',
+    viewOnce: !!viewOnce,
+    images: items.map(({ file, base64, mime }) => ({
+      name: file.name, mime, size: Math.ceil(base64.length * 3 / 4), data: base64,
+    })),
+  });
+  const encryptedPayload = await encryptMsg(room, payload);
+
+  const msgId = 'album' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const rec = {
+    id: msgId, kind: 'album', isMe: true, name: room.myName, time, viewOnce: !!viewOnce,
+    images: items.map(({ file, base64, mime }, i) => ({
+      id: 'ai' + i + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      fileName: file.name, mime, base64, viewOnce: !!viewOnce, viewed: false,
+    })),
+    receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
+  };
+  room.messages.push(rec);
+  renderMessageRecord(room, rec);
+
+  try {
+    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
+  } catch (e) {
+    toast('Failed to send photos');
+  }
+}
+
+// ── VOICE NOTES ──────────────────────────────────────────────────────────
+let voiceRecorder = null;
+let voiceChunks = [];
+let voiceStream = null;
+let voiceStartTime = 0;
+let voiceTimerInterval = null;
+let voiceMime = '';
+const VOICE_MAX_MS = 5 * 60 * 1000; // 5 min cap, same ballpark as WhatsApp
+
+function pickVoiceMimeType() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  for (const c of candidates) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return '';
+}
+
+function formatVoiceTime(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function showVoiceRecordBar() {
+  const ftr = document.getElementById('chat-ftr');
+  const bar = document.getElementById('voice-record-bar');
+  if (ftr) ftr.style.display = 'none';
+  if (bar) bar.classList.add('show');
+}
+
+function hideVoiceRecordBar() {
+  const ftr = document.getElementById('chat-ftr');
+  const bar = document.getElementById('voice-record-bar');
+  if (ftr) ftr.style.display = 'flex';
+  if (bar) bar.classList.remove('show');
+}
+
+async function startVoiceRecording() {
+  const room = getActiveRoom();
+  const input = document.getElementById('msg-input');
+  if (!room || !input || input.disabled) return;
+  if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices) {
+    toast('Voice notes aren’t supported on this browser.');
+    return;
+  }
+  unlockAudio();
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    toast('Microphone access denied.');
+    return;
+  }
+  voiceMime = pickVoiceMimeType();
+  voiceChunks = [];
+  try {
+    voiceRecorder = voiceMime ? new MediaRecorder(voiceStream, { mimeType: voiceMime }) : new MediaRecorder(voiceStream);
+  } catch (e) {
+    toast('Could not start recording.');
+    voiceStream.getTracks().forEach(t => t.stop());
+    voiceStream = null;
+    return;
+  }
+  voiceRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) voiceChunks.push(e.data); };
+  voiceStartTime = Date.now();
+  voiceRecorder.start();
+  showVoiceRecordBar();
+  const timeEl = document.getElementById('voice-record-time');
+  if (timeEl) timeEl.textContent = '0:00';
+  voiceTimerInterval = setInterval(() => {
+    const el = document.getElementById('voice-record-time');
+    const elapsedMs = Date.now() - voiceStartTime;
+    if (el) el.textContent = formatVoiceTime(elapsedMs);
+    if (elapsedMs >= VOICE_MAX_MS) finishVoiceRecording(); // auto-send at the cap
+  }, 200);
+}
+
+function cancelVoiceRecording() {
+  if (voiceTimerInterval) { clearInterval(voiceTimerInterval); voiceTimerInterval = null; }
+  if (voiceRecorder && voiceRecorder.state !== 'inactive') {
+    voiceRecorder.ondataavailable = null;
+    voiceRecorder.onstop = () => { if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; } };
+    voiceRecorder.stop();
+  } else if (voiceStream) {
+    voiceStream.getTracks().forEach(t => t.stop());
+    voiceStream = null;
+  }
+  voiceRecorder = null;
+  voiceChunks = [];
+  hideVoiceRecordBar();
+}
+
+function finishVoiceRecording() {
+  const room = getActiveRoom();
+  if (!voiceRecorder || voiceRecorder.state === 'inactive') { hideVoiceRecordBar(); return; }
+  if (voiceTimerInterval) { clearInterval(voiceTimerInterval); voiceTimerInterval = null; }
+  const durationMs = Date.now() - voiceStartTime;
+  const mimeUsed = voiceMime || voiceRecorder.mimeType || 'audio/webm';
+  voiceRecorder.onstop = async () => {
+    if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+    hideVoiceRecordBar();
+    const chunks = voiceChunks;
+    voiceChunks = [];
+    if (!chunks.length || durationMs < 400) return; // stray tap, too short to be real
+    const blob = new Blob(chunks, { type: mimeUsed });
+    await sendVoiceMessage(room, blob, Math.round(durationMs / 1000), mimeUsed);
+  };
+  voiceRecorder.stop();
+  voiceRecorder = null;
+}
+
+async function sendVoiceMessage(room, blob, durationSeconds, mime) {
+  if (!room) return;
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  const base64 = await blobToBase64(blob);
+
+  const payload = JSON.stringify({ type: 'voice', mime, duration: durationSeconds, size: blob.size, data: base64 });
+  const encryptedPayload = await encryptMsg(room, payload);
+
+  const msgId = 'voice' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const rec = {
+    id: msgId, kind: 'voice', isMe: true, name: room.myName, time,
+    mime, base64, duration: durationSeconds,
+    receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
+  };
+  room.messages.push(rec);
+  renderMessageRecord(room, rec);
+
+  try {
+    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
+  } catch (e) {
+    toast('Failed to send voice note');
+  }
+}
+
+function buildVoicePlayerHtml(rec) {
+  return `<div class="msg-voice" id="voice-${rec.id}" oncontextmenu="return false">
+    <button type="button" class="voice-play-btn" onclick="event.stopPropagation();toggleVoicePlayback('${rec.id}')">
+      <svg viewBox="0 0 24 24" class="voice-icon-play"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+      <svg viewBox="0 0 24 24" class="voice-icon-pause" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    </button>
+    <div class="voice-track" id="voice-track-${rec.id}" onclick="event.stopPropagation();seekVoice(event,'${rec.id}')">
+      <div class="voice-track-fill" id="voice-fill-${rec.id}"></div>
+    </div>
+    <span class="voice-duration" id="voice-duration-${rec.id}">${formatVoiceTime((rec.duration||0) * 1000)}</span>
+  </div>`;
+}
+
+const voiceAudioEls = new Map(); // msgId -> HTMLAudioElement
+let currentlyPlayingVoiceId = null;
+
+function getOrCreateVoiceAudio(rec) {
+  let audio = voiceAudioEls.get(rec.id);
+  if (audio) return audio;
+  audio = new Audio(`data:${rec.mime};base64,${rec.base64}`);
+  audio.preload = 'metadata';
+  audio.addEventListener('timeupdate', () => updateVoiceProgress(rec.id, audio));
+  audio.addEventListener('ended', () => {
+    setVoicePlayIcon(rec.id, false);
+    const fill = document.getElementById(`voice-fill-${rec.id}`);
+    if (fill) fill.style.width = '0%';
+    const durEl = document.getElementById(`voice-duration-${rec.id}`);
+    if (durEl) durEl.textContent = formatVoiceTime((rec.duration||0) * 1000);
+    if (currentlyPlayingVoiceId === rec.id) currentlyPlayingVoiceId = null;
+  });
+  voiceAudioEls.set(rec.id, audio);
+  return audio;
+}
+
+function toggleVoicePlayback(msgId) {
+  const rec = findMessageRec(msgId);
+  if (!rec || rec.kind !== 'voice') return;
+  const audio = getOrCreateVoiceAudio(rec);
+  if (audio.paused) {
+    // Only one voice note plays at a time.
+    if (currentlyPlayingVoiceId && currentlyPlayingVoiceId !== msgId) {
+      const prev = voiceAudioEls.get(currentlyPlayingVoiceId);
+      if (prev) prev.pause();
+      setVoicePlayIcon(currentlyPlayingVoiceId, false);
+    }
+    audio.play().catch(() => {});
+    currentlyPlayingVoiceId = msgId;
+    setVoicePlayIcon(msgId, true);
+  } else {
+    audio.pause();
+    setVoicePlayIcon(msgId, false);
+    if (currentlyPlayingVoiceId === msgId) currentlyPlayingVoiceId = null;
+  }
+}
+
+function setVoicePlayIcon(msgId, playing) {
+  const btn = document.querySelector(`#voice-${msgId} .voice-play-btn`);
+  if (!btn) return;
+  const playIcon = btn.querySelector('.voice-icon-play');
+  const pauseIcon = btn.querySelector('.voice-icon-pause');
+  if (playIcon) playIcon.style.display = playing ? 'none' : 'block';
+  if (pauseIcon) pauseIcon.style.display = playing ? 'block' : 'none';
+}
+
+function updateVoiceProgress(msgId, audio) {
+  const fill = document.getElementById(`voice-fill-${msgId}`);
+  const durEl = document.getElementById(`voice-duration-${msgId}`);
+  if (fill && audio.duration && isFinite(audio.duration)) {
+    fill.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+  }
+  if (durEl) durEl.textContent = formatVoiceTime(audio.currentTime * 1000);
+}
+
+function seekVoice(e, msgId) {
+  const audio = voiceAudioEls.get(msgId);
+  if (!audio || !audio.duration || !isFinite(audio.duration)) return;
+  const track = document.getElementById(`voice-track-${msgId}`);
+  if (!track) return;
+  const rect = track.getBoundingClientRect();
+  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  audio.currentTime = ratio * audio.duration;
+}
+
 // Small confirm step, image sends only: lets you pick between normal
 // photos (behaves exactly like today) and view-once (hidden behind a "tap to
 // view" card for the recipient, gone shortly after they open it once). The
 // sender's own copy always renders normally either way, same as WhatsApp —
 // only the recipient's side is gated.
-// items: array of { file, base64 } — one photo or several from a
+// items: array of { file, base64, mime } — one photo or several from a
 // multi-select all share the single choice made here.
 function showSendImageOptions(room, items) {
   const overlay = document.createElement('div');
@@ -4829,7 +5317,7 @@ function showSendImageOptions(room, items) {
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;text-align:center;font-family:inherit">
       <div style="position:relative;margin-bottom:16px">
-        <img src="data:${first.file.type};base64,${first.base64}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>
+        <img src="data:${first.mime || first.file.type};base64,${first.base64}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>
         ${countBadge}
       </div>
       <div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">${copy} — hidden until opened, then removed shortly after.</div>
@@ -4843,8 +5331,11 @@ function showSendImageOptions(room, items) {
   const close = () => overlay.remove();
   const sendAll = async (viewOnce) => {
     close();
-    for (const { file, base64 } of items) {
-      await sendFileMessage(room, file, base64, true, viewOnce);
+    if (items.length > 1) {
+      await sendAlbumMessage(room, items, viewOnce);
+    } else {
+      const { file, base64, mime } = items[0];
+      await sendFileMessage(room, file, base64, true, viewOnce, mime);
     }
   };
   overlay.querySelector('#send-img-once').onclick = () => sendAll(true);
@@ -4860,6 +5351,56 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Compress a photo before it's ever encrypted/sent — same idea as
+// WhatsApp's default "send with compression": resize to a sane max
+// dimension and re-encode as JPEG at a moderate quality, which is what
+// actually drives the size down (camera photos routinely run 3-8MB; a
+// 1600px-wide JPEG at 75% quality is typically a few hundred KB with no
+// visible difference on a phone screen). GIFs are left untouched entirely —
+// a canvas re-encode only ever captures a single frame, which would
+// silently kill the animation. Small files aren't worth re-encoding at all
+// (re-compressing an already-small screenshot just adds JPEG artifacts for
+// no real size win). Falls back to the original bytes if anything about
+// the compression path fails, or if it didn't actually end up smaller.
+async function compressImageFile(file) {
+  const MAX_DIM = 1600;
+  const QUALITY = 0.75;
+  const MIN_SIZE_TO_BOTHER = 150 * 1024;
+  if (file.type === 'image/gif' || file.size < MIN_SIZE_TO_BOTHER) {
+    return { base64: await fileToBase64(file), mime: file.type };
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    let width = bitmap.width, height = bitmap.height;
+    if (width > MAX_DIM || height > MAX_DIM) {
+      const scale = MAX_DIM / Math.max(width, height);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    if (bitmap.close) bitmap.close();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', QUALITY));
+    if (!blob || blob.size >= file.size) {
+      return { base64: await fileToBase64(file), mime: file.type };
+    }
+    return { base64: await blobToBase64(blob), mime: 'image/jpeg' };
+  } catch (e) {
+    return { base64: await fileToBase64(file), mime: file.type };
+  }
 }
 
 // Saves a data: URI to disk via a Blob + temporary object-URL anchor,
@@ -5104,18 +5645,31 @@ function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
 // carrying the whole original photo.
 function startReply(rec, msgId, replyText) {
   const isImageReply = !!(rec && rec.kind === 'file' && rec.isImage);
+  // Replying to an album shows the first photo as the representative
+  // thumbnail and labels it with the count ("3 photos") rather than a
+  // single filename, which doesn't really apply to a grouped send.
+  const isAlbumReply = !!(rec && rec.kind === 'album' && rec.images && rec.images.length);
+  const isVoiceReply = !!(rec && rec.kind === 'voice');
+  const thumbSrc = isAlbumReply ? rec.images[0] : rec;
+  const albumLabel = isAlbumReply ? `${rec.images.length} photo${rec.images.length === 1 ? '' : 's'}` : '';
   const text = (replyText || '').substring(0, 100);
   replyTo = {
-    msgId, text: isImageReply ? (rec.fileName || 'Photo') : text, isImage: isImageReply,
-    thumbMime: 'image/jpeg', thumbPromise: isImageReply ? makeTinyThumbnail(rec.base64, rec.mime) : null,
+    msgId,
+    text: isAlbumReply ? albumLabel : (isImageReply ? (rec.fileName || 'Photo') : (isVoiceReply ? 'Voice note' : text)),
+    isImage: isImageReply || isAlbumReply,
+    thumbMime: 'image/jpeg',
+    thumbPromise: (isImageReply || isAlbumReply) ? makeTinyThumbnail(thumbSrc.base64, thumbSrc.mime) : null,
   };
 
   const thumbEl = document.getElementById('reply-thumb');
   const textEl = document.getElementById('reply-text');
   document.getElementById('reply-name').textContent = '';
-  if (isImageReply) {
-    if (thumbEl) { thumbEl.src = `data:${rec.mime};base64,${rec.base64}`; thumbEl.style.display = 'block'; }
-    if (textEl) textEl.textContent = '📷 Photo';
+  if (isImageReply || isAlbumReply) {
+    if (thumbEl) { thumbEl.src = `data:${thumbSrc.mime};base64,${thumbSrc.base64}`; thumbEl.style.display = 'block'; }
+    if (textEl) textEl.textContent = isAlbumReply ? `📷 ${albumLabel}` : '📷 Photo';
+  } else if (isVoiceReply) {
+    if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
+    if (textEl) textEl.textContent = '🎤 Voice note';
   } else {
     if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
     if (textEl) textEl.textContent = replyTo.text;
