@@ -4746,12 +4746,24 @@ async function handleSetup() {
           if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
           if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
           setActiveRoom(room.code);
+          // Kick off polling/signaling right away, in parallel with the
+          // ~2.85s V-entrance ceremony below, instead of waiting for it to
+          // finish first. It used to run after the awaited ceremony, which
+          // meant the signaling WebSocket the call button depends on
+          // (canStartCall requires room.signalWs to be OPEN) didn't even
+          // start connecting until the whole animation had played out —
+          // stacking a real network handshake on top of an already-2.85s
+          // wait, which is what made the call button take several extra
+          // seconds to light up after a room opened. Starting it here lets
+          // the connection use that same ceremony time productively, so by
+          // the time the chat screen is actually interactive, signaling has
+          // very likely already finished connecting.
+          startRoomPolling(room);
           await triggerConnectionMoment('peer_joined', () => {
             showScreen('s-chat');
             enableInput(true, true);
             playChime();
           });
-          startRoomPolling(room);
         }
       }, 2000);
     } else {
@@ -4775,12 +4787,14 @@ async function handleSetup() {
       room.peerOnline = true; room.everOnline = true;
 
       setActiveRoom(room.code);
+      // Same reordering as the peer_joined branch above — start
+      // connecting now, in parallel with the ceremony, not after it.
+      startRoomPolling(room);
       await triggerConnectionMoment('joined', () => {
         showScreen('s-chat');
         enableInput(true, true);
         playChime();
       });
-      startRoomPolling(room);
     }
   } catch(e) {
     showErr('Connection failed. Please try again.');
