@@ -701,6 +701,27 @@ wss.on('connection', (ws) => {
             if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
             else console.warn('call push send failed:', err.statusCode, err.body || err.message);
           });
+
+          // iOS web push has no equivalent of the high-priority "VoIP push"
+          // tier native apps get (that's reserved for PushKit, not available
+          // to web apps at all) — reported single-attempt delivery on iOS
+          // runs roughly 70-85% vs 90-95% on Android. A push that silently
+          // never lands means the callee's phone just sits there through the
+          // whole ring with nothing to tap. One retry partway through the
+          // 30s window, only if the call is still genuinely ringing (nobody
+          // answered/declined/hung up, and no newer call superseded this
+          // one), gives it a second independent shot without turning into
+          // the every-3s buzzing the alreadyRinging guard above exists to
+          // prevent.
+          const ringMarker = room.ringingUntil;
+          setTimeout(() => {
+            if (room.ringingUntil !== ringMarker || room.ringingUntil <= Date.now()) return;
+            if (!peerMember.pushSub) return; // already known-dead from the first attempt
+            webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 15 }).catch(err => {
+              if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
+              else console.warn('call push retry send failed:', err.statusCode, err.body || err.message);
+            });
+          }, 12000);
         }
       } else if (msg.type === 'call-accept' || msg.type === 'call-decline' || msg.type === 'call-busy') {
         room.ringingUntil = 0;
