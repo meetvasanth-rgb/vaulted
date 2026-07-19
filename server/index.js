@@ -9,12 +9,12 @@ const { WebSocketServer } = require('ws');
 const scryptAsync = promisify(crypto.scrypt);
 
 const PORT = process.env.PORT || 3000;
-// Named rooms are meant to persist for 7 days of inactivity, one-time
+// Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
 // to be a single flat 5-minute TTL for every room regardless of type, which
 // silently deleted named rooms (and logged everyone out of them) within
 // minutes of going idle. room.isNamed (set at creation) picks the right one.
-const NAMED_ROOM_TTL = 7 * 24 * 60 * 60 * 1000;
+const NAMED_ROOM_TTL = 4 * 24 * 60 * 60 * 1000;
 const ONE_TIME_ROOM_TTL = 24 * 60 * 60 * 1000;
 
 const rooms = new Map();
