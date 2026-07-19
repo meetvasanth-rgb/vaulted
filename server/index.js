@@ -791,4 +791,93 @@ setInterval(() => {
   });
 }, 25000);
 
+// ── SHUTDOWN SNAPSHOT ─────────────────────────────────────────────────────
+// `rooms` lives only in process memory — by design, there's no database.
+// The cost of that is real: any process restart (a deploy, a manual
+// restart, Railway recycling the container) used to wipe every open room
+// and any message not yet delivered, with nothing to signal either party.
+// This doesn't fix that for a hard crash or OOM kill — the process never
+// gets a chance to run any code in that case, nothing short of a
+// continuously-replicated store like Redis could. What it does fix is the
+// far more common case: a graceful restart, where the process receives
+// SIGTERM and gets a brief moment to act before it actually exits. On that
+// signal, serialize the whole `rooms` Map to disk once; on boot, reload it
+// (skipping anything that would already have expired anyway) and delete the
+// file so a later, truly-fresh boot never finds a stale leftover.
+//
+// SNAPSHOT_DIR must point at storage that survives the *container* being
+// torn down and recreated, not just the process inside it — i.e. a Railway
+// Volume, not the container's own ephemeral disk. Without a Volume attached
+// and SNAPSHOT_DIR pointed at its mount path, this still runs safely (falls
+// back to a local folder next to the server code) but a real deploy will
+// still lose rooms, same as before. See the boot-time log line below.
+const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || path.join(__dirname, '.data');
+const SNAPSHOT_PATH = path.join(SNAPSHOT_DIR, 'rooms-snapshot.json');
+
+function saveSnapshot() {
+  try {
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+    // Map values aren't JSON-serializable as-is — `members` is itself a
+    // Map, so convert it to an array of [token, memberInfo] pairs per room.
+    // Live-only state (open WebSocket objects in signalingSockets/wss) is
+    // deliberately left out entirely; it can't be serialized and doesn't
+    // need to be — every client already reconnects its own socket on
+    // resume/focus regardless of whether the server restarted.
+    const entries = Array.from(rooms.entries()).map(([code, room]) => [
+      code,
+      { ...room, members: Array.from(room.members.entries()) },
+    ]);
+    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(entries));
+    console.log(`Snapshot saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
+  } catch (e) {
+    console.error('Snapshot save failed:', e.message);
+  }
+}
+
+function loadSnapshot() {
+  try {
+    if (!fs.existsSync(SNAPSHOT_PATH)) return;
+    const entries = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'));
+    const now = Date.now();
+    let restored = 0, expired = 0;
+    for (const [roomCode, room] of entries) {
+      const ttl = room.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
+      if (now - room.lastActivity > ttl) { expired++; continue; } // would've expired anyway — don't resurrect it
+      room.members = new Map(room.members);
+      // A call mid-ring can't survive this any more than the process
+      // itself can (the WebSocket carrying it is gone) — clear it so a
+      // stale future timestamp doesn't incorrectly suppress a real ring
+      // push after restart.
+      room.ringingUntil = 0;
+      rooms.set(roomCode, room);
+      restored++;
+    }
+    fs.unlinkSync(SNAPSHOT_PATH); // one-shot — never let a later normal boot see a stale file
+    console.log(`Snapshot restored: ${restored} room(s) (${expired} already expired, discarded).`);
+  } catch (e) {
+    console.error('Snapshot load failed:', e.message);
+  }
+}
+
+if (!process.env.SNAPSHOT_DIR) {
+  console.warn('SNAPSHOT_DIR not set — shutdown snapshots will use local container disk, which does NOT survive a Railway deploy (only survives if the same container process restarts in place). To make rooms survive real deploys: attach a Railway Volume to this service, mount it (e.g. at /data), and set the SNAPSHOT_DIR variable to that mount path.');
+}
+loadSnapshot();
+
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received — saving snapshot before exit...`);
+  saveSnapshot();
+  srv.close(() => process.exit(0));
+  // Belt-and-suspenders: if something (a lingering keep-alive connection,
+  // an open WebSocket) keeps srv.close() from ever calling back, don't hang
+  // the restart forever — the snapshot is already written by this point,
+  // so there's nothing left worth waiting for.
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));

@@ -1335,7 +1335,7 @@ body.select-mode .chat-ftr{display:none}
     <div class="legal-section">
       <h3>How messages work</h3>
       <p>All messages are end-to-end encrypted using AES-256-GCM with keys generated in your browser. The server never sees your message content — only encrypted ciphertext that it cannot read.</p>
-      <p>There is no database and no backups — everything server-side lives only in memory.</p>
+      <p>There is no traditional database and no ongoing backups — server-side data lives only in memory during normal operation. The one exception: in the brief moments during a planned server restart (for example, a deployment), the server writes a temporary snapshot of that same in-memory data to disk purely so open rooms aren't wiped out, then reloads and deletes that snapshot the moment it's back online. This snapshot holds nothing beyond what the server already had in memory — the same encrypted message content, not new plaintext — and it does not help against an unexpected crash, only a graceful restart.</p>
     </div>
 
     <div class="legal-section">
