@@ -288,7 +288,23 @@ async function api(path, method, d, p, res) {
     // delay the send response.
     for (const [t, mb] of room.members) {
       if (t !== d.token && mb.pushSub) {
-        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: d.code });
+        // tag used to just be d.code (the room code) — same tag for every
+        // message in the room, combined with sw.js's renotify:true. That
+        // combination hits a long-standing, still-unresolved Chrome bug
+        // (reported repeatedly against exactly this tag+renotify pattern,
+        // e.g. github.com/OneSignal/OneSignal-Website-SDK/issues/857):
+        // once one notification with a given tag has been shown and the
+        // person hasn't interacted with it, every later push that reuses
+        // that same tag silently updates the existing notification in the
+        // tray instead of re-alerting — no vibration, no sound, no
+        // heads-up — even though renotify:true is supposed to force a
+        // fresh alert. That's exactly "ignore one notification, then stop
+        // getting notified at all" even though the pushes are still
+        // arriving and being delivered to the tray. Making the tag unique
+        // per message means Chrome never treats a new push as "replacing"
+        // an old one, so it can't hit that silent-update path — every
+        // message reliably alerts on its own.
+        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: `${d.code}-${msgId}` });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
