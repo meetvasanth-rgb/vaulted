@@ -1728,7 +1728,7 @@ function persistRoomSeq(room) {
 // ledger — called whenever a message's deleteAt gets set, so a reload right
 // after can tell it apart from a message whose timer never started. Entries
 // older than 48h are dropped on the way out: the server only ever keeps the
-// last 300 messages per room anyway, so anything this old could never be
+// last 100 messages per room anyway, so anything this old could never be
 // re-fetched and resurrected regardless.
 function persistDeleteLedger(room) {
   try {
@@ -4333,7 +4333,7 @@ async function processIncomingContent(room, content, name, time, msgId) {
 // room.messages is never persisted — only the room session (keys, seq
 // positions) and the small delete ledger (msgId -> deleteAt) are. So right
 // after rejoining, do one bootstrap fetch of everything the server still
-// has (it caps history at 300 messages per room) — including this device's
+// has (it caps history at 100 messages per room) — including this device's
 // own past sends, which normal incremental polling always excludes since a
 // live session already has those in memory. Each message gets re-decrypted
 // fresh from the server's ciphertext, exactly like a message arriving for

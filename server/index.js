@@ -278,8 +278,10 @@ async function api(path, method, d, p, res) {
     const msgId = clientMsgId || uid();
     const seq = ++room.seq;
     room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
-    // Trim — keep last 300 messages but seq numbers never reset
-    if (room.msgs.length > 300) room.msgs.splice(0, room.msgs.length-300);
+    // Trim — keep last 100 messages but seq numbers never reset. Lowered
+    // from 300: applies regardless of whether disappearing-message timers
+    // are on, so even a room without them retains less on the server.
+    if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length-100);
 
     // Best-effort push notification to the peer if they've subscribed. The
     // server can't decrypt d.content (E2E), so the payload is deliberately
