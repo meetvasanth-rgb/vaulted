@@ -1513,6 +1513,20 @@ body.select-mode .chat-ftr{display:none}
 
     <div class="settings-divider"></div>
 
+    <div class="settings-section-label">Conversation</div>
+
+    <div class="settings-row" onclick="handleClearChat()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#FDF0EE;color:#C0392B;">
+        <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title" style="color:#C0392B;">Clear chat</div>
+        <div class="settings-row-sub">Erase all messages for both of you — the room stays open</div>
+      </div>
+    </div>
+
+    <div class="settings-divider"></div>
+
     <div class="settings-section-label">About</div>
 
     <div class="settings-about-badge">
@@ -1647,6 +1661,15 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     mySignalSessionId: 'sg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
     peerSignalSessionId: null,
     lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
+    // Local watermark for "clear chat" — bumped whenever we act on a
+    // clearedAt value from the server, so a poll only wipes this session's
+    // in-memory history once per actual clear, not on every subsequent
+    // poll response that still carries the same timestamp. Deliberately
+    // NOT persisted across reload: a fresh page load rebuilds `messages`
+    // from scratch via restoreRoomHistory's full=1 bootstrap, which by
+    // then already reflects the clear (nothing left server-side to
+    // resurrect), so there's nothing stale here for a reset-to-0 to miss.
+    lastKnownClearedAt: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
     deleteTimerSeconds: deleteTimerSeconds || 0,
     messages: [],           // ordered array of message records (the "chat log")
@@ -4422,6 +4445,12 @@ async function restoreRoomHistory(room) {
         if (del.deletionSeq > room.lastDeletionSeq) room.lastDeletionSeq = del.deletionSeq;
       }
     }
+    // Just establishes the baseline — the bootstrap fetch above already
+    // only pulled back whatever's left in room.msgs post-clear, so there's
+    // nothing to actively wipe here, only a watermark to set so the very
+    // next regular doPoll doesn't mistake this same clearedAt value for a
+    // brand-new clear and wipe the history this call just correctly built.
+    room.lastKnownClearedAt = data.clearedAt || 0;
     persistRoomSeq(room);
   } catch(e) { console.error('E2E: restoreRoomHistory failed:', e.message); }
 }
@@ -4491,6 +4520,17 @@ async function doPoll(room) {
       if (room.everOnline) enableInput(true);
     }
     if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { playChime(); }
+
+    // A clear-chat wipes room.msgs server-side entirely, so anything below
+    // this point (read receipts, reactions, deletions, new messages) can
+    // only ever refer to what's left afterward — safe to always act on a
+    // newer clearedAt first, before any of that gets processed. Guarded by
+    // lastKnownClearedAt so this only fires once per actual clear, not on
+    // every poll that still carries the same timestamp.
+    if (data.clearedAt && data.clearedAt > (room.lastKnownClearedAt || 0)) {
+      clearRoomChatLocally(room);
+    }
+    if (data.clearedAt) room.lastKnownClearedAt = data.clearedAt;
 
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
@@ -4894,6 +4934,46 @@ async function closeActiveRoom() {
     const chatScreen = document.getElementById('s-chat');
     if (chatScreen) { chatScreen.style.opacity = ''; chatScreen.style.transition = ''; }
   });
+}
+
+// ── CLEAR CHAT (wipes history, room stays open) ─────────────────────────
+// Unlike closeActiveRoom/leaveActiveRoom above, this never touches the room
+// itself — no /api/close, no removeRoomFromState, no vanish ceremony. Only
+// message content goes away, for both people, while the code/membership/
+// disappearing-timer setting all stay exactly as they were.
+async function handleClearChat() {
+  const room = getActiveRoom();
+  if (!room) return;
+  closeSettings();
+  if (!confirm('Clear all messages in this room for both of you? This cannot be undone. The room itself stays open.')) return;
+  let result;
+  try {
+    result = await api('/api/clear-chat', { code: room.code, token: room.token });
+  } catch (e) { result = null; }
+  if (!result || result.error) { toast('Could not clear chat — try again.'); return; }
+  if (result.clearedAt) room.lastKnownClearedAt = result.clearedAt;
+  clearRoomChatLocally(room);
+  toast('Chat cleared');
+}
+
+// Wipes this room's own local message state — called both right after we
+// trigger a clear ourselves (optimistic) and from doPoll when the peer
+// triggers one instead. Only in-memory/DOM state; nothing here needs to
+// touch localStorage, since message content was never persisted there in
+// the first place (see restoreRoomHistory's full=1 bootstrap-on-reload).
+function clearRoomChatLocally(room) {
+  for (const handle of room.msgTimers.values()) clearTimeout(handle);
+  room.msgTimers.clear();
+  room.messages = [];
+  room.deleteLedger.clear();
+  persistDeleteLedger(room);
+  room.unread = 0;
+  if (room.code === activeRoomCode) {
+    const body = document.getElementById('chat-body');
+    if (body) body.innerHTML = '';
+  }
+  renderRoomTabs();
+  updateDocumentTitle();
 }
 
 function goBack() {

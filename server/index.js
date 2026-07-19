@@ -456,6 +456,28 @@ async function api(path, method, d, p, res) {
     return res200(res, { ok: true, deleteTimer: room.deleteTimer });
   }
 
+  // POST /api/clear-chat — wipes all message history for this room while
+  // leaving the room itself (code, membership, session tokens, and the
+  // disappearing-message timer setting) completely untouched. Unlike
+  // /api/delete-message ("delete for everyone"), which only lets the
+  // original sender remove their own message, this is a joint room action:
+  // either member can invoke it, since it clears the shared history both
+  // people are looking at, not just their own sent messages. clearedAt is
+  // how an already-open session (via /api/poll) learns to wipe its own
+  // in-memory history too — a fresh page load needs no such signal, since
+  // the now-emptied room.msgs has nothing left in it to bootstrap-fetch back.
+  if (path==='/api/clear-chat' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    const m = room.members.get(d.token);
+    if (!m) return resErr(res,'Not in room.',403);
+    room.msgs = [];
+    room.clearedAt = Date.now();
+    room.lastActivity = Date.now();
+    room.msgs.push({ seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
+    return res200(res, { ok: true, clearedAt: room.clearedAt });
+  }
+
   // GET /api/poll — SIMPLE: return all messages with seq > clientLastSeq that are not from this user
   if (path==='/api/poll' && method==='GET') {
     const roomCode = p.get('code');
@@ -543,7 +565,7 @@ async function api(path, method, d, p, res) {
       }
     }
 
-    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer });
+    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0 });
   }
 
   // POST /api/read
