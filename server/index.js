@@ -721,7 +721,7 @@ wss.on('connection', (ws) => {
               if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
               else console.warn('call push retry send failed:', err.statusCode, err.body || err.message);
             });
-          }, 12000);
+          }, 5000);
         }
       } else if (msg.type === 'call-accept' || msg.type === 'call-decline' || msg.type === 'call-busy') {
         room.ringingUntil = 0;
