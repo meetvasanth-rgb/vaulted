@@ -92,6 +92,44 @@ setInterval(() => {
   }
 }, 30000);
 
+// Server-side enforcement for disappearing-message timers. Previously, the
+// countdown (startDeleteTimer/startReceiveDeleteTimer in index.html) only
+// ever controlled what each person's own screen showed — nothing told the
+// server to actually delete the message when that countdown finished, so
+// its ciphertext kept sitting in room.msgs indefinitely (until the
+// 100-message cap or the room's own TTL caught up with it), even after
+// neither person could see it anymore. That contradicted the Privacy
+// Policy's claim that a disappearing message is "delete[d] from the server
+// as soon as its timer expires" — this sweep is what makes that true.
+//
+// msg.readAt and room.deleteTimer are both already server-held state, the
+// same anchor point both the sender's and receiver's local countdowns use
+// (the sender's timer starts once the peer's read receipt lands; the
+// receiver's starts on their own read) — so this doesn't depend on either
+// client staying open, unlike the purely client-side version it backs up.
+// A message that's never read never starts its countdown here either,
+// exactly matching the behavior it's reinforcing rather than replacing:
+// the client-side timers still drive the immediate on-screen countdown/
+// removal UX; this is the guarantee that the deletion actually happens
+// even if a client's own timer never gets the chance to run (app closed,
+// backgrounded and throttled, etc). Reuses the exact same deleted/
+// deletionSeq fields as the manual "delete for everyone" path, so it flows
+// through the existing /api/poll sync mechanism with no client changes.
+setInterval(() => {
+  const now = Date.now();
+  for (const room of rooms.values()) {
+    if (!room.deleteTimer) continue;
+    for (const msg of room.msgs) {
+      if (msg.type !== 'message' || msg.deleted || !msg.readAt) continue;
+      if (now - msg.readAt >= room.deleteTimer * 1000) {
+        msg.content = null;
+        msg.deleted = true;
+        msg.deletionSeq = ++room.deletionSeq;
+      }
+    }
+  }
+}, 5000);
+
 function res200(res, data) {
   res.writeHead(200, { 'Content-Type':'application/json', 'Access-Control-Allow-Origin':'*', 'Cache-Control':'no-cache' });
   res.end(JSON.stringify(data));
