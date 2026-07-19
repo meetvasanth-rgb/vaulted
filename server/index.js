@@ -316,6 +316,25 @@ async function api(path, method, d, p, res) {
           if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null; // subscription expired/revoked
           else console.warn('push send failed:', err.statusCode, err.body || err.message);
         });
+
+        // Same reasoning as the call-invite retry below: iOS web push has
+        // meaningfully lower single-attempt delivery odds than Android (no
+        // equivalent of native apps' high-priority push tier is available
+        // to web apps at all). deliveredAt is the real signal that the
+        // recipient's client actually picked this message up via poll —
+        // if it's still unset a few seconds later, the first push likely
+        // never landed, so send one more. Scoped to this exact msgId, not
+        // "any new activity," so a message that already arrived fine never
+        // gets a redundant second buzz.
+        setTimeout(() => {
+          const rec = room.msgs.find(x => x.id === msgId);
+          if (!rec || rec.deliveredAt) return; // delivered (or trimmed/gone) already
+          if (!mb.pushSub) return; // already known-dead from the first attempt
+          webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
+            if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null;
+            else console.warn('push retry send failed:', err.statusCode, err.body || err.message);
+          });
+        }, 6000);
       }
     }
 
