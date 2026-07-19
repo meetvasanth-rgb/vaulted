@@ -1196,7 +1196,7 @@ body.select-mode .chat-ftr{display:none}
     <div class="chat-hdr-logo">V</div>
     <div class="chat-hdr-sep"></div>
     <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this room (only visible to you)">—</div>
-    <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption">🔒 E2E</div>
+    <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption"><span style="font-size:0.82em">🔒</span> E2E</div>
     <div class="chat-hdr-status">
       <div class="status-dot" id="status-dot"></div>
       <div class="status-txt" id="status-txt">Connected</div>
@@ -1216,7 +1216,7 @@ body.select-mode .chat-ftr{display:none}
     <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
   </div>
   <div class="room-tabs" id="room-tabs"></div>
-  <div class="e2e-bar">🔒 End-to-end encrypted · Gone when the room is erased</div>
+  <div class="e2e-bar"><span style="font-size:0.82em">🔒</span> End-to-end encrypted · Gone when the room is erased</div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
        with multiple rooms open, having it in the header made it ambiguous
@@ -3092,6 +3092,20 @@ function refreshPushForAllRooms() {
   for (const room of rooms.values()) initPushForRoom(room).catch(() => {});
 }
 
+// Same idea as refreshPushForAllRooms, but for the call-signaling WebSocket.
+// Its own onclose handler normally drives reconnect-with-backoff, but iOS in
+// particular can leave a stale/suspended socket sitting around for several
+// seconds after the app comes back to the foreground before that close event
+// actually fires (or notices the connection is dead) — that gap is exactly
+// what made the call button and an incoming-call's UI take 3-5s to come
+// alive after unlocking the phone back into a room. connectSignaling()
+// already no-ops if a socket for that room is still genuinely OPEN or
+// CONNECTING, so calling this on every resume is always safe, never creates
+// a duplicate connection.
+function reconnectSignalingForAllRooms() {
+  for (const room of rooms.values()) connectSignaling(room);
+}
+
 // ── PRIVACY COVER (app-switcher screenshot protection) ─────────────────
 // iOS/Android take a snapshot of whatever's on screen the instant you swipe
 // to the app switcher, to use as the preview thumbnail — that snapshot could
@@ -3151,6 +3165,7 @@ document.addEventListener('visibilitychange', () => {
     catchUpPoll();
     checkStaleIncomingCalls();
     refreshPushForAllRooms();
+    reconnectSignalingForAllRooms();
   }
 });
 window.addEventListener('focus', () => {
@@ -3162,11 +3177,12 @@ window.addEventListener('focus', () => {
   catchUpPoll();
   checkStaleIncomingCalls();
   refreshPushForAllRooms();
+  reconnectSignalingForAllRooms();
 });
 window.addEventListener('blur', () => { tabFocused = false; });
 // iOS/WebKit restores a backgrounded tab from its page cache without firing
 // 'load' — pageshow (with persisted:true) is the reliable signal for that.
-window.addEventListener('pageshow', (e) => { if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); refreshPushForAllRooms(); } });
+window.addEventListener('pageshow', (e) => { if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); refreshPushForAllRooms(); reconnectSignalingForAllRooms(); } });
 
 ['click','keydown','touchstart','mousemove'].forEach(evt => {
   document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
@@ -4888,7 +4904,7 @@ async function triggerConnectionMoment(variant, callback) {
     <div class="connect-rule"></div>
     <div class="connect-wordmark">Vaultlix</div>
     <div class="connect-context">${escHtml(contextLine)}</div>
-    <div class="connect-status">🔒 Encrypted · Connected</div>
+    <div class="connect-status"><span style="font-size:0.82em">🔒</span> Encrypted · Connected</div>
   `;
   document.body.appendChild(overlay);
 
