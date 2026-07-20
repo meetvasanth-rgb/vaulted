@@ -162,6 +162,13 @@ setInterval(() => {
     if (!room.deleteTimer) continue;
     for (const msg of room.msgs) {
       if (msg.type !== 'message' || msg.deleted || !msg.readAt) continue;
+      // Only messages sent at or after the timer's CURRENT setting took
+      // effect are ever in scope — see deleteTimerSetAt above. Without this
+      // guard, turning on (or changing) the timer applied it retroactively
+      // to every already-read message in the room's history, deleting
+      // conversation that predates the setting entirely; this makes it
+      // match the expected "only affects what happens from now on" behavior.
+      if (msg.ts < (room.deleteTimerSetAt || 0)) continue;
       if (now - msg.readAt >= room.deleteTimer * 1000) {
         msg.content = null;
         msg.deleted = true;
@@ -279,6 +286,12 @@ async function api(path, method, d, p, res, ip) {
       lastActivity: Date.now(),
       isNamed: !!namedCode,
       deleteTimer: parseInt(d.deleteTimer)||0,
+      // The moment the CURRENT deleteTimer value took effect — the sweep
+      // below only ever considers messages sent at or after this point, so
+      // enabling/changing the timer can never retroactively delete anything
+      // already in the room. Irrelevant at creation (nothing's been sent
+      // yet), but kept consistent with /api/set-timer below.
+      deleteTimerSetAt: Date.now(),
       passwordHash,
       seq: 0,          // global message sequence counter
       reactionSeq: 0,  // separate counter so reaction updates can be synced like read receipts
@@ -574,6 +587,16 @@ async function api(path, method, d, p, res, ip) {
     if (!m) return resErr(res,'Not in room.',403);
     const val = parseInt(d.deleteTimer);
     room.deleteTimer = (isNaN(val) || val < 0) ? 0 : val;
+    // Anchor point for the sweep below — turning the timer on (or changing
+    // its duration) only ever applies to messages sent from this moment
+    // forward. Without this, enabling e.g. a 5-minute timer on a room with
+    // existing history immediately swept up every already-read message
+    // older than 5 minutes on the very next sweep cycle, deleting past
+    // conversation that had nothing to do with the setting being turned on
+    // just now. Set unconditionally (even when turning the timer OFF) so
+    // that if it's re-enabled later, only messages from that later point
+    // are ever in scope — never a stale timestamp from an earlier session.
+    room.deleteTimerSetAt = Date.now();
     room.lastActivity = Date.now();
     room.msgs.push({
       seq: ++room.seq, id: uid(), type:'system',
