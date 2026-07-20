@@ -635,6 +635,14 @@ body.select-mode .chat-ftr{display:none}
 .msg-fade { animation: msgFade 0.5s ease forwards; }
 @keyframes msgFade { to { opacity:0; transform:scale(0.95); } }
 
+/* ── EMOJI SCREEN EFFECT (see triggerEmojiEffect) ──────────────── */
+@keyframes emoji-float-up {
+  0% { transform: translate(0,0) rotate(0deg); opacity:0; }
+  12% { opacity:1; }
+  80% { opacity:1; }
+  100% { transform: translate(var(--emoji-drift), -120vh) rotate(var(--emoji-rotate)); opacity:0; }
+}
+
 /* ── DELETE TIMER SELECTOR ─────────────────────────────────────── */
 .timer-select { width:100%; background:#FFFFFF; border:0.5px solid #E0D9D0; border-radius:2px; padding:10px 13px; font-size:14px; color:#1A1510; margin-top:4px; }
 
@@ -4649,7 +4657,14 @@ async function doPoll(room) {
           const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id);
           if (rec) {
             room.messages.push(rec);
-            if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+            if (room.code === activeRoomCode) {
+              renderMessageRecord(room, rec, true);
+              // Only worth playing while this room is the one actually on
+              // screen — an offscreen room already gets its unread badge
+              // and (if backgrounded) the chime from notifyMsg below, no
+              // need to also queue a full-screen effect for later.
+              if (rec.kind === 'text' && rec.jumbo) triggerEmojiEffect(rec.content);
+            }
             else room.unread++;
             notifyMsg(room);
             // Note: the disappearing-message timer does NOT start here. It
@@ -4732,9 +4747,47 @@ async function sendMsg() {
   };
   room.messages.push(rec);
   renderMessageRecord(room, rec, true);
+  if (rec.jumbo) triggerEmojiEffect(rec.content);
   cancelReply();
 
   try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
+}
+
+// ── EMOJI SCREEN EFFECT ──────────────────────────────────────────────────
+// A message that's nothing but a single emoji (same "jumbo" detection used
+// to render it large/bubble-less — see isSingleEmoji) also sends a small
+// flock of that same emoji floating up and fading out over the chat, on
+// both ends: the sender sees it the moment they send, the recipient sees it
+// the moment it lands (only while this room is actually the one open — see
+// call sites). Deliberately generic rather than a curated per-emoji library
+// (balloon vs heart vs thumbs-up all use the same float) — simplest to
+// extend later if specific emojis want their own bespoke motion.
+function triggerEmojiEffect(emoji) {
+  try {
+    let layer = document.getElementById('emoji-fx-layer');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'emoji-fx-layer';
+      layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;';
+      document.body.appendChild(layer);
+    }
+    const count = 7;
+    for (let i = 0; i < count; i++) {
+      const span = document.createElement('span');
+      span.textContent = emoji;
+      const startX = 8 + Math.random() * 80;
+      const drift = Math.round(Math.random() * 70 - 35);
+      const rotate = Math.round(Math.random() * 50 - 25);
+      const duration = 2500 + Math.random() * 1400;
+      const delay = i * 70 + Math.random() * 200;
+      const size = 26 + Math.random() * 22;
+      span.style.cssText = `position:absolute;left:${startX}vw;bottom:-10vh;font-size:${size}px;`
+        + `--emoji-drift:${drift}px;--emoji-rotate:${rotate}deg;`
+        + `animation:emoji-float-up ${duration}ms cubic-bezier(.25,.1,.4,1) ${delay}ms forwards;`;
+      layer.appendChild(span);
+      setTimeout(() => span.remove(), duration + delay + 150);
+    }
+  } catch (e) {}
 }
 
 // ── TYPING ────────────────────────────────────────────────────────────
