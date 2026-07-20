@@ -61,6 +61,32 @@ self.addEventListener('push', (event) => {
       const shown = await self.registration.getNotifications({ tag });
       shown.forEach(n => n.close());
     }
+
+    // Report delivery straight from here, independent of whether the
+    // page's own poll loop ever gets a chance to run — this push handler
+    // fires anytime a notification is shown, including a fully backgrounded
+    // or locked device where the page's JS may be throttled/suspended long
+    // before that would stop happening. Only regular messages carry
+    // code/msgId (call pushes don't map to a single message); the
+    // recipient's own token for that room is looked up from IndexedDB the
+    // same way pushsubscriptionchange below already does, since the push
+    // payload itself never carries anything that could authenticate a
+    // request on its own.
+    if (data.code && data.msgId) {
+      try {
+        const sessions = await idbGetSessions();
+        const session = sessions.find(s => s.roomCode === data.code);
+        if (session) {
+          await fetch('/api/mark-delivered', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: data.code, token: session.myToken, msgId: data.msgId }),
+          });
+        }
+      } catch (e) {
+        // Best-effort — the page's own poll loop is still the fallback.
+      }
+    }
   })());
 });
 

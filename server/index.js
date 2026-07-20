@@ -344,7 +344,12 @@ async function api(path, method, d, p, res) {
         // per message means Chrome never treats a new push as "replacing"
         // an old one, so it can't hit that silent-update path — every
         // message reliably alerts on its own.
-        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: `${d.code}-${msgId}` });
+        // code + msgId ride along (still no message content — E2E holds)
+        // so the service worker can report delivery straight from the push
+        // handler itself, the moment the notification is shown, rather
+        // than only when/if the page's own poll loop happens to run — see
+        // the mark-delivered fetch in sw.js's push listener.
+        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
@@ -604,6 +609,25 @@ async function api(path, method, d, p, res) {
     }
 
     return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0 });
+  }
+
+  // POST /api/mark-delivered — reports that a push notification actually
+  // reached this device, independent of whether the page's own poll loop
+  // ever gets a chance to run. A locked screen can throttle or suspend a
+  // backgrounded tab's JS long before it would stop showing notifications,
+  // so the sender could otherwise see a message stuck on a single tick even
+  // though the recipient's device genuinely has it. Called from sw.js's
+  // push handler — same deliveredAt field /api/poll already sets, just
+  // triggered from a place that doesn't depend on the page being alive.
+  if (path==='/api/mark-delivered' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    const msg = room.msgs.find(mm => mm.id === d.msgId);
+    if (msg && msg.type === 'message' && !msg.deliveredAt) {
+      msg.deliveredAt = Date.now();
+      room.lastActivity = Date.now();
+    }
+    return res200(res, { ok: true });
   }
 
   // POST /api/read
