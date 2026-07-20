@@ -93,11 +93,22 @@ self.addEventListener('push', (event) => {
         const sessions = await idbGetSessions();
         const session = sessions.find(s => s.roomCode === data.code);
         if (session) {
+          // A device that just woke from deep sleep to handle this push may
+          // not have a fully-reconnected radio yet — without a hard cap, a
+          // slow/hanging fetch here would keep this whole event.waitUntil()
+          // open longer than it needs to be. showNotification has already
+          // resolved by this point regardless (this block runs strictly
+          // after it), so a timeout here only trims this best-effort
+          // follow-up call short — it can never delay the notification
+          // that's already on screen.
+          const ac = new AbortController();
+          const timeout = setTimeout(() => ac.abort(), 4000);
           await fetch('/api/mark-delivered', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code: data.code, token: session.myToken, msgId: data.msgId }),
-          });
+            signal: ac.signal,
+          }).finally(() => clearTimeout(timeout));
         }
       } catch (e) {
         // Best-effort — the page's own poll loop is still the fallback.
@@ -171,8 +182,15 @@ function idbGetSessions() {
       const db = req.result;
       const tx = db.transaction('kv', 'readonly');
       const getReq = tx.objectStore('kv').get('sessions');
-      getReq.onsuccess = () => resolve(Array.isArray(getReq.result) ? getReq.result : []);
-      getReq.onerror = () => resolve([]);
+      // Close the connection once the read settles either way — every
+      // message push now calls this (see the mark-delivered fetch in the
+      // push handler above), so leaving connections open on every call
+      // means one per message received, for as long as this service worker
+      // instance stays alive. Not itself the cause of a notification
+      // failing to show (showNotification is awaited well before this ever
+      // runs), but unnecessary overhead on every wake worth not adding.
+      getReq.onsuccess = () => { resolve(Array.isArray(getReq.result) ? getReq.result : []); db.close(); };
+      getReq.onerror = () => { resolve([]); db.close(); };
     };
     req.onerror = () => resolve([]);
   });
