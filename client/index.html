@@ -4974,6 +4974,10 @@ async function leaveActiveRoom() {
 async function closeActiveRoom() {
   const room = getActiveRoom();
   if (!room) return;
+  // Destructive and immediate for both people, with no undo — same
+  // confirm() pattern already used by Clear Chat, so a mis-tap on "Close &
+  // erase" doesn't instantly wipe the room before the person can back out.
+  if (!confirm('Close & erase this room? This deletes it and everything in it for both of you immediately. This cannot be undone.')) return;
   try { await api('/api/close', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
   removeRoomFromState(room.code);
   // #chat-body still shows this room's messages at this point — the vanish
