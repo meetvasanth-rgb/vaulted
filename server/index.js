@@ -320,10 +320,32 @@ async function api(path, method, d, p, res, ip) {
 
     if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);
 
-    // Clean stale members (disconnected without calling /api/leave)
-    const staleThreshold = Date.now() - 30000; // 30 seconds
-    for (const [t, m] of room.members) {
-      if (m.lastSeen < staleThreshold) room.members.delete(t);
+    // Only evict a member for staleness when the room is actually full and
+    // doing so is what makes room for this new joiner — NOT as a blanket
+    // sweep on every fresh-join call regardless of whether anyone needs to
+    // be displaced. That unconditional sweep (with only a 30-SECOND
+    // threshold) was a real bug: a member who's simply offline for a bit —
+    // screen locked, phone put away, briefly backgrounded — is not "gone".
+    // Rooms here live up to 4 days specifically so a real reconnect can
+    // happen much later than 30 seconds from now. Evicting them the moment
+    // some unrelated fresh-join request landed during that gap silently and
+    // permanently broke their session: with their entry gone from
+    // room.members, their own next reconnect attempt would no longer be
+    // recognized either, forcing THEM through this same fresh-join path,
+    // minting a brand-new token their already-running client never knew to
+    // save over its old (now-orphaned) one — which is exactly the "header
+    // stuck on the room code, history never loads, never self-corrects"
+    // symptom reported. Only pruning when the room is genuinely at capacity
+    // (2/2) removes the false-eviction case entirely; the 5-minute
+    // threshold (up from 30 seconds) is still well short of the room's own
+    // multi-day TTL but generous enough that it won't trip on a normal
+    // reconnect gap.
+    const STALE_MEMBER_MS = 5 * 60 * 1000;
+    if (room.members.size >= 2) {
+      const staleThreshold = Date.now() - STALE_MEMBER_MS;
+      for (const [t, m] of room.members) {
+        if (m.lastSeen < staleThreshold) room.members.delete(t);
+      }
     }
     if (room.members.size >= 2) return resErr(res,'Room is full.',403);
     const token = uid();
@@ -340,10 +362,14 @@ async function api(path, method, d, p, res, ip) {
     // point of the message.
     room.msgs.push({ seq: ++room.seq, id: uid(), type:'system', content:`${name} joined`, ts: Date.now(), from: token });
 
-    let peerPubKey = null;
-    for (const [t,mb] of room.members) if (t!==token) peerPubKey = mb.pubKey;
+    // peerName included here too now, same as the reconnect branch above —
+    // if a client ever IS legitimately forced through this fresh-join path
+    // (room password changed, genuinely new participant, etc.) its header
+    // can resolve immediately instead of waiting on the first live poll.
+    let peerPubKey = null, peerName = null;
+    for (const [t,mb] of room.members) if (t!==token) { peerPubKey = mb.pubKey; peerName = mb.name; }
     console.log(`${name} joined ${roomCode}`);
-    return res200(res, { code: roomCode, token, name, peerPubKey, deleteTimer: room.deleteTimer });
+    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer });
   }
 
   // POST /api/send

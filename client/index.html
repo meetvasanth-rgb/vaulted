@@ -5744,6 +5744,23 @@ window.addEventListener('load', async () => {
       const pubKey = await getOrGenerateKeyPair(room);
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
       if (result.error) { clearRoomStorage(code); continue; }
+      // The server treats this as a genuine reconnect (same token already a
+      // member) in the normal case, and result.token just echoes back
+      // session.token unchanged. But if this device's own member record had
+      // been pruned server-side for any reason (was: an over-eager 30s
+      // stale-member sweep triggered by an unrelated join elsewhere — fixed
+      // separately, but defending against it here too rather than trusting
+      // that's the only way it could ever happen), the server instead mints
+      // a genuinely NEW token and returns it — and this reload loop used to
+      // just ignore that and keep using the old, no-longer-valid
+      // session.token for every future call. That silently and permanently
+      // broke the room from that point on: every subsequent poll would fail
+      // to authenticate, so the header/history could never self-correct no
+      // matter how long you waited or how many times you reopened the app,
+      // since nothing was ever capturing the one token that would actually
+      // work. Capturing and persisting it here closes that off — same idea
+      // as the join/create flows elsewhere already do for a first-time join.
+      if (result.token && result.token !== room.token) { room.token = result.token; await persistRoom(room); }
       // peerName may already be known from a previous session, but the
       // server's own record is the current truth — overwrite rather than
       // only filling in when missing, in case the peer changed it since.
