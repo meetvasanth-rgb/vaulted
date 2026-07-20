@@ -47,7 +47,19 @@ self.addEventListener('push', (event) => {
       tag,
       renotify: true,
       icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      // Android renders the status-bar/notification-tray icon as a plain
+      // alpha-mask silhouette — it ignores color entirely and only looks at
+      // which pixels are opaque. icon-192.png is a fully-opaque flattened
+      // PNG (solid white background, no transparency at all — see the
+      // adaptive-icon fix that gave it that white background), so that
+      // mask sees "the entire square is opaque" and renders a solid white
+      // block instead of the lock glyph. Some OEMs (OnePlus) are lenient
+      // about this and show the real icon anyway; Samsung's One UI enforces
+      // the mask strictly, which is why the bug only showed up there.
+      // icon-badge-96.png is a purpose-built badge asset: transparent
+      // background, lock+bubble glyph as solid opaque white — exactly the
+      // shape Android's silhouette mask needs to render correctly.
+      badge: '/icons/icon-badge-96.png',
       // Incoming calls get treated like a ring, not a ping: stay on screen
       // until the person deals with it (default notifications on some
       // platforms auto-dismiss after a few seconds) and vibrate in a
