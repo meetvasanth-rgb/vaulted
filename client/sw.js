@@ -69,10 +69,16 @@ self.addEventListener('push', (event) => {
       // block instead of the lock glyph. Some OEMs (OnePlus) are lenient
       // about this and show the real icon anyway; Samsung's One UI enforces
       // the mask strictly, which is why the bug only showed up there.
-      // icon-badge-96.png is a purpose-built badge asset: transparent
-      // background, lock+bubble glyph as solid opaque white — exactly the
-      // shape Android's silhouette mask needs to render correctly.
-      badge: '/icons/icon-badge-96.png',
+      // icon-badge-192.png is a purpose-built badge asset: transparent
+      // background, lock+bubble glyph (now ringed, like a coin badge) as
+      // solid opaque white — exactly the shape Android's silhouette mask
+      // needs to render correctly. Serving the 192px source (rather than a
+      // pre-shrunk 96px one) instead of relying on Chrome to upscale a
+      // smaller source keeps edges crisp at whatever size Android actually
+      // renders the status-bar icon at — pixel dimensions here don't change
+      // the on-screen size (Android always scales to its own fixed slot),
+      // only the sharpness.
+      badge: '/icons/icon-badge-192.png',
       // Incoming calls get treated like a ring, not a ping: stay on screen
       // until the person deals with it (default notifications on some
       // platforms auto-dismiss after a few seconds) and vibrate in a
