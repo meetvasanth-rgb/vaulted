@@ -41,11 +41,24 @@ self.addEventListener('push', (event) => {
     // in-app chime/UI.
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const hasFocusedClient = clientsList.some(c => c.focused);
+    // Any open window (focused or not) means the page's own poll loop is
+    // almost certainly still alive and will fire its own in-app chime for
+    // this message via notifyMsg()/playChime() in index.html. Without this,
+    // the person hears BOTH that chime AND this OS notification's own sound
+    // for the same message — reported as "two notification sounds". Muting
+    // this notification's sound (not its visibility — it still shows, still
+    // satisfies the iOS anti-revocation contract above) whenever a window is
+    // open removes the duplicate while leaving the sound intact for the one
+    // case that actually needs it: the app fully closed, where no in-app
+    // chime is possible at all. Calls are exempt — a missed ring is worse
+    // than a duplicate ping, and they don't go through notifyMsg's chime gate.
+    const hasAnyClient = clientsList.length > 0;
 
     await self.registration.showNotification(title, {
       body,
       tag,
       renotify: true,
+      silent: !isCall && hasAnyClient,
       icon: '/icons/icon-192.png',
       // Android renders the status-bar/notification-tray icon as a plain
       // alpha-mask silhouette — it ignores color entirely and only looks at
