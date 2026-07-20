@@ -45,20 +45,30 @@ self.addEventListener('push', (event) => {
     // almost certainly still alive and will fire its own in-app chime for
     // this message via notifyMsg()/playChime() in index.html. Without this,
     // the person hears BOTH that chime AND this OS notification's own sound
-    // for the same message — reported as "two notification sounds". Muting
-    // this notification's sound (not its visibility — it still shows, still
-    // satisfies the iOS anti-revocation contract above) whenever a window is
-    // open removes the duplicate while leaving the sound intact for the one
-    // case that actually needs it: the app fully closed, where no in-app
-    // chime is possible at all. Calls are exempt — a missed ring is worse
-    // than a duplicate ping, and they don't go through notifyMsg's chime gate.
+    // for the same message — reported as "two notification sounds" on
+    // Android. Muting this notification's sound (not its visibility — it
+    // still shows, still satisfies the iOS anti-revocation contract above)
+    // whenever a window is open removes the duplicate there.
+    //
+    // This assumption does NOT hold on iOS: Safari suspends a backgrounded
+    // tab's JS almost immediately, so the in-app chime this mute is
+    // deferring to never actually fires there, even though the tab still
+    // counts as an open "client" to the service worker. Muting universally
+    // made iOS go completely silent on every push whenever the app had ever
+    // been opened and not force-quit — reported separately as "chime not
+    // working for iOS notifications". So: only apply the mute on platforms
+    // where the in-app chime can realistically still be alive to cover for
+    // it (i.e. not iOS). Calls are exempt on every platform — a missed ring
+    // is worse than a duplicate ping, and they don't go through notifyMsg's
+    // chime gate at all.
     const hasAnyClient = clientsList.length > 0;
+    const isIOS = /iPhone|iPad|iPod/.test(self.navigator.userAgent || '');
 
     await self.registration.showNotification(title, {
       body,
       tag,
       renotify: true,
-      silent: !isCall && hasAnyClient,
+      silent: !isCall && hasAnyClient && !isIOS,
       icon: '/icons/icon-192.png',
       // Android renders the status-bar/notification-tray icon as a plain
       // alpha-mask silhouette — it ignores color entirely and only looks at
