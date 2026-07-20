@@ -2987,6 +2987,24 @@ function updateDocumentTitle() {
   let total = 0;
   for (const room of rooms.values()) if (room.code !== activeRoomCode) total += room.unread;
   document.title = total > 0 ? `(${total}) Vaultlix` : 'Vaultlix';
+
+  // The document.title prefix above is the only unread indicator this app
+  // has ever actually set — it does nothing for an installed/home-screen
+  // PWA (no tab bar in standalone display mode), which is exactly why the
+  // home-screen icon has never shown a message-count badge on iOS. Safari
+  // 16.4+ added real support for the Badging API for installed PWAs
+  // specifically (desktop Chrome/Edge support it too; Android Chrome's
+  // support is inconsistent across launchers, hence the feature-detect
+  // rather than assuming either way). This only runs while the page itself
+  // is alive to compute `total` — a push arriving while the app is fully
+  // closed can't update the icon badge this way, since nothing here is
+  // running to set it; it'll catch up the next time the app is opened.
+  if ('setAppBadge' in navigator) {
+    try {
+      if (total > 0) navigator.setAppBadge(total).catch(() => {});
+      else navigator.clearAppBadge().catch(() => {});
+    } catch (e) {}
+  }
 }
 
 // ── AUDIO — iOS-safe implementation ─────────────────────────────────────
