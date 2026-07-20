@@ -570,9 +570,18 @@ async function api(path, method, d, p, res) {
       return includeOwn || msg.from !== token;
     });
 
-    // Mark delivered
+    // Mark delivered — only for messages where the CALLER is the recipient,
+    // not the original sender. Without the msg.from check, a full=1
+    // bootstrap (which deliberately pulls back the caller's own sent
+    // messages too, see includeOwn above — that's what lets a page refresh
+    // rebuild history) would let a sender's own refresh mark their own
+    // messages "delivered," even though nothing about that refresh
+    // confirms the actual recipient's device ever saw anything. A normal
+    // incremental poll never hit this, since newMsgs already excludes the
+    // caller's own messages there — this only matters for the bootstrap
+    // case, which is exactly the false-positive scenario being fixed.
     for (const msg of newMsgs) {
-      if (msg.type==='message' && !msg.deliveredAt) msg.deliveredAt = Date.now();
+      if (msg.type==='message' && msg.from !== token && !msg.deliveredAt) msg.deliveredAt = Date.now();
     }
 
     // Read receipts for sender's messages
