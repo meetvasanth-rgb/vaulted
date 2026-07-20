@@ -60,6 +60,47 @@ async function verifyPassword(attempt, stored) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
+// ── RATE LIMITING ────────────────────────────────────────────────────────
+// Simple in-memory fixed-window counters — same "nothing persisted beyond
+// process memory" posture as everything else here, no external store. Not
+// meant to stop a genuinely distributed attack (that's a job for a CDN/WAF
+// in front of this, not application code); this exists purely because
+// today there is NO limit at all on either room creation or message
+// sending — a single script could spam-create rooms or flood one room with
+// messages with nothing in the way.
+const rateLimitBuckets = new Map(); // key -> { count, windowStart }
+
+function rateLimited(key, maxCount, windowMs) {
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now - bucket.windowStart >= windowMs) {
+    rateLimitBuckets.set(key, { count: 1, windowStart: now });
+    return false;
+  }
+  bucket.count++;
+  return bucket.count > maxCount;
+}
+
+// Sweep stale buckets periodically so IPs/tokens that stopped being active
+// don't sit in memory forever — mirrors the room-expiry sweep further down.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (now - bucket.windowStart > 10 * 60 * 1000) rateLimitBuckets.delete(key);
+  }
+}, 5 * 60 * 1000);
+
+// Railway's edge terminates TLS and proxies to this process, so
+// req.socket.remoteAddress is Railway's own edge, not the visitor — the
+// real client IP arrives via x-forwarded-for (same header already trusted
+// above for the http->https redirect logic). Falls back to the socket
+// address for local/direct-connection testing where that header is absent.
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) return xff.split(',')[0].trim();
+  return req.socket.remoteAddress || 'unknown';
+}
+
 function formatTimerLabel(seconds) {
   if (!seconds) return 'off';
   if (seconds < 60) return `${seconds} seconds`;
@@ -210,17 +251,24 @@ const srv = http.createServer((req, res) => {
     // stays fire-and-forget — just needs a catch so a thrown error (a
     // malformed password field, scrypt failing, etc.) can't crash the
     // process or hang the request with no response ever sent.
-    api(u.pathname, req.method, d, u.searchParams, res).catch(err => {
+    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req)).catch(err => {
       console.error('API error:', err.message);
       try { resErr(res, 'Internal error.', 500); } catch(e) {}
     });
   });
 });
 
-async function api(path, method, d, p, res) {
+async function api(path, method, d, p, res, ip) {
 
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
+    // 8 rooms per 10 minutes per IP — generous for anyone genuinely opening
+    // a few conversations (this app's own 5-open-rooms-at-once cap is the
+    // practical ceiling for a real user anyway), but enough to stop a
+    // script from spam-creating rooms, which had zero limit before this.
+    if (rateLimited(`create:${ip}`, 8, 10 * 60 * 1000)) {
+      return resErr(res, 'Too many rooms created from this connection — try again in a few minutes.', 429);
+    }
     const namedCode = d.namedCode ? d.namedCode.replace(/[^a-z0-9-]/g,'-').slice(0,40) : null;
     if (namedCode && rooms.has(namedCode)) return resErr(res,`Room "${namedCode}" already exists.`,409);
     const roomCode = namedCode || code();
@@ -303,6 +351,14 @@ async function api(path, method, d, p, res) {
     const room = rooms.get(d.code);
     if (!room) return resErr(res,'Room not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    // Rate-limited by token (the authenticated sender), not IP — two people
+    // in the same room can legitimately share an IP (same NAT/network), and
+    // punishing by IP would hit the wrong person. 20 messages per 10
+    // seconds is far above normal typing speed but stops a flooding script;
+    // there was no limit of any kind here before this.
+    if (rateLimited(`send:${d.token}`, 20, 10 * 1000)) {
+      return resErr(res, 'Sending too fast — slow down a moment.', 429);
+    }
     const m = room.members.get(d.token);
     m.lastSeen = Date.now();
     room.lastActivity = Date.now();
@@ -740,160 +796,194 @@ srv.on('upgrade', (req, socket, head) => {
   try { u = new URL(req.url, 'http://x'); } catch (e) { socket.destroy(); return; }
   if (u.pathname !== '/ws/signal') { socket.destroy(); return; }
 
-  const code = (u.searchParams.get('code') || '').toLowerCase().trim();
-  const token = u.searchParams.get('token') || '';
-  const room = rooms.get(code);
-  if (!room || !token || !room.members.has(token)) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
+  // Auth used to happen right here, reading code/token off the query
+  // string — the socket opens "blind" now instead, and must authenticate
+  // as its very first message once connected (see wss.on('connection')
+  // below). A native browser WebSocket can't send a custom body or headers
+  // during the handshake itself, so the URL used to be the only place to
+  // put these — which meant the room code and auth token sat in the
+  // connection URL, visible in Railway's access logs and any browser dev
+  // tools network tab, the same exposure /api/poll and /api/check_typing
+  // already had fixed by moving to POST bodies. This closes the same gap
+  // for the one remaining place it existed.
   wss.handleUpgrade(req, socket, head, (ws) => {
-    ws.roomCode = code;
-    ws.token = token;
     wss.emit('connection', ws, req);
   });
 });
 
 wss.on('connection', (ws) => {
-  const { roomCode, token } = ws;
+  ws.authenticated = false;
 
-  // A reconnect (network switch, tab backgrounded and resumed, etc.)
-  // replaces the old socket for this token rather than stacking up dead
-  // connections that'd otherwise both "successfully" receive a relay.
-  const existing = signalingSockets.get(token);
-  if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
-  signalingSockets.set(token, ws);
-  // Room code + a truncated token only — enough to confirm connectivity
-  // during testing without logging anything that identifies a person or
-  // any message/signal content, same posture as the existing "Room
-  // created: <code>" log below.
-  console.log(`Signal socket connected: room ${roomCode} token ${token.slice(0,6)}…`);
-
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
-
-  ws.on('message', (raw) => {
-    let msg;
-    try { msg = JSON.parse(raw); } catch (e) { return; }
-    if (!msg || typeof msg.type !== 'string' || typeof msg.envelope !== 'string') return;
-
-    const room = rooms.get(roomCode);
-    if (!room || !room.members.has(token)) { try { ws.close(4001, 'No longer in room'); } catch(e) {} return; }
-    room.lastActivity = Date.now();
-
-    // 1:1 rooms only ever have one other member — relay to them if they
-    // currently have a live socket. If they don't (call app not open on
-    // their end right now), the message is simply dropped; there's no
-    // queue, no retry, no persistence — same "never stored" posture as
-    // everything else in this app.
-    for (const [tok, peerMember] of room.members) {
-      if (tok === token) continue;
-      const peerWs = signalingSockets.get(tok);
-      if (peerWs && peerWs.readyState === peerWs.OPEN) {
-        // sessionId is a random per-page-load nonce the client uses to tell
-        // "the peer's session actually restarted" apart from "this looks
-        // like a replay" in its own sequence-number check — meaningless to
-        // this server, just forwarded along with everything else opaque.
-        peerWs.send(JSON.stringify({ type: msg.type, from: token, sessionId: msg.sessionId, envelope: msg.envelope }));
-        // `msg.type` only — envelope is opaque ciphertext this process
-        // never decrypts, so there's nothing content-bearing to log here.
-        console.log(`Signal relayed: room ${roomCode} type ${msg.type}`);
-      } else {
-        console.log(`Signal dropped (peer not connected): room ${roomCode} type ${msg.type}`);
-      }
-
-      // A dropped call-invite means the receiver's phone was locked or the
-      // app was backgrounded/killed — their signaling socket wasn't open to
-      // catch it. Same problem messages already solved with Web Push: wake
-      // the device so its client reconnects the socket, then the client's
-      // own re-announce loop (every 3s while ringing) delivers a live
-      // invite once that reconnect lands. Only fires once per ring (not on
-      // every 3s retry) so a locked phone doesn't buzz repeatedly. The
-      // caller's chosen name is already plaintext on this server (room
-      // membership records — same field the ordinary message push above
-      // already puts in "New message from X"), so it's safe to name them
-      // here too instead of a generic "Incoming call".
-      if (msg.type === 'call-invite') {
-        const now = Date.now();
-        const alreadyRinging = room.ringingUntil && room.ringingUntil > now;
-        room.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
-        if (!alreadyRinging && peerMember.pushSub) {
-          const caller = room.members.get(token);
-          // code rides along so tapping the notification (see sw.js's
-          // notificationclick) can jump straight to the room the call is
-          // actually in, rather than whichever room the app happens to open
-          // to — matters most with multiple rooms open, where "the call" and
-          // "the room on screen when you unlock" are often different rooms.
-          const payload = JSON.stringify({
-            title: 'Vaultlix',
-            body: caller && caller.name ? `${caller.name} is calling` : 'Incoming call',
-            tag: `vaultlix-call-${roomCode}`,
-            isCall: true,
-            code: roomCode,
-          });
-          webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
-            if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
-            else console.warn('call push send failed:', err.statusCode, err.body || err.message);
-          });
-
-          // iOS web push has no equivalent of the high-priority "VoIP push"
-          // tier native apps get (that's reserved for PushKit, not available
-          // to web apps at all) — reported single-attempt delivery on iOS
-          // runs roughly 70-85% vs 90-95% on Android. A push that silently
-          // never lands means the callee's phone just sits there through the
-          // whole ring with nothing to tap. One retry partway through the
-          // 30s window, only if the call is still genuinely ringing (nobody
-          // answered/declined/hung up, and no newer call superseded this
-          // one), gives it a second independent shot without turning into
-          // the every-3s buzzing the alreadyRinging guard above exists to
-          // prevent.
-          const ringMarker = room.ringingUntil;
-          setTimeout(() => {
-            if (room.ringingUntil !== ringMarker || room.ringingUntil <= Date.now()) return;
-            if (!peerMember.pushSub) return; // already known-dead from the first attempt
-            webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 15 }).catch(err => {
-              if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
-              else console.warn('call push retry send failed:', err.statusCode, err.body || err.message);
-            });
-          }, 5000);
-        }
-      } else if (msg.type === 'call-accept' || msg.type === 'call-decline' || msg.type === 'call-busy') {
-        room.ringingUntil = 0;
-      } else if (msg.type === 'call-hangup') {
-        // A hangup landing while the ring window is still open means
-        // nobody ever answered — the caller gave up (their own 30s ring
-        // timeout, or a manual cancel) before the callee picked up. That's
-        // a missed call from the callee's side, and worth a second, distinct
-        // push beyond the original "Incoming call" one: their device may
-        // have been locked/backgrounded through the whole ring and never
-        // surfaced anything past that first notification — same as a phone
-        // showing a missed-call notification separate from the ringing one.
-        const now = Date.now();
-        const wasStillRinging = room.ringingUntil && room.ringingUntil > now;
-        room.ringingUntil = 0;
-        if (wasStillRinging && peerMember.pushSub) {
-          const caller = room.members.get(token);
-          const missedPayload = JSON.stringify({
-            title: 'Vaultlix',
-            body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
-            tag: `vaultlix-missed-${roomCode}-${now}`,
-            isCall: false,
-            code: roomCode,
-          });
-          webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600 }).catch(err => {
-            if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
-            else console.warn('missed-call push send failed:', err.statusCode, err.body || err.message);
-          });
-        }
-      }
-      break;
-    }
+  // Clean up on close regardless of whether auth ever completed — if it
+  // didn't, ws.token was never set, so the signalingSockets lookup below is
+  // just a harmless no-op.
+  ws.on('close', () => {
+    if (ws.token && signalingSockets.get(ws.token) === ws) signalingSockets.delete(ws.token);
   });
 
-  ws.on('close', () => {
-    if (signalingSockets.get(token) === ws) signalingSockets.delete(token);
+  // An unauthenticated socket that never sends anything gets 5 seconds to
+  // do so before it's dropped — otherwise a connection that opens and just
+  // sits there (deliberately or not) would hold a live socket open forever.
+  const authTimer = setTimeout(() => {
+    if (!ws.authenticated) { try { ws.close(4003, 'Auth timeout'); } catch(e) {} }
+  }, 5000);
+
+  ws.once('message', (raw) => {
+    clearTimeout(authTimer);
+    let msg;
+    try { msg = JSON.parse(raw); } catch (e) { msg = null; }
+    if (!msg || msg.type !== 'auth' || typeof msg.code !== 'string' || typeof msg.token !== 'string') {
+      try { ws.close(4001, 'Auth required'); } catch(e) {}
+      return;
+    }
+    const roomCode = msg.code.toLowerCase().trim();
+    const token = msg.token;
+    const room = rooms.get(roomCode);
+    if (!room || !room.members.has(token)) {
+      try { ws.close(4001, 'Unauthorized'); } catch(e) {}
+      return;
+    }
+
+    ws.authenticated = true;
+    ws.roomCode = roomCode;
+    ws.token = token;
+
+    // A reconnect (network switch, tab backgrounded and resumed, etc.)
+    // replaces the old socket for this token rather than stacking up dead
+    // connections that'd otherwise both "successfully" receive a relay.
+    const existing = signalingSockets.get(token);
+    if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
+    signalingSockets.set(token, ws);
+    // Room code + a truncated token only — enough to confirm connectivity
+    // during testing without logging anything that identifies a person or
+    // any message/signal content, same posture as the existing "Room
+    // created: <code>" log below.
+    console.log(`Signal socket connected: room ${roomCode} token ${token.slice(0,6)}…`);
+
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
+    // Real signaling traffic only starts arriving now that this socket is
+    // authenticated — everything below is unchanged from before, it's just
+    // registered here (post-auth) instead of unconditionally at connection
+    // time.
+    ws.on('message', (raw2) => {
+      let msg2;
+      try { msg2 = JSON.parse(raw2); } catch (e) { return; }
+      if (!msg2 || typeof msg2.type !== 'string' || typeof msg2.envelope !== 'string') return;
+
+      const room2 = rooms.get(roomCode);
+      if (!room2 || !room2.members.has(token)) { try { ws.close(4001, 'No longer in room'); } catch(e) {} return; }
+      room2.lastActivity = Date.now();
+
+      // 1:1 rooms only ever have one other member — relay to them if they
+      // currently have a live socket. If they don't (call app not open on
+      // their end right now), the message is simply dropped; there's no
+      // queue, no retry, no persistence — same "never stored" posture as
+      // everything else in this app.
+      for (const [tok, peerMember] of room2.members) {
+        if (tok === token) continue;
+        const peerWs = signalingSockets.get(tok);
+        if (peerWs && peerWs.readyState === peerWs.OPEN) {
+          // sessionId is a random per-page-load nonce the client uses to tell
+          // "the peer's session actually restarted" apart from "this looks
+          // like a replay" in its own sequence-number check — meaningless to
+          // this server, just forwarded along with everything else opaque.
+          peerWs.send(JSON.stringify({ type: msg2.type, from: token, sessionId: msg2.sessionId, envelope: msg2.envelope }));
+          // `msg2.type` only — envelope is opaque ciphertext this process
+          // never decrypts, so there's nothing content-bearing to log here.
+          console.log(`Signal relayed: room ${roomCode} type ${msg2.type}`);
+        } else {
+          console.log(`Signal dropped (peer not connected): room ${roomCode} type ${msg2.type}`);
+        }
+
+        // A dropped call-invite means the receiver's phone was locked or the
+        // app was backgrounded/killed — their signaling socket wasn't open to
+        // catch it. Same problem messages already solved with Web Push: wake
+        // the device so its client reconnects the socket, then the client's
+        // own re-announce loop (every 3s while ringing) delivers a live
+        // invite once that reconnect lands. Only fires once per ring (not on
+        // every 3s retry) so a locked phone doesn't buzz repeatedly. The
+        // caller's chosen name is already plaintext on this server (room
+        // membership records — same field the ordinary message push above
+        // already puts in "New message from X"), so it's safe to name them
+        // here too instead of a generic "Incoming call".
+        if (msg2.type === 'call-invite') {
+          const now = Date.now();
+          const alreadyRinging = room2.ringingUntil && room2.ringingUntil > now;
+          room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
+          if (!alreadyRinging && peerMember.pushSub) {
+            const caller = room2.members.get(token);
+            // code rides along so tapping the notification (see sw.js's
+            // notificationclick) can jump straight to the room the call is
+            // actually in, rather than whichever room the app happens to open
+            // to — matters most with multiple rooms open, where "the call" and
+            // "the room on screen when you unlock" are often different rooms.
+            const payload = JSON.stringify({
+              title: 'Vaultlix',
+              body: caller && caller.name ? `${caller.name} is calling` : 'Incoming call',
+              tag: `vaultlix-call-${roomCode}`,
+              isCall: true,
+              code: roomCode,
+            });
+            webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
+              if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
+              else console.warn('call push send failed:', err.statusCode, err.body || err.message);
+            });
+
+            // iOS web push has no equivalent of the high-priority "VoIP push"
+            // tier native apps get (that's reserved for PushKit, not available
+            // to web apps at all) — reported single-attempt delivery on iOS
+            // runs roughly 70-85% vs 90-95% on Android. A push that silently
+            // never lands means the callee's phone just sits there through the
+            // whole ring with nothing to tap. One retry partway through the
+            // 30s window, only if the call is still genuinely ringing (nobody
+            // answered/declined/hung up, and no newer call superseded this
+            // one), gives it a second independent shot without turning into
+            // the every-3s buzzing the alreadyRinging guard above exists to
+            // prevent.
+            const ringMarker = room2.ringingUntil;
+            setTimeout(() => {
+              if (room2.ringingUntil !== ringMarker || room2.ringingUntil <= Date.now()) return;
+              if (!peerMember.pushSub) return; // already known-dead from the first attempt
+              webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 15 }).catch(err => {
+                if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
+                else console.warn('call push retry send failed:', err.statusCode, err.body || err.message);
+              });
+            }, 5000);
+          }
+        } else if (msg2.type === 'call-accept' || msg2.type === 'call-decline' || msg2.type === 'call-busy') {
+          room2.ringingUntil = 0;
+        } else if (msg2.type === 'call-hangup') {
+          // A hangup landing while the ring window is still open means
+          // nobody ever answered — the caller gave up (their own 30s ring
+          // timeout, or a manual cancel) before the callee picked up. That's
+          // a missed call from the callee's side, and worth a second, distinct
+          // push beyond the original "Incoming call" one: their device may
+          // have been locked/backgrounded through the whole ring and never
+          // surfaced anything past that first notification — same as a phone
+          // showing a missed-call notification separate from the ringing one.
+          const now = Date.now();
+          const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
+          room2.ringingUntil = 0;
+          if (wasStillRinging && peerMember.pushSub) {
+            const caller = room2.members.get(token);
+            const missedPayload = JSON.stringify({
+              title: 'Vaultlix',
+              body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
+              tag: `vaultlix-missed-${roomCode}-${now}`,
+              isCall: false,
+              code: roomCode,
+            });
+            webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600 }).catch(err => {
+              if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
+              else console.warn('missed-call push send failed:', err.statusCode, err.body || err.message);
+            });
+          }
+        }
+        break;
+      }
+    });
   });
 });
 

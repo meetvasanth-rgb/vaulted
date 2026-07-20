@@ -1399,6 +1399,12 @@ body.select-mode .chat-ftr{display:none}
     </div>
 
     <div class="legal-section">
+      <h3>Legal requests and abuse reports</h3>
+      <p>If we receive a valid legal request — a court order or a request from law enforcement made under applicable Indian law — we will review it and respond as required by law. What we can actually provide is limited by how Vaultlix is built: we can only disclose what exists in server memory at the moment the request is received (the encrypted content of an active room, the display names in it, and whatever standard access logs Railway retains) — we cannot decrypt message content ourselves, and we cannot produce anything for a room that has already been closed or has already expired, because nothing remains anywhere once that happens.</p>
+      <p>To report abuse, suspected illegal content, or a violation of our Terms of Service, contact <strong>legal@vaultlix.com</strong>. We may act on a credible report by disabling or deleting the room in question. We do not proactively monitor message content — because it's end-to-end encrypted, we couldn't even if we wanted to — so we only become aware of what a specific room contains if it's reported to us, or compelled by valid legal process while that room still exists.</p>
+    </div>
+
+    <div class="legal-section">
       <h3>Changes to this policy</h3>
       <p>We may update this policy from time to time. Updates will be reflected on this page with a revised effective date.</p>
     </div>
@@ -1467,6 +1473,12 @@ body.select-mode .chat-ftr{display:none}
     <div class="legal-section">
       <h3>Termination</h3>
       <p>We reserve the right to terminate or restrict access to Vaultlix at any time, for any reason, without notice.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>Abuse reports and legal process</h3>
+      <p>To report suspected illegal activity, abuse, or a violation of the Acceptable use section above, contact <strong>legal@vaultlix.com</strong>. We may suspend, disable, or delete any room without notice if we believe it violates these terms.</p>
+      <p>We will cooperate with valid legal process to the extent legally required. Because Vaultlix is deliberately built to retain as little as possible, what we're actually able to provide is limited to whatever exists in server memory at the time a request is received — see the Privacy Policy for exactly what that is, and what it no longer includes once a room has closed or expired.</p>
     </div>
 
     <div class="legal-section">
@@ -1948,9 +1960,17 @@ async function decryptMsg(room, data) {
 // timestamp, checked on receipt — cheap replay protection so a captured
 // "offer" or "ice-candidate" message can't be replayed later.
 
-function signalingUrl(room) {
+// No code/token in this URL anymore — a browser's native WebSocket API
+// can't attach a custom body or headers during the handshake, so those used
+// to be the only place to put them, which meant the room code and auth
+// token sat in the connection URL itself (visible in Railway's access logs,
+// same as any browser's dev tools network tab). The socket now connects
+// "blind" and authenticates as its first message instead — see
+// connectSignaling's onopen below and the matching server-side change in
+// server_index.js's wss.on('connection').
+function signalingUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws/signal?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}`;
+  return `${proto}//${location.host}/ws/signal`;
 }
 
 async function encryptSignalPayload(room, payload) {
@@ -1977,10 +1997,19 @@ function connectSignaling(room) {
   if (room.signalReconnectTimer) { clearTimeout(room.signalReconnectTimer); room.signalReconnectTimer = null; }
 
   let ws;
-  try { ws = new WebSocket(signalingUrl(room)); } catch (e) { return; }
+  try { ws = new WebSocket(signalingUrl()); } catch (e) { return; }
   room.signalWs = ws;
 
   ws.onopen = () => {
+    // First message on the wire, always — the server holds this socket
+    // unauthenticated until it sees exactly this (see server_index.js's
+    // wss.on('connection')). Sent over the socket itself instead of the
+    // connection URL specifically so the code/token never appear in
+    // Railway's access logs. A native WebSocket can't attach a custom body
+    // during the handshake, but once open, message order on a single
+    // socket is guaranteed — so this always arrives before anything
+    // sendSignal queues afterward, even if that happens almost immediately.
+    try { ws.send(JSON.stringify({ type: 'auth', code: room.code, token: room.token })); } catch (e) {}
     room.signalReconnectAttempts = 0;
     refreshCallButton();
   };
