@@ -66,7 +66,11 @@ self.addEventListener('push', (event) => {
       // phone-ringing-ish pattern rather than a single buzz.
       requireInteraction: isCall,
       vibrate: isCall ? [300, 150, 300, 150, 300, 150, 600] : undefined,
-      data: { url: '/', isCall },
+      // code (present on both message and call/missed-call pushes) is what
+      // lets notificationclick below jump straight to the room this
+      // notification is actually about, instead of whatever room the app
+      // happens to open to — see notificationclick for how it's used.
+      data: { url: '/', isCall, code: data.code || null },
     });
 
     if (hasFocusedClient) {
@@ -104,13 +108,29 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  const code = (event.notification.data && event.notification.data.code) || null;
   event.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of clientsList) {
-      if ('focus' in c) return c.focus();
+    if (clientsList.length > 0) {
+      const c = clientsList[0];
+      if ('focus' in c) await c.focus();
+      // Focusing an already-open tab doesn't navigate it — this app is a
+      // single-page multi-room client, so "open the right room" means
+      // telling the already-running page's own JS to switch rooms, not
+      // loading a different URL. The page listens for this in its own
+      // 'message' handler and calls setActiveRoom() if it has that room;
+      // if the room list hasn't finished restoring yet, it queues the
+      // code and applies it once that finishes instead of dropping it.
+      if (code && 'postMessage' in c) c.postMessage({ type: 'notification-click', code });
+      return;
     }
-    if (self.clients.openWindow) return self.clients.openWindow(url);
+    // No window open at all — same idea, but the page doesn't exist yet to
+    // postMessage to, so the target room rides along as a URL param instead.
+    // The page reads this on boot, after its own room-restore sequence
+    // finishes (see the `?room=` handling in index.html).
+    if (self.clients.openWindow) {
+      return self.clients.openWindow(code ? `/?room=${encodeURIComponent(code)}` : '/');
+    }
   })());
 });
 

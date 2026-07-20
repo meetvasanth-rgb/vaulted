@@ -3436,6 +3436,35 @@ function setActiveRoom(code) {
   refreshCallButton();
 }
 
+// Switches to a specific room by code, if it's actually loaded — used by
+// the notification-click handling below rather than setActiveRoom directly
+// so callers that aren't sure the room exists yet (a message can arrive
+// before room-restore finishes) get a clean success/fail signal back
+// instead of setActiveRoom's silent no-op on an unknown code.
+function switchToRoomByCode(code) {
+  if (!code || !rooms.has(code)) return false;
+  setActiveRoom(code);
+  showScreen('s-chat');
+  return true;
+}
+
+// A tapped notification (message or call) carries which room it's about —
+// see the `code` field added to every push payload server-side and threaded
+// through in sw.js's notificationclick. If the app is already open, this is
+// the only signal that ever arrives (a fresh window instead gets it via the
+// ?room= URL param read in the load handler below, since there's no live
+// page yet to postMessage to at the moment the window is created). If the
+// named room hasn't finished restoring yet, queue it rather than drop it —
+// the load handler checks this queue once restore completes.
+let pendingNotificationRoomCode = null;
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'notification-click' && event.data.code) {
+      if (!switchToRoomByCode(event.data.code)) pendingNotificationRoomCode = event.data.code;
+    }
+  });
+}
+
 // Reflects the active room's current disappearing-message setting in the
 // selector, without triggering its own onchange handler (which would fire
 // another /api/set-timer call and post a spurious "changed" system message
@@ -5485,12 +5514,28 @@ window.addEventListener('load', async () => {
     for (const room of rooms.values()) {
       room.messages.push({ id: 'sys-reconnect-' + room.code, kind: 'sys', content: 'Reconnected' });
     }
+    // A notification tap that had to open a fresh window (app wasn't
+    // already running) carries its target room as a ?room= URL param — see
+    // sw.js's notificationclick — since there was no live page yet to
+    // postMessage to at the moment the window was created. Same idea for
+    // pendingNotificationRoomCode: a message could in principle arrive
+    // before this restore finished. Either takes priority over the normal
+    // last-active-room preference — tapping "X is calling" should open that
+    // room, not whatever tab was left open last.
+    const urlRoomCode = new URLSearchParams(location.search).get('room');
+    const notifyCode = (urlRoomCode && rooms.has(urlRoomCode)) ? urlRoomCode
+      : (pendingNotificationRoomCode && rooms.has(pendingNotificationRoomCode)) ? pendingNotificationRoomCode
+      : null;
     const preferred = loadActiveRoomCode();
-    const activate = (preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value;
+    const activate = notifyCode || ((preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value);
     showScreen('s-chat');
     setActiveRoom(activate);
     hideRestoreSkeleton();
     for (const room of rooms.values()) startRoomPolling(room);
+    // Drop the param so a later refresh of this same tab doesn't keep
+    // re-forcing this room over whatever the user switches to afterward.
+    if (urlRoomCode) history.replaceState(null, '', location.pathname);
+    pendingNotificationRoomCode = null;
   } else {
     hideRestoreSkeleton();
     triggerLandingAnim();

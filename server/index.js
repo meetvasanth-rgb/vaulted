@@ -817,11 +817,17 @@ wss.on('connection', (ws) => {
         room.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
         if (!alreadyRinging && peerMember.pushSub) {
           const caller = room.members.get(token);
+          // code rides along so tapping the notification (see sw.js's
+          // notificationclick) can jump straight to the room the call is
+          // actually in, rather than whichever room the app happens to open
+          // to — matters most with multiple rooms open, where "the call" and
+          // "the room on screen when you unlock" are often different rooms.
           const payload = JSON.stringify({
             title: 'Vaultlix',
             body: caller && caller.name ? `${caller.name} is calling` : 'Incoming call',
             tag: `vaultlix-call-${roomCode}`,
             isCall: true,
+            code: roomCode,
           });
           webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
             if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
@@ -870,6 +876,7 @@ wss.on('connection', (ws) => {
             body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
             tag: `vaultlix-missed-${roomCode}-${now}`,
             isCall: false,
+            code: roomCode,
           });
           webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600 }).catch(err => {
             if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
