@@ -521,21 +521,32 @@ async function api(path, method, d, p, res) {
     return res200(res, { ok: true, clearedAt: room.clearedAt });
   }
 
-  // GET /api/poll — SIMPLE: return all messages with seq > clientLastSeq that are not from this user
-  if (path==='/api/poll' && method==='GET') {
-    const roomCode = p.get('code');
-    const token = p.get('token');
-    const clientLastSeq = parseInt(p.get('lastSeq')||'0');
-    const lastReceiptSeq = parseInt(p.get('lastReceiptSeq')||'0');
-    const lastReactionSeq = parseInt(p.get('lastReactionSeq')||'0');
-    const lastDeletionSeq = parseInt(p.get('lastDeletionSeq')||'0');
+  // POST /api/poll — return all messages with seq > clientLastSeq that are
+  // not from this user. Used to be a GET with code/token/lastSeq etc. as
+  // URL query parameters; moved to POST with a JSON body instead, because a
+  // GET request's full URL — including its query string — is exactly what
+  // standard infrastructure access logging (Railway's included) tends to
+  // capture. That meant the room code and, worse, the actual session token
+  // were landing in platform-level logs on every single poll cycle (every
+  // 2s, for as long as a room stayed open) — a far bigger exposure than the
+  // occasional room code in this app's own console.log lines. A POST body
+  // isn't parsed/stored by that same standard access-log layer, so this
+  // keeps the same data out of logs going forward without changing
+  // anything about who can call it or what it returns.
+  if (path==='/api/poll' && method==='POST') {
+    const roomCode = d.code;
+    const token = d.token;
+    const clientLastSeq = parseInt(d.lastSeq||0, 10);
+    const lastReceiptSeq = parseInt(d.lastReceiptSeq||0, 10);
+    const lastReactionSeq = parseInt(d.lastReactionSeq||0, 10);
+    const lastDeletionSeq = parseInt(d.lastDeletionSeq||0, 10);
     // full=1 is only ever sent once, right after a reload, to rebuild the
     // chat log from scratch (the client never persists message content
     // locally — only the room session and a small expiry ledger). Normal
     // incremental polling never sets this and keeps excluding the caller's
     // own messages exactly as before, since the client already has those
     // from its own optimistic send.
-    const includeOwn = p.get('full') === '1';
+    const includeOwn = d.full === 1 || d.full === '1';
     const room = rooms.get(roomCode);
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in room.',403);
@@ -660,13 +671,16 @@ async function api(path, method, d, p, res) {
     return res200(res, { ok: true });
   }
 
-  // GET /api/check_typing
-  if (path==='/api/check_typing' && method==='GET') {
-    const room = rooms.get(p.get('code'));
+  // POST /api/check_typing — same reasoning as /api/poll above: this used
+  // to be a GET with code/token as URL query parameters, fired every 2.5s
+  // while a room is open, which meant the same standard infrastructure
+  // access-log exposure applied here too. Moved to POST + JSON body.
+  if (path==='/api/check_typing' && method==='POST') {
+    const room = rooms.get(d.code);
     if (!room) return res200(res,{typing:false});
     const now = Date.now();
     let typing = false;
-    for (const [t,m] of room.members) if (t!==p.get('token') && m.typing && now-m.typing<3000) typing=true;
+    for (const [t,m] of room.members) if (t!==d.token && m.typing && now-m.typing<3000) typing=true;
     return res200(res,{typing});
   }
 

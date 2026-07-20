@@ -4385,7 +4385,7 @@ async function processIncomingContent(room, content, name, time, msgId) {
 // resume its countdown from wherever it actually was.
 async function restoreRoomHistory(room) {
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=0&lastReceiptSeq=0&lastReactionSeq=0&lastDeletionSeq=0&full=1`);
+    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
     if (!data || data.roomGone) return;
     const nowTs = Date.now();
 
@@ -4471,7 +4471,7 @@ async function doPoll(room) {
   if (room.isPollRunning) return; // skip if previous poll for this room still in progress
   room.isPollRunning = true;
   try {
-    const data = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=${room.lastSeq}&lastReceiptSeq=${room.lastReceiptSeq}&lastReactionSeq=${room.lastReactionSeq}&lastDeletionSeq=${room.lastDeletionSeq}`);
+    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq });
 
     if (data.roomGone) {
       const wasActive = room.code === activeRoomCode;
@@ -4692,7 +4692,7 @@ function onTyping() {
 async function checkTyping(room) {
   if (!room.code || !room.token) return;
   try {
-    const data = await api(`/api/check_typing?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}`);
+    const data = await api('/api/check_typing', { code: room.code, token: room.token });
     if (room.code === activeRoomCode) showTypingIndicator(data.typing);
   } catch(e) {}
 }
@@ -4797,7 +4797,7 @@ async function handleSetup() {
 
       if (room.waitInterval) clearInterval(room.waitInterval);
       room.waitInterval = setInterval(async () => {
-        const d = await api(`/api/poll?code=${encodeURIComponent(room.code)}&token=${encodeURIComponent(room.token)}&lastSeq=0&lastReceiptSeq=0`);
+        const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0 });
         if (d.peerOnline) {
           clearInterval(room.waitInterval); room.waitInterval = null;
           pendingRoomCode = null;
