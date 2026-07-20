@@ -2421,16 +2421,57 @@ function unlockCallOrientation() {
   } catch (e) {}
 }
 
+// Screen Orientation lock (above) only stops the display from ROTATING —
+// it does nothing to stop the OS's own screen-timeout from dimming and
+// locking the device mid-call, which has no orientation-API equivalent at
+// all. That's a real, separate gap: this app never actually asked to keep
+// the screen on during a call — there's no other feature anywhere in this
+// codebase that does. The Screen Wake Lock API is the standards-based way
+// to do that; it's supported on Android Chrome and, since iOS 16.4, Safari
+// too (unlike orientation lock, which iOS has never supported at all).
+//
+// A wake lock is automatically released by the browser the moment the tab
+// is backgrounded (switching apps, screen off) — there's no way to prevent
+// that, it's intentional per spec so a hidden tab can't hold the screen on
+// forever. So this alone doesn't cover "phone goes to sleep, call is
+// backgrounded" — nothing running JS can. What it fixes is the far more
+// common case actually being reported: screen dims and locks while the
+// call is the thing on screen and the person just hasn't touched anything
+// in a while. The visibilitychange listener below re-requests it the
+// moment the tab comes back to the foreground with a call still active, in
+// case the OS had revoked it while away.
+let callWakeLock = null;
+
+async function acquireCallWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      callWakeLock = await navigator.wakeLock.request('screen');
+      callWakeLock.addEventListener('release', () => { callWakeLock = null; });
+    }
+  } catch (e) { callWakeLock = null; /* not supported, or permission/battery-saver denied it — silently no-op */ }
+}
+
+function releaseCallWakeLock() {
+  try { if (callWakeLock) callWakeLock.release(); } catch (e) {}
+  callWakeLock = null;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && activeCallRoomCode && !callWakeLock) acquireCallWakeLock();
+});
+
 function startCallTimer(room) {
   stopCallTimer(room);
   room.callTimerInterval = setInterval(() => updateCallTimerDisplay(room), 1000);
   updateCallTimerDisplay(room);
   lockCallOrientation();
+  acquireCallWakeLock();
 }
 
 function stopCallTimer(room) {
   if (room.callTimerInterval) { clearInterval(room.callTimerInterval); room.callTimerInterval = null; }
   unlockCallOrientation();
+  releaseCallWakeLock();
 }
 
 function formatCallTime(seconds) {
