@@ -261,9 +261,13 @@ async function api(path, method, d, p, res) {
       m.lastSeen = Date.now();
       if (d.pubKey) m.pubKey = d.pubKey;
       room.lastActivity = Date.now();
-      let peerPubKey = null;
-      for (const [t,mb] of room.members) if (t!==d.token) peerPubKey = mb.pubKey;
-      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, deleteTimer: room.deleteTimer });
+      // peerName rides along now too — without it, a reconnecting client had
+      // nothing to show in its header until its first regular poll came
+      // back, which meant the raw room code sat there visibly if that poll
+      // was even slightly delayed.
+      let peerPubKey = null, peerName = null;
+      for (const [t,mb] of room.members) if (t!==d.token) { peerPubKey = mb.pubKey; peerName = mb.name; }
+      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer });
     }
 
     if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);

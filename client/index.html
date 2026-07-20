@@ -1671,6 +1671,12 @@ function makeRoom({ code, token, myName, deleteTimerSeconds }) {
     // resurrect), so there's nothing stale here for a reset-to-0 to miss.
     lastKnownClearedAt: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
+    // Set true when a reconnect's history bootstrap had to be skipped
+    // because the peer's pubKey wasn't available yet (they were likely
+    // reconnecting at the same moment) — see the load handler and doPoll's
+    // key-rederive block, which runs the catch-up fetch once a real key
+    // does arrive instead of leaving the room's history missing all session.
+    pendingHistoryRestore: false,
     deleteTimerSeconds: deleteTimerSeconds || 0,
     messages: [],           // ordered array of message records (the "chat log")
     // msgId -> deleteAt (ms epoch). The only thing about a message's history
@@ -4531,6 +4537,27 @@ async function doPoll(room) {
     if (data.peerPubKey && data.peerPubKey !== room.lastKnownPeerPubKey) {
       room.sharedKey = null;
       try { await deriveSharedKey(room, data.peerPubKey); room.lastKnownPeerPubKey = data.peerPubKey; } catch(e) {}
+      // Catch-up: this room's own reconnect earlier had no key yet (the
+      // peer's pubKey wasn't on file at that instant), so the full-history
+      // bootstrap got skipped — now that a real key finally exists, run it
+      // here instead of leaving the room's history missing for the rest of
+      // the session. Safe to call any time a key first becomes available:
+      // restoreRoomHistory dedupes against room.seenMsgIds, so it can't
+      // double up anything a normal poll already delivered in the meantime.
+      if (room.sharedKey && room.pendingHistoryRestore) {
+        room.pendingHistoryRestore = false;
+        // Any message that arrived via normal polling during the gap (key
+        // missing since reconnect, until just now) could only have failed
+        // to decrypt — processIncomingContent returns null with no key, so
+        // nothing renders, but the msgId still gets marked "seen" regardless.
+        // Left alone, that stale seen-marker would make restoreRoomHistory's
+        // own dedup skip those same messages here too, permanently — clearing
+        // it is safe specifically in this path: with sharedKey null the whole
+        // time, nothing could have decrypted successfully to begin with, so
+        // there's nothing genuinely-rendered at risk of being duplicated.
+        room.seenMsgIds.clear();
+        try { await restoreRoomHistory(room); } catch(e) {}
+      }
     }
 
     const wasOnline = room.peerOnline;
@@ -5496,6 +5523,10 @@ window.addEventListener('load', async () => {
       const pubKey = await getOrGenerateKeyPair(room);
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
       if (result.error) { clearRoomStorage(code); continue; }
+      // peerName may already be known from a previous session, but the
+      // server's own record is the current truth — overwrite rather than
+      // only filling in when missing, in case the peer changed it since.
+      if (result.peerName) room.peerName = result.peerName;
       room.sharedKey = null;
       room.lastKnownPeerPubKey = null; // force key rederivation
       if (result.peerPubKey) {
@@ -5504,7 +5535,19 @@ window.addEventListener('load', async () => {
         room.everOnline = true; // peer's pubKey on file means they've been in this room before
       }
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
-      if (room.sharedKey) await restoreRoomHistory(room);
+      if (room.sharedKey) {
+        await restoreRoomHistory(room);
+      } else {
+        // The peer's pubKey wasn't on file yet (most likely they were also
+        // mid-reconnect at this same moment) — deriveSharedKey never ran,
+        // so this bootstrap fetch has to be skipped too (it can't decrypt
+        // anything without a key). Flag it rather than silently giving up:
+        // doPoll's own key-rederive block below will run this same catch-up
+        // fetch the moment a real key does become available, instead of the
+        // room being left permanently missing its history until a further
+        // manual reload happens to land at a luckier moment.
+        room.pendingHistoryRestore = true;
+      }
       addRoomToState(room);
       restoredAny = true;
     } catch(e) { /* leave this room's storage in place for a later retry */ }
