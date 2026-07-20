@@ -88,8 +88,16 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .tagline.go{opacity:1}
 .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;max-width:660px;opacity:1}
 .cards.go{opacity:1}
-.card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:20px 18px;cursor:pointer;transition:all .15s;text-align:left}
-.card:hover{border-color:var(--gold-border);background:var(--surface3);transform:translateY(-1px)}
+.card{background:var(--surface);border:0.5px solid var(--border2);border-radius:3px;padding:20px 18px;cursor:pointer;transition:transform .2s,border-color .15s,background .15s,box-shadow .2s,opacity .35s;text-align:left}
+/* card-hidden/reveal is a plain opacity+transform TRANSITION (not a
+   @keyframes animation) driven by triggerLandingAnim() — deliberately, so
+   the card's transform property is free again the instant it's done and
+   :hover/:active below keep working normally afterward. A fill-forwards
+   keyframe animation would keep "winning" the cascade on that property
+   indefinitely and silently break hover/press feedback post-entrance. */
+.card.card-hidden{opacity:0;transform:translateY(10px)}
+.card:hover{border-color:var(--gold-border);background:var(--surface3);transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.05)}
+.card:active{transform:translateY(0) scale(.97);box-shadow:none}
 .card-icon{width:34px;height:34px;border-radius:2px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
 .card-icon svg{width:16px;height:16px;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .card-title{font-size:13px;font-weight:500;color:var(--cream);margin-bottom:4px}
@@ -124,13 +132,14 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .setup-logo .rule{height:1px;background:var(--gold);width:60px;margin:0 auto 12px}
 .setup-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
 .setup-title{font-size:16px;font-weight:400;color:var(--cream2);margin-bottom:20px;text-align:center}
-.field{margin-bottom:14px}
+.field{margin-bottom:14px;transition:opacity .35s,transform .35s}
+.field.field-hidden{opacity:0;transform:translateY(8px)}
 .field label{display:block;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-.field input{width:100%;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:16px;color:var(--cream);transition:border-color .15s}
-.field input:focus{border-color:var(--gold-border)}
+.field input{width:100%;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:10px 13px;font-size:16px;color:var(--cream);transition:border-color .15s,box-shadow .15s}
+.field input:focus{border-color:var(--gold-border);box-shadow:0 0 0 3px rgba(184,151,62,.12)}
 .field input::placeholder{color:var(--hint)}
 .field-note{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
-.btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:15px;font-weight:500;letter-spacing:.05em;padding:13px;border-radius:2px;border:none;transition:background .15s;margin-top:6px}
+.btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:15px;font-weight:500;letter-spacing:.05em;padding:13px;border-radius:2px;border:none;transition:background .15s,transform .1s;margin-top:6px}
 .btn-gold:hover{background:#C9A94A}
 .btn-gold:disabled{opacity:.5;cursor:not-allowed}
 .err-msg{font-size:13px;color:var(--red);margin-top:8px;text-align:center;display:none}
@@ -143,9 +152,12 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .w-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
 .w-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--cream);margin-bottom:6px}
 .w-sub{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6}
-.code-box{background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:3px;padding:16px 20px;margin-bottom:20px}
+.code-box{background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:3px;padding:16px 20px;margin-bottom:20px;transition:box-shadow .6s}
+.code-box.code-lit{box-shadow:0 0 0 3px rgba(184,151,62,.14)}
 .code-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .code-value{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:400;letter-spacing:.08em;color:var(--gold);word-break:break-all}
+.code-value .code-char{display:inline-block;opacity:0;transform:translateY(6px) scale(.85);animation:code-char-in .35s ease forwards}
+@keyframes code-char-in{to{opacity:1;transform:translateY(0) scale(1)}}
 .code-actions{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
 .copy-btn,.share-btn{background:none;border:0.5px solid var(--border2);border-radius:2px;padding:7px 16px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:all .15s}
 .copy-btn:hover,.share-btn:hover{border-color:var(--gold-border);color:var(--gold)}
@@ -539,6 +551,10 @@ body.select-mode .chat-ftr{display:none}
 }
 #s-setup .field input:focus {
   border-color: rgba(184,151,62,0.5);
+  box-shadow: 0 0 0 3px rgba(184,151,62,.12);
+}
+#s-setup .btn-gold:active {
+  transform: scale(.98);
 }
 #s-setup .field input::placeholder {
   color: #C4B8AC;
@@ -4821,6 +4837,7 @@ function startCreate() {
   document.getElementById('name-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
+  staggerSetupFields();
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -4837,6 +4854,7 @@ function startNamed() {
   document.getElementById('named-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
+  staggerSetupFields();
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -4853,6 +4871,7 @@ function startJoin() {
   document.getElementById('code-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
+  staggerSetupFields();
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
@@ -4894,7 +4913,7 @@ async function handleSetup() {
       persistRoom(room);
       pendingRoomCode = room.code;
 
-      document.getElementById('display-code').textContent = result.code;
+      revealCode(result.code);
       const wNote = document.getElementById('w-note');
       if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
       // Web Share API is the whole point — one tap into WhatsApp/Messages/
@@ -5530,6 +5549,61 @@ function triggerLandingAnim() {
   document.getElementById('logoSub')?.classList.add('go');
   document.getElementById('logoTag')?.classList.add('go');
   document.getElementById('cards')?.classList.add('go');
+
+  // Staggered card entrance — plain opacity/transform TRANSITION (see the
+  // .card-hidden comment in CSS for why this isn't a @keyframes animation).
+  const cardsEl = document.getElementById('cards');
+  const cardEls = cardsEl ? [...cardsEl.querySelectorAll('.card')] : [];
+  if (cardEls.length) {
+    cardEls.forEach(el => el.classList.add('card-hidden'));
+    // Force a reflow between adding and removing the hidden class so the
+    // browser actually paints the hidden state first — otherwise both
+    // class changes can land in the same frame and there's nothing to
+    // transition from.
+    void cardsEl.offsetWidth;
+    cardEls.forEach((el, i) => setTimeout(() => el.classList.remove('card-hidden'), 60 + i * 90));
+  }
+}
+
+// A message that's nothing but a single emoji (see isSingleEmoji/
+// triggerEmojiEffect) reuses this same reveal idea elsewhere in the app —
+// here it's applied to the room-setup form fields whenever Create/Named/
+// Join is opened, so the fields that apply to that mode settle in one at a
+// time instead of all snapping into view at once.
+function staggerSetupFields() {
+  const card = document.querySelector('#s-setup .setup-card');
+  if (!card) return;
+  const fields = [...card.querySelectorAll('.field')].filter(el => el.style.display !== 'none');
+  if (!fields.length) return;
+  fields.forEach(el => el.classList.add('field-hidden'));
+  void card.offsetWidth;
+  fields.forEach((el, i) => setTimeout(() => el.classList.remove('field-hidden'), 50 + i * 80));
+}
+
+// Reveals a room code one character at a time instead of snapping the whole
+// string into view — this is the moment the room actually becomes real for
+// whoever just created it, worth a beat of ceremony. Falls back to a plain
+// textContent assignment for anything that isn't a plain, safe character
+// (shouldn't happen — codes are server-generated from a known alphabet —
+// but escaping defensively here since this builds real DOM nodes).
+function revealCode(code) {
+  const el = document.getElementById('display-code');
+  const box = document.querySelector('#s-waiting .code-box');
+  if (!el) return;
+  el.textContent = '';
+  const chars = [...String(code || '')];
+  chars.forEach((ch, i) => {
+    const span = document.createElement('span');
+    span.className = 'code-char';
+    span.textContent = ch;
+    span.style.animationDelay = (i * 35) + 'ms';
+    el.appendChild(span);
+  });
+  if (box) {
+    box.classList.remove('code-lit');
+    void box.offsetWidth;
+    setTimeout(() => box.classList.add('code-lit'), chars.length * 35 + 80);
+  }
 }
 
 // ── PAGE LOAD: restore every saved room and reconnect each independently ──
