@@ -310,6 +310,11 @@ async function api(path, method, d, p, res, ip) {
       // have these two exchanged," which the client shows for permanent
       // links as a small trust/investment signal.
       totalMessageCount: 0,
+      // Timestamp of the last real message sent through this room (set only
+      // in /api/send, unlike lastActivity which also moves on join/poll).
+      // Used client-side to answer "has anyone actually said anything today"
+      // for the daily nudge, without depending on locally-cached history.
+      lastMessageAt: null,
       deleteTimer: parseInt(d.deleteTimer)||0,
       // The moment the CURRENT deleteTimer value took effect — the sweep
       // below only ever considers messages sent at or after this point, so
@@ -353,7 +358,7 @@ async function api(path, method, d, p, res, ip) {
       // was even slightly delayed.
       let peerPubKey = null, peerName = null;
       for (const [t,mb] of room.members) if (t!==d.token) { peerPubKey = mb.pubKey; peerName = mb.name; }
-      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
+      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
     }
 
     if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);
@@ -419,7 +424,7 @@ async function api(path, method, d, p, res, ip) {
     let peerPubKey = null, peerName = null;
     for (const [t,mb] of room.members) if (t!==token) { peerPubKey = mb.pubKey; peerName = mb.name; }
     console.log(`${name} joined ${roomCode}`);
-    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
+    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
   // POST /api/send
@@ -453,6 +458,7 @@ async function api(path, method, d, p, res, ip) {
     const seq = ++room.seq;
     room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
+    room.lastMessageAt = Date.now();
     // Trim — keep last 100 messages but seq numbers never reset. Lowered
     // from 300: applies regardless of whether disappearing-message timers
     // are on, so even a room without them retains less on the server.
@@ -775,7 +781,7 @@ async function api(path, method, d, p, res, ip) {
       }
     }
 
-    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0 });
+    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
   // POST /api/mark-delivered — reports that a push notification actually

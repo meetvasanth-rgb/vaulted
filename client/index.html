@@ -782,6 +782,20 @@ body.select-mode .chat-ftr{display:none}
   align-items:center;
 }
 .reply-preview.show { display:flex; }
+/* ── DAILY NUDGE ──────────────────────────────────────────────── */
+.daily-nudge {
+  display:flex;
+  align-items:center;
+  background:#FBF6EC;
+  border-left:3px solid var(--gold);
+  border-radius:0 4px 4px 0;
+  padding:8px 12px;
+  margin:0 14px 0;
+  font-size:12px;
+  color:#4A3F35;
+}
+.daily-nudge-text { flex:1; }
+.daily-nudge-close { background:none; border:none; color:#9A8C7E; font-size:16px; cursor:pointer; padding:0 0 0 10px; line-height:1; }
 .reply-preview-thumb { width:34px; height:34px; object-fit:cover; border-radius:5px; margin-right:8px; flex-shrink:0; }
 .reply-preview-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .reply-preview-name { font-weight:600; color:#1A1510; margin-right:6px; }
@@ -849,6 +863,16 @@ body.select-mode .chat-ftr{display:none}
 #connect-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;opacity:0;transition:opacity .4s ease;}
 #connect-overlay.visible{opacity:1}
 #connect-overlay.hiding{opacity:0;transform:translateY(-20px);transition:opacity .4s ease,transform .4s ease}
+
+/* ── MILESTONE CARD ───────────────────────────────────────────── */
+.milestone-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:600;opacity:0;pointer-events:none;transition:opacity .25s ease;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.milestone-overlay.open{opacity:1;pointer-events:all}
+.milestone-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.94);width:min(320px,86vw);background:#0A0908;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,0.5);z-index:601;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1);padding:16px;display:flex;flex-direction:column;align-items:center}
+.milestone-modal.open{opacity:1;pointer-events:all;transform:translate(-50%,-50%) scale(1)}
+#milestone-canvas{width:100%;height:auto;border-radius:10px;display:block}
+.milestone-actions{display:flex;gap:10px;width:100%;margin-top:14px}
+.milestone-share-btn{flex:1;background:#B8973E;color:#0A0908;border:none;border-radius:24px;padding:11px 0;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;cursor:pointer}
+.milestone-dismiss-btn{flex:1;background:none;color:rgba(255,255,255,0.5);border:0.5px solid rgba(255,255,255,0.2);border-radius:24px;padding:11px 0;font-family:'Inter',sans-serif;font-size:13.5px;cursor:pointer}
 
 .connect-v-mark{font-family:'Cormorant Garamond',serif;font-size:72px;font-weight:300;color:#B8973E;letter-spacing:.1em;line-height:1;transform:scale(0.6);opacity:0;transition:transform .5s cubic-bezier(0.34,1.56,0.64,1),opacity .5s cubic-bezier(0.34,1.56,0.64,1)}
 #connect-overlay.visible .connect-v-mark{transform:scale(1);opacity:1}
@@ -1273,6 +1297,10 @@ body.select-mode .chat-ftr{display:none}
     </div>
   </div>
   <div style="position:relative">
+  <div class="daily-nudge" id="daily-nudge" style="display:none">
+    <span class="daily-nudge-text">Haven't said anything today — a quick hello keeps it going.</span>
+    <button class="daily-nudge-close" onclick="dismissDailyNudge(getActiveRoom())" aria-label="Dismiss">×</button>
+  </div>
   <div class="reply-preview" id="reply-preview">
     <img class="reply-preview-thumb" id="reply-thumb" style="display:none" alt=""/>
     <span class="reply-preview-text"><span class="reply-preview-name" id="reply-name"></span><span id="reply-text"></span></span>
@@ -1671,6 +1699,19 @@ body.select-mode .chat-ftr{display:none}
   </div>
 </div>
 
+<!-- Milestone card — shown once per threshold, per permanent room. Dark/gold
+     aesthetic deliberately matches the connection-moment (#connect-overlay)
+     ceremony rather than the light Settings palette, since this is a
+     celebratory full-bleed moment, not a form or a setting. -->
+<div class="milestone-overlay" id="milestone-overlay" onclick="closeMilestoneCard()"></div>
+<div class="milestone-modal" id="milestone-modal">
+  <canvas id="milestone-canvas" width="640" height="640"></canvas>
+  <div class="milestone-actions">
+    <button class="milestone-share-btn" id="milestone-share-btn" onclick="shareMilestoneCard()">Share</button>
+    <button class="milestone-dismiss-btn" onclick="closeMilestoneCard()">Not now</button>
+  </div>
+</div>
+
 <script>
 // ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
 // No WebSockets — uses HTTP polling every 2s. Works on iOS even when the
@@ -1713,7 +1754,7 @@ const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion }) {
   return {
     code, token, myName,
     // Anon Link ("permanent room") state — persistent marks a room the
@@ -1723,6 +1764,13 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     persistent: !!persistent,
     connectedSince: connectedSince || null,
     totalMessageCount: totalMessageCount || 0,
+    // Server-authoritative timestamp of the last real message sent in this
+    // room (set only in /api/send). Deliberately NOT persisted into the
+    // localStorage room blob — it's always refreshed fresh from /api/join
+    // and /api/poll, so it can never be the thing that corrupts a stored
+    // keypair (see persistRoom's safe-write rules). Drives the "haven't
+    // said anything today" nudge.
+    lastMessageAt: lastMessageAt || 0,
     // How many distinct times this device has reopened THIS ordinary room
     // (never bumped once persistent is true — the suggestion only makes
     // sense before that). lastReconnectCountedAt throttles it so a burst of
@@ -1935,6 +1983,164 @@ function loadRoomSession(code) {
     if (!s || Date.now() - s.savedAt > SESSION_TTL) { clearRoomStorage(code); return null; }
     return s;
   } catch(e) { return null; }
+}
+
+// ── DAILY NUDGE ──────────────────────────────────────────────────────────
+// "Haven't said anything today" pill above the composer. Its dismiss-state
+// lives in its OWN dedicated localStorage key, entirely separate from the
+// per-room session blob (roomStorageKey) that holds the E2E keypair — that
+// separation is deliberate, not an accident: a bug earlier in this project
+// corrupted stored keypairs by writing an unrelated counter into that same
+// blob via the non-merging persistRoom(). A frequently-written, purely
+// cosmetic thing like "did they dismiss today's nudge" has no business
+// anywhere near the blob that holds encryption keys, so it gets its own key
+// and can never repeat that failure mode even by accident.
+const NUDGE_DISMISSED_KEY = 'vaultlix_nudge_dismissed';
+function todayLocalStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function startOfLocalDayMs() {
+  const d = new Date(); d.setHours(0,0,0,0); return d.getTime();
+}
+function loadNudgeDismissedMap() {
+  try { return JSON.parse(localStorage.getItem(NUDGE_DISMISSED_KEY) || '{}'); } catch(e) { return {}; }
+}
+function markNudgeDismissedToday(code) {
+  try {
+    const map = loadNudgeDismissedMap();
+    map[code] = todayLocalStr();
+    localStorage.setItem(NUDGE_DISMISSED_KEY, JSON.stringify(map));
+  } catch(e) {}
+}
+function shouldShowDailyNudge(room) {
+  if (!room || !room.everOnline) return false; // no point nudging before the peer's ever actually been here
+  if (room.lastMessageAt && room.lastMessageAt >= startOfLocalDayMs()) return false; // someone already said something today
+  const map = loadNudgeDismissedMap();
+  if (map[room.code] === todayLocalStr()) return false; // dismissed already, once per day
+  return true;
+}
+function updateDailyNudge(room) {
+  if (!room || room.code !== activeRoomCode) return; // only ever touches the DOM for the room actually on screen
+  const el = document.getElementById('daily-nudge');
+  if (!el) return;
+  el.style.display = shouldShowDailyNudge(room) ? 'flex' : 'none';
+}
+function dismissDailyNudge(room) {
+  if (!room) return;
+  markNudgeDismissedToday(room.code);
+  updateDailyNudge(room);
+}
+
+// ── SHAREABLE MILESTONE CARD ────────────────────────────────────────────
+// Positive-only milestone moments for permanent rooms (7/30 days connected,
+// 100 messages exchanged) — deliberately NOT a Snapchat-style streak: no
+// loss, no reset, no pressure to keep a count alive. Shown once per
+// threshold per room, tracked in its own dedicated localStorage key, same
+// isolation reasoning as NUDGE_DISMISSED_KEY above — never touches the
+// per-room session blob that holds the E2E keypair.
+const MILESTONES_SHOWN_KEY = 'vaultlix_milestones_shown';
+function loadMilestonesShownMap() {
+  try { return JSON.parse(localStorage.getItem(MILESTONES_SHOWN_KEY) || '{}'); } catch(e) { return {}; }
+}
+function markMilestoneShown(code, id) {
+  try {
+    const map = loadMilestonesShownMap();
+    const set = new Set(map[code] || []);
+    set.add(id);
+    map[code] = Array.from(set);
+    localStorage.setItem(MILESTONES_SHOWN_KEY, JSON.stringify(map));
+  } catch(e) {}
+}
+let currentMilestone = null;
+function checkMilestone(room) {
+  // Only permanent rooms have a connectedSince long enough to mean
+  // anything — an ordinary room is gone in 24h-4 days, well before any of
+  // these thresholds could ever be hit honestly.
+  if (!room || !room.persistent) return;
+  if (room.code !== activeRoomCode) return; // never pop up over a room that isn't on screen
+  if (document.getElementById('milestone-modal').classList.contains('open')) return; // one at a time
+  const shown = new Set((loadMilestonesShownMap())[room.code] || []);
+  const days = room.connectedSince ? Math.floor((Date.now() - room.connectedSince) / (24*60*60*1000)) : 0;
+  let milestone = null;
+  if (days >= 30 && !shown.has('days30')) milestone = { id: 'days30', kind: 'days', value: 30 };
+  else if (days >= 7 && !shown.has('days7')) milestone = { id: 'days7', kind: 'days', value: 7 };
+  else if ((room.totalMessageCount || 0) >= 100 && !shown.has('msgs100')) milestone = { id: 'msgs100', kind: 'msgs', value: 100 };
+  if (!milestone) return;
+  // Crossing the 30-day mark obviously means 7 days happened too — no need
+  // to separately congratulate that one on some later visit.
+  if (milestone.id === 'days30') markMilestoneShown(room.code, 'days7');
+  markMilestoneShown(room.code, milestone.id);
+  showMilestoneCard(milestone);
+}
+async function showMilestoneCard(milestone) {
+  currentMilestone = milestone;
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
+  const canvas = document.getElementById('milestone-canvas');
+  drawMilestoneCard(canvas, milestone);
+  document.getElementById('milestone-overlay').classList.add('open');
+  document.getElementById('milestone-modal').classList.add('open');
+}
+function closeMilestoneCard() {
+  document.getElementById('milestone-overlay').classList.remove('open');
+  document.getElementById('milestone-modal').classList.remove('open');
+}
+function drawMilestoneCard(canvas, milestone) {
+  const size = 640;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#0A0908';
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = 'rgba(184,151,62,0.35)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(20.5, 20.5, size - 41, size - 41);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#B8973E';
+  ctx.font = '300 150px "Cormorant Garamond", serif';
+  ctx.fillText(String(milestone.value), size / 2, size / 2 - 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '400 24px Inter, sans-serif';
+  const label = milestone.kind === 'days' ? 'days connected' : 'messages exchanged';
+  ctx.fillText(label, size / 2, size / 2 + 34);
+  ctx.strokeStyle = '#B8973E';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(size / 2 - 30, size / 2 + 74);
+  ctx.lineTo(size / 2 + 30, size / 2 + 74);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '300 22px "Cormorant Garamond", serif';
+  ctx.fillText('V A U L T L I X', size / 2, size / 2 + 116);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '400 13px Inter, sans-serif';
+  ctx.fillText('End-to-end encrypted · Zero metadata', size / 2, size / 2 + 144);
+}
+async function shareMilestoneCard() {
+  const canvas = document.getElementById('milestone-canvas');
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) { closeMilestoneCard(); return; }
+  const shareText = 'Encrypted, anonymous, and still going — on Vaultlix.';
+  let shared = false;
+  try {
+    const file = new File([blob], 'vaultlix-milestone.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text: shareText });
+      shared = true;
+    }
+  } catch (e) {
+    // AbortError = they closed the share sheet — not a failure, just fall
+    // through without the download fallback below.
+    if (e && e.name === 'AbortError') { closeMilestoneCard(); return; }
+  }
+  if (!shared) {
+    // No Web Share Level 2 support (mainly desktop browsers) — save the
+    // image locally instead via the same Blob+anchor path already used for
+    // received files, then let them know where to find it.
+    const reader = new FileReader();
+    reader.onload = () => { downloadDataUri(reader.result, 'vaultlix-milestone.png'); toast('Image saved'); };
+    reader.readAsDataURL(blob);
+  }
+  closeMilestoneCard();
 }
 
 // ── CRYPTO (per room) ──────────────────────────────────────────────────
@@ -3801,6 +4007,8 @@ function setActiveRoom(code) {
   updateDocumentTitle();
   updateTimerBar(room);
   refreshCallButton();
+  updateDailyNudge(room);
+  checkMilestone(room);
 }
 
 // Switches to a specific room by code, if it's actually loaded — used by
@@ -4988,6 +5196,12 @@ async function doPoll(room) {
     // link live without needing a full reconnect — cheap since it's already
     // riding along on every poll response rather than a dedicated call.
     if (data.totalMessageCount !== undefined) room.totalMessageCount = data.totalMessageCount;
+    // Drives the "haven't said anything today" nudge — server-authoritative
+    // so it's correct even if this device never sent the most recent
+    // message itself (peer sending today also counts as "not silent").
+    if (data.lastMessageAt !== undefined) room.lastMessageAt = data.lastMessageAt;
+    updateDailyNudge(room);
+    checkMilestone(room);
 
     // Safety net: a scheduled disappearing-message setTimeout can get
     // silently dropped if the browser freezes/throttles JS while the tab is
@@ -5105,6 +5319,10 @@ async function sendMsg() {
   renderMessageRecord(room, rec, true);
   if (rec.jumbo) triggerEmojiEffect(rec.content);
   cancelReply();
+  // Hide the nudge the instant we send, optimistically — no need to wait for
+  // the next poll to echo back the real server timestamp.
+  room.lastMessageAt = Date.now();
+  updateDailyNudge(room);
 
   try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
 }
@@ -5333,6 +5551,7 @@ async function handleSetup() {
       room.persistent = !!result.persistent;
       room.connectedSince = result.connectedSince || null;
       room.totalMessageCount = result.totalMessageCount || 0;
+      room.lastMessageAt = result.lastMessageAt || 0;
       addRoomToState(room);
       persistRoom(room);
 
@@ -6088,6 +6307,7 @@ window.addEventListener('load', async () => {
       if (result.persistent !== undefined) room.persistent = !!result.persistent;
       if (result.connectedSince) room.connectedSince = result.connectedSince;
       if (result.totalMessageCount !== undefined) room.totalMessageCount = result.totalMessageCount;
+      if (result.lastMessageAt !== undefined) room.lastMessageAt = result.lastMessageAt;
       room.sharedKey = null;
       room.lastKnownPeerPubKey = null; // force key rederivation
       if (result.peerPubKey) {
