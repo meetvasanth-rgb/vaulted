@@ -190,21 +190,20 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .select-bar-count{flex:1;font-size:14px;font-weight:500}
 .select-bar-delete{background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:16px;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .select-bar-delete:disabled{opacity:.35;cursor:not-allowed}
-.chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916}
-.chat-hdr-sep{width:1px;height:18px;background:#E0E0E0}
+.chat-hdr-logo{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:400;letter-spacing:.1em;color:#1A1916;flex-shrink:0}
+/* Two zones instead of the old flat row of seven-ish competing pieces:
+   identity (logo + room name + status dot) on the left, actions (settings,
+   Leave, Close & erase) pinned right via margin-left:auto. The permanent-
+   room 🔗 badge and the 🔒 E2E badge that used to live here were both pure
+   duplicates — the room's permanence is already shown in Settings > This
+   room, and encryption confirmation now lives on the tappable e2e-bar
+   directly below instead of a second badge up here. */
+.chat-hdr-identity{display:flex;align-items:center;gap:8px;min-width:0;flex:1;overflow:hidden}
+.chat-hdr-actions{display:flex;align-items:center;margin-left:auto;flex-shrink:0}
 .chat-hdr-room{font-size:12px;color:#888;font-family:monospace;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;flex-shrink:1;min-width:0;cursor:pointer}
-.chat-hdr-status{display:flex;align-items:center;gap:5px;margin-left:auto;flex-shrink:0}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0}
 .status-dot.away{background:#CCC}
-.status-txt{font-size:11px;color:#888}
-/* Header can overflow on narrower phones once the room switcher/status text
-   are all fighting for space with the two action buttons — the status word
-   ("Connected"/"Waiting for X…") is the least essential piece (the dot
-   already conveys it, and the room tabs below repeat it per room), so it's
-   the first thing to go, freeing enough width to keep both buttons visible
-   rather than letting the last one clip off the edge of the screen. */
 @media(max-width:640px){
-  .status-txt{display:none}
   .leave-btn{margin-left:6px}
   .destroy-btn{margin-left:4px}
 }
@@ -1253,23 +1252,27 @@ body.select-mode .chat-ftr{display:none}
 <!-- CHAT -->
 <div id="s-chat" class="screen">
   <div class="chat-hdr">
-    <div class="chat-hdr-logo">V</div>
-    <div class="chat-hdr-sep"></div>
-    <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this room (only visible to you)">—</div>
-    <span id="hdr-link-badge" style="display:none;font-size:12px;margin-left:2px;flex-shrink:0" title="Permanent room — doesn't expire">🔗</span>
-    <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption"><span style="font-size:0.87em">🔒</span> E2E</div>
-    <div class="chat-hdr-status">
-      <div class="status-dot" id="status-dot"></div>
-      <div class="status-txt" id="status-txt">Connected</div>
+    <!-- Identity zone: logo, room name, connection status — all one glance,
+         no separate badges competing for attention. The permanent-room 🔗
+         indicator and the 🔒 E2E badge that used to live in this row are
+         gone; that info now lives in Settings > This room and on the
+         tappable e2e-bar below, respectively — never duplicated here. -->
+    <div class="chat-hdr-identity">
+      <div class="chat-hdr-logo">V</div>
+      <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this room (only visible to you)">—</div>
+      <div class="status-dot" id="status-dot" title="Connected"></div>
     </div>
-    <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-    </button>
-    <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
-    <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
+    <!-- Actions zone: settings + the two room-ending actions, pinned right. -->
+    <div class="chat-hdr-actions">
+      <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+      <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
+      <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
+    </div>
   </div>
   <div class="select-bar" id="select-bar">
     <button class="select-bar-cancel" onclick="exitSelectMode()" title="Cancel">✕</button>
@@ -1277,7 +1280,7 @@ body.select-mode .chat-ftr{display:none}
     <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
   </div>
   <div class="room-tabs" id="room-tabs"></div>
-  <div class="e2e-bar"><span style="font-size:0.87em">🔒</span> End-to-end encrypted · Gone when the room is erased</div>
+  <div class="e2e-bar" onclick="showVerifyPanel()" title="Tap to verify encryption" style="cursor:pointer"><span style="font-size:0.87em">🔒</span> End-to-end encrypted · Gone when the room is erased</div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
        with multiple rooms open, having it in the header made it ambiguous
@@ -3390,10 +3393,14 @@ function escHtml(s) {
 }
 
 function setStatus(online, name) {
+  // The header dropped its separate "Connected"/"Waiting for X…" text label
+  // in favor of just the dot (see the header simplification) — the same
+  // wording now lives in the dot's title tooltip instead, so a long-press/
+  // hover still surfaces it without permanently taking up header width.
   const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-txt');
-  if (dot) dot.className = online ? 'status-dot' : 'status-dot away';
-  if (txt) txt.textContent = online ? 'Connected' : (name ? `Waiting for ${name}…` : 'Waiting…');
+  if (!dot) return;
+  dot.className = online ? 'status-dot' : 'status-dot away';
+  dot.title = online ? 'Connected' : (name ? `Waiting for ${name}…` : 'Waiting…');
 }
 
 function showTypingIndicator(show) {
@@ -4004,8 +4011,10 @@ function roomDisplayLabel(room) {
 function updateHeaderRoomLabel(room) {
   const el = document.getElementById('hdr-code');
   if (el) el.textContent = roomDisplayLabel(room);
-  const badge = document.getElementById('hdr-link-badge');
-  if (badge) badge.style.display = room.persistent ? 'inline' : 'none';
+  // The permanent-room 🔗 indicator that used to live next to this label
+  // was dropped from the header (see the header simplification) — that
+  // status is already shown in Settings > This room > Permanent Room via
+  // updateAnonLinkSection(), so there's nothing to keep in sync here.
 }
 
 function renderRoomTabs() {
