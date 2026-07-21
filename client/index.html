@@ -1197,6 +1197,8 @@ body.select-mode .chat-ftr{display:none}
   <div class="landing-footer">
   No accounts · No logs · E2E encrypted · No trace
   <span style="margin:0 6px">·</span>
+  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="shareVaultlix()">Share</span>
+  <span style="margin:0 6px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-privacy')">Privacy</span>
   <span style="margin:0 4px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-terms')">Terms</span>
@@ -5749,6 +5751,18 @@ function copyCode() {
 // Hands the full invite message to the OS share sheet — the person picks
 // WhatsApp, iMessage, email, whatever they'd already use to reach the other
 // person, in one tap instead of copy, leave the app, find the chat, paste.
+async function shareVaultlix() {
+  const text = "vaultlix.com\n\nPrivate chat tool, no account or phone number needed. Everything's end-to-end encrypted — messages and voice calls both. Open the link, pick any name, share a code with one person, and talk. Close the room when you're done and everything's gone — nothing saved anywhere.";
+  if (typeof navigator.share === 'function') {
+    try { await navigator.share({ text }); } catch (e) {}
+  } else {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied — paste it anywhere');
+    } catch (e) {}
+  }
+}
+
 async function shareCode() {
   const code = document.getElementById('display-code').textContent;
   if (!code || code === '—') return;
