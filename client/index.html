@@ -5802,17 +5802,26 @@ async function closeActiveRoom() {
   // ceremony plays over them before we swap to whatever screen comes next
   // (closed screen if that was the last room, otherwise the next tab).
   await triggerVanishMoment(() => {
-    if (rooms.size === 0) {
-      activeRoomCode = null;
-      showScreen('s-closed');
-      document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
-    } else {
-      toast('Room erased');
-      switchToNextRoomOrLanding();
+    // If anything in the room-switch branch below throws (e.g. a bad
+    // access deep in setActiveRoom's updateDailyNudge/checkMilestone
+    // calls), the opacity/transition reset in the finally block still
+    // has to run — otherwise #s-chat is left invisible (opacity:0, set
+    // earlier by this same ceremony's fade-out step) with nothing ever
+    // replacing it, which reads as being stuck on the vanish screen.
+    try {
+      if (rooms.size === 0) {
+        activeRoomCode = null;
+        showScreen('s-closed');
+        document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
+      } else {
+        toast('Room erased');
+        switchToNextRoomOrLanding();
+      }
+    } finally {
+      // Reset chat screen opacity/transition for its next use
+      const chatScreen = document.getElementById('s-chat');
+      if (chatScreen) { chatScreen.style.opacity = ''; chatScreen.style.transition = ''; }
     }
-    // Reset chat screen opacity/transition for its next use
-    const chatScreen = document.getElementById('s-chat');
-    if (chatScreen) { chatScreen.style.opacity = ''; chatScreen.style.transition = ''; }
   });
 }
 
@@ -5951,8 +5960,7 @@ async function triggerVanishMoment(callback) {
   // Steps 4-5 happen inside showVanishOverlay (pulse, then text); hold,
   // then Step 6 — fade the whole overlay out and reveal whatever's beneath.
   await delay(2600);
-  hideVanishOverlay();
-  await delay(500);
+  await hideVanishOverlay();
 
   if (callback) callback();
 }
@@ -5982,11 +5990,15 @@ function showVanishOverlay(line1, line2) {
 }
 
 function hideVanishOverlay() {
-  const overlay = document.getElementById('vanish-overlay');
-  if (overlay) {
-    overlay.classList.add('hiding');
-    setTimeout(() => overlay.remove(), 600);
-  }
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('vanish-overlay');
+    if (overlay) {
+      overlay.classList.add('hiding');
+      setTimeout(() => { overlay.remove(); resolve(); }, 600);
+    } else {
+      resolve();
+    }
+  });
 }
 
 // Float & Fade — the end of a real (connected) call dissolves rather than
