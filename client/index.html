@@ -1892,6 +1892,21 @@ function persistRoomSeq(room) {
     localStorage.setItem(key, JSON.stringify(existing));
   } catch(e) {}
 }
+// Same lightweight read-modify-write as persistRoomSeq — patches only the
+// reconnect-comeback counters onto whatever's already stored, never the
+// keypair fields. Safe to call at any point in the reload sequence,
+// including before room.myKeyPair has been populated, which persistRoom()
+// itself is NOT safe to do (see the call site in the window load handler).
+function persistReconnectMeta(room) {
+  try {
+    const key = roomStorageKey(room.code);
+    const existing = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!existing) return;
+    existing.reconnectCount = room.reconnectCount;
+    existing.lastReconnectCountedAt = room.lastReconnectCountedAt;
+    localStorage.setItem(key, JSON.stringify(existing));
+  } catch(e) {}
+}
 // Same lightweight read-modify-write as persistRoomSeq, but for the delete
 // ledger — called whenever a message's deleteAt gets set, so a reload right
 // after can tell it apart from a message whose timer never started. Entries
@@ -5996,11 +6011,21 @@ window.addEventListener('load', async () => {
     if (!room.persistent && Date.now() - room.lastReconnectCountedAt > 4 * 60 * 60 * 1000) {
       room.reconnectCount += 1;
       room.lastReconnectCountedAt = Date.now();
-      // Save immediately rather than relying on the token-change branch
-      // further down (which only fires when the server minted a new
-      // token) — this counter needs to survive a reload every time it
-      // changes, token or no token change.
-      await persistRoom(room);
+      // MUST use the lightweight read-modify-write here, never persistRoom()
+      // directly — this runs before importKeyPairFromStorage() below has had
+      // a chance to populate room.myKeyPair, so persistRoom() at this point
+      // would export an empty {} keypair (see exportKeyPairForStorage's
+      // early-return) and overwrite the real stored pubJwk/privJwk with
+      // nothing, permanently losing this device's E2E identity for the
+      // room. That was a real bug here — it silently corrupted the saved
+      // keypair on literally the first reload of any room, then forced a
+      // brand-new keypair to be generated on every subsequent reload
+      // (nothing ever re-saved one, since a corrupted blob has no keys to
+      // begin with), which is exactly what produced the reported
+      // "[encrypted message — key mismatch]" on old messages after
+      // closing/reopening the app. persistRoomSeq() below already solves
+      // this same class of problem for lastSeq — same pattern here.
+      persistReconnectMeta(room);
     }
     // These get overwritten by restoreRoomHistory() below once the chat log
     // is rebuilt from a full server fetch; set here only as a fallback in
@@ -6017,8 +6042,21 @@ window.addEventListener('load', async () => {
     // device joining this room for the first time.
     room.deleteLedger = new Map(Object.entries(session.deleteLedger || {}).map(([k, v]) => [k, Number(v)]));
     try {
-      await importKeyPairFromStorage(room, session); // reuse the same keypair so old messages stay decryptable
+      const restoredKeys = await importKeyPairFromStorage(room, session); // reuse the same keypair so old messages stay decryptable
       const pubKey = await getOrGenerateKeyPair(room);
+      if (!restoredKeys) {
+        // No usable stored keypair was found for this room (corrupted or
+        // missing localStorage entry) — getOrGenerateKeyPair just minted a
+        // brand-new one. Persist it immediately so this device settles on
+        // that new identity from here on, instead of silently generating a
+        // DIFFERENT new keypair again on every future reload (which would
+        // keep re-breaking decryption of everything sent afterward, not
+        // just recover-once). This can't bring back anything encrypted
+        // under the keypair that was lost — only the private key that
+        // encrypted it could ever decrypt it again, and that's gone — but
+        // it stops the cycle so new messages start working normally again.
+        await persistRoom(room);
+      }
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
       if (result.error) { clearRoomStorage(code); continue; }
       // The server treats this as a genuine reconnect (same token already a
