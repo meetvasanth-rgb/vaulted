@@ -168,10 +168,17 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .w-logo span{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)}
 .w-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;color:var(--cream);margin-bottom:6px}
 .w-sub{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6}
-.code-box{background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:3px;padding:16px 20px;margin-bottom:20px;transition:box-shadow .6s}
+.code-box{background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:3px;padding:16px 20px;margin-bottom:20px;transition:box-shadow .6s,background .15s;cursor:pointer}
+.code-box:active{background:var(--surface3)}
 .code-box.code-lit{box-shadow:0 0 0 3px rgba(184,151,62,.14)}
 .code-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .code-value{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:400;letter-spacing:.08em;color:var(--gold);word-break:break-all}
+/* Secondary, low-weight affordance for the "share via code" path — Share/
+   Copy below stay the one obvious primary action (full link message, right
+   default for most people); this just makes the bare code itself tappable
+   for anyone who specifically wants only the code (reading it aloud,
+   writing it down, or avoiding a link's automatic preview-fetch). */
+.code-tap-hint{font-size:10px;letter-spacing:.04em;color:var(--hint);margin-top:8px}
 .code-value .code-char{display:inline-block;opacity:0;transform:translateY(6px) scale(.85);animation:code-char-in .35s ease forwards}
 @keyframes code-char-in{to{opacity:1;transform:translateY(0) scale(1)}}
 .code-actions{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
@@ -604,11 +611,17 @@ body.select-mode .chat-ftr{display:none}
   background: #FFFFFF;
   border-color: rgba(184,151,62,0.35);
 }
+#s-waiting .code-box:active {
+  background: #F7F4F0;
+}
 #s-waiting .code-label {
   color: #9A8C7E;
 }
 #s-waiting .code-value {
   color: var(--gold);
+}
+#s-waiting .code-tap-hint {
+  color: #B0A498;
 }
 #s-waiting .copy-btn {
   background: none;
@@ -1244,9 +1257,10 @@ body.select-mode .chat-ftr{display:none}
     </div>
     <div class="w-title" id="w-title">Room ready</div>
     <div class="w-sub" id="w-sub">Send the link to one person.<br/>They tap it, pick a name, you're connected.</div>
-    <div class="code-box">
+    <div class="code-box" onclick="copyBareCode()" title="Tap to copy just the code">
       <div class="code-label" id="code-label">Secret code</div>
       <div class="code-value" id="display-code">—</div>
+      <div class="code-tap-hint">Tap to copy code</div>
     </div>
     <div class="code-actions">
       <button class="share-btn" id="share-code-btn" onclick="shareCode()" style="display:none">
@@ -5712,6 +5726,22 @@ async function shareCode() {
     // AbortError just means they closed the share sheet without picking
     // anything — not a failure worth surfacing.
   }
+}
+
+// Secondary "share via code" path — deliberately not a second full-width
+// button next to Share/Copy (that just reintroduces the too-many-equal-
+// options problem the header cleanup solved elsewhere). Tapping the code
+// display itself copies ONLY the bare code, no link, no message — for
+// reading it aloud, writing it down, or anyone who'd rather not send a
+// clickable link at all (some messaging apps auto-fetch a link preview the
+// moment a URL is pasted, hitting our server before the recipient even
+// taps anything; a bare code triggers no network activity until someone
+// deliberately acts on it).
+function copyBareCode() {
+  const code = document.getElementById('display-code').textContent;
+  if (!code || code === '—') return;
+  navigator.clipboard.writeText(code).catch(() => {});
+  toast('Code copied');
 }
 
 // ── CLOSE / LEAVE (scoped to a single room) ────────────────────────────
