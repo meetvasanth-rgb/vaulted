@@ -858,6 +858,31 @@ async function api(path, method, d, p, res, ip) {
     return res200(res,{ok:true});
   }
 
+  // POST /api/make-persistent — converts an ORDINARY room into a standing
+  // link in place: same code, same history, same encryption keys, nothing
+  // resets. This is the "you've reopened this a few times, want it to stop
+  // expiring?" conversion path, distinct from /api/revoke-link below, which
+  // deliberately destroys and replaces a room. Nothing is destroyed here —
+  // it's purely an exemption from the TTL sweep from this point forward.
+  if (path==='/api/make-persistent' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room.persistent) {
+      room.persistent = true;
+      // The true historical moment the second person first joined was
+      // never tracked for an ordinary room — backfill with "now" if both
+      // are already members (which they almost certainly are, by the time
+      // someone's reopened this room enough to see the suggestion). Not
+      // exact, but honest about the relationship being real at the point
+      // of conversion rather than claiming a start date that isn't real.
+      if (!room.connectedSince && room.members.size >= 2) room.connectedSince = Date.now();
+      if (room.totalMessageCount === undefined) room.totalMessageCount = 0;
+      console.log(`Room converted to standing link: ${d.code}`);
+    }
+    return res200(res, { ok: true, persistent: true, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
+  }
+
   // POST /api/revoke-link — kills a standing Anon Link (and everything in
   // it) so a new one can be minted. Same destructive effect as /api/close,
   // but named/scoped separately since it's reached from a different part

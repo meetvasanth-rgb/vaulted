@@ -1582,6 +1582,23 @@ body.select-mode .chat-ftr{display:none}
 
     <div class="settings-divider"></div>
 
+    <div id="persistent-suggestion-section" style="display:none">
+      <div class="settings-row" style="cursor:default;align-items:flex-start">
+        <div class="settings-row-icon" style="background:#FBF6EC;color:#B8973E;">
+          <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <div class="settings-row-text">
+          <div class="settings-row-title">Make this a standing link?</div>
+          <div class="settings-row-sub">You've come back to this room a few times — turn it into one that never expires, same code, same history.</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button onclick="acceptPersistentSuggestion()" style="background:#B8973E;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Make it standing</button>
+            <button onclick="dismissPersistentSuggestion()" style="background:transparent;color:#9A8C7E;border:0.5px solid #E4DDD3;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Not now</button>
+          </div>
+        </div>
+      </div>
+      <div class="settings-divider"></div>
+    </div>
+
     <div id="anon-link-section" style="display:none">
       <div class="settings-section-label">Standing Link</div>
 
@@ -1695,7 +1712,7 @@ const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion }) {
   return {
     code, token, myName,
     // Anon Link ("standing link") state — persistent marks a room the
@@ -1705,6 +1722,18 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     persistent: !!persistent,
     connectedSince: connectedSince || null,
     totalMessageCount: totalMessageCount || 0,
+    // How many distinct times this device has reopened THIS ordinary room
+    // (never bumped once persistent is true — the suggestion only makes
+    // sense before that). lastReconnectCountedAt throttles it so a burst of
+    // quick reloads in one sitting doesn't count as several "comebacks" —
+    // see the increment site in the window load handler. Purely local,
+    // never sent anywhere except the one moment someone actually accepts
+    // the suggestion (which only sends a persistent:true flip, not this
+    // count itself). dismissedPersistentSuggestion just means "stop asking
+    // about this specific room" once someone's said no.
+    reconnectCount: reconnectCount || 0,
+    lastReconnectCountedAt: lastReconnectCountedAt || 0,
+    dismissedPersistentSuggestion: !!dismissedPersistentSuggestion,
     // A private label the user can set for this room — never sent to the
     // peer or the server (persisted only in this device's own localStorage
     // blob, see persistRoom). Takes priority over the peer's own chosen
@@ -1825,6 +1854,7 @@ async function persistRoom(room) {
       code: room.code, token: room.token, name: room.myName,
       nickname: room.nickname,
       persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
+      reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
       deleteTimerSeconds: room.deleteTimerSeconds,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
@@ -3169,6 +3199,57 @@ function openSettings() {
   document.getElementById('settings-btn').classList.add('active');
   loadSettingsState();
   updateAnonLinkSection();
+  updatePersistentSuggestion();
+}
+
+// Shows the "Make this a standing link?" row for an ordinary room the
+// current device has reopened a few times (see the reconnectCount increment
+// in the window load handler) and hasn't already dismissed. Mutually
+// exclusive with the Standing Link section above — a room is either already
+// persistent (show that section) or a candidate for becoming one (show
+// this), never both.
+const PERSISTENT_SUGGESTION_THRESHOLD = 2;
+function updatePersistentSuggestion() {
+  const room = getActiveRoom();
+  const section = document.getElementById('persistent-suggestion-section');
+  if (!section) return;
+  const eligible = room && !room.persistent && !room.dismissedPersistentSuggestion && room.reconnectCount >= PERSISTENT_SUGGESTION_THRESHOLD;
+  section.style.display = eligible ? '' : 'none';
+}
+
+// Local-only — "no thanks" never leaves this device, same as every other
+// per-room preference here (nickname, chime, etc). Nothing to tell the
+// server; it doesn't know or care that a suggestion was ever shown.
+function dismissPersistentSuggestion() {
+  const room = getActiveRoom();
+  if (!room) return;
+  room.dismissedPersistentSuggestion = true;
+  persistRoom(room);
+  updatePersistentSuggestion();
+}
+
+// Accepting converts the room in place via /api/make-persistent — same
+// code, same history, same encryption keys, nothing resets. Deliberately
+// NOT the revoke-and-reissue path regenerateAnonLink() uses; that one is
+// for "burn this link, start over," which is the opposite of what someone
+// who just said "yes, keep this one going" wants.
+async function acceptPersistentSuggestion() {
+  const room = getActiveRoom();
+  if (!room || room.persistent) return;
+  try {
+    const result = await api('/api/make-persistent', { code: room.code, token: room.token });
+    if (result.error) { toast('Could not do that — try again.'); return; }
+    room.persistent = true;
+    room.connectedSince = result.connectedSince || null;
+    room.totalMessageCount = result.totalMessageCount || 0;
+    persistRoom(room);
+    updateHeaderRoomLabel(room);
+    updatePersistentSuggestion();
+    updateAnonLinkSection();
+    toast('This is now a standing link');
+  } catch (e) {
+    toast('Could not do that — try again.');
+  }
 }
 
 // Shows/hides the Standing Link section and fills in its stats — only ever
@@ -5878,8 +5959,24 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion });
     room.nickname = session.nickname || null;
+    // Every trip through this loop is, by definition, a device reopening a
+    // room it already had saved — exactly the "comeback" signal the standing
+    // -link suggestion looks for. Throttled to once per 4 hours so a burst
+    // of quick reloads/refreshes in one sitting (backgrounding, a flaky
+    // connection retry, etc.) doesn't get counted as several separate
+    // comebacks. Skipped entirely for rooms already persistent — the
+    // suggestion only ever makes sense before that.
+    if (!room.persistent && Date.now() - room.lastReconnectCountedAt > 4 * 60 * 60 * 1000) {
+      room.reconnectCount += 1;
+      room.lastReconnectCountedAt = Date.now();
+      // Save immediately rather than relying on the token-change branch
+      // further down (which only fires when the server minted a new
+      // token) — this counter needs to survive a reload every time it
+      // changes, token or no token change.
+      await persistRoom(room);
+    }
     // These get overwritten by restoreRoomHistory() below once the chat log
     // is rebuilt from a full server fetch; set here only as a fallback in
     // case that call fails partway through (e.g. offline on load) so normal
