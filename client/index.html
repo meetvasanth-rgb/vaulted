@@ -1783,13 +1783,34 @@ const CODENAME_SUGGESTIONS = [
   'Ash','Lumen','Rune','Fern','Cinder','Vale','Moth','Quartz','Thistle',
   'Amber','Reed','Tide','Raven','Willow','Storm','Dune','Grove','Pike'
 ];
-// Avoids re-suggesting the exact name already sitting in the field (mainly
-// so tapping shuffle always visibly changes something).
+// A fresh, independent random pick every time is mathematically "random"
+// but reliably *feels* repetitive within just a handful of draws — the
+// same well-known gotcha Spotify hit with shuffle, and what was actually
+// happening here even though nothing was wrong with the pool itself (36
+// distinct names, no duplicates). The fix is a shuffle bag: draw from a
+// shuffled copy of the list without replacement, so every name is
+// guaranteed to show once before any name can repeat, and only reshuffle
+// into a new cycle once the bag empties.
+let codenameBag = [];
+function refillCodenameBag() {
+  codenameBag = [...CODENAME_SUGGESTIONS];
+  for (let i = codenameBag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [codenameBag[i], codenameBag[j]] = [codenameBag[j], codenameBag[i]];
+  }
+}
 function suggestRandomName(distinctFrom) {
   if (CODENAME_SUGGESTIONS.length <= 1) return CODENAME_SUGGESTIONS[0];
-  let name;
-  do { name = CODENAME_SUGGESTIONS[Math.floor(Math.random() * CODENAME_SUGGESTIONS.length)]; }
-  while (name === distinctFrom);
+  if (codenameBag.length === 0) refillCodenameBag();
+  let name = codenameBag.pop();
+  // Guards the one seam where a fresh cycle could start with the same name
+  // that just ended the previous one — draw once more rather than let that
+  // show as a back-to-back repeat (mainly matters for the shuffle button,
+  // which should always visibly change something).
+  if (name === distinctFrom) {
+    if (codenameBag.length === 0) refillCodenameBag();
+    name = codenameBag.pop();
+  }
   return name;
 }
 // Fills #name-input with a fresh suggestion — called whenever the setup
