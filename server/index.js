@@ -205,11 +205,16 @@ function serveStatic(req, res) {
     if (err) {
       fs.readFile(path.join(__dirname,'../client/index.html'), (e,d) => {
         if (e) { res.writeHead(404); res.end(); return; }
-        res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'}); res.end(d);
+        res.writeHead(200,{'Content-Type':'text/html;charset=utf-8','Content-Length':Buffer.byteLength(d)}); res.end(d);
       }); return;
     }
     const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.svg':'image/svg+xml'};
-    res.writeHead(200,{'Content-Type':t[path.extname(url)]||'text/plain'}); res.end(data);
+    // Explicit Content-Length (rather than letting Node fall back to
+    // chunked transfer-encoding on HTTP/1.1) matters specifically for
+    // og:image — link-preview crawlers (WhatsApp's included) are known to
+    // silently drop an image asset served without one, even though a
+    // normal browser or curl handles chunked fine.
+    res.writeHead(200,{'Content-Type':t[path.extname(url)]||'text/plain','Content-Length':Buffer.byteLength(data)}); res.end(data);
   });
 }
 
