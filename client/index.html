@@ -74,6 +74,16 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
    room so centered content never gets covered. */
 #s-landing{flex-direction:column;align-items:center;justify-content:center;position:relative;padding:24px 24px calc(92px + env(safe-area-inset-bottom));}
 .landing-glow{position:absolute;inset:0;background:radial-gradient(ellipse 55% 45% at 50% 38%,rgba(184,151,62,0.04) 0%,transparent 68%);pointer-events:none}
+/* Landing doubles as both the app's true entry screen (first launch —
+   nothing to go back to) and the "add another room" screen reached via the
+   "+" tab from an existing chat (where there's very much something to go
+   back to, and previously no way to reach it without picking a card and
+   starting a new room). Hidden by default; shown only in the latter case —
+   see the toggle in showScreen(). */
+.landing-back-btn{display:none;position:fixed;top:calc(16px + env(safe-area-inset-top));left:16px;z-index:5;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.9);border:0.5px solid #E8E2DA;color:#9A8C7E;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all .15s;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.landing-back-btn.show{display:flex}
+.landing-back-btn:hover{color:#4A3F35;border-color:#D0CAC0}
+.landing-back-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* margin-bottom lives on the class (not inline on the element) specifically
    so the height-based media queries below can override it — an inline
    style would always win over a media-query rule regardless of viewport. */
@@ -1087,6 +1097,9 @@ body.select-mode .chat-ftr{display:none}
 
 <!-- LANDING -->
 <div id="s-landing" class="screen active">
+  <button class="landing-back-btn" id="landing-back-btn" onclick="goBack()" title="Back">
+    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
   <div class="landing-glow"></div>
   <div style="position:relative;z-index:1;text-align:center;width:100%;max-width:460px;padding:0 20px">
 
@@ -3342,7 +3355,17 @@ function showScreen(id) {
     const btn = document.getElementById('setup-btn');
     if (btn) btn.disabled = false;
   }
-  if (id === 's-landing') refreshInstallUI();
+  if (id === 's-landing') {
+    refreshInstallUI();
+    // Computed live every time landing is shown rather than toggled
+    // manually at each call site — covers a genuine first launch (no rooms
+    // yet, button stays hidden), the "+" tab (rooms open, button shows),
+    // and even the room-tabs-emptied-out cases like closing your last open
+    // room, which also lands back on this screen but with nothing left to
+    // go back to either.
+    const backBtn = document.getElementById('landing-back-btn');
+    if (backBtn) backBtn.classList.toggle('show', rooms.size > 0);
+  }
 }
 
 function toast(msg, variant) {
