@@ -1231,7 +1231,7 @@ body.select-mode .chat-ftr{display:none}
       <span style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)">Vaultlix</span>
     </div>
     <div class="w-title" id="w-title">Room ready</div>
-    <div class="w-sub" id="w-sub">Share this code with one person.<br/>They enter it, you're connected.</div>
+    <div class="w-sub" id="w-sub">Send the link to one person.<br/>They tap it, pick a name, you're connected.</div>
     <div class="code-box">
       <div class="code-label" id="code-label">Secret code</div>
       <div class="code-value" id="display-code">—</div>
@@ -5475,6 +5475,32 @@ function startJoin() {
   setTimeout(() => document.getElementById('name-input').focus(), 100);
 }
 
+// ── SHARED INVITE LINKS (vaultlix.com/join/<code>) ──────────────────────
+// The server's static file handler already falls back to index.html for
+// any path it doesn't recognize as a real file (see serveStatic in
+// server_index.js), so "/join/<code>" needs no backend route of its own —
+// it just needs to be read here on load. Kept deliberately strict
+// (lowercase letters/digits/hyphens only, matching how room codes are
+// generated) so a malformed or unrelated path never gets mistaken for one.
+function parseJoinLinkCode() {
+  const m = location.pathname.match(/^\/join\/([a-z0-9-]+)\/?$/i);
+  return m ? decodeURIComponent(m[1]).toLowerCase() : null;
+}
+
+// Entry point for someone who tapped a shared invite link. Drops them
+// straight into the join screen with the code already filled in — the only
+// thing left is picking a name (already suggested — see fillSuggestedName)
+// and tapping Join. Works the same whether this is a brand-new device (no
+// rooms open yet, where it replaces the landing screen entirely) or one
+// that already has other rooms open (where it surfaces on top of whatever
+// room was showing, same idea as a notification tap).
+function openJoinFromLink(code) {
+  history.replaceState(null, '', '/'); // don't leave /join/<code> in the URL bar once handled
+  startJoin();
+  const codeInput = document.getElementById('code-input');
+  if (codeInput) codeInput.value = code;
+}
+
 // Polls /api/poll on the s-waiting screen until the other person shows up.
 // Pulled out of handleSetup() so regenerateAnonLink() (revoke-and-reissue a
 // permanent room) can reuse the exact same wait-for-peer behavior instead of
@@ -5623,22 +5649,33 @@ function resetSetupBtn() {
 }
 
 // ── COPY / SHARE CODE ────────────────────────────────────────────────
+// A bare code ("amber-frost-42") asks the receiver to already know they
+// should go find vaultlix.com and type it in — which most people just
+// won't figure out from a code alone. A direct /join/<code> link (handled
+// on load by openJoinFromLink/parseJoinLinkCode above) does that step for
+// them: tap it, the code's already filled in, they only pick a name. Using
+// location.origin rather than hardcoding the domain means this still
+// builds the right link from a staging/Railway URL during testing, not
+// just from vaultlix.com itself.
+function buildInviteMessage(code) {
+  const link = `${location.origin}/join/${code}`;
+  return `Let's talk privately on Vaultlix — no account needed, nothing saved.\n\nOpen this link and we're connected:\n${link}\n\nTap the link → pick any name → we're in`;
+}
 function copyCode() {
   const code = document.getElementById('display-code').textContent;
-  navigator.clipboard.writeText(code).catch(() => {});
-  toast('Code copied');
+  if (!code || code === '—') return;
+  navigator.clipboard.writeText(buildInviteMessage(code)).catch(() => {});
+  toast('Invite copied');
 }
 
-// Hands the code to the OS share sheet — the person picks WhatsApp, iMessage,
-// email, whatever they'd already use to reach the other person, in one tap
-// instead of copy, leave the app, find the chat, paste. The code itself is
-// still the only thing that gets shared (no link, no room metadata) — this
-// doesn't change what's being disclosed, just how many steps it takes.
+// Hands the full invite message to the OS share sheet — the person picks
+// WhatsApp, iMessage, email, whatever they'd already use to reach the other
+// person, in one tap instead of copy, leave the app, find the chat, paste.
 async function shareCode() {
   const code = document.getElementById('display-code').textContent;
   if (!code || code === '—') return;
   try {
-    await navigator.share({ text: `Join me on Vaultlix — an anonymous, encrypted chat. Code: ${code}` });
+    await navigator.share({ text: buildInviteMessage(code) });
   } catch (e) {
     // AbortError just means they closed the share sheet without picking
     // anything — not a failure worth surfacing.
@@ -6253,6 +6290,9 @@ function hideRestoreSkeleton() {
 }
 
 window.addEventListener('load', async () => {
+  // Captured up front, before anything else touches the URL — read once
+  // here since restoring saved rooms below doesn't otherwise depend on it.
+  const joinLinkCode = parseJoinLinkCode();
   const idx = loadRoomsIndex();
   if (idx.length > 0) showRestoreSkeleton();
   let restoredAny = false;
@@ -6391,6 +6431,11 @@ window.addEventListener('load', async () => {
     const urlRoomCode = new URLSearchParams(location.search).get('room');
     const notifyCode = (urlRoomCode && rooms.has(urlRoomCode)) ? urlRoomCode
       : (pendingNotificationRoomCode && rooms.has(pendingNotificationRoomCode)) ? pendingNotificationRoomCode
+      // Already a member of the room this invite link points to (e.g. they
+      // tapped their own share link, or a link to a room they'd already
+      // joined on this device) — just open it directly, no need to send
+      // them through the join screen again.
+      : (joinLinkCode && rooms.has(joinLinkCode)) ? joinLinkCode
       : null;
     const preferred = loadActiveRoomCode();
     const activate = notifyCode || ((preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value);
@@ -6402,9 +6447,15 @@ window.addEventListener('load', async () => {
     // re-forcing this room over whatever the user switches to afterward.
     if (urlRoomCode) history.replaceState(null, '', location.pathname);
     pendingNotificationRoomCode = null;
+    // An invite link for a room we're NOT already in takes priority over
+    // whatever we just settled into above — surface the join screen on top
+    // so the person can actually accept it, same idea as a notification tap.
+    if (joinLinkCode && !rooms.has(joinLinkCode)) openJoinFromLink(joinLinkCode);
+    else if (joinLinkCode) history.replaceState(null, '', '/');
   } else {
     hideRestoreSkeleton();
-    triggerLandingAnim();
+    if (joinLinkCode) openJoinFromLink(joinLinkCode);
+    else triggerLandingAnim();
   }
 });
 
