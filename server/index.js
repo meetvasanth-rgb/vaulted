@@ -329,6 +329,8 @@ async function api(path, method, d, p, res, ip) {
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
     });
+    if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
+    saveAnalytics();
     console.log(`Room created: ${roomCode}${persistent ? ' (permanent room)' : ''}`);
     return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0, persistent });
   }
@@ -906,6 +908,22 @@ async function api(path, method, d, p, res, ip) {
     return res200(res,{ok:true});
   }
 
+  // GET /api/admin/stats — aggregate room-creation counts only, gated by a
+  // shared-secret key set via the ADMIN_KEY env var. Returns a 404 rather
+  // than 401/403 on a missing/wrong key so the endpoint's existence isn't
+  // revealed to anyone who doesn't already have the key.
+  if (path === '/api/admin/stats' && method === 'GET') {
+    if (!process.env.ADMIN_KEY || p.get('key') !== process.env.ADMIN_KEY) {
+      res.writeHead(404); res.end(); return;
+    }
+    const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;
+    return res200(res, {
+      ...analytics,
+      totalRoomsCreated: total,
+      permanentPct: total ? Math.round((analytics.roomsCreatedPermanent / total) * 100) : 0,
+    });
+  }
+
   resErr(res,'Not found.',404);
 }
 
@@ -1216,6 +1234,29 @@ function loadSnapshot() {
     console.error('Snapshot load failed:', e.message);
   }
 }
+
+// Separate from SNAPSHOT_PATH on purpose — that file is one-shot (deleted on
+// every load, see fs.unlinkSync above) and only ever holds currently-live
+// rooms. This one needs to persist indefinitely across restarts, so it lives
+// in its own file. Just two running integers — no IP, room code, or
+// timestamp is ever stored alongside them.
+const ANALYTICS_PATH = path.join(SNAPSHOT_DIR, 'analytics.json');
+let analytics = { roomsCreatedTemporary: 0, roomsCreatedPermanent: 0 };
+
+function loadAnalytics() {
+  try {
+    if (fs.existsSync(ANALYTICS_PATH)) {
+      analytics = { ...analytics, ...JSON.parse(fs.readFileSync(ANALYTICS_PATH, 'utf8')) };
+    }
+  } catch (e) { console.error('Analytics load failed:', e.message); }
+}
+function saveAnalytics() {
+  try {
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+    fs.writeFileSync(ANALYTICS_PATH, JSON.stringify(analytics));
+  } catch (e) { console.error('Analytics save failed:', e.message); }
+}
+loadAnalytics();
 
 if (!process.env.SNAPSHOT_DIR) {
   console.warn('SNAPSHOT_DIR not set — shutdown snapshots will use local container disk, which does NOT survive a Railway deploy (only survives if the same container process restarts in place). To make rooms survive real deploys: attach a Railway Volume to this service, mount it (e.g. at /data), and set the SNAPSHOT_DIR variable to that mount path.');
