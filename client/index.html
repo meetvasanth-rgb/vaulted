@@ -1520,7 +1520,12 @@ body.select-mode .chat-ftr{display:none}
   </div>
 
   <div class="settings-body">
-    <div class="settings-section-label">Notifications</div>
+    <div id="settings-room-chip" style="display:none;align-items:center;gap:8px;background:#F7F4F0;border:0.5px solid #E8E2DA;border-radius:20px;padding:6px 12px;margin-bottom:18px;width:fit-content">
+      <span style="font-size:11px;color:#9A8C7E">Settings for</span>
+      <span id="settings-room-chip-name" style="font-size:12px;font-weight:600;color:#1A1510">—</span>
+    </div>
+
+    <div class="settings-section-label">App-wide</div>
 
     <div class="settings-row">
       <div class="settings-row-icon" style="background:#F0F7F3;color:#4A9B6F;">
@@ -1552,7 +1557,7 @@ body.select-mode .chat-ftr{display:none}
 
     <div class="settings-divider"></div>
 
-    <div class="settings-section-label">Conversation</div>
+    <div class="settings-section-label">This room</div>
 
     <div class="settings-row" onclick="closeSettings(); showRenameRoomPanel();" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F7F4F0;color:#9A8C7E;">
@@ -3196,10 +3201,25 @@ function openSettings() {
   loadSettingsState();
   updateAnonLinkSection();
   updatePersistentSuggestion();
+  const room = getActiveRoom();
   const labelTitleEl = document.getElementById('settings-label-title');
   if (labelTitleEl) {
-    const room = getActiveRoom();
     labelTitleEl.textContent = (room && room.nickname) ? 'Edit room label' : 'Label this room';
+  }
+  // The gear icon lives in the shared header above the room tabs, not
+  // inside any one room's own area — with several rooms open at once that
+  // left no visual link between "the settings panel that just opened" and
+  // "which room Clear chat/Label/Permanent Room below actually apply to."
+  // This chip is that link: the very first thing the panel shows.
+  const chip = document.getElementById('settings-room-chip');
+  const chipName = document.getElementById('settings-room-chip-name');
+  if (chip && chipName) {
+    if (room) {
+      chipName.textContent = roomDisplayLabel(room);
+      chip.style.display = 'flex';
+    } else {
+      chip.style.display = 'none';
+    }
   }
 }
 
