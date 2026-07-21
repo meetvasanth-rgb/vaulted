@@ -132,7 +132,7 @@ setInterval(() => {
     // between two specific people and are deliberately exempt from the
     // usual 24hr/4-day inactivity TTL — they only ever go away via an
     // explicit revoke (/api/revoke-link) or Close & erase. Otherwise the
-    // whole point of a "permanent link" (reopen it weeks later, still
+    // whole point of a "permanent room" (reopen it weeks later, still
     // there) breaks the first time both people go quiet for a few days.
     if (r.persistent) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
@@ -289,7 +289,7 @@ async function api(path, method, d, p, res, ip) {
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
     const passwordHash = d.password ? await hashPassword(d.password) : null;
-    // Anon Link ("permanent link") rooms are the same room shape as everything
+    // Anon Link ("permanent room") rooms are the same room shape as everything
     // else — the only difference is the `persistent` flag, which the TTL
     // sweep and the stale-member eviction logic below both check to exempt
     // it from the usual short-lived-room assumptions.
@@ -324,7 +324,7 @@ async function api(path, method, d, p, res, ip) {
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
     });
-    console.log(`Room created: ${roomCode}${persistent ? ' (permanent link)' : ''}`);
+    console.log(`Room created: ${roomCode}${persistent ? ' (permanent room)' : ''}`);
     return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0, persistent });
   }
 
@@ -397,7 +397,7 @@ async function api(path, method, d, p, res, ip) {
     const name = (d.name||'Stranger').slice(0,24);
     room.members.set(token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() });
     room.lastActivity = Date.now();
-    // First time the second person actually shows up on a permanent link —
+    // First time the second person actually shows up on a permanent room —
     // this is the "connected since" the client shows, not creation time.
     if (room.persistent && !room.connectedSince && room.members.size >= 2) {
       room.connectedSince = Date.now();
@@ -878,7 +878,7 @@ async function api(path, method, d, p, res, ip) {
       // of conversion rather than claiming a start date that isn't real.
       if (!room.connectedSince && room.members.size >= 2) room.connectedSince = Date.now();
       if (room.totalMessageCount === undefined) room.totalMessageCount = 0;
-      console.log(`Room converted to permanent link: ${d.code}`);
+      console.log(`Room converted to permanent room: ${d.code}`);
     }
     return res200(res, { ok: true, persistent: true, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
   }
@@ -894,7 +894,7 @@ async function api(path, method, d, p, res, ip) {
     const room = rooms.get(d.code);
     if (!room) return resErr(res,'Room not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
-    if (!room.persistent) return resErr(res,'This is not a permanent link.',400);
+    if (!room.persistent) return resErr(res,'This is not a permanent room.',400);
     rooms.delete(d.code);
     console.log(`Anon Link revoked: ${d.code}`);
     return res200(res,{ok:true});
