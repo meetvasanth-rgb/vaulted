@@ -1169,7 +1169,7 @@ body.select-mode .chat-ftr{display:none}
     <div id="persistent-field" class="field" style="display:none">
       <div class="persistent-toggle-row">
         <div>
-          <label style="margin:0">Standing link</label>
+          <label style="margin:0">Permanent link</label>
           <div class="field-note">Reusable — doesn't expire. Reopen it with the same person anytime; revoke it later if you want.</div>
         </div>
         <label class="toggle-switch" style="flex-shrink:0">
@@ -1237,7 +1237,7 @@ body.select-mode .chat-ftr{display:none}
     <div class="chat-hdr-logo">V</div>
     <div class="chat-hdr-sep"></div>
     <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this room (only visible to you)">—</div>
-    <span id="hdr-link-badge" style="display:none;font-size:12px;margin-left:2px;flex-shrink:0" title="Standing link — doesn't expire">🔗</span>
+    <span id="hdr-link-badge" style="display:none;font-size:12px;margin-left:2px;flex-shrink:0" title="Permanent link — doesn't expire">🔗</span>
     <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption"><span style="font-size:0.87em">🔒</span> E2E</div>
     <div class="chat-hdr-status">
       <div class="status-dot" id="status-dot"></div>
@@ -1588,10 +1588,10 @@ body.select-mode .chat-ftr{display:none}
           <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title">Make this a standing link?</div>
+          <div class="settings-row-title">Make this a permanent link?</div>
           <div class="settings-row-sub">You've come back to this room a few times — turn it into one that never expires, same code, same history.</div>
           <div style="display:flex;gap:8px;margin-top:10px">
-            <button onclick="acceptPersistentSuggestion()" style="background:#B8973E;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Make it standing</button>
+            <button onclick="acceptPersistentSuggestion()" style="background:#B8973E;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Make it permanent</button>
             <button onclick="dismissPersistentSuggestion()" style="background:transparent;color:#9A8C7E;border:0.5px solid #E4DDD3;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Not now</button>
           </div>
         </div>
@@ -1600,14 +1600,14 @@ body.select-mode .chat-ftr{display:none}
     </div>
 
     <div id="anon-link-section" style="display:none">
-      <div class="settings-section-label">Standing Link</div>
+      <div class="settings-section-label">Permanent Link</div>
 
       <div class="settings-row" style="cursor:default">
         <div class="settings-row-icon" style="background:#FBF6EC;color:#B8973E;">
           <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title">This is a standing link</div>
+          <div class="settings-row-title">This is a permanent link</div>
           <div class="settings-row-sub" id="anon-link-stats">—</div>
         </div>
       </div>
@@ -1715,7 +1715,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion }) {
   return {
     code, token, myName,
-    // Anon Link ("standing link") state — persistent marks a room the
+    // Anon Link ("permanent link") state — persistent marks a room the
     // server will never auto-expire; connectedSince/totalMessageCount are
     // the "this is an ongoing thing" signal shown in Settings for it. All
     // three are no-ops for an ordinary room (persistent stays false).
@@ -3202,10 +3202,10 @@ function openSettings() {
   updatePersistentSuggestion();
 }
 
-// Shows the "Make this a standing link?" row for an ordinary room the
+// Shows the "Make this a permanent link?" row for an ordinary room the
 // current device has reopened a few times (see the reconnectCount increment
 // in the window load handler) and hasn't already dismissed. Mutually
-// exclusive with the Standing Link section above — a room is either already
+// exclusive with the Permanent Link section above — a room is either already
 // persistent (show that section) or a candidate for becoming one (show
 // this), never both.
 const PERSISTENT_SUGGESTION_THRESHOLD = 2;
@@ -3246,13 +3246,13 @@ async function acceptPersistentSuggestion() {
     updateHeaderRoomLabel(room);
     updatePersistentSuggestion();
     updateAnonLinkSection();
-    toast('This is now a standing link');
+    toast('This is now a permanent link');
   } catch (e) {
     toast('Could not do that — try again.');
   }
 }
 
-// Shows/hides the Standing Link section and fills in its stats — only ever
+// Shows/hides the Permanent Link section and fills in its stats — only ever
 // relevant for the currently active room, so this re-derives from scratch
 // every time the panel opens rather than trying to keep a persistent DOM
 // node in sync with room state changes that happen while it's closed.
@@ -3274,11 +3274,11 @@ function updateAnonLinkSection() {
   }
 }
 
-// Revoke-and-reissue: kills the current standing link server-side (nobody
+// Revoke-and-reissue: kills the current permanent link server-side (nobody
 // can use it again, even someone who still has the old URL/code saved) and
 // immediately mints a fresh one under the same codename, dropping the user
 // back on s-waiting to share it. This intentionally reuses the exact same
-// create + startWaitingForPeer path as a brand-new standing link from the
+// create + startWaitingForPeer path as a brand-new permanent link from the
 // setup form — the old room's history doesn't carry over (it's gone
 // server-side the moment it's revoked, same as Close & erase), which is the
 // whole point: a leaked/compromised link shouldn't leave anything usable
@@ -3314,9 +3314,9 @@ async function regenerateAnonLink() {
 
     revealCode(result.code);
     const codeLabel = document.getElementById('code-label');
-    if (codeLabel) codeLabel.textContent = 'Standing link code';
+    if (codeLabel) codeLabel.textContent = 'Permanent link code';
     const wNote = document.getElementById('w-note');
-    if (wNote) wNote.textContent = 'New standing link ready — share it with them to reconnect.';
+    if (wNote) wNote.textContent = 'New permanent link ready — share it with them to reconnect.';
     const shareBtn = document.getElementById('share-code-btn');
     if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
     showScreen('s-waiting');
@@ -4948,7 +4948,7 @@ async function doPoll(room) {
       if (room.code === activeRoomCode) updateTimerBar(room);
     }
 
-    // Keeps the Settings-panel "N messages exchanged" stat for a standing
+    // Keeps the Settings-panel "N messages exchanged" stat for a permanent
     // link live without needing a full reconnect — cheap since it's already
     // riding along on every poll response rather than a dedicated call.
     if (data.totalMessageCount !== undefined) room.totalMessageCount = data.totalMessageCount;
@@ -5186,7 +5186,7 @@ function startJoin() {
 
 // Polls /api/poll on the s-waiting screen until the other person shows up.
 // Pulled out of handleSetup() so regenerateAnonLink() (revoke-and-reissue a
-// standing link) can reuse the exact same wait-for-peer behavior instead of
+// permanent link) can reuse the exact same wait-for-peer behavior instead of
 // duplicating it — a fresh room minted there needs to sit on s-waiting the
 // same way a brand-new one from the setup form does.
 function startWaitingForPeer(room) {
@@ -5264,9 +5264,9 @@ async function handleSetup() {
 
       revealCode(result.code);
       const codeLabel = document.getElementById('code-label');
-      if (codeLabel) codeLabel.textContent = room.persistent ? 'Standing link code' : 'Secret code';
+      if (codeLabel) codeLabel.textContent = room.persistent ? 'Permanent link code' : 'Secret code';
       const wNote = document.getElementById('w-note');
-      if (wNote) wNote.textContent = room.persistent ? `Standing link "${result.code}" is ready — it won't expire. Share it once, reopen it anytime.` : (mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…');
+      if (wNote) wNote.textContent = room.persistent ? `Permanent link "${result.code}" is ready — it won't expire. Share it once, reopen it anytime.` : (mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…');
       // Web Share API is the whole point — one tap into WhatsApp/Messages/
       // whatever they already have open, instead of copy → switch apps →
       // find the chat → paste. Not every browser supports it (desktop
@@ -5962,8 +5962,8 @@ window.addEventListener('load', async () => {
     const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion });
     room.nickname = session.nickname || null;
     // Every trip through this loop is, by definition, a device reopening a
-    // room it already had saved — exactly the "comeback" signal the standing
-    // -link suggestion looks for. Throttled to once per 4 hours so a burst
+    // room it already had saved — exactly the "comeback" signal the
+    // permanent-link suggestion looks for. Throttled to once per 4 hours so a burst
     // of quick reloads/refreshes in one sitting (backgrounding, a flaky
     // connection retry, etc.) doesn't get counted as several separate
     // comebacks. Skipped entirely for rooms already persistent — the
