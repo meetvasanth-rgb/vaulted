@@ -139,6 +139,9 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .field input:focus{border-color:var(--gold-border);box-shadow:0 0 0 3px rgba(184,151,62,.12)}
 .field input::placeholder{color:var(--hint)}
 .field-note{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
+.persistent-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:2px;padding:12px 13px}
+.persistent-toggle-row label{margin:0}
+.persistent-toggle-row .field-note{margin-top:3px}
 .btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:15px;font-weight:500;letter-spacing:.05em;padding:13px;border-radius:2px;border:none;transition:background .15s,transform .1s;margin-top:6px}
 .btn-gold:hover{background:#C9A94A}
 .btn-gold:disabled{opacity:.5;cursor:not-allowed}
@@ -1163,6 +1166,19 @@ body.select-mode .chat-ftr{display:none}
       <label>Room name</label>
       <input type="text" id="named-input" placeholder="e.g. monsoon, tuesday-blue, sunrise" autocomplete="off"/>
       <div class="field-note">Something only you two would know. Letters, numbers and hyphens.</div>
+    <div id="persistent-field" class="field" style="display:none">
+      <div class="persistent-toggle-row">
+        <div>
+          <label style="margin:0">Standing link</label>
+          <div class="field-note">Reusable — doesn't expire. Reopen it with the same person anytime; revoke it later if you want.</div>
+        </div>
+        <label class="toggle-switch" style="flex-shrink:0">
+          <input type="checkbox" id="persistent-toggle"/>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>
     <div id="timer-field" class="field" style="display:none">
       <label>Messages disappear after</label>
       <select id="timer-select" class="timer-select">
@@ -1221,6 +1237,7 @@ body.select-mode .chat-ftr{display:none}
     <div class="chat-hdr-logo">V</div>
     <div class="chat-hdr-sep"></div>
     <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this room (only visible to you)">—</div>
+    <span id="hdr-link-badge" style="display:none;font-size:12px;margin-left:2px;flex-shrink:0" title="Standing link — doesn't expire">🔗</span>
     <div style="font-size:10px;color:#B8973E;background:rgba(184,151,62,0.08);border:0.5px solid rgba(184,151,62,0.2);border-radius:20px;padding:2px 8px;margin-left:6px;font-weight:500;cursor:pointer" onclick="showVerifyPanel()" title="Verify encryption"><span style="font-size:0.87em">🔒</span> E2E</div>
     <div class="chat-hdr-status">
       <div class="status-dot" id="status-dot"></div>
@@ -1565,6 +1582,32 @@ body.select-mode .chat-ftr{display:none}
 
     <div class="settings-divider"></div>
 
+    <div id="anon-link-section" style="display:none">
+      <div class="settings-section-label">Standing Link</div>
+
+      <div class="settings-row" style="cursor:default">
+        <div class="settings-row-icon" style="background:#FBF6EC;color:#B8973E;">
+          <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <div class="settings-row-text">
+          <div class="settings-row-title">This is a standing link</div>
+          <div class="settings-row-sub" id="anon-link-stats">—</div>
+        </div>
+      </div>
+
+      <div class="settings-row" onclick="regenerateAnonLink()" style="cursor:pointer">
+        <div class="settings-row-icon" style="background:#FDF0EE;color:#C0392B;">
+          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+        </div>
+        <div class="settings-row-text">
+          <div class="settings-row-title" style="color:#C0392B;">Revoke &amp; get new link</div>
+          <div class="settings-row-sub">Current link stops working immediately for both of you</div>
+        </div>
+      </div>
+
+      <div class="settings-divider"></div>
+    </div>
+
     <div class="settings-section-label">About</div>
 
     <div class="settings-about-badge">
@@ -1652,9 +1695,16 @@ const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-function makeRoom({ code, token, myName, deleteTimerSeconds }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount }) {
   return {
     code, token, myName,
+    // Anon Link ("standing link") state — persistent marks a room the
+    // server will never auto-expire; connectedSince/totalMessageCount are
+    // the "this is an ongoing thing" signal shown in Settings for it. All
+    // three are no-ops for an ordinary room (persistent stays false).
+    persistent: !!persistent,
+    connectedSince: connectedSince || null,
+    totalMessageCount: totalMessageCount || 0,
     // A private label the user can set for this room — never sent to the
     // peer or the server (persisted only in this device's own localStorage
     // blob, see persistRoom). Takes priority over the peer's own chosen
@@ -1774,6 +1824,7 @@ async function persistRoom(room) {
     localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
       code: room.code, token: room.token, name: room.myName,
       nickname: room.nickname,
+      persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
       deleteTimerSeconds: room.deleteTimerSeconds,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
@@ -3117,6 +3168,81 @@ function openSettings() {
   document.getElementById('settings-panel').classList.add('open');
   document.getElementById('settings-btn').classList.add('active');
   loadSettingsState();
+  updateAnonLinkSection();
+}
+
+// Shows/hides the Standing Link section and fills in its stats — only ever
+// relevant for the currently active room, so this re-derives from scratch
+// every time the panel opens rather than trying to keep a persistent DOM
+// node in sync with room state changes that happen while it's closed.
+function updateAnonLinkSection() {
+  const room = getActiveRoom();
+  const section = document.getElementById('anon-link-section');
+  if (!section) return;
+  if (!room || !room.persistent) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  const statsEl = document.getElementById('anon-link-stats');
+  if (!statsEl) return;
+  const count = room.totalMessageCount || 0;
+  const countTxt = `${count} message${count === 1 ? '' : 's'} exchanged`;
+  if (room.connectedSince) {
+    const since = new Date(room.connectedSince).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    statsEl.textContent = `Connected since ${since} · ${countTxt}`;
+  } else {
+    statsEl.textContent = `Waiting for them to join · ${countTxt}`;
+  }
+}
+
+// Revoke-and-reissue: kills the current standing link server-side (nobody
+// can use it again, even someone who still has the old URL/code saved) and
+// immediately mints a fresh one under the same codename, dropping the user
+// back on s-waiting to share it. This intentionally reuses the exact same
+// create + startWaitingForPeer path as a brand-new standing link from the
+// setup form — the old room's history doesn't carry over (it's gone
+// server-side the moment it's revoked, same as Close & erase), which is the
+// whole point: a leaked/compromised link shouldn't leave anything usable
+// behind, and re-deriving encryption keys with the peer on the new room is
+// simpler and safer than trying to carry old key material onto a new code.
+async function regenerateAnonLink() {
+  const room = getActiveRoom();
+  if (!room || !room.persistent) return;
+  if (!confirm('Revoke this link and get a new one? The current link stops working immediately for both of you — you\'ll need to share the new one to reconnect.')) return;
+  closeSettings();
+
+  const myName = room.myName;
+  const nickname = room.nickname;
+  const timerSeconds = room.deleteTimerSeconds;
+
+  try { await api('/api/revoke-link', { code: room.code, token: room.token }); } catch (e) {}
+  removeRoomFromState(room.code);
+  toast('Link revoked');
+
+  try {
+    const newRoom = makeRoom({ code: null, token: null, myName, deleteTimerSeconds: timerSeconds, persistent: true });
+    newRoom.nickname = nickname;
+    const pubKey = await getOrGenerateKeyPair(newRoom);
+    const result = await api('/api/create', { name: myName, pubKey, deleteTimer: timerSeconds, persistent: true });
+    if (result.error) { switchToNextRoomOrLanding(); return; }
+
+    newRoom.code = result.code;
+    newRoom.token = result.token;
+    newRoom.persistent = true;
+    addRoomToState(newRoom);
+    persistRoom(newRoom);
+    pendingRoomCode = newRoom.code;
+
+    revealCode(result.code);
+    const codeLabel = document.getElementById('code-label');
+    if (codeLabel) codeLabel.textContent = 'Standing link code';
+    const wNote = document.getElementById('w-note');
+    if (wNote) wNote.textContent = 'New standing link ready — share it with them to reconnect.';
+    const shareBtn = document.getElementById('share-code-btn');
+    if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
+    showScreen('s-waiting');
+    startWaitingForPeer(newRoom);
+  } catch (e) {
+    switchToNextRoomOrLanding();
+  }
 }
 
 function closeSettings() {
@@ -3513,6 +3639,8 @@ function roomDisplayLabel(room) {
 function updateHeaderRoomLabel(room) {
   const el = document.getElementById('hdr-code');
   if (el) el.textContent = roomDisplayLabel(room);
+  const badge = document.getElementById('hdr-link-badge');
+  if (badge) badge.style.display = room.persistent ? 'inline' : 'none';
 }
 
 function renderRoomTabs() {
@@ -4739,6 +4867,11 @@ async function doPoll(room) {
       if (room.code === activeRoomCode) updateTimerBar(room);
     }
 
+    // Keeps the Settings-panel "N messages exchanged" stat for a standing
+    // link live without needing a full reconnect — cheap since it's already
+    // riding along on every poll response rather than a dedicated call.
+    if (data.totalMessageCount !== undefined) room.totalMessageCount = data.totalMessageCount;
+
     // Safety net: a scheduled disappearing-message setTimeout can get
     // silently dropped if the browser freezes/throttles JS while the tab is
     // backgrounded (the timer never fires, but the room's own poll resumes
@@ -4923,9 +5056,11 @@ function startCreate() {
   document.getElementById('named-field').style.display = 'none';
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'none';
+  document.getElementById('persistent-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Create room';
   document.getElementById('name-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
+  if (document.getElementById('persistent-toggle')) document.getElementById('persistent-toggle').checked = false;
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
   setTimeout(() => document.getElementById('name-input').focus(), 100);
@@ -4939,10 +5074,12 @@ function startNamed() {
   document.getElementById('named-field').style.display = 'block';
   document.getElementById('timer-field').style.display = 'block';
   document.getElementById('password-field').style.display = 'block';
+  document.getElementById('persistent-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Create named room';
   document.getElementById('name-input').value = '';
   document.getElementById('named-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
+  if (document.getElementById('persistent-toggle')) document.getElementById('persistent-toggle').checked = false;
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
   setTimeout(() => document.getElementById('name-input').focus(), 100);
@@ -4956,6 +5093,7 @@ function startJoin() {
   document.getElementById('named-field').style.display = 'none';
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'block';
+  document.getElementById('persistent-field').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Join room';
   document.getElementById('name-input').value = '';
   document.getElementById('code-input').value = '';
@@ -4963,6 +5101,44 @@ function startJoin() {
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
   setTimeout(() => document.getElementById('name-input').focus(), 100);
+}
+
+// Polls /api/poll on the s-waiting screen until the other person shows up.
+// Pulled out of handleSetup() so regenerateAnonLink() (revoke-and-reissue a
+// standing link) can reuse the exact same wait-for-peer behavior instead of
+// duplicating it — a fresh room minted there needs to sit on s-waiting the
+// same way a brand-new one from the setup form does.
+function startWaitingForPeer(room) {
+  if (room.waitInterval) clearInterval(room.waitInterval);
+  room.waitInterval = setInterval(async () => {
+    const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0 });
+    if (d.peerOnline) {
+      clearInterval(room.waitInterval); room.waitInterval = null;
+      pendingRoomCode = null;
+      room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
+      if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
+      if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
+      setActiveRoom(room.code);
+      // Kick off polling/signaling right away, in parallel with the
+      // ~2.85s V-entrance ceremony below, instead of waiting for it to
+      // finish first. It used to run after the awaited ceremony, which
+      // meant the signaling WebSocket the call button depends on
+      // (canStartCall requires room.signalWs to be OPEN) didn't even
+      // start connecting until the whole animation had played out —
+      // stacking a real network handshake on top of an already-2.85s
+      // wait, which is what made the call button take several extra
+      // seconds to light up after a room opened. Starting it here lets
+      // the connection use that same ceremony time productively, so by
+      // the time the chat screen is actually interactive, signaling has
+      // very likely already finished connecting.
+      startRoomPolling(room);
+      await triggerConnectionMoment('peer_joined', () => {
+        showScreen('s-chat');
+        enableInput(true, true);
+        playChime();
+      });
+    }
+  }, 2000);
 }
 
 // ── SETUP: create / join a room, ADDING it alongside any already open ──
@@ -4990,22 +5166,26 @@ async function handleSetup() {
       const password = mode === 'named' ? (document.getElementById('password-input')?.value.trim() || null) : null;
       if (mode === 'named' && !namedCode) { showErr('Please enter a room name'); resetSetupBtn(); return; }
       const timerVal = parseInt(document.getElementById('timer-select')?.value || '0');
+      const persistentVal = document.getElementById('persistent-toggle')?.checked || false;
 
-      const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal });
+      const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal, persistent: persistentVal });
       const pubKey = await getOrGenerateKeyPair(room);
-      const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal });
+      const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
 
       room.code = result.code;
       room.token = result.token;
       room.deleteTimerSeconds = result.deleteTimer || timerVal;
+      room.persistent = !!result.persistent;
       addRoomToState(room);
       persistRoom(room);
       pendingRoomCode = room.code;
 
       revealCode(result.code);
+      const codeLabel = document.getElementById('code-label');
+      if (codeLabel) codeLabel.textContent = room.persistent ? 'Standing link code' : 'Secret code';
       const wNote = document.getElementById('w-note');
-      if (wNote) wNote.textContent = mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…';
+      if (wNote) wNote.textContent = room.persistent ? `Standing link "${result.code}" is ready — it won't expire. Share it once, reopen it anytime.` : (mode === 'named' ? `Named room "${result.code}" is ready. Waiting for someone to join…` : 'Waiting for the other person to join…');
       // Web Share API is the whole point — one tap into WhatsApp/Messages/
       // whatever they already have open, instead of copy → switch apps →
       // find the chat → paste. Not every browser supports it (desktop
@@ -5014,37 +5194,7 @@ async function handleSetup() {
       const shareBtn = document.getElementById('share-code-btn');
       if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
       showScreen('s-waiting');
-
-      if (room.waitInterval) clearInterval(room.waitInterval);
-      room.waitInterval = setInterval(async () => {
-        const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0 });
-        if (d.peerOnline) {
-          clearInterval(room.waitInterval); room.waitInterval = null;
-          pendingRoomCode = null;
-          room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
-          if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
-          if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
-          setActiveRoom(room.code);
-          // Kick off polling/signaling right away, in parallel with the
-          // ~2.85s V-entrance ceremony below, instead of waiting for it to
-          // finish first. It used to run after the awaited ceremony, which
-          // meant the signaling WebSocket the call button depends on
-          // (canStartCall requires room.signalWs to be OPEN) didn't even
-          // start connecting until the whole animation had played out —
-          // stacking a real network handshake on top of an already-2.85s
-          // wait, which is what made the call button take several extra
-          // seconds to light up after a room opened. Starting it here lets
-          // the connection use that same ceremony time productively, so by
-          // the time the chat screen is actually interactive, signaling has
-          // very likely already finished connecting.
-          startRoomPolling(room);
-          await triggerConnectionMoment('peer_joined', () => {
-            showScreen('s-chat');
-            enableInput(true, true);
-            playChime();
-          });
-        }
-      }, 2000);
+      startWaitingForPeer(room);
     } else {
       const code = document.getElementById('code-input').value.trim().toLowerCase();
       const password = document.getElementById('password-input')?.value.trim() || null;
@@ -5059,6 +5209,9 @@ async function handleSetup() {
       room.code = result.code;
       room.token = result.token;
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
+      room.persistent = !!result.persistent;
+      room.connectedSince = result.connectedSince || null;
+      room.totalMessageCount = result.totalMessageCount || 0;
       addRoomToState(room);
       persistRoom(room);
 
@@ -5725,7 +5878,7 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount });
     room.nickname = session.nickname || null;
     // These get overwritten by restoreRoomHistory() below once the chat log
     // is rebuilt from a full server fetch; set here only as a fallback in
@@ -5767,6 +5920,14 @@ window.addEventListener('load', async () => {
       // server's own record is the current truth — overwrite rather than
       // only filling in when missing, in case the peer changed it since.
       if (result.peerName) room.peerName = result.peerName;
+      // Server's own record is authoritative here too — persistent won't
+      // ever actually change post-creation, but connectedSince/
+      // totalMessageCount are exactly the kind of thing that moves between
+      // sessions and would otherwise show stale numbers in Settings until
+      // the next live poll happened to land.
+      if (result.persistent !== undefined) room.persistent = !!result.persistent;
+      if (result.connectedSince) room.connectedSince = result.connectedSince;
+      if (result.totalMessageCount !== undefined) room.totalMessageCount = result.totalMessageCount;
       room.sharedKey = null;
       room.lastKnownPeerPubKey = null; // force key rederivation
       if (result.peerPubKey) {

@@ -128,6 +128,13 @@ function code() {
 setInterval(() => {
   const now = Date.now();
   for (const [k,r] of rooms) {
+    // Anon Link rooms (r.persistent) are meant to be an ongoing channel
+    // between two specific people and are deliberately exempt from the
+    // usual 24hr/4-day inactivity TTL — they only ever go away via an
+    // explicit revoke (/api/revoke-link) or Close & erase. Otherwise the
+    // whole point of a "standing link" (reopen it weeks later, still
+    // there) breaks the first time both people go quiet for a few days.
+    if (r.persistent) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
     if (now - r.lastActivity > ttl) { rooms.delete(k); console.log(`Room ${k} expired`); }
   }
@@ -282,9 +289,27 @@ async function api(path, method, d, p, res, ip) {
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
     const passwordHash = d.password ? await hashPassword(d.password) : null;
+    // Anon Link ("standing link") rooms are the same room shape as everything
+    // else — the only difference is the `persistent` flag, which the TTL
+    // sweep and the stale-member eviction logic below both check to exempt
+    // it from the usual short-lived-room assumptions.
+    const persistent = !!d.persistent;
     rooms.set(roomCode, {
       lastActivity: Date.now(),
       isNamed: !!namedCode,
+      persistent,
+      // Set once the second person actually joins — used for the "connected
+      // since" indicator on the client, distinct from lastActivity (which
+      // moves on every poll/message and wouldn't tell you when the
+      // relationship itself started).
+      connectedSince: null,
+      // Running count of real messages ever sent through this room. Kept
+      // separate from room.msgs.length because msgs is trimmed to the last
+      // 100 and disappearing messages get deleted out of it entirely — this
+      // counter is the only thing that still answers "how many messages
+      // have these two exchanged," which the client shows for standing
+      // links as a small trust/investment signal.
+      totalMessageCount: 0,
       deleteTimer: parseInt(d.deleteTimer)||0,
       // The moment the CURRENT deleteTimer value took effect — the sweep
       // below only ever considers messages sent at or after this point, so
@@ -299,8 +324,8 @@ async function api(path, method, d, p, res, ip) {
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
     });
-    console.log(`Room created: ${roomCode}`);
-    return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0 });
+    console.log(`Room created: ${roomCode}${persistent ? ' (standing link)' : ''}`);
+    return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0, persistent });
   }
 
   // POST /api/join
@@ -328,7 +353,7 @@ async function api(path, method, d, p, res, ip) {
       // was even slightly delayed.
       let peerPubKey = null, peerName = null;
       for (const [t,mb] of room.members) if (t!==d.token) { peerPubKey = mb.pubKey; peerName = mb.name; }
-      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer });
+      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
     }
 
     if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);
@@ -353,7 +378,14 @@ async function api(path, method, d, p, res, ip) {
     // threshold (up from 30 seconds) is still well short of the room's own
     // multi-day TTL but generous enough that it won't trip on a normal
     // reconnect gap.
-    const STALE_MEMBER_MS = 5 * 60 * 1000;
+    // Standing links (room.persistent) are only ever shared with the one
+    // specific person the relationship is with — there's no risk of a 3rd
+    // party contending for the slot the way a one-off code passed around a
+    // subreddit thread might see. So a much longer stale window is safe
+    // here, and safer overall: the whole promise of a link that "doesn't
+    // expire" would ring hollow if the other side's membership could still
+    // get silently evicted after a routine 5-minute gap.
+    const STALE_MEMBER_MS = room.persistent ? 30 * 24 * 60 * 60 * 1000 : 5 * 60 * 1000;
     if (room.members.size >= 2) {
       const staleThreshold = Date.now() - STALE_MEMBER_MS;
       for (const [t, m] of room.members) {
@@ -365,6 +397,11 @@ async function api(path, method, d, p, res, ip) {
     const name = (d.name||'Stranger').slice(0,24);
     room.members.set(token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() });
     room.lastActivity = Date.now();
+    // First time the second person actually shows up on a standing link —
+    // this is the "connected since" the client shows, not creation time.
+    if (room.persistent && !room.connectedSince && room.members.size >= 2) {
+      room.connectedSince = Date.now();
+    }
 
     // System message — tagged with `from` so the poll filter (which already
     // excludes a caller's own messages) also excludes this one for the
@@ -382,7 +419,7 @@ async function api(path, method, d, p, res, ip) {
     let peerPubKey = null, peerName = null;
     for (const [t,mb] of room.members) if (t!==token) { peerPubKey = mb.pubKey; peerName = mb.name; }
     console.log(`${name} joined ${roomCode}`);
-    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer });
+    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
   }
 
   // POST /api/send
@@ -415,6 +452,7 @@ async function api(path, method, d, p, res, ip) {
     const msgId = clientMsgId || uid();
     const seq = ++room.seq;
     room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
+    room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     // Trim — keep last 100 messages but seq numbers never reset. Lowered
     // from 300: applies regardless of whether disappearing-message timers
     // are on, so even a room without them retains less on the server.
@@ -737,7 +775,7 @@ async function api(path, method, d, p, res, ip) {
       }
     }
 
-    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0 });
+    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0 });
   }
 
   // POST /api/mark-delivered — reports that a push notification actually
@@ -807,7 +845,33 @@ async function api(path, method, d, p, res, ip) {
 
   // POST /api/close
   if (path==='/api/close' && method==='POST') {
+    // Previously deleted the room by code alone with no check that the
+    // caller was actually a member — meaning anyone who merely knew (or
+    // guessed) a room's code could erase it out from under the two people
+    // actually using it, with no credential required at all. Every other
+    // room-scoped endpoint here already gates on room.members.has(d.token);
+    // this just brings Close & erase in line with that same pattern. Stays
+    // silently idempotent (always {ok:true}) either way, so this doesn't
+    // leak whether a given code currently exists to an unauthenticated caller.
+    const room = rooms.get(d.code);
+    if (room && room.members.has(d.token)) rooms.delete(d.code);
+    return res200(res,{ok:true});
+  }
+
+  // POST /api/revoke-link — kills a standing Anon Link (and everything in
+  // it) so a new one can be minted. Same destructive effect as /api/close,
+  // but named/scoped separately since it's reached from a different part
+  // of the UI (room settings, not the header's Close & erase) and only
+  // makes sense for persistent rooms — trying it on an ordinary room is
+  // almost certainly a client bug, not a real revoke request, so it's
+  // rejected rather than silently doing a full close.
+  if (path==='/api/revoke-link' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room.persistent) return resErr(res,'This is not a standing link.',400);
     rooms.delete(d.code);
+    console.log(`Anon Link revoked: ${d.code}`);
     return res200(res,{ok:true});
   }
 
@@ -1098,8 +1162,14 @@ function loadSnapshot() {
     const now = Date.now();
     let restored = 0, expired = 0;
     for (const [roomCode, room] of entries) {
-      const ttl = room.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
-      if (now - room.lastActivity > ttl) { expired++; continue; } // would've expired anyway — don't resurrect it
+      // Standing links never expire on inactivity (see the sweep above) —
+      // the same exemption has to apply here, or a Railway restart would
+      // silently drop every Anon Link that had gone quiet for a day,
+      // defeating the entire point of "doesn't expire."
+      if (!room.persistent) {
+        const ttl = room.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
+        if (now - room.lastActivity > ttl) { expired++; continue; } // would've expired anyway — don't resurrect it
+      }
       room.members = new Map(room.members);
       // A call mid-ring can't survive this any more than the process
       // itself can (the WebSocket carrying it is gone) — clear it so a
