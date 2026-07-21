@@ -139,6 +139,12 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .field input:focus{border-color:var(--gold-border);box-shadow:0 0 0 3px rgba(184,151,62,.12)}
 .field input::placeholder{color:var(--hint)}
 .field-note{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5}
+.name-field-wrap{position:relative}
+.name-field-wrap input{padding-right:42px}
+.name-shuffle-btn{position:absolute;top:0;right:0;bottom:0;width:38px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#B8973E;opacity:0.75;transition:opacity .15s,transform .15s}
+.name-shuffle-btn:hover{opacity:1}
+.name-shuffle-btn:active{transform:rotate(80deg)}
+.name-shuffle-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .btn-gold{width:100%;background:var(--gold);color:var(--black);font-size:15px;font-weight:500;letter-spacing:.05em;padding:13px;border-radius:2px;border:none;transition:background .15s,transform .1s;margin-top:6px}
 .btn-gold:hover{background:#C9A94A}
 .btn-gold:disabled{opacity:.5;cursor:not-allowed}
@@ -1179,9 +1185,14 @@ body.select-mode .chat-ftr{display:none}
     <div class="setup-logo"><div class="rule"></div><span>Vaultlix</span></div>
     <div class="setup-title" id="setup-title">Choose a codename</div>
     <div class="field">
-      <label>Your codename</label>
-      <input type="text" id="name-input" placeholder="e.g. Shadow, Echo, Cipher…" maxlength="24" autocomplete="off"/>
-      <div class="field-note">Not your real name — just how you appear in the room.</div>
+      <label>What should we call you?</label>
+      <div class="name-field-wrap">
+        <input type="text" id="name-input" maxlength="24" autocomplete="off" onfocus="this.select()"/>
+        <button type="button" class="name-shuffle-btn" onclick="shuffleNameSuggestion()" title="Try another name" aria-label="Suggest a different name">
+          <svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+      </div>
+      <div class="field-note">Not your real name — just for this conversation</div>
     </div>
     <div id="named-field" class="field" style="display:none">
       <label>Room name</label>
@@ -1727,6 +1738,47 @@ body.select-mode .chat-ftr{display:none}
 // stored messages — no network round-trip needed to switch.
 // Web Push is explicitly out of scope for this phase (existing single-room
 // push code is preserved, just threaded through a `room` argument).
+
+// ── CODENAME SUGGESTIONS ────────────────────────────────────────────────
+// A blank "pick a name" field is where a lot of people freeze up — not
+// because it's hard, just because an empty text box with no example in
+// front of them invites overthinking. Pre-filling it with a real, usable
+// suggestion (rather than just placeholder text, which disappears the
+// moment you tap in) removes that entirely: the field is never actually
+// empty, so there's nothing to be blocked on. Anyone who wants their own
+// name just types over it — see the auto-select-on-focus on #name-input.
+const CODENAME_SUGGESTIONS = [
+  'Shadow','River','Echo','Frost','Ember','Wren','Sable','Indigo','Solstice',
+  'Juniper','Onyx','Wisp','Marrow','Slate','Nova','Cove','Briar','Hollow',
+  'Ash','Lumen','Rune','Fern','Cinder','Vale','Moth','Quartz','Thistle',
+  'Amber','Reed','Tide','Raven','Willow','Storm','Dune','Grove','Pike'
+];
+// Avoids re-suggesting the exact name already sitting in the field (mainly
+// so tapping shuffle always visibly changes something).
+function suggestRandomName(distinctFrom) {
+  if (CODENAME_SUGGESTIONS.length <= 1) return CODENAME_SUGGESTIONS[0];
+  let name;
+  do { name = CODENAME_SUGGESTIONS[Math.floor(Math.random() * CODENAME_SUGGESTIONS.length)]; }
+  while (name === distinctFrom);
+  return name;
+}
+// Fills #name-input with a fresh suggestion — called whenever the setup
+// screen opens (startCreate/startNamed/startJoin), replacing the old
+// blank-field reset.
+function fillSuggestedName() {
+  const input = document.getElementById('name-input');
+  if (input) input.value = suggestRandomName(input.value);
+}
+// Wired to the small shuffle button next to the field — "tap to get a
+// different one." Re-selects the text afterward so a follow-up tap-to-type
+// still works in one motion.
+function shuffleNameSuggestion() {
+  const input = document.getElementById('name-input');
+  if (!input) return;
+  input.value = suggestRandomName(input.value);
+  input.focus();
+  input.select();
+}
 
 // ── GLOBAL (page-level, not room-specific) STATE ───────────────────────
 let mode = 'create';               // setup screen flow: create | named | join
@@ -5382,7 +5434,7 @@ function startCreate() {
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Create room';
-  document.getElementById('name-input').value = '';
+  fillSuggestedName();
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
@@ -5398,7 +5450,7 @@ function startNamed() {
   document.getElementById('timer-field').style.display = 'block';
   document.getElementById('password-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Create permanent room';
-  document.getElementById('name-input').value = '';
+  fillSuggestedName();
   document.getElementById('named-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
@@ -5415,7 +5467,7 @@ function startJoin() {
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Join room';
-  document.getElementById('name-input').value = '';
+  fillSuggestedName();
   document.getElementById('code-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
