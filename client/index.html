@@ -948,14 +948,13 @@ body.select-mode .chat-ftr{display:none}
 .call-overlay.visible{opacity:1}
 /* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
    z-index) show through the overlay's own chrome once a remote video track
-   is actually active — see renderCallOverlay's has-video toggle. Just the
-   top/bottom edge fade now — it's enough on its own once .call-identity
-   switches to the compact, top-anchored .video-mode layout below instead
-   of sitting vertically centered (which is what needed the separate panel
-   background this used to have; see git history for why that existed and
-   was removed). */
+   is actually active — see renderCallOverlay's has-video toggle. Bottom
+   edge fade only now (still needed for the button row) — the top one was
+   backing the wordmark/name, both of which are dropped entirely once the
+   peer's video is actually visible (see videoMode in renderCallOverlay):
+   with nothing left up there, there's nothing left to scrim. */
 .call-overlay.has-video{background:transparent}
-.call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.72),rgba(0,0,0,0) 200px),linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 180px);pointer-events:none}
+.call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 180px);pointer-events:none}
 
 .call-hdr-block{text-align:center}
 .call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 14px}
@@ -968,17 +967,14 @@ body.select-mode .chat-ftr{display:none}
 @keyframes call-status-pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .call-timer-display{font-family:'Inter',sans-serif;font-size:34px;font-weight:300;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums;margin-top:4px}
 .call-tagline{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-top:8px}
-/* Video-call layout: a slim top-left strip (dot + name + timer, one line,
-   normal-weight sans-serif) instead of the big centered serif display —
-   the large panel was exactly what was covering/disrupting the video
-   underneath it. Reuses .call-identity's own flex:1 box (so call-actions
-   stays pinned to the bottom exactly as before) but re-anchors its content
-   to the top-left instead of centering it, and leaves the rest of that
-   space empty so the video actually shows through. */
-.call-identity.video-mode{justify-content:flex-start;align-items:flex-start;text-align:left;gap:0}
-.call-video-info-row{display:flex;align-items:baseline;gap:10px;padding-top:2px}
-.call-peer-name-compact{font-family:'Inter',sans-serif;font-size:19px;font-weight:500;color:#fff;letter-spacing:.01em}
-.call-timer-compact{font-family:'Inter',sans-serif;font-size:12px;font-weight:400;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums;letter-spacing:.03em}
+/* Video mode: the peer's own video already confirms who you're talking to
+   and fills the frame, so the wordmark/name/status/tagline are dropped
+   entirely (not just shrunk) rather than repositioned — .call-identity
+   renders empty and stays purely as the flex:1 spacer that keeps
+   call-actions pinned to the bottom, same as always. Just a small timer
+   pill left, sitting right above the button row inside the same bottom
+   scrim rather than a panel of its own. */
+.call-timer-pill{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.92);font-variant-numeric:tabular-nums;letter-spacing:.03em;background:rgba(0,0,0,.5);padding:6px 16px;border-radius:999px;margin-bottom:14px}
 
 /* Incoming — three concentric gold rings pulsing outward from a center dot */
 .ring-container{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
@@ -1964,6 +1960,8 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
+    // Diagnostic only (console.log, no UI) — see startCallStatsLogging.
+    callStatsInterval: null,
     // Caller-side only: has the callee acked our invite yet? Flips the
     // outgoing screen from "Calling…" to "Ringing…" — see the call-invite/
     // call-ringing handling in handleSignalMessage.
@@ -2959,6 +2957,52 @@ function stopCallTimer(room) {
   releaseCallWakeLock();
 }
 
+// Diagnostic-only, console.log, no UI, no data ever leaves the device — the
+// only way to actually confirm what resolution/framerate/bitrate a real
+// call is sending and receiving is to read it directly off the live
+// RTCPeerConnection, since neither getUserMedia's own constraints nor
+// sender.setParameters()'s maxBitrate are guarantees, just requests the
+// browser/network is free to not fully honor. bytesSent/bytesReceived from
+// getStats() are cumulative totals, not a live rate, so this keeps the
+// previous sample and reports the delta over the interval instead.
+function startCallStatsLogging(room) {
+  stopCallStatsLogging(room);
+  let prevOut = null, prevIn = null;
+  const kbps = (curr, prev, bytesKey) => {
+    if (!curr || !prev || !(bytesKey in curr) || !(bytesKey in prev)) return null;
+    const dtSec = (curr.timestamp - prev.timestamp) / 1000;
+    if (dtSec <= 0) return null;
+    return Math.round((curr[bytesKey] - prev[bytesKey]) * 8 / 1000 / dtSec);
+  };
+  const describe = (r, rateKbps) => {
+    if (!r) return 'no video track';
+    const dims = (r.frameWidth && r.frameHeight) ? `${r.frameWidth}x${r.frameHeight}` : '?x?';
+    const fps = r.framesPerSecond != null ? `${Math.round(r.framesPerSecond)}fps` : '?fps';
+    return `${dims} ${fps}${rateKbps != null ? ` ~${rateKbps}kbps` : ''}`;
+  };
+  room.callStatsInterval = setInterval(async () => {
+    if (!room.pc) return;
+    try {
+      const stats = await room.pc.getStats();
+      let outbound = null, inbound = null;
+      stats.forEach(r => {
+        if (r.type === 'outbound-rtp' && r.kind === 'video') outbound = r;
+        if (r.type === 'inbound-rtp' && r.kind === 'video') inbound = r;
+      });
+      console.log(
+        '[Vaultlix call stats] SEND',
+        describe(outbound, kbps(outbound, prevOut, 'bytesSent')),
+        '| RECV',
+        describe(inbound, kbps(inbound, prevIn, 'bytesReceived')),
+      );
+      prevOut = outbound; prevIn = inbound;
+    } catch (e) {}
+  }, 5000);
+}
+function stopCallStatsLogging(room) {
+  if (room.callStatsInterval) { clearInterval(room.callStatsInterval); room.callStatsInterval = null; }
+}
+
 function formatCallTime(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -3119,28 +3163,25 @@ function renderCallOverlay(room) {
     // fix (see git history), same fix shape: shrink to fit rather than
     // overflow, only once the extra buttons actually push it past 3.
     const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + 1 + (room.callVideoOn ? 1 : 0) + 1;
-    // Compact top-strip identity layout applies whenever video is visible
-    // AT ALL, not just when this device's own camera is on — a peer who's
-    // sending video while we haven't turned ours on still shows their
-    // video full-bleed (see the has-video/remoteVideoActive toggle below),
-    // and the old big centered block would go right back to sitting
-    // unprotected in the middle of it with nothing behind it, since the
-    // panel that used to guard against exactly that was just removed.
-    const videoLayout = room.callVideoOn || room.remoteVideoActive;
-    const identityHtml = videoLayout ? `
-        <div class="call-video-info-row">
-          <span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span>
-          <span class="call-peer-name-compact">${name}</span>
-          <span class="call-timer-compact" id="call-timer">00:00</span>
-        </div>` : `
+    // Gated on remoteVideoActive specifically, not callVideoOn — the
+    // rationale for dropping the name/wordmark is "you can already see who
+    // you're talking to," which is only actually true once the PEER's
+    // video is visible. Turning on your own camera before they've turned
+    // on theirs still shows nothing but your own PiP and a blank
+    // background; the name is the only thing identifying who that even is
+    // at that point, so it stays put until their video actually arrives.
+    const videoMode = !!room.remoteVideoActive;
+    const identityHtml = videoMode ? '' : `
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status">End-to-end encrypted call</div>
         <div class="call-timer-display" id="call-timer">00:00</div>
         <div class="call-tagline">This call never existed.</div>`;
+    const timerPillHtml = videoMode ? `<div class="call-timer-pill" id="call-timer">00:00</div>` : '';
     overlay.innerHTML = `
-      ${callHeaderBlock()}
-      <div class="call-identity${videoLayout ? ' video-mode' : ''}">${identityHtml}
+      ${videoMode ? '' : callHeaderBlock()}
+      <div class="call-identity">${identityHtml}
       </div>
+      ${timerPillHtml}
       <div class="call-actions${actionsButtonCount >= 4 ? ' compact' : ''}">
         <div class="call-btn-wrap">
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
@@ -3159,9 +3200,9 @@ function renderCallOverlay(room) {
     // toggleCamera) specifically so replacing it above on every render never
     // tears them down — synced here, every render, from room state rather than
     // toggled ad hoc from the track/mute event handlers themselves.
-    overlay.classList.toggle('has-video', !!room.remoteVideoActive);
+    overlay.classList.toggle('has-video', videoMode);
     const remoteVideoEl = document.getElementById('call-remote-video');
-    if (remoteVideoEl) remoteVideoEl.classList.toggle('show', !!room.remoteVideoActive);
+    if (remoteVideoEl) remoteVideoEl.classList.toggle('show', videoMode);
     const localVideoEl = document.getElementById('call-local-video');
     if (localVideoEl) localVideoEl.classList.toggle('show', !!room.callVideoOn);
   }
@@ -3304,6 +3345,7 @@ async function setupPeerConnection(room) {
 }
 
 function teardownPeerConnection(room) {
+  stopCallStatsLogging(room);
   if (room.pc) {
     try { room.pc.close(); } catch (e) {}
     room.pc = null;
@@ -3472,6 +3514,7 @@ async function toggleCamera() {
       } catch (e) {}
       room.callVideoOn = true;
       showLocalVideoPreview(room, videoStream);
+      startCallStatsLogging(room);
     } catch (e) {
       toast('Could not access camera');
       return;
@@ -3484,6 +3527,7 @@ async function toggleCamera() {
       room.localVideoStream = null;
     }
     room.callVideoOn = false;
+    stopCallStatsLogging(room);
     const localVideoEl = document.getElementById('call-local-video');
     if (localVideoEl) localVideoEl.remove();
   }
