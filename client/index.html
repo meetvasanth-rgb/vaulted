@@ -1930,6 +1930,10 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     callInviteReceivedAt: null,
     // Answerer-side resend loop for 'call-accept' — see acceptCall().
     callAcceptRetryInterval: null, callAcceptRetryTimeout: null, callAcceptConfirmed: false,
+    // True once the FIRST offer/answer exchange has actually completed —
+    // see onnegotiationneeded in setupPeerConnection() for why this has to
+    // gate it separately from the signalingState check there.
+    callNegotiated: false,
     // Speaker toggle — only meaningful where detectSpeakerToggle() actually
     // finds a switchable output device (mainly Android Chrome; never on iOS
     // Safari, which has no API for this at all).
@@ -2603,6 +2607,7 @@ async function handleSignalMessage(room, type, payload) {
     if (!room.pc) return;
     try {
       await room.pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+      room.callNegotiated = true; // caller's initial offer/answer exchange is done
       await flushPendingIceCandidates(room);
     } catch (e) {
       sendSignal(room, 'call-hangup', {});
@@ -2692,6 +2697,7 @@ async function acceptCall() {
   // this loop. (room.pc existing is NOT that proof — we create our own pc
   // below regardless of whether the caller ever heard from us.)
   room.callAcceptConfirmed = false;
+  room.callNegotiated = false;
   clearCallAcceptRetry(room);
   room.callAcceptRetryInterval = setInterval(() => {
     if (room.callState === 'active' && !room.callAcceptConfirmed) sendSignal(room, 'call-accept', {});
@@ -3119,6 +3125,23 @@ async function setupPeerConnection(room) {
 
   const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
   room.pc = pc;
+
+  pc.onnegotiationneeded = async () => {
+    // addTrack() below fires this immediately, on BOTH sides, before the
+    // very first offer/answer has happened — the callee in particular
+    // never calls createOffer() itself otherwise, so at that point
+    // signalingState is still 'stable' and this would fire off a spurious
+    // offer that collides with the real one already in flight. Ignore it
+    // until the initial negotiation has actually completed once.
+    if (!room.callNegotiated) return;
+    if (pc.signalingState !== 'stable') return; // already mid-exchange, let it finish first
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
+    } catch (e) {}
+  };
+
   room.pendingIceCandidates = [];
 
   stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -3167,6 +3190,7 @@ function teardownPeerConnection(room) {
   room.pendingIceCandidates = [];
   room.pendingOffer = null;
   room.callAcceptConfirmed = false;
+  room.callNegotiated = false;
   room.callMuted = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
@@ -3230,6 +3254,7 @@ async function processOffer(room, payload) {
     const answer = await room.pc.createAnswer();
     await room.pc.setLocalDescription(answer);
     await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
+    room.callNegotiated = true; // callee's initial offer/answer exchange is done
   } catch (e) {
     sendSignal(room, 'call-hangup', {});
     endCall(room, 'Could not connect the call.');
