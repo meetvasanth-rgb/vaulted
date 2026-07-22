@@ -1794,12 +1794,20 @@ const CODENAME_SUGGESTIONS = [
   'Shadow','River','Echo','Frost','Ember','Wren','Sable','Indigo','Solstice',
   'Juniper','Onyx','Wisp','Marrow','Slate','Nova','Cove','Briar','Hollow',
   'Ash','Lumen','Rune','Fern','Cinder','Vale','Moth','Quartz','Thistle',
-  'Amber','Reed','Tide','Raven','Willow','Storm','Dune','Grove','Pike'
+  'Amber','Reed','Tide','Raven','Willow','Storm','Dune','Grove','Pike',
+  'Cedar','Pine','Birch','Elm','Maple','Rowan','Laurel','Sage','Poppy',
+  'Lily','Iris','Violet','Canyon','Ridge','Marsh','Delta','Glacier','Tundra',
+  'Prairie','Mesa','Harbor','Meadow','Forest','Brook','Creek','Reef','Mist',
+  'Dusk','Dawn','Aurora','Eclipse','Comet','Meteor','Nebula','Horizon','Iron',
+  'Copper','Bronze','Silver','Coral','Pearl','Jade','Opal','Ruby','Sapphire',
+  'Solace','Haven','Refuge','Whisper','Silence','Cipher','Phantom','Specter','Drift',
+  'Wander','Odyssey','Current','Vortex','Spiral','Prism','Mirage','Oasis','Sanctuary',
+  'Wraith'
 ];
 // A fresh, independent random pick every time is mathematically "random"
 // but reliably *feels* repetitive within just a handful of draws — the
 // same well-known gotcha Spotify hit with shuffle, and what was actually
-// happening here even though nothing was wrong with the pool itself (36
+// happening here even though nothing was wrong with the pool itself (100
 // distinct names, no duplicates). The fix is a shuffle bag: draw from a
 // shuffled copy of the list without replacement, so every name is
 // guaranteed to show once before any name can repeat, and only reshuffle
