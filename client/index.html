@@ -4964,6 +4964,10 @@ function revealViewOnce(msgId) {
     const el = document.querySelector(`.msg[data-msg-id="${msgId}"] .msg-viewonce`);
     if (el) el.outerHTML = '<div class="msg-viewonce msg-viewonce-opened"><span>Opened</span></div>';
   }
+  // Tell the server right away so the sender's own copy disappears too —
+  // best-effort: the photo still vanishes locally below (see
+  // scheduleViewOnceDelete) even if this fails, exactly as it always has.
+  api('/api/view-once-opened', { code: room.code, token: room.token, msgId }).catch(() => {});
   viewImage(`data:${rec.mime};base64,${rec.base64}`, {
     hideDownload: true,
     onClose: () => scheduleViewOnceDelete(room, msgId),

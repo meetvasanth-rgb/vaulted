@@ -625,6 +625,30 @@ async function api(path, method, d, p, res, ip) {
     return res200(res, { ok: true });
   }
 
+  // POST /api/view-once-opened — the recipient of a view-once photo tells
+  // the server they've just seen it, so it disappears from the ORIGINAL
+  // SENDER's side too — view-once is a promise to both people, not just
+  // "hidden until tapped" on the recipient's end. Reuses the exact same
+  // deletion/deletionSeq mechanism as /api/delete-message above, but
+  // deliberately does NOT require the caller to be msg.from: this only
+  // ever fires right after the caller has locally revealed a view-once
+  // attachment, which by definition means they're the recipient, not the
+  // sender (the client never wires this up for its own sent photos).
+  if (path==='/api/view-once-opened' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Room not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
+    if (!msg) return resErr(res,'Message not found.',404);
+    if (!msg.deleted) {
+      msg.content = null;
+      msg.deleted = true;
+      msg.deletionSeq = ++room.deletionSeq;
+      room.lastActivity = Date.now();
+    }
+    return res200(res, { ok: true });
+  }
+
   // POST /api/set-timer — change the disappearing-message duration for this
   // room at any point in the conversation, not just at creation. Either
   // member can change it; a system message announces the new setting to
