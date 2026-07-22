@@ -1100,6 +1100,37 @@ body.select-mode .chat-ftr{display:none}
    it's actually finished, not a parallel setTimeout guess. */
 .call-reaction-emoji{position:fixed;left:50%;bottom:190px;font-size:44px;line-height:1;transform:translateX(-50%);animation:call-reaction-float 1.8s ease-out forwards;pointer-events:none;z-index:9999}
 @keyframes call-reaction-float{0%{opacity:0;transform:translateX(-50%) translateY(0) scale(.5)}15%{opacity:1;transform:translateX(-50%) translateY(-20px) scale(1.15)}30%{transform:translateX(-50%) translateY(-40px) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(-190px) scale(1)}}
+/* Heart cascade — several of these spawned at once (see playHeartCascade),
+   each with its own randomized size/duration/delay/--x-offset set as
+   inline styles in JS. The class only supplies the shared shape of the
+   path; -115vh at 100% guarantees clearing the top of the viewport
+   regardless of device height, unlike the generic float's fixed -190px
+   (which was never meant to travel that far). opacity:0 in the base rule,
+   not just the keyframe's 0%, matters here specifically — with several
+   hearts staggered via animation-delay, each one needs to stay invisible
+   for its own delay period rather than briefly flashing at its un-animated
+   (fully opaque) base state before its animation actually starts. */
+.call-reaction-heart{position:fixed;left:50%;bottom:190px;line-height:1;opacity:0;transform:translateX(calc(-50% + (var(--x-offset) * .2))) translateY(0) scale(.6);animation-name:call-reaction-heart-float;animation-timing-function:ease-out;animation-fill-mode:forwards;pointer-events:none;z-index:9999}
+@keyframes call-reaction-heart-float{
+  0%{opacity:0;transform:translateX(calc(-50% + (var(--x-offset) * .2))) translateY(0) scale(.6)}
+  10%{opacity:1}
+  40%{transform:translateX(calc(-50% + var(--x-offset))) translateY(-45vh) scale(1.05)}
+  70%{transform:translateX(calc(-50% + (var(--x-offset) * .7))) translateY(-75vh) scale(.95)}
+  100%{opacity:0;transform:translateX(calc(-50% + (var(--x-offset) * 1.1))) translateY(-115vh) scale(.9)}
+}
+/* Punch — a single fist, centered, flying toward the viewer. Deliberately
+   fast/blunt (ease-out scale-up, brief overshoot-then-settle bounce, quick
+   fade) rather than the drifting float everything else uses — meant to
+   read as an impact, not a moment lingering in the air. font-size:70px is
+   the pre-scale base; at the 3x peak that's ~210px on screen. */
+.call-reaction-punch{position:fixed;top:50%;left:50%;font-size:70px;line-height:1;opacity:0;transform:translate(-50%,-50%) scale(.2);animation:call-reaction-punch .8s ease-out forwards;pointer-events:none;z-index:9999}
+@keyframes call-reaction-punch{
+  0%{opacity:.5;transform:translate(-50%,-50%) scale(.2)}
+  50%{opacity:1;transform:translate(-50%,-50%) scale(3)}
+  65%{transform:translate(-50%,-50%) scale(2.6)}
+  78%{opacity:1;transform:translate(-50%,-50%) scale(2.85)}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(2.85)}
+}
 
 .call-accept-btn,.call-decline-btn,.call-end-btn{border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;box-sizing:border-box}
 
@@ -3711,15 +3742,56 @@ function sendCallReaction(emoji) {
 
 // Shared by the sender's own immediate local playback and by the receiving
 // side's handleSignalMessage branch, so the two ends can never end up with
-// visibly different animations for the same reaction. Appended straight to
-// <body> — not inside #call-overlay — so overlay.innerHTML replacing the
-// overlay's children on the next render (mute toggle, etc.) can never cut
-// the animation short, and tap-to-toggle's chrome-hidden has no bearing on
-// it either, matching a reaction being a fleeting moment, not UI chrome.
+// visibly different animations for the same reaction — the branching here
+// applies identically on both ends since this is the one entry point both
+// paths call through. Appended straight to <body> — not inside
+// #call-overlay — so overlay.innerHTML replacing the overlay's children on
+// the next render (mute toggle, etc.) can never cut an animation short, and
+// tap-to-toggle's chrome-hidden has no bearing on it either, matching a
+// reaction being a fleeting moment, not UI chrome.
 function playCallReactionAnimation(emoji) {
+  if (emoji === '❤️') { playHeartCascade(); return; }
+  if (emoji === '👊') { playPunchReaction(); return; }
   const el = document.createElement('div');
   el.className = 'call-reaction-emoji';
   el.textContent = emoji;
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+}
+
+// Several hearts, not one — staggered animation-delay (not staggered JS
+// timing/setTimeout) so the browser owns the whole cascade as independent,
+// already-scheduled animations once this function returns, rather than
+// this needing to stay alive and fire off appendChild calls over time.
+function playHeartCascade() {
+  const count = 6 + Math.floor(Math.random() * 3); // 6-8
+  let delay = 0; // accumulated, not i * random — see below
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('div');
+    el.className = 'call-reaction-heart';
+    el.textContent = '❤️';
+    const size = 24 + Math.random() * 16; // 24-40px
+    const duration = 1.6 + Math.random() * 0.6; // 1.6-2.2s
+    const xOffset = Math.random() * 80 - 40; // ±40px
+    el.style.fontSize = size + 'px';
+    el.style.setProperty('--x-offset', xOffset + 'px');
+    el.style.animationDuration = duration + 's';
+    el.style.animationDelay = delay + 'ms';
+    // Advance by a fresh 80-120ms for the NEXT heart. i * random(80,120)
+    // looks similar at a glance but actually compounds — the gap between
+    // consecutive hearts grows with i instead of staying ~80-120ms, since
+    // each iteration draws an independent random multiplier applied to a
+    // growing i rather than an incremental step.
+    delay += 80 + Math.random() * 40;
+    document.body.appendChild(el);
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }
+}
+
+function playPunchReaction() {
+  const el = document.createElement('div');
+  el.className = 'call-reaction-punch';
+  el.textContent = '👊';
   document.body.appendChild(el);
   el.addEventListener('animationend', () => el.remove(), { once: true });
 }
