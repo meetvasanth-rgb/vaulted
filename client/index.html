@@ -968,13 +968,16 @@ body.select-mode .chat-ftr{display:none}
 .call-timer-display{font-family:'Inter',sans-serif;font-size:34px;font-weight:300;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums;margin-top:4px}
 .call-tagline{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-top:8px}
 /* Video mode: the peer's own video already confirms who you're talking to
-   and fills the frame, so the wordmark/name/status/tagline are dropped
-   entirely (not just shrunk) rather than repositioned — .call-identity
-   renders empty and stays purely as the flex:1 spacer that keeps
-   call-actions pinned to the bottom, same as always. Just a small timer
-   pill left, sitting right above the button row inside the same bottom
-   scrim rather than a panel of its own. */
-.call-timer-pill{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.92);font-variant-numeric:tabular-nums;letter-spacing:.03em;background:rgba(0,0,0,.5);padding:6px 16px;border-radius:999px;margin-bottom:14px}
+   and fills the frame, so the wordmark/status/tagline are dropped entirely
+   (not just shrunk) rather than repositioned. The name comes back here,
+   though — small and light, stacked with the timer right below it,
+   top-center, no background box, just enough text-shadow to stay legible
+   over whatever's in the video. Reuses .call-identity's own flex:1 box (so
+   call-actions stays pinned to the bottom exactly as always) but
+   re-anchors it to the top instead of the vertical center. */
+.call-identity.video-top{justify-content:flex-start;gap:2px;padding-top:6px}
+.call-peer-name-compact{font-family:'Inter',sans-serif;font-size:17px;font-weight:500;color:#fff;letter-spacing:.01em;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.call-timer-compact{font-family:'Inter',sans-serif;font-size:13px;font-weight:400;color:rgba(255,255,255,.75);font-variant-numeric:tabular-nums;letter-spacing:.03em;text-shadow:0 1px 4px rgba(0,0,0,.6)}
 
 /* Incoming — three concentric gold rings pulsing outward from a center dot */
 .ring-container{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
@@ -1046,6 +1049,35 @@ body.select-mode .chat-ftr{display:none}
 .call-actions.compact .call-mute-btn svg,.call-actions.compact .call-speaker-btn svg,.call-actions.compact .call-camera-btn svg{width:18px;height:18px}
 .call-actions.compact .call-end-btn svg{width:20px;height:20px}
 .call-actions.compact .call-btn-label{font-size:9px;max-width:56px}
+/* Video mode: buttons group into one frosted pill capsule instead of
+   scattered bordered circles (matches WhatsApp's/FaceTime's bottom-bar
+   convention) — icon-only, no text labels, since the pill itself now
+   carries the visual grouping the individual borders used to provide.
+   Rules placed after .compact on purpose: equal specificity, so this wins
+   sizing when both classes are present together (video calls with 4+
+   buttons are the common case). End keeps its red fill deliberately —
+   same "the destructive action stays visually distinct" reasoning as
+   everywhere else in the call UI, just smaller to match. */
+.call-actions.video-bar{background:rgba(50,50,50,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:999px;padding:10px 16px;gap:16px}
+.call-actions.video-bar .call-btn-label{display:none}
+.call-actions.video-bar .call-btn-wrap{gap:0}
+.call-actions.video-bar .call-mute-btn,.call-actions.video-bar .call-speaker-btn,.call-actions.video-bar .call-camera-btn{width:46px;height:46px;border:none;background:transparent}
+.call-actions.video-bar .call-mute-btn svg,.call-actions.video-bar .call-speaker-btn svg,.call-actions.video-bar .call-camera-btn svg{width:20px;height:20px}
+.call-actions.video-bar .call-mute-btn.muted,.call-actions.video-bar .call-speaker-btn.active,.call-actions.video-bar .call-camera-btn.active{background:rgba(255,255,255,.18)}
+.call-actions.video-bar .call-end-btn{width:46px;height:46px}
+.call-actions.video-bar .call-end-btn svg{width:20px;height:20px}
+/* Tap-to-toggle chrome (see renderCallOverlay's click listener, attached
+   once when the overlay is first created): only meaningful — and only
+   ever toggled — while has-video is set, so this can't affect the
+   audio-only layout even if the class somehow lingered from a prior
+   video segment of the same call (cleared explicitly whenever has-video
+   goes false, precisely to prevent that). pointer-events:none while
+   hidden so a re-tap lands on the video underneath, not on an invisible
+   button. #call-local-video (PiP) is a sibling of .call-overlay, not a
+   descendant, so it's structurally unreachable from these selectors —
+   "stays visible regardless" falls out for free. */
+.call-overlay.has-video .call-identity,.call-overlay.has-video .call-actions{transition:opacity .22s ease}
+.call-overlay.has-video.chrome-hidden .call-identity,.call-overlay.has-video.chrome-hidden .call-actions{opacity:0;pointer-events:none}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.08em;text-align:center;max-width:90px}
 
@@ -3171,18 +3203,18 @@ function renderCallOverlay(room) {
     // background; the name is the only thing identifying who that even is
     // at that point, so it stays put until their video actually arrives.
     const videoMode = !!room.remoteVideoActive;
-    const identityHtml = videoMode ? '' : `
+    const identityHtml = videoMode ? `
+        <span class="call-peer-name-compact">${name}</span>
+        <span class="call-timer-compact" id="call-timer">00:00</span>` : `
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status">End-to-end encrypted call</div>
         <div class="call-timer-display" id="call-timer">00:00</div>
         <div class="call-tagline">This call never existed.</div>`;
-    const timerPillHtml = videoMode ? `<div class="call-timer-pill" id="call-timer">00:00</div>` : '';
     overlay.innerHTML = `
       ${videoMode ? '' : callHeaderBlock()}
-      <div class="call-identity">${identityHtml}
+      <div class="call-identity${videoMode ? ' video-top' : ''}">${identityHtml}
       </div>
-      ${timerPillHtml}
-      <div class="call-actions${actionsButtonCount >= 4 ? ' compact' : ''}">
+      <div class="call-actions${videoMode ? ' video-bar' : ''}${actionsButtonCount >= 4 ? ' compact' : ''}">
         <div class="call-btn-wrap">
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
           <div class="call-btn-label">${room.callMuted ? 'Unmute' : 'Mute'}</div>
@@ -3201,13 +3233,35 @@ function renderCallOverlay(room) {
     // tears them down — synced here, every render, from room state rather than
     // toggled ad hoc from the track/mute event handlers themselves.
     overlay.classList.toggle('has-video', videoMode);
+    // chrome-hidden only ever has an effect while has-video is set (see the
+    // CSS), but it's cleared explicitly the moment has-video goes false
+    // anyway — otherwise a call that goes video -> audio-only -> video again
+    // (peer toggles their camera off and back on) would silently reopen
+    // still hidden from before, with nothing the person did in between to
+    // explain why.
+    if (!videoMode) overlay.classList.remove('chrome-hidden');
     const remoteVideoEl = document.getElementById('call-remote-video');
     if (remoteVideoEl) remoteVideoEl.classList.toggle('show', videoMode);
     const localVideoEl = document.getElementById('call-local-video');
     if (localVideoEl) localVideoEl.classList.toggle('show', !!room.callVideoOn);
   }
 
-  if (isNew) requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('visible')));
+  if (isNew) {
+    requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('visible')));
+    // Tap-to-toggle the top name/timer + bottom button bar — attached once,
+    // here, rather than re-attached on every render (overlay.innerHTML above
+    // only replaces the overlay's CHILDREN each render, never the overlay
+    // element itself, so a listener bound directly to it survives every
+    // subsequent re-render for the life of this call untouched). Reads
+    // has-video live off the overlay's own classList at click time rather
+    // than closing over `room`, so it's automatically correct regardless of
+    // whether video was already active when the overlay was first created.
+    overlay.addEventListener('click', (e) => {
+      if (!overlay.classList.contains('has-video')) return; // nothing to toggle outside video mode
+      if (e.target.closest('.call-actions')) return; // never intercept a button-bar tap — End especially
+      overlay.classList.toggle('chrome-hidden');
+    });
+  }
 }
 
 function hideCallOverlay() {
