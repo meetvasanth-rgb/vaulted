@@ -944,8 +944,15 @@ body.select-mode .chat-ftr{display:none}
 .vanish-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);letter-spacing:.1em;text-transform:uppercase}
 
 /* ── CALL SCREENS (outgoing / incoming / active) ─────────────────────── */
-.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease;padding:calc(84px + env(safe-area-inset-top)) 32px 72px;box-sizing:border-box}
+.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease,background .3s ease;padding:calc(84px + env(safe-area-inset-top)) 32px 72px;box-sizing:border-box}
 .call-overlay.visible{opacity:1}
+/* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
+   z-index) show through the overlay's own chrome once a remote video track
+   is actually active — see renderCallOverlay's has-video toggle. The
+   gradient keeps the top (name/timer) and bottom (buttons) legible over
+   whatever's in the video without needing a solid backdrop behind them. */
+.call-overlay.has-video{background:transparent}
+.call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.6) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 62%,rgba(0,0,0,.65) 100%);pointer-events:none}
 
 .call-hdr-block{text-align:center}
 .call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 14px}
@@ -1053,7 +1060,18 @@ body.select-mode .chat-ftr{display:none}
 .call-mute-btn:active,.call-speaker-btn:active,.call-camera-btn:active{transform:scale(.92)}
 .call-mute-btn svg,.call-speaker-btn svg,.call-camera-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
 .call-speaker-btn svg{fill:rgba(255,255,255,.85);stroke:rgba(255,255,255,.85)}
-#call-remote-video{position:fixed;bottom:calc(96px + env(safe-area-inset-bottom));right:16px;width:110px;height:150px;border-radius:14px;object-fit:cover;background:#000;z-index:9998;display:none;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+/* Full-bleed, sitting just behind .call-overlay (z-index one lower) so the
+   overlay's own transparent-when-has-video background (above) lets it show
+   through, with the mute/speaker/camera/end chrome rendered on top of it. */
+#call-remote-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:9996;display:none}
+#call-remote-video.show{display:block}
+/* Local self-view PiP — portrait-only placement (calls lock portrait, see
+   startCall/acceptCall), tucked under the top wordmark and clear of the
+   call-btn-wrap row at the bottom. Above the overlay (higher z-index) since
+   this is the one thing that should always stay visible regardless of
+   whether the remote side has video on. */
+#call-local-video{position:fixed;top:calc(64px + env(safe-area-inset-top));right:16px;width:90px;height:128px;border-radius:12px;object-fit:cover;background:#111;z-index:9999;display:none;border:1px solid rgba(255,255,255,.15);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+#call-local-video.show{display:block}
 
 /* ── SETTINGS PANEL + GEAR ICON ──────────────────────────────────────── */
 .settings-btn{width:34px;height:34px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9A8C7E;border-radius:50%;transition:all .2s ease;flex-shrink:0;padding:0;margin-left:4px}
@@ -1942,7 +1960,12 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // Camera toggle — off by default on every call, on either side
     // independently. localVideoStream is separate from localStream (audio)
     // since it's grabbed later, on demand, via its own getUserMedia call.
-    callVideoOn: false, localVideoStream: null,
+    // remoteVideoActive tracks whether the PEER's video is currently
+    // showing (drives the full-bleed remote video / overlay scrim — see
+    // renderCallOverlay and pc.ontrack's mute/unmute handling). Distinct
+    // from callVideoOn, which is about OUR OWN camera. callCameraFacing is
+    // local-only too, only meaningful while callVideoOn — see swapCamera().
+    callVideoOn: false, localVideoStream: null, remoteVideoActive: false, callCameraFacing: 'user',
     // Answerer-side only: an offer that arrived before room.pc existed yet
     // (setupPeerConnection is async) — see processOffer/acceptCall.
     pendingOffer: null,
@@ -3055,6 +3078,15 @@ function renderCallOverlay(room) {
     const cameraIcon = room.callVideoOn
       ? '<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+    // Only worth showing once video is actually on — flipping which camera
+    // feeds a call that isn't sending video at all has nothing to do.
+    const flipBtnHtml = room.callVideoOn ? `
+        <div class="call-btn-wrap">
+          <button class="call-camera-btn" onclick="swapCamera()" title="${room.callCameraFacing === 'user' ? 'Switch to back camera' : 'Switch to front camera'}">
+            <svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </button>
+          <div class="call-btn-label">Flip</div>
+        </div>` : '';
     overlay.innerHTML = `
       ${callHeaderBlock()}
       <div class="call-identity">
@@ -3071,12 +3103,21 @@ function renderCallOverlay(room) {
         <div class="call-btn-wrap">
           <button class="call-camera-btn${room.callVideoOn ? ' active' : ''}" onclick="toggleCamera()" title="${room.callVideoOn ? 'Turn camera off' : 'Turn camera on'}">${cameraIcon}</button>
           <div class="call-btn-label">${room.callVideoOn ? 'Stop video' : 'Video'}</div>
-        </div>
+        </div>${flipBtnHtml}
         <div class="call-btn-wrap">
           <button class="call-end-btn" onclick="hangupCall()" title="End call">${CALL_PHONE_ICON}</button>
           <div class="call-btn-label">End</div>
         </div>
       </div>`;
+    // These two live outside overlay.innerHTML entirely (see setupPeerConnection/
+    // toggleCamera) specifically so replacing it above on every render never
+    // tears them down — synced here, every render, from room state rather than
+    // toggled ad hoc from the track/mute event handlers themselves.
+    overlay.classList.toggle('has-video', !!room.remoteVideoActive);
+    const remoteVideoEl = document.getElementById('call-remote-video');
+    if (remoteVideoEl) remoteVideoEl.classList.toggle('show', !!room.remoteVideoActive);
+    const localVideoEl = document.getElementById('call-local-video');
+    if (localVideoEl) localVideoEl.classList.toggle('show', !!room.callVideoOn);
   }
 
   if (isNew) requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('visible')));
@@ -3174,16 +3215,21 @@ async function setupPeerConnection(room) {
         document.body.appendChild(videoEl);
       }
       videoEl.srcObject = ev.streams[0];
-      videoEl.style.display = 'block';
       videoEl.play().catch(() => {});
+      // Visibility itself (both the element and the overlay's has-video
+      // scrim) is driven from room.remoteVideoActive via renderCallOverlay,
+      // not set directly here — keeps a single source of truth instead of
+      // this handler and the render function fighting over inline styles.
+      room.remoteVideoActive = true;
+      renderCallOverlay(room);
       // The remote peer toggling their camera off removes their sender
       // track and renegotiates, rather than ending this transceiver
       // outright — that surfaces here as the received track muting, not
       // as 'ended'. Mirror it back on unmute so a later re-toggle-on just
       // works without needing a fresh ontrack (same transceiver, same
       // track reused by the browser across mute/unmute).
-      ev.track.onmute = () => { videoEl.style.display = 'none'; };
-      ev.track.onunmute = () => { videoEl.style.display = 'block'; };
+      ev.track.onmute = () => { room.remoteVideoActive = false; renderCallOverlay(room); };
+      ev.track.onunmute = () => { room.remoteVideoActive = true; renderCallOverlay(room); };
       return;
     }
     let audioEl = document.getElementById('call-remote-audio');
@@ -3228,11 +3274,15 @@ function teardownPeerConnection(room) {
   if (audioEl) audioEl.remove();
   const videoEl = document.getElementById('call-remote-video');
   if (videoEl) videoEl.remove();
+  const localVideoEl = document.getElementById('call-local-video');
+  if (localVideoEl) localVideoEl.remove();
   room.pendingIceCandidates = [];
   room.pendingOffer = null;
   room.callAcceptConfirmed = false;
   room.callNegotiated = false;
   room.callVideoOn = false;
+  room.remoteVideoActive = false;
+  room.callCameraFacing = 'user';
   room.callMuted = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
@@ -3323,6 +3373,28 @@ function toggleMute() {
   renderCallOverlay(room);
 }
 
+// Creates/reuses the local self-view PiP and points it at whatever stream
+// is currently being sent — shared by toggleCamera() (turning video on)
+// and swapCamera() (switching which physical camera feeds it), so the
+// preview and the actually-negotiated track can never disagree about which
+// camera is live. Mirrored (scaleX(-1)) for the front camera only, matching
+// the "looking in a mirror" convention every other video-calling app uses;
+// the back camera shows the world as-is.
+function showLocalVideoPreview(room, stream) {
+  let el = document.getElementById('call-local-video');
+  if (!el) {
+    el = document.createElement('video');
+    el.id = 'call-local-video';
+    el.autoplay = true;
+    el.playsInline = true;
+    el.muted = true; // this is OUR OWN camera preview — never play our own mic back to ourselves
+    document.body.appendChild(el);
+  }
+  el.srcObject = stream;
+  el.style.transform = room.callCameraFacing === 'user' ? 'scaleX(-1)' : 'none';
+  el.play().catch(() => {});
+}
+
 // Adding/removing the video track through an already-connected pc triggers
 // Phase 1's onnegotiationneeded handler automatically (now correctly gated
 // by room.callNegotiated, which is already true by the time a call is
@@ -3333,11 +3405,12 @@ async function toggleCamera() {
   if (!room || !room.pc) return;
   if (!room.callVideoOn) {
     try {
-      const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: room.callCameraFacing } });
       room.localVideoStream = videoStream;
       const track = videoStream.getVideoTracks()[0];
       room.pc.addTrack(track, videoStream);
       room.callVideoOn = true;
+      showLocalVideoPreview(room, videoStream);
     } catch (e) {
       toast('Could not access camera');
       return;
@@ -3350,7 +3423,43 @@ async function toggleCamera() {
       room.localVideoStream = null;
     }
     room.callVideoOn = false;
+    const localVideoEl = document.getElementById('call-local-video');
+    if (localVideoEl) localVideoEl.remove();
   }
+  renderCallOverlay(room);
+}
+
+// Front/back swap — deliberately NOT addTrack/removeTrack. replaceTrack()
+// re-uses the same sender/transceiver already negotiated for video, so
+// this never touches onnegotiationneeded and never renegotiates; it's a
+// pure "what's feeding this existing line" swap, same as muting on the
+// audio track just flips .enabled rather than re-adding it.
+async function swapCamera() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || !room.pc || !room.callVideoOn) return;
+  const newFacing = room.callCameraFacing === 'user' ? 'environment' : 'user';
+  let newStream;
+  try {
+    newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacing } });
+  } catch (e) {
+    toast('Could not switch camera');
+    return;
+  }
+  const sender = room.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+  try {
+    if (sender) await sender.replaceTrack(newStream.getVideoTracks()[0]);
+  } catch (e) {
+    // Old track/stream is still live and still what's actually being sent —
+    // just drop the stream we grabbed for the attempt and leave everything
+    // else exactly as it was, rather than leaving video in a half-swapped state.
+    newStream.getTracks().forEach(t => t.stop());
+    toast('Could not switch camera');
+    return;
+  }
+  if (room.localVideoStream) room.localVideoStream.getTracks().forEach(t => t.stop());
+  room.localVideoStream = newStream;
+  room.callCameraFacing = newFacing;
+  showLocalVideoPreview(room, newStream);
   renderCallOverlay(room);
 }
 
