@@ -948,19 +948,14 @@ body.select-mode .chat-ftr{display:none}
 .call-overlay.visible{opacity:1}
 /* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
    z-index) show through the overlay's own chrome once a remote video track
-   is actually active — see renderCallOverlay's has-video toggle. Two
-   separate treatments, not one gradient across the whole screen: a plain
-   top/bottom edge fade covers the wordmark and the button row fine since
-   both actually sit near their respective edges, but .call-identity
-   (peer name/timer/tagline) is vertically CENTERED in the space between
-   them via flex:1 — wherever it lands depends on content/screen height, so
-   it gets its own content-hugging panel instead of guessing a fixed zone
-   that might miss it entirely (which is exactly what a single top-anchored
-   gradient did here — the identity text sits well past any reasonable
-   "top N px" cutoff on most phones). */
+   is actually active — see renderCallOverlay's has-video toggle. Just the
+   top/bottom edge fade now — it's enough on its own once .call-identity
+   switches to the compact, top-anchored .video-mode layout below instead
+   of sitting vertically centered (which is what needed the separate panel
+   background this used to have; see git history for why that existed and
+   was removed). */
 .call-overlay.has-video{background:transparent}
 .call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.72),rgba(0,0,0,0) 200px),linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 180px);pointer-events:none}
-.call-overlay.has-video .call-identity{background:rgba(0,0,0,.45);border-radius:18px;padding:16px 26px}
 
 .call-hdr-block{text-align:center}
 .call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 14px}
@@ -973,6 +968,17 @@ body.select-mode .chat-ftr{display:none}
 @keyframes call-status-pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .call-timer-display{font-family:'Inter',sans-serif;font-size:34px;font-weight:300;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums;margin-top:4px}
 .call-tagline{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.3);letter-spacing:.1em;margin-top:8px}
+/* Video-call layout: a slim top-left strip (dot + name + timer, one line,
+   normal-weight sans-serif) instead of the big centered serif display —
+   the large panel was exactly what was covering/disrupting the video
+   underneath it. Reuses .call-identity's own flex:1 box (so call-actions
+   stays pinned to the bottom exactly as before) but re-anchors its content
+   to the top-left instead of centering it, and leaves the rest of that
+   space empty so the video actually shows through. */
+.call-identity.video-mode{justify-content:flex-start;align-items:flex-start;text-align:left;gap:0}
+.call-video-info-row{display:flex;align-items:baseline;gap:10px;padding-top:2px}
+.call-peer-name-compact{font-family:'Inter',sans-serif;font-size:19px;font-weight:500;color:#fff;letter-spacing:.01em}
+.call-timer-compact{font-family:'Inter',sans-serif;font-size:12px;font-weight:400;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums;letter-spacing:.03em}
 
 /* Incoming — three concentric gold rings pulsing outward from a center dot */
 .ring-container{position:relative;width:60px;height:60px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
@@ -3113,13 +3119,27 @@ function renderCallOverlay(room) {
     // fix (see git history), same fix shape: shrink to fit rather than
     // overflow, only once the extra buttons actually push it past 3.
     const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + 1 + (room.callVideoOn ? 1 : 0) + 1;
-    overlay.innerHTML = `
-      ${callHeaderBlock()}
-      <div class="call-identity">
+    // Compact top-strip identity layout applies whenever video is visible
+    // AT ALL, not just when this device's own camera is on — a peer who's
+    // sending video while we haven't turned ours on still shows their
+    // video full-bleed (see the has-video/remoteVideoActive toggle below),
+    // and the old big centered block would go right back to sitting
+    // unprotected in the middle of it with nothing behind it, since the
+    // panel that used to guard against exactly that was just removed.
+    const videoLayout = room.callVideoOn || room.remoteVideoActive;
+    const identityHtml = videoLayout ? `
+        <div class="call-video-info-row">
+          <span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span>
+          <span class="call-peer-name-compact">${name}</span>
+          <span class="call-timer-compact" id="call-timer">00:00</span>
+        </div>` : `
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status">End-to-end encrypted call</div>
         <div class="call-timer-display" id="call-timer">00:00</div>
-        <div class="call-tagline">This call never existed.</div>
+        <div class="call-tagline">This call never existed.</div>`;
+    overlay.innerHTML = `
+      ${callHeaderBlock()}
+      <div class="call-identity${videoLayout ? ' video-mode' : ''}">${identityHtml}
       </div>
       <div class="call-actions${actionsButtonCount >= 4 ? ' compact' : ''}">
         <div class="call-btn-wrap">
@@ -3431,10 +3451,25 @@ async function toggleCamera() {
   if (!room || !room.pc) return;
   if (!room.callVideoOn) {
     try {
-      const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: room.callCameraFacing } });
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: room.callCameraFacing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      });
       room.localVideoStream = videoStream;
       const track = videoStream.getVideoTracks()[0];
-      room.pc.addTrack(track, videoStream);
+      const sender = room.pc.addTrack(track, videoStream);
+      // WebRTC's default bitrate ramp-up is conservative (starts low, climbs
+      // slowly to avoid overwhelming an unknown connection) — bandwidth cost
+      // isn't a concern for this app, so just ask for a real ceiling up
+      // front instead of waiting for it to ramp there on its own. Support/
+      // exact behavior varies by browser, hence the try/catch — worst case
+      // it just falls back to the default ramp-up, nothing breaks.
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings) params.encodings = [{}];
+        if (!params.encodings[0]) params.encodings[0] = {};
+        params.encodings[0].maxBitrate = 2500000;
+        await sender.setParameters(params);
+      } catch (e) {}
       room.callVideoOn = true;
       showLocalVideoPreview(room, videoStream);
     } catch (e) {
@@ -3466,7 +3501,9 @@ async function swapCamera() {
   const newFacing = room.callCameraFacing === 'user' ? 'environment' : 'user';
   let newStream;
   try {
-    newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacing } });
+    newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+    });
   } catch (e) {
     toast('Could not switch camera');
     return;
