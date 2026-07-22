@@ -948,11 +948,19 @@ body.select-mode .chat-ftr{display:none}
 .call-overlay.visible{opacity:1}
 /* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
    z-index) show through the overlay's own chrome once a remote video track
-   is actually active — see renderCallOverlay's has-video toggle. The
-   gradient keeps the top (name/timer) and bottom (buttons) legible over
-   whatever's in the video without needing a solid backdrop behind them. */
+   is actually active — see renderCallOverlay's has-video toggle. Two
+   separate treatments, not one gradient across the whole screen: a plain
+   top/bottom edge fade covers the wordmark and the button row fine since
+   both actually sit near their respective edges, but .call-identity
+   (peer name/timer/tagline) is vertically CENTERED in the space between
+   them via flex:1 — wherever it lands depends on content/screen height, so
+   it gets its own content-hugging panel instead of guessing a fixed zone
+   that might miss it entirely (which is exactly what a single top-anchored
+   gradient did here — the identity text sits well past any reasonable
+   "top N px" cutoff on most phones). */
 .call-overlay.has-video{background:transparent}
-.call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.6) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 62%,rgba(0,0,0,.65) 100%);pointer-events:none}
+.call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.72),rgba(0,0,0,0) 200px),linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 180px);pointer-events:none}
+.call-overlay.has-video .call-identity{background:rgba(0,0,0,.45);border-radius:18px;padding:16px 26px}
 
 .call-hdr-block{text-align:center}
 .call-hdr-rule{width:50px;height:1px;background:#B8973E;margin:0 auto 14px}
@@ -1026,6 +1034,16 @@ body.select-mode .chat-ftr{display:none}
 @keyframes sand-fall{0%{opacity:1;transform:translate(0,0) rotate(0deg);filter:blur(0)}35%{opacity:.8}100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--rot));filter:blur(2px)}}
 
 .call-actions{display:flex;gap:36px;align-items:flex-start;justify-content:center}
+/* At 4+ buttons (camera toggle is always present now, speaker/flip are each
+   conditional on top of that) the default 64px buttons + 36px gaps overflow
+   a narrow phone's viewport and clip at both edges — shrink to fit instead,
+   same reasoning as the timer-bar's "call button wrapping" fix. See the
+   actionsButtonCount computation in renderCallOverlay for when this applies. */
+.call-actions.compact{gap:14px}
+.call-actions.compact .call-mute-btn,.call-actions.compact .call-speaker-btn,.call-actions.compact .call-camera-btn,.call-actions.compact .call-end-btn{width:50px;height:50px}
+.call-actions.compact .call-mute-btn svg,.call-actions.compact .call-speaker-btn svg,.call-actions.compact .call-camera-btn svg{width:18px;height:18px}
+.call-actions.compact .call-end-btn svg{width:20px;height:20px}
+.call-actions.compact .call-btn-label{font-size:9px;max-width:56px}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.08em;text-align:center;max-width:90px}
 
@@ -3087,6 +3105,14 @@ function renderCallOverlay(room) {
           </button>
           <div class="call-btn-label">Flip</div>
         </div>` : '';
+    // Mute + camera + end are always present now that every call has a
+    // camera toggle (Phase 2); speaker and flip are each conditional on top
+    // of that. At 4+ buttons the row's normal size/spacing (64px buttons,
+    // 36px gaps) overflows a narrow phone's viewport and clips at both
+    // edges — same class of bug as the timer-bar's call button wrapping
+    // fix (see git history), same fix shape: shrink to fit rather than
+    // overflow, only once the extra buttons actually push it past 3.
+    const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + 1 + (room.callVideoOn ? 1 : 0) + 1;
     overlay.innerHTML = `
       ${callHeaderBlock()}
       <div class="call-identity">
@@ -3095,7 +3121,7 @@ function renderCallOverlay(room) {
         <div class="call-timer-display" id="call-timer">00:00</div>
         <div class="call-tagline">This call never existed.</div>
       </div>
-      <div class="call-actions">
+      <div class="call-actions${actionsButtonCount >= 4 ? ' compact' : ''}">
         <div class="call-btn-wrap">
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
           <div class="call-btn-label">${room.callMuted ? 'Unmute' : 'Mute'}</div>
