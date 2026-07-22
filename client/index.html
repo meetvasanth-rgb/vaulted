@@ -1048,11 +1048,12 @@ body.select-mode .chat-ftr{display:none}
    always-visible button that silently does nothing on unsupported
    platforms (iOS Safari has no equivalent API at all) is worse than no
    button. */
-.call-mute-btn,.call-speaker-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
-.call-mute-btn.muted,.call-speaker-btn.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
-.call-mute-btn:active,.call-speaker-btn:active{transform:scale(.92)}
-.call-mute-btn svg,.call-speaker-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
+.call-mute-btn,.call-speaker-btn,.call-camera-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
+.call-mute-btn.muted,.call-speaker-btn.active,.call-camera-btn.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
+.call-mute-btn:active,.call-speaker-btn:active,.call-camera-btn:active{transform:scale(.92)}
+.call-mute-btn svg,.call-speaker-btn svg,.call-camera-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
 .call-speaker-btn svg{fill:rgba(255,255,255,.85);stroke:rgba(255,255,255,.85)}
+#call-remote-video{position:fixed;bottom:calc(96px + env(safe-area-inset-bottom));right:16px;width:110px;height:150px;border-radius:14px;object-fit:cover;background:#000;z-index:9998;display:none;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 
 /* ── SETTINGS PANEL + GEAR ICON ──────────────────────────────────────── */
 .settings-btn{width:34px;height:34px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9A8C7E;border-radius:50%;transition:all .2s ease;flex-shrink:0;padding:0;margin-left:4px}
@@ -1938,6 +1939,10 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // finds a switchable output device (mainly Android Chrome; never on iOS
     // Safari, which has no API for this at all).
     speakerAvailable: false, speakerOn: false, speakerDeviceId: null,
+    // Camera toggle — off by default on every call, on either side
+    // independently. localVideoStream is separate from localStream (audio)
+    // since it's grabbed later, on demand, via its own getUserMedia call.
+    callVideoOn: false, localVideoStream: null,
     // Answerer-side only: an offer that arrived before room.pc existed yet
     // (setupPeerConnection is async) — see processOffer/acceptCall.
     pendingOffer: null,
@@ -3047,6 +3052,9 @@ function renderCallOverlay(room) {
           </button>
           <div class="call-btn-label">${room.speakerOn ? 'Speaker' : 'Phone'}</div>
         </div>` : '';
+    const cameraIcon = room.callVideoOn
+      ? '<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
     overlay.innerHTML = `
       ${callHeaderBlock()}
       <div class="call-identity">
@@ -3060,6 +3068,10 @@ function renderCallOverlay(room) {
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
           <div class="call-btn-label">${room.callMuted ? 'Unmute' : 'Mute'}</div>
         </div>${speakerBtnHtml}
+        <div class="call-btn-wrap">
+          <button class="call-camera-btn${room.callVideoOn ? ' active' : ''}" onclick="toggleCamera()" title="${room.callVideoOn ? 'Turn camera off' : 'Turn camera on'}">${cameraIcon}</button>
+          <div class="call-btn-label">${room.callVideoOn ? 'Stop video' : 'Video'}</div>
+        </div>
         <div class="call-btn-wrap">
           <button class="call-end-btn" onclick="hangupCall()" title="End call">${CALL_PHONE_ICON}</button>
           <div class="call-btn-label">End</div>
@@ -3151,6 +3163,29 @@ async function setupPeerConnection(room) {
   };
 
   pc.ontrack = (ev) => {
+    if (ev.track.kind === 'video') {
+      let videoEl = document.getElementById('call-remote-video');
+      if (!videoEl) {
+        videoEl = document.createElement('video');
+        videoEl.id = 'call-remote-video';
+        videoEl.autoplay = true;
+        videoEl.playsInline = true;
+        videoEl.muted = false; // remote video — this is what we actually want to hear
+        document.body.appendChild(videoEl);
+      }
+      videoEl.srcObject = ev.streams[0];
+      videoEl.style.display = 'block';
+      videoEl.play().catch(() => {});
+      // The remote peer toggling their camera off removes their sender
+      // track and renegotiates, rather than ending this transceiver
+      // outright — that surfaces here as the received track muting, not
+      // as 'ended'. Mirror it back on unmute so a later re-toggle-on just
+      // works without needing a fresh ontrack (same transceiver, same
+      // track reused by the browser across mute/unmute).
+      ev.track.onmute = () => { videoEl.style.display = 'none'; };
+      ev.track.onunmute = () => { videoEl.style.display = 'block'; };
+      return;
+    }
     let audioEl = document.getElementById('call-remote-audio');
     if (!audioEl) {
       audioEl = document.createElement('audio');
@@ -3185,12 +3220,19 @@ function teardownPeerConnection(room) {
     room.localStream.getTracks().forEach(t => t.stop());
     room.localStream = null;
   }
+  if (room.localVideoStream) {
+    room.localVideoStream.getTracks().forEach(t => t.stop());
+    room.localVideoStream = null;
+  }
   const audioEl = document.getElementById('call-remote-audio');
   if (audioEl) audioEl.remove();
+  const videoEl = document.getElementById('call-remote-video');
+  if (videoEl) videoEl.remove();
   room.pendingIceCandidates = [];
   room.pendingOffer = null;
   room.callAcceptConfirmed = false;
   room.callNegotiated = false;
+  room.callVideoOn = false;
   room.callMuted = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
@@ -3278,6 +3320,37 @@ function toggleMute() {
   if (!room || !room.localStream) return;
   room.callMuted = !room.callMuted;
   room.localStream.getAudioTracks().forEach(t => { t.enabled = !room.callMuted; });
+  renderCallOverlay(room);
+}
+
+// Adding/removing the video track through an already-connected pc triggers
+// Phase 1's onnegotiationneeded handler automatically (now correctly gated
+// by room.callNegotiated, which is already true by the time a call is
+// 'active' — see setupPeerConnection) — no manual offer/answer code needed
+// here, same as any other renegotiation.
+async function toggleCamera() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || !room.pc) return;
+  if (!room.callVideoOn) {
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      room.localVideoStream = videoStream;
+      const track = videoStream.getVideoTracks()[0];
+      room.pc.addTrack(track, videoStream);
+      room.callVideoOn = true;
+    } catch (e) {
+      toast('Could not access camera');
+      return;
+    }
+  } else {
+    const sender = room.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+    if (sender) room.pc.removeTrack(sender);
+    if (room.localVideoStream) {
+      room.localVideoStream.getTracks().forEach(t => t.stop());
+      room.localVideoStream = null;
+    }
+    room.callVideoOn = false;
+  }
   renderCallOverlay(room);
 }
 
