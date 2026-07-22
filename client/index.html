@@ -1004,6 +1004,14 @@ body.select-mode .chat-ftr{display:none}
    inconsistent across engines. */
 .call-float-fade{display:inline-block;transition:transform .6s ease-out,opacity .6s ease-out;transform:translateY(-24px);opacity:0}
 .call-sink-fade{display:inline-block;transition:transform .5s ease-out,opacity .5s ease-out;transform:translateY(24px);opacity:0}
+/* Plain opacity fade, no transform/display change — used on .call-identity/
+   .call-actions/.call-reaction-picker themselves (see dissolveCallScreen),
+   which are flex CONTAINERS, unlike everything else Float & Fade targets.
+   Reusing .call-float-fade/.call-sink-fade there would force
+   display:inline-block on a flex box mid-transition, breaking its own
+   children's layout right as it's fading — this just fades opacity and
+   leaves layout alone. */
+.call-dissolve-hide{opacity:0;transition:opacity .4s ease}
 /* Higher specificity than .call-live-dot so animation:none actually wins
    and stops the infinite live-breathe keyframe — otherwise the running
    animation would keep overriding the transform this transition needs. */
@@ -6614,6 +6622,7 @@ async function dissolveCallScreen(room, duration) {
   if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`); return; }
 
   const floatOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-float-fade'); };
+  const fadeOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-dissolve-hide'); };
 
   floatOut('.call-tagline');
   await delay(200);
@@ -6624,8 +6633,25 @@ async function dissolveCallScreen(room, duration) {
   const dot = overlay.querySelector('.call-live-dot');
   if (dot) dot.classList.add('call-dot-expand');
   floatOut('.call-peer-name');
+  // The four floatOut calls above only ever match the OLD audio-call
+  // markup — video mode's top strip (.call-peer-name-compact/
+  // .call-timer-compact) is different markup entirely, so none of them
+  // touch it. Fading the whole .call-identity container here covers both:
+  // a harmless no-op for audio (its children are already invisible by
+  // this point) and what actually hides the video-mode top strip.
+  fadeOut('.call-identity');
   await delay(300);
   overlay.querySelectorAll('.call-btn-wrap').forEach(el => el.classList.add('call-sink-fade'));
+  // Same reasoning as .call-identity above, for the bottom: the frosted-
+  // pill grey background belongs to .call-actions itself (the container),
+  // not to the individual .call-btn-wrap children being sunk on the line
+  // above — without this, that grey pill stayed fully visible on screen
+  // through the entire rest of the dissolve (V mark, sand-disintegrating
+  // text) and only vanished abruptly when overlay.remove() finally ran at
+  // the very end. .call-reaction-picker is included too in case it was
+  // somehow still open at hangup.
+  fadeOut('.call-actions');
+  fadeOut('.call-reaction-picker');
   await delay(400);
   floatOut('.call-hdr-block');
   await delay(400);
