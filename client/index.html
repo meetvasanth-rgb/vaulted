@@ -944,7 +944,7 @@ body.select-mode .chat-ftr{display:none}
 .vanish-line2{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,0.35);letter-spacing:.1em;text-transform:uppercase}
 
 /* ── CALL SCREENS (outgoing / incoming / active) ─────────────────────── */
-.call-overlay{position:fixed;inset:0;background:#0A0908;display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease,background .3s ease;padding:calc(84px + env(safe-area-inset-top)) 32px 72px;box-sizing:border-box}
+.call-overlay{position:fixed;inset:0;background:var(--surface2);display:flex;flex-direction:column;align-items:center;justify-content:space-between;z-index:9997;opacity:0;transition:opacity .3s ease,background .3s ease;padding:calc(84px + env(safe-area-inset-top)) 32px 72px;box-sizing:border-box}
 .call-overlay.visible{opacity:1}
 /* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
    z-index) show through the overlay's own chrome once a remote video track
@@ -1045,8 +1045,8 @@ body.select-mode .chat-ftr{display:none}
    same reasoning as the timer-bar's "call button wrapping" fix. See the
    actionsButtonCount computation in renderCallOverlay for when this applies. */
 .call-actions.compact{gap:14px}
-.call-actions.compact .call-mute-btn,.call-actions.compact .call-speaker-btn,.call-actions.compact .call-camera-btn,.call-actions.compact .call-end-btn{width:50px;height:50px}
-.call-actions.compact .call-mute-btn svg,.call-actions.compact .call-speaker-btn svg,.call-actions.compact .call-camera-btn svg{width:18px;height:18px}
+.call-actions.compact .call-mute-btn,.call-actions.compact .call-speaker-btn,.call-actions.compact .call-camera-btn,.call-actions.compact .call-reaction-btn,.call-actions.compact .call-end-btn{width:50px;height:50px}
+.call-actions.compact .call-mute-btn svg,.call-actions.compact .call-speaker-btn svg,.call-actions.compact .call-camera-btn svg,.call-actions.compact .call-reaction-btn svg{width:18px;height:18px}
 .call-actions.compact .call-end-btn svg{width:20px;height:20px}
 .call-actions.compact .call-btn-label{font-size:9px;max-width:56px}
 /* Video mode: buttons group into one frosted pill capsule instead of
@@ -1061,9 +1061,9 @@ body.select-mode .chat-ftr{display:none}
 .call-actions.video-bar{background:rgba(50,50,50,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:999px;padding:10px 16px;gap:16px}
 .call-actions.video-bar .call-btn-label{display:none}
 .call-actions.video-bar .call-btn-wrap{gap:0}
-.call-actions.video-bar .call-mute-btn,.call-actions.video-bar .call-speaker-btn,.call-actions.video-bar .call-camera-btn{width:46px;height:46px;border:none;background:transparent}
-.call-actions.video-bar .call-mute-btn svg,.call-actions.video-bar .call-speaker-btn svg,.call-actions.video-bar .call-camera-btn svg{width:20px;height:20px}
-.call-actions.video-bar .call-mute-btn.muted,.call-actions.video-bar .call-speaker-btn.active,.call-actions.video-bar .call-camera-btn.active{background:rgba(255,255,255,.18)}
+.call-actions.video-bar .call-mute-btn,.call-actions.video-bar .call-speaker-btn,.call-actions.video-bar .call-camera-btn,.call-actions.video-bar .call-reaction-btn{width:46px;height:46px;border:none;background:transparent}
+.call-actions.video-bar .call-mute-btn svg,.call-actions.video-bar .call-speaker-btn svg,.call-actions.video-bar .call-camera-btn svg,.call-actions.video-bar .call-reaction-btn svg{width:20px;height:20px}
+.call-actions.video-bar .call-mute-btn.muted,.call-actions.video-bar .call-speaker-btn.active,.call-actions.video-bar .call-camera-btn.active,.call-actions.video-bar .call-reaction-btn.active{background:rgba(255,255,255,.18)}
 .call-actions.video-bar .call-end-btn{width:46px;height:46px}
 .call-actions.video-bar .call-end-btn svg{width:20px;height:20px}
 /* Tap-to-toggle chrome (see renderCallOverlay's click listener, attached
@@ -1075,11 +1075,31 @@ body.select-mode .chat-ftr{display:none}
    hidden so a re-tap lands on the video underneath, not on an invisible
    button. #call-local-video (PiP) is a sibling of .call-overlay, not a
    descendant, so it's structurally unreachable from these selectors —
-   "stays visible regardless" falls out for free. */
-.call-overlay.has-video .call-identity,.call-overlay.has-video .call-actions{transition:opacity .22s ease}
-.call-overlay.has-video.chrome-hidden .call-identity,.call-overlay.has-video.chrome-hidden .call-actions{opacity:0;pointer-events:none}
+   "stays visible regardless" falls out for free. call-reaction-picker is
+   included here too so it can never be left open and reachable while
+   the rest of the chrome is hidden — see renderCallOverlay's click
+   listener, which also explicitly closes it the moment chrome hides. */
+.call-overlay.has-video .call-identity,.call-overlay.has-video .call-actions,.call-overlay.has-video .call-reaction-picker{transition:opacity .22s ease}
+.call-overlay.has-video.chrome-hidden .call-identity,.call-overlay.has-video.chrome-hidden .call-actions,.call-overlay.has-video.chrome-hidden .call-reaction-picker{opacity:0;pointer-events:none}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.08em;text-align:center;max-width:90px}
+/* Reaction picker — same frosted-pill language as the video-mode button
+   bar, but shown in EITHER call mode (audio or video), unlike video-bar
+   itself. Sits as a normal-flow sibling directly above .call-actions
+   (see renderCallOverlay) rather than being absolutely positioned, so it
+   naturally pushes into place without needing to know the button row's
+   own height/position. */
+.call-reaction-picker{display:none;gap:10px;align-items:center;justify-content:center;background:rgba(50,50,50,.55);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:999px;padding:8px 14px;margin-bottom:14px}
+.call-reaction-picker.open{display:flex}
+.call-reaction-emoji-btn{background:none;border:none;font-size:26px;line-height:1;padding:4px;cursor:pointer;transition:transform .15s}
+.call-reaction-emoji-btn:active{transform:scale(1.3)}
+/* One floating reaction — position:fixed, appended straight to <body> (not
+   inside .call-overlay) so it's unaffected by chrome-hidden and by
+   overlay.innerHTML replacing the overlay's children on every render;
+   removed via the animationend listener in playCallReactionAnimation once
+   it's actually finished, not a parallel setTimeout guess. */
+.call-reaction-emoji{position:fixed;left:50%;bottom:190px;font-size:44px;line-height:1;transform:translateX(-50%);animation:call-reaction-float 1.8s ease-out forwards;pointer-events:none;z-index:9999}
+@keyframes call-reaction-float{0%{opacity:0;transform:translateX(-50%) translateY(0) scale(.5)}15%{opacity:1;transform:translateX(-50%) translateY(-20px) scale(1.15)}30%{transform:translateX(-50%) translateY(-40px) scale(1)}100%{opacity:0;transform:translateX(-50%) translateY(-190px) scale(1)}}
 
 .call-accept-btn,.call-decline-btn,.call-end-btn{border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative;box-sizing:border-box}
 
@@ -1107,10 +1127,10 @@ body.select-mode .chat-ftr{display:none}
    always-visible button that silently does nothing on unsupported
    platforms (iOS Safari has no equivalent API at all) is worse than no
    button. */
-.call-mute-btn,.call-speaker-btn,.call-camera-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
-.call-mute-btn.muted,.call-speaker-btn.active,.call-camera-btn.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
-.call-mute-btn:active,.call-speaker-btn:active,.call-camera-btn:active{transform:scale(.92)}
-.call-mute-btn svg,.call-speaker-btn svg,.call-camera-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
+.call-mute-btn,.call-speaker-btn,.call-camera-btn,.call-reaction-btn{width:64px;height:64px;border-radius:50%;background:transparent;border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-sizing:border-box;transition:transform .15s,background .2s ease,border-color .2s ease}
+.call-mute-btn.muted,.call-speaker-btn.active,.call-camera-btn.active,.call-reaction-btn.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.4)}
+.call-mute-btn:active,.call-speaker-btn:active,.call-camera-btn:active,.call-reaction-btn:active{transform:scale(.92)}
+.call-mute-btn svg,.call-speaker-btn svg,.call-camera-btn svg,.call-reaction-btn svg{width:22px;height:22px;fill:none;stroke:rgba(255,255,255,.85);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s ease}
 .call-speaker-btn svg{fill:rgba(255,255,255,.85);stroke:rgba(255,255,255,.85)}
 /* Full-bleed, sitting just behind .call-overlay (z-index one lower) so the
    overlay's own transparent-when-has-video background (above) lets it show
@@ -2020,6 +2040,11 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // from callVideoOn, which is about OUR OWN camera. callCameraFacing is
     // local-only too, only meaningful while callVideoOn — see swapCamera().
     callVideoOn: false, localVideoStream: null, remoteVideoActive: false, callCameraFacing: 'user',
+    // Whether the emoji strip is currently open — tracked here (not just a
+    // DOM class) because renderCallOverlay's overlay.innerHTML replaces the
+    // picker element on every render (any mute/camera/etc. change), which
+    // would otherwise silently close it out from under the person mid-pick.
+    reactionPickerOpen: false,
     // Answerer-side only: an offer that arrived before room.pc existed yet
     // (setupPeerConnection is async) — see processOffer/acceptCall.
     pendingOffer: null,
@@ -2703,6 +2728,13 @@ async function handleSignalMessage(room, type, payload) {
       room.pendingIceCandidates = room.pendingIceCandidates || [];
       room.pendingIceCandidates.push(payload.candidate);
     }
+  } else if (type === 'call-reaction') {
+    // Purely visual, purely live — see playCallReactionAnimation. No
+    // message record, nothing persisted; a stray reaction arriving after
+    // the call already ended (or with a malformed/missing payload) is
+    // just dropped.
+    if (room.callState !== 'active' || !payload || !payload.emoji) return;
+    playCallReactionAnimation(payload.emoji);
   }
 }
 
@@ -3187,14 +3219,24 @@ function renderCallOverlay(room) {
           </button>
           <div class="call-btn-label">Flip</div>
         </div>` : '';
-    // Mute + camera + end are always present now that every call has a
-    // camera toggle (Phase 2); speaker and flip are each conditional on top
-    // of that. At 4+ buttons the row's normal size/spacing (64px buttons,
-    // 36px gaps) overflows a narrow phone's viewport and clips at both
-    // edges — same class of bug as the timer-bar's call button wrapping
-    // fix (see git history), same fix shape: shrink to fit rather than
-    // overflow, only once the extra buttons actually push it past 3.
-    const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + 1 + (room.callVideoOn ? 1 : 0) + 1;
+    // Mute + camera + reaction + end are always present now (camera since
+    // Phase 2, reaction since this round); speaker and flip are each
+    // conditional on top of that. At 4+ buttons the row's normal size/
+    // spacing (64px buttons, 36px gaps) overflows a narrow phone's
+    // viewport and clips at both edges — same class of bug as the
+    // timer-bar's call button wrapping fix (see git history), same fix
+    // shape: shrink to fit rather than overflow. Every call — audio or
+    // video — now hits this threshold at minimum (mute+camera+reaction+
+    // end = 4), so compact sizing is effectively the normal state now,
+    // not just a video-call thing; it was already built to handle that.
+    const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + 1 + (room.callVideoOn ? 1 : 0) + 1 + 1;
+    const reactionBtnHtml = `
+        <div class="call-btn-wrap">
+          <button class="call-reaction-btn${room.reactionPickerOpen ? ' active' : ''}" onclick="toggleReactionPicker()" title="React">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
+          <div class="call-btn-label">React</div>
+        </div>`;
     // Gated on remoteVideoActive specifically, not callVideoOn — the
     // rationale for dropping the name/wordmark is "you can already see who
     // you're talking to," which is only actually true once the PEER's
@@ -3214,6 +3256,13 @@ function renderCallOverlay(room) {
       ${videoMode ? '' : callHeaderBlock()}
       <div class="call-identity${videoMode ? ' video-top' : ''}">${identityHtml}
       </div>
+      <div class="call-reaction-picker${room.reactionPickerOpen ? ' open' : ''}" id="call-reaction-picker">
+        <button class="call-reaction-emoji-btn" onclick="sendCallReaction('👊')">👊</button>
+        <button class="call-reaction-emoji-btn" onclick="sendCallReaction('❤️')">❤️</button>
+        <button class="call-reaction-emoji-btn" onclick="sendCallReaction('😢')">😢</button>
+        <button class="call-reaction-emoji-btn" onclick="sendCallReaction('😊')">😊</button>
+        <button class="call-reaction-emoji-btn" onclick="sendCallReaction('👍')">👍</button>
+      </div>
       <div class="call-actions${videoMode ? ' video-bar' : ''}${actionsButtonCount >= 4 ? ' compact' : ''}">
         <div class="call-btn-wrap">
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
@@ -3222,7 +3271,7 @@ function renderCallOverlay(room) {
         <div class="call-btn-wrap">
           <button class="call-camera-btn${room.callVideoOn ? ' active' : ''}" onclick="toggleCamera()" title="${room.callVideoOn ? 'Turn camera off' : 'Turn camera on'}">${cameraIcon}</button>
           <div class="call-btn-label">${room.callVideoOn ? 'Stop video' : 'Video'}</div>
-        </div>${flipBtnHtml}
+        </div>${flipBtnHtml}${reactionBtnHtml}
         <div class="call-btn-wrap">
           <button class="call-end-btn" onclick="hangupCall()" title="End call">${CALL_PHONE_ICON}</button>
           <div class="call-btn-label">End</div>
@@ -3258,8 +3307,22 @@ function renderCallOverlay(room) {
     // whether video was already active when the overlay was first created.
     overlay.addEventListener('click', (e) => {
       if (!overlay.classList.contains('has-video')) return; // nothing to toggle outside video mode
-      if (e.target.closest('.call-actions')) return; // never intercept a button-bar tap — End especially
-      overlay.classList.toggle('chrome-hidden');
+      // .call-reaction-picker is a SIBLING of .call-actions, not a descendant
+      // of it, so it needs its own exclusion here too — otherwise tapping
+      // between the emoji (but still within the picker's own pill) would
+      // fall through and hide chrome out from under an open picker.
+      if (e.target.closest('.call-actions, .call-reaction-picker')) return; // never intercept a button-bar tap — End especially
+      const hiding = overlay.classList.toggle('chrome-hidden');
+      if (hiding) {
+        // Otherwise the picker would silently reappear still open next time
+        // chrome is tapped back into view, with nothing the person did in
+        // between to explain why — same reasoning as the has-video reset
+        // above for chrome-hidden itself.
+        const room = rooms.get(activeCallRoomCode);
+        if (room) room.reactionPickerOpen = false;
+        const picker = document.getElementById('call-reaction-picker');
+        if (picker) picker.classList.remove('open');
+      }
     });
   }
 }
@@ -3425,6 +3488,7 @@ function teardownPeerConnection(room) {
   room.callVideoOn = false;
   room.remoteVideoActive = false;
   room.callCameraFacing = 'user';
+  room.reactionPickerOpen = false;
   room.callMuted = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
@@ -3622,6 +3686,42 @@ async function swapCamera() {
   room.callCameraFacing = newFacing;
   showLocalVideoPreview(room, newStream);
   renderCallOverlay(room);
+}
+
+// ── LIVE CALL REACTIONS ─────────────────────────────────────────────────
+// Purely a live moment, not a message: no record created, nothing written
+// to localStorage, nothing persisted anywhere — consistent with the rest
+// of this app's ephemeral-by-default design. Gone the moment the float
+// animation finishes, same on both ends.
+function toggleReactionPicker() {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room) return;
+  room.reactionPickerOpen = !room.reactionPickerOpen;
+  renderCallOverlay(room);
+}
+
+function sendCallReaction(emoji) {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room) return;
+  playCallReactionAnimation(emoji);
+  sendSignal(room, 'call-reaction', { emoji });
+  room.reactionPickerOpen = false;
+  renderCallOverlay(room);
+}
+
+// Shared by the sender's own immediate local playback and by the receiving
+// side's handleSignalMessage branch, so the two ends can never end up with
+// visibly different animations for the same reaction. Appended straight to
+// <body> — not inside #call-overlay — so overlay.innerHTML replacing the
+// overlay's children on the next render (mute toggle, etc.) can never cut
+// the animation short, and tap-to-toggle's chrome-hidden has no bearing on
+// it either, matching a reaction being a fleeting moment, not UI chrome.
+function playCallReactionAnimation(emoji) {
+  const el = document.createElement('div');
+  el.className = 'call-reaction-emoji';
+  el.textContent = emoji;
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove(), { once: true });
 }
 
 // ── KEY VERIFICATION ────────────────────────────────────────────────────
