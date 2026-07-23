@@ -269,6 +269,26 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .room-tab-add{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:#fff;border:1px dashed #D0CAC0;color:#9A8C7E;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;padding:0}
 .room-tab-add:hover{border-color:var(--gold);color:var(--gold)}
 .room-tab-add:disabled{opacity:.4;cursor:not-allowed}
+.room-tab-add svg{width:13px;height:13px}
+
+/* -- FULL VAULT LIST PAGE (separate from the compact tab strip above) -- */
+#s-vault-list{flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:#fff}
+.vault-list-hdr{flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:env(safe-area-inset-top) 12px 0;height:calc(56px + env(safe-area-inset-top));display:flex;align-items:center;gap:10px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.vault-list-back{flex-shrink:0;width:30px;height:30px;border-radius:50%;border:none;background:none;color:#6A6460;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.vault-list-back:hover{background:#F5F5F5}
+.vault-list-back svg{width:18px;height:18px}
+.vault-list-title{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:400;color:#1A1916}
+.vault-list-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.vault-list-empty{padding:60px 24px;text-align:center;color:#9A8C7E;font-size:13px}
+.vault-list-row{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:0.5px solid #F0EBE3;cursor:pointer;transition:background .15s}
+.vault-list-row:active{background:#F7F4F0}
+.vault-list-row-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%;background:#CCC}
+.vault-list-row-dot.online{background:var(--green)}
+.vault-list-row-name{flex:1;min-width:0;font-size:14px;font-weight:500;color:#1A1510;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vault-list-row-badge{flex-shrink:0;font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:8px;font-weight:600}
+.vault-list-row-badge.temp{background:var(--gold-dim,rgba(184,151,62,0.12));color:#8A6D1F}
+.vault-list-row-badge.perm{background:rgba(74,155,111,0.12);color:#337A54}
+.vault-list-row-unread{flex-shrink:0;background:#C0392B;color:#fff;border-radius:9px;min-width:18px;height:18px;font-size:11px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;line-height:1;font-weight:600}
 /* -- IN-ROOM DISAPPEARING-TIMER CONTROL (+ call button) -- */
 /* space-between rather than center now that the call button lives here too
    — keeps the timer control grouped on one side and the call button
@@ -1528,6 +1548,21 @@ body.select-mode .chat-ftr{display:none}
     </button>
   </div>
 </div>
+</div>
+
+<!-- VAULT LIST — full-page listing of every open room, separate from the
+     compact #room-tabs strip. That strip has to truncate names and can only
+     show so many tabs before scrolling gets awkward; this page trades
+     compactness for a full-width row per vault. Deliberately does NOT show
+     any message content/preview — see renderVaultList() for why. -->
+<div id="s-vault-list" class="screen">
+  <div class="vault-list-hdr">
+    <button class="vault-list-back" onclick="showScreen('s-chat')" title="Back" aria-label="Back">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="vault-list-title">Your vaults</div>
+  </div>
+  <div class="vault-list-body" id="vault-list-body"></div>
 </div>
 
 <!-- CLOSED -->
@@ -3965,6 +4000,7 @@ function showScreen(id) {
     const btn = document.getElementById('setup-btn');
     if (btn) btn.disabled = false;
   }
+  if (id === 's-vault-list') renderVaultList();
   if (id === 's-landing') {
     refreshInstallUI();
     // Computed live every time landing is shown rather than toggled
@@ -4652,32 +4688,74 @@ function updateHeaderRoomLabel(room) {
 
 function renderRoomTabs() {
   const wrap = document.getElementById('room-tabs');
-  if (!wrap) return;
-  if (rooms.size === 0) { wrap.classList.remove('show'); wrap.innerHTML = ''; return; }
-  wrap.classList.add('show');
+  if (wrap) {
+    if (rooms.size === 0) {
+      wrap.classList.remove('show'); wrap.innerHTML = '';
+    } else {
+      wrap.classList.add('show');
+      let html = '';
+      for (const room of rooms.values()) {
+        const active = room.code === activeRoomCode;
+        const rawLabel = roomDisplayLabel(room);
+        const label = rawLabel.length > 14 ? rawLabel.slice(0, 12) + '…' : rawLabel;
+        html += `<div class="room-tab${active ? ' active' : ''}" data-room="${room.code}">
+          <span class="rt-dot${room.peerOnline ? ' online' : ''}"></span>
+          <span>${escHtml(label)}</span>
+          ${room.unread > 0 && !active ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
+        </div>`;
+      }
+      html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add vault"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>`;
+      html += `<button type="button" class="room-tab-add" id="vault-list-btn" title="All vaults"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>`;
+      wrap.innerHTML = html;
+      wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
+        const room = rooms.get(el.dataset.room);
+        // A tab can exist for a room that was restored from a previous session
+        // but never actually joined by a peer (see resumeWaitingScreen) — route
+        // back to its waiting screen instead of rendering it as if connected.
+        if (room && !room.everOnline) resumeWaitingScreen(room);
+        else setActiveRoom(el.dataset.room);
+      }; });
+      const addBtn = document.getElementById('room-tab-add');
+      if (addBtn) addBtn.onclick = () => addRoomFlow();
+      const listBtn = document.getElementById('vault-list-btn');
+      if (listBtn) listBtn.onclick = () => showScreen('s-vault-list');
+    }
+  }
+  // Full vault-list page (if currently open) has no polling of its own —
+  // it just piggybacks on every place that already calls renderRoomTabs()
+  // to stay live, same signal the compact tab strip uses.
+  if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+}
+
+// Full-page listing of every open vault — the compact #room-tabs strip has
+// to truncate names and run out of horizontal room fast; this trades that
+// for one full-width row per vault. Deliberately never shows any message
+// content/preview: the app never persists message content anywhere
+// (room.messages only ever lives in memory — see CLAUDE.md), and this
+// shouldn't become the one place that surfaces recent conversation text.
+function renderVaultList() {
+  const body = document.getElementById('vault-list-body');
+  if (!body) return;
+  if (rooms.size === 0) {
+    body.innerHTML = `<div class="vault-list-empty">No vaults open.</div>`;
+    return;
+  }
   let html = '';
   for (const room of rooms.values()) {
-    const active = room.code === activeRoomCode;
-    const rawLabel = roomDisplayLabel(room);
-    const label = rawLabel.length > 14 ? rawLabel.slice(0, 12) + '…' : rawLabel;
-    html += `<div class="room-tab${active ? ' active' : ''}" data-room="${room.code}">
-      <span class="rt-dot${room.peerOnline ? ' online' : ''}"></span>
-      <span>${escHtml(label)}</span>
-      ${room.unread > 0 && !active ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
+    const label = roomDisplayLabel(room);
+    html += `<div class="vault-list-row" data-room="${room.code}">
+      <span class="vault-list-row-dot${room.peerOnline ? ' online' : ''}"></span>
+      <span class="vault-list-row-name">${escHtml(label)}</span>
+      <span class="vault-list-row-badge ${room.persistent ? 'perm' : 'temp'}">${room.persistent ? 'Permanent' : 'Temporary'}</span>
+      ${room.unread > 0 ? `<span class="vault-list-row-unread">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
     </div>`;
   }
-  html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add vault"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>`;
-  wrap.innerHTML = html;
-  wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
+  body.innerHTML = html;
+  body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => {
     const room = rooms.get(el.dataset.room);
-    // A tab can exist for a room that was restored from a previous session
-    // but never actually joined by a peer (see resumeWaitingScreen) — route
-    // back to its waiting screen instead of rendering it as if connected.
     if (room && !room.everOnline) resumeWaitingScreen(room);
-    else setActiveRoom(el.dataset.room);
+    else { setActiveRoom(el.dataset.room); showScreen('s-chat'); }
   }; });
-  const addBtn = document.getElementById('room-tab-add');
-  if (addBtn) addBtn.onclick = () => addRoomFlow();
 }
 
 function setActiveRoom(code) {
