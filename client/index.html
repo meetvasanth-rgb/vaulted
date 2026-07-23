@@ -104,7 +104,13 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .logo-name.go{opacity:1}
 .logo-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:10px;opacity:1}
 .logo-sub.go{opacity:1}
-.tagline{font-family:'Cormorant Garamond',serif;font-size:clamp(22px,4vw,32px);font-weight:300;font-style:italic;color:var(--cream2);letter-spacing:0.04em;text-align:center;line-height:1.6;max-width:480px;margin:0 auto 52px;opacity:1}
+/* transition here is specifically for the tagline ROTATION (see
+   startLandingTaglineRotation) — .tagline is only ever used on #logoTag,
+   so adding it to the base rule is safe; nothing else opacity-toggles
+   this element via .go (that class is a no-op for opacity on this
+   element already, see the identical value below — vestigial from a
+   shared entrance-animation pattern with the other logo elements). */
+.tagline{font-family:'Cormorant Garamond',serif;font-size:clamp(22px,4vw,32px);font-weight:300;font-style:italic;color:var(--cream2);letter-spacing:0.04em;text-align:center;line-height:1.6;max-width:480px;margin:0 auto 52px;opacity:1;transition:opacity .35s ease}
 .tagline.go{opacity:1}
 .cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%;max-width:660px;opacity:1}
 .cards.go{opacity:1}
@@ -1268,7 +1274,7 @@ body.select-mode .chat-ftr{display:none}
       <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
     </div>
 
-    <p class="tagline" id="logoTag" style="margin-bottom:14px">Join. Talk. Leave. Nothing remains.</p>
+    <p class="tagline" id="logoTag" style="margin-bottom:14px">Most apps say they don't read your messages. They don't have to — the pattern of who you talk to says enough.</p>
 
     <!-- Clarifies who does what before the cards below — the create/join
          split isn't obvious on a first visit with no prior context. Uses
@@ -6903,12 +6909,51 @@ if (window.visualViewport) {
 }
 
 // ── LANDING ANIMATION ────────────────────────────────────────────────────
+// Rotates #logoTag through these four instead of the old single static
+// line. Order matters (explicitly requested) — not shuffled, just cycles
+// 0→1→2→3→0.
+const LANDING_TAGLINES = [
+  "Most apps say they don't read your messages. They don't have to — the pattern of who you talk to says enough.",
+  "Most apps collect your data first, then promise to protect it. Vaultlix skips the first part.",
+  "Even encrypted messages sit on your phone until someone unlocks it. Ours don't stay anywhere.",
+  "A locked door is only as good as who's holding the key. We never hold one.",
+];
+// Index persists across visits to the landing screen on purpose — coming
+// back to landing restarts the TIMER (see stopLandingTaglineRotation below)
+// but re-showing tagline #1 every single time would make the "rotating
+// set" feel like it never actually progresses for anyone who leaves and
+// returns often.
+let landingTaglineIndex = 0;
+let landingTaglineInterval = null;
+
+function startLandingTaglineRotation() {
+  // Clear first — triggerLandingAnim() runs on every visit to landing, and
+  // without this each visit would stack another setInterval on top of any
+  // still running from before, compounding into faster and faster (and
+  // eventually simultaneous, garbled) swaps the more times landing is shown.
+  stopLandingTaglineRotation();
+  landingTaglineInterval = setInterval(() => {
+    const el = document.getElementById('logoTag');
+    if (!el) return;
+    el.style.opacity = '0';
+    setTimeout(() => {
+      landingTaglineIndex = (landingTaglineIndex + 1) % LANDING_TAGLINES.length;
+      el.textContent = LANDING_TAGLINES[landingTaglineIndex];
+      el.style.opacity = '1';
+    }, 350); // matches .tagline's own transition:opacity .35s
+  }, 5500);
+}
+function stopLandingTaglineRotation() {
+  if (landingTaglineInterval) { clearInterval(landingTaglineInterval); landingTaglineInterval = null; }
+}
+
 function triggerLandingAnim() {
   document.getElementById('logoRule')?.classList.add('go');
   document.getElementById('logoName')?.classList.add('go');
   document.getElementById('logoSub')?.classList.add('go');
   document.getElementById('logoTag')?.classList.add('go');
   document.getElementById('cards')?.classList.add('go');
+  startLandingTaglineRotation();
 
   // Staggered card entrance — plain opacity/transform TRANSITION (see the
   // .card-hidden comment in CSS for why this isn't a @keyframes animation).
