@@ -4668,7 +4668,14 @@ function renderRoomTabs() {
   }
   html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add vault"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>`;
   wrap.innerHTML = html;
-  wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => setActiveRoom(el.dataset.room); });
+  wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
+    const room = rooms.get(el.dataset.room);
+    // A tab can exist for a room that was restored from a previous session
+    // but never actually joined by a peer (see resumeWaitingScreen) — route
+    // back to its waiting screen instead of rendering it as if connected.
+    if (room && !room.everOnline) resumeWaitingScreen(room);
+    else setActiveRoom(el.dataset.room);
+  }; });
   const addBtn = document.getElementById('room-tab-add');
   if (addBtn) addBtn.onclick = () => addRoomFlow();
 }
@@ -4702,6 +4709,8 @@ function setActiveRoom(code) {
 // instead of setActiveRoom's silent no-op on an unknown code.
 function switchToRoomByCode(code) {
   if (!code || !rooms.has(code)) return false;
+  const room = rooms.get(code);
+  if (!room.everOnline) { resumeWaitingScreen(room); return true; }
   setActiveRoom(code);
   showScreen('s-chat');
   return true;
@@ -6147,6 +6156,26 @@ function openJoinFromLink(code) {
   if (codeInput) codeInput.value = code;
 }
 
+// Puts the waiting screen back on-screen for a room that's saved locally
+// but has never actually had a peer join it — reopening the app used to
+// drop straight into s-chat for these (composer correctly disabled, but
+// still showing the connected-looking chat layout instead of the obvious
+// "waiting for the other person" screen with the shareable code front and
+// center). Mirrors the exact DOM setup handleSetup()'s create branch does
+// right after /api/create succeeds. Does not itself start polling — callers
+// are responsible for that (startWaitingForPeer, called separately).
+function resumeWaitingScreen(room) {
+  pendingRoomCode = room.code;
+  revealCode(room.code);
+  const codeLabel = document.getElementById('code-label');
+  if (codeLabel) codeLabel.textContent = room.persistent ? 'Permanent vault code' : 'Secret code';
+  const wNote = document.getElementById('w-note');
+  if (wNote) wNote.textContent = room.persistent ? `Permanent vault "${room.code}" is ready — it won't expire. Share it once, reopen it anytime.` : 'Waiting for the other person to join…';
+  const shareBtn = document.getElementById('share-code-btn');
+  if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
+  showScreen('s-waiting');
+}
+
 // Polls /api/poll on the s-waiting screen until the other person shows up.
 // Pulled out of handleSetup() so regenerateAnonLink() (revoke-and-reissue a
 // permanent room) can reuse the exact same wait-for-peer behavior instead of
@@ -7161,7 +7190,10 @@ window.addEventListener('load', async () => {
 
   if (restoredAny) {
     for (const room of rooms.values()) {
-      room.messages.push({ id: 'sys-reconnect-' + room.code, kind: 'sys', content: 'Reconnected' });
+      // "Reconnected" only makes sense for a room that was actually
+      // connected before — a room saved right after creation, whose peer
+      // never joined, was never connected in the first place.
+      if (room.everOnline) room.messages.push({ id: 'sys-reconnect-' + room.code, kind: 'sys', content: 'Reconnected' });
     }
     // A notification tap that had to open a fresh window (app wasn't
     // already running) carries its target room as a ?room= URL param — see
@@ -7181,11 +7213,28 @@ window.addEventListener('load', async () => {
       : (joinLinkCode && rooms.has(joinLinkCode)) ? joinLinkCode
       : null;
     const preferred = loadActiveRoomCode();
-    const activate = notifyCode || ((preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value);
-    showScreen('s-chat');
-    setActiveRoom(activate);
+    let activate = notifyCode || ((preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value);
+    // An unjoined room only ends up as the pick above if it was the last
+    // (or only) room open — if a genuinely connected room is also open,
+    // show that instead of stranding the person on a waiting screen with
+    // no way to reach a room they can actually use (the room-tabs switcher
+    // only exists on s-chat, not on s-waiting).
+    let activateRoom = rooms.get(activate);
+    if (activateRoom && !activateRoom.everOnline) {
+      const joined = [...rooms.values()].find(r => r.everOnline);
+      if (joined) { activate = joined.code; activateRoom = joined; }
+    }
+    if (activateRoom && !activateRoom.everOnline) {
+      resumeWaitingScreen(activateRoom);
+    } else {
+      showScreen('s-chat');
+      setActiveRoom(activate);
+    }
     hideRestoreSkeleton();
-    for (const room of rooms.values()) startRoomPolling(room);
+    for (const room of rooms.values()) {
+      if (room.everOnline) startRoomPolling(room);
+      else startWaitingForPeer(room);
+    }
     // Drop the param so a later refresh of this same tab doesn't keep
     // re-forcing this room over whatever the user switches to afterward.
     if (urlRoomCode) history.replaceState(null, '', location.pathname);
