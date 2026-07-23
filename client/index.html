@@ -127,7 +127,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .card-icon{width:34px;height:34px;border-radius:2px;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
 .card-icon svg{width:16px;height:16px;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .card-title{font-size:13px;font-weight:500;color:var(--cream);margin-bottom:4px}
-.card-desc{font-size:11px;color:var(--muted);line-height:1.6}
+.card-desc{font-size:11px;color:var(--muted);line-height:1.6;font-style:italic}
 .landing-footer{position:fixed;bottom:0;left:0;right:0;text-align:center;font-size:10px;color:var(--hint);letter-spacing:.08em;text-transform:uppercase;padding:14px;background:linear-gradient(transparent,var(--black) 40%);}
 
 /* On a shorter viewport (most phones once the browser chrome/address bar
@@ -461,7 +461,7 @@ body.select-mode .chat-ftr{display:none}
   .tagline{font-size:16px !important;margin-bottom:36px}
   .card{padding:16px 14px}
   .card-title{font-size:13px}
-  .card-desc{font-size:12px}
+  .card-desc{font-size:12px;font-style:italic}
   .setup-card,.waiting-card,.closed-card{padding:24px 18px}
   .code-value{font-size:22px}
   .chat-hdr{height:calc(46px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 12px 0}
@@ -1293,7 +1293,7 @@ body.select-mode .chat-ftr{display:none}
         </div>
         <div style="text-align:left">
           <div class="card-title">Temporary vault</div>
-          <div class="card-desc">Get a secret code. Share it once. Gone in a day.</div>
+          <div class="card-desc">Opens for one conversation, then closes for good — gone within a day.</div>
         </div>
         <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--hint);fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0;margin-left:auto"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
@@ -1304,7 +1304,7 @@ body.select-mode .chat-ftr{display:none}
         </div>
         <div style="text-align:left">
           <div class="card-title">Permanent vault</div>
-          <div class="card-desc">Pick a name. Never expires. Reopen it with the same code anytime.</div>
+          <div class="card-desc">Opens anytime you return — stays yours until you choose to close it.</div>
         </div>
         <svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:var(--hint);fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0;margin-left:auto"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
