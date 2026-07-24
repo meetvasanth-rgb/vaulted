@@ -16,6 +16,8 @@
 <link rel="manifest" href="/manifest.json"/>
 <link rel="apple-touch-icon" href="/icons/icon-1024.png"/>
 <title>Vaultlix</title>
+<meta name="description" content="Vaultlix is an anonymous, end-to-end encrypted chat app. No accounts, no phone numbers — create a private vault, share the code, talk, then it's gone for good.">
+<link rel="canonical" href="https://vaultlix.com/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Vaultlix">
 <meta property="og:title" content="Vaultlix">
@@ -1271,6 +1273,33 @@ body.select-mode .chat-ftr{display:none}
 .settings-about-rule{width:30px;height:1px;background:#B8973E}
 .settings-about-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:#1A1510}
 </style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Vaultlix",
+  "description": "Anonymous, end-to-end encrypted 1:1 chat with no accounts and nothing saved.",
+  "url": "https://vaultlix.com/",
+  "applicationCategory": "CommunicationApplication",
+  "operatingSystem": "Any (Progressive Web App)",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no accounts, no phone numbers, nothing saved. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived." } },
+    { "@type": "Question", "name": "Do I need an account or a phone number?", "acceptedAnswer": { "@type": "Answer", "text": "No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it." } },
+    { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "There's no identity system to unmask — Vaultlix doesn't know who you are and doesn't keep a persistent profile tied to any device or account." } },
+    { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — messages and voice/video calls are both end-to-end encrypted, decrypted only on the other person's device, with keys that never leave either device." } },
+    { "@type": "Question", "name": "What happens when I close a vault?", "acceptedAnswer": { "@type": "Answer", "text": "It's deleted immediately, for both people, along with everything inside it. Not archived, not hidden — gone." } },
+    { "@type": "Question", "name": "Temporary vs. permanent vault?", "acceptedAnswer": { "@type": "Answer", "text": "A temporary vault is for one conversation and expires within a day. A permanent vault never expires — reopen it anytime with the same code." } },
+    { "@type": "Question", "name": "Can more than two people join?", "acceptedAnswer": { "@type": "Answer", "text": "No — Vaultlix is built for one-to-one conversations only." } }
+  ]
+}
+</script>
 </head>
 <body>
 
@@ -1288,7 +1317,7 @@ body.select-mode .chat-ftr{display:none}
         <div style="width:32px;height:32px;border:0.5px solid var(--gold-border);border-radius:3px;display:flex;align-items:center;justify-content:center">
           <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:400;color:var(--gold)">V</span>
         </div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaultlix</div>
+        <h1 style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaultlix<span style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"> — Anonymous End-to-End Encrypted Chat, No Login Required</span></h1>
       </div>
       <div class="logo-rule" id="logoRule" style="margin:0 auto 20px"></div>
       <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
@@ -1358,6 +1387,8 @@ body.select-mode .chat-ftr{display:none}
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-privacy')">Privacy</span>
   <span style="margin:0 4px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-terms')">Terms</span>
+  <span style="margin:0 6px">·</span>
+  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-faq')">FAQ</span>
 </div>
 
   <!-- iOS Safari persistent install banner — lives inside #s-landing so it
@@ -1745,6 +1776,60 @@ body.select-mode .chat-ftr{display:none}
     <div class="legal-section">
       <h3>Contact</h3>
       <p>For any questions regarding these terms, contact us at <strong>legal@vaultlix.com</strong></p>
+    </div>
+
+    <div class="legal-contact">
+      vaultlix.com · Anonymous Private Messaging · Chennai, India
+    </div>
+  </div>
+</div>
+
+<!-- ══ FAQ ══ -->
+<div id="s-faq" class="screen">
+  <div class="legal-card">
+    <button class="legal-back" onclick="showScreen('s-landing');triggerLandingAnim()">
+      ← Back to Vaultlix
+    </button>
+    <div class="legal-logo">
+      <div class="rule"></div>
+      <span>Vaultlix</span>
+    </div>
+    <div class="legal-title">Frequently Asked Questions</div>
+    <div class="legal-date">vaultlix.com</div>
+
+    <div class="legal-section">
+      <h3>What is Vaultlix?</h3>
+      <p>A private chat app for two people — no accounts, no phone numbers, nothing saved. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>Do I need an account or a phone number?</h3>
+      <p>No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>Is it actually anonymous?</h3>
+      <p>There's no identity system to unmask — Vaultlix doesn't know who you are and doesn't keep a persistent profile tied to any device or account.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>Is it end-to-end encrypted?</h3>
+      <p>Yes — messages and voice/video calls are both end-to-end encrypted, decrypted only on the other person's device, with keys that never leave either device.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>What happens when I close a vault?</h3>
+      <p>It's deleted immediately, for both people, along with everything inside it. Not archived, not hidden — gone.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>Temporary vs. permanent vault?</h3>
+      <p>A temporary vault is for one conversation and expires within a day. A permanent vault never expires — reopen it anytime with the same code.</p>
+    </div>
+
+    <div class="legal-section">
+      <h3>Can more than two people join?</h3>
+      <p>No — Vaultlix is built for one-to-one conversations only.</p>
     </div>
 
     <div class="legal-contact">

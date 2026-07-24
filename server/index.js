@@ -196,6 +196,17 @@ function resErr(res, msg, status=400) {
 
 function serveStatic(req, res) {
   let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+  // Explicit route, ahead of the SPA catch-all below — without this, a
+  // request for /robots.txt falls through to the readFile-miss branch and
+  // silently gets served index.html instead (wrong content, wrong
+  // Content-Type). No sitemap.xml yet — not worth it until there's more
+  // than one real page.
+  if (url === '/robots.txt') {
+    const body = 'User-agent: *\nAllow: /\n';
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
   // Extension-less route for the install page — without this, a request for
   // "/install" (no ".html") misses the readFile below, falls through to the
   // SPA catch-all, and silently serves the main app instead of install.html.
