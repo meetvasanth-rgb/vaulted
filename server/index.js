@@ -355,7 +355,6 @@ async function api(path, method, d, p, res, ip) {
   if (path==='/api/join' && method==='POST') {
     const roomCode = (d.code||'').toLowerCase().trim();
     const room = rooms.get(roomCode);
-    if (!room) return resErr(res,'Room not found.',404);
 
     // Rejoin with saved token — an existing session token is itself the
     // credential for continued access, so this branch intentionally comes
@@ -365,7 +364,12 @@ async function api(path, method, d, p, res, ip) {
     // (it isn't kept in memory across a reload), so every reload of one of
     // these rooms was rejected as "Incorrect password" even with a
     // perfectly valid saved session.
-    if (d.token && room.members.has(d.token)) {
+    //
+    // Deliberately checked (and returned) before the rate limit below: a
+    // possessed valid token is already proof of membership, so someone with
+    // a flaky connection reloading repeatedly must never be able to lock
+    // themselves out of their own room.
+    if (d.token && room && room.members.has(d.token)) {
       const m = room.members.get(d.token);
       m.lastSeen = Date.now();
       if (d.pubKey) m.pubKey = d.pubKey;
@@ -378,6 +382,22 @@ async function api(path, method, d, p, res, ip) {
       for (const [t,mb] of room.members) if (t!==d.token) { peerPubKey = mb.pubKey; peerName = mb.name; }
       return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
     }
+
+    // Everything past this point is either a fresh join or a probe for a
+    // room that may not even exist — exactly the path that let the ~1.28M
+    // vault-code keyspace get swept in ~20 minutes at 1000 req/s with no
+    // limit at all here before this. 20/10min is generous enough that a
+    // real user opening a few vaults never notices it (this app's own
+    // 5-open-rooms cap is the practical ceiling anyway), but it turns that
+    // sweep into something computationally infeasible. Deliberately NOT
+    // tightened further — mobile carriers (India especially) put many real
+    // users behind one shared CGNAT IP, and this has to stay generous
+    // enough not to collide with that.
+    if (rateLimited(`join:${ip}`, 20, 10 * 60 * 1000)) {
+      return resErr(res, 'Too many join attempts from this connection — try again in a few minutes.', 429);
+    }
+
+    if (!room) return resErr(res,'Room not found.',404);
 
     if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);
 
