@@ -271,9 +271,34 @@ const srv = http.createServer((req, res) => {
   }
   const u = new URL(req.url, 'http://x');
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
+  // Body was accumulated here with no size cap at all — an attacker could
+  // stream unbounded data into memory before any handler or auth ever ran.
+  // The realistic ceiling isn't the "few hundred KB" a text message or a
+  // compressed photo needs — file/GIF attachments skip client-side
+  // compression entirely (compressImageFile only touches non-GIF images,
+  // and the generic "File" attach option never compresses anything), so a
+  // full MAX_FILE_SIZE (10MB) attachment is legitimate. That raw file goes
+  // through base64 -> JSON-wrap -> AES-GCM encrypt -> base64 AGAIN
+  // (encryptMsg), which was measured (not guessed) to inflate a 10MB file
+  // to ~17.78MB on the wire — a 5-minute voice note came out far smaller
+  // (~8.17MB, measured from this app's actual MediaRecorder default
+  // bitrate, ~129kbps). 20MB gives real attachments comfortable headroom
+  // above that measured ~17.78MB ceiling while still putting a hard,
+  // finite limit on how much any single request can make this process buffer.
+  const MAX_BODY_BYTES = 20 * 1024 * 1024;
   let body='';
-  req.on('data',d=>body+=d);
+  let bodyTooLarge = false;
+  req.on('data', d => {
+    if (bodyTooLarge) return;
+    body += d;
+    if (body.length > MAX_BODY_BYTES) {
+      bodyTooLarge = true;
+      try { resErr(res, 'Request body too large.', 413); } catch(e) {}
+      req.destroy();
+    }
+  });
   req.on('end',()=>{
+    if (bodyTooLarge) return;
     let d={};
     try { if(body) d=JSON.parse(body); } catch{}
     // api() is async now (password hashing awaits scrypt) but still responds
@@ -890,24 +915,47 @@ async function api(path, method, d, p, res, ip) {
   // to be a GET with code/token as URL query parameters, fired every 2.5s
   // while a room is open, which meant the same standard infrastructure
   // access-log exposure applied here too. Moved to POST + JSON body.
+  //
+  // Also requires d.token to actually be a member now — it didn't check
+  // membership at all before, so anyone who knew a room code (no token
+  // needed) could read whether the other member was typing. Low severity
+  // (read-only, leaks only a typing bit, not content) but worth closing for
+  // consistency with every other room-scoped endpoint. Failing silently
+  // with {typing:false} rather than a 403 is deliberate: this must not
+  // become a room-existence oracle (a real room with no membership and a
+  // nonexistent room both need to look identical from the outside).
   if (path==='/api/check_typing' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return res200(res,{typing:false});
+    if (!room || !room.members.has(d.token)) return res200(res,{typing:false});
     const now = Date.now();
     let typing = false;
     for (const [t,m] of room.members) if (t!==d.token && m.typing && now-m.typing<3000) typing=true;
     return res200(res,{typing});
   }
 
-  // POST /api/leave
+  // POST /api/leave — previously had NO auth check at all: it read d.code,
+  // deleted whatever member matched d.token (a no-op if that token wasn't
+  // actually a member), and pushed a system message using the caller's own
+  // unverified d.name — anyone who merely knew a vault code could forge a
+  // "${d.name} left" message into a room they were never part of, with no
+  // length cap on d.name, no cap on room.msgs growth (the 100-message trim
+  // only ever ran in /api/send), and no rate limit. Same auth pattern as
+  // /api/clear-chat above: confirm room, then confirm actual membership,
+  // and derive the display name from the AUTHENTICATED member (m.name) —
+  // never from d.name — before touching anything.
   if (path==='/api/leave' && method==='POST') {
     const room = rooms.get(d.code);
-    if (room) {
-      room.members.delete(d.token);
-      room.msgs.push({ seq:++room.seq, id:uid(), type:'system', content:`${d.name} left`, ts:Date.now() });
-      if (room.members.size===0) rooms.delete(d.code);
-      else room.lastActivity = Date.now();
+    if (!room) return resErr(res,'Room not found.',404);
+    const m = room.members.get(d.token);
+    if (!m) return resErr(res,'Not in room.',403);
+    if (rateLimited(`leave:${ip}`, 20, 10 * 60 * 1000)) {
+      return resErr(res, 'Too many leave attempts from this connection — try again in a few minutes.', 429);
     }
+    room.members.delete(d.token);
+    room.lastActivity = Date.now();
+    room.msgs.push({ seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
+    if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length-100);
+    if (room.members.size===0) rooms.delete(d.code);
     return res200(res,{ok:true});
   }
 
