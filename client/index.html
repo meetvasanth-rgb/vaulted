@@ -412,6 +412,11 @@ body.select-mode #chat-body .msg{opacity:.55;transition:opacity .15s}
 body.select-mode #chat-body .msg.msg-selected{opacity:1}
 body.select-mode .chat-ftr{display:none}
 .sys-msg{align-self:center;font-size:12px;color:#999;background:rgba(0,0,0,0.04);border-radius:20px;padding:5px 16px;text-align:center;font-style:italic;margin:6px 0}
+/* One-time verify nudge is a full sentence, not a short "X joined"-style
+   line — left-aligned and width-capped so it reads as a paragraph inside
+   the pill instead of stretching edge-to-edge on wide viewports. */
+.sys-msg-nudge{max-width:280px;text-align:left;line-height:1.5}
+.sys-msg-link{color:var(--gold);text-decoration:underline;text-underline-offset:2px;cursor:pointer;font-style:normal}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
 .typing-indicator.show{display:flex}
 .t-dot{width:5px;height:5px;border-radius:50%;background:#AAA;animation:typing-bounce .9s infinite}
@@ -2462,6 +2467,37 @@ function markMilestoneShown(code, id) {
   } catch(e) {}
 }
 let currentMilestone = null;
+
+// ── ONE-TIME "VERIFY THIS CONVERSATION" NUDGE ──────────────────────────
+// Shown exactly once ever per room, the first time a peer actually joins —
+// not on every reconnect. Own dedicated key, same isolation reasoning as
+// NUDGE_DISMISSED_KEY/MILESTONES_SHOWN_KEY above — never touches the
+// per-room session blob that holds the E2E keypair.
+const VERIFY_NUDGE_SHOWN_KEY = 'vaultlix_verify_nudge_shown';
+function loadVerifyNudgeShownMap() {
+  try { return JSON.parse(localStorage.getItem(VERIFY_NUDGE_SHOWN_KEY) || '{}'); } catch(e) { return {}; }
+}
+function markVerifyNudgeShown(code) {
+  try {
+    const map = loadVerifyNudgeShownMap();
+    map[code] = true;
+    localStorage.setItem(VERIFY_NUDGE_SHOWN_KEY, JSON.stringify(map));
+  } catch(e) {}
+}
+function maybeShowVerifyNudge(room) {
+  if (!room) return;
+  const map = loadVerifyNudgeShownMap();
+  if (map[room.code]) return;
+  markVerifyNudgeShown(room.code);
+  const rec = {
+    id: 'sys-verify-nudge-' + room.code,
+    kind: 'sys',
+    content: "Don't just take our word for it — tap to verify this conversation is directly between you two, with no one in between.",
+    verifyNudge: true,
+  };
+  room.messages.push(rec);
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+}
 function checkMilestone(room) {
   // Only permanent rooms have a connectedSince long enough to mean
   // anything — an ordinary room is gone in 24h-4 days, well before any of
@@ -5464,7 +5500,12 @@ function renderMessageRecord(room, rec, animate) {
   if (rec.kind === 'sys') {
     const div = document.createElement('div');
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
-    div.textContent = rec.content;
+    if (rec.verifyNudge) {
+      div.className += ' sys-msg-nudge';
+      div.innerHTML = `Don't just take our word for it — <span class="sys-msg-link" onclick="showVerifyPanel()">tap to verify</span> this conversation is directly between you two, with no one in between.`;
+    } else {
+      div.textContent = rec.content;
+    }
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
     return div;
@@ -6383,6 +6424,7 @@ function startWaitingForPeer(room) {
         showScreen('s-chat');
         enableInput(true, true);
         playChime();
+        maybeShowVerifyNudge(room);
       });
     }
   }, 2000);
