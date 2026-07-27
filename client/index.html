@@ -6525,6 +6525,7 @@ async function handleSetup() {
         showScreen('s-chat');
         enableInput(true, true);
         playChime();
+        maybeShowVerifyNudge(room);
       });
     }
   } catch(e) {
