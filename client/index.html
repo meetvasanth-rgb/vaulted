@@ -2624,14 +2624,29 @@ async function importKeyPairFromStorage(room, session) {
   }
 }
 
+// Chunked base64 encode — String.fromCharCode.apply(null, ...) on a large
+// Uint8Array blows the JS engine's max-arguments limit (~125k in V8, ~65k in
+// JavaScriptCore) and throws RangeError. Feeding it 0x8000-byte subarray
+// slices at a time keeps every call well under that ceiling regardless of
+// input size. subarray (not slice) so this doesn't copy the whole buffer
+// again on top of the copy btoa's own string already makes.
+function bytesToBase64(bytes) {
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
 async function getOrGenerateKeyPair(room) {
   if (room.myKeyPair) {
     const exported = await crypto.subtle.exportKey('raw', room.myKeyPair.publicKey);
-    return btoa(String.fromCharCode(...new Uint8Array(exported)));
+    return bytesToBase64(new Uint8Array(exported));
   }
   room.myKeyPair = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey']);
   const exported = await crypto.subtle.exportKey('raw', room.myKeyPair.publicKey);
-  return btoa(String.fromCharCode(...new Uint8Array(exported)));
+  return bytesToBase64(new Uint8Array(exported));
 }
 
 async function deriveSharedKey(room, peerPubKeyB64) {
@@ -2665,15 +2680,18 @@ function triggerEncryptionPulse() {
   setTimeout(() => bar.classList.remove('pulse'), 900);
 }
 
+// Must never return plaintext. A silent fallback here (the previous
+// behavior) meant any encryption failure — including a large payload
+// blowing the spread-argument limit inside base64 encoding — shipped the
+// raw message straight to the server instead of failing loudly. Callers are
+// required to catch this and abort the send rather than let it through.
 async function encryptMsg(room, text) {
-  if (!room.sharedKey) return text; // no key yet — send plaintext
-  try {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, room.sharedKey, new TextEncoder().encode(text));
-    const out = new Uint8Array(12 + enc.byteLength);
-    out.set(iv); out.set(new Uint8Array(enc), 12);
-    return 'v:' + btoa(String.fromCharCode(...out));
-  } catch(e) { return text; }
+  if (!room.sharedKey) throw new Error('E2E_NOT_READY');
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, room.sharedKey, new TextEncoder().encode(text));
+  const out = new Uint8Array(12 + enc.byteLength);
+  out.set(iv); out.set(new Uint8Array(enc), 12);
+  return 'v:' + bytesToBase64(out);
 }
 
 async function decryptMsg(room, data) {
@@ -2818,7 +2836,17 @@ function disconnectSignaling(room) {
 async function sendSignal(room, type, payload) {
   if (!room.signalWs || room.signalWs.readyState !== WebSocket.OPEN) return false;
   if (!room.sharedKey) return false;
-  const envelope = await encryptSignalPayload(room, payload);
+  let envelope;
+  // encryptMsg (via encryptSignalPayload) now throws instead of silently
+  // returning plaintext — the !room.sharedKey check above already covers the
+  // common case, but this still has to catch any other encoding/encryption
+  // failure to keep this function's own "never throws, just returns false"
+  // contract intact for its callers.
+  try {
+    envelope = await encryptSignalPayload(room, payload);
+  } catch (e) {
+    return false;
+  }
   // sessionId travels outside the encrypted envelope — it's a random nonce
   // with no meaning beyond "did this side restart," nothing sensitive to
   // protect, and the peer needs to read it before it can even decrypt
@@ -6307,8 +6335,6 @@ async function sendMsg() {
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
   if (!content || !room) return;
-  input.value = '';
-  updateComposerButtons();
 
   // The tiny re-compressed thumbnail (see makeTinyThumbnail/startReply)
   // finishes in the background; await it here so it's actually ready by
@@ -6324,7 +6350,22 @@ async function sendMsg() {
   const msgData = replySnapshot
     ? JSON.stringify({ text: content, reply: replySnapshot })
     : content;
-  const encrypted = await encryptMsg(room, msgData);
+
+  // Encryption is attempted BEFORE touching any UI state — the composer, the
+  // reply banner, and the message list must all stay exactly as the user
+  // left them if this throws, so there's nothing to lose and the send can
+  // simply be retried.
+  let encrypted;
+  try {
+    encrypted = await encryptMsg(room, msgData);
+  } catch (e) {
+    toast("Couldn't encrypt — message not sent");
+    return;
+  }
+
+  input.value = '';
+  updateComposerButtons();
+
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   // One stable client-generated id from the start (no temp-id-then-rename)
@@ -7687,7 +7728,13 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
 
   const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, viewOnce: !!viewOnce });
-  const encryptedPayload = await encryptMsg(room, payload);
+  let encryptedPayload;
+  try {
+    encryptedPayload = await encryptMsg(room, payload);
+  } catch (e) {
+    toast("Couldn't encrypt — message not sent");
+    return;
+  }
 
   // Same fix as text messages: generate the real id up front and send it to
   // the server instead of a temp-id-then-rename. File sends previously kept
@@ -7737,7 +7784,13 @@ async function sendAlbumMessage(room, items, viewOnce) {
       name: file.name, mime, size: Math.ceil(base64.length * 3 / 4), data: base64,
     })),
   });
-  const encryptedPayload = await encryptMsg(room, payload);
+  let encryptedPayload;
+  try {
+    encryptedPayload = await encryptMsg(room, payload);
+  } catch (e) {
+    toast("Couldn't encrypt — message not sent");
+    return;
+  }
 
   const msgId = 'album' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const rec = {
@@ -7879,7 +7932,13 @@ async function sendVoiceMessage(room, blob, durationSeconds, mime) {
   const base64 = await blobToBase64(blob);
 
   const payload = JSON.stringify({ type: 'voice', mime, duration: durationSeconds, size: blob.size, data: base64 });
-  const encryptedPayload = await encryptMsg(room, payload);
+  let encryptedPayload;
+  try {
+    encryptedPayload = await encryptMsg(room, payload);
+  } catch (e) {
+    toast("Couldn't encrypt — message not sent");
+    return;
+  }
 
   const msgId = 'voice' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const rec = {
