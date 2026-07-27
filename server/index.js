@@ -446,14 +446,14 @@ const srv = http.createServer((req, res) => {
     // stays fire-and-forget — just needs a catch so a thrown error (a
     // malformed password field, scrypt failing, etc.) can't crash the
     // process or hang the request with no response ever sent.
-    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers).catch(err => {
+    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers, req.socket.remoteAddress).catch(err => {
       console.error('API error:', err.message);
       try { resErr(res, 'Internal error.', 500); } catch(e) {}
     });
   });
 });
 
-async function api(path, method, d, p, res, ip, headers) {
+async function api(path, method, d, p, res, ip, headers, remoteAddress) {
 
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
@@ -1218,6 +1218,35 @@ async function api(path, method, d, p, res, ip, headers) {
       ...analytics,
       totalRoomsCreated: total,
       permanentPct: total ? Math.round((analytics.roomsCreatedPermanent / total) * 100) : 0,
+    });
+  }
+
+  // GET /api/_debug-headers — TEMPORARY. Added solely to determine how many
+  // proxy hops sit in front of this deployment on Railway, so clientIp()'s
+  // X-Forwarded-For handling can be fixed with a verified trusted-hop count
+  // instead of a guess. Remove this once that diagnosis is done — it has no
+  // purpose beyond it. Same auth pattern as /api/admin/stats immediately
+  // above (Authorization: Bearer ADMIN_KEY, 404 on missing/wrong key so its
+  // existence isn't revealed to anyone without the key, timingSafeEqual
+  // comparison) — deliberately not a ?key=... query string, since that would
+  // land the admin key in Railway's own access logs.
+  if (path === '/api/_debug-headers' && method === 'GET') {
+    const authHeader = (headers && headers['authorization']) || '';
+    const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
+    const providedKey = bearerMatch ? bearerMatch[1] : null;
+    const expectedKey = process.env.ADMIN_KEY;
+    if (!expectedKey || !providedKey) {
+      res.writeHead(404); res.end(); return;
+    }
+    const providedBuf = Buffer.from(providedKey);
+    const expectedBuf = Buffer.from(expectedKey);
+    if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
+      res.writeHead(404); res.end(); return;
+    }
+    return res200(res, {
+      headers,
+      remoteAddress,
+      clientIpResult: ip,
     });
   }
 
