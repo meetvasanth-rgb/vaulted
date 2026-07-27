@@ -1394,7 +1394,7 @@ const SNAPSHOT_PATH = path.join(SNAPSHOT_DIR, 'rooms-snapshot.json');
 
 function saveSnapshot() {
   try {
-    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
     // Map values aren't JSON-serializable as-is — `members` is itself a
     // Map, so convert it to an array of [token, memberInfo] pairs per room.
     // Live-only state (open WebSocket objects in signalingSockets/wss) is
@@ -1405,7 +1405,15 @@ function saveSnapshot() {
       code,
       { ...room, members: Array.from(room.members.entries()) },
     ]);
-    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(entries));
+    // This file holds live bearer tokens — mode:0o600 on writeFileSync only
+    // actually applies when the file is newly created (confirmed: if a
+    // previous loadSnapshot() throws before it reaches its own unlinkSync,
+    // the leftover file survives and a later writeFileSync here would just
+    // overwrite its contents without touching its existing permission
+    // bits). chmod explicitly afterward so this is 0600 regardless of
+    // whether the file was just created or already existed.
+    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(entries), { mode: 0o600 });
+    fs.chmodSync(SNAPSHOT_PATH, 0o600);
     console.log(`Snapshot saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
   } catch (e) {
     console.error('Snapshot save failed:', e.message);
@@ -1460,8 +1468,12 @@ function loadAnalytics() {
 }
 function saveAnalytics() {
   try {
-    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
-    fs.writeFileSync(ANALYTICS_PATH, JSON.stringify(analytics));
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
+    // Same mode-only-applies-on-creation caveat as the snapshot write above
+    // — chmod explicitly for consistency, even though this file only ever
+    // holds two aggregate counters, nothing sensitive.
+    fs.writeFileSync(ANALYTICS_PATH, JSON.stringify(analytics), { mode: 0o600 });
+    fs.chmodSync(ANALYTICS_PATH, 0o600);
   } catch (e) { console.error('Analytics save failed:', e.message); }
 }
 loadAnalytics();
