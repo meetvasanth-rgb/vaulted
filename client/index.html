@@ -762,6 +762,7 @@ body.select-mode .chat-ftr{display:none}
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
 .msg-media-blocked { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; color:#8A7F72; font-size:12px; }
+.msg-blocked { display:flex; align-items:center; gap:8px; background:#FDF0EE; border:0.5px solid #F1C4BC; border-radius:6px; padding:8px 12px; margin-top:4px; color:#C0392B; font-size:12px; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 .msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
 .msg-viewonce svg { flex-shrink:0; fill:none; stroke:#D9B94E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
@@ -927,6 +928,7 @@ body.select-mode .chat-ftr{display:none}
   100% { background-color:#FFFBF0; border-color:#F0E8CC; color:#B8973E; box-shadow:none; }
 }
 .e2e-bar.pulse { animation:e2e-pulse 0.8s ease-in-out forwards; }
+.e2e-bar.pending { background:#F3F1EC; border-color:#E4DED3; color:#8A7F72; }
 
 /* ── CONNECTION MOMENT ────────────────────────────────────────────── */
 /* V-entrance — the same V mark that closes a conversation (.vanish-v below)
@@ -2258,6 +2260,9 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // key-rederive block, which runs the catch-up fetch once a real key
     // does arrive instead of leaving the room's history missing all session.
     pendingHistoryRestore: false,
+    // Live-polled messages that arrived before room.sharedKey existed yet —
+    // see flushPendingDecrypt/doPoll. { msgId, content, name, time }[].
+    pendingDecrypt: [],
     deleteTimerSeconds: deleteTimerSeconds || 0,
     messages: [],           // ordered array of message records (the "chat log")
     // msgId -> deleteAt (ms epoch). The only thing about a message's history
@@ -2664,10 +2669,12 @@ async function deriveSharedKey(room, peerPubKeyB64) {
     // deriveSharedKey also runs for background rooms (page-load restore,
     // background rekey on a non-active tab), and pulsing the one shared
     // .e2e-bar element for those would look like it fired at random.
-    if (room.code === activeRoomCode) triggerEncryptionPulse();
+    if (room.code === activeRoomCode) { triggerEncryptionPulse(); updateE2EBar(room); }
+    await flushPendingDecrypt(room);
   } catch(e) {
     console.error('E2E: deriveSharedKey failed:', e.message);
     room.sharedKey = null;
+    if (room.code === activeRoomCode) updateE2EBar(room);
   }
 }
 
@@ -2678,6 +2685,50 @@ function triggerEncryptionPulse() {
   void bar.offsetWidth; // force reflow so the animation restarts if re-triggered quickly
   bar.classList.add('pulse');
   setTimeout(() => bar.classList.remove('pulse'), 900);
+}
+
+// Makes the bar honest about whether a shared key actually exists right now,
+// instead of unconditionally claiming "End-to-end encrypted" regardless of
+// real state — see decryptMsg's strict downgrade check, which is exactly the
+// thing this claim needs to stay true for. Callers are responsible for only
+// calling this when `room` is the one currently on screen (same convention
+// as triggerEncryptionPulse just above).
+function updateE2EBar(room) {
+  const bar = document.querySelector('.e2e-bar');
+  if (!bar) return;
+  if (room && room.sharedKey) {
+    bar.classList.remove('pending');
+    bar.innerHTML = '<span style="font-size:0.87em">🔒</span> End-to-end encrypted · Gone when the vault is erased';
+  } else {
+    bar.classList.add('pending');
+    bar.innerHTML = '<span style="font-size:0.87em">🔓</span> Establishing encryption…';
+  }
+}
+
+// Live-arrived messages that couldn't be decrypted yet because room.sharedKey
+// didn't exist at the moment they polled in (see doPoll's message loop,
+// which queues onto room.pendingDecrypt instead of dropping them) — replayed
+// here the moment a real key actually becomes available. Distinct from
+// restoreRoomHistory's pendingHistoryRestore flag: that one covers the
+// reload/bootstrap fetch, this one covers ordinary live polling.
+async function flushPendingDecrypt(room) {
+  if (!room.pendingDecrypt.length || !room.sharedKey) return;
+  const queued = room.pendingDecrypt;
+  room.pendingDecrypt = [];
+  for (const item of queued) {
+    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId);
+    if (!rec || rec.pending) continue; // still not ready (shouldn't happen), or genuinely empty
+    room.messages.push(rec);
+    if (room.code === activeRoomCode) {
+      renderMessageRecord(room, rec, true);
+      if (rec.kind === 'text' && rec.jumbo) triggerEmojiEffect(rec.content);
+    } else {
+      room.unread++;
+    }
+    notifyMsg(room);
+    room.readConfirmIds.push(item.msgId);
+  }
+  if (room.code === activeRoomCode) { renderRoomTabs(); updateDocumentTitle(); }
 }
 
 // Must never return plaintext. A silent fallback here (the previous
@@ -2694,17 +2745,27 @@ async function encryptMsg(room, text) {
   return 'v:' + bytesToBase64(out);
 }
 
+// Two distinct failure states, never conflated:
+//   E2E_NOT_READY — room.sharedKey doesn't exist yet. Normal and transient
+//     (history restore can race key derivation) — callers should hold the
+//     message and retry once a key becomes available, never render it.
+//   E2E_DOWNGRADE — a shared key EXISTS but the payload has no "v:" prefix,
+//     or AES-GCM authentication fails. That's an active downgrade attempt
+//     or corruption, not something to retry — callers must render a fixed
+//     "blocked" placeholder and must never let the raw payload reach the DOM.
+// Must never return plaintext, ever — that was the whole bug: a stripped
+// "v:" prefix used to fall straight through as if it were a legitimate
+// unencrypted message.
 async function decryptMsg(room, data) {
   if (!data) return '';
-  if (!data.startsWith('v:')) return data; // plaintext — no key needed
-  if (!room.sharedKey) return data;
+  if (!room.sharedKey) throw new Error('E2E_NOT_READY');
+  if (!data.startsWith('v:')) throw new Error('E2E_DOWNGRADE');
   try {
     const raw = Uint8Array.from(atob(data.slice(2)), c => c.charCodeAt(0));
     const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, room.sharedKey, raw.slice(12));
     return new TextDecoder().decode(dec);
   } catch(e) {
-    console.warn('E2E decrypt failed:', e.message);
-    return '[encrypted message — key mismatch]';
+    throw new Error('E2E_DOWNGRADE');
   }
 }
 
@@ -2751,7 +2812,17 @@ async function encryptSignalPayload(room, payload) {
 // Returns the inner payload, or null if the envelope was undecryptable,
 // malformed, or a replay/out-of-order message (seq not strictly increasing).
 async function decryptSignalEnvelope(room, envelope) {
-  const decrypted = await decryptMsg(room, envelope);
+  let decrypted;
+  // decryptMsg now throws instead of ever returning plaintext (E2E_NOT_READY
+  // / E2E_DOWNGRADE) — this function's own contract is "null if
+  // undecryptable," so both collapse to the same null return here. Call
+  // signaling has no UI channel to show a blocked bubble in; dropping is
+  // the correct fail-closed behavior for both cases.
+  try {
+    decrypted = await decryptMsg(room, envelope);
+  } catch (e) {
+    return null;
+  }
   let wrapped;
   try { wrapped = JSON.parse(decrypted); } catch (e) { return null; }
   if (!wrapped || typeof wrapped.seq !== 'number' || typeof wrapped.ts !== 'number') return null;
@@ -4198,6 +4269,8 @@ function enableInput(on, focus) {
   document.getElementById('send-btn').disabled = !on;
   const micBtn = document.getElementById('mic-btn');
   if (micBtn) micBtn.disabled = !on;
+  const attachBtn = document.getElementById('attach-btn');
+  if (attachBtn) attachBtn.disabled = !on;
   updateComposerButtons();
   if (on && focus) document.getElementById('msg-input').focus();
 }
@@ -4286,6 +4359,15 @@ function safeFileDataUri(mime, base64) {
 // Shown in place of an <img> whenever safeImageDataUri rejects the payload
 // — deliberately plain, no broken-image icon, no attacker-controlled text.
 const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment couldn't be displayed</div>`;
+// Shown for kind:'blocked' records — decryptMsg's E2E_DOWNGRADE case: a
+// message that arrived with no "v:" prefix despite a shared key already
+// existing, or one that failed AES-GCM authentication. Either way this is
+// an active downgrade attempt or corruption, never something to trust or
+// retry — same deliberately-plain, zero-interpolation pattern as
+// MEDIA_BLOCKED_HTML above. The record behind this never carries the raw
+// payload in the first place (see processIncomingContent), so there is
+// nothing here that could ever leak it even by accident.
+const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
 
 function setStatus(online, name) {
   // The header dropped its separate "Connected"/"Waiting for X…" text label
@@ -5023,7 +5105,8 @@ function setActiveRoom(code) {
   updateHeaderRoomLabel(room);
   setStatus(room.peerOnline, room.peerName);
   renderChatBody(room);
-  enableInput(room.everOnline, true);
+  enableInput(!!(room.everOnline && room.sharedKey), true);
+  updateE2EBar(room);
   renderRoomTabs();
   updateDocumentTitle();
   updateTimerBar(room);
@@ -5691,6 +5774,12 @@ function renderMessageRecord(room, rec, animate) {
     contentHtml = `<div class="msg-media-wrap">${buildAlbumGridHtml(rec)}</div>`;
   } else if (rec.kind === 'voice') {
     contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
+  } else if (rec.kind === 'blocked') {
+    // decryptMsg's E2E_DOWNGRADE case — see DOWNGRADE_BLOCKED_HTML above.
+    // rec deliberately has no .content field for this kind, so there is
+    // nothing attacker-controlled available here to interpolate even by
+    // mistake.
+    contentHtml = DOWNGRADE_BLOCKED_HTML;
   } else {
     // A reply to an image (or album — replyData.text already carries "N
     // photos" for that case, see startReply) shows a compact "📷 ..."
@@ -5722,7 +5811,7 @@ function renderMessageRecord(room, rec, animate) {
     ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
 
-  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : ((rec.kind === 'album' || rec.kind === 'voice') ? '' : rec.content), rec.isMe, rec);
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked') ? '' : rec.content), rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   renderReactionsForRec(div, rec);
@@ -5988,7 +6077,18 @@ function showTimerField(show) {
 // ── DECRYPT + CLASSIFY AN INCOMING MESSAGE INTO A RECORD ────────────────
 async function processIncomingContent(room, content, name, time, msgId) {
   if (!content) return null;
-  const decrypted = await decryptMsg(room, content);
+  let decrypted;
+  try {
+    decrypted = await decryptMsg(room, content);
+  } catch (e) {
+    if (e.message === 'E2E_NOT_READY') return { pending: true };
+    // E2E_DOWNGRADE — an active downgrade attempt or corruption, not a
+    // transient state. Permanently blocked: the record deliberately carries
+    // no `content` field at all, so there's nothing for any later code path
+    // (render, reply-quote, copy, notification) to accidentally surface.
+    console.warn('E2E: blocked a downgraded/corrupted message', msgId);
+    return { id: msgId, isMe: false, name, time, kind: 'blocked', receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
+  }
   if (!decrypted) return null;
 
   const base = { id: msgId, isMe: false, name, time, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
@@ -6056,7 +6156,16 @@ async function restoreRoomHistory(room) {
           rec = { id: 'sys-' + msg.id, kind: 'sys', content: msg.content };
         } else if (msg.type === 'message') {
           rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id);
-          if (rec) rec.isMe = msg.from === room.token;
+          if (rec && rec.pending) {
+            // Shouldn't happen here — this function is only ever called once
+            // room.sharedKey is already confirmed set (see its call sites) —
+            // but if it somehow does, don't fabricate a record for it now;
+            // flag for a later key-rederive retry instead of dropping it.
+            room.pendingHistoryRestore = true;
+            rec = null;
+          } else if (rec) {
+            rec.isMe = msg.from === room.token;
+          }
         }
         if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
         if (!rec) continue;
@@ -6193,9 +6302,13 @@ async function doPoll(room) {
       // this room" rather than their live 8s heartbeat — otherwise a brief
       // screen-lock or backgrounding on their end grays out your composer
       // mid-conversation, which is what was actually being reported as
-      // "composer inaccessible". Re-asserted every poll so it also self-
-      // heals in the rarer case it was left disabled some other way.
-      if (room.everOnline) enableInput(true);
+      // "composer inaccessible" — AND on room.sharedKey actually existing,
+      // so sending can't race key derivation into an immediate encrypt
+      // failure. Re-asserted (both ways) every poll so it also self-heals in
+      // the rarer case it was left enabled/disabled some other way — this is
+      // what actively re-disables the composer if a rederive above just
+      // dropped room.sharedKey back to null, not just what re-enables it.
+      enableInput(!!(room.everOnline && room.sharedKey));
     }
     if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { playChime(); }
 
@@ -6278,7 +6391,15 @@ async function doPoll(room) {
           if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
         } else if (msg.type === 'message') {
           const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id);
-          if (rec) {
+          if (rec && rec.pending) {
+            // No shared key yet to decrypt this with (the rederive block
+            // above either hasn't run for this peer yet or just failed) —
+            // it's already marked "seen" above so normal polling will never
+            // redeliver it. Hold onto the raw envelope and replay it via
+            // flushPendingDecrypt() the moment deriveSharedKey succeeds,
+            // instead of silently dropping it.
+            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts) });
+          } else if (rec) {
             room.messages.push(rec);
             if (room.code === activeRoomCode) {
               renderMessageRecord(room, rec, true);
@@ -6576,7 +6697,12 @@ function startWaitingForPeer(room) {
       startRoomPolling(room);
       await triggerConnectionMoment('peer_joined', () => {
         showScreen('s-chat');
-        enableInput(true, true);
+        // Gated on sharedKey, not just unconditionally true — deriveSharedKey
+        // was awaited above, but only actually ran if d.peerPubKey was
+        // already on file at that instant; if it wasn't, this correctly
+        // leaves the composer disabled until doPoll's own rederive+self-heal
+        // catches up once the peer's key does show up.
+        enableInput(!!room.sharedKey, true);
         playChime();
         maybeShowVerifyNudge(room);
       });
@@ -6677,7 +6803,9 @@ async function handleSetup() {
       startRoomPolling(room);
       await triggerConnectionMoment('joined', () => {
         showScreen('s-chat');
-        enableInput(true, true);
+        // Same reasoning as the peer_joined branch above — only enable once
+        // a real key is actually in hand, not unconditionally.
+        enableInput(!!room.sharedKey, true);
         playChime();
         maybeShowVerifyNudge(room);
       });

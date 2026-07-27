@@ -291,6 +291,34 @@ function resErr(res, msg, status=400) {
   res.end(JSON.stringify({ error: msg }));
 }
 
+function computeETag(buf) {
+  return '"' + crypto.createHash('sha1').update(buf).digest('hex') + '"';
+}
+
+// The HTML shell (index.html, install.html, and the SPA catch-all below that
+// serves index.html's content for any unrecognized path like /join/<code>)
+// is the one thing here that actually needs a cache directive — the entire
+// app, including encryptMsg/decryptMsg, lives in that one inline <script>,
+// so a stale copy of this file IS a stale copy of the app. With no explicit
+// caching headers at all, a browser is permitted to apply heuristic caching
+// (RFC 9111 §4.2.2) to a plain navigation (a bookmark, history, back/
+// forward) even though a manual reload wouldn't hit that path — no-cache
+// (not no-store) forces revalidation with the server before ever reusing a
+// cached copy, without losing the copy entirely, so a 304 stays cheap. The
+// ETag below is what makes that revalidation actually cost a 304 instead of
+// a full refetch. Deliberately not applied to any other static asset —
+// there's nothing else here whose staleness has security consequences.
+function sendHtmlShell(req, res, data) {
+  const etag = computeETag(data);
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { 'Cache-Control': 'no-cache', 'ETag': etag });
+    res.end();
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html;charset=utf-8', 'Content-Length': Buffer.byteLength(data), 'Cache-Control': 'no-cache', 'ETag': etag });
+  res.end(data);
+}
+
 function serveStatic(req, res) {
   let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   // Explicit route, ahead of the SPA catch-all below — without this, a
@@ -313,8 +341,12 @@ function serveStatic(req, res) {
     if (err) {
       fs.readFile(path.join(__dirname,'../client/index.html'), (e,d) => {
         if (e) { res.writeHead(404); res.end(); return; }
-        res.writeHead(200,{'Content-Type':'text/html;charset=utf-8','Content-Length':Buffer.byteLength(d)}); res.end(d);
+        sendHtmlShell(req, res, d);
       }); return;
+    }
+    if (url === '/index.html' || url === '/install.html') {
+      sendHtmlShell(req, res, data);
+      return;
     }
     const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.svg':'image/svg+xml'};
     // Explicit Content-Length (rather than letting Node fall back to
