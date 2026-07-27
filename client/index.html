@@ -761,6 +761,7 @@ body.select-mode .chat-ftr{display:none}
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.msg-media-blocked { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; color:#8A7F72; font-size:12px; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 .msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
 .msg-viewonce svg { flex-shrink:0; fill:none; stroke:#D9B94E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
@@ -4193,6 +4194,71 @@ function escHtml(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── MEDIA DATA-URI VALIDATION ────────────────────────────────────────────
+// rec.mime / rec.base64 for any file, album, or voice message come straight
+// from the peer's decrypted (but otherwise untrusted) payload — a malicious
+// peer fully controls both. Interpolating either unescaped into an HTML
+// string (e.g. `<img src="data:${mime};base64,${base64}">`) lets a mime
+// value like `x" onerror="...` break out of the src attribute and execute
+// on this origin, where the E2E private key and room tokens live in
+// localStorage. Every site that builds one of these data URIs validates
+// through here first — an allowlist-checked mime plus a base64-charset-
+// checked payload can never contain a quote, angle bracket, or backtick,
+// so the resulting string is safe to interpolate even into a plain
+// template literal.
+//
+// Deliberately excludes image/svg+xml even though a browser will render it
+// via <img> — an SVG can carry its own embedded <script>/event-handler
+// content, so treating it as inert raster data would just reopen the same
+// hole a different way. These four are the only mimes this app's own send
+// pipeline ever produces or passes through: compressImageFile always
+// re-encodes to image/jpeg except GIFs, which pass through as image/gif
+// untouched; image/png and image/webp cover an uncompressed original for a
+// small (<150KB) or already-optimal source.
+const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+// The exact set pickVoiceMimeType() tries, base type only — a codec
+// parameter like ";codecs=opus" is stripped before comparing.
+const ALLOWED_VOICE_MIMES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
+
+function isValidMediaBase64(str) {
+  return typeof str === 'string' && str.length > 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(str);
+}
+function isAllowedImageMime(mime) {
+  return typeof mime === 'string' && ALLOWED_IMAGE_MIMES.has(mime.split(';')[0].trim().toLowerCase());
+}
+function isAllowedVoiceMime(mime) {
+  return typeof mime === 'string' && ALLOWED_VOICE_MIMES.has(mime.split(';')[0].trim().toLowerCase());
+}
+// Generic file attachments (PDF, zip, doc, ...) legitimately span many real
+// mime types and are never rendered inline as markup — only used to build a
+// Blob for download — so a finite allowlist is the wrong shape here. Still
+// bounded to something that actually looks like a MIME type, so a hostile
+// value can never carry a quote or other HTML-breaking character.
+function isPlausibleMimeShape(mime) {
+  return typeof mime === 'string' && mime.length > 0 && mime.length <= 255 && /^[a-zA-Z0-9][a-zA-Z0-9.+-]*\/[a-zA-Z0-9][a-zA-Z0-9.+-]*(;[a-zA-Z0-9=._-]+)?$/.test(mime);
+}
+
+// Returns a safe `data:<mime>;base64,<data>` string for inline image
+// rendering, or null if either half fails validation — every caller must
+// fall back to a neutral placeholder rather than ever interpolating the
+// raw values.
+function safeImageDataUri(mime, base64) {
+  if (!isAllowedImageMime(mime) || !isValidMediaBase64(base64)) return null;
+  return `data:${mime};base64,${base64}`;
+}
+function safeVoiceDataUri(mime, base64) {
+  if (!isAllowedVoiceMime(mime) || !isValidMediaBase64(base64)) return null;
+  return `data:${mime};base64,${base64}`;
+}
+function safeFileDataUri(mime, base64) {
+  if (!isPlausibleMimeShape(mime) || !isValidMediaBase64(base64)) return null;
+  return `data:${mime};base64,${base64}`;
+}
+// Shown in place of an <img> whenever safeImageDataUri rejects the payload
+// — deliberately plain, no broken-image icon, no attacker-controlled text.
+const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment couldn't be displayed</div>`;
+
 function setStatus(online, name) {
   // The header dropped its separate "Connected"/"Waiting for X…" text label
   // in favor of just the dot (see the header simplification) — the same
@@ -5498,9 +5564,10 @@ function buildAlbumGridHtml(rec) {
     const img = rec.images[i];
     const overlay = (i === visibleCount - 1 && remaining > 0) ? `<div class="msg-album-more">+${remaining}</div>` : '';
     const hidden = img.viewOnce && !rec.isMe && !img.viewed;
+    const safeSrc = hidden ? null : safeImageDataUri(img.mime, img.base64);
     const inner = hidden
       ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
-      : `<img class="msg-image" src="data:${img.mime};base64,${img.base64}" alt="" draggable="false"/>`;
+      : (safeSrc ? `<img class="msg-image" src="${safeSrc}" alt="" draggable="false"/>` : MEDIA_BLOCKED_HTML);
     // Keyed off img.id (a stable local id), not the loop position i —
     // opening two view-once photos in the same album close together would
     // otherwise let the first one's later array splice shift which photo
@@ -5513,6 +5580,17 @@ function buildAlbumGridHtml(rec) {
   // opened album.
   const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once</div>` : '';
   return `${badge}<div class="${gridClass}">${tiles}</div>`;
+}
+
+// replyData travels inside the peer's decrypted payload — thumbMime/thumb
+// are just as attacker-controlled as any other file/album mime+base64, even
+// though the SENDING side always generates them locally via
+// makeTinyThumbnail (always image/jpeg). A malicious peer can put anything
+// in this field directly, bypassing that generator entirely.
+function buildReplyQuotePhotoHtml(replyData) {
+  const safeSrc = replyData.thumb ? safeImageDataUri(replyData.thumbMime || 'image/jpeg', replyData.thumb) : null;
+  const thumbHtml = safeSrc ? `<img class="msg-reply-quote-thumb" src="${safeSrc}" alt=""/>` : '';
+  return `<div class="msg-reply-quote msg-reply-quote-photo">${thumbHtml}<span>📷 ${escHtml(replyData.text || 'Photo')}</span></div>`;
 }
 
 // animate=true is passed only from genuinely live arrivals (a message you
@@ -5559,7 +5637,10 @@ function renderMessageRecord(room, rec, animate) {
       </div>`;
     } else if (rec.isImage) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
-      mediaHtml = `${badge}<img class="msg-image" src="data:${rec.mime};base64,${rec.base64}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`;
+      const safeSrc = safeImageDataUri(rec.mime, rec.base64);
+      mediaHtml = safeSrc
+        ? `${badge}<img class="msg-image" src="${safeSrc}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
+        : `${badge}${MEDIA_BLOCKED_HTML}`;
     } else {
       // Was an <a href="data:..." download>, which some mobile browsers
       // (Chrome on Android in particular) silently refuse to trigger for a
@@ -5592,7 +5673,7 @@ function renderMessageRecord(room, rec, animate) {
     // generation failed).
     const replyHtml = rec.replyData
       ? (rec.replyData.isImage
-          ? `<div class="msg-reply-quote msg-reply-quote-photo">${rec.replyData.thumb ? `<img class="msg-reply-quote-thumb" src="data:${rec.replyData.thumbMime || 'image/jpeg'};base64,${rec.replyData.thumb}" alt=""/>` : ''}<span>📷 ${escHtml(rec.replyData.text || 'Photo')}</span></div>`
+          ? buildReplyQuotePhotoHtml(rec.replyData)
           : `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>`)
       : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
@@ -5772,7 +5853,13 @@ function revealViewOnce(msgId) {
   // best-effort: the photo still vanishes locally below (see
   // scheduleViewOnceDelete) even if this fails, exactly as it always has.
   api('/api/view-once-opened', { code: room.code, token: room.token, msgId }).catch(() => {});
-  viewImage(`data:${rec.mime};base64,${rec.base64}`, {
+  // Deletion still proceeds even if the photo itself fails to validate —
+  // the view-once contract ("gone once opened") is about the deletion, not
+  // whether rendering happened to succeed, so a bad payload shouldn't buy
+  // it a longer life on screen than a real one gets.
+  const safeSrc = safeImageDataUri(rec.mime, rec.base64);
+  if (!safeSrc) { toast('Could not open photo'); scheduleViewOnceDelete(room, msgId); return; }
+  viewImage(safeSrc, {
     hideDownload: true,
     onClose: () => scheduleViewOnceDelete(room, msgId),
   });
@@ -5814,7 +5901,7 @@ function revealAlbumImage(room, msgId, imgId) {
       if (tile) tile.innerHTML = '<div class="msg-viewonce msg-viewonce-opened"><span>Opened</span></div>';
     }
   }
-  return { src: `data:${img.mime};base64,${img.base64}`, wasHiddenViewOnce };
+  return { src: safeImageDataUri(img.mime, img.base64), wasHiddenViewOnce };
 }
 
 // Per-photo tap inside an album grid (buildAlbumGridHtml) opens the
@@ -7829,7 +7916,9 @@ let currentlyPlayingVoiceId = null;
 function getOrCreateVoiceAudio(rec) {
   let audio = voiceAudioEls.get(rec.id);
   if (audio) return audio;
-  audio = new Audio(`data:${rec.mime};base64,${rec.base64}`);
+  const safeSrc = safeVoiceDataUri(rec.mime, rec.base64);
+  if (!safeSrc) return null;
+  audio = new Audio(safeSrc);
   audio.preload = 'metadata';
   audio.addEventListener('timeupdate', () => updateVoiceProgress(rec.id, audio));
   audio.addEventListener('ended', () => {
@@ -7848,6 +7937,7 @@ function toggleVoicePlayback(msgId) {
   const rec = findMessageRec(msgId);
   if (!rec || rec.kind !== 'voice') return;
   const audio = getOrCreateVoiceAudio(rec);
+  if (!audio) { toast('Could not play voice note'); return; }
   if (audio.paused) {
     // Only one voice note plays at a time.
     if (currentlyPlayingVoiceId && currentlyPlayingVoiceId !== msgId) {
@@ -7909,10 +7999,19 @@ function showSendImageOptions(room, items) {
     ? `<div style="position:absolute;top:8px;right:8px;background:#1A1916;color:#fff;font-size:11px;padding:3px 8px;border-radius:12px">+${items.length - 1} more</div>`
     : '';
   const copy = items.length > 1 ? `Send these ${items.length} photos normally, or as view-once` : 'Send this photo normally, or as view-once';
+  // This is the sender's own freshly-picked local file, not peer data — but
+  // validated the same way regardless, for the same reason downloadDataUri
+  // is now checked centrally rather than trusting each call site: one
+  // consistent gate is easier to reason about than "this one's fine because
+  // it's local".
+  const previewSafeSrc = safeImageDataUri(first.mime || first.file.type, first.base64);
+  const previewHtml = previewSafeSrc
+    ? `<img src="${previewSafeSrc}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>`
+    : MEDIA_BLOCKED_HTML;
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;text-align:center;font-family:inherit">
       <div style="position:relative;margin-bottom:16px">
-        <img src="data:${first.mime || first.file.type};base64,${first.base64}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>
+        ${previewHtml}
         ${countBadge}
       </div>
       <div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">${copy} — hidden until opened, then removed shortly after.</div>
@@ -8006,9 +8105,23 @@ async function compressImageFile(file) {
 // A Blob doesn't have that ceiling.
 function downloadDataUri(dataUri, filename) {
   try {
-    const match = /^data:([^;]+);base64,([\s\S]*)$/.exec(dataUri);
+    // Greedy (.+), not [^;]+ — a voice note's mime routinely carries a
+    // codec parameter (e.g. "audio/webm;codecs=opus"), and the old
+    // semicolon-stops-the-match version failed to parse that at all,
+    // silently breaking downloads for exactly the most common recorder
+    // output. Greedy matching naturally prefers the longest prefix that
+    // still leaves a valid ";base64," to match, so it captures the whole
+    // mime including any parameters.
+    const match = /^data:(.+);base64,([\s\S]*)$/.exec(dataUri);
     if (!match) { toast('Could not save file'); return; }
     const mime = match[1], base64 = match[2];
+    // Downloads build a Blob, never markup, so the strict per-kind
+    // allowlists below (images/voice) aren't the right shape here — this
+    // still rejects anything that doesn't look like a real MIME type
+    // (isPlausibleMimeShape), which is what actually matters: a hostile
+    // value can never carry a quote or other HTML-breaking character, even
+    // though nothing here renders it as HTML today.
+    if (!isPlausibleMimeShape(mime) || !isValidMediaBase64(base64)) { toast('Could not save file'); return; }
     const byteChars = atob(base64);
     const bytes = new Uint8Array(byteChars.length);
     for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
@@ -8064,6 +8177,7 @@ function viewImage(src, opts) {
   if (gallery) {
     const first = revealAlbumImage(gallery.room, gallery.rec.id, gallery.startImgId);
     if (!first) return; // photo no longer there — nothing to open
+    if (!first.src) { toast('Could not open photo'); return; }
     currentImgId = gallery.startImgId;
     currentSrc = first.src;
     if (first.wasHiddenViewOnce) revealedThisSession.add(currentImgId);
@@ -8150,6 +8264,7 @@ function viewImage(src, opts) {
     const target = imgs[newIdx];
     const revealed = revealAlbumImage(gallery.room, gallery.rec.id, target.id);
     if (!revealed) return false;
+    if (!revealed.src) { toast('Could not open photo'); return false; }
     if (revealed.wasHiddenViewOnce) revealedThisSession.add(target.id);
     currentImgId = target.id;
     currentSrc = revealed.src;
@@ -8330,6 +8445,13 @@ function viewImage(src, opts) {
 // re-transmitting the full original photo inside every reply to it.
 function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
   return new Promise((resolve) => {
+    // rec can be a message the PEER sent (replying to something they sent
+    // you), so mime/base64 here are just as untrusted as anywhere else this
+    // pair shows up — resolve(null) is already the documented, handled
+    // fallback for "generation failed", so an invalid pair fits the exact
+    // same path a corrupted/tainted-canvas failure already takes.
+    const safeSrc = safeImageDataUri(mime, base64);
+    if (!safeSrc) { resolve(null); return; }
     try {
       const img = new Image();
       img.onload = () => {
@@ -8344,7 +8466,7 @@ function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
         catch (e) { resolve(null); } // e.g. a tainted canvas — fall back to no thumbnail
       };
       img.onerror = () => resolve(null);
-      img.src = `data:${mime};base64,${base64}`;
+      img.src = safeSrc;
     } catch (e) { resolve(null); }
   });
 }
@@ -8379,7 +8501,15 @@ function startReply(rec, msgId, replyText) {
   const textEl = document.getElementById('reply-text');
   document.getElementById('reply-name').textContent = '';
   if (isImageReply || isAlbumReply) {
-    if (thumbEl) { thumbEl.src = `data:${thumbSrc.mime};base64,${thumbSrc.base64}`; thumbEl.style.display = 'block'; }
+    // thumbSrc is rec (or rec.images[0]) — a message that could be the
+    // PEER's, so its mime/base64 are just as untrusted as anywhere else;
+    // an invalid pair just hides the thumbnail, same as the text-only case
+    // below, rather than ever assigning an unvalidated value to .src.
+    const safeSrc = safeImageDataUri(thumbSrc.mime, thumbSrc.base64);
+    if (thumbEl) {
+      if (safeSrc) { thumbEl.src = safeSrc; thumbEl.style.display = 'block'; }
+      else { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
+    }
     if (textEl) textEl.textContent = isAlbumReply ? `📷 ${albumLabel}` : '📷 Photo';
   } else if (isVoiceReply) {
     if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
