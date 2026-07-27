@@ -4774,12 +4774,38 @@ function idbRemoveSession(roomCode) {
 
 async function subscribeToPush(room, reg) {
   try {
+    const keyBytes = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     let sub = await reg.pushManager.getSubscription();
+    // A subscription's applicationServerKey can never change in place (Push
+    // API spec) — once VAPID_PUBLIC_KEY is rotated server-side, any browser
+    // that already had a subscription from before the rotation keeps
+    // returning that OLD one here, tied to a key the server no longer holds
+    // the private half of. Every push to it then silently fails server-side
+    // (the push service rejects the signature), with nothing surfacing
+    // anywhere — this is exactly what broke notifications after the last
+    // VAPID rotation. Comparing against the live key and re-subscribing
+    // when it's stale is the fix; PushSubscriptionOptions.applicationServerKey
+    // has been supported across browsers since March 2023.
+    if (sub) {
+      const existing = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+      const sameKey = !!existing && existing.length === keyBytes.length && existing.every((b, i) => b === keyBytes[i]);
+      if (!sameKey) {
+        try { await sub.unsubscribe(); } catch (e) {}
+        sub = null;
+      }
+    }
     if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
+      try {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
+      } catch (e) {
+        // Belt-and-suspenders: if .options wasn't populated for some reason
+        // and subscribe() throws InvalidStateError (a stale subscription
+        // under a different key still exists), force it — tear down
+        // whatever's actually there now and subscribe fresh, once.
+        const stale = await reg.pushManager.getSubscription();
+        if (stale) { try { await stale.unsubscribe(); } catch (e2) {} }
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
+      }
     }
     await api('/api/push-subscribe', { code: room.code, token: room.token, subscription: sub.toJSON() });
     idbPutSession(room.code, room.token).catch(() => {});
