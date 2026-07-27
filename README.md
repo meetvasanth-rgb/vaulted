@@ -5,7 +5,7 @@ Two people. One conversation. Disappears when you leave.
 ## What this is
 - Anonymous text chat — no accounts, no phone numbers, no emails
 - Secret room codes — share a 3-word code, connect instantly
-- Zero persistence — nothing ever written to disk
+- Server memory only, with one narrow exception — a brief snapshot written to disk during a planned restart, deleted the moment it reloads
 - Auto-erases — room closes when either person leaves
 
 ## Tech
@@ -70,8 +70,8 @@ vaulted-anon/
 6. Either person clicks "Close & erase" → room gone, messages gone
 
 ## What is NEVER stored
-- Messages (relayed in memory, never written to disk)
-- Codenames or room codes (dropped on disconnect)
+- Messages (relayed in memory; briefly written to disk only during a planned-restart snapshot, deleted immediately after reload)
+- Codenames or room codes (kept in memory for the room's full lifetime, not dropped on disconnect — also included in that same restart snapshot)
 - IP addresses (not logged)
-- Timestamps (not persisted)
-- Any metadata
+- Timestamps (kept in memory alongside messages, same as everything else here — also included in the restart snapshot)
+- Any metadata beyond the above — public keys and push-subscription details ARE kept for the room's lifetime (both required for encryption and notifications to work at all), and anonymous aggregate usage counts (vaults created, temporary vs. permanent) persist indefinitely as running totals, never linked to a specific vault, code, or IP
