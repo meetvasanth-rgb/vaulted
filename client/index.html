@@ -4663,7 +4663,7 @@ function isUserActive() {
 // only grants the Push API to a web app added to the home screen from Safari.
 // Server never sees plaintext, so push payloads stay generic — see sw.js.
 // Not extended for multi-room correctness this phase (explicitly deferred).
-const VAPID_PUBLIC_KEY = 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
+const VAPID_PUBLIC_KEY = 'BMcA4RSlBSxcaaeezBw4Eo2YnbfOmgEBiyMnZ_teyTUavsUYjWel_6JwKQ7ynTaGXBs3qKil_myyY1n17cNqLTw';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -7593,7 +7593,13 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   renderMessageRecord(room, rec, true);
 
   try {
-    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
+    // viewOnce also rides along as a plain top-level field, alongside (not
+    // replacing) the encrypted copy inside payload above — the server can't
+    // see inside the E2E-encrypted content, so it has no way to tell a
+    // view-once photo apart from an ordinary one without this. Needed so
+    // /api/view-once-opened can verify the message is actually view-once
+    // server-side, instead of trusting whatever the caller claims.
+    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
   } catch(e) {
     toast('Failed to send file');
   }
@@ -7632,7 +7638,10 @@ async function sendAlbumMessage(room, items, viewOnce) {
   renderMessageRecord(room, rec, true);
 
   try {
-    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId });
+    // Same plain top-level viewOnce field as sendFileMessage above, for the
+    // same reason — the server needs it to verify /api/view-once-opened
+    // requests without being able to see inside the encrypted payload.
+    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
   } catch (e) {
     toast('Failed to send photos');
   }

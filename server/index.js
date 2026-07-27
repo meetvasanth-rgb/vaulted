@@ -58,14 +58,17 @@ function trimRoomToByteBudget(room) {
 // VAPID keys identify this server to push services (Apple/Google/Mozilla's push
 // endpoints) — they are NOT related to the E2E message encryption keys, and the
 // server still never sees plaintext message content through this path (see the
-// generic payload in /api/send below). Defaults are baked in so push works out
-// of the box; for production hygiene, set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY
-// as Railway environment variables instead and remove the private key from
-// source. If you do override them, the client's VAPID_PUBLIC_KEY constant in
-// index.html must be updated to match, or existing subscriptions will silently
-// fail to deliver.
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'aMEjVlR3d-zpiZgTSJBzCy8LJ-3QbtaF5T1aKeVLph8';
+// generic payload in /api/send below). Must come from environment variables
+// only — no fallback. A hardcoded default here previously shipped a real
+// private key in source, which must be treated as compromised. Failing fast
+// (rather than silently disabling push) is deliberate: a silent degrade is
+// exactly how a missing/misconfigured key goes unnoticed.
+if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+  console.error('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY are not set — refusing to start. Generate a keypair with `npx web-push generate-vapid-keys` and set both as Railway environment variables (and update the matching VAPID_PUBLIC_KEY constant in client/index.html).');
+  process.exit(1);
+}
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 webpush.setVapidDetails('mailto:privacy@vaultlix.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 // Math.random() is not a CSPRNG — predictable enough in theory that it has
@@ -392,14 +395,14 @@ const srv = http.createServer((req, res) => {
     // stays fire-and-forget — just needs a catch so a thrown error (a
     // malformed password field, scrypt failing, etc.) can't crash the
     // process or hang the request with no response ever sent.
-    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req)).catch(err => {
+    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers).catch(err => {
       console.error('API error:', err.message);
       try { resErr(res, 'Internal error.', 500); } catch(e) {}
     });
   });
 });
 
-async function api(path, method, d, p, res, ip) {
+async function api(path, method, d, p, res, ip, headers) {
 
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
@@ -614,7 +617,12 @@ async function api(path, method, d, p, res, ip) {
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
     const seq = ++room.seq;
-    room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
+    // viewOnce travels as a plain top-level field (client/index.html's
+    // sendFileMessage/sendAlbumMessage) alongside the encrypted content —
+    // this server can't see inside that encrypted payload, so without this
+    // it has no way to verify a /api/view-once-opened request actually
+    // targets a view-once message rather than an ordinary one.
+    room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     room.lastMessageAt = Date.now();
     // Trim — keep last 100 messages but seq numbers never reset. Lowered
@@ -786,16 +794,24 @@ async function api(path, method, d, p, res, ip) {
   // SENDER's side too — view-once is a promise to both people, not just
   // "hidden until tapped" on the recipient's end. Reuses the exact same
   // deletion/deletionSeq mechanism as /api/delete-message above, but
-  // deliberately does NOT require the caller to be msg.from: this only
-  // ever fires right after the caller has locally revealed a view-once
-  // attachment, which by definition means they're the recipient, not the
-  // sender (the client never wires this up for its own sent photos).
+  // intentionally does NOT require the caller to be msg.from — the whole
+  // point is the recipient, not the sender, triggers this deletion.
+  //
+  // That "not msg.from" reasoning previously wasn't enforced at all: this
+  // never checked msg.viewOnce (so it deleted ANY message by id, view-once
+  // or not) and never checked that the caller ISN'T the sender either —
+  // any room member could delete any message for everyone, completely
+  // bypassing /api/delete-message's sender-only restriction above. Both
+  // checks are required now: the message must actually be view-once, and
+  // the caller must be the recipient (i.e. NOT msg.from) — the inverse of
+  // /api/delete-message's own check just above.
   if (path==='/api/view-once-opened' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room) return resErr(res,'Room not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
+    if (msg.viewOnce !== true || msg.from === d.token) return resErr(res,'Not authorized to open this message.',403);
     if (!msg.deleted) {
       msg.content = null;
       msg.deleted = true;
@@ -1120,8 +1136,25 @@ async function api(path, method, d, p, res, ip) {
   // shared-secret key set via the ADMIN_KEY env var. Returns a 404 rather
   // than 401/403 on a missing/wrong key so the endpoint's existence isn't
   // revealed to anyone who doesn't already have the key.
+  //
+  // Key travels via an Authorization: Bearer header now, not ?key=... in the
+  // query string — a query string lands in Railway's access logs, browser
+  // history, and any referrer header, the exact same exposure already fixed
+  // for /api/poll, /api/check_typing, and the WS signaling auth. Compared
+  // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
+  // narrowed down via response-time differences; timingSafeEqual throws on
+  // mismatched buffer lengths, so that has to be checked first.
   if (path === '/api/admin/stats' && method === 'GET') {
-    if (!process.env.ADMIN_KEY || p.get('key') !== process.env.ADMIN_KEY) {
+    const authHeader = (headers && headers['authorization']) || '';
+    const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
+    const providedKey = bearerMatch ? bearerMatch[1] : null;
+    const expectedKey = process.env.ADMIN_KEY;
+    if (!expectedKey || !providedKey) {
+      res.writeHead(404); res.end(); return;
+    }
+    const providedBuf = Buffer.from(providedKey);
+    const expectedBuf = Buffer.from(expectedKey);
+    if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
       res.writeHead(404); res.end(); return;
     }
     const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;

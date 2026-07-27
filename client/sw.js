@@ -184,7 +184,7 @@ self.addEventListener('notificationclick', (event) => {
 // server before the old one goes fully dead. The service worker has no
 // access to the page's JS variables (roomCode/myToken), so those are read
 // from IndexedDB, written by the page whenever it successfully subscribes.
-const VAPID_PUBLIC_KEY = 'BKd1545VKC8Tw1NB9SHbPaNGIBwKMft3oaH0USMJxrpUYEY_Mgcvn_XGL-BA6njGg-nts1z7YDsU-0txzezxfXA';
+const VAPID_PUBLIC_KEY = 'BMcA4RSlBSxcaaeezBw4Eo2YnbfOmgEBiyMnZ_teyTUavsUYjWel_6JwKQ7ynTaGXBs3qKil_myyY1n17cNqLTw';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
