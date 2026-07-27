@@ -19,6 +19,42 @@ const ONE_TIME_ROOM_TTL = 24 * 60 * 60 * 1000;
 
 const rooms = new Map();
 
+// ── /api/send content sizing ─────────────────────────────────────────────
+// These were measured against the client's actual code, not guessed. A
+// file/GIF attachment never gets client-side compression (compressImageFile
+// in client/index.html only touches non-GIF images; the generic "File"
+// attach option never compresses anything), so a full MAX_FILE_SIZE (10MB,
+// client/index.html) attachment is a real, legitimate send. That raw file
+// goes through base64 -> JSON-wrap -> AES-GCM encrypt -> base64 AGAIN
+// (encryptMsg in client/index.html), which measured out to ~17.78MB for a
+// 10MB input — a naive "base64 inflates ~33%" estimate (~13.3MB) misses the
+// second base64 layer encryptMsg adds and would reject real attachments. A
+// full 5-minute voice note, measured from this app's actual MediaRecorder
+// default bitrate (~129kbps, no explicit bitrate is ever set), came out far
+// smaller (~8.17MB) and isn't the binding constraint.
+const MAX_MESSAGE_CONTENT_BYTES = 19 * 1024 * 1024; // ~1.2MB headroom above the measured ~17.78MB ceiling
+
+// Per-room cumulative byte budget for room.msgs, alongside the existing
+// 100-count trim below — the count cap alone doesn't bound memory: 100
+// full-size attachments at ~17.78MB each would be ~1.78GB in a single room.
+// 75MB was chosen over a tighter number (e.g. 25MB) specifically because
+// this app's own file-attachment feature legitimately allows ~17.78MB
+// single messages — a 25MB budget would hold barely more than ONE such
+// attachment before evicting everything else, which would feel broken for
+// a messaging app that explicitly supports 10MB attachments. 75MB fits
+// roughly 4 full-size attachments' worth of history (or many more of the
+// much more common small text/compressed-photo messages) while still being
+// a hard, finite bound nowhere near the previous unbounded-by-bytes state.
+const ROOM_BYTE_BUDGET = 75 * 1024 * 1024;
+function trimRoomToByteBudget(room) {
+  let total = 0;
+  for (const msg of room.msgs) total += (msg.content ? msg.content.length : 0);
+  while (total > ROOM_BYTE_BUDGET && room.msgs.length > 0) {
+    const removed = room.msgs.shift();
+    total -= (removed.content ? removed.content.length : 0);
+  }
+}
+
 // VAPID keys identify this server to push services (Apple/Google/Mozilla's push
 // endpoints) — they are NOT related to the E2E message encryption keys, and the
 // server still never sees plaintext message content through this path (see the
@@ -99,6 +135,64 @@ function clientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (xff) return xff.split(',')[0].trim();
   return req.socket.remoteAddress || 'unknown';
+}
+
+// web-push (the library actually used below) POSTs directly to
+// subscription.endpoint — an unvalidated subscription object from any room
+// member (trivial to become one: just create a room) let this server be
+// made to issue arbitrary outbound POST requests, including to
+// internal/metadata addresses (SSRF). This allowlist was checked against
+// the real push-service ecosystem, not assumed:
+//   - fcm.googleapis.com/android.googleapis.com — Google FCM (Chrome and
+//     every other Chromium-family browser: Edge on Android, Opera, Brave);
+//     both hostnames are referenced directly in this app's own web-push
+//     dependency (node_modules/web-push/src/web-push-lib.js), which
+//     special-cases them for legacy GCM auth.
+//   - *.push.apple.com — Safari's own push service (macOS 13+ / iOS
+//     16.4+), documented endpoint is web.push.apple.com; Apple's own
+//     guidance is to allow any subdomain under push.apple.com rather than
+//     hardcoding the exact host.
+//   - updates.push.services.mozilla.com — Firefox's Mozilla autopush
+//     service; this is specifically the HTTP endpoint app servers POST to
+//     (push.services.mozilla.com, no "updates." prefix, is a separate
+//     websocket-only host the browser itself holds open — not relevant
+//     here since nothing on this server ever needs to reach that one).
+//   - *.notify.windows.com — Windows Notification Service, used by desktop
+//     Edge (Chromium Edge on Android instead uses FCM, same as other
+//     Android browsers).
+// Getting this list wrong doesn't fail loudly — it silently breaks push
+// notifications for everyone on one entire platform, so err on the side of
+// the suffix-matched entries covering documented subdomain variation rather
+// than a single hardcoded hostname.
+const PUSH_HOST_ALLOWLIST_EXACT = new Set([
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  'updates.push.services.mozilla.com',
+]);
+const PUSH_HOST_ALLOWLIST_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
+
+function isAllowedPushHost(hostname) {
+  if (PUSH_HOST_ALLOWLIST_EXACT.has(hostname)) return true;
+  return PUSH_HOST_ALLOWLIST_SUFFIXES.some(suffix => hostname.endsWith(suffix));
+}
+
+// Returns a freshly-reconstructed {endpoint, keys:{p256dh,auth}} object
+// built only from validated, expected fields — never the raw client-
+// supplied object — so no extra attacker-chosen fields (or an
+// attacker-inflated object used as unbounded storage) ever reach
+// room.members. Returns null on anything invalid; the caller responds 400.
+function validatePushSubscription(sub) {
+  if (!sub || typeof sub !== 'object' || Array.isArray(sub)) return null;
+  if (typeof sub.endpoint !== 'string') return null;
+  let parsed;
+  try { parsed = new URL(sub.endpoint); } catch (e) { return null; }
+  if (parsed.protocol !== 'https:') return null;
+  if (!isAllowedPushHost(parsed.hostname)) return null;
+  const keys = sub.keys;
+  if (!keys || typeof keys !== 'object') return null;
+  if (typeof keys.p256dh !== 'string' || keys.p256dh.length === 0 || keys.p256dh.length > 255) return null;
+  if (typeof keys.auth !== 'string' || keys.auth.length === 0 || keys.auth.length > 255) return null;
+  return { endpoint: sub.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } };
 }
 
 function formatTimerLabel(seconds) {
@@ -273,18 +367,10 @@ const srv = http.createServer((req, res) => {
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
   // Body was accumulated here with no size cap at all — an attacker could
   // stream unbounded data into memory before any handler or auth ever ran.
-  // The realistic ceiling isn't the "few hundred KB" a text message or a
-  // compressed photo needs — file/GIF attachments skip client-side
-  // compression entirely (compressImageFile only touches non-GIF images,
-  // and the generic "File" attach option never compresses anything), so a
-  // full MAX_FILE_SIZE (10MB) attachment is legitimate. That raw file goes
-  // through base64 -> JSON-wrap -> AES-GCM encrypt -> base64 AGAIN
-  // (encryptMsg), which was measured (not guessed) to inflate a 10MB file
-  // to ~17.78MB on the wire — a 5-minute voice note came out far smaller
-  // (~8.17MB, measured from this app's actual MediaRecorder default
-  // bitrate, ~129kbps). 20MB gives real attachments comfortable headroom
-  // above that measured ~17.78MB ceiling while still putting a hard,
-  // finite limit on how much any single request can make this process buffer.
+  // Sized to stay consistent with MAX_MESSAGE_CONTENT_BYTES (~19MB, see its
+  // derivation above /api/send) plus the small JSON wrapper every request
+  // carries (code, token, msgId — a few hundred bytes at most): 20MB gives
+  // that wrapper comfortable room without moving the real ceiling.
   const MAX_BODY_BYTES = 20 * 1024 * 1024;
   let body='';
   let bodyTooLarge = false;
@@ -503,6 +589,15 @@ async function api(path, method, d, p, res, ip) {
     if (rateLimited(`send:${d.token}`, 20, 10 * 1000)) {
       return resErr(res, 'Sending too fast — slow down a moment.', 429);
     }
+    // d.content had no size check at all — the 100-message trim below is a
+    // COUNT cap, not a byte cap, so 100 full-size file attachments could
+    // still be ~1.78GB in one room (see MAX_MESSAGE_CONTENT_BYTES's
+    // derivation above for how that number was actually measured, not
+    // guessed). This is the per-message half of the fix; the cumulative
+    // per-room byte budget below is the other half.
+    if (typeof d.content !== 'string' || d.content.length > MAX_MESSAGE_CONTENT_BYTES) {
+      return resErr(res, 'Message too large.', 413);
+    }
     const m = room.members.get(d.token);
     m.lastSeen = Date.now();
     room.lastActivity = Date.now();
@@ -526,6 +621,9 @@ async function api(path, method, d, p, res, ip) {
     // from 300: applies regardless of whether disappearing-message timers
     // are on, so even a room without them retains less on the server.
     if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length-100);
+    // Count cap alone doesn't bound memory (100 full-size attachments could
+    // still be ~1.78GB) — trim oldest-first by approximate byte size too.
+    trimRoomToByteBudget(room);
 
     // Best-effort push notification to the peer if they've subscribed. The
     // server can't decrypt d.content (E2E), so the payload is deliberately
@@ -594,8 +692,10 @@ async function api(path, method, d, p, res, ip) {
   if (path==='/api/push-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    const validated = validatePushSubscription(d.subscription);
+    if (!validated) return resErr(res, 'Invalid push subscription.', 400);
     const m = room.members.get(d.token);
-    m.pushSub = d.subscription || null;
+    m.pushSub = validated;
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
