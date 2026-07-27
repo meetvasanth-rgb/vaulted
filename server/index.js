@@ -55,6 +55,19 @@ function trimRoomToByteBudget(room) {
   }
 }
 
+// Every room.msgs.push(...) site in this file must go through here instead
+// of pushing directly. This is the fix for a real bug: /api/leave used to
+// push its "X left" system message straight onto room.msgs with no trim of
+// its own, relying entirely on /api/send happening to run the only count
+// cap that existed anywhere — a push path that doesn't go through /api/send
+// had nothing bounding its growth at all. Centralizing it here means a new
+// push site can't quietly reintroduce that same unbounded-growth bug by
+// forgetting to copy the trim logic along with it.
+function pushRoomMsg(room, msg) {
+  room.msgs.push(msg);
+  if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length - 100);
+}
+
 // VAPID keys identify this server to push services (Apple/Google/Mozilla's push
 // endpoints) — they are NOT related to the E2E message encryption keys, and the
 // server still never sees plaintext message content through this path (see the
@@ -289,6 +302,12 @@ function res200(res, data) {
 function resErr(res, msg, status=400) {
   res.writeHead(status, { 'Content-Type':'application/json', 'Access-Control-Allow-Origin':'*' });
   res.end(JSON.stringify({ error: msg }));
+}
+// No body, no Content-Type — used where the response itself must not leak
+// which of several outcomes actually happened (see /api/leave).
+function res204(res) {
+  res.writeHead(204, { 'Access-Control-Allow-Origin':'*' });
+  res.end();
 }
 
 function computeETag(buf) {
@@ -599,7 +618,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // — confusing since the app had just told them "You're X" a moment
     // earlier. The other member still gets it normally, which is the whole
     // point of the message.
-    room.msgs.push({ seq: ++room.seq, id: uid(), type:'system', content:`${name} joined`, ts: Date.now(), from: token });
+    pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${name} joined`, ts: Date.now(), from: token });
 
     // peerName included here too now, same as the reconnect branch above —
     // if a client ever IS legitimately forced through this fresh-join path
@@ -654,13 +673,12 @@ async function api(path, method, d, p, res, ip, headers) {
     // this server can't see inside that encrypted payload, so without this
     // it has no way to verify a /api/view-once-opened request actually
     // targets a view-once message rather than an ordinary one.
-    room.msgs.push({ seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
+    // pushRoomMsg applies the count cap (last 100, seq numbers never reset).
+    // Lowered from 300: applies regardless of whether disappearing-message
+    // timers are on, so even a room without them retains less on the server.
+    pushRoomMsg(room, { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     room.lastMessageAt = Date.now();
-    // Trim — keep last 100 messages but seq numbers never reset. Lowered
-    // from 300: applies regardless of whether disappearing-message timers
-    // are on, so even a room without them retains less on the server.
-    if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length-100);
     // Count cap alone doesn't bound memory (100 full-size attachments could
     // still be ~1.78GB) — trim oldest-first by approximate byte size too.
     trimRoomToByteBudget(room);
@@ -877,7 +895,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // are ever in scope — never a stale timestamp from an earlier session.
     room.deleteTimerSetAt = Date.now();
     room.lastActivity = Date.now();
-    room.msgs.push({
+    pushRoomMsg(room, {
       seq: ++room.seq, id: uid(), type:'system',
       content: room.deleteTimer
         ? `${m.name} set disappearing messages to ${formatTimerLabel(room.deleteTimer)}`
@@ -905,7 +923,7 @@ async function api(path, method, d, p, res, ip, headers) {
     room.msgs = [];
     room.clearedAt = Date.now();
     room.lastActivity = Date.now();
-    room.msgs.push({ seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
+    pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
     return res200(res, { ok: true, clearedAt: room.clearedAt });
   }
 
@@ -1087,24 +1105,30 @@ async function api(path, method, d, p, res, ip, headers) {
   // unverified d.name — anyone who merely knew a vault code could forge a
   // "${d.name} left" message into a room they were never part of, with no
   // length cap on d.name, no cap on room.msgs growth (the 100-message trim
-  // only ever ran in /api/send), and no rate limit. Same auth pattern as
-  // /api/clear-chat above: confirm room, then confirm actual membership,
-  // and derive the display name from the AUTHENTICATED member (m.name) —
-  // never from d.name — before touching anything.
+  // only ever ran in /api/send), and no rate limit. Fixed with the same
+  // auth pattern as /api/clear-chat: confirm room, confirm actual
+  // membership, and derive the display name from the AUTHENTICATED member
+  // (m.name) — never from d.name — before touching anything.
+  //
+  // The room/membership check itself has to be oracle-safe too: a 404 for
+  // "room doesn't exist" and a 403 for "wrong token" would let anyone with
+  // just a vault code (no valid token at all) tell live codes apart from
+  // dead ones by probing this endpoint — exactly what /api/join's own
+  // rate-limit hardening is trying to make expensive elsewhere. So every
+  // outcome below — missing room, bad token, or an actual successful leave
+  // — returns the identical 204 with no body.
   if (path==='/api/leave' && method==='POST') {
-    const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    const m = room.members.get(d.token);
-    if (!m) return resErr(res,'Not in room.',403);
     if (rateLimited(`leave:${ip}`, 20, 10 * 60 * 1000)) {
       return resErr(res, 'Too many leave attempts from this connection — try again in a few minutes.', 429);
     }
+    const room = rooms.get(d.code);
+    const m = (room && typeof d.token === 'string') ? room.members.get(d.token) : null;
+    if (!room || !m) return res204(res);
     room.members.delete(d.token);
     room.lastActivity = Date.now();
-    room.msgs.push({ seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
-    if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length-100);
+    pushRoomMsg(room, { seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
     if (room.members.size===0) rooms.delete(d.code);
-    return res200(res,{ok:true});
+    return res204(res);
   }
 
   // POST /api/close
