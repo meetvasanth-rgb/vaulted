@@ -398,9 +398,39 @@ const PUSH_HOST_ALLOWLIST_EXACT = new Set([
 ]);
 const PUSH_HOST_ALLOWLIST_SUFFIXES = ['.push.apple.com', '.notify.windows.com'];
 
+// web-push (and, under it, Node's own https.request) has no timeout at all
+// unless the caller passes one — an endpoint that accepts the TCP
+// connection and then never responds ties up that socket indefinitely.
+// Every webpush.sendNotification call site below passes this. All 5 sites
+// are fire-and-forget (.catch(), never awaited in sequence — confirmed by
+// reading each one), so a hung request only ever leaks one socket; it
+// can't stall any other send. 10s is generous for a real push service
+// under normal load while still bounding the worst case.
+const PUSH_TIMEOUT_MS = 10000;
+
 function isAllowedPushHost(hostname) {
   if (PUSH_HOST_ALLOWLIST_EXACT.has(hostname)) return true;
   return PUSH_HOST_ALLOWLIST_SUFFIXES.some(suffix => hostname.endsWith(suffix));
+}
+
+// Defense-in-depth, not a live gap — the closed allowlist above already
+// makes an IP literal unreachable today (no real push service publishes
+// one, so isAllowedPushHost rejects every IP literal already, implicitly).
+// This exists so that if the allowlist is ever loosened later (a wildcard
+// entry, a suffix broader than intended), an IP literal fails LOUDLY and
+// explicitly right here instead of silently starting to slip through
+// whatever the loosened allowlist now permits.
+function isIpLiteral(hostname) {
+  // WHATWG URL parsing keeps IPv6 literals bracketed and normalizes them
+  // (new URL('https://[::ffff:127.0.0.1]/').hostname === '[::ffff:7f00:1]')
+  // — but a colon can never appear in a real DNS hostname regardless of
+  // exact form, so this alone catches every IPv6 shape, including the
+  // ::ffff:-mapped IPv4-in-IPv6 form.
+  if (hostname.includes(':')) return true;
+  // IPv4 dotted-quad. Deliberately loose (not bounding each octet to
+  // 0-255) — a real hostname is never all-digits-and-dots either way, so
+  // over-rejecting here costs nothing.
+  return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
 }
 
 // Returns a freshly-reconstructed {endpoint, keys:{p256dh,auth}} object
@@ -414,11 +444,24 @@ function validatePushSubscription(sub) {
   let parsed;
   try { parsed = new URL(sub.endpoint); } catch (e) { return null; }
   if (parsed.protocol !== 'https:') return null;
+  if (isIpLiteral(parsed.hostname)) return null;
   if (!isAllowedPushHost(parsed.hostname)) return null;
   const keys = sub.keys;
   if (!keys || typeof keys !== 'object') return null;
   if (typeof keys.p256dh !== 'string' || keys.p256dh.length === 0 || keys.p256dh.length > 255) return null;
   if (typeof keys.auth !== 'string' || keys.auth.length === 0 || keys.auth.length > 255) return null;
+  // Shape, not just length — a real p256dh is an uncompressed P-256 EC
+  // point (0x04 followed by 32-byte X and 32-byte Y, 65 bytes total) and a
+  // real auth secret is 16 raw bytes. Buffer.from(..., 'base64url')
+  // doesn't throw on malformed input (Node's base64 decoders are lenient),
+  // it just produces the wrong length or wrong leading byte — which is
+  // exactly what these two checks catch. Low-stakes cleanup, not a live
+  // vulnerability fix: a malformed-but-plausible-length key before this
+  // only ever failed harmlessly later, against the real push service.
+  const p256dhBytes = Buffer.from(keys.p256dh, 'base64url');
+  const authBytes = Buffer.from(keys.auth, 'base64url');
+  if (p256dhBytes.length !== 65 || p256dhBytes[0] !== 0x04) return null;
+  if (authBytes.length !== 16) return null;
   return { endpoint: sub.endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } };
 }
 
@@ -973,7 +1016,7 @@ async function api(path, method, d, p, res, ip, headers) {
         // which is more aggressive about delaying "normal" priority pushes to a
         // locked, idle device. TTL is a 60s delivery window if the device is briefly
         // unreachable (e.g. no signal), after which the push service drops it.
-        webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 60 }).catch(err => {
+        webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 60, timeout: PUSH_TIMEOUT_MS }).catch(err => {
           if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null; // subscription expired/revoked
           else console.warn('push send failed:', err.statusCode, err.body || err.message);
         });
@@ -991,7 +1034,7 @@ async function api(path, method, d, p, res, ip, headers) {
           const rec = room.msgs.find(x => x.id === msgId);
           if (!rec || rec.deliveredAt) return; // delivered (or trimmed/gone) already
           if (!mb.pushSub) return; // already known-dead from the first attempt
-          webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
+          webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 30, timeout: PUSH_TIMEOUT_MS }).catch(err => {
             if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null;
             else console.warn('push retry send failed:', err.statusCode, err.body || err.message);
           });
@@ -1700,7 +1743,7 @@ wss.on('connection', (ws) => {
               isCall: true,
               code: roomCode,
             });
-            webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30 }).catch(err => {
+            webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30, timeout: PUSH_TIMEOUT_MS }).catch(err => {
               if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
               else console.warn('call push send failed:', err.statusCode, err.body || err.message);
             });
@@ -1720,7 +1763,7 @@ wss.on('connection', (ws) => {
             setTimeout(() => {
               if (room2.ringingUntil !== ringMarker || room2.ringingUntil <= Date.now()) return;
               if (!peerMember.pushSub) return; // already known-dead from the first attempt
-              webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 15 }).catch(err => {
+              webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 15, timeout: PUSH_TIMEOUT_MS }).catch(err => {
                 if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
                 else console.warn('call push retry send failed:', err.statusCode, err.body || err.message);
               });
@@ -1749,7 +1792,7 @@ wss.on('connection', (ws) => {
               isCall: false,
               code: roomCode,
             });
-            webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600 }).catch(err => {
+            webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600, timeout: PUSH_TIMEOUT_MS }).catch(err => {
               if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
               else console.warn('missed-call push send failed:', err.statusCode, err.body || err.message);
             });
@@ -1882,7 +1925,7 @@ function loadSnapshot() {
       return;
     }
     const now = Date.now();
-    let restored = 0, expired = 0;
+    let restored = 0, expired = 0, droppedPushSubs = 0;
     for (const [roomCode, room] of entries) {
       // Standing links never expire on inactivity (see the sweep above) —
       // the same exemption has to apply here, or a Railway restart would
@@ -1898,6 +1941,20 @@ function loadSnapshot() {
       // stale future timestamp doesn't incorrectly suppress a real ring
       // push after restart.
       room.ringingUntil = 0;
+      // The ONLY path a pushSub can reach webpush.sendNotification without
+      // ever having passed validatePushSubscription: a snapshot written by
+      // an older deploy (before the allowlist existed, or before a later
+      // tightening of it) restores whatever was serialized, verbatim, with
+      // nothing else in the boot path re-checking it. Running every
+      // restored member's pushSub back through the same validator used at
+      // registration closes that gap — anything that no longer passes gets
+      // nulled here rather than surviving into live memory.
+      for (const member of room.members.values()) {
+        if (member.pushSub && !validatePushSubscription(member.pushSub)) {
+          member.pushSub = null;
+          droppedPushSubs++;
+        }
+      }
       // Recomputed fresh rather than trusted from the snapshot — cheap
       // (one pass over this room's own msgs, capped at 100 entries) and
       // it's the one thing here actually worth not taking on faith: a
@@ -1913,7 +1970,7 @@ function loadSnapshot() {
       restored++;
     }
     fs.unlinkSync(SNAPSHOT_PATH); // one-shot — never let a later normal boot see a stale file
-    console.log(`Snapshot restored: ${restored} room(s) (${expired} already expired, discarded).`);
+    console.log(`Snapshot restored: ${restored} room(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
   } catch (e) {
     console.error('Snapshot load failed:', e.message);
   }
