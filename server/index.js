@@ -34,26 +34,170 @@ const rooms = new Map();
 // smaller (~8.17MB) and isn't the binding constraint.
 const MAX_MESSAGE_CONTENT_BYTES = 19 * 1024 * 1024; // ~1.2MB headroom above the measured ~17.78MB ceiling
 
-// Per-room cumulative byte budget for room.msgs, alongside the existing
-// 100-count trim below — the count cap alone doesn't bound memory: 100
-// full-size attachments at ~17.78MB each would be ~1.78GB in a single room.
-// 75MB was chosen over a tighter number (e.g. 25MB) specifically because
-// this app's own file-attachment feature legitimately allows ~17.78MB
-// single messages — a 25MB budget would hold barely more than ONE such
-// attachment before evicting everything else, which would feel broken for
-// a messaging app that explicitly supports 10MB attachments. 75MB fits
-// roughly 4 full-size attachments' worth of history (or many more of the
-// much more common small text/compressed-photo messages) while still being
-// a hard, finite bound nowhere near the previous unbounded-by-bytes state.
-const ROOM_BYTE_BUDGET = 75 * 1024 * 1024;
-function trimRoomToByteBudget(room) {
-  let total = 0;
-  for (const msg of room.msgs) total += (msg.content ? msg.content.length : 0);
-  while (total > ROOM_BYTE_BUDGET && room.msgs.length > 0) {
-    const removed = room.msgs.shift();
-    total -= (removed.content ? removed.content.length : 0);
+// A per-room budget can never bound total memory on its own — room
+// creation is attacker-controlled (rate-limited, but not capped), so
+// per-room x unbounded-rooms is still unbounded. The actual bound has to be
+// GLOBAL, sized off what this container is actually allowed to use.
+//
+// os.totalmem() is deliberately NOT used here — inside a container it
+// reports the HOST's total memory, not the cgroup limit this process is
+// actually confined to, and would badly overestimate how much headroom
+// really exists (a container capped at 512MB on a 64GB host would compute
+// its budget as if it had 64GB to work with). Reading the cgroup limit
+// directly is the only way to get the number that actually matters.
+function getContainerMemoryLimit() {
+  try { // cgroup v2
+    const v = fs.readFileSync('/sys/fs/cgroup/memory.max', 'utf8').trim();
+    if (v && v !== 'max') return parseInt(v, 10);
+  } catch (e) {}
+  try { // cgroup v1
+    const v = fs.readFileSync('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'utf8').trim();
+    const n = parseInt(v, 10);
+    if (n > 0 && n < 2 ** 53) return n; // v1 reports a huge sentinel value for "unlimited"
+  } catch (e) {}
+  return null;
+}
+
+// Conservative fixed fallback for when neither cgroup file is readable
+// (non-Linux dev machine, a sandboxed environment without cgroups exposed,
+// etc). Previously 128MB — raised after the baseline-subtraction formula
+// below showed that 128MB minus FIXED_BASELINE (150MB) is NEGATIVE: a
+// production server whose cgroup detection happens to fail would come up
+// completely unusable (a zero/undefined budget) rather than merely
+// degraded. 512MB keeps it functional — usable = 362MB, GLOBAL_BYTE_BUDGET
+// = 144.8MB — at the cost of a smaller budget than a correctly-detected
+// larger container would get. This is a "stay safe AND STAY WORKING when
+// we can't see the real number" floor, not a target.
+const FALLBACK_MEMORY_LIMIT = 512 * 1024 * 1024;
+
+const detectedMemoryLimit = getContainerMemoryLimit();
+if (detectedMemoryLimit === null) {
+  console.warn(`Container memory limit could not be detected (no readable cgroup v1/v2 file) — falling back to a conservative ${FALLBACK_MEMORY_LIMIT / 1024 / 1024}MB assumption. Byte budgets below will be smaller than they could be on the real container size.`);
+} else {
+  console.log(`Detected container memory limit: ${detectedMemoryLimit} bytes (${(detectedMemoryLimit / 1024 / 1024).toFixed(1)}MB).`);
+}
+const EFFECTIVE_MEMORY_LIMIT = detectedMemoryLimit || FALLBACK_MEMORY_LIMIT;
+
+// Baseline-subtraction, not a flat percentage of the raw limit — a flat
+// percentage asks small containers to fund the SAME fixed cost (Node/V8's
+// own baseline, connection buffers, GC bookkeeping, concurrent-request
+// transients) out of an already-small remainder, when that fixed cost
+// doesn't actually shrink just because the container is smaller. Subtract
+// it first, THEN size the budget off whatever's actually left.
+//
+// FIXED_BASELINE covers:
+//   - Node/V8's own baseline (loaded modules, ws/webpush, connection
+//     buffers, GC bookkeeping).
+//   - Concurrent-request transients: each in-flight /api/send holds
+//     several copies of its own body at once while being processed — the
+//     accumulated chunks array, the Buffer.concat result, the
+//     .toString('utf8') conversion, and the JSON.parse'd content string —
+//     roughly 4x that one request's size, bounded by BODY_LIMIT_SEND
+//     (20MB) per request and by however many large sends land
+//     concurrently. (Not client-side encryptMsg/decryptMsg — this server
+//     never encrypts or decrypts anything, by E2E design; the real
+//     server-side equivalent is this JSON.parse/JSON.stringify cycle.)
+const FIXED_BASELINE = 150 * 1024 * 1024;
+const usableMemory = EFFECTIVE_MEMORY_LIMIT - FIXED_BASELINE;
+
+// V8 caps how long a single JS string can ever be — saveSnapshot's
+// JSON.stringify builds ONE string containing every room's content, so
+// this is a hard ceiling on GLOBAL_BYTE_BUDGET, not just a memory concern:
+// a budget large enough to approach it makes that JSON.stringify call
+// throw RangeError: Invalid string length at the worst possible moment
+// (mid-shutdown), and the snapshot fails. Logged explicitly at boot so the
+// actual value on whatever Node build this runs is on record, not assumed
+// (512MB on some builds, 1GB on others).
+const V8_STRING_CAP = require('buffer').constants.MAX_STRING_LENGTH;
+console.log(`V8 MAX_STRING_LENGTH on this Node build (${process.version}): ${V8_STRING_CAP} bytes (${(V8_STRING_CAP / 1024 / 1024).toFixed(1)}MB).`);
+
+// Flat ceiling independent of both container size and the V8 string cap —
+// Railway bills on resource usage, so an oversized budget is a cost lever
+// on its own even setting aside the crash risk above: something has to
+// stop GLOBAL_BYTE_BUDGET from scaling up forever just because a bigger
+// plan gets attached to this service later.
+const HARD_CAP = 256 * 1024 * 1024;
+
+// 2.5x covers the snapshot-time ~2.05x derived below, plus margin:
+// saveSnapshot's JSON.stringify builds one big string containing every
+// room's content on top of the still-live in-memory objects (nothing is
+// freed until the synchronous call returns) — so snapshot time alone peaks
+// around ~2x GLOBAL_BYTE_BUDGET, on top of GLOBAL_BYTE_BUDGET itself being
+// "live" — call that ~2.05x total, and 2.5x leaves a bit of slack above it.
+let GLOBAL_BYTE_BUDGET;
+if (usableMemory <= 0) {
+  // Not silently floored to something that "just works" — a container
+  // this small genuinely cannot run this app safely at any budget, and
+  // that's worth seeing at boot, not discovering later as "why did every
+  // message just vanish."
+  console.warn(`FIXED_BASELINE (${FIXED_BASELINE} bytes) alone exceeds the effective memory limit (${EFFECTIVE_MEMORY_LIMIT} bytes) — this container is too small to run this app at any budget. GLOBAL_BYTE_BUDGET is 0; every message will be evicted immediately after being accepted.`);
+  GLOBAL_BYTE_BUDGET = 0;
+} else {
+  // Three independent ceilings, smallest wins — container memory is not
+  // the only constraint. Named and logged individually so which one
+  // actually bound the budget is visible in Railway logs, not something
+  // that has to be re-derived from arithmetic after the fact.
+  const candidates = [
+    { name: 'container-memory-derived (usable / 2.5)', value: Math.floor(usableMemory / 2.5) },
+    { name: 'V8-string-cap-derived (MAX_STRING_LENGTH * 0.5)', value: Math.floor(V8_STRING_CAP * 0.5) },
+    { name: 'hard cap', value: HARD_CAP },
+  ];
+  let winner = candidates[0];
+  for (const c of candidates) if (c.value < winner.value) winner = c;
+  GLOBAL_BYTE_BUDGET = winner.value;
+  console.log(`GLOBAL_BYTE_BUDGET candidates: ${candidates.map(c => `${c.name}=${c.value} bytes (${(c.value / 1024 / 1024).toFixed(1)}MB)`).join(', ')} — using ${winner.name} = ${GLOBAL_BYTE_BUDGET} bytes.`);
+  // A container small enough that the computed budget can't hold one
+  // legitimate max-size attachment (MAX_MESSAGE_CONTENT_BYTES, ~19MB)
+  // means this app's large-attachment feature and this container's real
+  // size are fundamentally in conflict — no formula resolves that, it
+  // just needs a bigger container or a lower MAX_MESSAGE_CONTENT_BYTES.
+  // Not silently floored/overridden here (that would risk exceeding the
+  // real, detected limit instead) — just made loud, since it would
+  // otherwise show up ONLY as "large sends mysteriously never arrive,"
+  // discovered case-by-case in the wild.
+  if (GLOBAL_BYTE_BUDGET < MAX_MESSAGE_CONTENT_BYTES) {
+    console.warn(`GLOBAL_BYTE_BUDGET (${GLOBAL_BYTE_BUDGET} bytes) is SMALLER than MAX_MESSAGE_CONTENT_BYTES (${MAX_MESSAGE_CONTENT_BYTES} bytes) — a single max-size attachment can exceed the entire global budget and be evicted immediately after being accepted. This container is too small for this app's large-attachment feature as configured.`);
   }
 }
+
+// Fairness cap, not a memory bound (the global budget above is the actual
+// bound) — stops any single room from consuming the whole global budget by
+// itself and starving every other room. 25% of the global budget, i.e. at
+// most 4 rooms could simultaneously sit at the fairness cap before the
+// global bound would already have started evicting from whichever of them
+// is largest.
+//
+// Floored at MAX_MESSAGE_CONTENT_BYTES — confirmed by testing that without
+// this floor, a small enough global budget (25% of it landing under ~19MB)
+// meant a single legitimate full-size attachment got accepted (200 OK,
+// sender's own client renders it optimistically) and then evicted by THIS
+// room's own fairness loop before the request handler even returned,
+// milliseconds later — the recipient's next poll would never see it, with
+// no error surfaced anywhere on either side. Raising this floor doesn't
+// weaken the actual memory bound: GLOBAL_BYTE_BUDGET (and the warning
+// above) is what that bound really is, and cross-room eviction there is
+// unaffected by how high any one room's own fairness threshold sits.
+const ROOM_BYTE_BUDGET = Math.max(Math.floor(GLOBAL_BYTE_BUDGET * 0.25), MAX_MESSAGE_CONTENT_BYTES);
+
+console.log(`Byte budgets: global=${GLOBAL_BYTE_BUDGET} bytes (${(GLOBAL_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB), per-room fairness cap=${ROOM_BYTE_BUDGET} bytes (${(ROOM_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB).`);
+
+// Even at zero messages, a room still costs real memory (a Map entry, two
+// member records, ~20 scalar fields) — unbounded room COUNT is a separate
+// DoS surface from unbounded room BYTES, and the byte budgets above do
+// nothing to stop it. /api/create is already rate-limited per IP (8/10min),
+// but that alone doesn't bound a distributed/many-IP campaign. 2000 is
+// deliberately generous for this app's actual real-world scale (a niche
+// anonymous 1:1 messenger, not a mass consumer app) while still being a
+// hard, finite ceiling — at even a generous 10KB/room empty-state estimate,
+// 2000 rooms is ~20MB, nowhere near the byte budgets above.
+const MAX_CONCURRENT_ROOMS = 2000;
+
+// Sum of every room's byteSize — the actual global memory bound tracked in
+// real time, maintained everywhere room.byteSize is (pushRoomMsg,
+// deleteRoomMsgContent, clear-chat's reset, destroyRoom below). A room's
+// OWN byteSize existing without this would mean the fairness cap works but
+// nothing actually enforces the global bound.
+let totalByteSize = 0;
 
 // Every room.msgs.push(...) site in this file must go through here instead
 // of pushing directly. This is the fix for a real bug: /api/leave used to
@@ -63,9 +207,76 @@ function trimRoomToByteBudget(room) {
 // had nothing bounding its growth at all. Centralizing it here means a new
 // push site can't quietly reintroduce that same unbounded-growth bug by
 // forgetting to copy the trim logic along with it.
+//
+// room.byteSize/totalByteSize are running totals, updated here and in
+// deleteRoomMsgContent/destroyRoom below, rather than recomputed by
+// rescanning on every call (the previous trimRoomToByteBudget did exactly
+// that — an O(n) scan on every single /api/send). Two separate eviction
+// passes: first the per-room fairness cap (100 messages OR
+// ROOM_BYTE_BUDGET bytes, whichever hits first, evicted from THIS room),
+// then the global bound (GLOBAL_BYTE_BUDGET bytes total, evicted from
+// whichever room is actually largest right now — not necessarily this one;
+// the room being written to at this moment might be small while some OTHER
+// room is the one actually hogging memory).
 function pushRoomMsg(room, msg) {
   room.msgs.push(msg);
-  if (room.msgs.length > 100) room.msgs.splice(0, room.msgs.length - 100);
+  const added = msg.content ? msg.content.length : 0;
+  room.byteSize = (room.byteSize || 0) + added;
+  totalByteSize += added;
+
+  while (room.msgs.length > 100 || room.byteSize > ROOM_BYTE_BUDGET) {
+    if (!room.msgs.length) break; // defensive — byteSize should already be 0 here too
+    const removed = room.msgs.shift();
+    const freed = removed.content ? removed.content.length : 0;
+    room.byteSize -= freed;
+    totalByteSize -= freed;
+  }
+  if (room.byteSize < 0) room.byteSize = 0; // defensive floor against any accounting drift
+
+  while (totalByteSize > GLOBAL_BYTE_BUDGET) {
+    let largest = null;
+    for (const r of rooms.values()) {
+      if (!r.msgs.length) continue;
+      if (!largest || (r.byteSize || 0) > (largest.byteSize || 0)) largest = r;
+    }
+    if (!largest) break; // defensive — totalByteSize should already be 0 if nothing has content left
+    const removed = largest.msgs.shift();
+    const freed = removed.content ? removed.content.length : 0;
+    largest.byteSize = Math.max(0, (largest.byteSize || 0) - freed);
+    totalByteSize -= freed;
+  }
+  if (totalByteSize < 0) totalByteSize = 0;
+}
+
+// Shared by every place that nulls a message's content out from under it —
+// the disappearing-message sweep below, /api/delete-message, and
+// /api/view-once-opened — so room.byteSize AND totalByteSize stay in sync
+// with what's actually still held in memory. Missing this in even one of
+// those three call sites would leave both permanently overcounting real
+// memory use (harmless to security, but it would make rooms evict other,
+// still-live messages more aggressively than they need to) — centralized
+// here for the same reason pushRoomMsg is: three separate call sites is
+// three chances to forget one.
+function deleteRoomMsgContent(room, msg) {
+  if (msg.content) {
+    const freed = msg.content.length;
+    room.byteSize = Math.max(0, (room.byteSize || 0) - freed);
+    totalByteSize = Math.max(0, totalByteSize - freed);
+  }
+  msg.content = null;
+  msg.deleted = true;
+  msg.deletionSeq = ++room.deletionSeq;
+}
+
+// Every room-deletion site must go through here instead of calling
+// rooms.delete(...) directly — a destroyed room's bytes need to come back
+// out of totalByteSize too, or the tracked global total would drift
+// upward forever as rooms come and go, eventually making the global budget
+// think it's full when the real rooms Map is mostly empty.
+function destroyRoom(code) {
+  const room = rooms.get(code);
+  if (room) totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0));
+  rooms.delete(code);
 }
 
 // VAPID keys identify this server to push services (Apple/Google/Mozilla's push
@@ -246,7 +457,7 @@ setInterval(() => {
     // there) breaks the first time both people go quiet for a few days.
     if (r.persistent) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
-    if (now - r.lastActivity > ttl) { rooms.delete(k); console.log(`Room ${k} expired`); }
+    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Room ${k} expired`); }
   }
 }, 30000);
 
@@ -287,9 +498,7 @@ setInterval(() => {
       // match the expected "only affects what happens from now on" behavior.
       if (msg.ts < (room.deleteTimerSetAt || 0)) continue;
       if (now - msg.readAt >= room.deleteTimer * 1000) {
-        msg.content = null;
-        msg.deleted = true;
-        msg.deletionSeq = ++room.deletionSeq;
+        deleteRoomMsgContent(room, msg);
       }
     }
   }
@@ -377,6 +586,31 @@ function serveStatic(req, res) {
   });
 }
 
+// Per-endpoint request body caps. /api/send is the one legitimate exception
+// — MAX_MESSAGE_CONTENT_BYTES above (19MB) already measured the real
+// worst-case: a full 10MB file attachment, base64'd, JSON-wrapped, AES-GCM
+// encrypted, then base64'd again by encryptMsg, comes out to ~17.78MB.
+// BODY_LIMIT_SEND has to stay at least that big plus the small JSON wrapper
+// (code, token, msgId — a few hundred bytes) or real attachments would get
+// rejected; 20MB (unchanged from the previous single blanket cap) keeps
+// that same ~1.2MB+ of headroom without moving the actual ceiling.
+//
+// Every other endpoint here only ever carries a few hundred bytes of JSON —
+// a code, a token, a name, a msgId, at most a PushSubscription. Measured a
+// realistic PushSubscription body (real FCM endpoint shape, real-length
+// p256dh/auth keys) at ~455 bytes, and a padded worst-case within
+// validatePushSubscription's own 255-char field caps at ~1067 bytes — both
+// comfortably under the shared 8KB default, so push-subscribe doesn't get
+// its own larger allowance. Giving every one of these endpoints the same
+// 20MB ceiling /api/send needs was the actual bug: message-COUNT limits
+// don't stop a flood of requests to a small endpoint from each individually
+// buffering up to that ceiling before any handler or auth check ever runs.
+const BODY_LIMIT_SEND = 20 * 1024 * 1024;
+const BODY_LIMIT_DEFAULT = 8 * 1024;
+function bodyLimitFor(pathname) {
+  return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
+}
+
 // Migrated from valuted.in to vaultlix.com. Both domains need to stay
 // attached to this same Railway service (don't remove valuted.in from
 // Railway's domain settings) — the redirect below only fires if a request
@@ -419,41 +653,55 @@ const srv = http.createServer((req, res) => {
   }
   const u = new URL(req.url, 'http://x');
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
-  // Body was accumulated here with no size cap at all — an attacker could
-  // stream unbounded data into memory before any handler or auth ever ran.
-  // Sized to stay consistent with MAX_MESSAGE_CONTENT_BYTES (~19MB, see its
-  // derivation above /api/send) plus the small JSON wrapper every request
-  // carries (code, token, msgId — a few hundred bytes at most): 20MB gives
-  // that wrapper comfortable room without moving the real ceiling.
-  const MAX_BODY_BYTES = 20 * 1024 * 1024;
-  let body='';
+  // Per-endpoint body cap, not one blanket ceiling — /api/send legitimately
+  // carries large attachments (see BODY_LIMIT_SEND below), but giving every
+  // other endpoint here that same allowance turned each of them into an
+  // independent multi-megabyte memory sink: a flood of tiny-looking requests
+  // to e.g. /api/leave or /api/poll could each buffer up to the ceiling
+  // before any handler or auth check ever ran, regardless of how small that
+  // endpoint's real payload actually is.
+  //
+  // Enforced DURING accumulation (checked after every chunk, not once after
+  // 'end') — checking only at the end is meaningless, since by then the
+  // oversized data has already been fully buffered into memory regardless.
+  // Chunks are collected into an array and Buffer.concat'd once at the end,
+  // rather than the previous `body += d`, which silently coerced every
+  // incoming Buffer to a string on each chunk (repeated string
+  // reallocation, and `.length` on the result is UTF-16 code units, not the
+  // byte count actually received — chunk.length on the raw Buffer is what
+  // the cap below actually measures).
+  const bodyLimit = bodyLimitFor(u.pathname);
+  const chunks = [];
+  let received = 0;
   let bodyTooLarge = false;
-  req.on('data', d => {
+  req.on('data', chunk => {
     if (bodyTooLarge) return;
-    body += d;
-    if (body.length > MAX_BODY_BYTES) {
+    received += chunk.length;
+    if (received > bodyLimit) {
       bodyTooLarge = true;
       try { resErr(res, 'Request body too large.', 413); } catch(e) {}
-      req.destroy();
+      req.destroy(); // stop reading — do not keep buffering past the cap
+      return;
     }
+    chunks.push(chunk);
   });
   req.on('end',()=>{
     if (bodyTooLarge) return;
     let d={};
-    try { if(body) d=JSON.parse(body); } catch{}
+    try { if (chunks.length) d = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch{}
     // api() is async now (password hashing awaits scrypt) but still responds
     // entirely through the res object rather than a return value, so this
     // stays fire-and-forget — just needs a catch so a thrown error (a
     // malformed password field, scrypt failing, etc.) can't crash the
     // process or hang the request with no response ever sent.
-    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers, req.socket.remoteAddress).catch(err => {
+    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers).catch(err => {
       console.error('API error:', err.message);
       try { resErr(res, 'Internal error.', 500); } catch(e) {}
     });
   });
 });
 
-async function api(path, method, d, p, res, ip, headers, remoteAddress) {
+async function api(path, method, d, p, res, ip, headers) {
 
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
@@ -463,6 +711,15 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     // script from spam-creating rooms, which had zero limit before this.
     if (rateLimited(`create:${ip}`, 8, 10 * 60 * 1000)) {
       return resErr(res, 'Too many rooms created from this connection — try again in a few minutes.', 429);
+    }
+    // Hard ceiling on total concurrent rooms, independent of the byte
+    // budgets above — even an empty room costs real memory (a Map entry,
+    // member records), and unbounded room COUNT is a distinct DoS surface
+    // from unbounded room BYTES. Rejected explicitly (clear error, logged)
+    // rather than degrading silently in some other way.
+    if (rooms.size >= MAX_CONCURRENT_ROOMS) {
+      console.warn(`MAX_CONCURRENT_ROOMS (${MAX_CONCURRENT_ROOMS}) reached — rejecting new room creation.`);
+      return resErr(res, 'Too many active vaults right now — please try again shortly.', 503);
     }
     const namedCode = d.namedCode ? d.namedCode.replace(/[^a-z0-9-]/g,'-').slice(0,40) : null;
     if (namedCode && rooms.has(namedCode)) return resErr(res,`Room "${namedCode}" already exists.`,409);
@@ -509,6 +766,7 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
       deletionSeq: 0,  // same pattern again, for "delete for everyone" — see /api/delete-message
       members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
+      byteSize: 0,     // running total of msgs[].content.length — see pushRoomMsg/deleteRoomMsgContent
     });
     if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
     saveAnalytics();
@@ -673,15 +931,13 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     // this server can't see inside that encrypted payload, so without this
     // it has no way to verify a /api/view-once-opened request actually
     // targets a view-once message rather than an ordinary one.
-    // pushRoomMsg applies the count cap (last 100, seq numbers never reset).
+    // pushRoomMsg applies both the count cap (last 100, seq numbers never
+    // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
     pushRoomMsg(room, { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     room.lastMessageAt = Date.now();
-    // Count cap alone doesn't bound memory (100 full-size attachments could
-    // still be ~1.78GB) — trim oldest-first by approximate byte size too.
-    trimRoomToByteBudget(room);
 
     // Best-effort push notification to the peer if they've subscribed. The
     // server can't decrypt d.content (E2E), so the payload is deliberately
@@ -832,9 +1088,7 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
     if (msg.from !== d.token) return resErr(res,'Only the sender can delete this for everyone.',403);
-    msg.content = null;
-    msg.deleted = true;
-    msg.deletionSeq = ++room.deletionSeq;
+    deleteRoomMsgContent(room, msg);
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
@@ -863,9 +1117,7 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     if (!msg) return resErr(res,'Message not found.',404);
     if (msg.viewOnce !== true || msg.from === d.token) return resErr(res,'Not authorized to open this message.',403);
     if (!msg.deleted) {
-      msg.content = null;
-      msg.deleted = true;
-      msg.deletionSeq = ++room.deletionSeq;
+      deleteRoomMsgContent(room, msg);
       room.lastActivity = Date.now();
     }
     return res200(res, { ok: true });
@@ -921,6 +1173,8 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in room.',403);
     room.msgs = [];
+    totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0)); // this room's share is gone too
+    room.byteSize = 0; // everything that byte total was tracking is gone with room.msgs
     room.clearedAt = Date.now();
     room.lastActivity = Date.now();
     pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
@@ -1127,7 +1381,7 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     room.members.delete(d.token);
     room.lastActivity = Date.now();
     pushRoomMsg(room, { seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
-    if (room.members.size===0) rooms.delete(d.code);
+    if (room.members.size===0) destroyRoom(d.code);
     return res204(res);
   }
 
@@ -1142,7 +1396,7 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     // silently idempotent (always {ok:true}) either way, so this doesn't
     // leak whether a given code currently exists to an unauthenticated caller.
     const room = rooms.get(d.code);
-    if (room && room.members.has(d.token)) rooms.delete(d.code);
+    if (room && room.members.has(d.token)) destroyRoom(d.code);
     return res200(res,{ok:true});
   }
 
@@ -1183,7 +1437,7 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
     if (!room) return resErr(res,'Room not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
     if (!room.persistent) return resErr(res,'This is not a permanent room.',400);
-    rooms.delete(d.code);
+    destroyRoom(d.code);
     console.log(`Anon Link revoked: ${d.code}`);
     return res200(res,{ok:true});
   }
@@ -1218,35 +1472,6 @@ async function api(path, method, d, p, res, ip, headers, remoteAddress) {
       ...analytics,
       totalRoomsCreated: total,
       permanentPct: total ? Math.round((analytics.roomsCreatedPermanent / total) * 100) : 0,
-    });
-  }
-
-  // GET /api/_debug-headers — TEMPORARY. Added solely to determine how many
-  // proxy hops sit in front of this deployment on Railway, so clientIp()'s
-  // X-Forwarded-For handling can be fixed with a verified trusted-hop count
-  // instead of a guess. Remove this once that diagnosis is done — it has no
-  // purpose beyond it. Same auth pattern as /api/admin/stats immediately
-  // above (Authorization: Bearer ADMIN_KEY, 404 on missing/wrong key so its
-  // existence isn't revealed to anyone without the key, timingSafeEqual
-  // comparison) — deliberately not a ?key=... query string, since that would
-  // land the admin key in Railway's own access logs.
-  if (path === '/api/_debug-headers' && method === 'GET') {
-    const authHeader = (headers && headers['authorization']) || '';
-    const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
-    const providedKey = bearerMatch ? bearerMatch[1] : null;
-    const expectedKey = process.env.ADMIN_KEY;
-    if (!expectedKey || !providedKey) {
-      res.writeHead(404); res.end(); return;
-    }
-    const providedBuf = Buffer.from(providedKey);
-    const expectedBuf = Buffer.from(expectedKey);
-    if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
-      res.writeHead(404); res.end(); return;
-    }
-    return res200(res, {
-      headers,
-      remoteAddress,
-      clientIpResult: ip,
     });
   }
 
@@ -1570,6 +1795,7 @@ setInterval(() => {
 // still lose rooms, same as before. See the boot-time log line below.
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || path.join(__dirname, '.data');
 const SNAPSHOT_PATH = path.join(SNAPSHOT_DIR, 'rooms-snapshot.json');
+const SNAPSHOT_TMP_PATH = SNAPSHOT_PATH + '.tmp';
 
 function saveSnapshot() {
   try {
@@ -1584,14 +1810,43 @@ function saveSnapshot() {
       code,
       { ...room, members: Array.from(room.members.entries()) },
     ]);
-    // This file holds live bearer tokens — mode:0o600 on writeFileSync only
-    // actually applies when the file is newly created (confirmed: if a
-    // previous loadSnapshot() throws before it reaches its own unlinkSync,
-    // the leftover file survives and a later writeFileSync here would just
-    // overwrite its contents without touching its existing permission
-    // bits). chmod explicitly afterward so this is 0600 regardless of
-    // whether the file was just created or already existed.
-    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(entries), { mode: 0o600 });
+    // Explicit, local guard around JUST this call — not relying on the
+    // outer try/catch below to catch it implicitly. JSON.stringify here
+    // builds ONE string containing every room's content; if
+    // GLOBAL_BYTE_BUDGET is ever close enough to V8's MAX_STRING_LENGTH
+    // cap (see its derivation above), this throws RangeError: Invalid
+    // string length. That happens mid-shutdown, so the right response is
+    // to skip the snapshot and let shutdown continue — a missed snapshot
+    // just means rooms don't survive this particular restart, which is
+    // recoverable; a crashed shutdown handler is not.
+    let data;
+    try {
+      data = JSON.stringify(entries);
+    } catch (e) {
+      console.error(`Snapshot save SKIPPED — JSON.stringify failed (${e.message}). Continuing shutdown without a snapshot.`);
+      return;
+    }
+    // Write to a .tmp file, fsync it to disk, THEN atomically rename it
+    // onto the real path — rename is atomic within one filesystem (both
+    // paths are in SNAPSHOT_DIR, so always the same one), so a SIGKILL at
+    // any point up to and including mid-write leaves either a harmless
+    // partial .tmp (never renamed, so SNAPSHOT_PATH — if it existed —
+    // still holds the last snapshot that actually completed) or a fully
+    // written new SNAPSHOT_PATH; there is no window where SNAPSHOT_PATH
+    // itself can end up truncated or half-written. This file holds live
+    // bearer tokens, so 0600 on both the tmp file (at creation) and the
+    // final path (explicitly, afterward, regardless of whether the path
+    // was just created or already existed — a bare mode on open only
+    // applies to a brand-new file).
+    const fd = fs.openSync(SNAPSHOT_TMP_PATH, 'w', 0o600);
+    try {
+      fs.writeSync(fd, data);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.chmodSync(SNAPSHOT_TMP_PATH, 0o600);
+    fs.renameSync(SNAPSHOT_TMP_PATH, SNAPSHOT_PATH);
     fs.chmodSync(SNAPSHOT_PATH, 0o600);
     console.log(`Snapshot saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
   } catch (e) {
@@ -1600,9 +1855,32 @@ function saveSnapshot() {
 }
 
 function loadSnapshot() {
+  // A stray .tmp here means a previous save was interrupted before its
+  // renameSync ever ran — it was never the live snapshot (the rename that
+  // would have made it one never happened), so it's always safe to
+  // discard. SNAPSHOT_PATH itself, if present, is unaffected by that
+  // interruption — it's still whatever the last fully-completed save wrote
+  // (or doesn't exist at all, if there was never a completed save).
+  try {
+    if (fs.existsSync(SNAPSHOT_TMP_PATH)) fs.unlinkSync(SNAPSHOT_TMP_PATH);
+  } catch (e) {
+    console.error('Stray snapshot .tmp cleanup failed:', e.message);
+  }
+
   try {
     if (!fs.existsSync(SNAPSHOT_PATH)) return;
-    const entries = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'));
+    const raw = fs.readFileSync(SNAPSHOT_PATH, 'utf8');
+    let entries;
+    try {
+      entries = JSON.parse(raw);
+    } catch (e) {
+      // A corrupt file must start the server empty, not crash it into a
+      // boot loop — removed too, so a later boot doesn't keep tripping
+      // over the exact same unreadable file forever.
+      console.error('Snapshot file is corrupt, discarding and starting empty:', e.message);
+      try { fs.unlinkSync(SNAPSHOT_PATH); } catch (e2) {}
+      return;
+    }
     const now = Date.now();
     let restored = 0, expired = 0;
     for (const [roomCode, room] of entries) {
@@ -1620,6 +1898,17 @@ function loadSnapshot() {
       // stale future timestamp doesn't incorrectly suppress a real ring
       // push after restart.
       room.ringingUntil = 0;
+      // Recomputed fresh rather than trusted from the snapshot — cheap
+      // (one pass over this room's own msgs, capped at 100 entries) and
+      // it's the one thing here actually worth not taking on faith: a
+      // snapshot written by an older deploy from before room.byteSize
+      // existed would restore as undefined otherwise, and pushRoomMsg's
+      // `room.byteSize || 0` would silently start the count at 0 even
+      // though room.msgs already holds real content — undercounting the
+      // room's actual footprint until enough new traffic happened to
+      // naturally correct it.
+      room.byteSize = room.msgs.reduce((sum, msg) => sum + (msg.content ? msg.content.length : 0), 0);
+      totalByteSize += room.byteSize;
       rooms.set(roomCode, room);
       restored++;
     }
