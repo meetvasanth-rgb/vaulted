@@ -200,6 +200,11 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
    writing it down, or avoiding a link's automatic preview-fetch). */
 .code-tap-hint{font-size:10px;letter-spacing:.04em;color:var(--hint);margin-top:8px}
 .code-value .code-char{display:inline-block;opacity:0;transform:translateY(6px) scale(.85);animation:code-char-in .35s ease forwards}
+/* The server-appended random suffix on a named vault's code — same font,
+   size and reveal animation as the rest, only the color differs, so the
+   label/suffix boundary is visible without reading the note below. See
+   revealCode()'s labelLen parameter. */
+.code-value .code-char.code-char-suffix{color:#B8A372}
 @keyframes code-char-in{to{opacity:1;transform:translateY(0) scale(1)}}
 .code-actions{display:flex;gap:8px;justify-content:center;margin-bottom:20px}
 .copy-btn,.share-btn{background:none;border:0.5px solid var(--border2);border-radius:2px;padding:7px 16px;font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;transition:all .15s}
@@ -1439,8 +1444,8 @@ body.select-mode .chat-ftr{display:none}
     </div>
     <div id="named-field" class="field" style="display:none">
       <label>Vault name</label>
-      <input type="text" id="named-input" placeholder="e.g. monsoon, tuesday-blue, sunrise" autocomplete="off"/>
-      <div class="field-note">Something only you two would know. Letters, numbers and hyphens.</div>
+      <input type="text" id="named-input" placeholder="e.g. family-trip, date-night, book-club" autocomplete="off" maxlength="16"/>
+      <div class="field-note">A label so you can recognise this vault. We'll add a random suffix to keep the code private.</div>
     <div id="timer-field" class="field" style="display:none">
       <label>Messages disappear after</label>
       <select id="timer-select" class="timer-select">
@@ -2151,9 +2156,19 @@ const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen }) {
   return {
     code, token, myName,
+    // Where a named vault's user-typed label ends and the server-appended
+    // random suffix begins, in characters — null for an anonymous room
+    // (nothing to distinguish, the whole code is server-random). Only ever
+    // used to color the two parts differently on the post-create/resumed-
+    // waiting screen; see revealCode(). Set directly on the room object
+    // right after /api/create responds (same pattern as room.code/
+    // room.token below), not something makeRoom's caller usually has yet —
+    // the one exception is the reload-restore path, which already has it
+    // from the persisted session.
+    codeLabelLen: codeLabelLen || null,
     // Anon Link ("permanent room") state — persistent marks a room the
     // server will never auto-expire; connectedSince/totalMessageCount are
     // the "this is an ongoing thing" signal shown in Settings for it. All
@@ -2324,7 +2339,7 @@ async function persistRoom(room) {
       nickname: room.nickname,
       persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
       reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
-      deleteTimerSeconds: room.deleteTimerSeconds,
+      deleteTimerSeconds: room.deleteTimerSeconds, codeLabelLen: room.codeLabelLen,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
@@ -6656,11 +6671,11 @@ function openJoinFromLink(code) {
 // are responsible for that (startWaitingForPeer, called separately).
 function resumeWaitingScreen(room) {
   pendingRoomCode = room.code;
-  revealCode(room.code);
+  revealCode(room.code, room.codeLabelLen);
   const codeLabel = document.getElementById('code-label');
   if (codeLabel) codeLabel.textContent = room.persistent ? 'Permanent vault code' : 'Secret code';
   const wNote = document.getElementById('w-note');
-  if (wNote) wNote.textContent = room.persistent ? `Permanent vault "${room.code}" is ready — it won't expire. Share it once, reopen it anytime.` : 'Waiting for the other person to join…';
+  if (wNote) wNote.textContent = room.persistent ? "We added a random ending so this can't be guessed. It won't expire — share it once, reopen it anytime." : 'Waiting for the other person to join…';
   const shareBtn = document.getElementById('share-code-btn');
   if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
   showScreen('s-waiting');
@@ -6752,18 +6767,19 @@ async function handleSetup() {
       room.token = result.token;
       room.deleteTimerSeconds = result.deleteTimer || timerVal;
       room.persistent = !!result.persistent;
+      room.codeLabelLen = result.labelLength || null;
       addRoomToState(room);
       persistRoom(room);
       pendingRoomCode = room.code;
 
-      revealCode(result.code);
+      revealCode(result.code, room.codeLabelLen);
       const codeLabel = document.getElementById('code-label');
       if (codeLabel) codeLabel.textContent = room.persistent ? 'Permanent vault code' : 'Secret code';
       const wNote = document.getElementById('w-note');
       // 'named' mode is always persistent now (see persistentVal above), so
       // the two branches here map 1:1 to the two landing-screen choices —
       // no third "named but not permanent" case exists anymore to word for.
-      if (wNote) wNote.textContent = room.persistent ? `Permanent vault "${result.code}" is ready — it won't expire. Share it once, reopen it anytime.` : 'Waiting for the other person to join…';
+      if (wNote) wNote.textContent = room.persistent ? "We added a random ending so this can't be guessed. It won't expire — share it once, reopen it anytime." : 'Waiting for the other person to join…';
       // Web Share API is the whole point — one tap into WhatsApp/Messages/
       // whatever they already have open, instead of copy → switch apps →
       // find the chat → paste. Not every browser supports it (desktop
@@ -7519,7 +7535,14 @@ function staggerSetupFields() {
 // textContent assignment for anything that isn't a plain, safe character
 // (shouldn't happen — codes are server-generated from a known alphabet —
 // but escaping defensively here since this builds real DOM nodes).
-function revealCode(code) {
+// labelLen marks where a user-typed vault label ends and the server-
+// appended random suffix begins (see /api/create's labelLength field) —
+// characters from that index on get a dimmer secondary color, same font/
+// size/reveal animation, so the structure ("you typed this part, we added
+// the rest for security") is visible at a glance without reading the note
+// below. Falsy/omitted labelLen (anonymous rooms — nothing was user-typed)
+// renders the whole code in the normal color, unchanged from before.
+function revealCode(code, labelLen) {
   const el = document.getElementById('display-code');
   const box = document.querySelector('#s-waiting .code-box');
   if (!el) return;
@@ -7527,7 +7550,7 @@ function revealCode(code) {
   const chars = [...String(code || '')];
   chars.forEach((ch, i) => {
     const span = document.createElement('span');
-    span.className = 'code-char';
+    span.className = 'code-char' + (labelLen && i >= labelLen ? ' code-char-suffix' : '');
     span.textContent = ch;
     span.style.animationDelay = (i * 35) + 'ms';
     el.appendChild(span);
@@ -7571,7 +7594,7 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen });
     room.nickname = session.nickname || null;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the
