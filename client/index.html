@@ -3099,7 +3099,8 @@ async function handleSignalMessage(room, type, payload) {
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
+      const sent = await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
+      if (!sent) { sendSignal(room, 'call-hangup', {}); endCall(room, 'Could not start the call.'); return; }
     } catch (e) {
       sendSignal(room, 'call-hangup', {});
       endCall(room, 'Could not start the call.');
@@ -3825,8 +3826,37 @@ async function setupPeerConnection(room) {
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
-    } catch (e) {}
+      const sent = await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
+      if (!sent) {
+        // setLocalDescription above already moved us to 'have-local-offer' —
+        // the peer never saw it, so roll back or signalingState stays stuck
+        // there and every later renegotiation (next camera toggle, etc.)
+        // hits the 'stable' guard above and silently no-ops for the rest of
+        // the call.
+        try {
+          await pc.setLocalDescription({ type: 'rollback' });
+        } catch (e) {
+          console.error('rollback after failed renegotiation offer also failed — signalingState may be stuck', e);
+        }
+        if (room.callVideoOn) {
+          // This negotiation was for turning video ON (see toggleCamera) and
+          // it never reached the peer — revert local state to match so the
+          // UI doesn't show video as active when it was never actually sent.
+          deactivateLocalVideo(room);
+          renderCallOverlay(room);
+          toast('Could not enable video.');
+        } else {
+          // Negotiation was for turning video off (or some other change) —
+          // local state already reflects the intended end state (the track
+          // is already stopped locally), so there's nothing to revert. The
+          // peer will see a frozen last frame until the next toggle
+          // resyncs; since we're no longer transmitting, not worth a retry.
+          console.error('sendSignal failed for renegotiation offer while video was off — peer may be out of sync until next toggle');
+        }
+      }
+    } catch (e) {
+      console.error('onnegotiationneeded failed', e);
+    }
   };
 
   room.pendingIceCandidates = [];
@@ -3981,7 +4011,8 @@ async function processOffer(room, payload) {
     await flushPendingIceCandidates(room);
     const answer = await room.pc.createAnswer();
     await room.pc.setLocalDescription(answer);
-    await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
+    const sent = await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
+    if (!sent) { sendSignal(room, 'call-hangup', {}); endCall(room, 'Could not connect the call.'); return; }
     room.callNegotiated = true; // callee's initial offer/answer exchange is done
   } catch (e) {
     sendSignal(room, 'call-hangup', {});
@@ -4068,18 +4099,28 @@ async function toggleCamera() {
       return;
     }
   } else {
-    const sender = room.pc.getSenders().find(s => s.track && s.track.kind === 'video');
-    if (sender) room.pc.removeTrack(sender);
-    if (room.localVideoStream) {
-      room.localVideoStream.getTracks().forEach(t => t.stop());
-      room.localVideoStream = null;
-    }
-    room.callVideoOn = false;
-    stopCallStatsLogging(room);
-    const localVideoEl = document.getElementById('call-local-video');
-    if (localVideoEl) localVideoEl.remove();
+    deactivateLocalVideo(room);
   }
   renderCallOverlay(room);
+}
+
+// Symmetric counterpart to the video-on branch of toggleCamera(): removes our
+// video track from the peer connection, stops and drops the local camera
+// stream, flips the flag, and clears the video UI. Shared by toggleCamera()'s
+// turn-off path and onnegotiationneeded's failed-turn-on recovery so the two
+// can't drift out of sync with each other — order matters here (stats
+// logging is stopped only after the track/stream teardown, DOM removal last).
+function deactivateLocalVideo(room) {
+  const sender = room.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+  if (sender) room.pc.removeTrack(sender);
+  if (room.localVideoStream) {
+    room.localVideoStream.getTracks().forEach(t => t.stop());
+    room.localVideoStream = null;
+  }
+  room.callVideoOn = false;
+  stopCallStatsLogging(room);
+  const localVideoEl = document.getElementById('call-local-video');
+  if (localVideoEl) localVideoEl.remove();
 }
 
 // Front/back swap — deliberately NOT addTrack/removeTrack. replaceTrack()
