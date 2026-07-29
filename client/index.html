@@ -2659,6 +2659,22 @@ function bytesToBase64(bytes) {
   return btoa(bin);
 }
 
+// One shared id generator for every message type sent to the server (text,
+// file, album, voice) — previously each had its own distinct prefix ('m',
+// 'file', 'album', 'voice'), which leaked message type to the server and to
+// anyone on the wire for no functional reason: nothing anywhere branches on
+// the prefix (rendering keys off the decrypted record's `kind`, the server
+// only sanitizes and stores the id verbatim). A single neutral prefix here.
+// Math.random() previously supplied the random suffix — msgId isn't a
+// credential, but /api/view-once-opened and /api/delete-message are both
+// keyed by it, so there's no reason to leave it predictable when
+// crypto.getRandomValues is one call away.
+function newMsgId() {
+  const randBytes = crypto.getRandomValues(new Uint8Array(9));
+  const randHex = Array.from(randBytes, b => b.toString(16).padStart(2, '0')).join('');
+  return 'msg' + Date.now().toString(36) + randHex;
+}
+
 async function getOrGenerateKeyPair(room) {
   if (room.myKeyPair) {
     const exported = await crypto.subtle.exportKey('raw', room.myKeyPair.publicKey);
@@ -2760,25 +2776,112 @@ async function encryptMsg(room, text) {
   return 'v:' + bytesToBase64(out);
 }
 
+// ── PADDED TEXT MESSAGES (v2) ────────────────────────────────────────────
+// Ciphertext length otherwise reveals plaintext length — a 3-byte "hi" and
+// a long paragraph are trivially distinguishable on the wire. Only applied
+// to actual chat text (encryptTextMsg below, used solely by sendMsg()) —
+// NOT to attachments: a 210KB image padded up to the next bucket wastes
+// real bandwidth/egress for no benefit, since an attachment's rough size is
+// already obvious from being one at all. Text is where length maps to
+// content.
+//
+// Fixed buckets, then exponential doubling beyond the last one. Bucket is
+// chosen off the TOTAL size needed (4-byte length prefix + real payload),
+// so the wire size is always exactly one of these numbers regardless of
+// how close the real content sits to a boundary.
+//
+// First bucket is 256, not 64 — bucketing reduces the resolution of the
+// length leak, it doesn't eliminate it, and the most revealing distinction
+// in a chat app is "terse reply" vs "actual message" (a 2-char "ok" against
+// a couple of sentences). Typical chat messages run ~30-60 characters, most
+// of the distribution under 200 — a 64-byte first bucket would still split
+// that entire range in two. 256 swallows the overwhelming majority of real
+// traffic into one indistinguishable size instead. Cost: a 2-character
+// message costs ~380 bytes on the wire instead of ~127 — smaller than a
+// single HTTP header block, and text is a rounding error against
+// attachments either way.
+const PAD_BUCKETS = [256, 1024, 4096];
+function paddedTargetSize(n) {
+  for (const b of PAD_BUCKETS) if (n <= b) return b;
+  let size = PAD_BUCKETS[PAD_BUCKETS.length - 1];
+  while (size < n) size *= 2;
+  return size;
+}
+// Length-prefixed, not delimiter-based — a delimiter needs a byte sequence
+// guaranteed to never occur in arbitrary user text, which either needs
+// escaping (one more thing to get subtly wrong later) or just isn't
+// guaranteed at all. A fixed-position 4-byte big-endian length has no
+// collision surface: the receiver reads it by position, never by scanning
+// for a pattern that might legitimately appear in someone's message.
+function padPlaintext(bytes) {
+  const target = paddedTargetSize(4 + bytes.length);
+  const out = new Uint8Array(target); // zero-initialized; the tail beyond the real payload is never read back
+  new DataView(out.buffer).setUint32(0, bytes.length, false);
+  out.set(bytes, 4);
+  return out;
+}
+function unpadPlaintext(padded) {
+  const view = new DataView(padded.buffer, padded.byteOffset, padded.byteLength);
+  const len = view.getUint32(0, false);
+  if (len < 0 || 4 + len > padded.length) throw new Error('bad padding');
+  return padded.slice(4, 4 + len);
+}
+// AES-GCM's additionalData authenticates the "v2" label alongside the
+// ciphertext without encrypting it (it has to be readable before
+// decryption even starts, to pick this branch at all) — without this, the
+// label is just an unauthenticated string prefix: an attacker who can
+// modify traffic could take a genuine "v2:<base64>" message and delete the
+// "2", producing "v:<base64>" with the exact same IV/ciphertext bytes.
+// Since the GCM tag wouldn't cover that outer label, it would decrypt
+// successfully as unpadded v1 and hand back the still-padded bytes as if
+// they were the real message. Binding the label here means altering it
+// fails authentication instead — the existing E2E_DOWNGRADE path already
+// handles that safely.
+const V2_AAD = new TextEncoder().encode('v2');
+
+// Used ONLY by sendMsg() for actual chat text — everything else (files,
+// albums, voice, call signaling) stays on the plain encryptMsg() above.
+async function encryptTextMsg(room, text) {
+  if (!room.sharedKey) throw new Error('E2E_NOT_READY');
+  const padded = padPlaintext(new TextEncoder().encode(text));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt({ name:'AES-GCM', iv, additionalData: V2_AAD }, room.sharedKey, padded);
+  const out = new Uint8Array(12 + enc.byteLength);
+  out.set(iv); out.set(new Uint8Array(enc), 12);
+  return 'v2:' + bytesToBase64(out);
+}
+
 // Two distinct failure states, never conflated:
 //   E2E_NOT_READY — room.sharedKey doesn't exist yet. Normal and transient
 //     (history restore can race key derivation) — callers should hold the
 //     message and retry once a key becomes available, never render it.
-//   E2E_DOWNGRADE — a shared key EXISTS but the payload has no "v:" prefix,
-//     or AES-GCM authentication fails. That's an active downgrade attempt
-//     or corruption, not something to retry — callers must render a fixed
-//     "blocked" placeholder and must never let the raw payload reach the DOM.
+//   E2E_DOWNGRADE — a shared key EXISTS but the payload has no recognized
+//     "v:"/"v2:" prefix, or AES-GCM authentication fails. That's an active
+//     downgrade attempt or corruption, not something to retry — callers
+//     must render a fixed "blocked" placeholder and must never let the raw
+//     payload reach the DOM.
 // Must never return plaintext, ever — that was the whole bug: a stripped
 // "v:" prefix used to fall straight through as if it were a legitimate
-// unencrypted message.
+// unencrypted message. "v2:" (padded text — see above) is checked first
+// since it's the more specific prefix; an old client that's never heard of
+// "v2:" falls through to the same E2E_DOWNGRADE path a genuinely corrupt
+// message would — the correct, safe "not choke" behavior for it, not a
+// silent misinterpretation.
 async function decryptMsg(room, data) {
   if (!data) return '';
   if (!room.sharedKey) throw new Error('E2E_NOT_READY');
-  if (!data.startsWith('v:')) throw new Error('E2E_DOWNGRADE');
   try {
-    const raw = Uint8Array.from(atob(data.slice(2)), c => c.charCodeAt(0));
-    const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, room.sharedKey, raw.slice(12));
-    return new TextDecoder().decode(dec);
+    if (data.startsWith('v2:')) {
+      const raw = Uint8Array.from(atob(data.slice(3)), c => c.charCodeAt(0));
+      const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12), additionalData: V2_AAD }, room.sharedKey, raw.slice(12));
+      return new TextDecoder().decode(unpadPlaintext(new Uint8Array(dec)));
+    }
+    if (data.startsWith('v:')) {
+      const raw = Uint8Array.from(atob(data.slice(2)), c => c.charCodeAt(0));
+      const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, room.sharedKey, raw.slice(12));
+      return new TextDecoder().decode(dec);
+    }
+    throw new Error('E2E_DOWNGRADE');
   } catch(e) {
     throw new Error('E2E_DOWNGRADE');
   }
@@ -6493,7 +6596,7 @@ async function sendMsg() {
   // simply be retried.
   let encrypted;
   try {
-    encrypted = await encryptMsg(room, msgData);
+    encrypted = await encryptTextMsg(room, msgData);
   } catch (e) {
     toast("Couldn't encrypt — message not sent");
     return;
@@ -6508,7 +6611,7 @@ async function sendMsg() {
   // avoids a race where a read receipt for this message arrives before a
   // rename would have happened, stranding the tick and skipping the
   // disappearing-message timer.
-  const msgId = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const msgId = newMsgId();
 
   const rec = {
     id: msgId, kind: 'text', isMe: true, name: room.myName, time, content,
@@ -7878,6 +7981,15 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const mime = mimeOverride || file.type;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
 
+  // viewOnce here (inside the encrypted payload) is for THIS client's own
+  // use after decrypting — the plaintext viewOnce sent alongside content in
+  // the /api/send call below is the one that matters server-side, and
+  // that's a deliberate duplication, not redundancy to clean up: the server
+  // can't see inside this encrypted payload, so /api/view-once-opened's
+  // authorization check (server/index.js) has nothing else to verify a
+  // request actually targets a view-once message. Dropping the plaintext
+  // copy because "it's already in here" reintroduces the bug that check was
+  // added to fix — any member could delete any message for everyone.
   const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, viewOnce: !!viewOnce });
   let encryptedPayload;
   try {
@@ -7895,7 +8007,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // matching record (still tagged with the temp id), and silently dropped
   // it. The server never re-sends a receipt once reported, so that message's
   // disappearing timer would never start — it just sat on screen forever.
-  const msgId = 'file' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const msgId = newMsgId();
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time,
     fileName: file.name, mime, base64, isImage, viewOnce: !!viewOnce, viewed: false,
@@ -7928,6 +8040,12 @@ async function sendAlbumMessage(room, items, viewOnce) {
   const now = new Date();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
 
+  // Same deliberate duplication as sendFileMessage above — viewOnce here is
+  // for this client's own post-decrypt use; the plaintext copy sent
+  // alongside content in the /api/send call below is what
+  // /api/view-once-opened actually authorizes against server-side, since
+  // the server can't see inside this encrypted payload at all. Not
+  // redundant — do not remove it.
   const payload = JSON.stringify({
     type: 'album',
     viewOnce: !!viewOnce,
@@ -7943,7 +8061,7 @@ async function sendAlbumMessage(room, items, viewOnce) {
     return;
   }
 
-  const msgId = 'album' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const msgId = newMsgId();
   const rec = {
     id: msgId, kind: 'album', isMe: true, name: room.myName, time, viewOnce: !!viewOnce,
     images: items.map(({ file, base64, mime }, i) => ({
@@ -8091,7 +8209,7 @@ async function sendVoiceMessage(room, blob, durationSeconds, mime) {
     return;
   }
 
-  const msgId = 'voice' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const msgId = newMsgId();
   const rec = {
     id: msgId, kind: 'voice', isMe: true, name: room.myName, time,
     mime, base64, duration: durationSeconds,
