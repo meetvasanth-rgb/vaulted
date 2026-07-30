@@ -1280,17 +1280,17 @@ setInterval(() => {
 }, 5000);
 
 function res200(res, data) {
-  res.writeHead(200, { 'Content-Type':'application/json', 'Access-Control-Allow-Origin':'*', 'Cache-Control':'no-cache' });
+  res.writeHead(200, { 'Content-Type':'application/json', 'Cache-Control':'no-cache' });
   res.end(JSON.stringify(data));
 }
 function resErr(res, msg, status=400) {
-  res.writeHead(status, { 'Content-Type':'application/json', 'Access-Control-Allow-Origin':'*' });
+  res.writeHead(status, { 'Content-Type':'application/json' });
   res.end(JSON.stringify({ error: msg }));
 }
 // No body, no Content-Type — used where the response itself must not leak
 // which of several outcomes actually happened (see /api/leave).
 function res204(res) {
-  res.writeHead(204, { 'Access-Control-Allow-Origin':'*' });
+  res.writeHead(204);
   res.end();
 }
 
@@ -1393,7 +1393,30 @@ function bodyLimitFor(pathname) {
 const OLD_DOMAINS = new Set(['valuted.in', 'www.valuted.in']);
 const NEW_DOMAIN = 'vaultlix.com';
 
+// Applied to every single response — static, API, redirect, error alike —
+// by setting them before any of this request's other handling runs.
+// res.setHeader() here is what makes that possible: Node merges these into
+// whatever headers object a later res.writeHead() call passes, rather than
+// one replacing the other, so no individual response path (serveStatic,
+// res200/resErr/res204, the redirects below) has to remember to add them
+// itself. script-src/default-src are deliberately NOT in this set — the
+// client is one large inline <script> with inline onclick handlers
+// throughout, and a real CSP would break the entire app; de-inlining is a
+// separate task. frame-ancestors doesn't touch script execution, so it's
+// the one CSP directive in scope here.
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "frame-ancestors 'none'",
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  // camera/microphone MUST stay (self), not () — () disables getUserMedia
+  // entirely and breaks every call. geolocation/payment/usb are denied
+  // outright since nothing in this app uses them.
+  'Permissions-Policy': 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=()',
+};
+
 const srv = http.createServer((req, res) => {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
   const host = (req.headers.host || '').toLowerCase();
 
   // Send anyone still landing on the old domain — an old bookmark, a
@@ -1415,16 +1438,17 @@ const srv = http.createServer((req, res) => {
   // this host next time, even if someone lands on an old http:// link.
   const proto = req.headers['x-forwarded-proto'];
   if (proto === 'http') {
-    res.writeHead(301, { Location: `https://${req.headers.host}${req.url}` });
+    // Location is built from the fixed canonical domain, not req.headers.host
+    // — host is attacker-controlled if an arbitrary Host header ever reaches
+    // this service, which would otherwise let it be reflected straight into
+    // a redirect target. Same NEW_DOMAIN constant as the old-domain redirect
+    // above, so the two can't end up disagreeing on what "canonical" means.
+    res.writeHead(301, { Location: `https://${NEW_DOMAIN}${req.url}` });
     res.end();
     return;
   }
   if (proto === 'https') {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  }
-  if (req.method==='OPTIONS') {
-    res.writeHead(204,{'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET,POST','Access-Control-Allow-Headers':'Content-Type'});
-    res.end(); return;
   }
   const u = new URL(req.url, 'http://x');
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
