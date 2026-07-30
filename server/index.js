@@ -335,6 +335,19 @@ async function verifyPassword(attempt, stored) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
+// Fixed, per-boot-random salt burned only to match a real password check's
+// scrypt cost when a /api/join room doesn't exist at all — see its dummy
+// derivation call below. Never compared against anything; the sole purpose
+// is making "no such vault" and "vault exists, wrong password" take the
+// same wall-clock time, since scrypt is deliberately slow and a nonexistent
+// room previously returned before ever touching it — a difference easily
+// measurable over the network, and a cleaner oracle than the status code
+// or message ever was.
+const DUMMY_JOIN_SCRYPT_SALT = crypto.randomBytes(16);
+async function dummyPasswordDerivation() {
+  await scryptAsync('dummy-not-a-real-password', DUMMY_JOIN_SCRYPT_SALT, 64);
+}
+
 // ── RATE LIMITING ────────────────────────────────────────────────────────
 // Simple in-memory fixed-window counters — same "nothing persisted beyond
 // process memory" posture as everything else here, no external store. Not
@@ -1636,9 +1649,23 @@ async function api(path, method, d, p, res, ip, headers) {
       return resErr(res, 'Too many join attempts from this connection — try again in a few minutes.', 429);
     }
 
-    if (!room) return resErr(res,'Room not found.',404);
+    // "Room not found" and "incorrect password" are deliberately the same
+    // response — status, body, and timing — rather than distinguished the
+    // way "room is full" still is below. Both mean "the credentials you
+    // supplied don't open a vault"; a legitimate user who mistyped either
+    // one gets the same actionable advice either way, and merging them
+    // closes the enumeration oracle a differing response would otherwise
+    // hand an attacker. "Room is full" stays distinct: it's only reachable
+    // once the password check has already passed, so revealing it to a
+    // legitimate third party is worth more than the marginal oracle it
+    // leaves (the code-space itself is 2^41, already the real defense
+    // against brute-forcing which codes exist at all).
+    if (!room) {
+      await dummyPasswordDerivation();
+      return resErr(res,'Incorrect code or password.',403);
+    }
 
-    if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect password.',403);
+    if (room.passwordHash && !(await verifyPassword(d.password, room.passwordHash))) return resErr(res,'Incorrect code or password.',403);
 
     // Only evict a member for staleness when the room is actually full and
     // doing so is what makes room for this new joiner — NOT as a blanket
