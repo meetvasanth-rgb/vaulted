@@ -23,12 +23,12 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Vaultlix">
 <meta property="og:title" content="Vaultlix">
-<meta property="og:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing saved.">
+<meta property="og:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing we can read.">
 <meta property="og:url" content="https://vaultlix.com">
 <meta property="og:image" content="https://vaultlix.com/icons/icon-512.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Vaultlix">
-<meta name="twitter:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing saved.">
+<meta name="twitter:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing we can read.">
 <meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
@@ -1293,7 +1293,7 @@ body.select-mode .chat-ftr{display:none}
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "Vaultlix",
-  "description": "Anonymous, end-to-end encrypted 1:1 chat with no accounts and nothing saved.",
+  "description": "Anonymous, end-to-end encrypted 1:1 chat with no accounts and nothing we can read.",
   "url": "https://vaultlix.com/",
   "applicationCategory": "CommunicationApplication",
   "operatingSystem": "Any (Progressive Web App)",
@@ -1305,7 +1305,7 @@ body.select-mode .chat-ftr{display:none}
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no accounts, no phone numbers, nothing saved. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived." } },
+    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no accounts, no phone numbers, nothing we can read. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived." } },
     { "@type": "Question", "name": "Do I need an account or a phone number?", "acceptedAnswer": { "@type": "Answer", "text": "No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it." } },
     { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "There's no identity system to unmask — Vaultlix doesn't know who you are and doesn't keep a persistent profile tied to any device or account." } },
     { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — messages and voice/video calls are both end-to-end encrypted, decrypted only on the other person's device, with keys that never leave either device." } },
@@ -1344,7 +1344,7 @@ body.select-mode .chat-ftr{display:none}
         <h1 style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaultlix<span style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"> — Anonymous End-to-End Encrypted Chat, No Login Required</span></h1>
       </div>
       <div class="logo-rule" id="logoRule" style="margin:0 auto 20px"></div>
-      <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · No trace</div>
+      <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · Nothing we can read</div>
     </div>
 
     <p class="tagline" id="logoTag" style="margin-bottom:14px">Most apps say they don't read your messages. They don't have to — the pattern of who you talk to says enough.</p>
@@ -1404,7 +1404,7 @@ body.select-mode .chat-ftr{display:none}
 
   </div>
   <div class="landing-footer">
-  No accounts · No logs · E2E encrypted · No trace
+  No accounts · No phone number · End-to-end encrypted · Nothing we can read
   <span style="margin:0 6px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="shareVaultlix()">Share</span>
   <span style="margin:0 6px">·</span>
@@ -1649,7 +1649,7 @@ body.select-mode .chat-ftr{display:none}
     <div class="legal-date">Effective date: July 2026 · vaultlix.com</div>
 
     <div class="legal-highlight">
-      <strong>The short version:</strong> We collect nothing about you. We store nothing about your conversations. When your session ends, everything is permanently gone.
+      <strong>The short version:</strong> We don't ask who you are, and we can't read your conversations. When a vault closes, its contents are gone — see below for exactly what that covers.
     </div>
 
     <div class="legal-section">
@@ -1823,7 +1823,7 @@ body.select-mode .chat-ftr{display:none}
 
     <div class="legal-section">
       <h3>What is Vaultlix?</h3>
-      <p>A private chat app for two people — no accounts, no phone numbers, nothing saved. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived.</p>
+      <p>A private chat app for two people — no accounts, no phone numbers, nothing we can read. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived.</p>
     </div>
 
     <div class="legal-section">
@@ -2026,7 +2026,7 @@ body.select-mode .chat-ftr{display:none}
 
     <div class="settings-version">
       Vaultlix · Version 1.0<br/>
-      <span style="color:#C4B8AC;">Anonymous · Encrypted · No trace</span>
+      <span style="color:#C4B8AC;">Anonymous · Encrypted · Unreadable to us</span>
     </div>
   </div>
 </div>
@@ -7090,7 +7090,7 @@ async function closeActiveRoom() {
       if (rooms.size === 0) {
         activeRoomCode = null;
         showScreen('s-closed');
-        document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. No record exists.';
+        document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. Nothing readable remains.';
       } else {
         toast('Vault erased');
         switchToNextRoomOrLanding();
@@ -7251,7 +7251,7 @@ function showVanishOverlay(line1, line2) {
     <div class="vanish-v" id="vanish-v-mark">V</div>
     <div class="vanish-text">
       <div class="vanish-line1">${escHtml(line1 || 'Conversation erased.')}</div>
-      <div class="vanish-line2">${escHtml(line2 || 'No trace remains.')}</div>
+      <div class="vanish-line2">${escHtml(line2 || 'Nothing left to read.')}</div>
     </div>
   `;
   document.body.appendChild(overlay);

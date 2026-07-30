@@ -301,6 +301,18 @@ webpush.setVapidDetails('mailto:privacy@vaultlix.com', VAPID_PUBLIC_KEY, VAPID_P
 // /api/read call for a room) and message ids, so it needs real randomness.
 function uid() { return crypto.randomBytes(16).toString('hex'); }
 
+// Random per-boot key for pseudonymizing room codes in our own console logs
+// (not persisted, not derived from anything — regenerated on every process
+// start). An HMAC keyed by this lets log lines about the same room be
+// correlated with each other within a single run, which is all debugging
+// ever needs, while making a retained/leaked log archive from a past run
+// useless for recovering the real codes: the key that produced those
+// pseudonyms died with the process that generated it.
+const LOG_PSEUDONYM_KEY = crypto.randomBytes(32);
+function logCode(roomCode) {
+  return crypto.createHmac('sha256', LOG_PSEUDONYM_KEY).update(roomCode).digest('hex').slice(0, 8);
+}
+
 // Room passwords are hashed with scrypt (memory-hard, built into Node's core
 // crypto module — no new dependency) plus a random per-room salt, rather
 // than stored and compared as a plain string. Stored as "saltHex:hashHex" in
@@ -1220,7 +1232,7 @@ setInterval(() => {
     // there) breaks the first time both people go quiet for a few days.
     if (r.persistent) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
-    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Room ${k} expired`); }
+    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Room ${logCode(k)} expired`); }
   }
 }, 30000);
 
@@ -1544,7 +1556,7 @@ async function api(path, method, d, p, res, ip, headers) {
     });
     if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
     saveAnalytics();
-    console.log(`Room created: ${roomCode}${persistent ? ' (permanent room)' : ''}`);
+    console.log(`Room created: ${logCode(roomCode)}${persistent ? ' (permanent room)' : ''}`);
     // labelLength tells the client exactly where the user-typed label ends
     // and the appended random suffix begins, so it can render them
     // differently (see revealCode in client/index.html) without having to
@@ -1664,7 +1676,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // can resolve immediately instead of waiting on the first live poll.
     let peerPubKey = null, peerName = null;
     for (const [t,mb] of room.members) if (t!==token) { peerPubKey = mb.pubKey; peerName = mb.name; }
-    console.log(`${name} joined ${roomCode}`);
+    console.log(`Member joined ${logCode(roomCode)}`);
     return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
@@ -2200,7 +2212,7 @@ async function api(path, method, d, p, res, ip, headers) {
       // of conversion rather than claiming a start date that isn't real.
       if (!room.connectedSince && room.members.size >= 2) room.connectedSince = Date.now();
       if (room.totalMessageCount === undefined) room.totalMessageCount = 0;
-      console.log(`Room converted to permanent room: ${d.code}`);
+      console.log(`Room converted to permanent room: ${logCode(d.code)}`);
     }
     return res200(res, { ok: true, persistent: true, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
   }
@@ -2218,7 +2230,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
     if (!room.persistent) return resErr(res,'This is not a permanent room.',400);
     destroyRoom(d.code);
-    console.log(`Anon Link revoked: ${d.code}`);
+    console.log(`Anon Link revoked: ${logCode(d.code)}`);
     return res200(res,{ok:true});
   }
 
@@ -2338,7 +2350,7 @@ wss.on('connection', (ws) => {
   // handler below still fires and cleans up signalingSockets same as any
   // other disconnect.
   ws.on('error', (err) => {
-    console.error(`Signal socket error (room ${ws.roomCode || 'pre-auth'}):`, err.message);
+    console.error(`Signal socket error (room ${ws.roomCode ? logCode(ws.roomCode) : 'pre-auth'}):`, err.message);
   });
 
   // Clean up on close regardless of whether auth ever completed — if it
@@ -2381,11 +2393,12 @@ wss.on('connection', (ws) => {
     const existing = signalingSockets.get(token);
     if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
     signalingSockets.set(token, ws);
-    // Room code + a truncated token only — enough to confirm connectivity
-    // during testing without logging anything that identifies a person or
-    // any message/signal content, same posture as the existing "Room
-    // created: <code>" log below.
-    console.log(`Signal socket connected: room ${roomCode} token ${token.slice(0,6)}…`);
+    // Pseudonymized room code only — no token material at all (even a
+    // truncated bearer token is credential material and has no business in
+    // a log line), enough to confirm connectivity during testing without
+    // logging anything that identifies a person, a device, or any
+    // message/signal content.
+    console.log(`Signal socket connected: room ${logCode(roomCode)}`);
 
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
@@ -2448,7 +2461,7 @@ wss.on('connection', (ws) => {
           // flooding Railway's logs. The dropped-peer case below is the one
           // actually worth seeing.
         } else {
-          console.log(`Signal dropped (peer not connected): room ${roomCode} type ${msg2.type}`);
+          console.log(`Signal dropped (peer not connected): room ${logCode(roomCode)} type ${msg2.type}`);
         }
 
         // A dropped call-invite means the receiver's phone was locked or the
