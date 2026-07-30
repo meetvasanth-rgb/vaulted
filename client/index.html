@@ -6993,7 +6993,7 @@ function resetSetupBtn() {
 // just from vaultlix.com itself.
 function buildInviteMessage(code) {
   const link = `${location.origin}/join/${code}`;
-  return `Let's talk privately on Vaultlix — no account needed, nothing saved.\n\nOpen this link and we're connected:\n${link}\n\nTap the link → pick any name → we're in`;
+  return `Let's talk privately on Vaultlix — no account needed, nothing we can read.\n\nOpen this link and we're connected:\n${link}\n\nTap the link → pick any name → we're in`;
 }
 function copyCode() {
   const code = document.getElementById('display-code').textContent;
@@ -7006,7 +7006,7 @@ function copyCode() {
 // WhatsApp, iMessage, email, whatever they'd already use to reach the other
 // person, in one tap instead of copy, leave the app, find the chat, paste.
 async function shareVaultlix() {
-  const text = "vaultlix.com\n\nPrivate chat tool, no account or phone number needed. Everything's end-to-end encrypted — messages and voice calls both. Open the link, pick any name, share a code with one person, and talk. Close the vault when you're done and everything's gone — nothing saved anywhere.";
+  const text = "vaultlix.com\n\nPrivate chat tool, no account or phone number needed. Everything's end-to-end encrypted — messages and voice calls both. Open the link, pick any name, share a code with one person, and talk. Close the vault when you're done and everything's gone — nothing we can read, anywhere.";
   if (typeof navigator.share === 'function') {
     try { await navigator.share({ text }); } catch (e) {}
   } else {
