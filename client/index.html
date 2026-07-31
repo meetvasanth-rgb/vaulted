@@ -1492,10 +1492,18 @@ body.select-mode .chat-ftr{display:none}
       <button class="copy-btn" onclick="copyCode()">
         <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy
       </button>
-      <!-- Behind a tap, not shown by default — a QR left visible during a
-           screen-share grants vault access to everyone watching it, silently.
-           See showQrPanel(). -->
-      <button class="copy-btn" onclick="showQrPanel()">
+      <!-- TEMPORARILY DISABLED (2026-07-31) — pulled from the UI pending
+           investigation of two live-device reports: a QR-joined room
+           vanishing from a device that already had one other room open, and
+           a report of the CREATOR's own waiting screen auto-advancing into
+           an active call/chat state without the QR ever being scanned. The
+           underlying showQrPanel()/renderQrCanvas()/VLX-01 commitment code
+           is untouched and still present — only this entry point is hidden,
+           so it can go back with a single line once both are root-caused.
+           Do not re-enable without confirming the auto-join report first;
+           that one, if real, is unrelated to the QR rendering path itself
+           and is the more serious of the two. -->
+      <button class="copy-btn" onclick="showQrPanel()" style="display:none">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/></svg>Show QR
       </button>
     </div>
