@@ -1530,7 +1530,7 @@ body.select-mode .chat-ftr{display:none}
     <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
   </div>
   <div class="room-tabs" id="room-tabs"></div>
-  <div class="e2e-bar" onclick="showVerifyPanel()" title="Tap to verify encryption" style="cursor:pointer"><span style="font-size:0.87em">🔒</span> End-to-end encrypted · Gone when the vault is erased</div>
+  <div class="e2e-bar" onclick="showVerifyPanel()" title="Tap to verify encryption" style="cursor:pointer"><span style="font-size:0.87em">🔒</span> Encrypted · Not verified — tap to verify</div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
        with multiple rooms open, having it in the header made it ambiguous
@@ -2139,6 +2139,12 @@ let lastInteractionTime = Date.now();
 let activeActionMsgId = null;      // message currently showing its Reply/React row
 let replyTo = null;                // { msgId, text, isImage } — composer reply state
 let pendingRoomCode = null;        // room code currently on s-waiting (not yet confirmed)
+// VLX-01: the #k=... commitment captured from the invite link's URL
+// fragment at page-load time (see parseKeyCommitmentFromHash), carried from
+// there to whichever join actually gets submitted — could be seconds or
+// minutes later, after the person picks a name. Consumed and cleared by
+// handleSetup()'s join branch.
+let pendingInviteKeyCommitment = null;
 let swRegistration = null;
 
 const rooms = new Map();           // code -> Room
@@ -2156,7 +2162,7 @@ const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment }) {
   return {
     code, token, myName,
     // Where a named vault's user-typed label ends and the server-appended
@@ -2269,6 +2275,16 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // resurrect), so there's nothing stale here for a reset-to-0 to miss.
     lastKnownClearedAt: 0,
     myKeyPair: null, sharedKey: null, lastKnownPeerPubKey: null,
+    // VLX-01: the invite-link commitment this JOINER's device expects the
+    // creator's public key to hash to — set once, from the #k=... fragment
+    // of the link actually opened (never set on the creator's own room; see
+    // deriveSharedKey). Persisted (see persistRoom) so the check keeps
+    // running on every future poll/reload, not just the first join.
+    // keyVerified/keyVerificationFailed are pure runtime state, recomputed
+    // by deriveSharedKey every time it runs — never persisted, nothing to
+    // restore.
+    expectedCreatorKeyCommitment: expectedCreatorKeyCommitment || null,
+    keyVerified: false, keyVerificationFailed: false,
     // Set true when a reconnect's history bootstrap had to be skipped
     // because the peer's pubKey wasn't available yet (they were likely
     // reconnecting at the same moment) — see the load handler and doPoll's
@@ -2340,6 +2356,7 @@ async function persistRoom(room) {
       persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
       reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
       deleteTimerSeconds: room.deleteTimerSeconds, codeLabelLen: room.codeLabelLen,
+      expectedCreatorKeyCommitment: room.expectedCreatorKeyCommitment,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
@@ -2685,10 +2702,69 @@ async function getOrGenerateKeyPair(room) {
   return bytesToBase64(new Uint8Array(exported));
 }
 
-async function deriveSharedKey(room, peerPubKeyB64) {
+// base64url (RFC 4648 §5) — unlike bytesToBase64 above, this never contains
+// '+' or '/', so it survives being embedded in a URL fragment and parsed
+// back out via URLSearchParams without corruption (URLSearchParams decodes
+// '+' as a literal space, which would silently mangle a standard-base64
+// commitment). Only used for the key-commitment fragment below — the
+// wire-format public key sent to the server keeps using plain bytesToBase64,
+// unchanged.
+function bytesToBase64Url(bytes) {
+  return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Second-preimage-resistant commitment to a raw ECDH public key, truncated
+// to 128 bits (2^128 work to forge — plenty; the full 256-bit digest would
+// just make the invite link longer for no real benefit here). Takes RAW key
+// bytes specifically, never a JWK or the base64 wire form — different
+// serializations of the same key must never produce different commitments,
+// or the same key could look like a mismatch depending which path computed
+// it.
+async function computeKeyCommitment(rawKeyBytes) {
+  const digest = await crypto.subtle.digest('SHA-256', rawKeyBytes);
+  return bytesToBase64Url(new Uint8Array(digest).slice(0, 16));
+}
+
+// deriveSharedKey is the one place every peerPubKey a room ever receives
+// passes through — initial join, the poll loop's rekey path, and page-load
+// restore all funnel here (see the VLX-01 investigation) — so the invite-
+// link commitment check lives here too, once, rather than being repeated at
+// each call site where it could be forgotten. room.expectedCreatorKeyCommitment
+// is only ever set on a JOINER's room, from the #k=... fragment of the link
+// they actually opened (see parseKeyCommitmentFromHash and the join branch
+// in handleSetup) — a creator's own room never has it, so this check is a
+// pure no-op for the creator side, and options.isFirstJoin is irrelevant
+// there. That asymmetry is deliberate, not a gap: the creator can't verify
+// the joiner's key this way because nothing committed to it anywhere the
+// creator can check — but a substituted joiner key still gets caught
+// indirectly, because the two sides' shared secrets then diverge and every
+// message starts failing to decrypt. See the plan notes for why this still
+// means the creator is stuck at "Not verified" forever under this scheme —
+// closing that (having the joiner tell the creator, over the now-derived
+// shared key, "I checked and it matched") is a follow-up, not this change.
+async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}) {
   if (!peerPubKeyB64 || !room.myKeyPair) return;
   try {
     const peerBytes = Uint8Array.from(atob(peerPubKeyB64), c => c.charCodeAt(0));
+    room.keyVerificationFailed = false;
+    if (room.expectedCreatorKeyCommitment) {
+      const actual = await computeKeyCommitment(peerBytes);
+      if (actual !== room.expectedCreatorKeyCommitment) {
+        // Do NOT derive, do NOT set sharedKey — a mismatch here means the
+        // key the server just handed us doesn't match what the invite link
+        // promised. Treating this as "no key yet" (rather than throwing)
+        // keeps every existing caller's null-sharedKey handling correct by
+        // construction; the caller is responsible for tearing the room down
+        // and showing the hard block (see blockRoomForKeyMismatch).
+        console.error('E2E: peer public key commitment mismatch — refusing to derive shared key for room', room.code);
+        room.sharedKey = null;
+        room.keyVerified = false;
+        room.keyVerificationFailed = true;
+        if (room.code === activeRoomCode) updateE2EBar(room);
+        return;
+      }
+      room.keyVerified = true;
+    }
     const peerKey = await crypto.subtle.importKey('raw', peerBytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
     room.sharedKey = await crypto.subtle.deriveKey(
       { name:'ECDH', public: peerKey },
@@ -2729,7 +2805,18 @@ function updateE2EBar(room) {
   if (!bar) return;
   if (room && room.sharedKey) {
     bar.classList.remove('pending');
-    bar.innerHTML = '<span style="font-size:0.87em">🔒</span> End-to-end encrypted · Gone when the vault is erased';
+    // "Verified" vs "Not verified" is NOT a warning distinction — both use
+    // the same calm styling as each other (no red, no alarm icon). Most
+    // conversations sit at "Not verified" indefinitely and that's expected:
+    // a creator's room never has room.keyVerified set true under VLX-01 (see
+    // deriveSharedKey), and a joiner who typed a code by hand rather than
+    // opening a link has nothing to verify against either. The point of
+    // showing it at all is to make the existing tap-to-verify fingerprint
+    // panel (showVerifyPanel) discoverable — it used to be an unlabelled tap
+    // target nobody found.
+    bar.innerHTML = room.keyVerified
+      ? '<span style="font-size:0.87em">🔒</span> Encrypted · Verified · Gone when erased'
+      : '<span style="font-size:0.87em">🔒</span> Encrypted · Not verified — tap to verify';
   } else {
     bar.classList.add('pending');
     bar.innerHTML = '<span style="font-size:0.87em">🔓</span> Establishing encryption…';
@@ -4312,6 +4399,65 @@ async function showVerifyPanel() {
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeVerifyPanel(); });
   document.addEventListener('keydown', verifyEscHandler);
+}
+
+// VLX-01: the client still holds a valid bearer token at the moment a
+// commitment check fails — the join/reconnect that produced it already
+// succeeded server-side (room.members.set ran) before deriveSharedKey ever
+// ran the check. Without releasing it, that membership is orphaned with no
+// token left anywhere that could ever free it — on a permanent vault that's
+// unrecoverable: the slot stays consumed forever and a legitimate joiner is
+// permanently locked out. Best-effort only: awaited so it actually gets a
+// chance to land, but a failure here must never block discarding local
+// state or showing the block screen — never trap the user in a room they
+// can't exit just because the network call to leave it failed.
+async function leaveRoomBestEffort(room) {
+  try { await api('/api/leave', { code: room.code, token: room.token, name: room.myName }); } catch (e) {}
+}
+
+// VLX-01: shared teardown for every deriveSharedKey() call site once it
+// reports room.keyVerificationFailed. Releases the server-side membership
+// slot (see leaveRoomBestEffort above), tears the room down exactly like a
+// normal close (stop polling/signaling, drop it from the live rooms Map and
+// from localStorage) and lands somewhere sane BEFORE showing the hard
+// block — there is no path where the chat screen for this room is ever
+// shown, and nothing further is queued to send to it. isFirstJoin picks
+// which of the two copy variants showKeyMismatchOverlay uses.
+async function blockRoomForKeyMismatch(room, isFirstJoin) {
+  await leaveRoomBestEffort(room);
+  const wasActive = room.code === activeRoomCode;
+  removeRoomFromState(room.code);
+  renderRoomTabs();
+  if (wasActive) {
+    const next = rooms.keys().next();
+    if (!next.done) { setActiveRoom(next.value); showScreen('s-chat'); }
+    else { activeRoomCode = null; showScreen('s-landing'); triggerLandingAnim(); }
+  }
+  showKeyMismatchOverlay(isFirstJoin);
+}
+
+// Hard block for a peer public key that failed its invite-link commitment
+// check (see deriveSharedKey). Deliberately NOT dismissible into the vault —
+// no "continue anyway" — the room has already been torn down and dropped
+// from local state by the time this shows, by blockRoomForKeyMismatch
+// above, so "OK" below just acknowledges the message rather than resuming
+// anything.
+function showKeyMismatchOverlay(isFirstJoin) {
+  document.getElementById('key-mismatch-overlay')?.remove();
+  const title = isFirstJoin ? "This vault didn't match your invite link" : 'Encryption changed unexpectedly';
+  const body = isFirstJoin
+    ? "The encryption key doesn't match what your link expected, so Vaultlix stopped before connecting. Nothing was sent.<br><br>Ask whoever invited you for a fresh link. If it happens again with a new link, don't use this vault."
+    : "The other device's key changed to one that doesn't match your invite link. Vaultlix has disconnected this vault.<br><br>Nothing further was sent. Ask the other person for a new link.";
+  const overlay = document.createElement('div');
+  overlay.id = 'key-mismatch-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:10000;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:360px;width:100%;font-family:inherit">
+      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:10px;text-align:center">${title}</div>
+      <div style="font-size:13px;color:#4A443C;line-height:1.6;margin-bottom:18px">${body}</div>
+      <button style="display:block;margin:0 auto;background:#1A1916;color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:13px;cursor:pointer" onclick="document.getElementById('key-mismatch-overlay').remove()">OK</button>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 // Private room nickname: a local-only label so a person in several
@@ -6426,7 +6572,17 @@ async function doPoll(room) {
     // Rederive E2E key if peer's pubKey changed (they rejoined with new keys)
     if (data.peerPubKey && data.peerPubKey !== room.lastKnownPeerPubKey) {
       room.sharedKey = null;
-      try { await deriveSharedKey(room, data.peerPubKey); room.lastKnownPeerPubKey = data.peerPubKey; } catch(e) {}
+      try {
+        await deriveSharedKey(room, data.peerPubKey);
+        // VLX-01: the key that just arrived doesn't match this room's
+        // invite-link commitment — this vault WAS working (that's the only
+        // way it could have a lastKnownPeerPubKey to have changed from), so
+        // this is the mid-session hard-block, not the join-time one. The
+        // room is gone from local state by the time this returns; nothing
+        // else in this poll cycle should touch it.
+        if (room.keyVerificationFailed) { await blockRoomForKeyMismatch(room, false); return; }
+        room.lastKnownPeerPubKey = data.peerPubKey;
+      } catch(e) {}
       // Catch-up: this room's own reconnect earlier had no key yet (the
       // peer's pubKey wasn't on file at that instant), so the full-history
       // bootstrap got skipped — now that a real key finally exists, run it
@@ -6791,6 +6947,21 @@ function parseJoinLinkCode() {
   return m ? decodeURIComponent(m[1]).toLowerCase() : null;
 }
 
+// VLX-01: reads the invite-link commitment out of the URL fragment —
+// #k=<value>. Fragments are never sent in an HTTP request (unlike the path
+// or query string), so this is the one part of the link a server-side
+// attacker cannot see or alter — see deriveSharedKey for what it's checked
+// against. Deliberately strict (22 base64url chars, matching a truncated
+// SHA-256 digest — see computeKeyCommitment) so a malformed or unrelated
+// fragment is treated as "no commitment" rather than compared as if it were
+// a real one: a garbled fragment must never cause a false hard-block
+// against a perfectly legitimate key.
+function parseKeyCommitmentFromHash(hash) {
+  if (!hash || hash[0] !== '#') return null;
+  const k = new URLSearchParams(hash.slice(1)).get('k');
+  return k && /^[A-Za-z0-9_-]{22}$/.test(k) ? k : null;
+}
+
 // Entry point for someone who tapped a shared invite link. Drops them
 // straight into the join screen with the code already filled in — the only
 // thing left is picking a name (already suggested — see fillSuggestedName)
@@ -6951,10 +7122,22 @@ async function handleSetup() {
       room.connectedSince = result.connectedSince || null;
       room.totalMessageCount = result.totalMessageCount || 0;
       room.lastMessageAt = result.lastMessageAt || 0;
+      // VLX-01: whatever commitment was captured from this link's #k=...
+      // fragment at page-load (null if this join came from a typed code, or
+      // an old link with no fragment — see parseKeyCommitmentFromHash).
+      // Must be set before the persistRoom() below so the very first save
+      // already carries it, and before deriveSharedKey() below that, which
+      // is what actually checks it.
+      room.expectedCreatorKeyCommitment = pendingInviteKeyCommitment;
+      pendingInviteKeyCommitment = null;
       addRoomToState(room);
       persistRoom(room);
 
-      if (result.peerPubKey) { await deriveSharedKey(room, result.peerPubKey); room.lastKnownPeerPubKey = result.peerPubKey; }
+      if (result.peerPubKey) {
+        await deriveSharedKey(room, result.peerPubKey, { isFirstJoin: true });
+        if (room.keyVerificationFailed) { await blockRoomForKeyMismatch(room, true); resetSetupBtn(); return; }
+        room.lastKnownPeerPubKey = result.peerPubKey;
+      }
       room.peerOnline = true; room.everOnline = true;
 
       setActiveRoom(room.code);
@@ -6991,14 +7174,34 @@ function resetSetupBtn() {
 // location.origin rather than hardcoding the domain means this still
 // builds the right link from a staging/Railway URL during testing, not
 // just from vaultlix.com itself.
-function buildInviteMessage(code) {
+// VLX-01: the #k=... commitment is computed fresh from room.myKeyPair here,
+// on demand, every time a link is actually built — never cached on the room
+// object. That's deliberate: room.myKeyPair is already the one thing
+// guaranteed to be current (it's the same keypair persistRoom/
+// importKeyPairFromStorage already keep in sync across reloads and
+// regenerateAnonLink's fresh keypair), so computing on demand means there's
+// no separate cached value that could ever go stale relative to it — in
+// particular, regenerateAnonLink's new keypair is picked up automatically
+// with no extra wiring, since this only ever reads room.myKeyPair at the
+// moment someone actually taps Copy or Share, by which point the new
+// keypair has always already been generated.
+async function buildInviteMessage(code) {
   const link = `${location.origin}/join/${code}`;
-  return `Let's talk privately on Vaultlix — no account needed, nothing we can read.\n\nOpen this link and we're connected:\n${link}\n\nTap the link → pick any name → we're in`;
+  const room = rooms.get(code);
+  let commitment = null;
+  if (room && room.myKeyPair) {
+    try {
+      const raw = await crypto.subtle.exportKey('raw', room.myKeyPair.publicKey);
+      commitment = await computeKeyCommitment(new Uint8Array(raw));
+    } catch (e) {}
+  }
+  const fullLink = commitment ? `${link}#k=${commitment}` : link;
+  return `Let's talk privately on Vaultlix — no account needed, nothing we can read.\n\nOpen this link and we're connected:\n${fullLink}\n\nTap the link → pick any name → we're in`;
 }
-function copyCode() {
+async function copyCode() {
   const code = document.getElementById('display-code').textContent;
   if (!code || code === '—') return;
-  navigator.clipboard.writeText(buildInviteMessage(code)).catch(() => {});
+  navigator.clipboard.writeText(await buildInviteMessage(code)).catch(() => {});
   toast('Invite copied');
 }
 
@@ -7021,7 +7224,7 @@ async function shareCode() {
   const code = document.getElementById('display-code').textContent;
   if (!code || code === '—') return;
   try {
-    await navigator.share({ text: buildInviteMessage(code) });
+    await navigator.share({ text: await buildInviteMessage(code) });
   } catch (e) {
     // AbortError just means they closed the share sheet without picking
     // anything — not a failure worth surfacing.
@@ -7731,14 +7934,24 @@ window.addEventListener('load', async () => {
   // Captured up front, before anything else touches the URL — read once
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
+  // VLX-01: same reasoning, same urgency — openJoinFromLink()'s
+  // history.replaceState below (and the two further down, for ?room= and a
+  // plain revisit) all rewrite the URL to one with no fragment, which would
+  // silently drop this if it weren't captured in this same first tick.
+  pendingInviteKeyCommitment = parseKeyCommitmentFromHash(location.hash);
   const idx = loadRoomsIndex();
   if (idx.length > 0) showRestoreSkeleton();
   let restoredAny = false;
+  // VLX-01: set if any restored room's key fails its commitment check below —
+  // shown once, after the loop, rather than mid-loop where it would fight
+  // with the restore skeleton still being on screen and with other rooms
+  // still being restored.
+  let keyMismatchAfterRestore = false;
 
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment });
     room.nickname = session.nickname || null;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the
@@ -7832,6 +8045,24 @@ window.addEventListener('load', async () => {
       room.lastKnownPeerPubKey = null; // force key rederivation
       if (result.peerPubKey) {
         await deriveSharedKey(room, result.peerPubKey);
+        if (room.keyVerificationFailed) {
+          // VLX-01: this room was persisted from a previous successful join
+          // (that's the only way it could be in the restore index at all),
+          // so this is the mid-session framing, not the join-time one — the
+          // vault WAS working before this reload. Don't add it to live
+          // state at all; just drop its storage and move on to the next
+          // saved room. The explanation is shown once, after the whole
+          // restore loop finishes (see keyMismatchAfterRestore below).
+          //
+          // Same orphaned-slot risk as the other two block sites — this
+          // reconnect just succeeded server-side (room.token above is a
+          // live, valid membership token), so release it before discarding,
+          // not a third silent leak of the same bug.
+          await leaveRoomBestEffort(room);
+          clearRoomStorage(room.code);
+          keyMismatchAfterRestore = true;
+          continue;
+        }
         room.lastKnownPeerPubKey = result.peerPubKey;
         room.everOnline = true; // peer's pubKey on file means they've been in this room before
       }
@@ -7915,6 +8146,11 @@ window.addEventListener('load', async () => {
     if (joinLinkCode) openJoinFromLink(joinLinkCode);
     else triggerLandingAnim();
   }
+  // VLX-01: shown last, on top of whatever screen the logic above settled
+  // on — a saved room whose key no longer matches its invite-link
+  // commitment was already dropped from state and storage inside the loop
+  // above; this is purely the explanation.
+  if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
 });
 
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────
