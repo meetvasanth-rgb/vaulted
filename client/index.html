@@ -1474,6 +1474,16 @@ body.select-mode .chat-ftr{display:none}
 <!-- WAITING -->
 <div id="s-waiting" class="screen">
   <div class="waiting-card">
+    <!-- Non-destructive exit — the pending vault keeps waiting for its peer
+         in the background (its own waitInterval doesn't stop just because
+         this screen isn't showing); this only navigates away, unlike
+         "Cancel & close vault" below. Reachable whenever a vault is created
+         as an ADDITIONAL one (the "+" tab) while others are already open —
+         previously the only way off this screen was to abandon the pending
+         vault entirely. See backToVaults(). -->
+    <button class="setup-back" onclick="backToVaults()">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Back to vaults
+    </button>
     <div class="w-logo">
       <div style="height:1px;background:var(--gold);width:60px;margin:0 auto 12px"></div>
       <span style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)">Vaultlix</span>
@@ -7390,6 +7400,22 @@ function copyBareCode() {
   if (!code || code === '—') return;
   navigator.clipboard.writeText(code).catch(() => {});
   toast('Code copied');
+}
+
+// Non-destructive counterpart to closeRoom() below — leaves the pending
+// vault exactly as it is (still in `rooms`, still polling for a peer in the
+// background) and just navigates elsewhere. switchToNextRoomOrLanding()
+// already does the right thing here with no changes needed: activeRoomCode
+// never gets pointed at a room that hasn't actually connected yet (that
+// only happens via setActiveRoom, called on confirmed join), so if this
+// vault was created as an additional one while another was already open,
+// activeRoomCode is still that other room's code — this lands right back
+// on it. Resuming this vault's own waiting screen later goes through
+// resumeWaitingScreen (room-tabs tap, or vault list), which re-sets
+// pendingRoomCode the same way this clears it.
+function backToVaults() {
+  pendingRoomCode = null;
+  switchToNextRoomOrLanding();
 }
 
 // ── CLOSE / LEAVE (scoped to a single room) ────────────────────────────
