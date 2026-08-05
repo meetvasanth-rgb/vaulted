@@ -2393,7 +2393,7 @@ async function handleNativeCallAction(detail) {
     else pendingNativeUnscopedAction = detail.action;
     return;
   }
-  if (detail.action === 'answer') {
+  if (detail.action === 'answer' || detail.action === 'answerWhenActive') {
     if (room.callState === 'incoming') await acceptCall();
     else pendingNativeCallActions.set(room.code, 'answer');
   } else if (detail.action === 'declineOrEnd') {
@@ -3267,7 +3267,7 @@ async function handleSignalMessage(room, type, payload) {
     if (nativeAction) {
       pendingNativeCallActions.delete(room.code);
       pendingNativeUnscopedAction = null;
-      if (nativeAction === 'answer') await acceptCall();
+      if (nativeAction === 'answer' || nativeAction === 'answerWhenActive') await acceptCall();
       else if (nativeAction === 'declineOrEnd') declineCall();
     }
   } else if (type === 'call-ringing') {
