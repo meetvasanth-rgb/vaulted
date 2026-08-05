@@ -2092,6 +2092,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const m = room.members.get(d.token);
     m.voipToken = d.voipToken.toLowerCase();
     m.voipEnvironment = d.environment;
+    console.log(`VoIP token registered for room ${logCode(d.code)} (${d.environment}).`);
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }

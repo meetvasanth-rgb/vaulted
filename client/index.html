@@ -2372,8 +2372,8 @@ function addRoomToState(room) {
   registerNativeVoipForRoom(room);
 }
 
-window.addEventListener('vaultlix:voip-token', event => {
-  const detail = event.detail || {};
+function acceptNativeVoipRegistration(detail) {
+  detail = detail || {};
   if (!/^[a-f0-9]{64,200}$/i.test(detail.token || '')) return;
   if (detail.environment !== 'sandbox' && detail.environment !== 'production') return;
   nativeVoipRegistration = { token: detail.token, environment: detail.environment };
@@ -2381,7 +2381,16 @@ window.addEventListener('vaultlix:voip-token', event => {
     registerNativeVoipForRoom(room);
     registerNativeTokenForRoom(room).catch(() => {});
   }
+}
+
+window.addEventListener('vaultlix:voip-token', event => {
+  acceptNativeVoipRegistration(event.detail);
 });
+
+// Native may obtain and emit its PushKit token before this remote page has
+// installed the event listener. SceneDelegate persists the latest value on
+// window so registration remains reliable across that startup race.
+acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
