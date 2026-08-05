@@ -5213,7 +5213,13 @@ let nativePushListenersReady = false;
 
 function isNativeIosApp() {
   try {
-    return window.Capacitor?.isNativePlatform?.() === true && window.Capacitor?.getPlatform?.() === 'ios';
+    // Plugin presence is the most reliable signal for this remote-URL
+    // Capacitor wrapper. Depending only on isNativePlatform() meant native
+    // startup could briefly be classified as ordinary Safari while the
+    // bridge was still initializing, so the notification bootstrap never
+    // ran and iOS never had a reason to show its permission sheet.
+    return !!window.Capacitor?.Plugins?.PushNotifications &&
+      (window.Capacitor?.getPlatform?.() === 'ios' || /iphone|ipad|ipod/i.test(navigator.userAgent));
   } catch (e) { return false; }
 }
 
@@ -5305,6 +5311,26 @@ function showEnableNativeNotificationsBanner() {
     hidePushBanner();
   };
 }
+
+async function bootstrapNativePushOnLaunch() {
+  // The old flow only reached native push from startRoomPolling(). A fresh
+  // install sitting on the landing/waiting screen therefore showed neither
+  // our Enable banner nor Apple's permission prompt. Retry briefly because
+  // the remote page can finish loading just before Capacitor exposes the
+  // injected plugin bridge.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (isNativeIosApp()) {
+      await refreshNativePushPermission();
+      if (nativePushPermission === 'prompt') showEnableNativeNotificationsBanner();
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
+}
+
+// Start on every native app launch; the actual iOS permission request still
+// happens only after the user taps Enable in our banner.
+setTimeout(() => bootstrapNativePushOnLaunch().catch(() => {}), 0);
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
