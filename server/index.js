@@ -470,6 +470,45 @@ function sendVoipPush(member, payload) {
   });
 }
 
+// Remote hang-up is deliberately a normal background APNs notification,
+// never a PushKit notification. Apple requires every VoIP push to report a
+// new incoming CallKit call and terminates apps that use it for call cleanup.
+function sendNativeCallEnd(member, callId) {
+  if (!APNS_CONFIGURED || !member || !member.apnsToken || !callId) return Promise.resolve(false);
+  const host = member.apnsEnvironment === 'sandbox'
+    ? 'https://api.sandbox.push.apple.com'
+    : 'https://api.push.apple.com';
+  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId });
+  return new Promise(resolve => {
+    let client;
+    try { client = http2.connect(host); } catch (e) { resolve(false); return; }
+    let settled = false;
+    const finish = ok => {
+      if (settled) return;
+      settled = true;
+      try { client.close(); } catch (e) {}
+      resolve(ok);
+    };
+    client.setTimeout(10000, () => finish(false));
+    client.on('error', () => finish(false));
+    let req;
+    try {
+      req = client.request({
+        ':method': 'POST', ':path': `/3/device/${member.apnsToken}`,
+        authorization: `bearer ${getApnsJwt()}`,
+        'apns-topic': APNS_BUNDLE_ID,
+        'apns-push-type': 'background', 'apns-priority': '5', 'apns-expiration': '0',
+      });
+    } catch (e) { finish(false); return; }
+    let status = 0;
+    req.on('response', headers => { status = Number(headers[':status'] || 0); });
+    req.on('data', () => {});
+    req.on('end', () => finish(status >= 200 && status < 300));
+    req.on('error', () => finish(false));
+    req.end(body);
+  });
+}
+
 // Math.random() is not a CSPRNG — predictable enough in theory that it has
 // no business generating anything used as a credential. This is used for
 // room auth tokens (the bearer credential behind every /api/poll, /api/send,
@@ -2801,8 +2840,11 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = 0;
+          const nativeCallId = room2.nativeCallId;
+          const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
+          if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId).catch(() => {});
           if (wasStillRinging && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
