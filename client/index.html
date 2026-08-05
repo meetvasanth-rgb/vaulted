@@ -2377,7 +2377,10 @@ window.addEventListener('vaultlix:voip-token', event => {
   if (!/^[a-f0-9]{64,200}$/i.test(detail.token || '')) return;
   if (detail.environment !== 'sandbox' && detail.environment !== 'production') return;
   nativeVoipRegistration = { token: detail.token, environment: detail.environment };
-  for (const room of rooms.values()) registerNativeVoipForRoom(room);
+  for (const room of rooms.values()) {
+    registerNativeVoipForRoom(room);
+    registerNativeTokenForRoom(room).catch(() => {});
+  }
 });
 
 async function handleNativeCallAction(detail) {
@@ -5311,6 +5314,7 @@ async function registerNativeTokenForRoom(room) {
     code: room.code,
     token: room.token,
     deviceToken: nativeApnsToken,
+    environment: nativeVoipRegistration?.environment || 'production',
   });
 }
 

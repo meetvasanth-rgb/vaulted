@@ -358,7 +358,10 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   });
   return new Promise((resolve) => {
     let client;
-    try { client = http2.connect(APNS_HOST); } catch (e) { resolve(false); return; }
+    const host = member.apnsEnvironment === 'sandbox'
+      ? 'https://api.sandbox.push.apple.com'
+      : APNS_HOST;
+    try { client = http2.connect(host); } catch (e) { resolve(false); return; }
     const finish = (ok) => { try { client.close(); } catch (e) {} resolve(ok); };
     client.setTimeout(10000, () => { try { client.destroy(); } catch (e) {} resolve(false); });
     client.on('error', () => finish(false));
@@ -2026,8 +2029,10 @@ async function api(path, method, d, p, res, ip, headers) {
     if (rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     const deviceToken = validateApnsToken(d.deviceToken);
     if (!deviceToken) return resErr(res,'Invalid device token.',400);
+    if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
     const m = room.members.get(d.token);
     m.apnsToken = deviceToken;
+    m.apnsEnvironment = d.environment;
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
