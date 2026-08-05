@@ -2348,7 +2348,69 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
 }
 
 function getActiveRoom() { return activeRoomCode ? rooms.get(activeRoomCode) : null; }
-function addRoomToState(room) { rooms.set(room.code, room); }
+
+// Populated only by the signed native iOS wrapper. Browser/PWA clients never
+// see this event and continue using Web Push exactly as before.
+let nativeVoipRegistration = null;
+const pendingNativeCallActions = new Map();
+let pendingNativeUnscopedAction = null;
+
+async function registerNativeVoipForRoom(room) {
+  if (!nativeVoipRegistration || !room || !room.code || !room.token) return;
+  try {
+    await api('/api/voip-subscribe', {
+      code: room.code,
+      token: room.token,
+      voipToken: nativeVoipRegistration.token,
+      environment: nativeVoipRegistration.environment,
+    });
+  } catch (e) {}
+}
+
+function addRoomToState(room) {
+  rooms.set(room.code, room);
+  registerNativeVoipForRoom(room);
+}
+
+window.addEventListener('vaultlix:voip-token', event => {
+  const detail = event.detail || {};
+  if (!/^[a-f0-9]{64,200}$/i.test(detail.token || '')) return;
+  if (detail.environment !== 'sandbox' && detail.environment !== 'production') return;
+  nativeVoipRegistration = { token: detail.token, environment: detail.environment };
+  for (const room of rooms.values()) registerNativeVoipForRoom(room);
+});
+
+async function handleNativeCallAction(detail) {
+  if (!detail || typeof detail.code !== 'string') return;
+  // Privacy-preserving PushKit payloads intentionally contain no vault code.
+  // Resolve an already-active call locally, or hold the explicit CallKit
+  // action until the authenticated encrypted call-invite identifies its room.
+  const room = detail.code ? rooms.get(detail.code) :
+    (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null);
+  if (!room) {
+    if (detail.code) pendingNativeCallActions.set(detail.code, detail.action);
+    else pendingNativeUnscopedAction = detail.action;
+    return;
+  }
+  if (detail.action === 'answer') {
+    if (room.callState === 'incoming') await acceptCall();
+    else pendingNativeCallActions.set(room.code, 'answer');
+  } else if (detail.action === 'declineOrEnd') {
+    if (room.callState === 'incoming') declineCall();
+    else if (room.callState === 'active') hangupCall();
+    else pendingNativeCallActions.set(room.code, 'declineOrEnd');
+  } else if (detail.action === 'ended' && room.callState !== 'idle') {
+    endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
+      room.callState === 'incoming' ? 'Missed call' : null);
+  }
+}
+
+window.addEventListener('vaultlix:call-action', event => {
+  handleNativeCallAction(event.detail || {});
+});
+window.addEventListener('load', () => {
+  try { window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'ready' }); } catch (e) {}
+});
 
 function removeRoomFromState(code) {
   const room = rooms.get(code);
@@ -3195,6 +3257,13 @@ async function handleSignalMessage(room, type, payload) {
     // retry loop means a lost ack just gets another chance next round,
     // without this needing a dedicated resend loop of its own.
     if (room.callState === 'incoming') sendSignal(room, 'call-ringing', {});
+    const nativeAction = pendingNativeCallActions.get(room.code) || pendingNativeUnscopedAction;
+    if (nativeAction) {
+      pendingNativeCallActions.delete(room.code);
+      pendingNativeUnscopedAction = null;
+      if (nativeAction === 'answer') await acceptCall();
+      else if (nativeAction === 'declineOrEnd') declineCall();
+    }
   } else if (type === 'call-ringing') {
     // Caller-side only. The first ack flips "Calling…" to "Ringing…" on the
     // outgoing screen; later ones (retries) are harmless no-ops since the
@@ -3466,6 +3535,9 @@ function checkStaleIncomingCalls() {
 
 async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (!room) return;
+  try {
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code });
+  } catch (e) {}
   // Capture before the state reset below — this is the only point that
   // still knows whether a real, connected call is what's ending here (as
   // opposed to a ring that was declined/missed/canceled before anyone ever

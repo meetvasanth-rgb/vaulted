@@ -409,6 +409,58 @@ function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = '
   sendApnsNotification(member, payload, TTL).catch(() => {});
 }
 
+function validateVoipToken(value) {
+  return typeof value === 'string' && /^[a-f0-9]{64,200}$/i.test(value);
+}
+
+// VoIP tokens use a separate APNs topic and gateway from ordinary alert
+// tokens. The environment is recorded by the signed native build that
+// produced the token (debug = sandbox, TestFlight/App Store = production).
+function sendVoipPush(member, payload) {
+  if (!APNS_CONFIGURED || !member || !validateVoipToken(member.voipToken)) return Promise.resolve(false);
+  const host = member.voipEnvironment === 'sandbox'
+    ? 'https://api.sandbox.push.apple.com'
+    : 'https://api.push.apple.com';
+  return new Promise(resolve => {
+    let client;
+    try { client = http2.connect(host); } catch (e) { resolve(false); return; }
+    let settled = false;
+    const finish = ok => {
+      if (settled) return;
+      settled = true;
+      try { client.close(); } catch (e) {}
+      resolve(ok);
+    };
+    client.setTimeout(10000, () => finish(false));
+    client.on('error', () => finish(false));
+    let req;
+    try {
+      req = client.request({
+        ':method': 'POST',
+        ':path': `/3/device/${member.voipToken}`,
+        authorization: `bearer ${getApnsJwt()}`,
+        'apns-topic': `${APNS_BUNDLE_ID}.voip`,
+        'apns-push-type': 'voip',
+        'apns-priority': '10',
+        'apns-expiration': '0',
+      });
+    } catch (e) { finish(false); return; }
+    req.setEncoding('utf8');
+    let status = 0;
+    let responseBody = '';
+    req.on('response', headers => { status = Number(headers[':status'] || 0); });
+    req.on('data', chunk => { if (responseBody.length < 1024) responseBody += chunk; });
+    req.on('end', () => {
+      if (status === 200) { finish(true); return; }
+      if ((status === 400 || status === 410) && /BadDeviceToken|Unregistered/.test(responseBody)) member.voipToken = null;
+      console.warn(`VoIP push rejected by APNs (status ${status || 'unknown'}).`);
+      finish(false);
+    });
+    req.on('error', () => finish(false));
+    req.end(JSON.stringify(payload));
+  });
+}
+
 // Math.random() is not a CSPRNG — predictable enough in theory that it has
 // no business generating anything used as a credential. This is used for
 // room auth tokens (the bearer credential behind every /api/poll, /api/send,
@@ -1980,6 +2032,20 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true });
   }
 
+  // A PushKit token is distinct from the ordinary notification token above.
+  if (path==='/api/voip-subscribe' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (rateLimited(`voip-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
+    if (!validateVoipToken(d.voipToken)) return resErr(res,'Invalid VoIP token.',400);
+    if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
+    const m = room.members.get(d.token);
+    m.voipToken = d.voipToken.toLowerCase();
+    m.voipEnvironment = d.environment;
+    room.lastActivity = Date.now();
+    return res200(res, { ok: true });
+  }
+
   // POST /api/turn-credentials — mints a short-lived Cloudflare TURN
   // credential for an authenticated room member. The long-lived
   // CF_TURN_KEY_API_TOKEN never leaves this server; only the resulting
@@ -2653,8 +2719,11 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const alreadyRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
-          if (!alreadyRinging && hasPushDestination(peerMember)) {
+          if (!alreadyRinging && (peerMember.voipToken || hasPushDestination(peerMember))) {
             const caller = room2.members.get(token);
+            const nativeCallId = crypto.randomUUID();
+            room2.nativeCallId = nativeCallId;
+            room2.nativeCalleeToken = peerMember.voipToken ? tok : null;
             // code rides along so tapping the notification (see sw.js's
             // notificationclick) can jump straight to the room the call is
             // actually in, rather than whichever room the app happens to open
@@ -2667,7 +2736,21 @@ wss.on('connection', (ws) => {
               isCall: true,
               code: roomCode,
             });
-            sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 30, label: 'call' });
+            if (peerMember.voipToken) {
+              // APNs receives no vault code, member name, or room credential.
+              // The app resolves the room only after its authenticated signal
+              // sockets reconnect and receive the encrypted call invitation.
+              sendVoipPush(peerMember, {
+                aps: { 'content-available': 1 },
+                action: 'incoming',
+                callId: nativeCallId,
+                hasVideo: false,
+              }).then(ok => {
+                if (!ok) sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 30, label: 'call fallback' });
+              });
+            } else {
+              sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 30, label: 'call' });
+            }
 
             // iOS web push has no equivalent of the high-priority "VoIP push"
             // tier native apps get (that's reserved for PushKit, not available
@@ -2683,12 +2766,17 @@ wss.on('connection', (ws) => {
             const ringMarker = room2.ringingUntil;
             setTimeout(() => {
               if (room2.ringingUntil !== ringMarker || room2.ringingUntil <= Date.now()) return;
+              if (peerMember.voipToken) return;
               if (!hasPushDestination(peerMember)) return; // already known-dead from the first attempt
               sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 15, label: 'call retry' });
             }, 5000);
           }
-        } else if (msg2.type === 'call-accept' || msg2.type === 'call-decline' || msg2.type === 'call-busy') {
+        } else if (msg2.type === 'call-accept') {
           room2.ringingUntil = 0;
+        } else if (msg2.type === 'call-decline' || msg2.type === 'call-busy') {
+          room2.ringingUntil = 0;
+          room2.nativeCallId = null;
+          room2.nativeCalleeToken = null;
         } else if (msg2.type === 'call-hangup') {
           // A hangup landing while the ring window is still open means
           // nobody ever answered — the caller gave up (their own 30s ring
@@ -2701,6 +2789,17 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = 0;
+          const nativeCallId = room2.nativeCallId;
+          const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
+          room2.nativeCallId = null;
+          room2.nativeCalleeToken = null;
+          if (nativeCallId && nativeCallee && nativeCallee.voipToken) {
+            sendVoipPush(nativeCallee, {
+              aps: { 'content-available': 1 },
+              action: 'end',
+              callId: nativeCallId,
+            }).catch(() => {});
+          }
           if (wasStillRinging && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
