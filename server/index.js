@@ -2744,6 +2744,7 @@ wss.on('connection', (ws) => {
                 aps: { 'content-available': 1 },
                 action: 'incoming',
                 callId: nativeCallId,
+                caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
                 hasVideo: false,
               }).then(ok => {
                 if (!ok) sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 30, label: 'call fallback' });
