@@ -2381,14 +2381,15 @@ window.addEventListener('vaultlix:voip-token', event => {
 });
 
 async function handleNativeCallAction(detail) {
-  if (!detail || typeof detail.code !== 'string') return;
+  if (!detail || typeof detail.action !== 'string') return;
+  const nativeRoomCode = typeof detail.code === 'string' ? detail.code : '';
   // Privacy-preserving PushKit payloads intentionally contain no vault code.
   // Resolve an already-active call locally, or hold the explicit CallKit
   // action until the authenticated encrypted call-invite identifies its room.
-  const room = detail.code ? rooms.get(detail.code) :
+  const room = nativeRoomCode ? rooms.get(nativeRoomCode) :
     (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null);
   if (!room) {
-    if (detail.code) pendingNativeCallActions.set(detail.code, detail.action);
+    if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail.action);
     else pendingNativeUnscopedAction = detail.action;
     return;
   }
@@ -3239,6 +3240,11 @@ async function handleSignalMessage(room, type, payload) {
       activeCallRoomCode = room.code;
       room.callState = 'incoming';
       room.callPeerName = (payload && payload.from) || room.peerName || 'them';
+      try {
+        window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
+          action: 'updateCaller', caller: room.callPeerName,
+        });
+      } catch (e) {}
       // Wall-clock timestamp, not a setTimeout — see checkStaleIncomingCalls.
       // A timer alone isn't reliable here: if this device gets backgrounded
       // for the rest of the ring window, the timer may never fire (or fire
