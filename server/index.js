@@ -454,9 +454,15 @@ function sendVoipPush(member, payload) {
     req.on('response', headers => { status = Number(headers[':status'] || 0); });
     req.on('data', chunk => { if (responseBody.length < 1024) responseBody += chunk; });
     req.on('end', () => {
-      if (status === 200) { finish(true); return; }
+      if (status === 200) {
+        console.log(`VoIP push accepted by APNs (${member.voipEnvironment || 'production'}).`);
+        finish(true);
+        return;
+      }
       if ((status === 400 || status === 410) && /BadDeviceToken|Unregistered/.test(responseBody)) member.voipToken = null;
-      console.warn(`VoIP push rejected by APNs (status ${status || 'unknown'}).`);
+      let reason = 'unknown';
+      try { reason = JSON.parse(responseBody).reason || reason; } catch (e) {}
+      console.warn(`VoIP push rejected by APNs (status ${status || 'unknown'}, reason ${reason}).`);
       finish(false);
     });
     req.on('error', () => finish(false));
@@ -2795,17 +2801,8 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = 0;
-          const nativeCallId = room2.nativeCallId;
-          const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
-          if (nativeCallId && nativeCallee && nativeCallee.voipToken) {
-            sendVoipPush(nativeCallee, {
-              aps: { 'content-available': 1 },
-              action: 'end',
-              callId: nativeCallId,
-            }).catch(() => {});
-          }
           if (wasStillRinging && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
