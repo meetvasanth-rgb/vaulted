@@ -1,4 +1,5 @@
 const http = require('http');
+const http2 = require('http2');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -294,6 +295,119 @@ if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 webpush.setVapidDetails('mailto:privacy@vaultlix.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+
+// Native iOS notifications are optional so the web app can still run before
+// APNs is configured. TestFlight and App Store builds use production APNs.
+// The .p8 private key must be supplied as an environment secret; it is never
+// sent to the client or written to logs/snapshots.
+const APNS_TEAM_ID = process.env.APNS_TEAM_ID || '';
+const APNS_KEY_ID = process.env.APNS_KEY_ID || '';
+const APNS_PRIVATE_KEY = (process.env.APNS_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+const APNS_BUNDLE_ID = process.env.APNS_BUNDLE_ID || 'com.vaultlix.app';
+const APNS_HOST = process.env.APNS_ENVIRONMENT === 'sandbox'
+  ? 'https://api.sandbox.push.apple.com'
+  : 'https://api.push.apple.com';
+const APNS_CONFIGURED = !!(APNS_TEAM_ID && APNS_KEY_ID && APNS_PRIVATE_KEY);
+if (!APNS_CONFIGURED) console.warn('Native iOS push is disabled: APNS_TEAM_ID, APNS_KEY_ID, and APNS_PRIVATE_KEY are not all set.');
+
+let apnsJwt = null;
+let apnsJwtCreatedAt = 0;
+function base64url(value) {
+  return Buffer.from(value).toString('base64url');
+}
+function getApnsJwt() {
+  const now = Math.floor(Date.now() / 1000);
+  // Apple permits provider tokens for up to one hour; rotate at 50 minutes.
+  if (apnsJwt && now - apnsJwtCreatedAt < 50 * 60) return apnsJwt;
+  const header = base64url(JSON.stringify({ alg: 'ES256', kid: APNS_KEY_ID }));
+  const claims = base64url(JSON.stringify({ iss: APNS_TEAM_ID, iat: now }));
+  const signingInput = `${header}.${claims}`;
+  const signature = crypto.sign('sha256', Buffer.from(signingInput), {
+    key: APNS_PRIVATE_KEY,
+    dsaEncoding: 'ieee-p1363',
+  });
+  apnsJwt = `${signingInput}.${base64url(signature)}`;
+  apnsJwtCreatedAt = now;
+  return apnsJwt;
+}
+
+function validateApnsToken(value) {
+  // APNs currently returns a 32-byte token. Keep a conservative upper bound
+  // so a future token-size change does not require weakening validation.
+  return typeof value === 'string' && value.length >= 64 && value.length <= 200 && /^[a-fA-F0-9]+$/.test(value)
+    ? value.toLowerCase()
+    : null;
+}
+
+function sendApnsNotification(member, payload, ttlSeconds) {
+  if (!APNS_CONFIGURED || !member.apnsToken) return Promise.resolve(false);
+  let parsed;
+  try { parsed = JSON.parse(payload); } catch (e) { return Promise.resolve(false); }
+  const body = JSON.stringify({
+    aps: {
+      alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
+      sound: 'default',
+      'thread-id': parsed.code || 'vaultlix',
+    },
+    // No message text, encrypted payload, room credential, or member token is
+    // included. `code` only lets an authenticated local session select the
+    // correct already-open vault after a notification tap.
+    code: parsed.code || '',
+    isCall: !!parsed.isCall,
+    msgId: parsed.msgId || '',
+  });
+  return new Promise((resolve) => {
+    let client;
+    try { client = http2.connect(APNS_HOST); } catch (e) { resolve(false); return; }
+    const finish = (ok) => { try { client.close(); } catch (e) {} resolve(ok); };
+    client.setTimeout(10000, () => { try { client.destroy(); } catch (e) {} resolve(false); });
+    client.on('error', () => finish(false));
+    let req;
+    try {
+      req = client.request({
+        ':method': 'POST',
+        ':path': `/3/device/${member.apnsToken}`,
+        authorization: `bearer ${getApnsJwt()}`,
+        'apns-topic': APNS_BUNDLE_ID,
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+        'apns-expiration': String(Math.floor(Date.now() / 1000) + Math.max(0, ttlSeconds || 0)),
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body),
+      });
+    } catch (e) { finish(false); return; }
+    let status = 0;
+    let responseBody = '';
+    req.on('response', headers => { status = Number(headers[':status'] || 0); });
+    req.on('data', chunk => { if (responseBody.length < 2048) responseBody += chunk.toString(); });
+    req.on('end', () => {
+      let reason = '';
+      try { reason = JSON.parse(responseBody).reason || ''; } catch (e) {}
+      if (status === 410 || reason === 'BadDeviceToken' || reason === 'Unregistered' || reason === 'DeviceTokenNotForTopic') {
+        member.apnsToken = null;
+      } else if (status < 200 || status >= 300) {
+        console.warn(`APNs send failed: status=${status || 'unknown'} reason=${reason || 'unknown'}`);
+      }
+      finish(status >= 200 && status < 300);
+    });
+    req.on('error', () => finish(false));
+    req.end(body);
+  });
+}
+
+function hasPushDestination(member) {
+  return !!(member && (member.pushSub || member.apnsToken));
+}
+
+function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = 'push' } = {}) {
+  if (member.pushSub) {
+    webpush.sendNotification(member.pushSub, payload, { urgency, TTL, timeout: PUSH_TIMEOUT_MS }).catch(err => {
+      if (err.statusCode === 404 || err.statusCode === 410) member.pushSub = null;
+      else console.warn(`${label} web push failed:`, err.statusCode, err.body || err.message);
+    });
+  }
+  sendApnsNotification(member, payload, TTL).catch(() => {});
+}
 
 // Math.random() is not a CSPRNG — predictable enough in theory that it has
 // no business generating anything used as a credential. This is used for
@@ -1788,7 +1902,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // never message content. Fire-and-forget: a slow/failed push must never
     // delay the send response.
     for (const [t, mb] of room.members) {
-      if (t !== d.token && mb.pushSub) {
+      if (t !== d.token && hasPushDestination(mb)) {
         // tag used to just be d.code (the room code) — same tag for every
         // message in the room, combined with sw.js's renotify:true. That
         // combination hits a long-standing, still-unresolved Chrome bug
@@ -1816,10 +1930,7 @@ async function api(path, method, d, p, res, ip, headers) {
         // which is more aggressive about delaying "normal" priority pushes to a
         // locked, idle device. TTL is a 60s delivery window if the device is briefly
         // unreachable (e.g. no signal), after which the push service drops it.
-        webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 60, timeout: PUSH_TIMEOUT_MS }).catch(err => {
-          if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null; // subscription expired/revoked
-          else console.warn('push send failed:', err.statusCode, err.body || err.message);
-        });
+        sendMemberPush(mb, payload, { urgency: 'high', TTL: 60, label: 'message' });
 
         // Same reasoning as the call-invite retry below: iOS web push has
         // meaningfully lower single-attempt delivery odds than Android (no
@@ -1833,11 +1944,8 @@ async function api(path, method, d, p, res, ip, headers) {
         setTimeout(() => {
           const rec = room.msgs.find(x => x.id === msgId);
           if (!rec || rec.deliveredAt) return; // delivered (or trimmed/gone) already
-          if (!mb.pushSub) return; // already known-dead from the first attempt
-          webpush.sendNotification(mb.pushSub, payload, { urgency: 'high', TTL: 30, timeout: PUSH_TIMEOUT_MS }).catch(err => {
-            if (err.statusCode === 404 || err.statusCode === 410) mb.pushSub = null;
-            else console.warn('push retry send failed:', err.statusCode, err.body || err.message);
-          });
+          if (!hasPushDestination(mb)) return; // already known-dead from the first attempt
+          sendMemberPush(mb, payload, { urgency: 'high', TTL: 30, label: 'message retry' });
         }, 6000);
       }
     }
@@ -1853,6 +1961,21 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validated) return resErr(res, 'Invalid push subscription.', 400);
     const m = room.members.get(d.token);
     m.pushSub = validated;
+    room.lastActivity = Date.now();
+    return res200(res, { ok: true });
+  }
+
+  // POST /api/native-push-subscribe — bind an APNs device token to an
+  // authenticated member of this room. A stolen room code alone is not
+  // sufficient; the caller must also present the random member bearer token.
+  if (path==='/api/native-push-subscribe' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
+    const deviceToken = validateApnsToken(d.deviceToken);
+    if (!deviceToken) return resErr(res,'Invalid device token.',400);
+    const m = room.members.get(d.token);
+    m.apnsToken = deviceToken;
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
@@ -2530,7 +2653,7 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const alreadyRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
-          if (!alreadyRinging && peerMember.pushSub) {
+          if (!alreadyRinging && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             // code rides along so tapping the notification (see sw.js's
             // notificationclick) can jump straight to the room the call is
@@ -2544,10 +2667,7 @@ wss.on('connection', (ws) => {
               isCall: true,
               code: roomCode,
             });
-            webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 30, timeout: PUSH_TIMEOUT_MS }).catch(err => {
-              if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
-              else console.warn('call push send failed:', err.statusCode, err.body || err.message);
-            });
+            sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 30, label: 'call' });
 
             // iOS web push has no equivalent of the high-priority "VoIP push"
             // tier native apps get (that's reserved for PushKit, not available
@@ -2563,11 +2683,8 @@ wss.on('connection', (ws) => {
             const ringMarker = room2.ringingUntil;
             setTimeout(() => {
               if (room2.ringingUntil !== ringMarker || room2.ringingUntil <= Date.now()) return;
-              if (!peerMember.pushSub) return; // already known-dead from the first attempt
-              webpush.sendNotification(peerMember.pushSub, payload, { urgency: 'high', TTL: 15, timeout: PUSH_TIMEOUT_MS }).catch(err => {
-                if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
-                else console.warn('call push retry send failed:', err.statusCode, err.body || err.message);
-              });
+              if (!hasPushDestination(peerMember)) return; // already known-dead from the first attempt
+              sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 15, label: 'call retry' });
             }, 5000);
           }
         } else if (msg2.type === 'call-accept' || msg2.type === 'call-decline' || msg2.type === 'call-busy') {
@@ -2584,7 +2701,7 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = 0;
-          if (wasStillRinging && peerMember.pushSub) {
+          if (wasStillRinging && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
               title: 'Vaultlix',
@@ -2593,10 +2710,7 @@ wss.on('connection', (ws) => {
               isCall: false,
               code: roomCode,
             });
-            webpush.sendNotification(peerMember.pushSub, missedPayload, { urgency: 'high', TTL: 3600, timeout: PUSH_TIMEOUT_MS }).catch(err => {
-              if (err.statusCode === 404 || err.statusCode === 410) peerMember.pushSub = null;
-              else console.warn('missed-call push send failed:', err.statusCode, err.body || err.message);
-            });
+            sendMemberPush(peerMember, missedPayload, { urgency: 'high', TTL: 3600, label: 'missed call' });
           }
         }
         break;
@@ -2755,6 +2869,7 @@ function loadSnapshot() {
           member.pushSub = null;
           droppedPushSubs++;
         }
+        if (member.apnsToken && !validateApnsToken(member.apnsToken)) member.apnsToken = null;
       }
       // Recomputed fresh rather than trusted from the snapshot — cheap
       // (one pass over this room's own msgs, capped at 100 entries) and
