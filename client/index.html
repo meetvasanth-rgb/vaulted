@@ -2670,6 +2670,7 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // callbacks behind CallKit, so ws.onopen must be able to flush this
     // critical acknowledgement without waiting for a timer to run.
     pendingCallAccept: false,
+    nativeAudioRefreshInFlight: false,
     // True once the FIRST offer/answer exchange has actually completed —
     // see onnegotiationneeded in setupPeerConnection() for why this has to
     // gate it separately from the signalingState check there.
@@ -2811,8 +2812,15 @@ async function handleNativeCallAction(detail) {
     else pendingNativeUnscopedAction = detail.action;
     return;
   }
-  if (detail.action === 'answer' || detail.action === 'answerWhenActive') {
-    if (room.callState === 'incoming') await acceptCall();
+  if (detail.action === 'audioActivated') {
+    await refreshNativeCallAudio(room);
+  } else if (detail.action === 'audioDeactivated') {
+    // CallKit owns the interruption. Keep WebRTC intact so a later
+    // activation can resume or replace the microphone track.
+    const audioEl = document.getElementById('call-remote-audio');
+    if (audioEl) audioEl.pause();
+  } else if (detail.action === 'answer' || detail.action === 'answerWhenActive') {
+    if (room.callState === 'incoming') await acceptCall(true);
     else pendingNativeCallActions.set(room.code, 'answer');
   } else if (detail.action === 'declineOrEnd') {
     if (room.callState === 'incoming') declineCall();
@@ -3693,7 +3701,7 @@ async function handleSignalMessage(room, type, payload) {
     if (nativeAction) {
       pendingNativeCallActions.delete(room.code);
       pendingNativeUnscopedAction = null;
-      if (nativeAction === 'answer' || nativeAction === 'answerWhenActive') await acceptCall();
+      if (nativeAction === 'answer' || nativeAction === 'answerWhenActive') await acceptCall(true);
       else if (nativeAction === 'declineOrEnd') declineCall();
     }
   } else if (type === 'call-ringing') {
@@ -3844,9 +3852,14 @@ async function startCall() {
   }, CALL_RING_TIMEOUT_MS);
 }
 
-async function acceptCall() {
+async function acceptCall(fromNativeCallKit = false) {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
+  if (!fromNativeCallKit) {
+    try {
+      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'answer', code: room.code });
+    } catch (e) {}
+  }
   room.callState = 'active';
   room.callStartedAt = Date.now();
   room.pendingCallAccept = true;
@@ -4263,7 +4276,7 @@ function renderCallOverlay(room) {
         </div>
       </div>`;
     wireCallSwipeButton('call-decline-btn', 'down', declineCall);
-    wireCallSwipeButton('call-accept-btn', 'up', acceptCall);
+    wireCallSwipeButton('call-accept-btn', 'up', () => acceptCall(false));
   } else if (room.callState === 'active') {
     const micIcon = room.callMuted
       ? '<svg viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
@@ -4561,6 +4574,39 @@ async function setupPeerConnection(room) {
   return pc;
 }
 
+// CallKit can activate its AVAudioSession after WKWebView obtained its first
+// microphone track. On iOS that older track may remain "live" according to
+// the Web API while producing silence. Reacquire under the active CallKit
+// session and replace the sender track without renegotiating the call.
+async function refreshNativeCallAudio(room) {
+  if (!room || room.callState !== 'active' || room.nativeAudioRefreshInFlight) return;
+  const remoteAudio = document.getElementById('call-remote-audio');
+  if (remoteAudio) remoteAudio.play().catch(() => {});
+  // If setupPeerConnection is still acquiring the first track, that track
+  // will already be created under the newly-active CallKit audio session.
+  if (!room.pc || !room.localStream) return;
+  room.nativeAudioRefreshInFlight = true;
+  let replacementStream = null;
+  try {
+    replacementStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const replacementTrack = replacementStream.getAudioTracks()[0];
+    if (!replacementTrack || room.callState !== 'active') return;
+    replacementTrack.enabled = !room.callMuted;
+    const sender = room.pc.getSenders().find(item => item.track && item.track.kind === 'audio');
+    if (!sender) return;
+    await sender.replaceTrack(replacementTrack);
+    room.localStream.getAudioTracks().forEach(track => track.stop());
+    room.localStream = replacementStream;
+    replacementStream = null;
+  } catch (e) {
+    // Preserve the original track if reacquisition fails so the user can
+    // still retry instead of having the call torn down underneath them.
+  } finally {
+    if (replacementStream) replacementStream.getTracks().forEach(track => track.stop());
+    room.nativeAudioRefreshInFlight = false;
+  }
+}
+
 function teardownPeerConnection(room) {
   stopCallStatsLogging(room);
   if (room.pc) {
@@ -4590,6 +4636,7 @@ function teardownPeerConnection(room) {
   room.callCameraFacing = 'user';
   room.reactionPickerOpen = false;
   room.callMuted = false;
+  room.nativeAudioRefreshInFlight = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
   room.speakerDeviceId = null;
