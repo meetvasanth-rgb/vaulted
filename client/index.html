@@ -6559,7 +6559,12 @@ function switchToNextRoomOrLanding() {
   } else {
     const next = rooms.keys().next();
     if (!next.done) { setActiveRoom(next.value); showScreen('s-chat'); }
-    else { activeRoomCode = null; showScreen('s-landing'); triggerLandingAnim(); }
+    else {
+      activeRoomCode = null;
+      saveActiveRoomCode(null);
+      showScreen('s-landing');
+      triggerLandingAnim();
+    }
   }
   renderRoomTabs();
 }
@@ -7608,8 +7613,9 @@ async function doPoll(room) {
             showScreen('s-chat');
           } else {
             activeRoomCode = null;
-            showScreen('s-closed');
-            document.getElementById('closed-sub').textContent = 'This vault has expired or been closed.';
+            saveActiveRoomCode(null);
+            showScreen('s-landing');
+            triggerLandingAnim();
           }
           const chatScreen = document.getElementById('s-chat');
           if (chatScreen) { chatScreen.style.opacity = ''; chatScreen.style.transition = ''; }
@@ -8455,7 +8461,7 @@ async function closeActiveRoom() {
   removeRoomFromState(room.code);
   // #chat-body still shows this room's messages at this point — the vanish
   // ceremony plays over them before we swap to whatever screen comes next
-  // (closed screen if that was the last room, otherwise the next tab).
+  // (homepage if that was the last room, otherwise the next tab).
   await triggerVanishMoment(() => {
     // If anything in the room-switch branch below throws (e.g. a bad
     // access deep in setActiveRoom's updateDailyNudge/checkMilestone
@@ -8464,14 +8470,11 @@ async function closeActiveRoom() {
     // earlier by this same ceremony's fade-out step) with nothing ever
     // replacing it, which reads as being stuck on the vanish screen.
     try {
-      if (rooms.size === 0) {
-        activeRoomCode = null;
-        showScreen('s-closed');
-        document.getElementById('closed-sub').textContent = 'The conversation has been permanently deleted. Nothing readable remains.';
-      } else {
-        toast('Vault erased');
-        switchToNextRoomOrLanding();
-      }
+      toast('Vault erased');
+      // Always leave the erased conversation behind. This selects another
+      // open vault when one exists, or returns to the create/join homepage
+      // when it was the final vault.
+      switchToNextRoomOrLanding();
     } finally {
       // Reset chat screen opacity/transition for its next use
       const chatScreen = document.getElementById('s-chat');
@@ -8586,6 +8589,20 @@ async function triggerConnectionMoment(variant, callback) {
 // currently being viewed, so #chat-body still holds that room's rendered
 // messages at the moment this is called.
 async function triggerVanishMoment(callback) {
+  let completed = false;
+  const finish = () => {
+    if (completed) return;
+    completed = true;
+    document.getElementById('vanish-overlay')?.remove();
+    const screen = document.getElementById('s-chat');
+    if (screen) { screen.style.opacity = ''; screen.style.transition = ''; }
+    if (callback) callback();
+  };
+  // A platform may pause CSS transitions or timer chains while CallKit, a
+  // permission sheet, or an app lifecycle transition owns the foreground.
+  // Never let presentation timing become navigation state: this watchdog
+  // guarantees that the erased room is left even if the ceremony stalls.
+  const watchdog = setTimeout(finish, 5200);
   const chatBody = document.getElementById('chat-body');
   const messages = chatBody ? chatBody.querySelectorAll('.msg, .sys-msg') : [];
 
@@ -8601,23 +8618,26 @@ async function triggerVanishMoment(callback) {
   const totalMsgTime = msgArray.length * 80 + 400;
 
   // Step 2 — chat screen fades out entirely
-  await delay(Math.max(totalMsgTime, 400));
-  const chatScreen = document.getElementById('s-chat');
-  if (chatScreen) {
-    chatScreen.style.transition = 'opacity 0.4s';
-    chatScreen.style.opacity = '0';
+  try {
+    await delay(Math.max(totalMsgTime, 400));
+    const chatScreen = document.getElementById('s-chat');
+    if (chatScreen) {
+      chatScreen.style.transition = 'opacity 0.4s';
+      chatScreen.style.opacity = '0';
+    }
+
+    // Step 3 — vanish overlay (V mark) appears
+    await delay(400);
+    showVanishOverlay();
+
+    // Steps 4-5 happen inside showVanishOverlay (pulse, then text); hold,
+    // then Step 6 — fade the whole overlay out and reveal whatever's beneath.
+    await delay(2600);
+    await Promise.race([hideVanishOverlay(), delay(900)]);
+  } finally {
+    clearTimeout(watchdog);
+    finish();
   }
-
-  // Step 3 — vanish overlay (V mark) appears
-  await delay(400);
-  showVanishOverlay();
-
-  // Steps 4-5 happen inside showVanishOverlay (pulse, then text); hold,
-  // then Step 6 — fade the whole overlay out and reveal whatever's beneath.
-  await delay(2600);
-  await hideVanishOverlay();
-
-  if (callback) callback();
 }
 
 function showVanishOverlay(line1, line2) {
