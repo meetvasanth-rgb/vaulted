@@ -2807,17 +2807,33 @@ acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
   const nativeRoomCode = typeof detail.code === 'string' ? detail.code : '';
+  const nativeRoomHandle = typeof detail.roomHandle === 'string' ? detail.roomHandle : '';
   // Privacy-preserving PushKit payloads intentionally contain no vault code.
   // Resolve an already-active call locally, or hold the explicit CallKit
   // action until the authenticated encrypted call-invite identifies its room.
   const room = nativeRoomCode ? rooms.get(nativeRoomCode) :
-    (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null);
+    (nativeRoomHandle
+      ? Array.from(rooms.values()).find(candidate => candidate.nativeRoomHandle === nativeRoomHandle)
+      : (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null));
   if (!room) {
     if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail.action);
     else pendingNativeUnscopedAction = detail.action;
     return;
   }
-  if (detail.action === 'audioActivated') {
+  if (detail.action === 'nativeConnected') {
+    // Native CallKit/libwebrtc owns signaling and media for this incoming
+    // iOS call. Mirror only its established state into the foreground page;
+    // do not call acceptCall() or create a second RTCPeerConnection.
+    if (activeCallRoomCode && activeCallRoomCode !== room.code) return;
+    activeCallRoomCode = room.code;
+    room.nativeCallActive = true;
+    room.callState = 'active';
+    room.callPeerName = (typeof detail.caller === 'string' && detail.caller) || room.peerName || 'them';
+    room.callStartedAt = Number.isFinite(detail.connectedAt) ? detail.connectedAt : Date.now();
+    startCallTimer(room);
+    renderCallOverlay(room);
+    refreshCallButton();
+  } else if (detail.action === 'audioActivated') {
     await refreshNativeCallAudio(room);
   } else if (detail.action === 'audioDeactivated') {
     // CallKit owns the interruption. Keep WebRTC intact so a later
@@ -3861,6 +3877,7 @@ async function startCall() {
   room.callState = 'outgoing';
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
+  room.nativeCallActive = false;
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
   renderCallOverlay(room);
@@ -4040,6 +4057,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callPeerName = null;
   room.callStartedAt = null;
   room.callRinging = false;
+  room.nativeCallActive = false;
   room.pendingCallAccept = false;
   room.callInviteReceivedAt = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
