@@ -1603,6 +1603,82 @@ body{color:#271D25;background:#FBF7F8}
 .sys-msg{color:#5F535A!important;background:#FFFFFF!important;border-color:#E3D7DC!important}
 .sys-msg-link{color:#682C43!important}
 .msg-time{color:#7D7077!important}.msg.them .msg-name{color:#682C43!important}
+
+/* Mobile landing redesign: readable hierarchy and generous tap targets. */
+@media (max-width:640px){
+  #s-landing{
+    justify-content:flex-start;
+    overflow-y:auto;
+    padding:calc(50px + env(safe-area-inset-top)) 16px calc(116px + env(safe-area-inset-bottom));
+  }
+  #s-landing::before{inset:10px;border-radius:24px}
+  .landing-content{max-width:520px!important;padding:0 12px!important}
+  .logo{margin-bottom:24px!important}
+  .landing-lockup{gap:13px!important;margin-bottom:16px!important}
+  .landing-mark{
+    width:46px!important;height:46px!important;border-radius:14px!important;
+    background:linear-gradient(145deg,#7A3650,#542237)!important;
+    border:1px solid rgba(104,44,67,.22)!important;
+    box-shadow:0 8px 20px rgba(104,44,67,.20)
+  }
+  .landing-mark span{font-size:23px!important;color:#FFFFFF!important}
+  .landing-wordmark{
+    position:relative;font-size:38px!important;font-weight:400!important;
+    line-height:1!important;letter-spacing:.09em!important;color:#271D25!important
+  }
+  .logo-rule{width:58px!important;height:3px!important;margin-bottom:16px!important}
+  .logo-sub{
+    max-width:390px;margin:0 auto;font-size:11.5px!important;line-height:1.5!important;
+    letter-spacing:.115em!important;font-weight:600!important
+  }
+  .tagline{
+    max-width:440px;margin:0 auto 18px!important;font-size:23px!important;
+    line-height:1.38!important;letter-spacing:.01em!important;color:#45343F!important
+  }
+  .landing-guide{
+    max-width:420px!important;margin:0 auto 28px!important;font-size:16px!important;
+    line-height:1.5!important;letter-spacing:0!important;color:#665A61!important
+  }
+  .cards{max-width:440px!important;gap:14px!important}
+  .card{
+    min-height:100px;padding:18px!important;gap:16px!important;
+    border-radius:20px!important;border-color:#E7DADF!important;
+    box-shadow:0 9px 24px rgba(39,29,37,.08)!important
+  }
+  .card-icon{width:48px!important;height:48px!important;border-radius:14px!important}
+  .card-icon svg{width:22px!important;height:22px!important}
+  .card-title{font-size:18px!important;line-height:1.25!important;margin-bottom:5px!important;color:#271D25!important}
+  .card-desc{font-size:14px!important;line-height:1.42!important;color:#665A61!important}
+  .card > svg:last-child{width:18px!important;height:18px!important;stroke:#9B8B93!important}
+  .landing-footer{
+    padding:30px 20px calc(14px + env(safe-area-inset-bottom))!important;
+    font-size:11.5px!important;line-height:1.55!important;letter-spacing:.055em!important
+  }
+}
+@media (max-width:380px){
+  #s-landing{padding-top:calc(42px + env(safe-area-inset-top))}
+  .landing-wordmark{font-size:34px!important}
+  .tagline{font-size:21px!important}
+  .landing-guide{font-size:15px!important}
+  .card-title{font-size:17px!important}
+  .card-desc{font-size:13.5px!important}
+}
+@media (max-width:640px) and (max-height:740px){
+  #s-landing{padding-top:calc(28px + env(safe-area-inset-top));padding-bottom:92px}
+  .logo{margin-bottom:16px!important}
+  .landing-lockup{margin-bottom:10px!important}
+  .landing-mark{width:40px!important;height:40px!important}
+  .landing-wordmark{font-size:33px!important}
+  .logo-rule{margin-bottom:10px!important}
+  .logo-sub{font-size:10.5px!important}
+  .tagline{font-size:20px!important;margin-bottom:12px!important}
+  .landing-guide{font-size:14.5px!important;margin-bottom:18px!important}
+  .cards{gap:9px!important}
+  .card{min-height:82px;padding:13px 15px!important}
+  .card-icon{width:42px!important;height:42px!important}
+  .card-title{font-size:16.5px!important;margin-bottom:2px!important}
+  .card-desc{font-size:13px!important;line-height:1.32!important}
+}
 </style>
 <script type="application/ld+json">
 {
@@ -1649,15 +1725,15 @@ body{color:#271D25;background:#FBF7F8}
     <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
   </button>
   <div class="landing-glow"></div>
-  <div style="position:relative;z-index:1;text-align:center;width:100%;max-width:460px;padding:0 20px">
+  <div class="landing-content" style="position:relative;z-index:1;text-align:center;width:100%;max-width:460px;padding:0 20px">
 
     <!-- Logo block matching messenger sidebar -->
     <div class="logo">
-      <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:20px">
-        <div style="width:32px;height:32px;border:0.5px solid var(--gold-border);border-radius:3px;display:flex;align-items:center;justify-content:center">
+      <div class="landing-lockup" style="display:inline-flex;align-items:center;gap:10px;margin-bottom:20px">
+        <div class="landing-mark" style="width:32px;height:32px;border:0.5px solid var(--gold-border);border-radius:3px;display:flex;align-items:center;justify-content:center">
           <span style="font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:400;color:var(--gold)">V</span>
         </div>
-        <h1 style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaultlix<span style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"> — Anonymous End-to-End Encrypted Chat, No Login Required</span></h1>
+        <h1 class="landing-wordmark" style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaultlix<span style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"> — Anonymous End-to-End Encrypted Chat, No Login Required</span></h1>
       </div>
       <div class="logo-rule" id="logoRule" style="margin:0 auto 20px"></div>
       <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · Nothing we can read</div>
@@ -1671,7 +1747,7 @@ body{color:#271D25;background:#FBF7F8}
          the tagline above) so it holds together regardless of how much the
          height-based media queries below compress the tagline's own margin
          on shorter screens. -->
-    <div style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:0 auto 24px;max-width:340px;line-height:1.6">Starting the conversation? Create or name a vault, then send the code. Already have one? Join.</div>
+    <div class="landing-guide" style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:0 auto 24px;max-width:340px;line-height:1.6">Starting the conversation? Create or name a vault, then send the code. Already have one? Join.</div>
 
     <!-- Cards matching messenger surface -->
     <div class="cards" id="cards" style="grid-template-columns:1fr;gap:8px;max-width:360px;margin:0 auto">
