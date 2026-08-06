@@ -1424,6 +1424,56 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   #s-landing{padding-top:34px}.logo-name{font-size:46px}.logo-sub{margin-top:5px}.tagline{font-size:17px;margin-bottom:14px!important}.card{min-height:64px}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+/* ── COOL BLUE PALETTE ────────────────────────────────────────────────
+   Telegram-inspired clarity without copying Telegram's branding. */
+:root{
+  --vx-ink:#17212B;--vx-ink-2:#2E3A46;--vx-ivory:#EAF2F8;
+  --vx-paper:#FFFFFF;--vx-soft:#F1F6FA;--vx-line:#D9E5ED;
+  --vx-gold:#229ED9;--vx-gold-2:#64BDE8;--vx-sage:#31A36B;
+  --vx-blue:#229ED9;--vx-danger:#E05252;--vx-muted:#70808E;
+  --vx-shadow:0 18px 50px rgba(36,83,112,.12);
+  --vx-shadow-sm:0 8px 24px rgba(36,83,112,.09);
+}
+#s-landing{background:radial-gradient(circle at 8% 12%,rgba(34,158,217,.16),transparent 26%),radial-gradient(circle at 92% 82%,rgba(100,189,232,.18),transparent 30%),linear-gradient(145deg,#F8FCFF,#E7F2F9)}
+#s-landing::before{border-color:rgba(34,158,217,.18)}
+.landing-glow{background:radial-gradient(ellipse 42% 34% at 50% 28%,rgba(34,158,217,.14),transparent 72%)}
+.logo-rule,.setup-logo .rule,.w-logo .rule,.wrap::before{background:linear-gradient(90deg,#168AC2,#64BDE8)!important}
+.logo-sub{color:#168AC2}.card:hover{border-color:rgba(34,158,217,.45)}
+.card-icon{background:#EAF6FC!important;border-color:#CDEAF7!important}.card-icon svg{stroke:#229ED9!important}
+.cards .card:nth-child(2) .card-icon{background:#EAF8F1!important;border-color:#CFEBDD!important}.cards .card:nth-child(2) .card-icon svg{stroke:#31A36B!important}
+.cards .card:nth-child(3) .card-icon{background:#EEF1FC!important;border-color:#DCE2F7!important}.cards .card:nth-child(3) .card-icon svg{stroke:#5878C6!important}
+.landing-footer{background:linear-gradient(transparent,rgba(234,242,248,.97) 42%)}
+.install-btn,.btn-gold,.send-btn{background:linear-gradient(135deg,#229ED9,#168AC2)!important;box-shadow:0 8px 22px rgba(34,158,217,.25)!important}
+.btn-gold:hover{background:linear-gradient(135deg,#168AC2,#1179AC)!important}
+#s-setup,#s-waiting,#s-closed{background:radial-gradient(circle at 50% 0,rgba(34,158,217,.15),transparent 38%),#EAF2F8}
+.setup-card::before,.waiting-card::before,.closed-card::before{background:linear-gradient(90deg,#168AC2,#64BDE8,#A8DDF4)}
+.field input:focus,.timer-select:focus{border-color:#229ED9!important;box-shadow:0 0 0 4px rgba(34,158,217,.12)!important}
+.name-shuffle-btn{color:#229ED9}.code-box{background:linear-gradient(145deg,#F1F9FD,#E6F4FB);border-color:#B9DFF1}.code-label,.code-value,.code-value .code-char.code-char-suffix{color:#197EAE}
+.share-btn{background:#229ED9;border-color:#229ED9}.copy-btn:hover,.share-btn:hover{border-color:#229ED9;color:#168AC2}
+#s-chat{background:#DDEAF2}.chat-hdr-logo{background:linear-gradient(145deg,#229ED9,#147EAF);color:#fff;box-shadow:0 6px 14px rgba(34,158,217,.25)}
+.settings-btn,.call-btn{background:#EFF7FB;border-color:#D5E8F2}.settings-btn:hover,.call-btn:hover{background:#E1F2FA;color:#168AC2}
+.call-btn svg{stroke:#229ED9}.room-tab.active{background:#229ED9;border-color:#229ED9;box-shadow:0 6px 14px rgba(34,158,217,.23)}
+.e2e-bar{background:#EBF7FD;border-color:#D0EAF6;color:#197EAE}.timer-bar{background:#F6FAFC!important}
+.chat-body{background:linear-gradient(rgba(239,246,250,.90),rgba(239,246,250,.90)),radial-gradient(circle at 1px 1px,#B8CDDA 1px,transparent 1px);background-size:auto,22px 22px}
+.msg-bubble.me,.bubble.me{background:linear-gradient(145deg,#D9F1FF,#C8E9FB)!important;color:#17212B!important;border:1px solid #BCE0F3!important;box-shadow:0 4px 14px rgba(34,126,174,.10)}
+.msg-bubble.them,.bubble.them{border-color:#D8E5EC!important;box-shadow:0 4px 14px rgba(36,83,112,.07)}
+#msg-input{background:#EFF5F8!important}.attach-btn,.mic-btn{background:#EAF3F8!important;color:#4C758B!important}
+.push-banner{background:#E9F7F0;border-color:#CDE9DA;color:#246344}.daily-nudge{background:#EAF6FC!important;border-color:#CDEAF7!important}
+.toggle-switch input:checked + .toggle-track{background:#229ED9}.settings-status-action{color:#168AC2}
+.settings-about-rule{background:#229ED9}.legal-highlight{background:#EAF6FC!important;border-color:#C9E6F4!important;color:#285F78!important}
+.call-overlay{background:radial-gradient(circle at 50% 28%,#22516A 0%,#172C39 52%,#101C24 100%)}
+.logo>div>div:first-child{border-color:#BBDFF0!important;background:#EFF9FD}.logo>div>div:first-child span{color:#229ED9!important}
+.msg-viewonce-badge,.settings-btn:hover,.settings-btn.active svg{color:#229ED9!important}
+.msg.me .msg-progress-wrap{background:rgba(34,158,217,.15)}
+.msg.me .msg-reply-quote{background:rgba(34,158,217,.10)}
+.milestone-share-btn{background:#229ED9;color:#fff}
+.connect-v-mark,.vanish-v,.call-vanish-mark .v-glyph,.call-vanish-mark .v-line2{color:#229ED9}
+.connect-rule,.vanish-rule,.call-hdr-rule,.ring-dot,.ring-wave,.call-live-dot{background:#229ED9}
+.call-hollow-dot{border-color:#229ED9}
+.settings-row-icon[style*="#B8973E"]{background:#EAF6FC!important;color:#229ED9!important}
+.settings-row button[style*="#B8973E"]{background:#229ED9!important}
+.ios-install-banner svg{stroke:#229ED9!important}
 </style>
 <script type="application/ld+json">
 {
