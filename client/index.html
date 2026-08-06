@@ -2665,6 +2665,11 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     callInviteReceivedAt: null,
     // Answerer-side resend loop for 'call-accept' — see acceptCall().
     callAcceptRetryInterval: null, callAcceptRetryTimeout: null, callAcceptConfirmed: false,
+    // Set as soon as the callee accepts, even if iOS resumed us before the
+    // signaling socket finished reconnecting. WebKit can suspend interval
+    // callbacks behind CallKit, so ws.onopen must be able to flush this
+    // critical acknowledgement without waiting for a timer to run.
+    pendingCallAccept: false,
     // True once the FIRST offer/answer exchange has actually completed —
     // see onnegotiationneeded in setupPeerConnection() for why this has to
     // gate it separately from the signalingState check there.
@@ -3569,6 +3574,14 @@ function connectSignaling(room) {
     try { ws.send(JSON.stringify({ type: 'auth', code: room.code, token: room.token })); } catch (e) {}
     room.signalReconnectAttempts = 0;
     refreshCallButton();
+    // CallKit may have been answered while this socket was still closed.
+    // The auth frame above and this encrypted accept share one WebSocket,
+    // so their order is guaranteed: the server authenticates us first and
+    // then relays the acceptance. Do not depend on setInterval here because
+    // iOS may suspend JavaScript timers while its system call UI is active.
+    if (room.pendingCallAccept && room.callState === 'active' && !room.callAcceptConfirmed) {
+      sendSignal(room, 'call-accept', {});
+    }
   };
 
   ws.onmessage = async (ev) => {
@@ -3749,6 +3762,7 @@ async function handleSignalMessage(room, type, payload) {
     // call-accept — that's what the resend loop in acceptCall() is
     // actually waiting to hear before it stops.
     room.callAcceptConfirmed = true;
+    room.pendingCallAccept = false;
     clearCallAcceptRetry(room);
     if (!room.pc) { room.pendingOffer = payload; return; }
     await processOffer(room, payload);
@@ -3835,6 +3849,17 @@ async function acceptCall() {
   if (!room || room.callState !== 'incoming') return;
   room.callState = 'active';
   room.callStartedAt = Date.now();
+  room.pendingCallAccept = true;
+  // A socket left in CONNECTING while iOS was suspended can remain stale.
+  // Replace that half-open socket before running the normal connection
+  // routine; a genuinely OPEN socket is retained. The old socket's close
+  // callback is already guarded against superseding a newer room.signalWs.
+  if (room.signalWs && room.signalWs.readyState !== WebSocket.OPEN) {
+    const staleSocket = room.signalWs;
+    room.signalWs = null;
+    try { staleSocket.close(); } catch (e) {}
+  }
+  connectSignaling(room);
   sendSignal(room, 'call-accept', {});
   startCallTimer(room);
   renderCallOverlay(room);
@@ -3973,6 +3998,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callPeerName = null;
   room.callStartedAt = null;
   room.callRinging = false;
+  room.pendingCallAccept = false;
   room.callInviteReceivedAt = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
