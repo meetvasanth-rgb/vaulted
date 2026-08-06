@@ -1776,6 +1776,77 @@ body{color:#271D25;background:#FBF7F8}
   #s-landing .card-permanent .card-arrow{align-self:flex-end;margin-top:auto}
 }
 
+/* Desktop landing — a purpose-built wide-screen composition. */
+@media(min-width:900px){
+  #s-landing{
+    min-height:100dvh;padding:32px 52px 48px;overflow-y:auto;
+    background:
+      radial-gradient(circle at 8% 12%,rgba(200,117,136,.18),transparent 27%),
+      radial-gradient(circle at 91% 88%,rgba(113,148,124,.13),transparent 28%),
+      linear-gradient(118deg,#FBF7F8 0 49.8%,#F6EEF1 50% 100%);
+  }
+  #s-landing::before{background:linear-gradient(90deg,transparent calc(50% - .5px),rgba(104,44,67,.08) 50%,transparent calc(50% + .5px))}
+  #s-landing .landing-content{
+    max-width:1240px;min-height:calc(100dvh - 112px);display:grid;
+    grid-template-columns:minmax(0,.95fr) minmax(470px,.82fr);
+    grid-template-rows:auto minmax(0,1fr) auto;column-gap:88px;row-gap:26px;
+    align-items:center;
+  }
+  #s-landing .landing-header{grid-column:1/-1;margin:0;align-self:start}
+  #s-landing .landing-mark{width:54px!important;height:54px!important;border-radius:17px!important}
+  #s-landing .landing-mark svg{width:25px;height:25px}
+  #s-landing .landing-wordmark{font-size:25px!important}
+  #s-landing .landing-brand-note{font-size:9.5px;margin-top:6px}
+  #s-landing .landing-trust-pill{padding:10px 14px;font-size:11px;background:rgba(255,255,255,.88)}
+  #s-landing .landing-hero{grid-column:1;grid-row:2;max-width:610px;margin:0;padding-right:20px;align-self:center}
+  #s-landing .logo-rule{width:52px!important;margin-bottom:22px!important}
+  #s-landing .logo-sub{font-size:11px!important;margin-bottom:18px!important}
+  #s-landing .landing-title{font-size:clamp(52px,5.2vw,72px);line-height:1.01;letter-spacing:-.055em;margin-bottom:24px;max-width:650px}
+  #s-landing .tagline{font-size:18px!important;line-height:1.65!important;max-width:520px!important}
+  #s-landing .landing-actions{
+    grid-column:2;grid-row:2/4;align-self:center;margin:0;padding:28px;
+    border:1px solid rgba(104,44,67,.13);border-radius:30px;
+    background:rgba(255,255,255,.9);box-shadow:0 28px 70px rgba(65,35,48,.12);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  }
+  #s-landing .landing-section-heading{margin-bottom:22px;padding:0 2px}
+  #s-landing .landing-section-heading span{font-size:10px;margin-bottom:10px}
+  #s-landing .landing-section-heading h2{font-size:29px}
+  #s-landing .landing-count{width:44px;height:44px;font-size:14px}
+  #s-landing .cards{grid-template-columns:1fr!important;gap:12px!important}
+  #s-landing .card,#s-landing .card-permanent{
+    grid-column:auto;min-height:104px;display:grid!important;
+    grid-template-columns:52px minmax(0,1fr) 38px;align-items:center!important;
+    column-gap:16px!important;padding:17px 18px!important;border-radius:20px!important;
+  }
+  #s-landing .card-icon,#s-landing .card-permanent .card-icon{width:48px!important;height:48px!important;margin:0!important;border-radius:14px!important}
+  #s-landing .card-title{font-size:17px!important;margin-bottom:5px!important}
+  #s-landing .card-desc{font-size:12.5px!important;line-height:1.45!important}
+  #s-landing .card-arrow,#s-landing .card-permanent .card-arrow{align-self:center;margin:0;width:36px;height:36px}
+  #s-landing .card-primary{background:linear-gradient(140deg,#75314B,#5A2339)!important}
+  #s-landing .card-primary:hover{border-color:#682C43!important;box-shadow:0 16px 34px rgba(104,44,67,.23)!important}
+  #s-landing .landing-assurance{
+    grid-column:1;grid-row:3;max-width:540px;margin:0;padding:19px 20px;
+    border:1px solid rgba(255,255,255,.08);border-radius:21px;
+  }
+  #s-landing .assurance-icon{width:42px;height:42px}
+  #s-landing .landing-assurance strong{font-size:14px}
+  #s-landing .landing-assurance span{font-size:11.5px}
+  #s-landing .install-btn{position:absolute;right:0;top:74px;margin:0!important}
+  #s-landing .install-note{position:absolute;right:0;top:78px}
+  #s-landing .landing-footer{position:absolute!important;right:52px;bottom:18px;margin:0!important;text-align:right}
+  #s-landing .ios-install-banner{max-width:520px;left:auto;right:28px}
+}
+@media(min-width:900px) and (max-height:760px){
+  #s-landing{padding-top:24px;padding-bottom:34px}
+  #s-landing .landing-content{min-height:calc(100dvh - 76px);row-gap:18px}
+  #s-landing .landing-title{font-size:50px;margin-bottom:16px}
+  #s-landing .tagline{font-size:16px!important}
+  #s-landing .landing-actions{padding:22px}
+  #s-landing .card,#s-landing .card-permanent{min-height:88px;padding:13px 16px!important}
+  #s-landing .landing-assurance{padding:15px 18px}
+}
+
 /* ── VAULT CONVERSATION — CALM, PRIVATE, PURPOSEFUL ──────────────── */
 #s-chat{background:#fff!important;font-family:'Manrope',sans-serif!important}
 #s-chat .chat-hdr{
