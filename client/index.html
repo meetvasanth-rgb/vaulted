@@ -31,7 +31,7 @@
 <meta name="twitter:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing we can read.">
 <meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1609,6 +1609,11 @@ body{color:#271D25;background:#FBF7F8}
 .install-btn,.install-btn:hover,.install-btn:active,
 #s-setup .btn-gold,#s-setup .btn-gold:hover,#s-setup .btn-gold:active{color:#FFFFFF!important}
 .install-btn svg{stroke:#FFFFFF!important}
+#s-landing .landing-wordmark,#s-landing .landing-mark span,#s-landing .tagline{font-family:'Bodoni Moda',serif!important}
+#s-landing .logo-sub,#s-landing .landing-guide,#s-landing .card-title,#s-landing .card-desc,#s-landing .landing-footer,#s-landing .install-btn{font-family:'Manrope',sans-serif!important}
+#s-landing .landing-wordmark{letter-spacing:.055em!important}
+#s-landing .tagline{font-style:normal!important;font-weight:500!important;letter-spacing:-.015em!important}
+#s-landing .logo-sub{letter-spacing:.15em!important}
 
 /* Mobile landing redesign: readable hierarchy and generous tap targets. */
 @media (max-width:640px){
@@ -1742,10 +1747,10 @@ body{color:#271D25;background:#FBF7F8}
         <h1 class="landing-wordmark" style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;letter-spacing:0.12em;color:#1A1510">Vaultlix<span style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"> — Anonymous End-to-End Encrypted Chat, No Login Required</span></h1>
       </div>
       <div class="logo-rule" id="logoRule" style="margin:0 auto 20px"></div>
-      <div class="logo-sub" id="logoSub">End-to-end encrypted · Anonymous · Nothing we can read</div>
+      <div class="logo-sub" id="logoSub">Private conversations for two</div>
     </div>
 
-    <p class="tagline" id="logoTag" style="margin-bottom:14px">Most apps say they don't read your messages. They don't have to — the pattern of who you talk to says enough.</p>
+    <p class="tagline" id="logoTag" style="margin-bottom:14px">Speak freely, without tying the conversation to your identity.</p>
 
     <!-- Clarifies who does what before the cards below — the create/join
          split isn't obvious on a first visit with no prior context. Uses
@@ -1753,7 +1758,7 @@ body{color:#271D25;background:#FBF7F8}
          the tagline above) so it holds together regardless of how much the
          height-based media queries below compress the tagline's own margin
          on shorter screens. -->
-    <div class="landing-guide" style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:0 auto 24px;max-width:340px;line-height:1.6">Starting the conversation? Create or name a vault, then send the code. Already have one? Join.</div>
+    <div class="landing-guide" style="font-size:12px;color:#9A8C7E;letter-spacing:.03em;margin:0 auto 24px;max-width:340px;line-height:1.6">Choose how you want to begin.</div>
 
     <!-- Cards matching messenger surface -->
     <div class="cards" id="cards" style="grid-template-columns:1fr;gap:8px;max-width:360px;margin:0 auto">
@@ -1802,8 +1807,6 @@ body{color:#271D25;background:#FBF7F8}
 
   </div>
   <div class="landing-footer">
-  No accounts · No phone number · End-to-end encrypted · Nothing we can read
-  <span style="margin:0 6px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="shareVaultlix()">Share</span>
   <span style="margin:0 6px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-privacy')">Privacy</span>
@@ -8612,39 +8615,14 @@ if (window.visualViewport) {
 }
 
 // ── LANDING ANIMATION ────────────────────────────────────────────────────
-// Rotates #logoTag through these four instead of the old single static
-// line. Order matters (explicitly requested) — not shuffled, just cycles
-// 0→1→2→3→0.
-const LANDING_TAGLINES = [
-  "Most apps say they don't read your messages. They don't have to — the pattern of who you talk to says enough.",
-  "Most apps collect your data first, then promise to protect it. Vaultlix skips the first part.",
-  "Even encrypted messages sit on your phone until someone unlocks it. Ours don't stay anywhere.",
-  "A locked door is only as good as who's holding the key. We never hold one.",
-];
-// Index persists across visits to the landing screen on purpose — coming
-// back to landing restarts the TIMER (see stopLandingTaglineRotation below)
-// but re-showing tagline #1 every single time would make the "rotating
-// set" feel like it never actually progresses for anyone who leaves and
-// returns often.
-let landingTaglineIndex = 0;
+// Keep the landing promise concise and stable. The supporting copy and
+// cards explain the choices without cycling through repeated privacy claims.
 let landingTaglineInterval = null;
 
 function startLandingTaglineRotation() {
-  // Clear first — triggerLandingAnim() runs on every visit to landing, and
-  // without this each visit would stack another setInterval on top of any
-  // still running from before, compounding into faster and faster (and
-  // eventually simultaneous, garbled) swaps the more times landing is shown.
   stopLandingTaglineRotation();
-  landingTaglineInterval = setInterval(() => {
-    const el = document.getElementById('logoTag');
-    if (!el) return;
-    el.style.opacity = '0';
-    setTimeout(() => {
-      landingTaglineIndex = (landingTaglineIndex + 1) % LANDING_TAGLINES.length;
-      el.textContent = LANDING_TAGLINES[landingTaglineIndex];
-      el.style.opacity = '1';
-    }, 350); // matches .tagline's own transition:opacity .35s
-  }, 5500);
+  const el = document.getElementById('logoTag');
+  if (el) el.textContent = 'Speak freely, without tying the conversation to your identity.';
 }
 function stopLandingTaglineRotation() {
   if (landingTaglineInterval) { clearInterval(landingTaglineInterval); landingTaglineInterval = null; }
