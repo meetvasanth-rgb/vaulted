@@ -478,7 +478,11 @@ function sendNativeCallEnd(member, callId) {
   const host = member.apnsEnvironment === 'sandbox'
     ? 'https://api.sandbox.push.apple.com'
     : 'https://api.push.apple.com';
-  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId });
+  // PushKit's VoIP delegate consumes this payload directly. Keep the action
+  // name aligned with its incoming-push handler ("end"); "endCall" is used
+  // only by the ordinary APNs application callback and left CallKit's CXCall
+  // alive after the Android peer had already hung up.
+  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'end', callId });
   return new Promise(resolve => {
     let client;
     try { client = http2.connect(host); } catch (e) { resolve(false); return; }
