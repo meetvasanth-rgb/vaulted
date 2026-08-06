@@ -1775,6 +1775,90 @@ body{color:#271D25;background:#FBF7F8}
   #s-landing .card-permanent .card-icon{margin-bottom:14px!important}
   #s-landing .card-permanent .card-arrow{align-self:flex-end;margin-top:auto}
 }
+
+/* ── VAULT CONVERSATION — CALM, PRIVATE, PURPOSEFUL ──────────────── */
+#s-chat{background:#fff!important;font-family:'Manrope',sans-serif!important}
+#s-chat .chat-hdr{
+  min-height:calc(72px + env(safe-area-inset-top));height:auto!important;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px!important;
+  background:rgba(255,255,255,.97)!important;border:0!important;
+  box-shadow:0 1px 0 #EDE4E7!important;gap:12px!important;
+}
+#s-chat .chat-hdr-identity{gap:11px!important;overflow:visible!important}
+#s-chat .chat-hdr-logo{width:42px;height:42px;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important}
+#s-chat .chat-hdr-logo svg{width:21px;height:21px;stroke:#fff}
+#s-chat .chat-hdr-meta{min-width:0;display:flex;flex-direction:column;gap:4px}
+#s-chat .chat-hdr-room{max-width:170px!important;font:750 17px/1.1 'Manrope',sans-serif!important;letter-spacing:-.02em!important;color:#271D25!important}
+#s-chat .chat-hdr-presence{display:flex;align-items:center;gap:7px;font:600 10px/1 'Manrope',sans-serif;color:#83757C;letter-spacing:.03em}
+#s-chat .status-dot{width:7px;height:7px;flex:none}
+#s-chat .chat-hdr-actions{gap:7px!important}
+#s-chat .settings-btn,#s-chat .leave-btn,#s-chat .destroy-btn{width:40px!important;height:40px!important;padding:0!important;margin:0!important;display:grid!important;place-items:center;border-radius:13px!important;font-size:0!important;box-shadow:none!important}
+#s-chat .settings-btn{background:#F6EEF1!important;border:1px solid #E7D6DC!important;color:#682C43!important}
+#s-chat .leave-btn{background:#fff!important;border:1px solid #E5DADF!important;color:#66575F!important}
+#s-chat .destroy-btn{background:#FFF5F6!important;border:1px solid #EDCBD2!important;color:#A94257!important}
+#s-chat .settings-btn svg,#s-chat .leave-btn svg,#s-chat .destroy-btn svg{width:19px!important;height:19px!important;stroke:currentColor!important}
+#s-chat .destroy-btn::before{content:none!important;display:none!important}
+#s-chat .settings-btn:hover,#s-chat .leave-btn:hover{background:#F1E5E9!important}
+#s-chat .destroy-btn:hover{background:#FBE8EC!important}
+#s-chat .room-tabs{min-height:55px;padding:8px 14px!important;gap:8px!important;background:#fff!important;border:0!important;border-bottom:1px solid #F0E8EB!important}
+#s-chat .room-tab{min-height:38px;padding:9px 13px!important;border:1px solid transparent!important;border-radius:12px!important;background:#F8F3F5!important;color:#75666E!important;font:650 12px/1 'Manrope',sans-serif!important}
+#s-chat .room-tab.active{background:#682C43!important;border-color:#682C43!important;color:#fff!important;box-shadow:0 6px 14px rgba(104,44,67,.16)!important}
+#s-chat .room-tab-add{width:38px;height:38px;border-radius:12px!important;border:1px solid #E3D6DB!important;color:#682C43!important;background:#fff!important}
+#s-chat .chat-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:8px;padding:8px 14px;background:#FBF8F9;border-bottom:1px solid #EFE6E9}
+#s-chat .e2e-bar{min-width:0;display:flex;align-items:center;justify-content:center;border:1px solid #D8E4DB!important;border-radius:12px!important;padding:8px 11px!important;background:#EEF3EF!important;color:#4C6B55!important;font:650 10.5px/1.3 'Manrope',sans-serif!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#s-chat .timer-bar{min-width:0;height:auto!important;padding:0!important;border:0!important;background:transparent!important;gap:8px!important}
+#s-chat .timer-bar-controls{height:100%;display:flex!important;align-items:center!important;border:1px solid #E5DADF;border-radius:12px;background:#fff;padding:3px 5px 3px 10px;gap:6px}
+#s-chat .timer-bar-label{font-size:0!important;color:#75666E!important}
+#s-chat .timer-bar-label::before{content:'Timer';font:650 10.5px/1 'Manrope',sans-serif!important}
+#s-chat #timer-bar-select{min-width:60px!important;width:auto!important;border:0!important;padding:5px 22px 5px 4px!important;background-color:transparent!important;color:#4D3D46!important;font:700 10.5px/1 'Manrope',sans-serif!important}
+#s-chat .call-btn{width:40px!important;height:40px!important;flex:none;border-radius:12px!important;border:0!important;background:#682C43!important;color:#fff!important;box-shadow:0 6px 14px rgba(104,44,67,.18)!important}
+#s-chat .call-btn svg{width:18px;height:18px;stroke:#fff!important}
+#s-chat .call-btn:disabled{background:#ECE4E7!important;color:#9C8B92!important;box-shadow:none!important;opacity:1!important}
+#s-chat .call-btn:disabled svg{stroke:#9C8B92!important}
+#s-chat .chat-body{padding:22px 14px 18px!important;gap:7px!important;background:#fff!important;background-image:none!important;scrollbar-width:thin;scrollbar-color:#DCCFD4 transparent}
+#s-chat .sys-msg{max-width:88%;padding:7px 12px!important;border:0!important;border-radius:999px!important;background:#F8F4F5!important;color:#766970!important;box-shadow:none!important;font:550 11px/1.45 'Manrope',sans-serif!important}
+#s-chat .msg{margin-bottom:3px!important}
+#s-chat .msg .bubble{max-width:min(78vw,540px)!important;padding:10px 13px!important;font:450 14px/1.48 'Manrope',sans-serif!important;box-shadow:none!important}
+#s-chat .msg.me .bubble{background:#F2DDE3!important;border:1px solid #E8C9D1!important;color:#30242B!important;border-radius:17px 17px 5px 17px!important}
+#s-chat .msg.them .bubble{background:#fff!important;border:1px solid #E7DDE1!important;color:#30242B!important;border-radius:17px 17px 17px 5px!important;box-shadow:0 5px 16px rgba(39,29,37,.055)!important}
+#s-chat .msg-name{margin:0 0 4px!important;font:700 10px/1 'Manrope',sans-serif!important;color:#682C43!important}
+#s-chat .msg-time{font:550 9.5px/1 'Manrope',sans-serif!important;color:#8C7D84!important}
+#s-chat .typing-indicator{background:#F8F3F5!important;border:1px solid #E8DDE1!important;box-shadow:none!important}
+#s-chat .push-banner{margin:8px 14px 0;border-radius:12px!important;font-size:11px!important}
+#s-chat>div[style="position:relative"]{background:#fff;border-top:1px solid #EEE5E8;box-shadow:0 -8px 24px rgba(39,29,37,.045)}
+#s-chat .daily-nudge{margin:0!important;padding:11px 14px!important;border:0!important;border-left:4px solid #71947C!important;background:#EFF4F0!important;color:#4A6552!important;font:550 11px/1.35 'Manrope',sans-serif!important}
+#s-chat .reply-preview{background:#FBF7F8!important;border-color:#E8DCE1!important}
+#s-chat .chat-ftr{min-height:66px;padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important;gap:8px!important;background:#fff!important;border:0!important;box-shadow:none!important}
+#s-chat #msg-input{min-height:44px!important;max-height:112px!important;padding:11px 14px!important;border:1px solid #E3D6DB!important;border-radius:15px!important;background:#FBF8F9!important;color:#30242B!important;font:450 14px/1.45 'Manrope',sans-serif!important;box-shadow:none!important}
+#s-chat #msg-input:focus{background:#fff!important;border-color:#C99AA9!important;box-shadow:0 0 0 3px rgba(104,44,67,.08)!important}
+#s-chat #msg-input::placeholder{color:#A09198!important}
+#s-chat .attach-btn,#s-chat .mic-btn,#s-chat .send-btn{width:44px!important;height:44px!important;flex:none;border-radius:14px!important}
+#s-chat .attach-btn,#s-chat .mic-btn{background:#F6EEF1!important;border:1px solid #E7D6DC!important;color:#682C43!important}
+#s-chat .attach-btn svg,#s-chat .mic-btn svg{width:20px!important;height:20px!important;stroke:#682C43!important}
+#s-chat .send-btn{border:0!important;background:#682C43!important;box-shadow:0 6px 14px rgba(104,44,67,.20)!important}
+#s-chat .send-btn svg{width:19px!important;height:19px!important;stroke:#fff!important}
+#s-chat .voice-record-bar{background:#fff!important;border-top:1px solid #EEE5E8!important}
+#s-chat .select-bar{background:#682C43!important;color:#fff!important}
+
+@media(max-width:430px){
+  #s-chat .chat-hdr{padding-left:12px!important;padding-right:12px!important}
+  #s-chat .chat-hdr-logo{width:40px;height:40px;border-radius:13px!important}
+  #s-chat .chat-hdr-room{max-width:125px!important;font-size:16px!important}
+  #s-chat .chat-hdr-actions{gap:5px!important}
+  #s-chat .settings-btn,#s-chat .leave-btn,#s-chat .destroy-btn{width:38px!important;height:38px!important;border-radius:12px!important}
+  #s-chat .chat-tools{grid-template-columns:minmax(0,1fr) auto;padding:7px 12px;gap:6px}
+  #s-chat .e2e-bar{justify-content:flex-start;padding:8px 9px!important;font-size:9.8px!important}
+  #s-chat .timer-bar-controls{padding-left:8px}
+  #s-chat .timer-bar-label::before{content:'Timer'}
+  #s-chat .chat-body{padding-left:12px!important;padding-right:12px!important}
+  #s-chat .msg .bubble{max-width:82vw!important}
+}
+@media(max-width:360px){
+  #s-chat .chat-hdr-logo{display:none!important}
+  #s-chat .chat-hdr-room{max-width:105px!important}
+  #s-chat .e2e-bar{font-size:0!important}
+  #s-chat .e2e-bar::after{content:'Encrypted';font:650 10px/1 'Manrope',sans-serif}
+}
 </style>
 <script type="application/ld+json">
 {
@@ -2010,20 +2094,24 @@ body{color:#271D25;background:#FBF7F8}
          gone; that info now lives in Settings > This room and on the
          tappable e2e-bar below, respectively — never duplicated here. -->
     <div class="chat-hdr-identity">
-      <div class="chat-hdr-logo">V</div>
-      <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
-      <div class="status-dot" id="status-dot" title="Connected"></div>
+      <div class="chat-hdr-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      </div>
+      <div class="chat-hdr-meta">
+        <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
+        <div class="chat-hdr-presence"><div class="status-dot" id="status-dot" title="Connected"></div><span>Private vault</span></div>
+      </div>
     </div>
     <!-- Actions zone: settings + the two room-ending actions, pinned right. -->
     <div class="chat-hdr-actions">
-      <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Settings">
+      <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Vault settings" aria-label="Vault settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </button>
-      <button class="leave-btn" onclick="leaveActiveRoom()">Leave</button>
-      <button class="destroy-btn" onclick="closeActiveRoom()">Close &amp; erase</button>
+      <button class="leave-btn" onclick="leaveActiveRoom()" title="Leave vault" aria-label="Leave vault"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></button>
+      <button class="destroy-btn" onclick="closeActiveRoom()" title="Close and erase vault" aria-label="Close and erase vault"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></button>
     </div>
   </div>
   <div class="select-bar" id="select-bar">
@@ -2032,6 +2120,7 @@ body{color:#271D25;background:#FBF7F8}
     <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
   </div>
   <div class="room-tabs" id="room-tabs"></div>
+  <div class="chat-tools">
   <div class="e2e-bar" onclick="showVerifyPanel()" title="Tap to verify encryption" style="cursor:pointer"><span style="font-size:0.87em">🔒</span> Encrypted · Not verified — tap to verify</div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
@@ -2054,6 +2143,7 @@ body{color:#271D25;background:#FBF7F8}
     <button class="call-btn" id="call-btn" onclick="startCall()" title="Voice call" disabled>
       <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
     </button>
+  </div>
   </div>
   <div class="push-banner" id="push-banner"></div>
   <div class="chat-body" id="chat-body">
