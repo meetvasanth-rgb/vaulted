@@ -2602,6 +2602,12 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 // broadcast to a room. Same token space /api/poll already authenticates
 // against; nothing new to trust here.
 const signalingSockets = new Map();
+// Native iOS incoming calls have a separate signaling owner. Keeping this
+// socket alongside (rather than replacing) WKWebView's socket prevents a
+// foreground/reconnect race from sending an offer or hang-up to the wrong
+// WebRTC engine. When present, it has priority for signals addressed to
+// that participant; the web socket remains available for outgoing web calls.
+const nativeCallSignalingSockets = new Map();
 
 // Every type handleSignalMessage() actually branches on in client/index.html
 // (checked against that source directly, not from memory) — anything else
@@ -2653,6 +2659,7 @@ wss.on('connection', (ws) => {
   // just a harmless no-op.
   ws.on('close', () => {
     if (ws.token && signalingSockets.get(ws.token) === ws) signalingSockets.delete(ws.token);
+    if (ws.token && nativeCallSignalingSockets.get(ws.token) === ws) nativeCallSignalingSockets.delete(ws.token);
   });
 
   // An unauthenticated socket that never sends anything gets 5 seconds to
@@ -2681,13 +2688,15 @@ wss.on('connection', (ws) => {
     ws.authenticated = true;
     ws.roomCode = roomCode;
     ws.token = token;
+    ws.nativeCallOwner = msg.nativeCall === true;
 
     // A reconnect (network switch, tab backgrounded and resumed, etc.)
     // replaces the old socket for this token rather than stacking up dead
     // connections that'd otherwise both "successfully" receive a relay.
-    const existing = signalingSockets.get(token);
+    const socketRegistry = ws.nativeCallOwner ? nativeCallSignalingSockets : signalingSockets;
+    const existing = socketRegistry.get(token);
     if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
-    signalingSockets.set(token, ws);
+    socketRegistry.set(token, ws);
     // Pseudonymized room code only — no token material at all (even a
     // truncated bearer token is credential material and has no business in
     // a log line), enough to confirm connectivity during testing without
@@ -2744,7 +2753,10 @@ wss.on('connection', (ws) => {
       // everything else in this app.
       for (const [tok, peerMember] of room2.members) {
         if (tok === token) continue;
-        const peerWs = signalingSockets.get(tok);
+        const nativePeerWs = nativeCallSignalingSockets.get(tok);
+        const peerWs = nativePeerWs && nativePeerWs.readyState === nativePeerWs.OPEN
+          ? nativePeerWs
+          : signalingSockets.get(tok);
         if (peerWs && peerWs.readyState === peerWs.OPEN) {
           // sessionId is a random per-page-load nonce the client uses to tell
           // "the peer's session actually restarted" apart from "this looks

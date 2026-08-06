@@ -3689,6 +3689,12 @@ async function sendSignal(room, type, payload) {
 
 async function handleSignalMessage(room, type, payload) {
   if (type === 'call-invite') {
+    // The signed iOS wrapper reports incoming calls through PushKit/CallKit
+    // and its native WebRTC engine. Never let WKWebView present or answer the
+    // same invitation too: two peer connections and two call state machines
+    // caused duplicate overlays, stale CXCalls, and "End & Accept" on the
+    // next call. Browser/PWA behavior is unchanged.
+    if (window.webkit?.messageHandlers?.vaultlixCall) return;
     // Already mid-call somewhere else (this app only ever handles one call
     // at a time, same as a phone) — tell the caller we're busy rather than
     // silently ignoring them.
