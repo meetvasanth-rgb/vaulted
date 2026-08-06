@@ -2121,7 +2121,7 @@ body{color:#271D25;background:#FBF7F8}
   </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="chat-tools">
-  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap to verify this conversation's safety code." style="cursor:pointer"><span style="font-size:0.87em">🔒</span> Encrypted · Verify</div>
+  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><span style="font-size:0.87em">🔒</span> Encrypted</div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
        with multiple rooms open, having it in the header made it ambiguous
@@ -3545,12 +3545,10 @@ function updateE2EBar(room) {
     // showing it at all is to make the existing tap-to-verify fingerprint
     // panel (showVerifyPanel) discoverable — it used to be an unlabelled tap
     // target nobody found.
-    bar.innerHTML = room.keyVerified
-      ? '<span style="font-size:0.87em">🔒</span> Encrypted · Verified'
-      : '<span style="font-size:0.87em">🔒</span> Encrypted · Verify';
+    bar.innerHTML = '<span style="font-size:0.87em">🔒</span> Encrypted';
     bar.title = room.keyVerified
-      ? 'Encrypted and safety code verified.'
-      : "Encrypted. Tap to verify this conversation's safety code.";
+      ? 'Encrypted and safety code verified. Tap for details.'
+      : 'Encrypted. Tap for encryption details.';
   } else {
     bar.classList.add('pending');
     bar.innerHTML = '<span style="font-size:0.87em">🔓</span> Establishing encryption…';
