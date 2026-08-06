@@ -1930,6 +1930,23 @@ body{color:#271D25;background:#FBF7F8}
   #s-chat .e2e-bar{font-size:0!important}
   #s-chat .e2e-bar::after{content:'Encrypted';font:650 10px/1 'Manrope',sans-serif}
 }
+/* WKWebView-only legibility pass. Android's sizing is already balanced; iOS
+   needs a compact encryption chip and a larger reading scale. Keep this after
+   the shared mobile rules so their !important declarations cannot win. */
+@supports (-webkit-touch-callout:none){
+  @media(max-width:430px){
+    #s-chat .chat-tools{grid-template-columns:max-content minmax(0,1fr)!important}
+    #s-chat .e2e-bar{width:auto!important;min-width:0!important;justify-self:start!important;justify-content:flex-start!important;padding:8px 10px!important;font-size:12px!important;line-height:1.2!important}
+    #s-chat .e2e-bar span{font-size:12px!important}
+    #s-chat .timer-bar-label::before,#s-chat #timer-bar-select{font-size:12px!important}
+    #s-chat .sys-msg{font-size:13px!important;line-height:1.45!important}
+    #s-chat .msg .bubble{font-size:15.5px!important;line-height:1.5!important}
+    #s-chat .msg-name{font-size:12px!important}
+    #s-chat .msg-time{font-size:11px!important}
+    #s-chat .daily-nudge{font-size:13px!important;line-height:1.4!important}
+    #s-chat #msg-input{font-size:16px!important}
+  }
+}
 </style>
 <script type="application/ld+json">
 {
