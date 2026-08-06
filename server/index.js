@@ -2788,8 +2788,18 @@ wss.on('connection', (ws) => {
         // here too instead of a generic "Incoming call".
         if (msg2.type === 'call-invite') {
           const now = Date.now();
-          const alreadyRinging = room2.ringingUntil && room2.ringingUntil > now;
-          room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
+          // The caller re-announces while waiting for acknowledgement. Once
+          // CallKit exists, its native call ID remains authoritative until
+          // decline/hang-up; otherwise clearing ringingUntil on acceptance
+          // lets a late retry create a second lock-screen call.
+          const nativeCallInProgress = Boolean(room2.nativeCallId && room2.nativeCalleeToken);
+          const alreadyRinging = nativeCallInProgress ||
+            Boolean(room2.ringingUntil && room2.ringingUntil > now);
+          // A connected call is not ringing. Reopening this window would also
+          // make a normal hang-up look like a missed call.
+          if (!nativeCallInProgress) {
+            room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
+          }
           if (!alreadyRinging && (peerMember.voipToken || hasPushDestination(peerMember))) {
             const caller = room2.members.get(token);
             const nativeCallId = crypto.randomUUID();
@@ -3025,6 +3035,8 @@ function loadSnapshot() {
       // stale future timestamp doesn't incorrectly suppress a real ring
       // push after restart.
       room.ringingUntil = 0;
+      room.nativeCallId = null;
+      room.nativeCalleeToken = null;
       // The ONLY path a pushSub can reach webpush.sendNotification without
       // ever having passed validatePushSubscription: a snapshot written by
       // an older deploy (before the allowlist existed, or before a later
