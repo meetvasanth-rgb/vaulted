@@ -2599,7 +2599,7 @@ const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
-function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle }) {
   return {
     code, token, myName,
     // Where a named vault's user-typed label ends and the server-appended
@@ -2670,6 +2670,10 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // callbacks behind CallKit, so ws.onopen must be able to flush this
     // critical acknowledgement without waiting for a timer to run.
     pendingCallAccept: false,
+    // Random, non-secret indirection used only by the signed iOS wrapper.
+    // APNs can identify the locally provisioned native room without seeing
+    // the human-readable vault code or either member credential.
+    nativeRoomHandle: nativeRoomHandle || (crypto.randomUUID ? crypto.randomUUID() : bytesToBase64Url(crypto.getRandomValues(new Uint8Array(16)))),
     nativeAudioRefreshInFlight: false,
     // True once the FIRST offer/answer exchange has actually completed —
     // see onnegotiationneeded in setupPeerConnection() for why this has to
@@ -2770,6 +2774,7 @@ async function registerNativeVoipForRoom(room) {
       token: room.token,
       voipToken: nativeVoipRegistration.token,
       environment: nativeVoipRegistration.environment,
+      roomHandle: room.nativeRoomHandle,
     });
   } catch (e) {}
 }
@@ -2882,6 +2887,7 @@ async function persistRoom(room) {
       reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
       deleteTimerSeconds: room.deleteTimerSeconds, codeLabelLen: room.codeLabelLen,
       expectedCreatorKeyCommitment: room.expectedCreatorKeyCommitment,
+      nativeRoomHandle: room.nativeRoomHandle,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
@@ -3295,8 +3301,25 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
       { name:'ECDH', public: peerKey },
       room.myKeyPair.privateKey,
       { name:'AES-GCM', length:256 },
-      false, ['encrypt','decrypt']
+      // Native iOS calls must use the same key while WKWebView is suspended.
+      // Keep browser/PWA keys non-extractable; only the signed wrapper gets
+      // an extractable in-memory key that is immediately moved to Keychain.
+      !!window.webkit?.messageHandlers?.vaultlixCall, ['encrypt','decrypt']
     );
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      try {
+        const rawNativeKey = await crypto.subtle.exportKey('raw', room.sharedKey);
+        window.webkit.messageHandlers.vaultlixCall.postMessage({
+          action: 'provisionRoom',
+          roomHandle: room.nativeRoomHandle,
+          code: room.code,
+          token: room.token,
+          key: bytesToBase64(new Uint8Array(rawNativeKey)),
+        });
+      } catch (e) {
+        console.error('Native call room provisioning failed');
+      }
+    }
     // Only pulse the bar if it's actually showing this room right now —
     // deriveSharedKey also runs for background rooms (page-load restore,
     // background rekey on a non-active tab), and pulsing the one shared
@@ -8814,7 +8837,7 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle });
     room.nickname = session.nickname || null;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the

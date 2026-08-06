@@ -2089,9 +2089,13 @@ async function api(path, method, d, p, res, ip, headers) {
     if (rateLimited(`voip-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     if (!validateVoipToken(d.voipToken)) return resErr(res,'Invalid VoIP token.',400);
     if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
+    if (typeof d.roomHandle !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(d.roomHandle)) {
+      return resErr(res,'Invalid native room handle.',400);
+    }
     const m = room.members.get(d.token);
     m.voipToken = d.voipToken.toLowerCase();
     m.voipEnvironment = d.environment;
+    m.nativeRoomHandle = d.roomHandle;
     console.log(`VoIP token registered for room ${logCode(d.code)} (${d.environment}).`);
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
@@ -2797,6 +2801,10 @@ wss.on('connection', (ws) => {
                 callId: nativeCallId,
                 caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
                 hasVideo: false,
+                // Opaque random handle generated and stored only on the
+                // recipient device. APNs does not receive the vault code,
+                // membership token, or E2E key.
+                roomHandle: peerMember.nativeRoomHandle,
               }).then(ok => {
                 if (!ok) sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 30, label: 'call fallback' });
               });
