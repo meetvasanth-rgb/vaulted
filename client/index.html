@@ -6060,6 +6060,23 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     showPrivacyCover();
     tabFocused = false;
+    // In the signed iOS wrapper, an incoming background call belongs to
+    // PushKit/CallKit and the native libwebrtc engine.  WebKit remains alive
+    // briefly after the screen is locked; leaving its idle signaling socket
+    // registered during that transition lets the first invite land in the
+    // WebView just before the native socket comes online.  That produces the
+    // observed timing race: calls made seconds after locking ring but fail,
+    // while calls made after a long lock work normally.
+    //
+    // Relinquish only idle WebView sockets when the native bridge is present.
+    // The visibility/focus resume path below reconnects them on unlock.  Do
+    // not touch an outgoing or already-active web call, and do nothing at all
+    // in Android, PWAs, or ordinary browsers.
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      for (const room of rooms.values()) {
+        if (room.callState === 'idle') disconnectSignaling(room);
+      }
+    }
   } else {
     hidePrivacyCover();
     tabFocused = true;
