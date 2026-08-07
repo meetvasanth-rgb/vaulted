@@ -9207,6 +9207,18 @@ window.addEventListener('load', async () => {
   // Captured up front, before anything else touches the URL — read once
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
+  // Android's native incoming-call surface has already collected the user's
+  // Answer decision. Preserve it across WebView startup/room restoration and
+  // consume it exactly once when the authenticated encrypted call-invite
+  // arrives. This removes the notification -> native -> web triple-answer
+  // sequence without exposing a vault above the device keyguard.
+  const startupParams = new URLSearchParams(location.search);
+  const nativeCallRoomCode = startupParams.get('room');
+  if (startupParams.get('nativeCallAction') === 'answer'
+      && nativeCallRoomCode
+      && /^[a-z0-9-]+$/i.test(nativeCallRoomCode)) {
+    pendingNativeCallActions.set(nativeCallRoomCode.toLowerCase(), 'answer');
+  }
   // VLX-01: same reasoning, same urgency — openJoinFromLink()'s
   // history.replaceState below (and the two further down, for ?room= and a
   // plain revisit) all rewrite the URL to one with no fragment, which would
