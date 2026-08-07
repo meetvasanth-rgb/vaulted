@@ -428,28 +428,35 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
   let parsed;
   try { parsed = JSON.parse(payload); } catch (e) { return false; }
   try {
-    await firebaseMessaging.send({
+    const message = {
       token: member.fcmToken,
-      notification: {
-        title: parsed.title || 'Vaultlix',
-        body: parsed.body || 'New activity',
-      },
       data: {
         code: String(parsed.code || ''),
         isCall: parsed.isCall ? 'true' : 'false',
         msgId: String(parsed.msgId || ''),
+        title: String(parsed.title || 'Vaultlix'),
+        body: String(parsed.body || 'New activity'),
       },
       android: {
         priority: 'high',
         ttl: Math.max(0, Number(ttlSeconds) || 0) * 1000,
-        notification: {
-          channelId: parsed.isCall ? 'vaultlix_calls' : 'vaultlix_messages',
-          icon: 'ic_stat_vaultlix',
-          color: '#682C43',
-          sound: 'default',
-        },
       },
-    });
+    };
+    // Calls are data-only so Android can build a native full-screen incoming
+    // call notification. Ordinary messages remain system-rendered alerts.
+    if (!parsed.isCall) {
+      message.notification = {
+        title: parsed.title || 'Vaultlix',
+        body: parsed.body || 'New activity',
+      };
+      message.android.notification = {
+        channelId: 'vaultlix_messages',
+        icon: 'ic_stat_vaultlix',
+        color: '#682C43',
+        sound: 'default',
+      };
+    }
+    await firebaseMessaging.send(message);
     return true;
   } catch (e) {
     if (e.code === 'messaging/registration-token-not-registered' || e.code === 'messaging/invalid-registration-token') {
