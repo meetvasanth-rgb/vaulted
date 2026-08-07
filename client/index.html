@@ -1584,6 +1584,11 @@ body{color:#271D25;background:#FBF7F8}
 .destroy-btn{color:#A94257!important;border-color:#E6B9C2!important;background:#FFF4F6!important}
 .call-btn svg{stroke:#682C43}.call-accept-btn{background:#71947C}.call-decline-btn,.call-end-btn{background:#B94F63}
 .call-overlay{background:radial-gradient(circle at 50% 25%,#503544 0%,#30232D 54%,#1D161C 100%)}
+
+/* Android's keyguard-safe call host must never expose the vault or chat UI.
+   Only the dedicated call surfaces survive in this mode. */
+body.native-call-only > *:not(#call-overlay):not(#call-remote-video):not(#call-local-video):not(#call-reaction-burst){display:none!important}
+body.native-call-only{background:#271D25!important;overflow:hidden!important}
 .legal-highlight,.push-banner{background:#EEF3EF!important;border-color:#D8E4DB!important;color:#486451!important}
 .toggle-switch input:checked + .toggle-track{background:#682C43}.settings-status-on{color:#71947C}.settings-status-action{color:#682C43}
 
@@ -4357,6 +4362,15 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
 
+  // The keyguard-safe Android host is a transient call surface, not a chat
+  // screen. Close it immediately after media/signalling teardown instead of
+  // running the normal in-chat dissolve animation above the lock screen.
+  if (document.body.classList.contains('native-call-only')) {
+    hideCallOverlay();
+    notifyLockedCallEnded();
+    return;
+  }
+
   if (wasActive) {
     // A real connected call just ended — the Float & Fade dissolve carries
     // that instead of a toast (see dissolveCallScreen), and it's the one
@@ -4370,10 +4384,19 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
     if (sysMsgText) addCallSysMsg(room, sysMsgText);
     if (toastMsg) toast(toastMsg, toastVariant);
   }
+  notifyLockedCallEnded();
 }
 
 function clearAndroidCallNotifications() {
   try { window.VaultlixAndroid?.clearCallNotifications(); } catch (e) {}
+}
+
+function notifyLockedCallReady() {
+  try { window.VaultlixLockedCall?.callReady(); } catch (e) {}
+}
+
+function notifyLockedCallEnded() {
+  try { window.VaultlixLockedCall?.callEnded(); } catch (e) {}
 }
 
 // The Screen Orientation lock API only actually works when the app is
@@ -4580,7 +4603,6 @@ function renderCallOverlay(room) {
     overlay.className = 'call-overlay';
     document.body.appendChild(overlay);
   }
-
   const name = escHtml(room.callPeerName || room.peerName || 'them');
 
   if (room.callState === 'outgoing') {
@@ -4754,6 +4776,10 @@ function renderCallOverlay(room) {
       }
     });
   }
+
+  // Reveal the native keyguard-safe WebView only after this render has
+  // produced the restricted call UI. This prevents a blank or partial frame.
+  notifyLockedCallReady();
 }
 
 function hideCallOverlay() {
@@ -9219,6 +9245,9 @@ window.addEventListener('load', async () => {
   // arrives. This removes the notification -> native -> web triple-answer
   // sequence without exposing a vault above the device keyguard.
   const startupParams = new URLSearchParams(location.search);
+  if (startupParams.get('nativeCallMode') === 'locked') {
+    document.body.classList.add('native-call-only');
+  }
   const nativeCallRoomCode = startupParams.get('room');
   if (startupParams.get('nativeCallAction') === 'answer'
       && nativeCallRoomCode
