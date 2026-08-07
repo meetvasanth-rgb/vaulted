@@ -4389,6 +4389,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
 
 function clearAndroidCallNotifications() {
   try { window.VaultlixAndroid?.clearCallNotifications(); } catch (e) {}
+  try { window.VaultlixLockedCall?.clearCallNotifications(); } catch (e) {}
 }
 
 function notifyLockedCallReady() {
