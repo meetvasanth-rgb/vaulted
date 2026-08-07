@@ -2700,6 +2700,13 @@ wss.on('connection', (ws) => {
     const existing = socketRegistry.get(token);
     if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
     socketRegistry.set(token, ws);
+    // Explicit authentication acknowledgement for native call clients.
+    // URLSessionWebSocketTask may accept sends while its connection/auth
+    // handshake is still in flight; without an acknowledgement the native
+    // engine could send call-accept or ICE into that race and then wait
+    // forever. Browser clients safely ignore this envelope-free control
+    // frame, while the iOS engine uses it to flush its bounded signal queue.
+    try { ws.send(JSON.stringify({ type: 'ready' })); } catch (e) {}
     // Pseudonymized room code only — no token material at all (even a
     // truncated bearer token is credential material and has no business in
     // a log line), enough to confirm connectivity during testing without
