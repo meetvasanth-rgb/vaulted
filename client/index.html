@@ -3883,7 +3883,13 @@ function connectSignaling(room) {
     // during the handshake, but once open, message order on a single
     // socket is guaranteed — so this always arrives before anything
     // sendSignal queues afterward, even if that happens almost immediately.
-    try { ws.send(JSON.stringify({ type: 'auth', code: room.code, token: room.token })); } catch (e) {}
+    // Android answers in a dedicated call-only WebView while the original
+    // foreground WebView remains alive underneath. Register that second
+    // socket as the native call owner so it coexists with (and takes call
+    // delivery priority over) the ordinary page socket instead of the two
+    // sockets continuously replacing one another on reconnect.
+    const nativeCallOwner = document.body.classList.contains('native-call-only');
+    try { ws.send(JSON.stringify({ type: 'auth', code: room.code, token: room.token, nativeCall: nativeCallOwner })); } catch (e) {}
     room.signalReconnectAttempts = 0;
     refreshCallButton();
     // CallKit may have been answered while this socket was still closed.
