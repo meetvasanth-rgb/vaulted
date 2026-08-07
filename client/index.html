@@ -3084,6 +3084,7 @@ async function handleNativeCallAction(detail) {
     // do not call acceptCall() or create a second RTCPeerConnection.
     if (activeCallRoomCode && activeCallRoomCode !== room.code) return;
     activeCallRoomCode = room.code;
+    room.nativeAnswerPending = false;
     room.nativeCallActive = true;
     room.callState = 'active';
     room.callPeerName = (typeof detail.caller === 'string' && detail.caller) || room.peerName || 'them';
@@ -4161,6 +4162,37 @@ async function acceptCall(fromNativeCallKit = false) {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
   if (!fromNativeCallKit) {
+    const nativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
+    if (nativeBridge) {
+      // The signed iOS wrapper owns every incoming call through
+      // PushKit/CallKit and its native libwebrtc engine.  When the app is in
+      // the foreground the encrypted invite is also visible to this WebView,
+      // so answering here used to start a *second* browser RTCPeerConnection
+      // while CallKit was starting the native one.  The two media/signalling
+      // owners then raced: locked-screen answers worked, but in-app answers
+      // rang and never reached ICE connected.
+      //
+      // Ask CallKit to answer and make the page presentation-only.  The
+      // nativeConnected event is the sole point that starts the timer and
+      // marks nativeCallActive; browser/PWA/Android clients never have this
+      // bridge and continue through the existing WebRTC path below.
+      if (room.nativeAnswerPending) return;
+      room.nativeAnswerPending = true;
+      room.callState = 'active';
+      room.callStartedAt = null;
+      room.pendingCallAccept = false;
+      renderCallOverlay(room);
+      refreshCallButton();
+      try {
+        nativeBridge.postMessage({ action: 'answer', code: room.code });
+        return;
+      } catch (e) {
+        // If the native bridge unexpectedly rejects the request, restore the
+        // incoming state and use the established browser fallback.
+        room.nativeAnswerPending = false;
+        room.callState = 'incoming';
+      }
+    }
     try {
       window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'answer', code: room.code });
     } catch (e) {}
@@ -4317,6 +4349,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callStartedAt = null;
   room.callRinging = false;
   room.nativeCallActive = false;
+  room.nativeAnswerPending = false;
   room.pendingCallAccept = false;
   room.callInviteReceivedAt = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
