@@ -5869,9 +5869,10 @@ function loadSettingsState() {
 function updatePushStatus() {
   const el = document.getElementById('push-status');
   if (!el) return;
-  if (isNativeIosApp()) {
+  if (isNativeApp()) {
+    const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
     el.textContent = nativePushPermission === 'granted' ? 'Enabled' :
-      nativePushPermission === 'denied' ? 'Blocked in iPhone Settings' : 'Tap to enable';
+      nativePushPermission === 'denied' ? `Blocked in ${settingsName}` : 'Tap to enable';
     el.className = nativePushPermission === 'granted'
       ? 'settings-status settings-status-on'
       : nativePushPermission === 'denied'
@@ -5935,7 +5936,7 @@ function toggleChime(enabled) {
 // Only reachable when updatePushStatus() decided there's still something to
 // grant (i.e. permission is 'default', not already granted or denied).
 async function requestPushPermission() {
-  if (isNativeIosApp()) {
+  if (isNativeApp()) {
     await requestNativePushPermission();
     updatePushStatus();
     return;
@@ -6124,35 +6125,65 @@ function isUserActive() {
 // Not extended for multi-room correctness this phase (explicitly deferred).
 const VAPID_PUBLIC_KEY = 'BMcA4RSlBSxcaaeezBw4Eo2YnbfOmgEBiyMnZ_teyTUavsUYjWel_6JwKQ7ynTaGXBs3qKil_myyY1n17cNqLTw';
 
-// Capacitor injects this bridge into the native iOS wrapper even though the
+// Capacitor injects this bridge into the native iOS and Android wrappers even though the
 // app loads vaultlix.com remotely. Browser/PWA users continue through the
 // existing standards-based Web Push path below.
 let nativePushPermission = 'prompt';
-let nativeApnsToken = null;
+let nativePushToken = null;
 let nativePushListenersReady = false;
 
-function isNativeIosApp() {
+function nativePlatform() {
   try {
     // Plugin presence is the most reliable signal for this remote-URL
     // Capacitor wrapper. Depending only on isNativePlatform() meant native
     // startup could briefly be classified as ordinary Safari while the
     // bridge was still initializing, so the notification bootstrap never
     // ran and iOS never had a reason to show its permission sheet.
-    return !!window.Capacitor?.Plugins?.PushNotifications &&
-      (window.Capacitor?.getPlatform?.() === 'ios' || /iphone|ipad|ipod/i.test(navigator.userAgent));
-  } catch (e) { return false; }
+    if (!window.Capacitor?.Plugins?.PushNotifications) return null;
+    const platform = window.Capacitor?.getPlatform?.();
+    if (platform === 'ios' || platform === 'android') return platform;
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return 'ios';
+    return null;
+  } catch (e) { return null; }
 }
 
+function isNativeApp() { return nativePlatform() !== null; }
+function isNativeIosApp() { return nativePlatform() === 'ios'; }
+
 function nativePushPlugin() {
-  return isNativeIosApp() ? window.Capacitor?.Plugins?.PushNotifications : null;
+  return isNativeApp() ? window.Capacitor?.Plugins?.PushNotifications : null;
+}
+
+async function ensureAndroidNotificationChannels() {
+  const plugin = nativePushPlugin();
+  if (nativePlatform() !== 'android' || !plugin?.createChannel) return;
+  await plugin.createChannel({
+    id: 'vaultlix_messages',
+    name: 'Messages',
+    description: 'New encrypted message alerts',
+    importance: 4,
+    visibility: 1,
+    sound: 'default',
+  });
+  await plugin.createChannel({
+    id: 'vaultlix_calls',
+    name: 'Calls',
+    description: 'Incoming and missed call alerts',
+    importance: 5,
+    visibility: 1,
+    sound: 'default',
+    vibration: true,
+  });
 }
 
 async function registerNativeTokenForRoom(room) {
-  if (!nativeApnsToken || !room?.code || !room?.token) return;
+  const platform = nativePlatform();
+  if (!platform || !nativePushToken || !room?.code || !room?.token) return;
   await api('/api/native-push-subscribe', {
     code: room.code,
     token: room.token,
-    deviceToken: nativeApnsToken,
+    deviceToken: nativePushToken,
+    platform,
     environment: nativeVoipRegistration?.environment || 'production',
   });
 }
@@ -6166,9 +6197,10 @@ async function registerNativeTokenForAllRooms() {
 async function ensureNativePushListeners() {
   const plugin = nativePushPlugin();
   if (!plugin || nativePushListenersReady) return;
+  await ensureAndroidNotificationChannels();
   nativePushListenersReady = true;
   await plugin.addListener('registration', token => {
-    nativeApnsToken = token?.value || null;
+    nativePushToken = token?.value || null;
     registerNativeTokenForAllRooms().catch(() => {});
   });
   await plugin.addListener('registrationError', () => {
@@ -6188,8 +6220,9 @@ async function refreshNativePushPermission() {
   nativePushPermission = status?.receive || 'prompt';
   const el = document.getElementById('push-status');
   if (el) {
+    const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
     el.textContent = nativePushPermission === 'granted' ? 'Enabled' :
-      nativePushPermission === 'denied' ? 'Blocked in iPhone Settings' : 'Tap to enable';
+      nativePushPermission === 'denied' ? `Blocked in ${settingsName}` : 'Tap to enable';
     el.className = nativePushPermission === 'granted'
       ? 'settings-status settings-status-on'
       : nativePushPermission === 'denied'
@@ -6211,7 +6244,8 @@ async function requestNativePushPermission() {
   if (status.receive === 'granted') {
     await plugin.register();
   } else if (status.receive === 'denied') {
-    toast('Notifications are blocked. Enable Vaultlix in iPhone Settings → Notifications.');
+    const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
+    toast(`Notifications are blocked. Enable Vaultlix in ${settingsName} → Notifications.`);
   }
 }
 
@@ -6240,7 +6274,7 @@ async function bootstrapNativePushOnLaunch() {
   // the remote page can finish loading just before Capacitor exposes the
   // injected plugin bridge.
   for (let attempt = 0; attempt < 20; attempt++) {
-    if (isNativeIosApp()) {
+    if (isNativeApp()) {
       await refreshNativePushPermission();
       if (nativePushPermission === 'prompt') showEnableNativeNotificationsBanner();
       return;
@@ -6404,11 +6438,11 @@ async function subscribeToPush(room, reg) {
 
 async function initPushForRoom(room) {
   if (!room.code || !room.token) return;
-  if (isNativeIosApp()) {
+  if (isNativeApp()) {
     await ensureNativePushListeners();
     await refreshNativePushPermission();
     if (nativePushPermission === 'prompt') { showEnableNativeNotificationsBanner(); return; }
-    if (nativePushPermission === 'granted' && nativeApnsToken) await registerNativeTokenForRoom(room);
+    if (nativePushPermission === 'granted' && nativePushToken) await registerNativeTokenForRoom(room);
     return;
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;

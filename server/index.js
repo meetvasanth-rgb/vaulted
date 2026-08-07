@@ -6,6 +6,8 @@ const crypto = require('crypto');
 const { promisify } = require('util');
 const webpush = require('web-push');
 const { WebSocketServer } = require('ws');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getMessaging } = require('firebase-admin/messaging');
 
 const scryptAsync = promisify(crypto.scrypt);
 
@@ -310,6 +312,23 @@ const APNS_HOST = process.env.APNS_ENVIRONMENT === 'sandbox'
 const APNS_CONFIGURED = !!(APNS_TEAM_ID && APNS_KEY_ID && APNS_PRIVATE_KEY);
 if (!APNS_CONFIGURED) console.warn('Native iOS push is disabled: APNS_TEAM_ID, APNS_KEY_ID, and APNS_PRIVATE_KEY are not all set.');
 
+// Native Android notifications use FCM. The service-account JSON is supplied
+// as one Railway secret and never written to disk or exposed to the client.
+// Keeping this optional lets the web and iOS transports continue operating
+// while Android credentials are being provisioned, but logs the missing setup.
+let firebaseMessaging = null;
+try {
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '';
+  if (serviceAccountJson) {
+    const serviceAccount = JSON.parse(serviceAccountJson);
+    firebaseMessaging = getMessaging(initializeApp({ credential: cert(serviceAccount) }));
+  } else {
+    console.warn('Native Android push is disabled: FIREBASE_SERVICE_ACCOUNT_JSON is not set.');
+  }
+} catch (e) {
+  console.warn(`Native Android push is disabled: invalid Firebase credentials (${e.message}).`);
+}
+
 let apnsJwt = null;
 let apnsJwtCreatedAt = 0;
 function base64url(value) {
@@ -398,8 +417,52 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   });
 }
 
+function validateFcmToken(value) {
+  return typeof value === 'string' && value.length >= 20 && value.length <= 4096 && /^[A-Za-z0-9_:\-.]+$/.test(value)
+    ? value
+    : null;
+}
+
+async function sendFcmNotification(member, payload, ttlSeconds) {
+  if (!firebaseMessaging || !member.fcmToken) return false;
+  let parsed;
+  try { parsed = JSON.parse(payload); } catch (e) { return false; }
+  try {
+    await firebaseMessaging.send({
+      token: member.fcmToken,
+      notification: {
+        title: parsed.title || 'Vaultlix',
+        body: parsed.body || 'New activity',
+      },
+      data: {
+        code: String(parsed.code || ''),
+        isCall: parsed.isCall ? 'true' : 'false',
+        msgId: String(parsed.msgId || ''),
+      },
+      android: {
+        priority: 'high',
+        ttl: Math.max(0, Number(ttlSeconds) || 0) * 1000,
+        notification: {
+          channelId: parsed.isCall ? 'vaultlix_calls' : 'vaultlix_messages',
+          icon: 'ic_stat_vaultlix',
+          color: '#682C43',
+          sound: 'default',
+        },
+      },
+    });
+    return true;
+  } catch (e) {
+    if (e.code === 'messaging/registration-token-not-registered' || e.code === 'messaging/invalid-registration-token') {
+      member.fcmToken = null;
+    } else {
+      console.warn(`FCM send failed: ${e.code || e.message}`);
+    }
+    return false;
+  }
+}
+
 function hasPushDestination(member) {
-  return !!(member && (member.pushSub || member.apnsToken));
+  return !!(member && (member.pushSub || member.apnsToken || member.fcmToken));
 }
 
 function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = 'push' } = {}) {
@@ -410,6 +473,7 @@ function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = '
     });
   }
   sendApnsNotification(member, payload, TTL).catch(() => {});
+  sendFcmNotification(member, payload, TTL).catch(() => {});
 }
 
 function validateVoipToken(value) {
@@ -2068,19 +2132,27 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true });
   }
 
-  // POST /api/native-push-subscribe — bind an APNs device token to an
+  // POST /api/native-push-subscribe — bind an APNs or FCM device token to an
   // authenticated member of this room. A stolen room code alone is not
   // sufficient; the caller must also present the random member bearer token.
   if (path==='/api/native-push-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
     if (rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
-    const deviceToken = validateApnsToken(d.deviceToken);
-    if (!deviceToken) return resErr(res,'Invalid device token.',400);
-    if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
     const m = room.members.get(d.token);
-    m.apnsToken = deviceToken;
-    m.apnsEnvironment = d.environment;
+    if (d.platform === 'android') {
+      const deviceToken = validateFcmToken(d.deviceToken);
+      if (!deviceToken) return resErr(res,'Invalid device token.',400);
+      m.fcmToken = deviceToken;
+    } else if (d.platform === 'ios' || !d.platform) {
+      const deviceToken = validateApnsToken(d.deviceToken);
+      if (!deviceToken) return resErr(res,'Invalid device token.',400);
+      if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
+      m.apnsToken = deviceToken;
+      m.apnsEnvironment = d.environment;
+    } else {
+      return resErr(res,'Invalid native platform.',400);
+    }
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
