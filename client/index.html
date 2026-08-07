@@ -4400,6 +4400,24 @@ function notifyLockedCallEnded() {
   try { window.VaultlixLockedCall?.callEnded(); } catch (e) {}
 }
 
+// A native Android answer is hosted in a second, call-only WebView. Its own
+// local hang-up cannot be echoed back through signalling to the original
+// foreground WebView, so the native host calls this hook before it closes.
+// Reset that underlying copy of the call state and remove its stale incoming
+// overlay. The normal endCall path is intentionally reused so timers, media,
+// and activeCallRoomCode are cleaned consistently.
+window.vaultlixNativeCallEnded = function(roomCode) {
+  const room = (roomCode && rooms.get(roomCode)) ||
+    (activeCallRoomCode && rooms.get(activeCallRoomCode));
+  if (room && room.callState !== 'idle') {
+    endCall(room);
+  } else {
+    hideCallOverlay();
+    activeCallRoomCode = null;
+    refreshCallButton();
+  }
+};
+
 // The Screen Orientation lock API only actually works when the app is
 // running installed/standalone (or in the Fullscreen API) — a plain browser
 // tab throws a SecurityError on lock(), which is expected there, not a
