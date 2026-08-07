@@ -4161,6 +4161,7 @@ async function startCall() {
 async function acceptCall(fromNativeCallKit = false) {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
+  clearAndroidCallNotifications();
   if (!fromNativeCallKit) {
     const nativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
     if (nativeBridge) {
@@ -4329,6 +4330,7 @@ function checkStaleIncomingCalls() {
 
 async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (!room) return;
+  clearAndroidCallNotifications();
   try {
     window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code });
   } catch (e) {}
@@ -4368,6 +4370,10 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
     if (sysMsgText) addCallSysMsg(room, sysMsgText);
     if (toastMsg) toast(toastMsg, toastVariant);
   }
+}
+
+function clearAndroidCallNotifications() {
+  try { window.VaultlixAndroid?.clearCallNotifications(); } catch (e) {}
 }
 
 // The Screen Orientation lock API only actually works when the app is
