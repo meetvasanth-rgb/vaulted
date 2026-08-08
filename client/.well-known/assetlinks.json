@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.vaultlix.app",
+      "sha256_cert_fingerprints": [
+        "C9:45:EB:DB:2B:13:5C:ED:2F:54:13:AC:25:6C:F3:44:74:60:F1:BD:63:2D:5C:0B:03:9C:3F:2D:C8:7F:80:01",
+        "37:D9:06:20:37:77:C5:82:77:81:82:B5:E4:17:44:8A:09:0E:AB:89:1F:0D:41:F8:F7:9C:D2:FC:A5:FD:B0:4F"
+      ]
+    }
+  }
+]

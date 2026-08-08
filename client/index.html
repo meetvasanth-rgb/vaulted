@@ -6031,7 +6031,7 @@ async function regenerateAnonLink() {
     const wNote = document.getElementById('w-note');
     if (wNote) wNote.textContent = 'New permanent vault ready — share it with them to reconnect.';
     const shareBtn = document.getElementById('share-code-btn');
-    if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
+    if (shareBtn) shareBtn.style.display = canUseSystemShare() ? 'inline-flex' : 'none';
     showScreen('s-waiting');
     startWaitingForPeer(newRoom);
   } catch (e) {
@@ -6345,6 +6345,23 @@ function nativePlatform() {
 
 function isNativeApp() { return nativePlatform() !== null; }
 function isNativeIosApp() { return nativePlatform() === 'ios'; }
+
+function canUseSystemShare() {
+  return typeof navigator.share === 'function' ||
+    typeof window.VaultlixAndroid?.shareText === 'function';
+}
+
+async function openSystemShare(text) {
+  if (typeof window.VaultlixAndroid?.shareText === 'function') {
+    window.VaultlixAndroid.shareText(text);
+    return true;
+  }
+  if (typeof navigator.share === 'function') {
+    await navigator.share({ text });
+    return true;
+  }
+  return false;
+}
 
 function nativePushPlugin() {
   return isNativeApp() ? window.Capacitor?.Plugins?.PushNotifications : null;
@@ -8412,7 +8429,7 @@ function resumeWaitingScreen(room) {
   const wNote = document.getElementById('w-note');
   if (wNote) wNote.textContent = room.persistent ? "We added a random ending so this can't be guessed. It won't expire — share it once, reopen it anytime." : 'Waiting for the other person to join…';
   const shareBtn = document.getElementById('share-code-btn');
-  if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
+  if (shareBtn) shareBtn.style.display = canUseSystemShare() ? 'inline-flex' : 'none';
   showScreen('s-waiting');
 }
 
@@ -8521,7 +8538,7 @@ async function handleSetup() {
       // Chrome/Firefox mostly don't), so Copy stays as the universal
       // fallback rather than replacing it.
       const shareBtn = document.getElementById('share-code-btn');
-      if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? 'inline-flex' : 'none';
+      if (shareBtn) shareBtn.style.display = canUseSystemShare() ? 'inline-flex' : 'none';
       showScreen('s-waiting');
       startWaitingForPeer(room);
     } else {
@@ -8738,21 +8755,26 @@ async function copyCode() {
 // person, in one tap instead of copy, leave the app, find the chat, paste.
 async function shareVaultlix() {
   const text = "vaultlix.com\n\nPrivate chat tool, no account or phone number needed. Everything's end-to-end encrypted — messages and voice calls both. Open the link, pick any name, share a code with one person, and talk. Close the vault when you're done and everything's gone — nothing we can read, anywhere.";
-  if (typeof navigator.share === 'function') {
-    try { await navigator.share({ text }); } catch (e) {}
-  } else {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast('Copied — paste it anywhere');
-    } catch (e) {}
+  try {
+    if (await openSystemShare(text)) return;
+  } catch (e) {
+    if (e?.name === 'AbortError') return;
   }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copied — paste it anywhere');
+  } catch (e) {}
 }
 
 async function shareCode() {
   const code = document.getElementById('display-code').textContent;
   if (!code || code === '—') return;
   try {
-    await navigator.share({ text: await buildInviteMessage(code) });
+    const text = await buildInviteMessage(code);
+    if (!(await openSystemShare(text))) {
+      await navigator.clipboard.writeText(text);
+      toast('Invite copied');
+    }
   } catch (e) {
     // AbortError just means they closed the share sheet without picking
     // anything — not a failure worth surfacing.
@@ -9226,7 +9248,9 @@ function refreshInstallUI() {
   const banner = document.getElementById('ios-install-banner');
   if (!btn || !note || !banner) return;
 
-  if (window.isStandaloneApp || window.isAndroidInstalled) {
+  // The Capacitor build is already installed. Its remote WebView still has
+  // an Android user-agent, so exclude it before considering any PWA prompt.
+  if (isNativeApp() || window.isStandaloneApp || window.isAndroidInstalled) {
     btn.style.display = 'none';
     note.style.display = 'none';
     banner.style.display = 'none';
