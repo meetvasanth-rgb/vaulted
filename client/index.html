@@ -2916,6 +2916,7 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // Call state — see the CALL STATE section. 'idle' unless a call is
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null,
+    callConnectedHapticFired: false,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
     // Diagnostic only (console.log, no UI) — see startCallStatsLogging.
     callStatsInterval: null,
@@ -4360,6 +4361,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callState = 'idle';
   room.callPeerName = null;
   room.callStartedAt = null;
+  room.callConnectedHapticFired = false;
   room.callRinging = false;
   room.nativeCallActive = false;
   room.nativeAnswerPending = false;
@@ -4486,10 +4488,42 @@ document.addEventListener('visibilitychange', () => {
 
 function startCallTimer(room) {
   stopCallTimer(room);
+  playCallConnectedHaptic(room);
   room.callTimerInterval = setInterval(() => updateCallTimerDisplay(room), 1000);
   updateCallTimerDisplay(room);
   lockCallOrientation();
   acquireCallWakeLock();
+}
+
+// One short physical confirmation at the exact transition where Vaultlix
+// starts displaying connected-call time. Native bridges take priority so
+// installed apps use platform haptics that respect system settings; the Web
+// Vibration API is only a best-effort fallback for supported browser/PWA
+// environments. The per-call guard prevents reconnects, renegotiation, or a
+// duplicate startCallTimer invocation from producing repeated nudges.
+function playCallConnectedHaptic(room) {
+  if (!room || room.callConnectedHapticFired) return;
+  room.callConnectedHapticFired = true;
+  try {
+    const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
+    if (iosBridge) {
+      iosBridge.postMessage({ action: 'connectedHaptic' });
+      return;
+    }
+  } catch (e) {}
+  try {
+    if (window.VaultlixLockedCall?.connectedHaptic) {
+      window.VaultlixLockedCall.connectedHaptic();
+      return;
+    }
+  } catch (e) {}
+  try {
+    if (window.VaultlixAndroid?.connectedHaptic) {
+      window.VaultlixAndroid.connectedHaptic();
+      return;
+    }
+  } catch (e) {}
+  try { navigator.vibrate?.(70); } catch (e) {}
 }
 
 function stopCallTimer(room) {
