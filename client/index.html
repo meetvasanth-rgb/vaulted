@@ -8413,6 +8413,21 @@ function openJoinFromLink(code) {
   if (codeInput) codeInput.value = code;
 }
 
+// iOS Universal Links can arrive while the native app and this page are
+// already running. Route them without reloading the WebView: a reload would
+// unnecessarily discard the current in-memory conversation view. Preserve
+// the URL-fragment commitment exactly as the ordinary cold-start path does.
+window.vaultlixOpenInviteURL = function(rawURL) {
+  try {
+    const url = new URL(rawURL);
+    if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return;
+    const match = url.pathname.match(/^\/join\/([a-z0-9-]+)\/?$/i);
+    if (!match) return;
+    pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
+    openJoinFromLink(decodeURIComponent(match[1]).toLowerCase());
+  } catch (e) {}
+};
+
 // Puts the waiting screen back on-screen for a room that's saved locally
 // but has never actually had a peer join it — reopening the app used to
 // drop straight into s-chat for these (composer correctly disabled, but

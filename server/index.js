@@ -1666,7 +1666,10 @@ function serveStatic(req, res) {
     // og:image — link-preview crawlers (WhatsApp's included) are known to
     // silently drop an image asset served without one, even though a
     // normal browser or curl handles chunked fine.
-    res.writeHead(200,{'Content-Type':t[path.extname(url)]||'text/plain','Content-Length':Buffer.byteLength(data)}); res.end(data);
+    const contentType = url === '/.well-known/apple-app-site-association'
+      ? 'application/json'
+      : (t[path.extname(url)] || 'text/plain');
+    res.writeHead(200,{'Content-Type':contentType,'Content-Length':Buffer.byteLength(data)}); res.end(data);
   });
 }
 

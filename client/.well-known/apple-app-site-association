@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["3KLX2S84MV.com.vaultlix.app"],
+        "components": [
+          {
+            "/": "/join/*",
+            "comment": "Open Vaultlix private-vault invitations in the iOS app"
+          }
+        ]
+      }
+    ]
+  }
+}
