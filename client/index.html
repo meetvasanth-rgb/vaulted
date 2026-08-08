@@ -70,17 +70,20 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .screen.active{display:flex}
 #s-chat.active{overflow:hidden;height:100vh;height:100dvh}
 
-/* Restore skeleton — shown the instant there's a saved room to reconnect
-   to, on top of whatever screen is currently sitting there (the static
-   landing page, until the reload finishes), so a slow reconnect reads as
-   "getting your conversation back" instead of a silent stall followed by a
-   sudden snap to a full chat log. Removed the moment showRestoreSkeleton's
-   caller actually shows s-chat (or gives up and shows the landing page). */
-#restore-skeleton-overlay{position:fixed;inset:0;z-index:500;background:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:16px;gap:8px}
-.skeleton-bubble{height:38px;border-radius:18px;border-bottom-right-radius:4px;background:linear-gradient(90deg,#F4F1EC 25%,#F1E4C2 37%,#F4F1EC 63%);background-size:400% 100%;animation:skeleton-shimmer 1.4s ease-in-out infinite}
-.skeleton-bubble.them{align-self:flex-start;border-bottom-left-radius:4px;border-bottom-right-radius:18px}
-.skeleton-bubble.me{align-self:flex-end}
-@keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* Present in the initial HTML (not created after window.load), so the browser
+   never paints the landing page while locally saved vaults are restoring. */
+#restore-skeleton-overlay{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;background:linear-gradient(150deg,#FBF7F8 0%,#F7EEF1 100%);opacity:1;transition:opacity .18s ease;overflow:hidden}
+#restore-skeleton-overlay::before{content:'';position:absolute;width:min(78vw,440px);aspect-ratio:1;border-radius:50%;background:rgba(200,117,136,.12);filter:blur(72px);transform:translate(-42%,-38%)}
+#restore-skeleton-overlay.leaving{opacity:0;pointer-events:none}
+.startup-brand{position:relative;display:flex;flex-direction:column;align-items:center;gap:16px;color:#271D25}
+.startup-mark{width:82px;height:82px;border-radius:25px;display:grid;place-items:center;background:#682C43;box-shadow:0 18px 44px rgba(104,44,67,.24)}
+.startup-mark svg{width:39px;height:39px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.startup-word{font:750 27px/1 'Manrope','Inter',sans-serif;letter-spacing:-.035em}
+.startup-pulse{display:flex;gap:6px;margin-top:3px}
+.startup-pulse span{width:5px;height:5px;border-radius:50%;background:#C87588;animation:startup-pulse 1.15s ease-in-out infinite}
+.startup-pulse span:nth-child(2){animation-delay:.16s}.startup-pulse span:nth-child(3){animation-delay:.32s}
+@keyframes startup-pulse{0%,70%,100%{opacity:.28;transform:translateY(0)}35%{opacity:1;transform:translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){#restore-skeleton-overlay{transition:none}.startup-pulse span{animation:none;opacity:.7}}
 
 /* -- LANDING -- */
 /* Bottom padding is intentionally larger than the sides — .landing-footer
@@ -2029,6 +2032,16 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 </script>
 </head>
 <body>
+
+<div id="restore-skeleton-overlay" role="status" aria-label="Opening Vaultlix">
+  <div class="startup-brand">
+    <div class="startup-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg>
+    </div>
+    <div class="startup-word">Vaultlix</div>
+    <div class="startup-pulse" aria-hidden="true"><span></span><span></span><span></span></div>
+  </div>
+</div>
 
 <!-- LANDING -->
 <div id="s-landing" class="screen active">
@@ -9425,20 +9438,15 @@ function revealCode(code, labelLen) {
 // the server yet — widths/alignment vary so it reads as "a conversation",
 // not a row of identical grey bars.
 function showRestoreSkeleton() {
-  const overlay = document.createElement('div');
-  overlay.id = 'restore-skeleton-overlay';
-  overlay.innerHTML = `
-    <div class="skeleton-bubble them" style="width:58%"></div>
-    <div class="skeleton-bubble me" style="width:38%"></div>
-    <div class="skeleton-bubble them" style="width:44%"></div>
-    <div class="skeleton-bubble me" style="width:50%"></div>
-    <div class="skeleton-bubble them" style="width:32%"></div>
-  `;
-  document.body.appendChild(overlay);
+  // The startup cover is static HTML so it exists before first paint. This
+  // function remains as the restore call-site's semantic hook.
 }
 
 function hideRestoreSkeleton() {
-  document.getElementById('restore-skeleton-overlay')?.remove();
+  const overlay = document.getElementById('restore-skeleton-overlay');
+  if (!overlay) return;
+  overlay.classList.add('leaving');
+  setTimeout(() => overlay.remove(), 190);
 }
 
 window.addEventListener('load', async () => {
