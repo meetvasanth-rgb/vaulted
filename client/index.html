@@ -3141,12 +3141,23 @@ async function handleNativeCallAction(detail) {
     else pendingNativeUnscopedAction = detail.action;
     return;
   }
+  const presentNativeCallRoom = () => {
+    // CallKit can wake/foreground the wrapper while the Vault Inbox is the
+    // active screen.  The native media engine still knows which vault owns
+    // the call through its opaque room handle, so mirror that choice into the
+    // web UI before rendering any call state.  Without this, iOS showed the
+    // system green call indicator over the inbox while the actual call screen
+    // remained hidden in whichever vault had previously been selected.
+    showScreen('s-chat');
+    setActiveRoom(room.code);
+  };
   if (detail.action === 'nativeConnected') {
     // Native CallKit/libwebrtc owns signaling and media for this incoming
     // iOS call. Mirror only its established state into the foreground page;
     // do not call acceptCall() or create a second RTCPeerConnection.
     if (activeCallRoomCode && activeCallRoomCode !== room.code) return;
     activeCallRoomCode = room.code;
+    presentNativeCallRoom();
     room.nativeAnswerPending = false;
     room.nativeCallActive = true;
     room.callState = 'active';
@@ -3156,6 +3167,19 @@ async function handleNativeCallAction(detail) {
     renderCallOverlay(room);
     refreshCallButton();
   } else if (detail.action === 'audioActivated') {
+    // CallKit activates audio immediately after the user answers, while ICE
+    // may still need a few seconds.  Show the correct vault and an explicit
+    // connecting state now; nativeConnected remains the only event allowed
+    // to start the duration timer or declare the media path established.
+    activeCallRoomCode = room.code;
+    presentNativeCallRoom();
+    room.nativeAnswerPending = true;
+    room.nativeCallActive = true;
+    room.callState = 'active';
+    room.callPeerName = (typeof detail.caller === 'string' && detail.caller) || room.peerName || 'them';
+    room.callStartedAt = null;
+    renderCallOverlay(room);
+    refreshCallButton();
     await refreshNativeCallAudio(room);
   } else if (detail.action === 'audioDeactivated') {
     // CallKit owns the interruption. Keep WebRTC intact so a later
@@ -4814,12 +4838,13 @@ function renderCallOverlay(room) {
     // background; the name is the only thing identifying who that even is
     // at that point, so it stays put until their video actually arrives.
     const videoMode = !!room.remoteVideoActive;
+    const waitingForNativeMedia = !!room.nativeAnswerPending && !room.callStartedAt;
     const identityHtml = videoMode ? `
         <span class="call-peer-name-compact">${name}</span>
-        <span class="call-timer-compact" id="call-timer">00:00</span>` : `
+        <span class="call-timer-compact" id="call-timer">${waitingForNativeMedia ? 'Connecting…' : '00:00'}</span>` : `
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status">End-to-end encrypted call</div>
-        <div class="call-timer-display" id="call-timer">00:00</div>
+        <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>
         <div class="call-tagline">This call never existed.</div>`;
     overlay.innerHTML = `
       ${videoMode ? '' : callHeaderBlock()}
