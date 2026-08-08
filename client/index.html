@@ -3209,6 +3209,14 @@ async function handleNativeCallAction(detail) {
   } else if (detail.action === 'ended' && room.callState !== 'idle') {
     endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
       room.callState === 'incoming' ? 'Missed call' : null);
+  } else if (detail.action === 'missed') {
+    const eventId = typeof detail.callId === 'string' ? `native-missed-${detail.callId}` : null;
+    if (eventId && room.messages.some(record => record.id === eventId)) return;
+    if (room.callState !== 'idle') endCall(room, 'Missed call.', 'Missed call');
+    else {
+      addCallSysMsg(room, 'Missed call', eventId);
+      if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+    }
   }
 }
 
@@ -4402,13 +4410,13 @@ function clearCallAcceptRetry(room) {
 // into room.messages so it survives switching tabs and scrolling back, but
 // never sent to or stored on the server — consistent with "no call history
 // persisted anywhere" from the calling security design.
-function addCallSysMsg(room, text) {
+function addCallSysMsg(room, text, eventId = null) {
   // Stamped with a clock time, same as the roadmap's original "Missed call
   // · 11:42" design — a bare "Missed call" a scrollback-length later gives
   // no sense of when, and the toast that announced it in the moment is long
   // gone by then.
   const stamped = `${text} · ${formatMsgTime(Date.now())}`;
-  const rec = { id: 'sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), kind: 'sys', content: stamped };
+  const rec = { id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), kind: 'sys', content: stamped };
   room.messages.push(rec);
   if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
   else if (/^Missed call/.test(text)) room.unread++;

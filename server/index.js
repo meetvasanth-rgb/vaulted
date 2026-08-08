@@ -373,6 +373,10 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     // correct already-open vault after a notification tap.
     code: parsed.code || '',
     isCall: !!parsed.isCall,
+    isCallEnd: !!parsed.isCallEnd,
+    missedCall: !!parsed.missedCall,
+    caller: parsed.caller || '',
+    callId: parsed.callId || '',
     msgId: parsed.msgId || '',
   });
   return new Promise((resolve) => {
@@ -433,6 +437,10 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
       data: {
         code: String(parsed.code || ''),
         isCall: parsed.isCall ? 'true' : 'false',
+        isCallEnd: parsed.isCallEnd ? 'true' : 'false',
+        missedCall: parsed.missedCall ? 'true' : 'false',
+        caller: String(parsed.caller || ''),
+        callId: String(parsed.callId || ''),
         msgId: String(parsed.msgId || ''),
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
@@ -444,7 +452,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
     };
     // Calls are data-only so Android can build a native full-screen incoming
     // call notification. Ordinary messages remain system-rendered alerts.
-    if (!parsed.isCall) {
+    if (!parsed.isCall && !parsed.isCallEnd) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',
@@ -2900,6 +2908,8 @@ wss.on('connection', (ws) => {
               body: caller && caller.name ? `${caller.name} is calling` : 'Incoming call',
               tag: `vaultlix-call-${roomCode}`,
               isCall: true,
+              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
+              callId: nativeCallId,
               code: roomCode,
             });
             if (peerMember.voipToken) {
@@ -2965,6 +2975,18 @@ wss.on('connection', (ws) => {
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
           if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId).catch(() => {});
+          // Android's full-screen incoming-call surface is native too. Its
+          // WebSocket may be frozen while the keyguard is up, so send a
+          // data-only FCM terminal event keyed to this call. This closes the
+          // native UI without displaying a second notification.
+          if (peerMember.fcmToken) {
+            sendFcmNotification(peerMember, JSON.stringify({
+              isCallEnd: true,
+              missedCall: !!wasStillRinging,
+              callId: nativeCallId || '',
+              code: roomCode,
+            }), 30).catch(() => {});
+          }
           if (wasStillRinging && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
@@ -2972,6 +2994,9 @@ wss.on('connection', (ws) => {
               body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
               tag: `vaultlix-missed-${roomCode}-${now}`,
               isCall: false,
+              missedCall: true,
+              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
+              callId: nativeCallId || '',
               code: roomCode,
             });
             sendMemberPush(peerMember, missedPayload, { urgency: 'high', TTL: 3600, label: 'missed call' });
