@@ -2669,6 +2669,19 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 
     <div class="settings-divider"></div>
 
+    <div class="settings-row" onclick="activateFriendsAccess()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
+        <svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1.5 1.5-2 2L17 10l-3 3"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Friends access</div>
+        <div class="settings-row-sub">Enter a private application key to open up to 15 vaults on this device</div>
+      </div>
+      <div class="settings-status settings-status-action" id="friends-access-status">Unlock</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
     <div class="settings-section-label" style="display:flex;align-items:center;justify-content:space-between">
       <span>This vault</span>
       <span id="settings-room-section-name" style="text-transform:none;letter-spacing:0;font-weight:600;color:#9A8C7E;font-size:11px">—</span>
@@ -2917,7 +2930,9 @@ let swRegistration = null;
 const rooms = new Map();           // code -> Room
 let activeRoomCode = null;
 
-const MAX_ROOMS = 5;
+const STANDARD_MAX_ROOMS = 5;
+const FRIENDS_MAX_ROOMS = 15;
+const FRIENDS_ACCESS_TOKEN_KEY = 'vaultlix_friends_access_token';
 const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
 const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 // This used to be 5 minutes, which meant closing the app/tab for longer than
@@ -2928,6 +2943,26 @@ const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+
+function friendsAccessToken() {
+  try {
+    const token = localStorage.getItem(FRIENDS_ACCESS_TOKEN_KEY) || '';
+    const payloadPart = token.split('.')[0];
+    if (!payloadPart) return '';
+    const padded = payloadPart.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - payloadPart.length % 4) % 4);
+    const payload = JSON.parse(atob(padded));
+    if (payload.v !== 1 || payload.tier !== 'friends' || !payload.exp || payload.exp <= Date.now()) {
+      localStorage.removeItem(FRIENDS_ACCESS_TOKEN_KEY);
+      return '';
+    }
+    return token;
+  } catch (e) {
+    try { localStorage.removeItem(FRIENDS_ACCESS_TOKEN_KEY); } catch (_) {}
+    return '';
+  }
+}
+
+function maxRoomsAllowed() { return friendsAccessToken() ? FRIENDS_MAX_ROOMS : STANDARD_MAX_ROOMS; }
 
 function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle }) {
   return {
@@ -3244,14 +3279,14 @@ function removeRoomFromState(code) {
   idbRemoveSession(code).catch(() => {});
 }
 
-// ── PER-ROOM localStorage PERSISTENCE (max 5 rooms) ────────────────────
+// ── PER-ROOM localStorage PERSISTENCE (5 standard / 15 Friends access) ──
 function roomStorageKey(code) { return 'vaulted_room_' + code; }
 
 function loadRoomsIndex() {
   try { return JSON.parse(localStorage.getItem(ROOMS_INDEX_KEY) || '[]'); } catch(e) { return []; }
 }
 function saveRoomsIndex(codes) {
-  try { localStorage.setItem(ROOMS_INDEX_KEY, JSON.stringify(codes.slice(0, MAX_ROOMS))); } catch(e) {}
+  try { localStorage.setItem(ROOMS_INDEX_KEY, JSON.stringify(codes.slice(0, maxRoomsAllowed()))); } catch(e) {}
 }
 function saveActiveRoomCode(code) {
   try { localStorage.setItem(ACTIVE_ROOM_KEY, code || ''); } catch(e) {}
@@ -6015,7 +6050,7 @@ async function regenerateAnonLink() {
     const newRoom = makeRoom({ code: null, token: null, myName, deleteTimerSeconds: timerSeconds, persistent: true });
     newRoom.nickname = nickname;
     const pubKey = await getOrGenerateKeyPair(newRoom);
-    const result = await api('/api/create', { name: myName, pubKey, deleteTimer: timerSeconds, persistent: true });
+    const result = await api('/api/create', { name: myName, pubKey, deleteTimer: timerSeconds, persistent: true, accessToken: friendsAccessToken() || undefined });
     if (result.error) { switchToNextRoomOrLanding(); return; }
 
     newRoom.code = result.code;
@@ -6057,6 +6092,39 @@ function loadSettingsState() {
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
   } catch (e) {}
   updatePushStatus();
+  updateFriendsAccessStatus();
+}
+
+function updateFriendsAccessStatus() {
+  const el = document.getElementById('friends-access-status');
+  if (!el) return;
+  const unlocked = !!friendsAccessToken();
+  el.textContent = unlocked ? '15 vaults' : 'Unlock';
+  el.className = unlocked
+    ? 'settings-status settings-status-on'
+    : 'settings-status settings-status-action';
+}
+
+async function activateFriendsAccess() {
+  if (friendsAccessToken()) {
+    toast('Friends access is active — up to 15 vaults');
+    return;
+  }
+  const key = prompt('Enter your Vaultlix Friends application key');
+  if (!key) return;
+  try {
+    const result = await api('/api/friends/unlock', { key });
+    if (result.error || !result.token) {
+      toast(result.error || 'Access key not recognised');
+      return;
+    }
+    localStorage.setItem(FRIENDS_ACCESS_TOKEN_KEY, result.token);
+    updateFriendsAccessStatus();
+    renderRoomTabs();
+    toast('Friends access unlocked — up to 15 vaults');
+  } catch (e) {
+    toast('Could not verify the access key — try again');
+  }
 }
 
 // Always derived live from the platform, never from a stored flag — there's
@@ -6704,7 +6772,7 @@ function renderRoomTabs() {
           ${room.unread > 0 && !active ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
         </div>`;
       }
-      html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add vault"${rooms.size >= MAX_ROOMS ? ' disabled' : ''}>+</button>`;
+      html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add vault"${rooms.size >= maxRoomsAllowed() ? ' disabled' : ''}>+</button>`;
       html += `<button type="button" class="room-tab-add" id="vault-list-btn" title="All vaults"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>`;
       wrap.innerHTML = html;
       wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
@@ -6923,7 +6991,8 @@ function renderChatBody(room) {
 }
 
 function addRoomFlow() {
-  if (rooms.size >= MAX_ROOMS) { toast(`Maximum ${MAX_ROOMS} vaults open`); return; }
+  const limit = maxRoomsAllowed();
+  if (rooms.size >= limit) { toast(`Maximum ${limit} vaults open`); return; }
   showScreen('s-landing');
   triggerLandingAnim();
 }
@@ -8501,8 +8570,9 @@ async function handleSetup() {
   document.getElementById('setup-btn').textContent = 'Connecting…';
   document.getElementById('setup-btn').disabled = true;
 
-  if (rooms.size >= MAX_ROOMS) {
-    showErr(`You already have ${MAX_ROOMS} vaults open — leave one first.`);
+  const roomLimit = maxRoomsAllowed();
+  if (rooms.size >= roomLimit) {
+    showErr(`You already have ${roomLimit} vaults open — leave one first.`);
     resetSetupBtn();
     return;
   }
@@ -8527,7 +8597,7 @@ async function handleSetup() {
 
       const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal, persistent: persistentVal });
       const pubKey = await getOrGenerateKeyPair(room);
-      const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal });
+      const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal, accessToken: friendsAccessToken() || undefined });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
 
       room.code = result.code;

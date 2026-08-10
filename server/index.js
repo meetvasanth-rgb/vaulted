@@ -13,6 +13,12 @@ const scryptAsync = promisify(crypto.scrypt);
 
 const PORT = process.env.PORT || 3000;
 const PROCESS_STARTED_AT = Date.now();
+const FRIENDS_ACCESS_KEY = process.env.FRIENDS_ACCESS_KEY || '';
+const FRIENDS_TOKEN_SECRET = FRIENDS_ACCESS_KEY
+  ? crypto.createHash('sha256').update(`vaultlix-friends-entitlement-v1\0${FRIENDS_ACCESS_KEY}`).digest()
+  : null;
+if (!FRIENDS_ACCESS_KEY) console.warn('Friends access is disabled: FRIENDS_ACCESS_KEY is not set.');
+else if (FRIENDS_ACCESS_KEY.length < 16) console.warn('FRIENDS_ACCESS_KEY is shorter than 16 characters — replace it with a stronger key.');
 // Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
 // to be a single flat 5-minute TTL for every room regardless of type, which
@@ -597,6 +603,32 @@ function sendNativeCallEnd(member, callId) {
 // room auth tokens (the bearer credential behind every /api/poll, /api/send,
 // /api/read call for a room) and message ids, so it needs real randomness.
 function uid() { return crypto.randomBytes(16).toString('hex'); }
+
+function issueFriendsAccessToken() {
+  if (!FRIENDS_TOKEN_SECRET) return null;
+  const payload = Buffer.from(JSON.stringify({
+    v: 1,
+    tier: 'friends',
+    exp: Date.now() + 365 * 24 * 60 * 60 * 1000,
+    nonce: crypto.randomBytes(12).toString('base64url'),
+  })).toString('base64url');
+  const signature = crypto.createHmac('sha256', FRIENDS_TOKEN_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function verifyFriendsAccessToken(token) {
+  if (!FRIENDS_TOKEN_SECRET || typeof token !== 'string' || token.length > 512) return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const expected = crypto.createHmac('sha256', FRIENDS_TOKEN_SECRET).update(parts[0]).digest();
+  let supplied;
+  try { supplied = Buffer.from(parts[1], 'base64url'); } catch (e) { return false; }
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    return payload.v === 1 && payload.tier === 'friends' && Number.isFinite(payload.exp) && payload.exp > Date.now();
+  } catch (e) { return false; }
+}
 
 // Random per-boot key for pseudonymizing room codes in our own console logs
 // (not persisted, not derived from anything — regenerated on every process
@@ -1821,13 +1853,37 @@ const srv = http.createServer((req, res) => {
 
 async function api(path, method, d, p, res, ip, headers) {
 
+  // POST /api/friends/unlock — exchange the privately shared application
+  // key for an anonymous, signed one-year entitlement. The plaintext key is
+  // never returned, persisted, or placed in a URL; clients store only the
+  // opaque HMAC token. The token contains no device or identity fields.
+  if (path === '/api/friends/unlock' && method === 'POST') {
+    if (!FRIENDS_ACCESS_KEY || !FRIENDS_TOKEN_SECRET) return resErr(res, 'Friends access is unavailable.', 503);
+    if (rateLimited(`friends-unlock:${ip}`, 6, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many access attempts — try again later.', 429);
+    }
+    const suppliedKey = typeof d.key === 'string' ? d.key : '';
+    if (!suppliedKey || suppliedKey.length > 256) return resErr(res, 'Access key not recognised.', 403);
+    const supplied = Buffer.from(suppliedKey);
+    const expected = Buffer.from(FRIENDS_ACCESS_KEY);
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+      return resErr(res, 'Access key not recognised.', 403);
+    }
+    const token = issueFriendsAccessToken();
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, token, maxRooms: 15, expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000 });
+  }
+
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
     // 8 rooms per 10 minutes per IP — generous for anyone genuinely opening
     // a few conversations (this app's own 5-open-rooms-at-once cap is the
     // practical ceiling for a real user anyway), but enough to stop a
     // script from spam-creating rooms, which had zero limit before this.
-    if (rateLimited(`create:${ip}`, 8, 10 * 60 * 1000)) {
+    const hasFriendsAccess = verifyFriendsAccessToken(d.accessToken);
+    const createLimitKey = hasFriendsAccess ? `create-friends:${ip}` : `create:${ip}`;
+    const createLimit = hasFriendsAccess ? 20 : 8;
+    if (rateLimited(createLimitKey, createLimit, 10 * 60 * 1000)) {
       return resErr(res, 'Too many rooms created from this connection — try again in a few minutes.', 429);
     }
     // Hard ceiling on total concurrent rooms, independent of the byte
