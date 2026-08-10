@@ -2855,6 +2855,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     <div class="account-signed" id="account-signed-view">
       <div class="account-copy">Your active vault credentials are protected by end-to-end encrypted account sync.</div>
       <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub" id="account-sync-status">Encrypted sync active</div></div>
+      <button class="account-primary" onclick="openAccountVaults()">Open my vaults</button>
       <button class="account-secondary" onclick="syncAnonymousAccount(true)">Sync now</button>
       <button class="account-secondary" onclick="signOutAnonymousAccount()">Sign out on this device</button>
     </div>
@@ -6426,6 +6427,16 @@ async function copyRecoveryCode() {
   try { await navigator.clipboard.writeText(text); toast('Recovery code copied'); } catch(e) { toast('Press and hold the code to copy it'); }
 }
 function finishAccountCreation() { document.getElementById('account-recovery-result').style.display='none'; document.getElementById('account-signed-view').classList.add('open'); const state=loadAccountState(); document.getElementById('account-signed-name').textContent=state?.username||'Protected ID'; }
+function openAccountVaults() {
+  closeAccountPanel();
+  if (rooms.size > 0) { showScreen('s-vault-list'); return; }
+  // A freshly downloaded account bundle is written to localStorage first;
+  // the normal startup restore then rebuilds live Room objects, keypairs,
+  // polling and notification registration from those records.
+  if (loadRoomsIndex().length > 0) { location.reload(); return; }
+  showScreen('s-landing');
+  toast('No active vaults are saved in this ID yet');
+}
 
 // Always derived live from the platform, never from a stored flag — there's
 // nothing to "load" here, just the current truth at the moment the panel
