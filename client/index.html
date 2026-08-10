@@ -297,7 +297,10 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .vault-list-heading{min-width:0;flex:1}
 .vault-list-title{font-size:23px;line-height:1.05;font-weight:700;color:#fff;letter-spacing:-.025em}
 .vault-list-subtitle{font-size:11px;color:rgba(255,255,255,.7);margin-top:4px;letter-spacing:.06em;text-transform:uppercase}
-.vault-list-settings{width:40px;height:40px;border-radius:13px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.vault-list-nav{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.vault-list-home{height:40px;border-radius:13px;border:1px solid #682C43;background:#682C43;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 11px;cursor:pointer;font:700 11px/1 inherit;box-shadow:0 7px 16px rgba(104,44,67,.16)}
+.vault-list-home svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.vault-list-settings{width:40px;height:40px;border-radius:13px;border:1px solid #DCCDD2;background:#fff;color:#682C43;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .vault-list-settings svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .vault-list-main{flex:1;min-height:0;display:flex;flex-direction:column;width:min(100%,760px);margin:0 auto;padding:24px 18px 104px}
 .vault-list-toolbar{display:flex;align-items:end;justify-content:space-between;gap:14px;margin-bottom:14px}
@@ -335,6 +338,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
   .vault-list-hdr{padding-left:max(28px,calc((100vw - 760px)/2));padding-right:max(28px,calc((100vw - 760px)/2))}
   .vault-list-main{padding-top:32px}.vault-list-row{padding:17px 20px}.vault-list-actions{padding-left:calc((100vw - 760px)/2 + 18px);padding-right:calc((100vw - 760px)/2 + 18px)}
 }
+@media(max-width:390px){.vault-list-home{width:42px;padding:4px 3px;gap:2px;flex-direction:column;font-size:8px}.vault-list-home svg{width:15px;height:15px}}
 /* -- IN-ROOM DISAPPEARING-TIMER CONTROL (+ call button) -- */
 /* space-between rather than center now that the call button lives here too
    — keeps the timer control grouped on one side and the call button
@@ -1897,9 +1901,10 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   background:rgba(255,255,255,.97)!important;border:0!important;
   box-shadow:0 1px 0 #EDE4E7!important;gap:12px!important;
 }
-.chat-home-btn{width:40px;height:40px;border:0;border-radius:13px;background:#F6EEF1;color:#682C43;display:grid;place-items:center;flex:none;cursor:pointer;padding:0;transition:background .15s}
+.chat-home-btn{height:40px;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:flex;align-items:center;justify-content:center;gap:6px;flex:none;cursor:pointer;padding:0 11px;transition:background .15s,border-color .15s;font:750 11px/1 'Manrope',sans-serif;letter-spacing:.01em}
 .chat-home-btn:hover,.chat-home-btn:active{background:#EEDFE4}
-.chat-home-btn svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.chat-home-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.chat-home-btn-label{white-space:nowrap}
 #s-chat .chat-hdr-identity{gap:11px!important;overflow:visible!important}
 #s-chat .chat-hdr-logo{width:42px;height:42px;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important}
 #s-chat .chat-hdr-logo svg{width:21px;height:21px;stroke:#fff}
@@ -1958,7 +1963,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 
 @media(max-width:430px){
   #s-chat .chat-hdr{padding-left:12px!important;padding-right:12px!important}
-  #s-chat .chat-home-btn{width:38px;height:38px;border-radius:12px}
+  #s-chat .chat-home-btn{width:44px;height:42px;border-radius:12px;gap:2px;padding:4px 3px;flex-direction:column;font-size:8px;line-height:1}
+  #s-chat .chat-home-btn svg{width:16px;height:16px}
   #s-chat .chat-hdr-logo{width:40px;height:40px;border-radius:13px!important}
   #s-chat .chat-hdr-room{max-width:125px!important;font-size:16px!important}
   #s-chat .chat-hdr-actions{gap:5px!important}
@@ -2241,8 +2247,9 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 <!-- CHAT -->
 <div id="s-chat" class="screen">
   <div class="chat-hdr">
-    <button class="chat-home-btn" type="button" onclick="openVaultInbox()" title="Back to vaults" aria-label="Back to your vaults">
-      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    <button class="chat-home-btn" type="button" onclick="openVaultInbox()" title="Open your vaults" aria-label="Open your vault inbox">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg>
+      <span class="chat-home-btn-label">Vaults</span>
     </button>
     <!-- Identity zone: logo, room name, connection status — all one glance,
          no separate badges competing for attention. The permanent-room 🔗
@@ -2360,12 +2367,17 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   <div class="vault-list-hdr">
     <div class="vault-list-brandmark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></div>
     <div class="vault-list-heading">
-      <div class="vault-list-title">Vaultlix</div>
-      <div class="vault-list-subtitle">Private by design</div>
+      <div class="vault-list-title">Vault Inbox</div>
+      <div class="vault-list-subtitle">Your private spaces</div>
     </div>
-    <button class="vault-list-settings" onclick="showScreen('s-privacy')" title="Privacy" aria-label="View privacy information">
-      <svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg>
-    </button>
+    <div class="vault-list-nav">
+      <button class="vault-list-home" type="button" onclick="openMainHome()" title="Open Vaultlix home" aria-label="Open Vaultlix home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span>
+      </button>
+      <button class="vault-list-settings" onclick="showScreen('s-privacy')" title="Privacy" aria-label="View privacy information">
+        <svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg>
+      </button>
+    </div>
   </div>
   <main class="vault-list-main">
     <div class="vault-list-toolbar">
@@ -7313,6 +7325,11 @@ function openVaultInbox() {
   closeAllMsgActions();
   exitSelectMode();
   showScreen('s-vault-list');
+}
+
+function openMainHome() {
+  showScreen('s-landing');
+  triggerLandingAnim();
 }
 
 function switchToNextRoomOrLanding() {
