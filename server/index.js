@@ -12,6 +12,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 const scryptAsync = promisify(crypto.scrypt);
 
 const PORT = process.env.PORT || 3000;
+const PROCESS_STARTED_AT = Date.now();
 // Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
 // to be a single flat 5-minute TTL for every room regardless of type, which
@@ -1589,7 +1590,7 @@ setInterval(() => {
 }, 5000);
 
 function res200(res, data) {
-  res.writeHead(200, { 'Content-Type':'application/json', 'Cache-Control':'no-cache' });
+  res.writeHead(200, { 'Content-Type':'application/json', 'Cache-Control': res.getHeader('Cache-Control') || 'no-cache' });
   res.end(JSON.stringify(data));
 }
 function resErr(res, msg, status=400) {
@@ -1622,12 +1623,13 @@ function computeETag(buf) {
 // there's nothing else here whose staleness has security consequences.
 function sendHtmlShell(req, res, data) {
   const etag = computeETag(data);
+  const cacheControl = res.getHeader('Cache-Control') || 'no-cache';
   if (req.headers['if-none-match'] === etag) {
-    res.writeHead(304, { 'Cache-Control': 'no-cache', 'ETag': etag });
+    res.writeHead(304, { 'Cache-Control': cacheControl, 'ETag': etag });
     res.end();
     return;
   }
-  res.writeHead(200, { 'Content-Type': 'text/html;charset=utf-8', 'Content-Length': Buffer.byteLength(data), 'Cache-Control': 'no-cache', 'ETag': etag });
+  res.writeHead(200, { 'Content-Type': 'text/html;charset=utf-8', 'Content-Length': Buffer.byteLength(data), 'Cache-Control': cacheControl, 'ETag': etag });
   res.end(data);
 }
 
@@ -1648,6 +1650,7 @@ function serveStatic(req, res) {
   // "/install" (no ".html") misses the readFile below, falls through to the
   // SPA catch-all, and silently serves the main app instead of install.html.
   if (url === '/install') url = '/install.html';
+  if (url === '/admin') url = '/admin.html';
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
   fs.readFile(path.join(__dirname,'../client',url), (err,data) => {
     if (err) {
@@ -1763,6 +1766,10 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
   const u = new URL(req.url, 'http://x');
+  if (u.pathname === '/admin' || u.pathname === '/admin.html' || u.pathname === '/admin.js' || u.pathname === '/admin.css') {
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    res.setHeader('Cache-Control', 'no-store');
+  }
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
   // Per-endpoint body cap, not one blanket ceiling — /api/send legitimately
   // carries large attachments (see BODY_LIMIT_SEND below), but giving every
@@ -1891,7 +1898,7 @@ async function api(path, method, d, p, res, ip, headers) {
       byteSize: 0,     // running total of msgs[].content.length — see pushRoomMsg/deleteRoomMsgContent
     });
     if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
-    saveAnalytics();
+    trackAggregate(persistent ? 'vaultsPermanent' : 'vaultsTemporary');
     console.log(`Room created: ${logCode(roomCode)}${persistent ? ' (permanent room)' : ''}`);
     // labelLength tells the client exactly where the user-typed label ends
     // and the appended random suffix begins, so it can render them
@@ -2004,6 +2011,8 @@ async function api(path, method, d, p, res, ip, headers) {
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
     room.members.set(token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() });
+    analytics.joins = (analytics.joins || 0) + 1;
+    trackAggregate('joins');
     room.lastActivity = Date.now();
     // First time the second person actually shows up on a permanent room —
     // this is the "connected since" the client shows, not creation time.
@@ -2080,6 +2089,8 @@ async function api(path, method, d, p, res, ip, headers) {
     pushRoomMsg(room, { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     room.lastMessageAt = Date.now();
+    analytics.messagesRelayed = (analytics.messagesRelayed || 0) + 1;
+    trackAggregate('messages');
 
     // Best-effort push notification to the peer if they've subscribed. The
     // server can't decrypt d.content (E2E), so the payload is deliberately
@@ -2642,16 +2653,81 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!expectedKey || !providedKey) {
       res.writeHead(404); res.end(); return;
     }
+    if (rateLimited(`admin-auth:${ip}`, 10, 10 * 60 * 1000)) {
+      res.writeHead(404); res.end(); return;
+    }
     const providedBuf = Buffer.from(providedKey);
     const expectedBuf = Buffer.from(expectedKey);
     if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
       res.writeHead(404); res.end(); return;
     }
     const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;
+    const now = Date.now();
+    const activeCutoff = now - 60 * 1000;
+    let activeAnonymousSessions = 0;
+    let occupiedVaults = 0;
+    let permanentVaults = 0;
+    let temporaryVaults = 0;
+    let activeCalls = 0;
+    let ringingCalls = 0;
+    let storedCiphertextMessages = 0;
+    for (const room of rooms.values()) {
+      if (room.persistent) permanentVaults++; else temporaryVaults++;
+      if (room.members.size > 0) occupiedVaults++;
+      for (const member of room.members.values()) {
+        if ((member.lastSeen || 0) >= activeCutoff) activeAnonymousSessions++;
+      }
+      if (room.ringingUntil && room.ringingUntil > now) ringingCalls++;
+      if (room.activeCall) activeCalls++;
+      storedCiphertextMessages += room.msgs.length;
+    }
+    const memory = process.memoryUsage();
+    const days = Object.entries(analytics.daily || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-90)
+      .map(([date, values]) => ({ date, ...values }));
+    res.setHeader('Cache-Control', 'no-store');
     return res200(res, {
-      ...analytics,
-      totalRoomsCreated: total,
-      permanentPct: total ? Math.round((analytics.roomsCreatedPermanent / total) * 100) : 0,
+      generatedAt: now,
+      privacy: {
+        mode: 'aggregate-only',
+        storesVaultCodes: false,
+        storesCodenames: false,
+        storesIpAddresses: false,
+        canReadMessages: false,
+      },
+      live: {
+        activeVaults: rooms.size,
+        occupiedVaults,
+        permanentVaults,
+        temporaryVaults,
+        activeAnonymousSessions,
+        authenticatedSignalSockets: signalingSockets.size + nativeCallSignalingSockets.size,
+        activeCalls,
+        ringingCalls,
+        storedCiphertextMessages,
+      },
+      lifetime: {
+        roomsCreatedTemporary: analytics.roomsCreatedTemporary,
+        roomsCreatedPermanent: analytics.roomsCreatedPermanent,
+        totalRoomsCreated: total,
+        permanentPct: total ? Math.round((analytics.roomsCreatedPermanent / total) * 100) : 0,
+        joins: analytics.joins || 0,
+        messagesRelayed: analytics.messagesRelayed || 0,
+        callsStarted: analytics.callsStarted || 0,
+        callsAnswered: analytics.callsAnswered || 0,
+      },
+      system: {
+        uptimeSeconds: Math.floor((now - PROCESS_STARTED_AT) / 1000),
+        nodeVersion: process.version,
+        rssBytes: memory.rss,
+        heapUsedBytes: memory.heapUsed,
+        heapTotalBytes: memory.heapTotal,
+        ciphertextBytes: totalByteSize,
+        ciphertextBudgetBytes: GLOBAL_BYTE_BUDGET,
+        roomCapacity: MAX_CONCURRENT_ROOMS,
+      },
+      daily: days,
     });
   }
 
@@ -2891,6 +2967,10 @@ wss.on('connection', (ws) => {
           const nativeCallInProgress = Boolean(room2.nativeCallId && room2.nativeCalleeToken);
           const alreadyRinging = nativeCallInProgress ||
             Boolean(room2.ringingUntil && room2.ringingUntil > now);
+          if (!alreadyRinging) {
+            analytics.callsStarted = (analytics.callsStarted || 0) + 1;
+            trackAggregate('callsStarted');
+          }
           // A connected call is not ringing. Reopening this window would also
           // make a normal hang-up look like a missed call.
           if (!nativeCallInProgress) {
@@ -2956,9 +3036,15 @@ wss.on('connection', (ws) => {
             }, 5000);
           }
         } else if (msg2.type === 'call-accept') {
+          if (room2.ringingUntil && room2.ringingUntil > Date.now()) {
+            analytics.callsAnswered = (analytics.callsAnswered || 0) + 1;
+            trackAggregate('callsAnswered');
+          }
           room2.ringingUntil = 0;
+          room2.activeCall = true;
         } else if (msg2.type === 'call-decline' || msg2.type === 'call-busy') {
           room2.ringingUntil = 0;
+          room2.activeCall = false;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
         } else if (msg2.type === 'call-hangup') {
@@ -2973,6 +3059,7 @@ wss.on('connection', (ws) => {
           const now = Date.now();
           const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = 0;
+          room2.activeCall = false;
           const nativeCallId = room2.nativeCallId;
           const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
@@ -3143,6 +3230,9 @@ function loadSnapshot() {
         if (now - room.lastActivity > ttl) { expired++; continue; } // would've expired anyway — don't resurrect it
       }
       room.members = new Map(room.members);
+      // Calls and sockets are live process state. A graceful-restart snapshot
+      // must never resurrect a stale "active call" badge in the dashboard.
+      room.activeCall = false;
       // A call mid-ring can't survive this any more than the process
       // itself can (the WebSocket carrying it is gone) — clear it so a
       // stale future timestamp doesn't incorrectly suppress a real ring
@@ -3192,7 +3282,40 @@ function loadSnapshot() {
 // in its own file. Just two running integers — no IP, room code, or
 // timestamp is ever stored alongside them.
 const ANALYTICS_PATH = path.join(SNAPSHOT_DIR, 'analytics.json');
-let analytics = { roomsCreatedTemporary: 0, roomsCreatedPermanent: 0 };
+let analytics = {
+  roomsCreatedTemporary: 0,
+  roomsCreatedPermanent: 0,
+  joins: 0,
+  messagesRelayed: 0,
+  callsStarted: 0,
+  callsAnswered: 0,
+  daily: {},
+};
+let analyticsSaveTimer = null;
+
+function trackAggregate(metric) {
+  const date = new Date().toISOString().slice(0, 10);
+  if (!analytics.daily || typeof analytics.daily !== 'object') analytics.daily = {};
+  if (!analytics.daily[date]) {
+    analytics.daily[date] = {
+      vaultsTemporary: 0, vaultsPermanent: 0, joins: 0,
+      messages: 0, callsStarted: 0, callsAnswered: 0,
+    };
+  }
+  analytics.daily[date][metric] = (analytics.daily[date][metric] || 0) + 1;
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  for (const key of Object.keys(analytics.daily)) if (key < cutoff) delete analytics.daily[key];
+  scheduleAnalyticsSave();
+}
+
+function scheduleAnalyticsSave() {
+  if (analyticsSaveTimer) return;
+  analyticsSaveTimer = setTimeout(() => {
+    analyticsSaveTimer = null;
+    saveAnalytics();
+  }, 1000);
+  analyticsSaveTimer.unref();
+}
 
 function loadAnalytics() {
   try {
@@ -3223,6 +3346,7 @@ function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`${signal} received — saving snapshot before exit...`);
+  saveAnalytics();
   saveSnapshot();
   srv.close(() => process.exit(0));
   // Belt-and-suspenders: if something (a lingering keep-alive connection,
