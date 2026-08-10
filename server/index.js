@@ -2653,12 +2653,13 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!expectedKey || !providedKey) {
       res.writeHead(404); res.end(); return;
     }
-    if (rateLimited(`admin-auth:${ip}`, 10, 10 * 60 * 1000)) {
-      res.writeHead(404); res.end(); return;
-    }
     const providedBuf = Buffer.from(providedKey);
     const expectedBuf = Buffer.from(expectedKey);
     if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
+      // Count failed guesses only. The dashboard refreshes every 15 seconds;
+      // counting successful requests here locked a legitimate administrator
+      // out after ten refreshes even though every supplied key was correct.
+      rateLimited(`admin-auth:${ip}`, 10, 10 * 60 * 1000);
       res.writeHead(404); res.end(); return;
     }
     const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;
