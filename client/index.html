@@ -1907,10 +1907,21 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   background:rgba(255,255,255,.97)!important;border:0!important;
   box-shadow:0 1px 0 #EDE4E7!important;gap:12px!important;
 }
-.chat-home-btn{height:40px;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:flex;align-items:center;justify-content:center;gap:6px;flex:none;cursor:pointer;padding:0 11px;transition:background .15s,border-color .15s;font:750 11px/1 'Manrope',sans-serif;letter-spacing:.01em}
+.chat-home-btn{position:relative;height:40px;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:flex;align-items:center;justify-content:center;gap:6px;flex:none;cursor:pointer;padding:0 11px;transition:background .15s,border-color .15s;font:750 11px/1 'Manrope',sans-serif;letter-spacing:.01em}
 .chat-home-btn:hover,.chat-home-btn:active{background:#EEDFE4}
 .chat-home-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .chat-home-btn-label{white-space:nowrap}
+.chat-vault-unread{position:absolute;right:-7px;top:-7px;min-width:19px;height:19px;padding:0 5px;border:2px solid #fff;border-radius:999px;background:#C87588;color:#fff;display:none;align-items:center;justify-content:center;font:800 9px/1 'Manrope',sans-serif;box-shadow:0 4px 10px rgba(104,44,67,.24)}
+.chat-vault-unread.show{display:flex}
+.cross-vault-banner{display:none;flex:none;align-items:center;gap:10px;width:calc(100% - 24px);margin:9px 12px 0;padding:10px 12px;border:1px solid #E4D7DC;border-radius:14px;background:#fff;color:#34272F;box-shadow:0 10px 26px rgba(39,29,37,.12);cursor:pointer;text-align:left;font-family:'Manrope',sans-serif;z-index:8}
+.cross-vault-banner.show{display:flex;animation:vaultNoticeIn .18s ease-out}
+.cross-vault-banner-icon{width:32px;height:32px;border-radius:10px;background:#682C43;color:#fff;display:grid;place-items:center;flex:none}
+.cross-vault-banner-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.cross-vault-banner-copy{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+.cross-vault-banner-copy strong{font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cross-vault-banner-copy span{font-size:9px;line-height:1.2;color:#887880;text-transform:uppercase;letter-spacing:.08em}
+.cross-vault-banner-arrow{font-size:18px;color:#682C43;flex:none}
+@keyframes vaultNoticeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 #s-chat .chat-hdr-identity{gap:11px!important;overflow:visible!important}
 #s-chat .chat-hdr-logo{width:42px;height:42px;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important}
 #s-chat .chat-hdr-logo svg{width:21px;height:21px;stroke:#fff}
@@ -2262,6 +2273,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     <button class="chat-home-btn" type="button" onclick="openVaultInbox()" title="Open your vaults" aria-label="Open your vault inbox">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg>
       <span class="chat-home-btn-label">Vaults</span>
+      <span class="chat-vault-unread" id="chat-vault-unread" aria-hidden="true"></span>
     </button>
     <!-- Identity zone: logo, room name, connection status — all one glance,
          no separate badges competing for attention. The permanent-room 🔗
@@ -2289,6 +2301,11 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
       <button class="destroy-btn" onclick="closeActiveRoom()" title="Close and erase vault" aria-label="Close and erase vault"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></button>
     </div>
   </div>
+  <button class="cross-vault-banner" id="cross-vault-banner" type="button" onclick="openCrossVaultMessage()" aria-live="polite">
+    <span class="cross-vault-banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="4"/><path d="m8 20 3-3"/></svg></span>
+    <span class="cross-vault-banner-copy"><strong id="cross-vault-banner-title">New message</strong><span>Tap to open vault</span></span>
+    <span class="cross-vault-banner-arrow" aria-hidden="true">›</span>
+  </button>
   <div class="select-bar" id="select-bar">
     <button class="select-bar-cancel" onclick="exitSelectMode()" title="Cancel">✕</button>
     <div class="select-bar-count" id="select-bar-count">1 selected</div>
@@ -6069,17 +6086,57 @@ function showTypingIndicator(show) {
   document.getElementById('typing-indicator')?.classList.toggle('show', show);
 }
 
+let crossVaultBannerTimer = null;
+let crossVaultBannerRoomCode = null;
+
+function updateVaultUnreadBadge() {
+  let total = 0;
+  for (const room of rooms.values()) if (!isRoomVisible(room)) total += room.unread;
+  const badge = document.getElementById('chat-vault-unread');
+  const button = document.querySelector('.chat-home-btn');
+  if (button) button.setAttribute('aria-label', total > 0 ? `Open your vault inbox, ${total} unread` : 'Open your vault inbox');
+  if (!badge) return total;
+  badge.textContent = total > 9 ? '9+' : String(total);
+  badge.classList.toggle('show', total > 0);
+  badge.setAttribute('aria-hidden', total > 0 ? 'false' : 'true');
+  return total;
+}
+
+function showCrossVaultMessage(room) {
+  if (!room || room.code === activeRoomCode || !document.getElementById('s-chat')?.classList.contains('active') || document.hidden || !tabFocused) return;
+  const banner = document.getElementById('cross-vault-banner');
+  const title = document.getElementById('cross-vault-banner-title');
+  if (!banner || !title) return;
+  crossVaultBannerRoomCode = room.code;
+  title.textContent = `New message in ${roomDisplayLabel(room)}`;
+  banner.classList.add('show');
+  clearTimeout(crossVaultBannerTimer);
+  crossVaultBannerTimer = setTimeout(() => banner.classList.remove('show'), 5000);
+}
+
+function openCrossVaultMessage() {
+  const room = crossVaultBannerRoomCode ? rooms.get(crossVaultBannerRoomCode) : null;
+  document.getElementById('cross-vault-banner')?.classList.remove('show');
+  clearTimeout(crossVaultBannerTimer);
+  crossVaultBannerRoomCode = null;
+  if (!room) { openVaultInbox(); return; }
+  if (!room.everOnline) resumeWaitingScreen(room);
+  else { setActiveRoom(room.code); showScreen('s-chat'); }
+}
+
 // Chime for a message on `room` — unless that room is the one actively
 // visible on screen right now (in which case you're already watching it
 // arrive, no need to also make noise).
 function notifyMsg(room) {
   const roomVisible = room.code === activeRoomCode && tabFocused && !document.hidden;
-  if (!roomVisible) playChime();
+  if (!roomVisible) {
+    playChime();
+    showCrossVaultMessage(room);
+  }
 }
 
 function updateDocumentTitle() {
-  let total = 0;
-  for (const room of rooms.values()) if (room.code !== activeRoomCode) total += room.unread;
+  const total = updateVaultUnreadBadge();
   document.title = total > 0 ? `(${total}) Vaultlix` : 'Vaultlix';
 
   // The document.title prefix above is the only unread indicator this app
