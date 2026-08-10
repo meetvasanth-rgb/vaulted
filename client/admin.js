@@ -23,6 +23,7 @@
       render(stats);
       $('login').hidden = true;
       $('dashboard').hidden = false;
+      history.replaceState({ signedOut: false }, '', '/admin');
       $('login-error').textContent = '';
       if (!refreshTimer) refreshTimer = setInterval(loadStats, 15000);
     } catch (error) {
@@ -89,12 +90,21 @@
     loadStats(true);
   });
   $('refresh').addEventListener('click', () => loadStats(false));
-  $('lock').addEventListener('click', () => {
+  function signOut() {
     adminKey = '';
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = null;
+    $('admin-key').value = '';
+    $('login-error').textContent = '';
     $('dashboard').hidden = true;
     $('login').hidden = false;
+    history.replaceState({ signedOut: true }, '', '/admin');
     $('admin-key').focus();
+  }
+  $('signout').addEventListener('click', signOut);
+  window.addEventListener('pageshow', event => {
+    // Safari/Chrome may restore the page from their back-forward cache.
+    // Never let that resurrect a dashboard that was signed out.
+    if (event.persisted && history.state && history.state.signedOut) signOut();
   });
 })();
