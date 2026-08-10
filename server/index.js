@@ -2363,6 +2363,26 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true });
   }
 
+  // POST /api/push-unsubscribe — remove every notification destination for
+  // this authenticated room member. Account sign-out uses this before its
+  // local room token is erased, preventing messages or calls for a signed-out
+  // identity from continuing to appear on a shared device.
+  if (path==='/api/push-unsubscribe' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (rateLimited(`push-unsubscribe:${d.token}`, 20, 60 * 1000)) return resErr(res,'Too many notification updates.',429);
+    const m = room.members.get(d.token);
+    m.pushSub = null;
+    m.fcmToken = null;
+    m.apnsToken = null;
+    m.apnsEnvironment = null;
+    m.voipToken = null;
+    m.voipEnvironment = null;
+    m.nativeRoomHandle = null;
+    room.lastActivity = Date.now();
+    return res200(res, { ok: true });
+  }
+
   // POST /api/native-push-subscribe — bind an APNs or FCM device token to an
   // authenticated member of this room. A stolen room code alone is not
   // sufficient; the caller must also present the random member bearer token.

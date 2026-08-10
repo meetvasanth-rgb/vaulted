@@ -3096,23 +3096,42 @@ async function aesDecryptJson(keyBytes, envelope) {
 }
 function loadAccountState() { try { return JSON.parse(localStorage.getItem(ACCOUNT_STATE_KEY) || 'null'); } catch(e) { return null; } }
 function saveAccountState(state) { localStorage.setItem(ACCOUNT_STATE_KEY, JSON.stringify(state)); updateAccountSettingsStatus(); }
-function accountBundleSnapshot() {
+function claimLocalVaultsForAccount(accountId) {
+  if (!accountId) return;
+  for (const code of loadRoomsIndex()) {
+    const session = loadRoomSession(code);
+    if (!session || session.ownerAccountId) continue;
+    session.ownerAccountId = accountId;
+    localStorage.setItem(roomStorageKey(code), JSON.stringify(session));
+    const room = rooms.get(code);
+    if (room) room.ownerAccountId = accountId;
+  }
+}
+function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includeUnowned = false) {
   const sessions = [];
   for (const code of loadRoomsIndex()) {
-    try { const session = JSON.parse(localStorage.getItem(roomStorageKey(code)) || 'null'); if (session) sessions.push(session); } catch(e) {}
+    try {
+      const session = JSON.parse(localStorage.getItem(roomStorageKey(code)) || 'null');
+      if (session && accountId && (session.ownerAccountId === accountId || (includeUnowned && !session.ownerAccountId))) {
+        sessions.push({ ...session, ownerAccountId:accountId });
+      }
+    } catch(e) {}
   }
-  return { v:1, savedAt:Date.now(), activeRoomCode:loadActiveRoomCode(), sessions };
+  const active = loadActiveRoomCode();
+  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions };
 }
-function importAccountBundle(bundle) {
+function importAccountBundle(bundle, accountId) {
   if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid vault backup');
   const merged = new Map();
   for (const code of loadRoomsIndex()) { const local = loadRoomSession(code); if (local) merged.set(code, local); }
   let added = 0;
   for (const session of bundle.sessions) {
     if (!session || typeof session.code !== 'string' || !session.token || !session.pubJwk || !session.privJwk) continue;
+    const ownedSession = { ...session, ownerAccountId:accountId };
     const current = merged.get(session.code);
     if (!current) added++;
-    if (!current || (session.savedAt || 0) > (current.savedAt || 0)) merged.set(session.code, session);
+    const selected = !current || (ownedSession.savedAt || 0) > (current.savedAt || 0) ? ownedSession : current;
+    merged.set(session.code, { ...selected, ownerAccountId:accountId });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0)).slice(-maxRoomsAllowed());
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
@@ -3126,9 +3145,13 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle }) {
+function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
   return {
     code, token, myName,
+    // Omitted means this room is being created now and belongs to the
+    // currently signed-in account. Explicit null comes from a restored guest
+    // session and must remain guest-owned even while an account is signed in.
+    ownerAccountId:ownerAccountId === undefined ? (loadAccountState()?.accountId || null) : (ownerAccountId || null),
     // Where a named vault's user-typed label ends and the server-appended
     // random suffix begins, in characters — null for an anonymous room
     // (nothing to distinguish, the whole code is server-random). Only ever
@@ -3468,6 +3491,7 @@ async function persistRoom(room) {
       deleteTimerSeconds: room.deleteTimerSeconds, codeLabelLen: room.codeLabelLen,
       expectedCreatorKeyCommitment: room.expectedCreatorKeyCommitment,
       nativeRoomHandle: room.nativeRoomHandle,
+      ownerAccountId: room.ownerAccountId || null,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
@@ -6348,11 +6372,14 @@ async function createAnonymousAccount(event) {
       recoverySecret: recovery.authSecret,
       passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
       recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
-      bundle: await aesEncryptJson(masterKey, accountBundleSnapshot()),
+      bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(passwordMaterial.accountId, true)),
     };
     const result = await api('/api/account/register', payload);
     if (result.error) { toast(result.error); return; }
-    saveAccountState({ v:1, username, accountId:passwordMaterial.accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
+    // Creating an ID from guest mode intentionally adopts the vaults that
+    // were included in the successful encrypted registration bundle.
+    claimLocalVaultsForAccount(passwordMaterial.accountId);
+    saveAccountState({ v:2, username, accountId:passwordMaterial.accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
     document.getElementById('account-recovery-result').style.display = '';
@@ -6372,8 +6399,8 @@ async function loginAnonymousAccount(event) {
     const wrapped = await aesDecryptJson(material.wrapKey, result.passwordWrap);
     const masterKey = base64UrlToBytes(wrapped.masterKey);
     const bundle = await aesDecryptJson(masterKey, result.bundle);
-    importAccountBundle(bundle);
-    saveAccountState({ v:1, username, accountId:material.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
+    importAccountBundle(bundle, material.accountId);
+    saveAccountState({ v:2, username, accountId:material.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
     toast('Vaults restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Vaultlix ID or password is incorrect'); }
   finally { setAccountBusy(form, false); }
@@ -6396,14 +6423,19 @@ async function recoverAnonymousAccount(event) {
     const passwordWrap = await aesEncryptJson(material.wrapKey, { masterKey:recovered.masterKey });
     const result = await api('/api/account/recover', { accountId, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
     if (result.error) { toast(result.error); return; }
-    importAccountBundle(await aesDecryptJson(masterKey, existing.bundle));
-    saveAccountState({ v:1, username, accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
+    importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), accountId);
+    saveAccountState({ v:2, username, accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
     toast('Password changed and vaults restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
   finally { setAccountBusy(form, false); }
 }
 async function syncAnonymousAccount(showFeedback) {
   const state = loadAccountState(); if (!state) return;
+  if ((state.v || 1) < 2) {
+    claimLocalVaultsForAccount(state.accountId);
+    state.v = 2;
+    saveAccountState(state);
+  }
   const status = document.getElementById('account-sync-status');
   if (status) status.textContent = 'Encrypting vault index…';
   try {
@@ -6412,7 +6444,7 @@ async function syncAnonymousAccount(showFeedback) {
     if (result.error && result.status === 409) {
       const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
       if (latest.error) { if (status) status.textContent = latest.error; return; }
-      const added = importAccountBundle(await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle));
+      const added = importAccountBundle(await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle), state.accountId);
       state.revision = latest.revision; saveAccountState(state);
       const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
@@ -6430,9 +6462,26 @@ async function syncAnonymousAccount(showFeedback) {
 }
 async function signOutAnonymousAccount() {
   const state = loadAccountState(); if (!state) return;
-  if (!confirm('Sign out on this device? Your local vaults will remain here, but encrypted sync will stop.')) return;
+  if (!confirm('Sign out on this device? Vaults belonging to this ID will be removed from this device and restored after you sign in again.')) return;
+  // Accounts created before local ownership tags existed backed up every
+  // active vault. Adopt those untagged sessions once so legacy sign-out has
+  // the same privacy guarantee as newly created accounts.
+  if ((state.v || 1) < 2) claimLocalVaultsForAccount(state.accountId);
+  await syncAnonymousAccount(false);
+  clearTimeout(accountSyncTimer);
+  const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)?.ownerAccountId === state.accountId);
+  await Promise.allSettled(ownedCodes.map(code => {
+    const session = loadRoomSession(code);
+    return session ? api('/api/push-unsubscribe', { code:session.code, token:session.token }) : Promise.resolve();
+  }));
   try { await api('/api/account/logout', { accountId:state.accountId, sessionToken:state.sessionToken }); } catch(e) {}
-  localStorage.removeItem(ACCOUNT_STATE_KEY); updateAccountSettingsStatus(); closeAccountPanel(); toast('Signed out');
+  localStorage.removeItem(ACCOUNT_STATE_KEY);
+  clearTimeout(accountSyncTimer);
+  for (const code of ownedCodes) removeRoomFromState(code);
+  await Promise.all(ownedCodes.map(code => idbRemoveSession(code)));
+  if (!rooms.has(activeRoomCode)) saveActiveRoomCode(rooms.keys().next().value || null);
+  updateAccountSettingsStatus(); closeAccountPanel(); toast('Signed out securely');
+  setTimeout(() => location.reload(), 250);
 }
 async function copyRecoveryCode() {
   const text = document.getElementById('account-recovery-result-code').textContent;
@@ -9930,7 +9979,7 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
     room.nickname = session.nickname || null;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the
