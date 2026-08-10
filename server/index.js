@@ -28,6 +28,7 @@ const NAMED_ROOM_TTL = 4 * 24 * 60 * 60 * 1000;
 const ONE_TIME_ROOM_TTL = 24 * 60 * 60 * 1000;
 
 const rooms = new Map();
+const accounts = new Map();
 
 // ── /api/send content sizing ─────────────────────────────────────────────
 // These were measured against the client's actual code, not guessed. A
@@ -696,6 +697,45 @@ function rateLimited(key, maxCount, windowMs) {
   }
   bucket.count++;
   return bucket.count > maxCount;
+}
+
+// Anonymous account authentication uses client-derived random-looking
+// secrets, never the password or recovery code themselves.  Hash them again
+// with server-side scrypt before persistence so a stolen accounts file does
+// not contain bearer-equivalent login material.
+async function hashAccountSecret(secret) {
+  if (typeof secret !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(secret)) throw new Error('invalid account secret');
+  return hashPassword(secret);
+}
+const DUMMY_ACCOUNT_SALT = crypto.randomBytes(16);
+const DUMMY_ACCOUNT_VERIFIER = DUMMY_ACCOUNT_SALT.toString('hex') + ':' +
+  crypto.scryptSync('not-a-real-account-secret', DUMMY_ACCOUNT_SALT, 64).toString('hex');
+async function verifyAccountSecret(secret, verifier) {
+  if (typeof secret !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(secret)) return false;
+  return verifyPassword(secret, verifier);
+}
+function validAccountId(value) { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
+function validAccountSecret(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{40,96}$/.test(value); }
+function validEncryptedField(value, max) { return typeof value === 'string' && value.length >= 20 && value.length <= max; }
+function newAccountSession(account) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const now = Date.now();
+  account.sessions = (account.sessions || []).filter(s => s.expiresAt > now).slice(-4);
+  account.sessions.push({ tokenHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
+  return token;
+}
+function authenticateAccountSession(accountId, token) {
+  const account = accounts.get(accountId);
+  if (!account || typeof token !== 'string' || token.length > 128) return null;
+  const actual = crypto.createHash('sha256').update(token).digest();
+  const now = Date.now();
+  account.sessions = (account.sessions || []).filter(s => s.expiresAt > now);
+  for (const session of account.sessions) {
+    const expected = Buffer.from(session.tokenHash, 'hex');
+    if (actual.length === expected.length && crypto.timingSafeEqual(actual, expected)) return account;
+  }
+  return null;
 }
 
 // Sweep stale buckets periodically so IPs/tokens that stopped being active
@@ -1730,6 +1770,7 @@ function serveStatic(req, res) {
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
+  if (pathname === '/api/account/register' || pathname === '/api/account/sync') return 1100 * 1024;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 
@@ -1852,6 +1893,111 @@ const srv = http.createServer((req, res) => {
 });
 
 async function api(path, method, d, p, res, ip, headers) {
+
+  // Optional anonymous Vaultlix ID.  accountId is SHA-256(username) and all
+  // vault data is an AES-GCM ciphertext produced on the device.  The server
+  // can authenticate, replace and return that blob, but cannot list its
+  // vaults, codenames, room tokens or E2E private keys.
+  if (path === '/api/account/register' && method === 'POST') {
+    if (rateLimited(`account-register:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many registration attempts — try again later.', 429);
+    if (!validAccountId(d.accountId) || !validAccountSecret(d.authSecret) ||
+        !validAccountSecret(d.recoverySecret) || !validEncryptedField(d.passwordWrap, 4096) ||
+        !validEncryptedField(d.recoveryWrap, 4096) || !validEncryptedField(d.bundle, 1024 * 1024)) {
+      return resErr(res, 'Invalid account data.', 400);
+    }
+    if (accounts.has(d.accountId)) return resErr(res, 'That Vaultlix ID is unavailable.', 409);
+    const account = {
+      version: 1,
+      authVerifier: await hashAccountSecret(d.authSecret),
+      recoveryVerifier: await hashAccountSecret(d.recoverySecret),
+      passwordWrap: d.passwordWrap,
+      recoveryWrap: d.recoveryWrap,
+      bundle: d.bundle,
+      revision: 1,
+      createdAt: Date.now(), updatedAt: Date.now(), sessions: [],
+    };
+    const sessionToken = newAccountSession(account);
+    accounts.set(d.accountId, account);
+    saveAccounts();
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, sessionToken, revision: account.revision });
+  }
+
+  if (path === '/api/account/login' && method === 'POST') {
+    if (rateLimited(`account-login:${ip}`, 10, 15 * 60 * 1000)) return resErr(res, 'Too many login attempts — try again later.', 429);
+    const account = validAccountId(d.accountId) ? accounts.get(d.accountId) : null;
+    // Always perform a scrypt check, including for an unknown ID, to avoid a
+    // cheap username-existence timing oracle.
+    const verifier = account ? account.authVerifier : DUMMY_ACCOUNT_VERIFIER;
+    const valid = await verifyAccountSecret(d.authSecret, verifier);
+    if (!account || !valid) return resErr(res, 'Vaultlix ID or password is incorrect.', 403);
+    const sessionToken = newAccountSession(account);
+    saveAccounts();
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision });
+  }
+
+  if (path === '/api/account/recover' && method === 'POST') {
+    if (rateLimited(`account-recover:${ip}`, 6, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
+    const account = validAccountId(d.accountId) ? accounts.get(d.accountId) : null;
+    const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
+    const valid = await verifyAccountSecret(d.recoverySecret, verifier);
+    if (!account || !valid) return resErr(res, 'Vaultlix ID or recovery code is incorrect.', 403);
+    if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) return resErr(res, 'Invalid recovery update.', 400);
+    account.authVerifier = await hashAccountSecret(d.newAuthSecret);
+    account.passwordWrap = d.passwordWrap;
+    account.sessions = [];
+    const sessionToken = newAccountSession(account);
+    account.updatedAt = Date.now();
+    saveAccounts();
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, sessionToken, recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
+  }
+
+  if (path === '/api/account/recovery-bundle' && method === 'POST') {
+    if (rateLimited(`account-recovery-read:${ip}`, 8, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
+    const account = validAccountId(d.accountId) ? accounts.get(d.accountId) : null;
+    const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
+    const valid = await verifyAccountSecret(d.recoverySecret, verifier);
+    if (!account || !valid) return resErr(res, 'Vaultlix ID or recovery code is incorrect.', 403);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
+  }
+
+  if (path === '/api/account/sync' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix ID session has expired.', 401);
+    if (!validEncryptedField(d.bundle, 1024 * 1024)) return resErr(res, 'Encrypted vault index is invalid or too large.', 400);
+    if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Vault index changed on another device. Sign in again to merge it safely.', 409);
+    }
+    account.bundle = d.bundle;
+    account.revision++;
+    account.updatedAt = Date.now();
+    saveAccounts();
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, revision: account.revision });
+  }
+
+  if (path === '/api/account/fetch' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix ID session has expired.', 401);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true, bundle: account.bundle, revision: account.revision });
+  }
+
+  if (path === '/api/account/logout' && method === 'POST') {
+    const account = validAccountId(d.accountId) ? accounts.get(d.accountId) : null;
+    if (account && typeof d.sessionToken === 'string') {
+      const tokenHash = crypto.createHash('sha256').update(d.sessionToken).digest('hex');
+      account.sessions = (account.sessions || []).filter(s => s.tokenHash !== tokenHash);
+      saveAccounts();
+    }
+    return res200(res, { ok: true });
+  }
 
   // POST /api/friends/unlock — exchange the privately shared application
   // key for an anonymous, signed one-year entitlement. The plaintext key is
@@ -3190,6 +3336,42 @@ setInterval(() => {
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || path.join(__dirname, '.data');
 const SNAPSHOT_PATH = path.join(SNAPSHOT_DIR, 'rooms-snapshot.json');
 const SNAPSHOT_TMP_PATH = SNAPSHOT_PATH + '.tmp';
+const ACCOUNTS_PATH = path.join(SNAPSHOT_DIR, 'accounts.json');
+const ACCOUNTS_TMP_PATH = ACCOUNTS_PATH + '.tmp';
+
+// Unlike the one-shot room shutdown snapshot, anonymous account ciphertext
+// must survive every restart.  Atomic replacement prevents a power loss or
+// container kill during a write from truncating the only copy.
+function saveAccounts() {
+  try {
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
+    const data = JSON.stringify(Array.from(accounts.entries()));
+    const fd = fs.openSync(ACCOUNTS_TMP_PATH, 'w', 0o600);
+    try { fs.writeSync(fd, data); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    fs.chmodSync(ACCOUNTS_TMP_PATH, 0o600);
+    fs.renameSync(ACCOUNTS_TMP_PATH, ACCOUNTS_PATH);
+    fs.chmodSync(ACCOUNTS_PATH, 0o600);
+  } catch (e) { console.error('Anonymous account save failed:', e.message); }
+}
+
+function loadAccounts() {
+  try {
+    if (fs.existsSync(ACCOUNTS_TMP_PATH)) fs.unlinkSync(ACCOUNTS_TMP_PATH);
+    if (!fs.existsSync(ACCOUNTS_PATH)) return;
+    const parsed = JSON.parse(fs.readFileSync(ACCOUNTS_PATH, 'utf8'));
+    if (!Array.isArray(parsed)) throw new Error('invalid accounts file');
+    for (const entry of parsed) {
+      if (!Array.isArray(entry) || entry.length !== 2 || !validAccountId(entry[0])) continue;
+      const record = entry[1];
+      if (!record || record.version !== 1 || !record.authVerifier || !record.recoveryVerifier ||
+          !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
+          !validEncryptedField(record.bundle, 1024 * 1024)) continue;
+      record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
+      accounts.set(entry[0], record);
+    }
+    console.log(`Anonymous accounts loaded: ${accounts.size}.`);
+  } catch (e) { console.error('Anonymous account load failed:', e.message); }
+}
 
 function saveSnapshot() {
   try {
@@ -3392,6 +3574,7 @@ function saveAnalytics() {
   } catch (e) { console.error('Analytics save failed:', e.message); }
 }
 loadAnalytics();
+loadAccounts();
 
 if (!process.env.SNAPSHOT_DIR) {
   console.warn('SNAPSHOT_DIR not set — shutdown snapshots will use local container disk, which does NOT survive a Railway deploy (only survives if the same container process restarts in place). To make rooms survive real deploys: attach a Railway Volume to this service, mount it (e.g. at /data), and set the SNAPSHOT_DIR variable to that mount path.');
@@ -3404,6 +3587,7 @@ function shutdown(signal) {
   shuttingDown = true;
   console.log(`${signal} received — saving snapshot before exit...`);
   saveAnalytics();
+  saveAccounts();
   saveSnapshot();
   srv.close(() => process.exit(0));
   // Belt-and-suspenders: if something (a lingering keep-alive connection,

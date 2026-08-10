@@ -20,18 +20,18 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="shortcut icon" href="/favicon.ico">
 <title>Vaultlix – Anonymous End-to-End Encrypted Chat</title>
-<meta name="description" content="Vaultlix is an anonymous, end-to-end encrypted chat app. No accounts, no phone numbers — create a private vault, share the code, talk, then it's gone for good.">
+<meta name="description" content="Vaultlix is an anonymous, end-to-end encrypted chat app. No phone number or email required — use it as a guest or protect your vaults with an optional anonymous ID.">
 <link rel="canonical" href="https://vaultlix.com/">
 <meta name="google-site-verification" content="iUxelLTt2YqTWtiOtuZF7LNBiFjOhf_XIX0DuZ2VCaY" />
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Vaultlix">
 <meta property="og:title" content="Vaultlix">
-<meta property="og:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing we can read.">
+<meta property="og:description" content="Anonymous, end-to-end encrypted chat. No phone number or email required, nothing we can read.">
 <meta property="og:url" content="https://vaultlix.com">
 <meta property="og:image" content="https://vaultlix.com/icons/icon-512.png?v=20260806">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Vaultlix">
-<meta name="twitter:description" content="Anonymous, end-to-end encrypted chat. No accounts, nothing we can read.">
+<meta name="twitter:description" content="Anonymous, end-to-end encrypted chat. No phone number or email required, nothing we can read.">
 <meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260806">
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -1994,12 +1994,19 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   }
 }
 </style>
+<style>
+.account-overlay{position:fixed;inset:0;z-index:12000;background:rgba(39,29,37,.48);backdrop-filter:blur(5px);display:none;align-items:flex-end;justify-content:center;padding:0}
+.account-overlay.open{display:flex}
+.account-card{width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
+.account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
+@media(min-width:700px){.account-overlay{align-items:center;padding:24px}.account-card{border-radius:26px;padding-bottom:25px}}
+</style>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "Vaultlix",
-  "description": "Anonymous, end-to-end encrypted 1:1 chat with no accounts and nothing we can read.",
+  "description": "Anonymous, end-to-end encrypted 1:1 chat with no phone number or email required and nothing we can read.",
   "url": "https://vaultlix.com/",
   "applicationCategory": "CommunicationApplication",
   "operatingSystem": "Any (Progressive Web App)",
@@ -2011,10 +2018,10 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no accounts, no phone numbers, nothing we can read. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived." } },
+    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no phone number or email required, nothing we can read. Use it as a guest or create an optional anonymous ID for encrypted vault sync." } },
     { "@type": "Question", "name": "Do I need an account or a phone number?", "acceptedAnswer": { "@type": "Answer", "text": "No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it." } },
-    { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "There's no identity system to unmask — Vaultlix doesn't know who you are and doesn't keep a persistent profile tied to any device or account." } },
-    { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — messages and voice/video calls are both end-to-end encrypted, decrypted only on the other person's device, with keys that never leave either device." } },
+    { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "Vaultlix requires no phone number, email or real name. Optional Vaultlix IDs use an anonymous username and store only an encrypted vault bundle that the service cannot read." } },
+    { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — messages and calls are encrypted for participant devices. Optional account sync uploads vault credentials only inside a separate client-encrypted bundle that Vaultlix cannot decrypt." } },
     { "@type": "Question", "name": "What happens when I close a vault?", "acceptedAnswer": { "@type": "Answer", "text": "It's deleted immediately, for both people, along with everything inside it. Not archived, not hidden — gone." } },
     { "@type": "Question", "name": "Temporary vs. permanent vault?", "acceptedAnswer": { "@type": "Answer", "text": "A temporary vault is for one conversation and expires within a day. A permanent vault never expires — reopen it anytime with the same code." } },
     { "@type": "Question", "name": "Can more than two people join?", "acceptedAnswer": { "@type": "Answer", "text": "No — Vaultlix is built for one-to-one conversations only." } }
@@ -2102,7 +2109,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 
     <aside class="landing-assurance">
       <div class="assurance-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-      <div><strong>Built to know less</strong><span>No account. No phone number. No stored conversation history.</span></div>
+      <div><strong>Built to know less</strong><span>No phone number or email. Anonymous guest access. No readable conversation history.</span></div>
     </aside>
 
     <!-- PWA install affordance — platform-aware, populated by refreshInstallUI() -->
@@ -2119,6 +2126,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-terms')">Terms</span>
   <span style="margin:0 6px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-faq')">FAQ</span>
+  <span style="margin:0 6px">·</span>
+  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="openAccountPanel()">Anonymous ID</span>
 </div>
 
   <!-- iOS Safari persistent install banner — lives inside #s-landing so it
@@ -2344,9 +2353,9 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 </div>
 </div>
 
-<!-- VAULT INBOX — the returning-user home. It lists locally remembered
-     vaults without creating an account/contact directory. Message previews
-     are concealed by default and the preference never leaves this device. -->
+<!-- VAULT INBOX — the returning-user home. Message previews are concealed
+     by default; optional account sync wraps the vault index in client-side
+     encryption before it ever leaves this device. -->
 <div id="s-vault-list" class="screen">
   <div class="vault-list-hdr">
     <div class="vault-list-brandmark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></div>
@@ -2365,7 +2374,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     </div>
     <div class="vault-list-privacy">
       <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      Vault names and this list stay on this device. Message previews are hidden by default.
+      Vault names and credentials stay local in guest mode, or sync only inside your encrypted account bundle. Message previews are hidden by default.
     </div>
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
@@ -2409,7 +2418,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 
     <div class="legal-section">
       <h3>What we collect</h3>
-      <p>Nothing that identifies you. Vaultlix does not require an account, email address, phone number, or any personal information to use.</p>
+      <p>Nothing that identifies you in real life. Vaultlix requires no account, email address, phone number, or personal information for guest use. Optional anonymous Vaultlix IDs require only a username chosen by you.</p>
       <p>What exists on our servers is:</p>
       <ul>
         <li>The encrypted content of messages, held in server memory so it can be delivered to the other person — not "in transit" only, but for the vault's lifetime; see "How long things last" below</li>
@@ -2418,6 +2427,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
         <li>If a vault is created with a password, a one-way cryptographic hash of that password (scrypt) — never the password itself</li>
         <li>Standard server access logs generated by Railway (our hosting provider) which may include IP addresses and request timestamps</li>
         <li>Anonymous, aggregate usage counts (for example, how many vaults are created and whether they're temporary or permanent) — never linked to a specific vault, code, or IP address, kept indefinitely as running totals only, and used only to understand which features are actually useful</li>
+        <li>If you create an optional anonymous Vaultlix ID: a hash used to locate that username, memory-hard authentication verifiers, encrypted key wrappers, active-session verifiers, and an opaque encrypted bundle containing your vault credentials. We do not receive the password, recovery code, readable vault list, room tokens, codenames, or private keys.</li>
       </ul>
       <p>Your session token is created by the server when you open or join a vault, then kept on your device too — in your browser's own localStorage, so the app can restore your open vaults if you reload or reopen it, and in IndexedDB if notifications are enabled, so a push notification can be matched to the right vault without a browser tab needing to be open. It travels with each request to prove you belong to that vault. It isn't an identity, isn't tied to you, and stops working the moment the vault closes. While a vault is open the server holds it in memory, and it may briefly appear in a restart snapshot — see "How messages work" below.</p>
     </div>
@@ -2425,7 +2435,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     <div class="legal-section">
       <h3>How messages work</h3>
       <p>All messages are end-to-end encrypted using AES-256-GCM with keys generated in your browser. The server never sees your message content — only encrypted ciphertext that it cannot read.</p>
-      <p>There is no traditional database and no ongoing backups — server-side data lives only in memory during normal operation. The one exception: in the brief moments during a planned server restart (for example, a deployment), the server writes a temporary snapshot of that same in-memory data to disk purely so open vaults aren't wiped out, then reloads and deletes that snapshot the moment it's back online. This snapshot holds nothing beyond what the server already had in memory — the same encrypted message content, not new plaintext — and it does not help against an unexpected crash, only a graceful restart.</p>
+      <p>Conversation content lives only in memory during normal operation. During a planned restart, the server writes a temporary snapshot of that same in-memory data so open vaults are not wiped out, then reloads and deletes it. Optional anonymous-account records are different: their opaque encrypted vault bundles and authentication verifiers persist so a user can restore access after reinstalling. Vaultlix cannot decrypt those bundles.</p>
     </div>
 
     <div class="legal-section">
@@ -2578,22 +2588,22 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 
     <div class="legal-section">
       <h3>What is Vaultlix?</h3>
-      <p>A private chat app for two people — no accounts, no phone numbers, nothing we can read. Open a vault, share the code, talk, then close it. Everything inside is destroyed, not archived.</p>
+      <p>A private chat app for two people — no phone number or email required, nothing we can read. Continue as a guest or create an optional anonymous Vaultlix ID to preserve encrypted vault access across devices.</p>
     </div>
 
     <div class="legal-section">
       <h3>Do I need an account or a phone number?</h3>
-      <p>No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it.</p>
+      <p>No. Guest access requires no sign-up. If you want encrypted vault recovery and multi-device access, you can create an optional anonymous username with no phone number, email or real name.</p>
     </div>
 
     <div class="legal-section">
       <h3>Is it actually anonymous?</h3>
-      <p>There's no identity system to unmask — Vaultlix doesn't know who you are and doesn't keep a persistent profile tied to any device or account.</p>
+      <p>Guest mode has no account identity. Optional Vaultlix IDs use an anonymous username and an opaque encrypted vault bundle; no phone number, email or real name is collected.</p>
     </div>
 
     <div class="legal-section">
       <h3>Is it end-to-end encrypted?</h3>
-      <p>Yes — messages and voice/video calls are both end-to-end encrypted, decrypted only on the other person's device. The private key that does the decrypting is created in your browser and never leaves it.</p>
+      <p>Yes — messages and voice/video calls are end-to-end encrypted and decrypted only on participant devices. In guest mode private keys remain local. If encrypted sync is enabled, vault credentials are wrapped inside a separate device-encrypted account bundle before upload; Vaultlix cannot decrypt that bundle.</p>
     </div>
 
     <div class="legal-section">
@@ -2669,6 +2679,19 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 
     <div class="settings-divider"></div>
 
+    <div class="settings-row" onclick="openAccountPanel()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F2E8EC;color:#682C43;">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Anonymous Vaultlix ID</div>
+        <div class="settings-row-sub" id="account-settings-sub">Optional encrypted backup for all active vaults across your devices</div>
+      </div>
+      <div class="settings-status settings-status-action" id="account-settings-status">Set up</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
     <div class="settings-row" onclick="activateFriendsAccess()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
         <svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1.5 1.5-2 2L17 10l-3 3"/></svg>
@@ -2693,7 +2716,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
       </div>
       <div class="settings-row-text">
         <div class="settings-row-title" id="settings-label-title">Label this vault</div>
-        <div class="settings-row-sub">Only visible to you — never shared with your peer or the server</div>
+        <div class="settings-row-sub">Never shared with your peer; included only inside encrypted sync if you enable an anonymous ID</div>
       </div>
     </div>
 
@@ -2795,6 +2818,51 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     <div class="settings-version">
       Vaultlix · Version 1.0<br/>
       <span style="color:#C4B8AC;">Anonymous · Encrypted · Unreadable to us</span>
+    </div>
+  </div>
+</div>
+
+<div class="account-overlay" id="account-overlay" onclick="if(event.target===this)closeAccountPanel()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
+    <div class="account-head"><div><div class="account-kicker">Optional identity</div><div class="account-title" id="account-title">Anonymous Vaultlix ID</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
+    <div id="account-guest-view">
+      <div class="account-copy">Keep temporary and permanent vaults after reinstalling, and open them on another device. No email, phone number or real name is required.</div>
+      <div class="account-tabs">
+        <button class="account-tab active" data-account-tab="create" onclick="showAccountTab('create')">Create</button>
+        <button class="account-tab" data-account-tab="login" onclick="showAccountTab('login')">Sign in</button>
+        <button class="account-tab" data-account-tab="recover" onclick="showAccountTab('recover')">Recover</button>
+      </div>
+      <form class="account-form active" id="account-create-form" onsubmit="createAnonymousAccount(event)">
+        <label class="account-field"><span>Anonymous username</span><input id="account-create-username" autocomplete="username" minlength="4" maxlength="32" required placeholder="violet-river-4821"/></label>
+        <label class="account-field"><span>Password</span><input id="account-create-password" type="password" autocomplete="new-password" minlength="12" required placeholder="At least 12 characters"/></label>
+        <label class="account-field"><span>Confirm password</span><input id="account-create-confirm" type="password" autocomplete="new-password" minlength="12" required/></label>
+        <button class="account-primary" type="submit">Create protected ID</button>
+        <div class="account-note">Your current vault credentials are encrypted on this device before upload. Your password cannot be recovered by Vaultlix.</div>
+      </form>
+      <form class="account-form" id="account-login-form" onsubmit="loginAnonymousAccount(event)">
+        <label class="account-field"><span>Anonymous username</span><input id="account-login-username" autocomplete="username" required/></label>
+        <label class="account-field"><span>Password</span><input id="account-login-password" type="password" autocomplete="current-password" required/></label>
+        <button class="account-primary" type="submit">Restore my vaults</button>
+      </form>
+      <form class="account-form" id="account-recover-form" onsubmit="recoverAnonymousAccount(event)">
+        <label class="account-field"><span>Anonymous username</span><input id="account-recover-username" autocomplete="username" required/></label>
+        <label class="account-field"><span>Permanent recovery code</span><input id="account-recovery-code" autocomplete="off" required placeholder="VX-…"/></label>
+        <label class="account-field"><span>New password</span><input id="account-recover-password" type="password" autocomplete="new-password" minlength="12" required/></label>
+        <button class="account-primary" type="submit">Recover and change password</button>
+        <div class="account-note">Without the password or recovery code, nobody—including Vaultlix—can restore the encrypted account.</div>
+      </form>
+    </div>
+    <div class="account-signed" id="account-signed-view">
+      <div class="account-copy">Your active vault credentials are protected by end-to-end encrypted account sync.</div>
+      <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub" id="account-sync-status">Encrypted sync active</div></div>
+      <button class="account-secondary" onclick="syncAnonymousAccount(true)">Sync now</button>
+      <button class="account-secondary" onclick="signOutAnonymousAccount()">Sign out on this device</button>
+    </div>
+    <div id="account-recovery-result" style="display:none">
+      <div class="account-copy"><strong>Save this recovery code now.</strong> It is the only way to reset a forgotten password.</div>
+      <div class="recovery-box"><div class="recovery-code" id="account-recovery-result-code"></div></div>
+      <button class="account-primary" onclick="copyRecoveryCode()">Copy recovery code</button>
+      <button class="account-secondary" onclick="finishAccountCreation()">I saved it safely</button>
     </div>
   </div>
 </div>
@@ -2935,6 +3003,9 @@ const FRIENDS_MAX_ROOMS = 15;
 const FRIENDS_ACCESS_TOKEN_KEY = 'vaultlix_friends_access_token';
 const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
 const ACTIVE_ROOM_KEY = 'vaulted_active_room';
+const ACCOUNT_STATE_KEY = 'vaultlix_anonymous_account_v1';
+const ACCOUNT_PBKDF2_ITERATIONS = 310000;
+let accountSyncTimer = null;
 // This used to be 5 minutes, which meant closing the app/tab for longer than
 // that logged you out even from a named room meant to persist for days — the
 // server has its own authoritative TTL per room type and will reject a stale
@@ -2963,6 +3034,84 @@ function friendsAccessToken() {
 }
 
 function maxRoomsAllowed() { return friendsAccessToken() ? FRIENDS_MAX_ROOMS : STANDARD_MAX_ROOMS; }
+
+function normalizeAccountUsername(value) {
+  const username = String(value || '').trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9._-]{2,30}[a-z0-9]$/.test(username) ? username : '';
+}
+function base64UrlToBytes(value) {
+  const b64 = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
+  const bin = atob(b64); const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToBase64UrlCompact(bytes) { return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''); }
+async function sha256Bytes(value) {
+  const input = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+}
+async function accountIdFor(username) { return Array.from(await sha256Bytes('vaultlix-id-v1\0' + username)).map(b => b.toString(16).padStart(2, '0')).join(''); }
+async function derivePasswordMaterial(username, password) {
+  const accountId = await accountIdFor(username);
+  const salt = (await sha256Bytes('vaultlix-password-v1\0' + accountId)).slice(0, 16);
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations:ACCOUNT_PBKDF2_ITERATIONS }, base, 512));
+  return { accountId, authSecret: bytesToBase64UrlCompact(bits.slice(0, 32)), wrapKey: bits.slice(32, 64) };
+}
+async function recoveryMaterial(code) {
+  const clean = String(code || '').trim().replace(/^VX-/i, '').replace(/-/g, '');
+  const raw = base64UrlToBytes(clean);
+  if (raw.length !== 32) throw new Error('Invalid recovery code');
+  return {
+    authSecret: bytesToBase64UrlCompact(await sha256Bytes(new Uint8Array([...new TextEncoder().encode('auth\0'), ...raw]))),
+    wrapKey: await sha256Bytes(new Uint8Array([...new TextEncoder().encode('wrap\0'), ...raw])),
+  };
+}
+async function aesEncryptJson(keyBytes, value) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name:'AES-GCM' }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plain = new TextEncoder().encode(JSON.stringify(value));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, plain));
+  return bytesToBase64UrlCompact(new TextEncoder().encode(JSON.stringify({ v:1, iv:bytesToBase64UrlCompact(iv), ct:bytesToBase64UrlCompact(ciphertext) })));
+}
+async function aesDecryptJson(keyBytes, envelope) {
+  const wrapper = JSON.parse(new TextDecoder().decode(base64UrlToBytes(envelope)));
+  if (wrapper.v !== 1) throw new Error('Unsupported encrypted account');
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name:'AES-GCM' }, false, ['decrypt']);
+  const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:base64UrlToBytes(wrapper.iv) }, key, base64UrlToBytes(wrapper.ct));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+function loadAccountState() { try { return JSON.parse(localStorage.getItem(ACCOUNT_STATE_KEY) || 'null'); } catch(e) { return null; } }
+function saveAccountState(state) { localStorage.setItem(ACCOUNT_STATE_KEY, JSON.stringify(state)); updateAccountSettingsStatus(); }
+function accountBundleSnapshot() {
+  const sessions = [];
+  for (const code of loadRoomsIndex()) {
+    try { const session = JSON.parse(localStorage.getItem(roomStorageKey(code)) || 'null'); if (session) sessions.push(session); } catch(e) {}
+  }
+  return { v:1, savedAt:Date.now(), activeRoomCode:loadActiveRoomCode(), sessions };
+}
+function importAccountBundle(bundle) {
+  if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid vault backup');
+  const merged = new Map();
+  for (const code of loadRoomsIndex()) { const local = loadRoomSession(code); if (local) merged.set(code, local); }
+  let added = 0;
+  for (const session of bundle.sessions) {
+    if (!session || typeof session.code !== 'string' || !session.token || !session.pubJwk || !session.privJwk) continue;
+    const current = merged.get(session.code);
+    if (!current) added++;
+    if (!current || (session.savedAt || 0) > (current.savedAt || 0)) merged.set(session.code, session);
+  }
+  const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0)).slice(-maxRoomsAllowed());
+  for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
+  saveRoomsIndex(sessions.map(s => s.code));
+  if (bundle.activeRoomCode && merged.has(bundle.activeRoomCode)) saveActiveRoomCode(bundle.activeRoomCode);
+  return added;
+}
+function scheduleAccountSync() {
+  if (!loadAccountState()) return;
+  clearTimeout(accountSyncTimer);
+  accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
+}
 
 function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle }) {
   return {
@@ -3318,6 +3467,7 @@ async function persistRoom(room) {
     const idx = loadRoomsIndex().filter(c => c !== room.code);
     idx.push(room.code);
     saveRoomsIndex(idx);
+    scheduleAccountSync();
   } catch(e) {}
 }
 // Lightweight update called every poll — deliberately skips the async JWK
@@ -3339,6 +3489,7 @@ function persistRoomSeq(room) {
     existing.lastDeletionSeq = room.lastDeletionSeq;
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
+    scheduleAccountSync();
   } catch(e) {}
 }
 // Same lightweight read-modify-write as persistRoomSeq — patches only the
@@ -3354,6 +3505,7 @@ function persistReconnectMeta(room) {
     existing.reconnectCount = room.reconnectCount;
     existing.lastReconnectCountedAt = room.lastReconnectCountedAt;
     localStorage.setItem(key, JSON.stringify(existing));
+    scheduleAccountSync();
   } catch(e) {}
 }
 // Same lightweight read-modify-write as persistRoomSeq, but for the delete
@@ -3372,16 +3524,18 @@ function persistDeleteLedger(room) {
     for (const [id, at] of room.deleteLedger) if (at >= cutoff) out[id] = at;
     existing.deleteLedger = out;
     localStorage.setItem(key, JSON.stringify(existing));
+    scheduleAccountSync();
   } catch(e) {}
 }
 function clearRoomStorage(code) {
   try { localStorage.removeItem(roomStorageKey(code)); } catch(e) {}
   saveRoomsIndex(loadRoomsIndex().filter(c => c !== code));
+  scheduleAccountSync();
 }
 function loadRoomSession(code) {
   try {
     const s = JSON.parse(localStorage.getItem(roomStorageKey(code)) || 'null');
-    if (!s || Date.now() - s.savedAt > SESSION_TTL) { clearRoomStorage(code); return null; }
+    if (!s || (!s.persistent && Date.now() - s.savedAt > SESSION_TTL)) { clearRoomStorage(code); return null; }
     return s;
   } catch(e) { return null; }
 }
@@ -5696,7 +5850,9 @@ async function api(path, data = null) {
     ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data) }
     : { method:'GET' };
   const res = await fetch(path, opts);
-  return res.json();
+  const body = await res.json();
+  if (!res.ok && body && typeof body === 'object') body.status = res.status;
+  return body;
 }
 
 // ── SCREEN MANAGEMENT ───────────────────────────────────────────────────
@@ -6093,6 +6249,7 @@ function loadSettingsState() {
   } catch (e) {}
   updatePushStatus();
   updateFriendsAccessStatus();
+  updateAccountSettingsStatus();
 }
 
 function updateFriendsAccessStatus() {
@@ -6126,6 +6283,149 @@ async function activateFriendsAccess() {
     toast('Could not verify the access key — try again');
   }
 }
+
+function updateAccountSettingsStatus() {
+  const state = loadAccountState();
+  const status = document.getElementById('account-settings-status');
+  const sub = document.getElementById('account-settings-sub');
+  if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
+  if (sub) sub.textContent = state ? `${state.username} · encrypted vault sync` : 'Optional encrypted backup for all active vaults across your devices';
+}
+function openAccountPanel() {
+  closeSettings();
+  const state = loadAccountState();
+  document.getElementById('account-guest-view').style.display = state ? 'none' : '';
+  document.getElementById('account-signed-view').classList.toggle('open', !!state);
+  document.getElementById('account-recovery-result').style.display = 'none';
+  if (state) document.getElementById('account-signed-name').textContent = state.username;
+  document.getElementById('account-overlay').classList.add('open');
+}
+function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
+function showAccountTab(name) {
+  document.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
+  document.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
+}
+function setAccountBusy(form, busy) {
+  const button = form.querySelector('button[type="submit"]');
+  if (!button) return;
+  if (!button.dataset.label) button.dataset.label = button.textContent;
+  button.disabled = busy; button.textContent = busy ? 'Protecting…' : button.dataset.label;
+}
+function formatRecoveryCode(rawBytes) {
+  const compact = bytesToBase64UrlCompact(rawBytes);
+  return 'VX-' + (compact.match(/.{1,6}/g) || [compact]).join('-');
+}
+async function createAnonymousAccount(event) {
+  event.preventDefault(); const form = event.currentTarget;
+  const username = normalizeAccountUsername(document.getElementById('account-create-username').value);
+  const password = document.getElementById('account-create-password').value;
+  if (!username) { toast('Use 4–32 lowercase letters, numbers, dots, dashes or underscores'); return; }
+  if (password.length < 12) { toast('Use a password of at least 12 characters'); return; }
+  if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
+  setAccountBusy(form, true);
+  try {
+    const passwordMaterial = await derivePasswordMaterial(username, password);
+    const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
+    const recoveryCode = formatRecoveryCode(recoveryBytes);
+    const recovery = await recoveryMaterial(recoveryCode);
+    const masterKey = crypto.getRandomValues(new Uint8Array(32));
+    const payload = {
+      accountId: passwordMaterial.accountId,
+      authSecret: passwordMaterial.authSecret,
+      recoverySecret: recovery.authSecret,
+      passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
+      recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
+      bundle: await aesEncryptJson(masterKey, accountBundleSnapshot()),
+    };
+    const result = await api('/api/account/register', payload);
+    if (result.error) { toast(result.error); return; }
+    saveAccountState({ v:1, username, accountId:passwordMaterial.accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
+    document.getElementById('account-guest-view').style.display = 'none';
+    document.getElementById('account-recovery-result-code').textContent = recoveryCode;
+    document.getElementById('account-recovery-result').style.display = '';
+  } catch (e) { console.error(e); toast('Could not create the protected ID'); }
+  finally { setAccountBusy(form, false); }
+}
+async function loginAnonymousAccount(event) {
+  event.preventDefault(); const form = event.currentTarget;
+  const username = normalizeAccountUsername(document.getElementById('account-login-username').value);
+  const password = document.getElementById('account-login-password').value;
+  if (!username) { toast('Enter a valid Vaultlix ID'); return; }
+  setAccountBusy(form, true);
+  try {
+    const material = await derivePasswordMaterial(username, password);
+    const result = await api('/api/account/login', { accountId:material.accountId, authSecret:material.authSecret });
+    if (result.error) { toast(result.error); return; }
+    const wrapped = await aesDecryptJson(material.wrapKey, result.passwordWrap);
+    const masterKey = base64UrlToBytes(wrapped.masterKey);
+    const bundle = await aesDecryptJson(masterKey, result.bundle);
+    importAccountBundle(bundle);
+    saveAccountState({ v:1, username, accountId:material.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
+    toast('Vaults restored'); setTimeout(() => location.reload(), 350);
+  } catch (e) { console.error(e); toast('Vaultlix ID or password is incorrect'); }
+  finally { setAccountBusy(form, false); }
+}
+async function recoverAnonymousAccount(event) {
+  event.preventDefault(); const form = event.currentTarget;
+  const username = normalizeAccountUsername(document.getElementById('account-recover-username').value);
+  const code = document.getElementById('account-recovery-code').value;
+  const password = document.getElementById('account-recover-password').value;
+  if (!username || password.length < 12) { toast('Check the ID and use a 12-character password'); return; }
+  setAccountBusy(form, true);
+  try {
+    const recovery = await recoveryMaterial(code);
+    const accountId = await accountIdFor(username);
+    const existing = await api('/api/account/recovery-bundle', { accountId, recoverySecret:recovery.authSecret });
+    if (existing.error) { toast(existing.error); return; }
+    const recovered = await aesDecryptJson(recovery.wrapKey, existing.recoveryWrap);
+    const masterKey = base64UrlToBytes(recovered.masterKey);
+    const material = await derivePasswordMaterial(username, password);
+    const passwordWrap = await aesEncryptJson(material.wrapKey, { masterKey:recovered.masterKey });
+    const result = await api('/api/account/recover', { accountId, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
+    if (result.error) { toast(result.error); return; }
+    importAccountBundle(await aesDecryptJson(masterKey, existing.bundle));
+    saveAccountState({ v:1, username, accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
+    toast('Password changed and vaults restored'); setTimeout(() => location.reload(), 350);
+  } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
+  finally { setAccountBusy(form, false); }
+}
+async function syncAnonymousAccount(showFeedback) {
+  const state = loadAccountState(); if (!state) return;
+  const status = document.getElementById('account-sync-status');
+  if (status) status.textContent = 'Encrypting vault index…';
+  try {
+    const bundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
+    const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle });
+    if (result.error && result.status === 409) {
+      const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
+      if (latest.error) { if (status) status.textContent = latest.error; return; }
+      const added = importAccountBundle(await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle));
+      state.revision = latest.revision; saveAccountState(state);
+      const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
+      const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
+      if (retry.error) { if (status) status.textContent = retry.error; return; }
+      state.revision = retry.revision; saveAccountState(state);
+      if (status) status.textContent = added ? `${added} vault${added===1?'':'s'} received · reopen to view` : 'Encrypted sync complete';
+      if (showFeedback) toast(added ? 'Vaults merged — reopen Vaultlix to view them' : 'Vaults synced securely');
+      return;
+    }
+    if (result.error) { if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return; }
+    state.revision = result.revision; saveAccountState(state);
+    if (status) status.textContent = `Encrypted sync complete · ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+    if (showFeedback) toast('Vaults synced securely');
+  } catch (e) { if (status) status.textContent = 'Sync paused — will retry'; if (showFeedback) toast('Could not sync right now'); }
+}
+async function signOutAnonymousAccount() {
+  const state = loadAccountState(); if (!state) return;
+  if (!confirm('Sign out on this device? Your local vaults will remain here, but encrypted sync will stop.')) return;
+  try { await api('/api/account/logout', { accountId:state.accountId, sessionToken:state.sessionToken }); } catch(e) {}
+  localStorage.removeItem(ACCOUNT_STATE_KEY); updateAccountSettingsStatus(); closeAccountPanel(); toast('Signed out');
+}
+async function copyRecoveryCode() {
+  const text = document.getElementById('account-recovery-result-code').textContent;
+  try { await navigator.clipboard.writeText(text); toast('Recovery code copied'); } catch(e) { toast('Press and hold the code to copy it'); }
+}
+function finishAccountCreation() { document.getElementById('account-recovery-result').style.display='none'; document.getElementById('account-signed-view').classList.add('open'); const state=loadAccountState(); document.getElementById('account-signed-name').textContent=state?.username||'Protected ID'; }
 
 // Always derived live from the platform, never from a stored flag — there's
 // nothing to "load" here, just the current truth at the moment the panel

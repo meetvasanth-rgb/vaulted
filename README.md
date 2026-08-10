@@ -3,7 +3,7 @@
 Two people. One conversation. Disappears when you leave.
 
 ## What this is
-- Anonymous text chat — no accounts, no phone numbers, no emails
+- Anonymous text chat — no phone number or email required; guest access plus optional encrypted anonymous-ID sync
 - Secret room codes — share a 3-word code, connect instantly
 - Server memory only, with one narrow exception — a brief snapshot written to disk during a planned restart, deleted the moment it reloads
 - Auto-erases — room closes when either person leaves
