@@ -1751,8 +1751,13 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .landing-mark svg{width:23px;height:23px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #s-landing .landing-wordmark{position:static!important;font-family:'Manrope',sans-serif!important;font-size:22px!important;font-weight:700!important;line-height:1.05!important;letter-spacing:-.025em!important;color:#271D25!important}
 #s-landing .landing-brand-note{font:600 9px/1.4 'Manrope',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#8B7A83;margin-top:5px}
+#s-landing .landing-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-shrink:0}
 #s-landing .landing-trust-pill{display:flex;align-items:center;gap:7px;border:1px solid #DFD2D7;border-radius:999px;background:rgba(255,255,255,.78);padding:8px 11px;font:650 10px/1 'Manrope',sans-serif;letter-spacing:.05em;color:#54474E;box-shadow:0 6px 18px rgba(39,29,37,.05)}
 #s-landing .landing-trust-pill span{width:7px;height:7px;border-radius:50%;background:#71947C;box-shadow:0 0 0 4px rgba(113,148,124,.13)}
+#s-landing .landing-account-btn{height:38px;max-width:150px;border:1px solid #682C43;border-radius:999px;background:#682C43;color:#fff;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 13px;cursor:pointer;box-shadow:0 8px 20px rgba(104,44,67,.18);font:750 11px/1 'Manrope',sans-serif}
+#s-landing .landing-account-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+#s-landing .landing-account-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#s-landing .landing-account-btn.signed-in{background:#fff;color:#682C43;border-color:#DCCDD2;box-shadow:0 6px 18px rgba(39,29,37,.07)}
 #s-landing .landing-hero{max-width:510px;margin-bottom:42px}
 #s-landing .logo-rule{width:42px!important;height:4px!important;margin:0 0 16px!important;border-radius:5px;background:#C87588!important}
 #s-landing .logo-sub{margin:0 0 13px!important;font:700 10px/1.4 'Manrope',sans-serif!important;letter-spacing:.17em!important;text-transform:uppercase;color:#682C43!important}
@@ -1798,7 +1803,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   #s-landing{padding-left:15px;padding-right:15px}
   #s-landing .landing-header{margin-bottom:39px}
   #s-landing .landing-mark{width:44px!important;height:44px!important;border-radius:14px!important}
-  #s-landing .landing-trust-pill{padding:7px 9px;font-size:9px}
+  #s-landing .landing-trust-pill{display:none}
+  #s-landing .landing-account-btn{height:40px;max-width:118px;padding:0 11px;font-size:10px}
   #s-landing .landing-hero{margin-bottom:34px}
   #s-landing .landing-title{font-size:36px;line-height:1.06}
   #s-landing .tagline{font-size:15px!important}
@@ -2073,7 +2079,13 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
           <div class="landing-brand-note">Private by design</div>
         </div>
       </div>
-      <div class="landing-trust-pill"><span></span> Encrypted</div>
+      <div class="landing-header-actions">
+        <div class="landing-trust-pill"><span></span> Encrypted</div>
+        <button class="landing-account-btn" id="landing-account-btn" type="button" onclick="openAccountPanel()" aria-label="Sign in to Vaultlix" title="Sign in to Vaultlix">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>
+          <span class="landing-account-label" id="landing-account-label">Sign in</span>
+        </button>
+      </div>
     </header>
 
     <section class="landing-hero">
@@ -2133,7 +2145,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   <span style="margin:0 6px">·</span>
   <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-faq')">FAQ</span>
   <span style="margin:0 6px">·</span>
-  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="openAccountPanel()">Anonymous ID</span>
+  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="openAccountPanel()">Sign in</span>
 </div>
 
   <!-- iOS Safari persistent install banner — lives inside #s-landing so it
@@ -6325,8 +6337,16 @@ function updateAccountSettingsStatus() {
   const state = loadAccountState();
   const status = document.getElementById('account-settings-status');
   const sub = document.getElementById('account-settings-sub');
+  const landingButton = document.getElementById('landing-account-btn');
+  const landingLabel = document.getElementById('landing-account-label');
   if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
   if (sub) sub.textContent = state ? `${state.username} · encrypted vault sync` : 'Optional encrypted backup for all active vaults across your devices';
+  if (landingLabel) landingLabel.textContent = state ? state.username : 'Sign in';
+  if (landingButton) {
+    landingButton.classList.toggle('signed-in', !!state);
+    landingButton.setAttribute('aria-label', state ? `Open account for ${state.username}` : 'Sign in to Vaultlix');
+    landingButton.title = state ? `Signed in as ${state.username}` : 'Sign in to Vaultlix';
+  }
 }
 function openAccountPanel() {
   closeSettings();
