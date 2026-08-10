@@ -489,7 +489,14 @@ function hasPushDestination(member) {
 }
 
 function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = 'push' } = {}) {
-  if (member.pushSub) {
+  const hasNativeDestination = !!(member && (member.apnsToken || member.fcmToken));
+  // A synced vault credential can carry the same room member token from a
+  // browser/PWA into the native app. In that case the server may still have
+  // the older Web Push subscription as well as the newer APNs/FCM token.
+  // Sending down both channels produces two OS alerts for one message on the
+  // same phone. Native delivery is authoritative whenever it is registered;
+  // Web Push remains the fallback for browser-only members.
+  if (member.pushSub && !hasNativeDestination) {
     webpush.sendNotification(member.pushSub, payload, { urgency, TTL, timeout: PUSH_TIMEOUT_MS }).catch(err => {
       if (err.statusCode === 404 || err.statusCode === 410) member.pushSub = null;
       else console.warn(`${label} web push failed:`, err.statusCode, err.body || err.message);
@@ -2342,6 +2349,13 @@ async function api(path, method, d, p, res, ip, headers) {
         setTimeout(() => {
           const rec = room.msgs.find(x => x.id === msgId);
           if (!rec || rec.deliveredAt) return; // delivered (or trimmed/gone) already
+          // Native alert pushes cannot run app code on receipt to mark this
+          // message delivered while the phone is locked. APNs/FCM provider
+          // acceptance is therefore the delivery signal; retrying solely
+          // because deliveredAt is unset creates a guaranteed second alert.
+          // Browser Web Push can acknowledge from sw.js, so it keeps this
+          // guarded retry for genuinely missed deliveries.
+          if (mb.apnsToken || mb.fcmToken) return;
           if (!hasPushDestination(mb)) return; // already known-dead from the first attempt
           sendMemberPush(mb, payload, { urgency: 'high', TTL: 30, label: 'message retry' });
         }, 6000);
