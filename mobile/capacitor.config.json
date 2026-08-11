@@ -1,0 +1,14 @@
+{
+  "appId": "com.vaultlix.app",
+  "appName": "Vaultlix",
+  "webDir": "www",
+  "server": {
+    "url": "https://vaultlix.com",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#1A1916"
+  }
+}

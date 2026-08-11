@@ -1,0 +1,29 @@
+.DS_Store
+
+# Dependencies and generated output
+node_modules/
+mobile/node_modules/
+mobile/android/.gradle/
+mobile/android/**/build/
+mobile/ios/**/DerivedData/
+mobile/ios/**/SourcePackages/
+
+# Local release/archive material (preserved on this Mac, never committed)
+releases/
+local-archive/
+
+# Credentials and environment files
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p8
+*service-account*.json
+firebase-admin.json
+
+# Runtime persistence
+.data/
+rooms-snapshot.json
+accounts.json
+analytics.json
