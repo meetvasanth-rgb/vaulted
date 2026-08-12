@@ -142,6 +142,10 @@ public class IncomingCallActivity extends Activity {
         cancelNotification();
         NativeCallActions.decline(this, callId, null);
         finish();
+        // The vault inbox is already resumed underneath this activity. Avoid
+        // Android's default close fade briefly compositing this call surface
+        // over the live WebView after the user has declined.
+        overridePendingTransition(0, 0);
     }
 
     private void cancelNotification() {
