@@ -308,8 +308,6 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .vault-list-count{font-size:27px;font-weight:750;letter-spacing:-.035em;color:#271D25}
 .vault-preview-toggle{border:1px solid #E5D8DC;background:#fff;border-radius:18px;padding:8px 11px;color:#682C43;font:600 11px/1 inherit;cursor:pointer;white-space:nowrap}
 .vault-preview-toggle[aria-pressed="true"]{background:#F0E5E8;border-color:#C87588}
-.vault-list-privacy{display:flex;align-items:center;gap:8px;background:#F1EAE7;border-radius:13px;padding:10px 12px;color:#62575E;font-size:11.5px;line-height:1.4;margin-bottom:15px}
-.vault-list-privacy svg{width:16px;height:16px;fill:none;stroke:#71947C;stroke-width:2;flex-shrink:0}
 .vault-list-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #E8DDE0;border-radius:22px;box-shadow:0 12px 32px rgba(67,35,48,.07)}
 .vault-list-empty{padding:52px 26px;text-align:center;color:#746A70;font-size:14px;line-height:1.55}
 .vault-list-empty strong{display:block;color:#271D25;font-size:19px;margin-bottom:6px}
@@ -2412,10 +2410,6 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     <div class="vault-list-toolbar">
       <div><div class="vault-list-eyebrow">Your private spaces</div><div class="vault-list-count" id="vault-list-count">Your vaults</div></div>
       <button class="vault-preview-toggle" id="vault-preview-toggle" type="button" aria-pressed="false" onclick="toggleVaultPreviews()">Previews hidden</button>
-    </div>
-    <div class="vault-list-privacy">
-      <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      Vault names and credentials stay local in guest mode, or sync only inside your encrypted account bundle. Message previews are hidden by default.
     </div>
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
