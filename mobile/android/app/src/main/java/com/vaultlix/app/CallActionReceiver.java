@@ -18,6 +18,6 @@ public class CallActionReceiver extends BroadcastReceiver {
             manager.cancel(intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0));
         }
         final PendingResult pendingResult = goAsync();
-        NativeCallActions.decline(intent.getStringExtra(EXTRA_CALL_ID), pendingResult::finish);
+        NativeCallActions.decline(context, intent.getStringExtra(EXTRA_CALL_ID), pendingResult::finish);
     }
 }

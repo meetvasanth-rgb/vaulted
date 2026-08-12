@@ -140,7 +140,7 @@ public class IncomingCallActivity extends Activity {
 
     private void declineCall() {
         cancelNotification();
-        NativeCallActions.decline(callId, null);
+        NativeCallActions.decline(this, callId, null);
         finish();
     }
 
