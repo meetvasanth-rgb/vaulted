@@ -21,9 +21,11 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_INVITE_URI = "inviteUri";
     public static final String EXTRA_CALLER = "caller";
     public static final String EXTRA_AUTO_ANSWER = "autoAnswer";
+    public static final String EXTRA_CALL_ID = "callId";
 
     private String inviteUri;
     private int notificationId;
+    private String callId;
     private boolean answerInProgress;
     private static WeakReference<IncomingCallActivity> activeActivity = new WeakReference<>(null);
 
@@ -59,6 +61,7 @@ public class IncomingCallActivity extends Activity {
 
     private void handleIntent(Intent intent) {
         inviteUri = intent.getStringExtra(EXTRA_INVITE_URI);
+        callId = intent.getStringExtra(EXTRA_CALL_ID);
         notificationId = intent.getIntExtra(
                 VaultlixMessagingService.EXTRA_CALL_NOTIFICATION_ID,
                 Integer.MIN_VALUE
@@ -137,6 +140,7 @@ public class IncomingCallActivity extends Activity {
 
     private void declineCall() {
         cancelNotification();
+        NativeCallActions.decline(callId, null);
         finish();
     }
 

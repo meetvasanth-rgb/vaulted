@@ -8,6 +8,7 @@ import android.content.Intent;
 public class CallActionReceiver extends BroadcastReceiver {
     public static final String ACTION_DECLINE = "com.vaultlix.app.DECLINE_CALL";
     public static final String EXTRA_NOTIFICATION_ID = "notificationId";
+    public static final String EXTRA_CALL_ID = "callId";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -16,5 +17,7 @@ public class CallActionReceiver extends BroadcastReceiver {
         if (manager != null) {
             manager.cancel(intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0));
         }
+        final PendingResult pendingResult = goAsync();
+        NativeCallActions.decline(intent.getStringExtra(EXTRA_CALL_ID), pendingResult::finish);
     }
 }

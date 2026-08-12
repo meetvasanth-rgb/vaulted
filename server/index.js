@@ -1901,6 +1901,55 @@ const srv = http.createServer((req, res) => {
 
 async function api(path, method, d, p, res, ip, headers) {
 
+  // Native Android can reject an incoming call before its WebView/signalling
+  // socket has opened. The random server-issued call ID is a short-lived
+  // capability scoped to the one currently ringing call; no room code,
+  // membership token or E2E material is exposed to this endpoint.
+  if (path === '/api/native-call/decline' && method === 'POST') {
+    if (rateLimited(`native-call-decline:${ip}`, 30, 60 * 1000)) return resErr(res, 'Too many call actions.', 429);
+    const callId = typeof d.callId === 'string' ? d.callId.trim() : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(callId)) {
+      return resErr(res, 'Invalid call action.', 400);
+    }
+
+    let matchedRoom = null;
+    for (const room of rooms.values()) {
+      if (room.nativeCallId === callId) { matchedRoom = room; break; }
+    }
+    // Deliberately return the same result for an expired/already-declined ID:
+    // native retries stay idempotent and this is not a call-ID oracle.
+    if (!matchedRoom) return res200(res, { ok: true });
+
+    const calleeToken = matchedRoom.nativeCalleeToken;
+    matchedRoom.ringingUntil = 0;
+    matchedRoom.activeCall = false;
+    matchedRoom.nativeCallId = null;
+    matchedRoom.nativeCalleeToken = null;
+    matchedRoom.lastActivity = Date.now();
+
+    // This control frame contains no message/call content. It is delivered
+    // only over the already authenticated socket belonging to the other
+    // member of this 1:1 vault. The browser accepts it only while it is the
+    // outgoing caller, then stops its local ringtone immediately.
+    for (const [memberToken] of matchedRoom.members) {
+      if (memberToken === calleeToken) continue;
+      // Deliver to both owners when both exist. A stale native incoming-call
+      // socket must not prevent the foreground WebView that placed this
+      // outgoing call from receiving the terminal state.
+      const callerSockets = new Set([
+        nativeCallSignalingSockets.get(memberToken),
+        signalingSockets.get(memberToken),
+      ]);
+      for (const callerSocket of callerSockets) {
+        if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
+          try { callerSocket.send(JSON.stringify({ type: 'native-call-declined' })); } catch (e) {}
+        }
+      }
+      break;
+    }
+    return res200(res, { ok: true });
+  }
+
   // Optional anonymous Vaultlix ID.  accountId is SHA-256(username) and all
   // vault data is an AES-GCM ciphertext produced on the device.  The server
   // can authenticate, replace and return that blob, but cannot list its
@@ -3217,7 +3266,10 @@ wss.on('connection', (ws) => {
             const caller = room2.members.get(token);
             const nativeCallId = crypto.randomUUID();
             room2.nativeCallId = nativeCallId;
-            room2.nativeCalleeToken = peerMember.voipToken ? tok : null;
+            // Retain the callee member token for both native platforms. It is
+            // server-side room state only and lets a native Android decline
+            // identify the caller without exposing room credentials.
+            room2.nativeCalleeToken = tok;
             // code rides along so tapping the notification (see sw.js's
             // notificationclick) can jump straight to the room the call is
             // actually in, rather than whichever room the app happens to open

@@ -4263,6 +4263,16 @@ function connectSignaling(room) {
   ws.onmessage = async (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    // Android may reject from its native notification/activity before its
+    // encrypted WebView signalling socket exists. The server sends this
+    // content-free control only to the authenticated peer socket for the
+    // matching active call. Never let it affect an incoming or active call.
+    if (msg && msg.type === 'native-call-declined') {
+      if (room.callState === 'outgoing') {
+        endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
+      }
+      return;
+    }
     if (!msg || typeof msg.type !== 'string' || typeof msg.envelope !== 'string') return;
     // The peer reloading resets THEIR signalSeqOut back to 1 — if my own
     // signalSeqIn is still sitting at a high watermark from earlier in this
