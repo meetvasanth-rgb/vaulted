@@ -1,10 +1,14 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -30,6 +34,11 @@ public class LockedCallActivity extends BridgeActivity {
     private WebView webView;
     private View loadingView;
     private String roomCode;
+    private AudioManager audioManager;
+    private int previousAudioMode = AudioManager.MODE_NORMAL;
+    private boolean previousSpeakerphoneOn;
+    private AudioDeviceInfo previousCommunicationDevice;
+    private boolean audioRouteConfigured;
     private static WeakReference<LockedCallActivity> activeActivity = new WeakReference<>(null);
 
     @Override
@@ -41,6 +50,7 @@ public class LockedCallActivity extends BridgeActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         super.onCreate(savedInstanceState);
         activeActivity = new WeakReference<>(this);
+        configureCallAudioRoute();
 
         webView = getBridge().getWebView();
         webView.setAlpha(0f);
@@ -64,8 +74,75 @@ public class LockedCallActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        restoreAudioRoute();
         if (activeActivity.get() == this) activeActivity.clear();
         super.onDestroy();
+    }
+
+    /**
+     * WebRTC inside an Android WebView commonly starts on the media output,
+     * which is the loudspeaker. Treat this screen as a voice call instead:
+     * preserve an already-selected Bluetooth route, otherwise use the phone's
+     * earpiece. The previous process audio state is restored when the dedicated
+     * call activity closes.
+     */
+    @SuppressWarnings("deprecation")
+    private void configureCallAudioRoute() {
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) return;
+
+        previousAudioMode = audioManager.getMode();
+        previousSpeakerphoneOn = audioManager.isSpeakerphoneOn();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            previousCommunicationDevice = audioManager.getCommunicationDevice();
+        }
+
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            if (!isBluetoothDevice(current)) {
+                AudioDeviceInfo earpiece = findCommunicationDevice(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE);
+                if (earpiece != null) audioManager.setCommunicationDevice(earpiece);
+            }
+        } else {
+            audioManager.setSpeakerphoneOn(false);
+        }
+        audioRouteConfigured = true;
+    }
+
+    private AudioDeviceInfo findCommunicationDevice(int type) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || audioManager == null) return null;
+        for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+            if (device.getType() == type) return device;
+        }
+        return null;
+    }
+
+    private boolean isBluetoothDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void restoreAudioRoute() {
+        if (!audioRouteConfigured || audioManager == null) return;
+        audioRouteConfigured = false;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (previousCommunicationDevice != null) {
+                audioManager.setCommunicationDevice(previousCommunicationDevice);
+            } else {
+                audioManager.clearCommunicationDevice();
+            }
+        } else {
+            audioManager.setSpeakerphoneOn(previousSpeakerphoneOn);
+        }
+        audioManager.setMode(previousAudioMode);
     }
 
     public static void finishActiveCall() {
