@@ -10,6 +10,8 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -39,6 +41,10 @@ public class LockedCallActivity extends BridgeActivity {
     private boolean previousSpeakerphoneOn;
     private AudioDeviceInfo previousCommunicationDevice;
     private boolean audioRouteConfigured;
+    private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
+    private final Runnable enforceConnectedAudioRoute = () -> {
+        if (!isFinishing() && !isDestroyed()) applyPreferredCallAudioRoute();
+    };
     private static WeakReference<LockedCallActivity> activeActivity = new WeakReference<>(null);
 
     @Override
@@ -74,6 +80,7 @@ public class LockedCallActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
         restoreAudioRoute();
         if (activeActivity.get() == this) activeActivity.clear();
         super.onDestroy();
@@ -99,6 +106,13 @@ public class LockedCallActivity extends BridgeActivity {
 
         audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
 
+        applyPreferredCallAudioRoute();
+        audioRouteConfigured = true;
+    }
+
+    @SuppressWarnings("deprecation")
+    private void applyPreferredCallAudioRoute() {
+        if (audioManager == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo current = audioManager.getCommunicationDevice();
             if (!isBluetoothDevice(current)) {
@@ -108,7 +122,16 @@ public class LockedCallActivity extends BridgeActivity {
         } else {
             audioManager.setSpeakerphoneOn(false);
         }
-        audioRouteConfigured = true;
+    }
+
+    private void enforceAudioRouteAfterWebRtcConnects() {
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        enforceConnectedAudioRoute.run();
+        // WebView/WebRTC audio initialization is OEM-dependent. Some devices
+        // replace the communication route shortly after playback begins, so
+        // reassert it after that initialization window as well.
+        audioRouteHandler.postDelayed(enforceConnectedAudioRoute, 300);
+        audioRouteHandler.postDelayed(enforceConnectedAudioRoute, 1_000);
     }
 
     private AudioDeviceInfo findCommunicationDevice(int type) {
@@ -209,9 +232,10 @@ public class LockedCallActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void connectedHaptic() {
-            runOnUiThread(() -> getWindow().getDecorView().performHapticFeedback(
-                    HapticFeedbackConstants.CONFIRM
-            ));
+            runOnUiThread(() -> {
+                enforceAudioRouteAfterWebRtcConnects();
+                getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+            });
         }
 
         @JavascriptInterface
