@@ -2014,6 +2014,29 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     #s-chat #msg-input{font-size:17px!important}
   }
 }
+/* Android 15+ draws target-SDK 35+ apps edge-to-edge. Some OEM WebViews,
+   notably ColorOS, still report env(safe-area-inset-*) as zero. The native
+   bridge supplies the real system-bar insets so the header and composer do
+   not sit underneath Android controls. */
+html.vaultlix-native-android #s-chat .chat-hdr{
+  min-height:calc(72px + var(--android-safe-area-top,0px))!important;
+  padding-top:calc(10px + var(--android-safe-area-top,0px))!important;
+}
+html.vaultlix-native-android #s-chat .chat-ftr{
+  padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+}
+/* The shared 8–11px compact labels become physically undersized on 320-dpi
+   WebViews. Restrict this pass by resolution so high-density OnePlus and
+   Samsung layouts retain their existing proportions. */
+@media(max-resolution:2.25dppx) and (max-width:430px){
+  html.vaultlix-native-android #s-chat .chat-home-btn{font-size:10px}
+  html.vaultlix-native-android #s-chat .chat-hdr-presence{font-size:12px}
+  html.vaultlix-native-android #s-chat .e2e-bar,
+  html.vaultlix-native-android #s-chat .timer-bar-label::before,
+  html.vaultlix-native-android #s-chat #timer-bar-select{font-size:12.5px!important}
+  html.vaultlix-native-android #s-chat .sys-msg{font-size:13px!important}
+  html.vaultlix-native-android #s-chat .msg-time{font-size:11px!important}
+}
 </style>
 <style>
 .account-overlay{position:fixed;inset:0;z-index:12000;background:rgba(39,29,37,.48);backdrop-filter:blur(5px);display:none;align-items:flex-end;justify-content:center;padding:0}
@@ -2930,6 +2953,23 @@ var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),
 
 <script>
 // ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
+function syncAndroidSystemInsets(){
+  const bridge=window.VaultlixAndroid;
+  if(!bridge||typeof bridge.statusBarInsetCssPx!=='function')return;
+  const root=document.documentElement;
+  root.classList.add('vaultlix-native-android');
+  const top=Math.max(0,Number(bridge.statusBarInsetCssPx())||0);
+  const bottom=typeof bridge.navigationBarInsetCssPx==='function'
+    ?Math.max(0,Number(bridge.navigationBarInsetCssPx())||0):0;
+  root.style.setProperty('--android-safe-area-top',`${top}px`);
+  root.style.setProperty('--android-safe-area-bottom',`${bottom}px`);
+}
+syncAndroidSystemInsets();
+window.addEventListener('resize',syncAndroidSystemInsets,{passive:true});
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden)syncAndroidSystemInsets();
+});
+
 // No WebSockets — uses HTTP polling every 2s. Works on iOS even when the
 // browser is backgrounded.
 //

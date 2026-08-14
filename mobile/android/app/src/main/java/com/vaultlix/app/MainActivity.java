@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.HapticFeedbackConstants;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 
 import com.getcapacitor.BridgeActivity;
@@ -145,6 +146,33 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class AndroidCallBridge {
+        @JavascriptInterface
+        public double statusBarInsetCssPx() {
+            WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+            if (insets == null) return 0;
+            int insetPx;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                insetPx = insets.getInsets(WindowInsets.Type.statusBars()
+                        | WindowInsets.Type.displayCutout()).top;
+            } else {
+                insetPx = insets.getStableInsetTop();
+            }
+            return insetPx / getResources().getDisplayMetrics().density;
+        }
+
+        @JavascriptInterface
+        public double navigationBarInsetCssPx() {
+            WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+            if (insets == null) return 0;
+            int insetPx;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                insetPx = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+            } else {
+                insetPx = insets.getStableInsetBottom();
+            }
+            return insetPx / getResources().getDisplayMetrics().density;
+        }
+
         @JavascriptInterface
         public void shareText(String text) {
             if (text == null || text.trim().isEmpty()) return;
