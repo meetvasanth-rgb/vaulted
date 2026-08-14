@@ -1,9 +1,15 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.HapticFeedbackConstants;
 import android.webkit.JavascriptInterface;
 
@@ -15,6 +21,15 @@ import java.lang.ref.WeakReference;
 
 public class MainActivity extends BridgeActivity {
     private static WeakReference<MainActivity> activeInstance = new WeakReference<>(null);
+    private AudioManager audioManager;
+    private int previousAudioMode = AudioManager.MODE_NORMAL;
+    private boolean previousSpeakerphoneOn;
+    private AudioDeviceInfo previousCommunicationDevice;
+    private boolean audioRouteConfigured;
+    private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
+    private final Runnable enforceConnectedAudioRoute = () -> {
+        if (!isFinishing() && !isDestroyed()) applyPreferredCallAudioRoute();
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,8 +41,78 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        restoreAudioRoute();
         if (activeInstance.get() == this) activeInstance.clear();
         super.onDestroy();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void configureCallAudioRoute() {
+        if (audioRouteConfigured) return;
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager == null) return;
+
+        previousAudioMode = audioManager.getMode();
+        previousSpeakerphoneOn = audioManager.isSpeakerphoneOn();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            previousCommunicationDevice = audioManager.getCommunicationDevice();
+        }
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        applyPreferredCallAudioRoute();
+        audioRouteConfigured = true;
+    }
+
+    @SuppressWarnings("deprecation")
+    private void applyPreferredCallAudioRoute() {
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            if (!isBluetoothDevice(current)) {
+                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                    if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+                        audioManager.setCommunicationDevice(device);
+                        break;
+                    }
+                }
+            }
+        } else {
+            audioManager.setSpeakerphoneOn(false);
+        }
+    }
+
+    private boolean isBluetoothDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    private void enforceAudioRouteAfterWebRtcConnects() {
+        configureCallAudioRoute();
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        enforceConnectedAudioRoute.run();
+        audioRouteHandler.postDelayed(enforceConnectedAudioRoute, 300);
+        audioRouteHandler.postDelayed(enforceConnectedAudioRoute, 1_000);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void restoreAudioRoute() {
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        if (!audioRouteConfigured || audioManager == null) return;
+        audioRouteConfigured = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (previousCommunicationDevice != null) {
+                audioManager.setCommunicationDevice(previousCommunicationDevice);
+            } else {
+                audioManager.clearCommunicationDevice();
+            }
+        } else {
+            audioManager.setSpeakerphoneOn(previousSpeakerphoneOn);
+        }
+        audioManager.setMode(previousAudioMode);
     }
 
     @Override
@@ -78,9 +163,15 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void connectedHaptic() {
-            runOnUiThread(() -> getWindow().getDecorView().performHapticFeedback(
-                    HapticFeedbackConstants.CONFIRM
-            ));
+            runOnUiThread(() -> {
+                enforceAudioRouteAfterWebRtcConnects();
+                getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+            });
+        }
+
+        @JavascriptInterface
+        public void callEnded() {
+            runOnUiThread(MainActivity.this::restoreAudioRoute);
         }
     }
 

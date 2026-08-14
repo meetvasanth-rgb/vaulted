@@ -4768,6 +4768,7 @@ function notifyLockedCallReady() {
 }
 
 function notifyLockedCallEnded() {
+  try { window.VaultlixAndroid?.callEnded(); } catch (e) {}
   try { window.VaultlixLockedCall?.callEnded(); } catch (e) {}
 }
 
