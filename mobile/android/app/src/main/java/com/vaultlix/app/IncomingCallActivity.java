@@ -141,11 +141,6 @@ public class IncomingCallActivity extends Activity {
     private void declineCall() {
         cancelNotification();
         NativeCallActions.decline(this, callId, null);
-        // This native activity sits above MainActivity's WebView. The server
-        // decline reaches the caller, but signaling deliberately does not
-        // echo it back to this device, so explicitly clear the underlying
-        // WebView's incoming-call state before revealing it again.
-        MainActivity.notifyDedicatedCallEnded(null);
         finish();
         // The vault inbox is already resumed underneath this activity. Avoid
         // Android's default close fade briefly compositing this call surface

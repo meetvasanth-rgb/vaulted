@@ -17,6 +17,7 @@ final class NativeCallActions {
     private static final String PREFS = "native_call_actions";
     private static final String LAST_DECLINED_CALL_ID = "last_declined_call_id";
     private static final String LAST_DECLINED_AT = "last_declined_at";
+    private static final String PENDING_WEBVIEW_CALL_END = "pending_webview_call_end";
     private static final long DECLINE_TOMBSTONE_MS = 2 * 60 * 1000L;
 
     private NativeCallActions() {}
@@ -32,6 +33,7 @@ final class NativeCallActions {
     }
 
     static void decline(Context context, String callId, Runnable completion) {
+        markPendingWebViewCallEnd(context);
         String normalizedCallId = normalize(callId);
         if (normalizedCallId.isEmpty()) {
             if (completion != null) completion.run();
@@ -73,6 +75,20 @@ final class NativeCallActions {
                 if (completion != null) completion.run();
             }
         });
+    }
+
+    static void markPendingWebViewCallEnd(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PENDING_WEBVIEW_CALL_END, true)
+                .apply();
+    }
+
+    static boolean consumePendingWebViewCallEnd(Context context) {
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!preferences.getBoolean(PENDING_WEBVIEW_CALL_END, false)) return false;
+        preferences.edit().remove(PENDING_WEBVIEW_CALL_END).apply();
+        return true;
     }
 
     private static String normalize(String callId) {

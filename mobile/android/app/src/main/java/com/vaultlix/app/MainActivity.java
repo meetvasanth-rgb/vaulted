@@ -123,6 +123,14 @@ public class MainActivity extends BridgeActivity {
         openVaultlixInvite(intent);
     }
 
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && NativeCallActions.consumePendingWebViewCallEnd(this)) {
+            clearUnderlyingCallState(null);
+        }
+    }
+
     private void openVaultlixInvite(Intent intent) {
         if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return;
 
@@ -213,8 +221,20 @@ public class MainActivity extends BridgeActivity {
     public static void notifyDedicatedCallEnded(String roomCode) {
         MainActivity activity = activeInstance.get();
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        // A locked-screen call surface may finish while MainActivity is
+        // technically resumed but still hidden and unfocused behind the
+        // keyguard. WebView can discard evaluateJavascript in that state, so
+        // persist a one-shot marker and consume it only after window focus is
+        // genuinely restored.
+        NativeCallActions.markPendingWebViewCallEnd(activity);
+        if (!activity.hasWindowFocus()) return;
+        NativeCallActions.consumePendingWebViewCallEnd(activity);
+        activity.clearUnderlyingCallState(roomCode);
+    }
+
+    private void clearUnderlyingCallState(String roomCode) {
         String encodedCode = JSONObject.quote(roomCode == null ? "" : roomCode);
-        activity.runOnUiThread(() -> activity.getBridge().getWebView().evaluateJavascript(
+        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(
                 "window.vaultlixNativeCallEnded&&window.vaultlixNativeCallEnded(" + encodedCode + ");",
                 null
         ));
