@@ -19,5 +19,9 @@ public class CallActionReceiver extends BroadcastReceiver {
         }
         final PendingResult pendingResult = goAsync();
         NativeCallActions.decline(context, intent.getStringExtra(EXTRA_CALL_ID), pendingResult::finish);
+        // A notification action can decline without opening the WebView.
+        // Clear any already-running MainActivity copy so its stale incoming
+        // overlay is not exposed when the user later unlocks the phone.
+        MainActivity.notifyDedicatedCallEnded(null);
     }
 }
