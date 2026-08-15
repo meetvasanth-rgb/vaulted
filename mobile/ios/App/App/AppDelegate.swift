@@ -290,7 +290,14 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     @discardableResult
     func setSpeakerEnabled(_ enabled: Bool) -> Bool {
         do {
-            try AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none)
+            let session = AVAudioSession.sharedInstance()
+            // Outgoing calls are WebView-owned and therefore do not pass
+            // through CXAnswerCallAction, which configures this category for
+            // native incoming calls. Configure the same voice route here so
+            // `.none` genuinely returns to the receiver/Bluetooth instead of
+            // leaving WKWebView's playback route on the loudspeaker.
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            try session.overrideOutputAudioPort(enabled ? .speaker : .none)
             return true
         } catch {
             print("VXCALL manager speaker route failed: \(error.localizedDescription)")

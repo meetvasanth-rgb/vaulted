@@ -3430,7 +3430,7 @@ window.addEventListener('vaultlix:voip-token', event => {
 // mirror native route changes into the existing call controls instead.
 window.addEventListener('vaultlix:call-audio-route', event => {
   const room = activeCallRoomCode ? rooms.get(activeCallRoomCode) : null;
-  if (!room || !room.nativeCallActive) return;
+  if (!room || room.callState === 'idle') return;
   const detail = event.detail || {};
   room.speakerAvailable = detail.available === true;
   room.speakerOn = detail.speakerOn === true;
@@ -5524,7 +5524,7 @@ function nativeAndroidAudioBridge() {
 }
 
 function requestNativeIOSSpeakerState(room) {
-  if (!room || !room.nativeCallActive) return false;
+  if (!room || room.callState === 'idle') return false;
   const bridge = window.webkit?.messageHandlers?.vaultlixCall;
   if (!bridge) return false;
   room.speakerAvailable = true;
@@ -5570,7 +5570,7 @@ async function toggleSpeaker() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || !room.speakerAvailable) return;
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
-  if (iosBridge && room.nativeCallActive) {
+  if (iosBridge) {
     const target = !room.speakerOn;
     // Render immediately; the native route event confirms or rolls this
     // state back if iOS rejects the change.
