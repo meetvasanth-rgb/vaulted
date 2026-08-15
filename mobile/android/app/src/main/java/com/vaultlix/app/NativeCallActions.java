@@ -17,8 +17,11 @@ final class NativeCallActions {
     private static final String PREFS = "native_call_actions";
     private static final String LAST_DECLINED_CALL_ID = "last_declined_call_id";
     private static final String LAST_DECLINED_AT = "last_declined_at";
+    private static final String LAST_ANSWERED_CALL_ID = "last_answered_call_id";
+    private static final String LAST_ANSWERED_AT = "last_answered_at";
     private static final String PENDING_WEBVIEW_CALL_END = "pending_webview_call_end";
     private static final long DECLINE_TOMBSTONE_MS = 2 * 60 * 1000L;
+    private static final long ANSWER_TOMBSTONE_MS = 2 * 60 * 1000L;
 
     private NativeCallActions() {}
 
@@ -75,6 +78,30 @@ final class NativeCallActions {
                 if (completion != null) completion.run();
             }
         });
+    }
+
+    static void markAnswerStarted(Context context, String callId) {
+        String normalizedCallId = normalize(callId);
+        if (normalizedCallId.isEmpty()) return;
+        // ColorOS can execute a full-screen notification PendingIntent after
+        // the notification was cancelled and the dedicated call activity has
+        // already opened. Persist the answered call ID before launching that
+        // activity so every delayed entry point can reject the stale surface.
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(LAST_ANSWERED_CALL_ID, normalizedCallId)
+                .putLong(LAST_ANSWERED_AT, System.currentTimeMillis())
+                .apply();
+    }
+
+    static boolean wasRecentlyAnswered(Context context, String callId) {
+        String normalizedCallId = normalize(callId);
+        if (normalizedCallId.isEmpty()) return false;
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        long age = System.currentTimeMillis() - preferences.getLong(LAST_ANSWERED_AT, 0L);
+        return normalizedCallId.equals(preferences.getString(LAST_ANSWERED_CALL_ID, ""))
+                && age >= 0L
+                && age < ANSWER_TOMBSTONE_MS;
     }
 
     static void markPendingWebViewCallEnd(Context context) {

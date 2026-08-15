@@ -66,6 +66,15 @@ public class IncomingCallActivity extends Activity {
                 VaultlixMessagingService.EXTRA_CALL_NOTIFICATION_ID,
                 Integer.MIN_VALUE
         );
+        if (NativeCallActions.wasRecentlyAnswered(this, callId)) {
+            // The notification's full-screen PendingIntent may already be in
+            // the System UI launch queue when the first Answer tap cancels it.
+            // Never let that stale launch cover the connected call activity.
+            cancelNotification();
+            finish();
+            overridePendingTransition(0, 0);
+            return;
+        }
         showIncomingCall(intent.getStringExtra(EXTRA_CALLER));
         if (intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)) answerCall();
     }
@@ -119,6 +128,7 @@ public class IncomingCallActivity extends Activity {
     private void answerCall() {
         if (answerInProgress) return;
         answerInProgress = true;
+        NativeCallActions.markAnswerStarted(this, callId);
         cancelNotification();
         // Use one dedicated call-only host in every device state. Besides
         // keeping chat hidden above keyguard, this gives foreground and

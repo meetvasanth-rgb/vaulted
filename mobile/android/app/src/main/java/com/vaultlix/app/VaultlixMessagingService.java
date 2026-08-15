@@ -42,7 +42,8 @@ public class VaultlixMessagingService extends MessagingService {
     private void showIncomingCall(Map<String, String> data) {
         String code = safe(data.get("code"));
         String callId = safe(data.get("callId"));
-        if (NativeCallActions.wasRecentlyDeclined(this, callId)) return;
+        if (NativeCallActions.wasRecentlyDeclined(this, callId)
+                || NativeCallActions.wasRecentlyAnswered(this, callId)) return;
         String caller = safe(data.get("caller"));
         String body = safe(data.get("body"));
         if (caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
