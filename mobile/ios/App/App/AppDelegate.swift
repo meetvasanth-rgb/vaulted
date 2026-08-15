@@ -23,6 +23,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var answeredCalls: Set<UUID> = []
     private var nativeMediaCalls: Set<UUID> = []
     private var connectedCalls: Set<UUID> = []
+    private var outgoingWebAudioSessionActive = false
     private var pendingActions: [[String: Any]] = []
     private(set) var voIPToken: String?
 
@@ -288,7 +289,34 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// CallKit activated and let `.none` restore the system-selected route
     /// (earpiece or a connected Bluetooth device).
     @discardableResult
-    func setSpeakerEnabled(_ enabled: Bool) -> Bool {
+    func prepareOutgoingWebAudio() -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            try session.overrideOutputAudioPort(.none)
+            outgoingWebAudioSessionActive = true
+            return true
+        } catch {
+            print("VXCALL manager outgoing audio activation failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func releaseOutgoingWebAudio() {
+        guard outgoingWebAudioSessionActive else { return }
+        outgoingWebAudioSessionActive = false
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.overrideOutputAudioPort(.none)
+            try session.setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("VXCALL manager outgoing audio deactivation failed: \(error.localizedDescription)")
+        }
+    }
+
+    @discardableResult
+    func setSpeakerEnabled(_ enabled: Bool, activateSession: Bool = false) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
             // Outgoing calls are WebView-owned and therefore do not pass
@@ -297,6 +325,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             // `.none` genuinely returns to the receiver/Bluetooth instead of
             // leaving WKWebView's playback route on the loudspeaker.
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            if activateSession && !outgoingWebAudioSessionActive {
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
+                outgoingWebAudioSessionActive = true
+            }
             try session.overrideOutputAudioPort(enabled ? .speaker : .none)
             return true
         } catch {

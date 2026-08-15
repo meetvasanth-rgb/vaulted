@@ -107,9 +107,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             emitSpeakerState(success: true)
             return
         }
+        if action == "prepareOutgoingAudio" {
+            let success = VaultlixCallManager.shared.prepareOutgoingWebAudio()
+            emitSpeakerState(success: success)
+            return
+        }
         if action == "setSpeaker",
            let enabled = body["enabled"] as? Bool {
-            let success = VaultlixCallManager.shared.setSpeakerEnabled(enabled)
+            let success = VaultlixCallManager.shared.setSpeakerEnabled(
+                enabled,
+                activateSession: body["outgoing"] as? Bool ?? false
+            )
             emitSpeakerState(success: success)
             return
         }
@@ -143,6 +151,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
               let code = body["code"] as? String,
               code.count <= 128 else { return }
         VaultlixCallManager.shared.endCallFromWeb(roomCode: code)
+        VaultlixCallManager.shared.releaseOutgoingWebAudio()
     }
 
     deinit {

@@ -4582,6 +4582,12 @@ async function startCall() {
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
   room.nativeCallActive = false;
+  // Outgoing calls are WebView-owned rather than CallKit-owned. Activate the
+  // native voice session before WebRTC opens its tracks so iOS starts on the
+  // receiver and can subsequently switch between Phone and Speaker.
+  try {
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'prepareOutgoingAudio' });
+  } catch (e) {}
   // Reused by the 3-second invite retries below, but regenerated for every
   // new call attempt. randomUUID is available in supported WebViews; keep a
   // random fallback for older embedded browsers during rolling upgrades.
@@ -5576,7 +5582,7 @@ async function toggleSpeaker() {
     // state back if iOS rejects the change.
     room.speakerOn = target;
     renderCallOverlay(room);
-    try { iosBridge.postMessage({ action: 'setSpeaker', enabled: target }); }
+    try { iosBridge.postMessage({ action: 'setSpeaker', enabled: target, outgoing: !room.nativeCallActive }); }
     catch (e) {
       room.speakerOn = !target;
       renderCallOverlay(room);
