@@ -23,6 +23,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var answeredCalls: Set<UUID> = []
     private var nativeMediaCalls: Set<UUID> = []
     private var connectedCalls: Set<UUID> = []
+    private var outgoingCalls: Set<UUID> = []
     private var outgoingWebAudioSessionActive = false
     private var pendingActions: [[String: Any]] = []
     private(set) var voIPToken: String?
@@ -187,10 +188,29 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         action.fulfill()
     }
 
+    func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        guard calls[action.callUUID] != nil,
+              nativeMediaCalls.contains(action.callUUID) else { action.fail(); return }
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.allowBluetooth]
+            )
+        } catch {
+            action.fail()
+            return
+        }
+        provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
+        NativeWebRTCCallEngine.shared.startOutgoing(callID: action.callUUID)
+        action.fulfill()
+    }
+
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         let payload = calls.removeValue(forKey: action.callUUID) ?? [:]
         answeredCalls.remove(action.callUUID)
         connectedCalls.remove(action.callUUID)
+        outgoingCalls.remove(action.callUUID)
         NativeWebRTCCallEngine.shared.end(callID: action.callUUID, notifyPeer: true)
         nativeMediaCalls.remove(action.callUUID)
         postAction("declineOrEnd", callID: action.callUUID, payload: payload)
@@ -202,14 +222,19 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         answeredCalls.removeAll()
         nativeMediaCalls.removeAll()
         connectedCalls.removeAll()
+        outgoingCalls.removeAll()
         NativeWebRTCCallEngine.shared.reset()
     }
 
     func endCallFromWeb(roomCode: String) {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first else { return }
+        NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true)
         provider.reportCall(with: match.key, endedAt: Date(), reason: .remoteEnded)
         calls.removeValue(forKey: match.key)
         answeredCalls.remove(match.key)
+        nativeMediaCalls.remove(match.key)
+        connectedCalls.remove(match.key)
+        outgoingCalls.remove(match.key)
     }
 
     func answerCallFromWeb(roomCode: String) {
@@ -222,6 +247,39 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         callController.request(transaction) { error in
             if let error { print("CallKit web-answer transaction failed: \(error.localizedDescription)") }
         }
+    }
+
+    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String) -> Bool {
+        let callID = UUID()
+        let payload: [String: Any] = [
+            "callId": callID.uuidString,
+            "roomHandle": roomHandle,
+            "code": code,
+            "caller": String(peer.prefix(80)),
+        ]
+        guard NativeWebRTCCallEngine.shared.prepareOutgoing(
+            callID: callID,
+            roomHandle: roomHandle,
+            caller: caller
+        ) else { return false }
+        calls[callID] = payload
+        nativeMediaCalls.insert(callID)
+        outgoingCalls.insert(callID)
+        let handle = CXHandle(type: .generic, value: String(peer.prefix(80)))
+        let action = CXStartCallAction(call: callID, handle: handle)
+        action.isVideo = false
+        callController.request(CXTransaction(action: action)) { [weak self] error in
+            guard let error else { return }
+            print("VXCALL manager outgoing transaction failed: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self?.calls.removeValue(forKey: callID)
+                self?.nativeMediaCalls.remove(callID)
+                self?.outgoingCalls.remove(callID)
+                NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
+                self?.postAction("nativeFailed", callID: callID, payload: payload)
+            }
+        }
+        return true
     }
 
     func updateCallerName(_ name: String) {
@@ -244,6 +302,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         answeredCalls.remove(callID)
         nativeMediaCalls.remove(callID)
         connectedCalls.remove(callID)
+        outgoingCalls.remove(callID)
         // CallKit and native WebRTC are only two of the three call-state
         // owners. Tell the embedded web UI as well, otherwise its call screen
         // and duration timer remain live after the remote peer has hung up.
@@ -259,9 +318,33 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                   self.nativeMediaCalls.contains(callID),
                   !self.connectedCalls.contains(callID) else { return }
             self.connectedCalls.insert(callID)
+            if self.outgoingCalls.contains(callID) {
+                self.provider.reportOutgoingCall(with: callID, connectedAt: Date())
+            }
             var connectedPayload = payload
             connectedPayload["connectedAt"] = Date().timeIntervalSince1970 * 1000
             self.postAction("nativeConnected", callID: callID, payload: connectedPayload)
+        }
+    }
+
+    func nativeOutgoingDidRing(callID: UUID) {
+        DispatchQueue.main.async {
+            guard let payload = self.calls[callID], self.nativeMediaCalls.contains(callID) else { return }
+            self.postAction("nativeRinging", callID: callID, payload: payload)
+        }
+    }
+
+    func nativeCallDidEnd(callID: UUID, action: String) {
+        DispatchQueue.main.async {
+            guard let payload = self.calls[callID] else { return }
+            NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
+            self.provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
+            self.calls.removeValue(forKey: callID)
+            self.answeredCalls.remove(callID)
+            self.nativeMediaCalls.remove(callID)
+            self.connectedCalls.remove(callID)
+            self.outgoingCalls.remove(callID)
+            self.postAction(action, callID: callID, payload: payload)
         }
     }
 

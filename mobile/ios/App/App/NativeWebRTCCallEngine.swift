@@ -4,7 +4,7 @@ import CryptoKit
 import OSLog
 import WebRTC
 
-/// Owns media and encrypted signaling for an incoming CallKit call. The
+/// Owns media and encrypted signaling for iOS CallKit calls. The
 /// Vaultlix server relays only AES-GCM envelopes; SDP and ICE never leave the
 /// two endpoints in plaintext. Browser/PWA calls continue using the web engine.
 final class NativeWebRTCCallEngine: NSObject {
@@ -32,6 +32,9 @@ final class NativeWebRTCCallEngine: NSObject {
     private var turnRequestInFlight = false
     private var turnAttempt = 0
     private var offerReceived = false
+    private var outgoing = false
+    private var outgoingCaller = "Someone"
+    private var inviteRetryGeneration = 0
     private var acceptRetryGeneration = 0
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
 
@@ -67,6 +70,36 @@ final class NativeWebRTCCallEngine: NSObject {
             self.connectSignalingLocked()
         }
         return true
+    }
+
+    @discardableResult
+    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String) -> Bool {
+        guard let stored = NativeCallRoomStore.shared.room(handle: roomHandle) else {
+            trace("prepare-outgoing missing-room")
+            return false
+        }
+        trace("prepare-outgoing room-found")
+        queue.async {
+            self.resetLocked()
+            self.room = stored
+            self.callID = callID
+            self.outgoing = true
+            self.outgoingCaller = String(caller.prefix(80))
+            self.connectSignalingLocked()
+        }
+        return true
+    }
+
+    func startOutgoing(callID: UUID) {
+        queue.async {
+            guard self.callID == callID, self.outgoing, self.room != nil else {
+                self.trace("start-outgoing rejected-state")
+                return
+            }
+            self.trace("start-outgoing accepted-state")
+            self.sendOutgoingInviteLocked()
+            self.scheduleInviteRetryLocked()
+        }
     }
 
     func answer(callID: UUID) {
@@ -175,10 +208,19 @@ final class NativeWebRTCCallEngine: NSObject {
         trace("signal type=\(type)")
         switch type {
         case "call-invite":
+            guard !outgoing else { return }
             sendSignalLocked(type: "call-ringing", payload: [:])
             if answered { sendSignalLocked(type: "call-accept", payload: [:]) }
+        case "call-ringing":
+            guard outgoing, let callID else { return }
+            DispatchQueue.main.async { VaultlixCallManager.shared.nativeOutgoingDidRing(callID: callID) }
+        case "call-accept":
+            guard outgoing else { return }
+            inviteRetryGeneration += 1
+            answered = true
+            fetchTurnAndCreatePeerLocked()
         case "offer":
-            guard answered else { return }
+            guard answered, !outgoing else { return }
             offerReceived = true
             acceptRetryGeneration += 1
             if peer == nil { pendingOffer = payload; fetchTurnAndCreatePeerLocked() }
@@ -187,14 +229,21 @@ final class NativeWebRTCCallEngine: NSObject {
             guard let candidate = payload["candidate"] as? [String: Any] else { return }
             if peer?.remoteDescription == nil { pendingCandidates.append(candidate) }
             else { addCandidateLocked(candidate) }
-        case "call-hangup", "call-decline":
+        case "answer":
+            guard outgoing else { return }
+            processAnswerLocked(payload)
+        case "call-hangup", "call-decline", "call-busy":
             // CXProvider and the manager's call collections are main-thread
             // owned. A remote hang-up arrives on this engine's serial queue;
             // hand it to the main queue so CallKit and the in-app state end
             // together instead of leaving a live system call behind.
             if let callID {
                 DispatchQueue.main.async {
-                    VaultlixCallManager.shared.endCall(callID: callID)
+                    VaultlixCallManager.shared.nativeCallDidEnd(
+                        callID: callID,
+                        action: type == "call-decline" ? "nativeDeclined" :
+                            (type == "call-busy" ? "nativeBusy" : "ended")
+                    )
                 }
             }
             resetLocked()
@@ -252,7 +301,37 @@ final class NativeWebRTCCallEngine: NSObject {
         peer = pc
         prepareAudioTrackLocked()
         if let audioTrack { _ = pc.add(audioTrack, streamIds: ["vaultlix-native-stream"]) }
-        if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
+        if outgoing { createAndSendOfferLocked() }
+        else if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
+    }
+
+    private func createAndSendOfferLocked() {
+        guard let pc = peer, outgoing else { return }
+        pc.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self, weak pc] offer, error in
+            guard let self, let pc, let offer, error == nil else {
+                self?.trace("offer create-failed")
+                return
+            }
+            pc.setLocalDescription(offer) { error in
+                guard error == nil else { self.trace("offer local-description-failed"); return }
+                self.trace("offer sending")
+                self.queue.async { self.sendSignalLocked(type: "offer", payload: ["type": "offer", "sdp": offer.sdp]) }
+            }
+        }
+    }
+
+    private func processAnswerLocked(_ payload: [String: Any]) {
+        guard let pc = peer, let sdp = payload["sdp"] as? String else {
+            trace("answer missing-state")
+            return
+        }
+        pc.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp)) { [weak self, weak pc] error in
+            guard let self, let pc, error == nil else { self?.trace("answer remote-description-failed"); return }
+            self.queue.async {
+                self.pendingCandidates.forEach { self.addCandidateLocked($0) }
+                self.pendingCandidates.removeAll()
+            }
+        }
     }
 
     private func processOfferLocked(_ payload: [String: Any]) {
@@ -378,6 +457,22 @@ final class NativeWebRTCCallEngine: NSObject {
         queue.asyncAfter(deadline: .now() + 1.5) { retry(12) }
     }
 
+    private func sendOutgoingInviteLocked() {
+        sendSignalLocked(type: "call-invite", payload: ["from": outgoingCaller])
+    }
+
+    private func scheduleInviteRetryLocked() {
+        inviteRetryGeneration += 1
+        let generation = inviteRetryGeneration
+        func retry(_ remaining: Int) {
+            guard remaining > 0, generation == inviteRetryGeneration,
+                  outgoing, !answered, room != nil else { return }
+            sendOutgoingInviteLocked()
+            queue.asyncAfter(deadline: .now() + 3) { retry(remaining - 1) }
+        }
+        queue.asyncAfter(deadline: .now() + 3) { retry(9) }
+    }
+
     private func encryptEnvelopeLocked(_ payload: [String: Any]) -> String? {
         guard let room else { return nil }
         sequenceOut += 1
@@ -402,6 +497,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private func resetLocked() {
         reconnectGeneration += 1
         acceptRetryGeneration += 1
+        inviteRetryGeneration += 1
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
@@ -423,6 +519,8 @@ final class NativeWebRTCCallEngine: NSObject {
         turnRequestInFlight = false
         turnAttempt = 0
         offerReceived = false
+        outgoing = false
+        outgoingCaller = "Someone"
     }
 }
 

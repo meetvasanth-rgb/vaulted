@@ -112,6 +112,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             emitSpeakerState(success: success)
             return
         }
+        if action == "startOutgoing",
+           let roomHandle = body["roomHandle"] as? String,
+           let code = body["code"] as? String,
+           let caller = body["caller"] as? String,
+           let peer = body["peer"] as? String,
+           roomHandle.range(of: "^[A-Za-z0-9_-]{16,64}$", options: .regularExpression) != nil,
+           code.count <= 128 {
+            let success = VaultlixCallManager.shared.startOutgoingCall(
+                roomHandle: roomHandle, code: code, caller: caller, peer: peer
+            )
+            if !success { emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code]) }
+            return
+        }
         if action == "setSpeaker",
            let enabled = body["enabled"] as? Bool {
             let success = VaultlixCallManager.shared.setSpeakerEnabled(

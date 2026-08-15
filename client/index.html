@@ -3476,6 +3476,8 @@ async function handleNativeCallAction(detail) {
     if (activeCallRoomCode && activeCallRoomCode !== room.code) return;
     activeCallRoomCode = room.code;
     presentNativeCallRoom();
+    clearCallTimeout(room);
+    clearCallRingInterval(room);
     room.nativeAnswerPending = false;
     room.nativeCallActive = true;
     room.callState = 'active';
@@ -3485,6 +3487,10 @@ async function handleNativeCallAction(detail) {
     startCallTimer(room);
     renderCallOverlay(room);
     refreshCallButton();
+  } else if (detail.action === 'nativeRinging') {
+    if (room.callState !== 'outgoing') return;
+    room.callRinging = true;
+    renderCallOverlay(room);
   } else if (detail.action === 'audioActivated') {
     // CallKit activates audio immediately after the user answers, while ICE
     // may still need a few seconds.  Show the correct vault and an explicit
@@ -3492,6 +3498,13 @@ async function handleNativeCallAction(detail) {
     // to start the duration timer or declare the media path established.
     activeCallRoomCode = room.code;
     presentNativeCallRoom();
+    if (room.callState === 'outgoing') {
+      room.nativeCallActive = true;
+      requestNativeIOSSpeakerState(room);
+      renderCallOverlay(room);
+      refreshCallButton();
+      return;
+    }
     room.nativeAnswerPending = true;
     room.nativeCallActive = true;
     room.callState = 'active';
@@ -3516,6 +3529,12 @@ async function handleNativeCallAction(detail) {
   } else if (detail.action === 'ended' && room.callState !== 'idle') {
     endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
       room.callState === 'incoming' ? 'Missed call' : null);
+  } else if (detail.action === 'nativeDeclined' && room.callState !== 'idle') {
+    endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
+  } else if (detail.action === 'nativeBusy' && room.callState !== 'idle') {
+    endCall(room, room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.', null, 'busy');
+  } else if (detail.action === 'nativeFailed' && room.callState !== 'idle') {
+    endCall(room, 'Could not start the call.');
   } else if (detail.action === 'missed') {
     const eventId = typeof detail.callId === 'string' ? `native-missed-${detail.callId}` : null;
     if (eventId && room.messages.some(record => record.id === eventId)) return;
@@ -4582,17 +4601,35 @@ async function startCall() {
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
   room.nativeCallActive = false;
-  // Outgoing calls are WebView-owned rather than CallKit-owned. Activate the
-  // native voice session before WebRTC opens its tracks so iOS starts on the
-  // receiver and can subsequently switch between Phone and Speaker.
-  try {
-    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'prepareOutgoingAudio' });
-  } catch (e) {}
   // Reused by the 3-second invite retries below, but regenerated for every
   // new call attempt. randomUUID is available in supported WebViews; keep a
   // random fallback for older embedded browsers during rolling upgrades.
   room.callInviteId = crypto.randomUUID ? crypto.randomUUID() :
     ('ci-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14));
+  const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
+  if (iosBridge && room.nativeRoomHandle) {
+    // The signed iOS wrapper owns outgoing media too. This gives both sides
+    // the same CallKit/libwebrtc audio session and makes receiver/speaker
+    // routing deterministic instead of letting WKWebView reclaim the route.
+    room.nativeCallActive = true;
+    disconnectSignaling(room);
+    try {
+      iosBridge.postMessage({
+        action: 'startOutgoing', roomHandle: room.nativeRoomHandle, code: room.code,
+        caller: room.myName || 'Someone', peer: room.callPeerName,
+      });
+    } catch (e) {
+      endCall(room, 'Calling isn’t available right now.');
+      return;
+    }
+    requestNativeIOSSpeakerState(room);
+    renderCallOverlay(room);
+    refreshCallButton();
+    room.callTimeoutTimer = setTimeout(() => {
+      if (room.callState === 'outgoing') endCall(room, 'No answer.', 'Call not answered');
+    }, CALL_RING_TIMEOUT_MS);
+    return;
+  }
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
   renderCallOverlay(room);
@@ -4787,6 +4824,7 @@ function checkStaleIncomingCalls() {
 
 async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (!room) return;
+  const wasNativeCall = room.nativeCallActive;
   clearAndroidCallNotifications();
   try {
     window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code });
@@ -4815,6 +4853,9 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callInviteId = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
+  if (wasNativeCall && !room.signalWs) {
+    setTimeout(() => { if (room.callState === 'idle') connectSignaling(room); }, 250);
+  }
 
   // The keyguard-safe Android host is a transient call surface, not a chat
   // screen. Close it immediately after media/signalling teardown instead of
