@@ -124,6 +124,33 @@ public class LockedCallActivity extends BridgeActivity {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    private boolean setSpeakerEnabled(boolean enabled) {
+        if (audioManager == null) return false;
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (enabled) {
+                AudioDeviceInfo speaker = findCommunicationDevice(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER);
+                return speaker != null && audioManager.setCommunicationDevice(speaker);
+            }
+            applyPreferredCallAudioRoute();
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            return current == null || current.getType() != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+        }
+        audioManager.setSpeakerphoneOn(enabled);
+        return audioManager.isSpeakerphoneOn() == enabled;
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean isSpeakerEnabled() {
+        if (audioManager == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            return current != null && current.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+        }
+        return audioManager.isSpeakerphoneOn();
+    }
+
     private void enforceAudioRouteAfterWebRtcConnects() {
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
         enforceConnectedAudioRoute.run();
@@ -236,6 +263,21 @@ public class LockedCallActivity extends BridgeActivity {
                 enforceAudioRouteAfterWebRtcConnects();
                 getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
             });
+        }
+
+        @JavascriptInterface
+        public boolean isNativeSpeakerAvailable() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean isSpeakerEnabled() {
+            return LockedCallActivity.this.isSpeakerEnabled();
+        }
+
+        @JavascriptInterface
+        public boolean setSpeakerEnabled(boolean enabled) {
+            return LockedCallActivity.this.setSpeakerEnabled(enabled);
         }
 
         @JavascriptInterface

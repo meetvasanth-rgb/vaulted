@@ -82,6 +82,40 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    private boolean setSpeakerEnabled(boolean enabled) {
+        configureCallAudioRoute();
+        if (audioManager == null) return false;
+        // A user-selected route must win over the delayed OEM/WebRTC
+        // earpiece enforcement scheduled when the call first connects.
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (enabled) {
+                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                    if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                        return audioManager.setCommunicationDevice(device);
+                    }
+                }
+                return false;
+            }
+            applyPreferredCallAudioRoute();
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            return current == null || current.getType() != AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+        }
+        audioManager.setSpeakerphoneOn(enabled);
+        return audioManager.isSpeakerphoneOn() == enabled;
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean isSpeakerEnabled() {
+        if (audioManager == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            return current != null && current.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+        }
+        return audioManager.isSpeakerphoneOn();
+    }
+
     private boolean isBluetoothDevice(AudioDeviceInfo device) {
         if (device == null) return false;
         int type = device.getType();
@@ -203,6 +237,21 @@ public class MainActivity extends BridgeActivity {
                 enforceAudioRouteAfterWebRtcConnects();
                 getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
             });
+        }
+
+        @JavascriptInterface
+        public boolean isNativeSpeakerAvailable() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean isSpeakerEnabled() {
+            return MainActivity.this.isSpeakerEnabled();
+        }
+
+        @JavascriptInterface
+        public boolean setSpeakerEnabled(boolean enabled) {
+            return MainActivity.this.setSpeakerEnabled(enabled);
         }
 
         @JavascriptInterface

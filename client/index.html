@@ -5486,6 +5486,15 @@ function teardownPeerConnection(room) {
   room.speakerDeviceId = null;
 }
 
+function nativeAndroidAudioBridge() {
+  const bridge = window.VaultlixLockedCall || window.VaultlixAndroid;
+  try {
+    return bridge && bridge.isNativeSpeakerAvailable() ? bridge : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Best-effort only: mobile browsers generally don't expose "earpiece" vs
 // "loudspeaker" as a clean pair of selectable output devices the way
 // desktop OSes expose sound cards. Android Chrome sometimes does (device/
@@ -5497,6 +5506,12 @@ async function detectSpeakerToggle(room) {
   room.speakerAvailable = false;
   room.speakerOn = false;
   room.speakerDeviceId = null;
+  const nativeBridge = nativeAndroidAudioBridge();
+  if (nativeBridge) {
+    room.speakerAvailable = true;
+    try { room.speakerOn = !!nativeBridge.isSpeakerEnabled(); } catch (e) {}
+    return;
+  }
   try {
     if (typeof HTMLMediaElement === 'undefined' || typeof HTMLMediaElement.prototype.setSinkId !== 'function') return;
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') return;
@@ -5516,6 +5531,18 @@ async function detectSpeakerToggle(room) {
 async function toggleSpeaker() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || !room.speakerAvailable) return;
+  const nativeBridge = nativeAndroidAudioBridge();
+  if (nativeBridge) {
+    const target = !room.speakerOn;
+    try {
+      if (!nativeBridge.setSpeakerEnabled(target)) throw new Error('route unavailable');
+      room.speakerOn = target;
+    } catch (e) {
+      toast('Couldn’t change the audio route.');
+    }
+    renderCallOverlay(room);
+    return;
+  }
   const audioEl = document.getElementById('call-remote-audio');
   if (!audioEl) return;
   const targetSinkId = room.speakerOn ? '' : room.speakerDeviceId; // '' = system default output
