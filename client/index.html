@@ -3274,7 +3274,7 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     everOnline: false,
     // Call state — see the CALL STATE section. 'idle' unless a call is
     // actively ringing/connected in this room.
-    callState: 'idle', callPeerName: null, callStartedAt: null,
+    callState: 'idle', callPeerName: null, callStartedAt: null, callInviteId: null,
     callConnectedHapticFired: false,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
     // Diagnostic only (console.log, no UI) — see startCallStatsLogging.
@@ -4329,7 +4329,7 @@ function connectSignaling(room) {
     }
     const payload = await decryptSignalEnvelope(room, msg.envelope);
     if (payload == null) return;
-    handleSignalMessage(room, msg.type, payload);
+    handleSignalMessage(room, msg.type, payload, msg.inviteId);
   };
 
   ws.onclose = () => {
@@ -4381,11 +4381,17 @@ async function sendSignal(room, type, payload) {
   // with no meaning beyond "did this side restart," nothing sensitive to
   // protect, and the peer needs to read it before it can even decrypt
   // anything (see ws.onmessage).
-  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, envelope }));
+  // A random per-call identifier is deliberately outside the encrypted
+  // payload. It contains no room credential or call content; the server
+  // only uses it to distinguish retries of one invitation from a genuinely
+  // new call, so stale room-level ringing state cannot suppress Android's
+  // native wake-up notification.
+  const inviteId = typeof room.callInviteId === 'string' ? room.callInviteId : undefined;
+  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, envelope }));
   return true;
 }
 
-async function handleSignalMessage(room, type, payload) {
+async function handleSignalMessage(room, type, payload, inviteId) {
   if (type === 'call-invite') {
     // The signed iOS wrapper reports incoming calls through PushKit/CallKit
     // and its native WebRTC engine. Never let WKWebView present or answer the
@@ -4398,6 +4404,7 @@ async function handleSignalMessage(room, type, payload) {
     // silently ignoring them.
     if (activeCallRoomCode && activeCallRoomCode !== room.code) { sendSignal(room, 'call-busy', {}); return; }
     if (room.callState === 'idle') {
+      room.callInviteId = typeof inviteId === 'string' ? inviteId : null;
       activeCallRoomCode = room.code;
       room.callState = 'incoming';
       room.callPeerName = (payload && payload.from) || room.peerName || 'them';
@@ -4560,6 +4567,11 @@ async function startCall() {
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
   room.nativeCallActive = false;
+  // Reused by the 3-second invite retries below, but regenerated for every
+  // new call attempt. randomUUID is available in supported WebViews; keep a
+  // random fallback for older embedded browsers during rolling upgrades.
+  room.callInviteId = crypto.randomUUID ? crypto.randomUUID() :
+    ('ci-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14));
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
   renderCallOverlay(room);
@@ -4779,6 +4791,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.nativeAnswerPending = false;
   room.pendingCallAccept = false;
   room.callInviteReceivedAt = null;
+  room.callInviteId = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
 

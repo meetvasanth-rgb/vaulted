@@ -1925,6 +1925,7 @@ async function api(path, method, d, p, res, ip, headers) {
     matchedRoom.activeCall = false;
     matchedRoom.nativeCallId = null;
     matchedRoom.nativeCalleeToken = null;
+    matchedRoom.nativeInviteId = null;
     matchedRoom.lastActivity = Date.now();
 
     // This control frame contains no message/call content. It is delivered
@@ -3191,6 +3192,12 @@ wss.on('connection', (ws) => {
       // Date.now().toString(36) + an 8-char random suffix); 128 is generous
       // headroom, not a guess at what's actually needed.
       if (msg2.sessionId !== undefined && (typeof msg2.sessionId !== 'string' || msg2.sessionId.length > 128)) return;
+      // Opaque per-call nonce used only for retry deduplication. It contains
+      // no room code, token, caller identity, or encrypted call content.
+      // Older clients omit it and retain the legacy ringing-window behavior
+      // during a rolling deployment.
+      if (msg2.inviteId !== undefined &&
+          (typeof msg2.inviteId !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(msg2.inviteId))) return;
       // envelope is already bounded by maxPayload above (the whole frame
       // can't exceed 64KB), but checking it explicitly here too is
       // deliberate belt-and-braces: it fails on this specific field with a
@@ -3224,7 +3231,7 @@ wss.on('connection', (ws) => {
           // "the peer's session actually restarted" apart from "this looks
           // like a replay" in its own sequence-number check — meaningless to
           // this server, just forwarded along with everything else opaque.
-          peerWs.send(JSON.stringify({ type: msg2.type, from: token, sessionId: msg2.sessionId, envelope: msg2.envelope }));
+          peerWs.send(JSON.stringify({ type: msg2.type, from: token, sessionId: msg2.sessionId, inviteId: msg2.inviteId, envelope: msg2.envelope }));
           // No success log here on purpose — this fires on every single
           // signaling message (every ICE candidate included), which was
           // flooding Railway's logs. The dropped-peer case below is the one
@@ -3246,13 +3253,27 @@ wss.on('connection', (ws) => {
         // here too instead of a generic "Incoming call".
         if (msg2.type === 'call-invite') {
           const now = Date.now();
+          const inviteId = msg2.inviteId || null;
+          const isNewInvitation = inviteId
+            ? room2.nativeInviteId !== inviteId
+            : !(room2.ringingUntil && room2.ringingUntil > now);
+          // A new invitation supersedes any stale native ring retained for
+          // this room. Close that old surface before issuing the new call ID
+          // so OEM lock screens cannot leave both activities around.
+          if (isNewInvitation && room2.nativeCallId && room2.nativeCalleeToken) {
+            const previousCallee = room2.members.get(room2.nativeCalleeToken);
+            if (previousCallee) sendNativeCallEnd(previousCallee, room2.nativeCallId).catch(() => {});
+            room2.nativeCallId = null;
+            room2.nativeCalleeToken = null;
+          }
           // The caller re-announces while waiting for acknowledgement. Once
           // CallKit exists, its native call ID remains authoritative until
           // decline/hang-up; otherwise clearing ringingUntil on acceptance
           // lets a late retry create a second lock-screen call.
           const nativeCallInProgress = Boolean(room2.nativeCallId && room2.nativeCalleeToken);
-          const alreadyRinging = nativeCallInProgress ||
-            Boolean(room2.ringingUntil && room2.ringingUntil > now);
+          const alreadyRinging = inviteId
+            ? (!isNewInvitation && (nativeCallInProgress || Boolean(room2.ringingUntil && room2.ringingUntil > now)))
+            : (nativeCallInProgress || Boolean(room2.ringingUntil && room2.ringingUntil > now));
           if (!alreadyRinging) {
             analytics.callsStarted = (analytics.callsStarted || 0) + 1;
             trackAggregate('callsStarted');
@@ -3262,6 +3283,7 @@ wss.on('connection', (ws) => {
           if (!nativeCallInProgress) {
             room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
           }
+          if (inviteId) room2.nativeInviteId = inviteId;
           if (!alreadyRinging && (peerMember.voipToken || hasPushDestination(peerMember))) {
             const caller = room2.members.get(token);
             const nativeCallId = crypto.randomUUID();
@@ -3317,8 +3339,10 @@ wss.on('connection', (ws) => {
             // the every-3s buzzing the alreadyRinging guard above exists to
             // prevent.
             const ringMarker = room2.ringingUntil;
+            const inviteMarker = room2.nativeInviteId;
             setTimeout(() => {
               if (room2.ringingUntil !== ringMarker || room2.ringingUntil <= Date.now()) return;
+              if (room2.nativeInviteId !== inviteMarker) return;
               if (peerMember.voipToken) return;
               if (!hasPushDestination(peerMember)) return; // already known-dead from the first attempt
               sendMemberPush(peerMember, payload, { urgency: 'high', TTL: 15, label: 'call retry' });
@@ -3336,6 +3360,7 @@ wss.on('connection', (ws) => {
           room2.activeCall = false;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
+          room2.nativeInviteId = null;
         } else if (msg2.type === 'call-hangup') {
           // A hangup landing while the ring window is still open means
           // nobody ever answered — the caller gave up (their own 30s ring
@@ -3353,6 +3378,7 @@ wss.on('connection', (ws) => {
           const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
+          room2.nativeInviteId = null;
           if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId).catch(() => {});
           // Android's full-screen incoming-call surface is native too. Its
           // WebSocket may be frozen while the keyguard is up, so send a
@@ -3565,6 +3591,7 @@ function loadSnapshot() {
       room.ringingUntil = 0;
       room.nativeCallId = null;
       room.nativeCalleeToken = null;
+      room.nativeInviteId = null;
       // The ONLY path a pushSub can reach webpush.sendNotification without
       // ever having passed validatePushSubscription: a snapshot written by
       // an older deploy (before the allowlist existed, or before a later
