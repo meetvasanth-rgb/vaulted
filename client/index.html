@@ -3425,6 +3425,19 @@ window.addEventListener('vaultlix:voip-token', event => {
   acceptNativeVoipRegistration(event.detail);
 });
 
+// CallKit/native libwebrtc owns media for incoming iOS calls. Its
+// AVAudioSession route is not visible through HTMLMediaElement.setSinkId, so
+// mirror native route changes into the existing call controls instead.
+window.addEventListener('vaultlix:call-audio-route', event => {
+  const room = activeCallRoomCode ? rooms.get(activeCallRoomCode) : null;
+  if (!room || !room.nativeCallActive) return;
+  const detail = event.detail || {};
+  room.speakerAvailable = detail.available === true;
+  room.speakerOn = detail.speakerOn === true;
+  if (detail.success === false) toast('Couldn’t change the audio route.');
+  renderCallOverlay(room);
+});
+
 // Native may obtain and emit its PushKit token before this remote page has
 // installed the event listener. SceneDelegate persists the latest value on
 // window so registration remains reliable across that startup race.
@@ -3468,6 +3481,7 @@ async function handleNativeCallAction(detail) {
     room.callState = 'active';
     room.callPeerName = (typeof detail.caller === 'string' && detail.caller) || room.peerName || 'them';
     room.callStartedAt = Number.isFinite(detail.connectedAt) ? detail.connectedAt : Date.now();
+    requestNativeIOSSpeakerState(room);
     startCallTimer(room);
     renderCallOverlay(room);
     refreshCallButton();
@@ -3483,6 +3497,7 @@ async function handleNativeCallAction(detail) {
     room.callState = 'active';
     room.callPeerName = (typeof detail.caller === 'string' && detail.caller) || room.peerName || 'them';
     room.callStartedAt = null;
+    requestNativeIOSSpeakerState(room);
     renderCallOverlay(room);
     refreshCallButton();
     await refreshNativeCallAudio(room);
@@ -5508,6 +5523,15 @@ function nativeAndroidAudioBridge() {
   }
 }
 
+function requestNativeIOSSpeakerState(room) {
+  if (!room || !room.nativeCallActive) return false;
+  const bridge = window.webkit?.messageHandlers?.vaultlixCall;
+  if (!bridge) return false;
+  room.speakerAvailable = true;
+  try { bridge.postMessage({ action: 'getSpeakerState' }); } catch (e) { return false; }
+  return true;
+}
+
 // Best-effort only: mobile browsers generally don't expose "earpiece" vs
 // "loudspeaker" as a clean pair of selectable output devices the way
 // desktop OSes expose sound cards. Android Chrome sometimes does (device/
@@ -5519,6 +5543,7 @@ async function detectSpeakerToggle(room) {
   room.speakerAvailable = false;
   room.speakerOn = false;
   room.speakerDeviceId = null;
+  if (requestNativeIOSSpeakerState(room)) return;
   const nativeBridge = nativeAndroidAudioBridge();
   if (nativeBridge) {
     room.speakerAvailable = true;
@@ -5544,6 +5569,21 @@ async function detectSpeakerToggle(room) {
 async function toggleSpeaker() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || !room.speakerAvailable) return;
+  const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
+  if (iosBridge && room.nativeCallActive) {
+    const target = !room.speakerOn;
+    // Render immediately; the native route event confirms or rolls this
+    // state back if iOS rejects the change.
+    room.speakerOn = target;
+    renderCallOverlay(room);
+    try { iosBridge.postMessage({ action: 'setSpeaker', enabled: target }); }
+    catch (e) {
+      room.speakerOn = !target;
+      renderCallOverlay(room);
+      toast('Couldn’t change the audio route.');
+    }
+    return;
+  }
   const nativeBridge = nativeAndroidAudioBridge();
   if (nativeBridge) {
     const target = !room.speakerOn;

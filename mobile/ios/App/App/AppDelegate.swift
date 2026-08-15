@@ -160,7 +160,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             try AVAudioSession.sharedInstance().setCategory(
                 .playAndRecord,
                 mode: .voiceChat,
-                options: [.allowBluetooth, .defaultToSpeaker]
+                options: [.allowBluetooth]
             )
         } catch {
             action.fail()
@@ -280,6 +280,26 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         if let match = calls.first {
             postAction("audioDeactivated", callID: match.key, payload: match.value)
         }
+    }
+
+    /// Native incoming calls are owned by CallKit/libwebrtc rather than the
+    /// WKWebView, so the browser cannot use setSinkId to select the receiver
+    /// or loudspeaker. Keep the route change in the same AVAudioSession that
+    /// CallKit activated and let `.none` restore the system-selected route
+    /// (earpiece or a connected Bluetooth device).
+    @discardableResult
+    func setSpeakerEnabled(_ enabled: Bool) -> Bool {
+        do {
+            try AVAudioSession.sharedInstance().overrideOutputAudioPort(enabled ? .speaker : .none)
+            return true
+        } catch {
+            print("VXCALL manager speaker route failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func isSpeakerEnabled() -> Bool {
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
     }
 }
 

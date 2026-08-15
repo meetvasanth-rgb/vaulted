@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import WebKit
+import AVFoundation
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler {
     var window: UIWindow?
@@ -23,6 +24,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixCallAction, object: nil, queue: .main
         ) { [weak self] _ in self?.flushPendingCallActions() })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.emitSpeakerState(success: true) })
 
         // PushKit can issue the token before the remote page finishes loading.
         // Re-emit the persisted value after the bridge has had time to attach.
@@ -69,6 +73,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         }
     }
 
+    private func emitSpeakerState(success: Bool) {
+        emit(name: "vaultlix:call-audio-route", detail: [
+            "available": true,
+            "speakerOn": VaultlixCallManager.shared.isSpeakerEnabled(),
+            "success": success,
+        ])
+    }
+
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         guard message.name == "vaultlixCall",
@@ -89,6 +101,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.prepare()
             feedback.impactOccurred()
+            return
+        }
+        if action == "getSpeakerState" {
+            emitSpeakerState(success: true)
+            return
+        }
+        if action == "setSpeaker",
+           let enabled = body["enabled"] as? Bool {
+            let success = VaultlixCallManager.shared.setSpeakerEnabled(enabled)
+            emitSpeakerState(success: success)
             return
         }
         if action == "updateCaller",
