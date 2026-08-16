@@ -370,10 +370,11 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   if (!APNS_CONFIGURED || !member.apnsToken) return Promise.resolve(false);
   let parsed;
   try { parsed = JSON.parse(payload); } catch (e) { return Promise.resolve(false); }
+  const messageTone = ['default','note','soft','silent'].includes(member.messageTone) ? member.messageTone : 'default';
   const body = JSON.stringify({
     aps: {
       alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
-      sound: 'default',
+      ...(messageTone === 'silent' ? {} : { sound: messageTone === 'default' ? 'default' : `vault_${messageTone}.caf` }),
       'thread-id': parsed.code || 'vaultlix',
     },
     // No message text, encrypted payload, room credential, or member token is
@@ -466,10 +467,10 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         body: parsed.body || 'New activity',
       };
       message.android.notification = {
-        channelId: 'vaultlix_messages',
+        channelId: `vaultlix_messages_${['default','note','soft','silent'].includes(member.messageTone) ? member.messageTone : 'default'}`,
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
-        sound: 'default',
+        sound: member.messageTone === 'silent' ? undefined : (member.messageTone === 'note' ? 'vault_note' : member.messageTone === 'soft' ? 'vault_soft' : 'default'),
       };
     }
     await firebaseMessaging.send(message);
@@ -2483,6 +2484,8 @@ async function api(path, method, d, p, res, ip, headers) {
     } else {
       return resErr(res,'Invalid native platform.',400);
     }
+    m.messageTone = ['default','note','soft','silent'].includes(d.messageTone) ? d.messageTone : 'default';
+    m.callTone = ['vaultlix','classic','minimal'].includes(d.callTone) ? d.callTone : 'vaultlix';
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }

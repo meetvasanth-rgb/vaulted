@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.media.AudioAttributes;
 import android.os.Build;
 import android.os.PowerManager;
 import android.service.notification.StatusBarNotification;
@@ -20,7 +21,7 @@ import com.google.firebase.messaging.RemoteMessage;
 import java.util.Map;
 
 public class VaultlixMessagingService extends MessagingService {
-    public static final String CALL_CHANNEL_ID = "vaultlix_calls";
+    public static final String CALL_CHANNEL_PREFIX = "vaultlix_calls_";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
     @Override
@@ -55,14 +56,27 @@ public class VaultlixMessagingService extends MessagingService {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
 
+        String callTone = getSharedPreferences("vaultlix_sounds", MODE_PRIVATE)
+                .getString("callTone", "vaultlix");
+        if (!("classic".equals(callTone) || "minimal".equals(callTone))) callTone = "vaultlix";
+        String callChannelId = CALL_CHANNEL_PREFIX + callTone;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
-                    CALL_CHANNEL_ID,
+                    callChannelId,
                     "Calls",
                     NotificationManager.IMPORTANCE_HIGH
             );
             channel.setDescription("Incoming encrypted call alerts");
             channel.enableVibration(true);
+            int soundId = getResources().getIdentifier("vault_call_" + callTone, "raw", getPackageName());
+            if (soundId != 0) {
+                Uri sound = Uri.parse("android.resource://" + getPackageName() + "/" + soundId);
+                AudioAttributes attributes = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build();
+                channel.setSound(sound, attributes);
+            }
             channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(channel);
         }
@@ -108,7 +122,7 @@ public class VaultlixMessagingService extends MessagingService {
                 .setImportant(true)
                 .build();
 
-        NotificationCompat.Builder notification = new NotificationCompat.Builder(this, CALL_CHANNEL_ID)
+        NotificationCompat.Builder notification = new NotificationCompat.Builder(this, callChannelId)
                 .setSmallIcon(R.drawable.ic_stat_vaultlix)
                 .setColor(Color.rgb(104, 44, 67))
                 .setContentTitle(caller)
@@ -163,7 +177,7 @@ public class VaultlixMessagingService extends MessagingService {
             String channelId = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                     ? active.getNotification().getChannelId()
                     : null;
-            if (CALL_CHANNEL_ID.equals(channelId)) manager.cancel(active.getId());
+            if (channelId != null && channelId.startsWith(CALL_CHANNEL_PREFIX)) manager.cancel(active.getId());
         }
     }
 }

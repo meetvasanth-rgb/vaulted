@@ -18,6 +18,11 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */; };
 		A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00430A1000100000001 /* NativeCallRoomStore.swift */; };
+		B00D000130B0000100000001 /* vault_note.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001130B0000100000001 /* vault_note.caf */; };
+		B00D000230B0000100000001 /* vault_soft.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001230B0000100000001 /* vault_soft.caf */; };
+		B00D000330B0000100000001 /* vault_call_vaultlix.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001330B0000100000001 /* vault_call_vaultlix.caf */; };
+		B00D000430B0000100000001 /* vault_call_classic.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001430B0000100000001 /* vault_call_classic.caf */; };
+		B00D000530B0000100000001 /* vault_call_minimal.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001530B0000100000001 /* vault_call_minimal.caf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +38,11 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWebRTCCallEngine.swift; sourceTree = "<group>"; };
 		A11CE00430A1000100000001 /* NativeCallRoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallRoomStore.swift; sourceTree = "<group>"; };
+		B00D001130B0000100000001 /* vault_note.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_note.caf; path = App/Sounds/vault_note.caf; sourceTree = "<group>"; };
+		B00D001230B0000100000001 /* vault_soft.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_soft.caf; path = App/Sounds/vault_soft.caf; sourceTree = "<group>"; };
+		B00D001330B0000100000001 /* vault_call_vaultlix.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_vaultlix.caf; path = App/Sounds/vault_call_vaultlix.caf; sourceTree = "<group>"; };
+		B00D001430B0000100000001 /* vault_call_classic.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_classic.caf; path = App/Sounds/vault_call_classic.caf; sourceTree = "<group>"; };
+		B00D001530B0000100000001 /* vault_call_minimal.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_minimal.caf; path = App/Sounds/vault_call_minimal.caf; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -51,6 +61,11 @@
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
+				B00D001130B0000100000001 /* vault_note.caf */,
+				B00D001230B0000100000001 /* vault_soft.caf */,
+				B00D001330B0000100000001 /* vault_call_vaultlix.caf */,
+				B00D001430B0000100000001 /* vault_call_classic.caf */,
+				B00D001530B0000100000001 /* vault_call_minimal.caf */,
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
@@ -148,6 +163,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B00D000130B0000100000001 /* vault_note.caf in Resources */,
+				B00D000230B0000100000001 /* vault_soft.caf in Resources */,
+				B00D000330B0000100000001 /* vault_call_vaultlix.caf in Resources */,
+				B00D000430B0000100000001 /* vault_call_classic.caf in Resources */,
+				B00D000530B0000100000001 /* vault_call_minimal.caf in Resources */,
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
@@ -310,7 +330,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3KLX2S84MV;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 28;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -334,7 +354,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3KLX2S84MV;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 28;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (

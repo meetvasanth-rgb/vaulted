@@ -110,6 +110,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             VaultlixCallManager.shared.endAllCalls()
             return
         }
+        if action == "setNotificationTones",
+           let messageTone = body["messageTone"] as? String,
+           let callTone = body["callTone"] as? String {
+            VaultlixCallManager.shared.setNotificationTones(messageTone: messageTone, callTone: callTone)
+            return
+        }
         if action == "getSpeakerState" {
             emitSpeakerState(success: true)
             return
