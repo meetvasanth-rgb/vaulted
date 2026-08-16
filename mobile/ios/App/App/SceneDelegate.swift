@@ -2,6 +2,8 @@ import UIKit
 import Capacitor
 import WebKit
 import AVFoundation
+import LocalAuthentication
+import UserNotifications
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler {
     var window: UIWindow?
@@ -101,6 +103,31 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.prepare()
             feedback.impactOccurred()
+            return
+        }
+        if action == "activateQuickLock" {
+            UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+            return
+        }
+        if action == "authenticateQuickLock" {
+            let context = LAContext()
+            context.localizedCancelTitle = "Keep Locked"
+            var authError: NSError?
+            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &authError) else {
+                emit(name: "vaultlix:quick-lock-auth", detail: [
+                    "success": false,
+                    "error": "Set up Face ID, Touch ID, or a device passcode to unlock Vaultlix."
+                ])
+                return
+            }
+            context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Unlock your private Vaultlix session"
+            ) { [weak self] success, _ in
+                DispatchQueue.main.async {
+                    self?.emit(name: "vaultlix:quick-lock-auth", detail: ["success": success])
+                }
+            }
             return
         }
         if action == "getSpeakerState" {

@@ -1,6 +1,8 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.app.KeyguardManager;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioDeviceInfo;
@@ -12,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.HapticFeedbackConstants;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 
 import com.getcapacitor.BridgeActivity;
@@ -21,6 +24,7 @@ import org.json.JSONObject;
 import java.lang.ref.WeakReference;
 
 public class MainActivity extends BridgeActivity {
+    private static final int QUICK_LOCK_AUTH_REQUEST = 7319;
     private static WeakReference<MainActivity> activeInstance = new WeakReference<>(null);
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -158,6 +162,26 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != QUICK_LOCK_AUTH_REQUEST) return;
+        boolean success = resultCode == Activity.RESULT_OK;
+        if (success) getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        emitQuickLockAuth(success, success ? null : "Vaultlix remains locked.");
+    }
+
+    private void emitQuickLockAuth(boolean success, String error) {
+        JSONObject detail = new JSONObject();
+        try {
+            detail.put("success", success);
+            if (error != null) detail.put("error", error);
+        } catch (Exception ignored) {}
+        String script = "window.dispatchEvent(new CustomEvent('vaultlix:quick-lock-auth',{detail:"
+                + detail + "}));";
+        getBridge().getWebView().evaluateJavascript(script, null);
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus && NativeCallActions.consumePendingWebViewCallEnd(this)) {
@@ -229,6 +253,34 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void clearCallNotifications() {
             runOnUiThread(() -> VaultlixMessagingService.clearActiveCallNotifications(MainActivity.this));
+        }
+
+        @JavascriptInterface
+        public void activateQuickLock() {
+            runOnUiThread(() -> {
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                VaultlixMessagingService.clearActiveCallNotifications(MainActivity.this);
+                NotificationManager manager = getSystemService(NotificationManager.class);
+                if (manager != null) manager.cancelAll();
+            });
+        }
+
+        @JavascriptInterface
+        public void authenticateQuickLock() {
+            runOnUiThread(() -> {
+                KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+                if (keyguard == null || !keyguard.isDeviceSecure()) {
+                    emitQuickLockAuth(false, "Set up fingerprint, face unlock, or a device PIN to unlock Vaultlix.");
+                    return;
+                }
+                Intent intent = keyguard.createConfirmDeviceCredentialIntent(
+                        "Unlock Vaultlix", "Authenticate to return to your private session");
+                if (intent == null) {
+                    emitQuickLockAuth(false, "Device authentication is unavailable.");
+                    return;
+                }
+                startActivityForResult(intent, QUICK_LOCK_AUTH_REQUEST);
+            });
         }
 
         @JavascriptInterface

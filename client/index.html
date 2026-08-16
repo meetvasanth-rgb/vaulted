@@ -952,6 +952,10 @@ body.select-mode .chat-ftr{display:none}
   font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:300;
   letter-spacing:.14em; color:var(--cream);
 }
+.pc-lock-copy{display:none;text-align:center;max-width:270px;color:#BEB5AA;font-size:12px;line-height:1.55}
+.pc-unlock{display:none;margin-top:8px;border:1px solid var(--gold-border);border-radius:999px;background:var(--gold-dim);color:var(--cream);padding:11px 24px;font-size:13px;letter-spacing:.03em;cursor:pointer}
+#privacy-cover.quick-locked .pc-lock-copy,#privacy-cover.quick-locked .pc-unlock{display:block}
+#privacy-cover.unlocking .pc-unlock{opacity:.55;pointer-events:none}
 
 /* iOS-only nudge: -webkit-touch-callout is a WebKit/iOS Safari-specific
    property, unsupported anywhere else, so @supports on it is a reliable way
@@ -2433,6 +2437,9 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <button class="vault-list-home" type="button" onclick="openMainHome()" title="Open Vaultlix home" aria-label="Open Vaultlix home">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span>
       </button>
+      <button class="vault-list-settings" onclick="activateQuickLock()" title="Quick Lock" aria-label="Quick Lock Vaultlix">
+        <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg>
+      </button>
       <button class="vault-list-settings" onclick="showScreen('s-privacy')" title="Privacy" aria-label="View privacy information">
         <svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg>
       </button>
@@ -2701,6 +2708,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3z"/></svg>
   </div>
   <div class="pc-word">Vaultlix</div>
+  <div class="pc-lock-copy">Quick Lock is on. Authenticate with Face ID, fingerprint, or your device PIN to return.</div>
+  <button class="pc-unlock" type="button" onclick="requestQuickUnlock()">Unlock Vaultlix</button>
 </div>
 
 <!-- Settings overlay + panel -->
@@ -2715,6 +2724,19 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
   <div class="settings-body">
     <div class="settings-section-label">App-wide</div>
+
+    <div class="settings-row" onclick="activateQuickLock()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
+        <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Quick Lock</div>
+        <div class="settings-row-sub">Hide Vaultlix now and require device authentication to reopen</div>
+      </div>
+      <div class="settings-status settings-status-action">Lock</div>
+    </div>
+
+    <div class="settings-divider"></div>
 
     <div class="settings-row">
       <div class="settings-row-icon" style="background:#F0F7F3;color:#71947C;">
@@ -4854,7 +4876,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
   if (wasNativeCall && !room.signalWs) {
-    setTimeout(() => { if (room.callState === 'idle') connectSignaling(room); }, 250);
+    setTimeout(() => { if (room.callState === 'idle' && !quickLockActive) connectSignaling(room); }, 250);
   }
 
   // The keyguard-safe Android host is a transient call surface, not a chat
@@ -6917,8 +6939,88 @@ function reconnectSignalingForAllRooms() {
 // it's the same best-effort approach banking/messaging apps use, and it's
 // solid opaque (not a CSS blur) so nothing legible can bleed through even if
 // timing is imperfect.
+const QUICK_LOCK_KEY = 'vaultlix_quick_locked';
+let quickLockActive = sessionStorage.getItem(QUICK_LOCK_KEY) === '1';
+let quickLockUnlocking = false;
+
 function showPrivacyCover() { document.getElementById('privacy-cover')?.classList.add('show'); }
-function hidePrivacyCover() { document.getElementById('privacy-cover')?.classList.remove('show'); }
+function hidePrivacyCover() {
+  if (!quickLockActive) document.getElementById('privacy-cover')?.classList.remove('show');
+}
+
+function renderQuickLock() {
+  const cover = document.getElementById('privacy-cover');
+  if (!cover) return;
+  cover.classList.toggle('quick-locked', quickLockActive);
+  cover.classList.toggle('unlocking', quickLockUnlocking);
+  if (quickLockActive) cover.classList.add('show');
+}
+
+function activateQuickLock() {
+  closeSettings();
+  quickLockActive = true;
+  quickLockUnlocking = false;
+  sessionStorage.setItem(QUICK_LOCK_KEY, '1');
+  renderQuickLock();
+
+  const input = document.getElementById('msg-input');
+  if (input) { input.value = ''; input.blur(); }
+  for (const room of rooms.values()) {
+    if (room.callState !== 'idle') {
+      sendSignal(room, room.callState === 'incoming' ? 'call-decline' : 'call-hangup', {});
+      endCall(room, null, room.callState === 'incoming' ? 'Declined call' : null);
+    }
+    disconnectSignaling(room);
+  }
+  clearAndroidCallNotifications();
+  try { window.VaultlixAndroid?.activateQuickLock(); } catch (e) {}
+  try { window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'activateQuickLock' }); } catch (e) {}
+}
+
+function requestQuickUnlock() {
+  if (!quickLockActive || quickLockUnlocking) return;
+  quickLockUnlocking = true;
+  renderQuickLock();
+  try {
+    if (window.VaultlixAndroid?.authenticateQuickLock) {
+      window.VaultlixAndroid.authenticateQuickLock();
+      return;
+    }
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action: 'authenticateQuickLock' });
+      return;
+    }
+  } catch (e) {}
+  // Ordinary browsers cannot invoke the phone's protected authentication UI.
+  // Keep the feature useful as a privacy screen, without pretending this
+  // fallback provides biometric security.
+  completeQuickUnlock();
+}
+
+function completeQuickUnlock() {
+  quickLockActive = false;
+  quickLockUnlocking = false;
+  sessionStorage.removeItem(QUICK_LOCK_KEY);
+  const cover = document.getElementById('privacy-cover');
+  cover?.classList.remove('quick-locked', 'unlocking', 'show');
+  tabFocused = !document.hidden;
+  lastInteractionTime = Date.now();
+  catchUpPoll();
+  checkStaleIncomingCalls();
+  refreshPushForAllRooms();
+  reconnectSignalingForAllRooms();
+}
+
+window.addEventListener('vaultlix:quick-lock-auth', (event) => {
+  if (event.detail?.success) completeQuickUnlock();
+  else {
+    quickLockUnlocking = false;
+    renderQuickLock();
+    if (event.detail?.error) toast(event.detail.error);
+  }
+});
+
+renderQuickLock();
 window.addEventListener('pagehide', () => { showPrivacyCover(); });
 
 // Read confirmations queued while the tab was hidden/inactive (or while a
@@ -6972,7 +7074,7 @@ document.addEventListener('visibilitychange', () => {
         if (room.callState === 'idle') disconnectSignaling(room);
       }
     }
-  } else {
+  } else if (!quickLockActive) {
     hidePrivacyCover();
     tabFocused = true;
     lastInteractionTime = Date.now();
@@ -6986,6 +7088,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('focus', () => {
+  if (quickLockActive) { renderQuickLock(); return; }
   hidePrivacyCover();
   tabFocused = true; lastInteractionTime = Date.now();
   const active = getActiveRoom();
@@ -6999,7 +7102,7 @@ window.addEventListener('focus', () => {
 window.addEventListener('blur', () => { tabFocused = false; });
 // iOS/WebKit restores a backgrounded tab from its page cache without firing
 // 'load' — pageshow (with persisted:true) is the reliable signal for that.
-window.addEventListener('pageshow', (e) => { if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); refreshPushForAllRooms(); reconnectSignalingForAllRooms(); } });
+window.addEventListener('pageshow', (e) => { if (quickLockActive) { renderQuickLock(); return; } if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); refreshPushForAllRooms(); reconnectSignalingForAllRooms(); } });
 
 ['click','keydown','touchstart','mousemove'].forEach(evt => {
   document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
