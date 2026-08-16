@@ -1331,6 +1331,29 @@ body.select-mode .chat-ftr{display:none}
 .settings-about-rule{width:30px;height:1px;background:#682C43}
 .settings-about-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:#1A1510}
 
+/* Emergency Exit is intentionally unlike an ordinary settings tap. The
+   entry control must be held long enough to make an accidental activation
+   implausible; the destructive scope and irreversible warning then live in
+   a separate modal with a second explicit confirmation. */
+.emergency-hold{margin:10px 20px 4px;width:calc(100% - 40px);border:1px solid #D8A2AE;background:#FFF7F8;color:#9B2945;border-radius:14px;padding:14px 16px;font:600 13px 'Inter',sans-serif;letter-spacing:.02em;cursor:pointer;position:relative;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+.emergency-hold::before{content:'';position:absolute;inset:0;background:#9B2945;transform:scaleX(0);transform-origin:left;transition:transform 1.5s linear;opacity:.12}
+.emergency-hold.holding::before{transform:scaleX(1)}
+.emergency-hold span{position:relative;z-index:1}
+.emergency-overlay{position:fixed;inset:0;z-index:10020;background:rgba(14,8,11,.72);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.emergency-overlay.open{display:flex}
+.emergency-sheet{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#FFF;border-radius:22px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
+.emergency-title{font:500 27px 'Cormorant Garamond',serif;color:#351522;margin:0 0 6px}
+.emergency-warning{font:500 12px/1.55 'Inter',sans-serif;color:#8F344C;background:#FFF2F4;border:1px solid #F0CCD5;border-radius:12px;padding:11px 12px;margin:10px 0 14px}
+.emergency-choice{display:flex;align-items:flex-start;gap:10px;padding:11px 4px;font:500 13px/1.35 'Inter',sans-serif;color:#2C2226}
+.emergency-choice small{display:block;color:#8D7E84;font-weight:400;margin-top:2px}
+.emergency-vaults{display:none;margin:4px 0 8px 28px;padding:8px 10px;background:#F8F6F7;border-radius:10px;max-height:150px;overflow:auto}
+.emergency-vaults.open{display:block}
+.emergency-confirm{display:flex;gap:9px;align-items:flex-start;margin:14px 0;font:500 12px/1.45 'Inter',sans-serif;color:#5E4D54}
+.emergency-actions{display:flex;gap:10px}
+.emergency-actions button{flex:1;border-radius:12px;padding:12px;border:1px solid #DED6D9;background:#FFF;font:600 13px 'Inter',sans-serif}
+.emergency-actions .danger{background:#9B2945;border-color:#9B2945;color:#FFF}
+.emergency-actions .danger:disabled{opacity:.4}
+
 /* ── VAULTLIX 2026 UI SYSTEM ──────────────────────────────────────────
    One visual language across onboarding, rooms, calls and settings. */
 :root{
@@ -2794,6 +2817,10 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="settings-divider"></div>
 
+    <div class="settings-section-label">Safety</div>
+    <button class="emergency-hold" id="emergency-hold" type="button" aria-label="Press and hold to open Emergency Exit"><span>Press and hold for Emergency Exit</span></button>
+    <div class="settings-divider"></div>
+
     <div class="settings-section-label" style="display:flex;align-items:center;justify-content:space-between">
       <span>This vault</span>
       <span id="settings-room-section-name" style="text-transform:none;letter-spacing:0;font-weight:600;color:#9A8C7E;font-size:11px">—</span>
@@ -2908,6 +2935,20 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       Vaultlix · Version 1.0<br/>
       <span style="color:#C4B8AC;">Anonymous · Encrypted · Unreadable to us</span>
     </div>
+  </div>
+</div>
+
+<div class="emergency-overlay" id="emergency-overlay" role="dialog" aria-modal="true" aria-labelledby="emergency-title">
+  <div class="emergency-sheet">
+    <h2 class="emergency-title" id="emergency-title">Emergency Exit</h2>
+    <div class="emergency-warning"><strong>Recovery is impossible.</strong> Deleting local encryption keys makes any remaining ciphertext permanently unreadable. Account-wide deletion also signs out every device and cannot be reversed.</div>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="current" checked onchange="renderEmergencySelection()"><span>Exit this vault<small>Leave this device's active vault and remove its local keys.</small></span></label>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="selected" onchange="renderEmergencySelection()"><span>Exit selected vaults<small>Choose which vaults to leave and erase from this device.</small></span></label>
+    <div class="emergency-vaults" id="emergency-vaults"></div>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="device" onchange="renderEmergencySelection()"><span>Erase Vaultlix from this device<small>Remove every local vault, key, cache, token binding, and notification.</small></span></label>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="account" onchange="renderEmergencySelection()"><span>Close my Vaultlix account everywhere<small>Erase all vaults, the encrypted account bundle, account records, and every signed-in session.</small></span></label>
+    <label class="emergency-confirm"><input type="checkbox" id="emergency-ack" onchange="updateEmergencyConfirm()"><span id="emergency-ack-copy">I understand this removes access and deleted encryption keys cannot be recovered.</span></label>
+    <div class="emergency-actions"><button type="button" onclick="closeEmergencyExit()">Cancel</button><button class="danger" id="emergency-confirm" type="button" onclick="performEmergencyExit()" disabled>Exit permanently</button></div>
   </div>
 </div>
 
@@ -7022,6 +7063,156 @@ window.addEventListener('vaultlix:quick-lock-auth', (event) => {
 
 renderQuickLock();
 window.addEventListener('pagehide', () => { showPrivacyCover(); });
+
+// ── EMERGENCY EXIT ─────────────────────────────────────────────────────
+let emergencyHoldTimer = null;
+let emergencyExitBusy = false;
+
+function cancelEmergencyHold() {
+  clearTimeout(emergencyHoldTimer); emergencyHoldTimer = null;
+  document.getElementById('emergency-hold')?.classList.remove('holding');
+}
+
+function beginEmergencyHold(event) {
+  if (event?.button !== undefined && event.button !== 0) return;
+  cancelEmergencyHold();
+  const button = document.getElementById('emergency-hold');
+  button?.classList.add('holding');
+  emergencyHoldTimer = setTimeout(() => { cancelEmergencyHold(); openEmergencyExit(); }, 1500);
+}
+
+function openEmergencyExit() {
+  closeSettings();
+  const current = getActiveRoom();
+  const currentRadio = document.querySelector('input[name="emergency-scope"][value="current"]');
+  if (currentRadio) { currentRadio.disabled = !current; currentRadio.checked = Boolean(current); }
+  if (!current) document.querySelector('input[name="emergency-scope"][value="device"]')?.click();
+  const list = document.getElementById('emergency-vaults');
+  if (list) list.innerHTML = [...rooms.values()].map(room => {
+    const label = escapeHtml(room.localLabel || room.myName || room.code);
+    return `<label class="emergency-choice"><input type="checkbox" value="${escapeHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${escapeHtml(room.code)}</small></span></label>`;
+  }).join('') || '<div class="settings-row-sub">No vaults are stored on this device.</div>';
+  document.getElementById('emergency-ack').checked = false;
+  renderEmergencySelection();
+  document.getElementById('emergency-overlay')?.classList.add('open');
+}
+
+function closeEmergencyExit() {
+  if (emergencyExitBusy) return;
+  document.getElementById('emergency-overlay')?.classList.remove('open');
+}
+
+function emergencyScope() {
+  return document.querySelector('input[name="emergency-scope"]:checked')?.value || 'current';
+}
+
+function renderEmergencySelection() {
+  document.getElementById('emergency-vaults')?.classList.toggle('open', emergencyScope() === 'selected');
+  const account = loadAccountState();
+  const accountRadio = document.querySelector('input[name="emergency-scope"][value="account"]');
+  if (accountRadio) accountRadio.disabled = !account;
+  document.getElementById('emergency-ack-copy').textContent = emergencyScope() === 'account'
+    ? 'I understand my account, every session, encrypted bundles, vaults, messages, and local encryption keys will be permanently deleted.'
+    : 'I understand this removes access and deleted encryption keys cannot be recovered.';
+  updateEmergencyConfirm();
+}
+
+function updateEmergencyConfirm() {
+  const selectedOk = emergencyScope() !== 'selected' || document.querySelectorAll('#emergency-vaults input:checked').length > 0;
+  const button = document.getElementById('emergency-confirm');
+  if (button) button.disabled = emergencyExitBusy || !document.getElementById('emergency-ack')?.checked || !selectedOk;
+}
+
+async function clearVaultlixDeviceData() {
+  try { navigator.serviceWorker?.getRegistrations().then(rs => rs.forEach(r => r.unregister())); } catch (e) {}
+  try { if ('caches' in window) for (const key of await caches.keys()) await caches.delete(key); } catch (e) {}
+  try { indexedDB.deleteDatabase('vaulted-push'); } catch (e) {}
+  try { indexedDB.deleteDatabase('vaultlix'); } catch (e) {}
+  try { sessionStorage.clear(); localStorage.clear(); } catch (e) {}
+  try { window.VaultlixAndroid?.emergencyReset(); } catch (e) {}
+  try { window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'emergencyReset' }); } catch (e) {}
+}
+
+async function performEmergencyExit() {
+  if (emergencyExitBusy || !document.getElementById('emergency-ack')?.checked) return;
+  const scope = emergencyScope();
+  const state = loadAccountState();
+  let targets = [];
+  if (scope === 'current') { const room = getActiveRoom(); if (room) targets = [room]; }
+  else if (scope === 'selected') {
+    const codes = new Set([...document.querySelectorAll('#emergency-vaults input:checked')].map(el => el.value));
+    targets = [...rooms.values()].filter(room => codes.has(room.code));
+  } else targets = [...rooms.values()];
+  // Account sync can contain a vault created on another device. Decrypt the
+  // latest bundle locally and include those authenticated room sessions so
+  // account-wide exit erases server-held room data, not only this screen's
+  // currently restored rooms. The plaintext credentials never leave this
+  // device except to their normal room-scoped endpoints.
+  if (scope === 'account' && state) {
+    try {
+      const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
+      if (latest?.error) throw new Error(latest.error);
+      const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
+      const known = new Set(targets.map(room => room.code));
+      for (const session of (bundle.sessions || [])) {
+        if (session?.code && session?.token && !known.has(session.code)) { targets.push(session); known.add(session.code); }
+      }
+    } catch (error) {
+      toast(error?.message || 'Could not retrieve the encrypted account bundle. Nothing was erased.');
+      return;
+    }
+  }
+  if (!targets.length && (scope === 'current' || scope === 'selected')) { toast('Select at least one vault'); return; }
+
+  emergencyExitBusy = true; updateEmergencyConfirm();
+  const button = document.getElementById('emergency-confirm');
+  if (button) button.textContent = 'Erasing…';
+  try {
+    for (const room of targets) {
+      if (room.callState && room.callState !== 'idle') {
+        sendSignal(room, room.callState === 'incoming' ? 'call-decline' : 'call-hangup', {});
+        endCall(room);
+      }
+      try { await api('/api/push-unsubscribe', { code:room.code, token:room.token }); } catch (e) {}
+      try {
+        await api(scope === 'account' ? '/api/close' : '/api/leave', { code:room.code, token:room.token, name:room.myName });
+      } catch (e) {}
+      removeRoomFromState(room.code);
+      try { await idbRemoveSession(room.code); } catch (e) {}
+    }
+    clearAndroidCallNotifications();
+
+    if (scope === 'account' && state) {
+      const result = await api('/api/account/delete', { accountId:state.accountId, sessionToken:state.sessionToken });
+      if (result?.error) throw new Error(result.error);
+    } else if (scope === 'device' && state) {
+      try { await api('/api/account/logout', { accountId:state.accountId, sessionToken:state.sessionToken }); } catch (e) {}
+    }
+
+    if (scope === 'device' || scope === 'account') {
+      await clearVaultlixDeviceData();
+      location.replace(location.origin + '/');
+      return;
+    }
+    document.getElementById('emergency-overlay')?.classList.remove('open');
+    switchToNextRoomOrLanding();
+    toast(targets.length === 1 ? 'Vault access erased' : 'Selected vault access erased');
+  } catch (error) {
+    toast(error?.message || 'Emergency Exit could not finish. Try again.');
+  } finally {
+    emergencyExitBusy = false;
+    if (button) button.textContent = 'Exit permanently';
+    updateEmergencyConfirm();
+  }
+}
+
+document.addEventListener('pointerdown', event => {
+  if (event.target.closest('#emergency-hold')) beginEmergencyHold(event);
+  if (event.target.closest('#emergency-vaults input')) setTimeout(updateEmergencyConfirm, 0);
+});
+document.addEventListener('pointerup', cancelEmergencyHold);
+document.addEventListener('pointercancel', cancelEmergencyHold);
+document.addEventListener('pointerleave', event => { if (event.target.closest?.('#emergency-hold')) cancelEmergencyHold(); }, true);
 
 // Read confirmations queued while the tab was hidden/inactive (or while a
 // room sat in the background behind another one) only get sent from inside

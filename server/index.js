@@ -2056,6 +2056,21 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true });
   }
 
+  // Authenticated, account-wide erasure. Removing the record invalidates
+  // every session at once and permanently discards the encrypted account
+  // bundle and recovery material. Room destruction remains room-token
+  // scoped through /api/close so this endpoint cannot become a vault oracle.
+  if (path === '/api/account/delete' && method === 'POST') {
+    if (rateLimited(`account-delete:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many account deletion attempts — try again later.', 429);
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix ID session has expired.', 401);
+    accounts.delete(d.accountId);
+    saveAccounts();
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok: true });
+  }
+
   // POST /api/friends/unlock — exchange the privately shared application
   // key for an anonymous, signed one-year entitlement. The plaintext key is
   // never returned, persisted, or placed in a URL; clients store only the

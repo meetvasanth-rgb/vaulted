@@ -266,6 +266,16 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void emergencyReset() {
+            runOnUiThread(() -> {
+                VaultlixMessagingService.clearActiveCallNotifications(MainActivity.this);
+                NotificationManager manager = getSystemService(NotificationManager.class);
+                if (manager != null) manager.cancelAll();
+                restoreAudioRoute();
+            });
+        }
+
+        @JavascriptInterface
         public void authenticateQuickLock() {
             runOnUiThread(() -> {
                 KeyguardManager keyguard = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);

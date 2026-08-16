@@ -237,6 +237,19 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         outgoingCalls.remove(match.key)
     }
 
+    func endAllCalls() {
+        for callID in Array(calls.keys) {
+            NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: true)
+            provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
+        }
+        calls.removeAll()
+        answeredCalls.removeAll()
+        nativeMediaCalls.removeAll()
+        connectedCalls.removeAll()
+        outgoingCalls.removeAll()
+        outgoingWebAudioSessionActive = false
+    }
+
     func answerCallFromWeb(roomCode: String) {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first,
               !answeredCalls.contains(match.key) else { return }

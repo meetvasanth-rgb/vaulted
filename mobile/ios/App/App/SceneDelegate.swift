@@ -109,6 +109,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
             return
         }
+        if action == "emergencyReset" {
+            UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+            UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+            VaultlixCallManager.shared.endAllCalls()
+            return
+        }
         if action == "authenticateQuickLock" {
             let context = LAContext()
             context.localizedCancelTitle = "Keep Locked"
