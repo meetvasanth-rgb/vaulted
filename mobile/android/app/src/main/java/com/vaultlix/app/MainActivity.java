@@ -233,9 +233,11 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void setNotificationTones(String messageTone, String callTone) {
-            String safeMessage = ("note".equals(messageTone) || "soft".equals(messageTone) || "silent".equals(messageTone))
+            String safeMessage = ("note".equals(messageTone) || "soft".equals(messageTone) || "chime".equals(messageTone)
+                    || "glass".equals(messageTone) || "pulse".equals(messageTone) || "silent".equals(messageTone))
                     ? messageTone : "default";
-            String safeCall = ("classic".equals(callTone) || "minimal".equals(callTone))
+            String safeCall = ("classic".equals(callTone) || "minimal".equals(callTone) || "radiant".equals(callTone)
+                    || "digital".equals(callTone) || "urgent".equals(callTone))
                     ? callTone : "vaultlix";
             getSharedPreferences("vaultlix_sounds", MODE_PRIVATE).edit()
                     .putString("messageTone", safeMessage)

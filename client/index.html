@@ -2803,7 +2803,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <div class="settings-row-sub">Sound for new message notifications</div>
       </div>
       <select class="settings-tone-select" id="message-tone" onchange="setNotificationTone('message',this.value)">
-        <option value="default">Default</option><option value="note">Vault Note</option><option value="soft">Soft</option><option value="silent">Silent</option>
+        <option value="default">Default</option><option value="note">Vault Note</option><option value="soft">Soft</option><option value="chime">Chime</option><option value="glass">Glass</option><option value="pulse">Pulse</option><option value="silent">Silent</option>
       </select>
     </div>
 
@@ -2818,7 +2818,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <div class="settings-row-sub">Ringtone for incoming Vaultlix calls</div>
       </div>
       <select class="settings-tone-select" id="call-tone" onchange="setNotificationTone('call',this.value)">
-        <option value="vaultlix">Vaultlix</option><option value="classic">Classic</option><option value="minimal">Minimal</option>
+        <option value="vaultlix">Vaultlix</option><option value="classic">Classic</option><option value="minimal">Minimal</option><option value="radiant">Radiant</option><option value="digital">Digital</option><option value="urgent">Urgent</option>
       </select>
     </div>
 
@@ -6662,8 +6662,8 @@ function loadSettingsState() {
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
     const messageTone = document.getElementById('message-tone');
     const callTone = document.getElementById('call-tone');
-    if (messageTone) messageTone.value = ['default','note','soft','silent'].includes(saved.messageTone) ? saved.messageTone : 'default';
-    if (callTone) callTone.value = ['vaultlix','classic','minimal'].includes(saved.callTone) ? saved.callTone : 'vaultlix';
+    if (messageTone) messageTone.value = ['default','note','soft','chime','glass','pulse','silent'].includes(saved.messageTone) ? saved.messageTone : 'default';
+    if (callTone) callTone.value = ['vaultlix','classic','minimal','radiant','digital','urgent'].includes(saved.callTone) ? saved.callTone : 'vaultlix';
   } catch (e) {}
   updatePushStatus();
   updateFriendsAccessStatus();
@@ -6957,14 +6957,14 @@ function currentNotificationTones() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     return {
-      messageTone: ['default','note','soft','silent'].includes(saved.messageTone) ? saved.messageTone : 'default',
-      callTone: ['vaultlix','classic','minimal'].includes(saved.callTone) ? saved.callTone : 'vaultlix',
+      messageTone: ['default','note','soft','chime','glass','pulse','silent'].includes(saved.messageTone) ? saved.messageTone : 'default',
+      callTone: ['vaultlix','classic','minimal','radiant','digital','urgent'].includes(saved.callTone) ? saved.callTone : 'vaultlix',
     };
   } catch (e) { return { messageTone:'default', callTone:'vaultlix' }; }
 }
 
 async function setNotificationTone(kind, value) {
-  const allowed = kind === 'message' ? ['default','note','soft','silent'] : ['vaultlix','classic','minimal'];
+  const allowed = kind === 'message' ? ['default','note','soft','chime','glass','pulse','silent'] : ['vaultlix','classic','minimal','radiant','digital','urgent'];
   if (!allowed.includes(value)) return;
   saveSetting(kind === 'message' ? 'messageTone' : 'callTone', value);
   previewNotificationTone(kind, value);
@@ -6988,16 +6988,22 @@ function previewNotificationTone(kind, value) {
     if (!AudioCtx) return;
     const context = new AudioCtx();
     const notes = kind === 'message'
-      ? (value === 'note' ? [[880,0,.14],[1320,.12,.22]] : value === 'soft' ? [[660,0,.38]] : [[820,0,.16]])
+      ? (value === 'note' ? [[880,0,.14],[1320,.12,.22]] : value === 'soft' ? [[660,0,.38]]
+        : value === 'chime' ? [[660,0,.22],[990,.16,.3]]
+        : value === 'glass' ? [[1175,0,.18],[1568,.1,.28]]
+        : value === 'pulse' ? [[740,0,.12],[740,.18,.12],[988,.36,.2]] : [[820,0,.16]])
       : value === 'classic' ? [[520,0,.28],[520,.42,.28],[650,.84,.34]]
         : value === 'minimal' ? [[784,0,.22],[784,.48,.22]]
+        : value === 'radiant' ? [[659,0,.3],[831,.25,.3],[1047,.5,.42]]
+        : value === 'digital' ? [[880,0,.16],[660,.2,.16],[990,.4,.2],[660,.65,.2]]
+        : value === 'urgent' ? [[740,0,.24],[932,.27,.24],[740,.54,.24],[932,.81,.32]]
         : [[740,0,.32],[932,.34,.32],[740,.7,.34]];
     for (const [frequency, delay, duration] of notes) {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(.0001, context.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(.11, context.currentTime + delay + .02);
+      gain.gain.exponentialRampToValueAtTime(.28, context.currentTime + delay + .02);
       gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + delay + duration);
       oscillator.connect(gain).connect(context.destination);
       oscillator.start(context.currentTime + delay);

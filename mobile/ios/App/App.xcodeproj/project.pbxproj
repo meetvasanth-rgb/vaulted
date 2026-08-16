@@ -23,6 +23,12 @@
 		B00D000330B0000100000001 /* vault_call_vaultlix.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001330B0000100000001 /* vault_call_vaultlix.caf */; };
 		B00D000430B0000100000001 /* vault_call_classic.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001430B0000100000001 /* vault_call_classic.caf */; };
 		B00D000530B0000100000001 /* vault_call_minimal.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001530B0000100000001 /* vault_call_minimal.caf */; };
+		B00D000630B0000100000001 /* vault_chime.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001630B0000100000001 /* vault_chime.caf */; };
+		B00D000730B0000100000001 /* vault_glass.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001730B0000100000001 /* vault_glass.caf */; };
+		B00D000830B0000100000001 /* vault_pulse.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001830B0000100000001 /* vault_pulse.caf */; };
+		B00D000930B0000100000001 /* vault_call_radiant.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001930B0000100000001 /* vault_call_radiant.caf */; };
+		B00D000A30B0000100000001 /* vault_call_digital.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001A30B0000100000001 /* vault_call_digital.caf */; };
+		B00D000B30B0000100000001 /* vault_call_urgent.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001B30B0000100000001 /* vault_call_urgent.caf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +49,12 @@
 		B00D001330B0000100000001 /* vault_call_vaultlix.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_vaultlix.caf; path = App/Sounds/vault_call_vaultlix.caf; sourceTree = "<group>"; };
 		B00D001430B0000100000001 /* vault_call_classic.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_classic.caf; path = App/Sounds/vault_call_classic.caf; sourceTree = "<group>"; };
 		B00D001530B0000100000001 /* vault_call_minimal.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_minimal.caf; path = App/Sounds/vault_call_minimal.caf; sourceTree = "<group>"; };
+		B00D001630B0000100000001 /* vault_chime.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_chime.caf; path = App/Sounds/vault_chime.caf; sourceTree = "<group>"; };
+		B00D001730B0000100000001 /* vault_glass.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_glass.caf; path = App/Sounds/vault_glass.caf; sourceTree = "<group>"; };
+		B00D001830B0000100000001 /* vault_pulse.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_pulse.caf; path = App/Sounds/vault_pulse.caf; sourceTree = "<group>"; };
+		B00D001930B0000100000001 /* vault_call_radiant.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_radiant.caf; path = App/Sounds/vault_call_radiant.caf; sourceTree = "<group>"; };
+		B00D001A30B0000100000001 /* vault_call_digital.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_digital.caf; path = App/Sounds/vault_call_digital.caf; sourceTree = "<group>"; };
+		B00D001B30B0000100000001 /* vault_call_urgent.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_urgent.caf; path = App/Sounds/vault_call_urgent.caf; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -66,6 +78,12 @@
 				B00D001330B0000100000001 /* vault_call_vaultlix.caf */,
 				B00D001430B0000100000001 /* vault_call_classic.caf */,
 				B00D001530B0000100000001 /* vault_call_minimal.caf */,
+				B00D001630B0000100000001 /* vault_chime.caf */,
+				B00D001730B0000100000001 /* vault_glass.caf */,
+				B00D001830B0000100000001 /* vault_pulse.caf */,
+				B00D001930B0000100000001 /* vault_call_radiant.caf */,
+				B00D001A30B0000100000001 /* vault_call_digital.caf */,
+				B00D001B30B0000100000001 /* vault_call_urgent.caf */,
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
@@ -168,6 +186,12 @@
 				B00D000330B0000100000001 /* vault_call_vaultlix.caf in Resources */,
 				B00D000430B0000100000001 /* vault_call_classic.caf in Resources */,
 				B00D000530B0000100000001 /* vault_call_minimal.caf in Resources */,
+				B00D000630B0000100000001 /* vault_chime.caf in Resources */,
+				B00D000730B0000100000001 /* vault_glass.caf in Resources */,
+				B00D000830B0000100000001 /* vault_pulse.caf in Resources */,
+				B00D000930B0000100000001 /* vault_call_radiant.caf in Resources */,
+				B00D000A30B0000100000001 /* vault_call_digital.caf in Resources */,
+				B00D000B30B0000100000001 /* vault_call_urgent.caf in Resources */,
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
@@ -330,7 +354,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3KLX2S84MV;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -354,7 +378,7 @@
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3KLX2S84MV;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (

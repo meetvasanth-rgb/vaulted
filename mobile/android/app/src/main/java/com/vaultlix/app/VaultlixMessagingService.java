@@ -58,7 +58,8 @@ public class VaultlixMessagingService extends MessagingService {
 
         String callTone = getSharedPreferences("vaultlix_sounds", MODE_PRIVATE)
                 .getString("callTone", "vaultlix");
-        if (!("classic".equals(callTone) || "minimal".equals(callTone))) callTone = "vaultlix";
+        if (!("classic".equals(callTone) || "minimal".equals(callTone) || "radiant".equals(callTone)
+                || "digital".equals(callTone) || "urgent".equals(callTone))) callTone = "vaultlix";
         String callChannelId = CALL_CHANNEL_PREFIX + callTone;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(

@@ -43,11 +43,11 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     private static func validCallTone(_ value: String) -> String {
-        ["vaultlix", "classic", "minimal"].contains(value) ? value : "vaultlix"
+        ["vaultlix", "classic", "minimal", "radiant", "digital", "urgent"].contains(value) ? value : "vaultlix"
     }
 
     func setNotificationTones(messageTone: String, callTone: String) {
-        let safeMessage = ["default", "note", "soft", "silent"].contains(messageTone) ? messageTone : "default"
+        let safeMessage = ["default", "note", "soft", "chime", "glass", "pulse", "silent"].contains(messageTone) ? messageTone : "default"
         let safeCall = Self.validCallTone(callTone)
         UserDefaults.standard.set(safeMessage, forKey: "vaultlix.messageTone")
         UserDefaults.standard.set(safeCall, forKey: "vaultlix.callTone")
