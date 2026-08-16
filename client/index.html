@@ -953,9 +953,23 @@ body.select-mode .chat-ftr{display:none}
   letter-spacing:.14em; color:var(--cream);
 }
 .pc-lock-copy{display:none;text-align:center;max-width:270px;color:#BEB5AA;font-size:12px;line-height:1.55}
-.pc-unlock{display:none;margin-top:8px;border:1px solid var(--gold-border);border-radius:999px;background:var(--gold-dim);color:var(--cream);padding:11px 24px;font-size:13px;letter-spacing:.03em;cursor:pointer}
-#privacy-cover.quick-locked .pc-lock-copy,#privacy-cover.quick-locked .pc-unlock{display:block}
+.app-lock-form{display:none;width:min(310px,calc(100vw - 44px));flex-direction:column;gap:10px;margin-top:4px}
+.app-lock-input{width:100%;box-sizing:border-box;border:1px solid var(--gold-border);border-radius:13px;background:rgba(255,255,255,.07);color:var(--cream);padding:13px 15px;text-align:center;font-size:18px;letter-spacing:.12em;outline:none}
+.app-lock-input:focus{border-color:var(--gold)}
+.pc-unlock{border:1px solid var(--gold-border);border-radius:999px;background:var(--gold-dim);color:var(--cream);padding:11px 24px;font-size:13px;letter-spacing:.03em;cursor:pointer}
+.app-lock-forgot{border:0;background:none;color:#A99D91;font-size:11px;cursor:pointer;padding:5px}
+.app-lock-error{min-height:17px;text-align:center;color:#E5A9B5;font-size:11px;line-height:1.4}
+#privacy-cover.quick-locked .pc-lock-copy,#privacy-cover.quick-locked .app-lock-form{display:flex}
 #privacy-cover.unlocking .pc-unlock{opacity:.55;pointer-events:none}
+
+.app-lock-overlay{position:fixed;inset:0;z-index:10030;background:rgba(14,8,11,.72);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.app-lock-overlay.open{display:flex}
+.app-lock-sheet{width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#FFFDF9;border-radius:22px;padding:22px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.app-lock-title{margin:0 0 8px;font-family:'Cormorant Garamond',serif;font-size:29px;color:#241B1E}
+.app-lock-copy{font-size:13px;line-height:1.55;color:#6B5D61;margin-bottom:16px}
+.app-lock-field{display:block;margin:11px 0}.app-lock-field span{display:block;margin-bottom:6px;color:#5F5055;font-size:12px;font-weight:600}
+.app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
+.app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
 
 /* iOS-only nudge: -webkit-touch-callout is a WebKit/iOS Safari-specific
    property, unsupported anywhere else, so @supports on it is a reliable way
@@ -2460,7 +2474,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <button class="vault-list-home" type="button" onclick="openMainHome()" title="Open Vaultlix home" aria-label="Open Vaultlix home">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg><span>Home</span>
       </button>
-      <button class="vault-list-settings" onclick="activateQuickLock()" title="Quick Lock" aria-label="Quick Lock Vaultlix">
+      <button class="vault-list-settings" onclick="activateAppLock(true)" title="Lock Vaultlix" aria-label="Lock Vaultlix">
         <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg>
       </button>
       <button class="vault-list-settings" onclick="showScreen('s-privacy')" title="Privacy" aria-label="View privacy information">
@@ -2731,8 +2745,26 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3z"/></svg>
   </div>
   <div class="pc-word">Vaultlix</div>
-  <div class="pc-lock-copy">Quick Lock is on. Authenticate with Face ID, fingerprint, or your device PIN to return.</div>
-  <button class="pc-unlock" type="button" onclick="requestQuickUnlock()">Unlock Vaultlix</button>
+  <div class="pc-lock-copy">Enter your independent Vaultlix passcode. The phone's passcode cannot unlock Vaultlix.</div>
+  <form class="app-lock-form" id="app-lock-form" onsubmit="unlockAppLock(event)">
+    <input class="app-lock-input" id="app-lock-passcode" type="password" autocomplete="off" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode"/>
+    <div class="app-lock-error" id="app-lock-error" aria-live="polite"></div>
+    <button class="pc-unlock" id="app-lock-unlock" type="submit">Unlock Vaultlix</button>
+    <button class="app-lock-forgot" type="button" onclick="forgetAppLock()">Forgot passcode? Erase Vaultlix from this device</button>
+  </form>
+</div>
+
+<div class="app-lock-overlay" id="app-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="app-lock-title">
+  <form class="app-lock-sheet" id="app-lock-setup-form" onsubmit="saveAppLock(event)">
+    <h2 class="app-lock-title" id="app-lock-title">Vaultlix App Lock</h2>
+    <div class="app-lock-copy" id="app-lock-setup-copy">Create a passcode that is different from your phone passcode. Vaultlix will require it every time the app is reopened.</div>
+    <label class="app-lock-field" id="app-lock-current-wrap" style="display:none"><span>Current Vaultlix passcode</span><input id="app-lock-current" type="password" autocomplete="off" minlength="6"/></label>
+    <label class="app-lock-field"><span id="app-lock-new-label">New Vaultlix passcode</span><input id="app-lock-new" type="password" autocomplete="new-password" minlength="6" required/></label>
+    <label class="app-lock-field"><span>Confirm passcode</span><input id="app-lock-confirm" type="password" autocomplete="new-password" minlength="6" required/></label>
+    <div class="app-lock-error" id="app-lock-setup-error" aria-live="polite"></div>
+    <div class="app-lock-copy"><strong>Important:</strong> Vaultlix cannot recover this passcode. Resetting it erases local vault credentials; device-only vaults may be permanently lost.</div>
+    <div class="app-lock-actions"><button class="danger" id="app-lock-disable" type="button" onclick="disableAppLock()" style="display:none">Disable App Lock</button><button type="button" onclick="closeAppLockSettings()">Cancel</button><button class="primary" type="submit">Save</button></div>
+  </form>
 </div>
 
 <!-- Settings overlay + panel -->
@@ -2748,15 +2780,15 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   <div class="settings-body">
     <div class="settings-section-label">App-wide</div>
 
-    <div class="settings-row" onclick="activateQuickLock()" style="cursor:pointer">
+    <div class="settings-row" onclick="openAppLockSettings()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
         <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
       </div>
       <div class="settings-row-text">
-        <div class="settings-row-title">Quick Lock</div>
-        <div class="settings-row-sub">Hide Vaultlix now and require device authentication to reopen</div>
+        <div class="settings-row-title">Vaultlix App Lock</div>
+        <div class="settings-row-sub">Use an independent passcode and lock immediately in the background</div>
       </div>
-      <div class="settings-status settings-status-action">Lock</div>
+      <div class="settings-status settings-status-action" id="app-lock-status">Set up</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -6442,6 +6474,7 @@ function openSettings() {
   loadSettingsState();
   updateAnonLinkSection();
   updatePersistentSuggestion();
+  updateAppLockStatus();
   const room = getActiveRoom();
   const labelTitleEl = document.getElementById('settings-label-title');
   if (labelTitleEl) {
@@ -6980,9 +7013,71 @@ function reconnectSignalingForAllRooms() {
 // it's the same best-effort approach banking/messaging apps use, and it's
 // solid opaque (not a CSS blur) so nothing legible can bleed through even if
 // timing is imperfect.
-const QUICK_LOCK_KEY = 'vaultlix_quick_locked';
-let quickLockActive = sessionStorage.getItem(QUICK_LOCK_KEY) === '1';
+const QUICK_LOCK_KEY = 'vaultlix_app_locked';
+const APP_LOCK_CONFIG_KEY = 'vaultlix_app_lock_v1';
+const APP_LOCK_FAILURE_KEY = 'vaultlix_app_lock_failures_v1';
+const APP_LOCK_ITERATIONS = 310000;
+
+function loadAppLockConfig() {
+  try {
+    const config = JSON.parse(localStorage.getItem(APP_LOCK_CONFIG_KEY) || 'null');
+    return config?.salt && config?.verifier ? config : null;
+  } catch (e) { return null; }
+}
+
+function appLockConfigured() { return Boolean(loadAppLockConfig()); }
+
+// A configured App Lock always starts locked on a fresh page load. The
+// passcode itself is never stored: PBKDF2 produces a one-way local verifier
+// with a random salt, and comparison is performed without an early exit.
+let quickLockActive = appLockConfigured() || sessionStorage.getItem(QUICK_LOCK_KEY) === '1';
 let quickLockUnlocking = false;
+
+async function deriveAppLockVerifier(passcode, salt, iterations = APP_LOCK_ITERATIONS) {
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passcode), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations }, material, 256);
+  return new Uint8Array(bits);
+}
+
+function equalBytes(left, right) {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let i = 0; i < left.length; i++) difference |= left[i] ^ right[i];
+  return difference === 0;
+}
+
+async function verifyAppLockPasscode(passcode) {
+  const config = loadAppLockConfig();
+  if (!config) return false;
+  const actual = await deriveAppLockVerifier(passcode, base64UrlToBytes(config.salt), config.iterations || APP_LOCK_ITERATIONS);
+  return equalBytes(actual, base64UrlToBytes(config.verifier));
+}
+
+function loadAppLockFailures() {
+  try { return JSON.parse(localStorage.getItem(APP_LOCK_FAILURE_KEY) || '{"count":0,"blockedUntil":0}'); }
+  catch (e) { return { count:0, blockedUntil:0 }; }
+}
+
+function appLockDelayMs(count) {
+  if (count >= 10) return 15 * 60 * 1000;
+  if (count >= 8) return 5 * 60 * 1000;
+  if (count >= 5) return 30 * 1000;
+  return 0;
+}
+
+function recordAppLockFailure() {
+  const failures = loadAppLockFailures();
+  failures.count = Number(failures.count || 0) + 1;
+  failures.blockedUntil = Date.now() + appLockDelayMs(failures.count);
+  localStorage.setItem(APP_LOCK_FAILURE_KEY, JSON.stringify(failures));
+  return failures;
+}
+
+function appLockWaitCopy(failures = loadAppLockFailures()) {
+  const seconds = Math.max(0, Math.ceil((Number(failures.blockedUntil || 0) - Date.now()) / 1000));
+  if (!seconds) return '';
+  return seconds >= 60 ? `Too many attempts. Try again in ${Math.ceil(seconds / 60)} minute${seconds > 60 ? 's' : ''}.` : `Too many attempts. Try again in ${seconds} seconds.`;
+}
 
 function showPrivacyCover() { document.getElementById('privacy-cover')?.classList.add('show'); }
 function hidePrivacyCover() {
@@ -6995,47 +7090,67 @@ function renderQuickLock() {
   cover.classList.toggle('quick-locked', quickLockActive);
   cover.classList.toggle('unlocking', quickLockUnlocking);
   if (quickLockActive) cover.classList.add('show');
+  const error = document.getElementById('app-lock-error');
+  const waitCopy = appLockWaitCopy();
+  if (error && quickLockActive && waitCopy) error.textContent = waitCopy;
+  updateAppLockStatus();
 }
 
-function activateQuickLock() {
+function activateAppLock(manual = false) {
+  if (!appLockConfigured()) {
+    if (manual) openAppLockSettings();
+    return;
+  }
   closeSettings();
   quickLockActive = true;
   quickLockUnlocking = false;
   sessionStorage.setItem(QUICK_LOCK_KEY, '1');
+  const error = document.getElementById('app-lock-error');
+  if (error) error.textContent = appLockWaitCopy();
   renderQuickLock();
 
   const input = document.getElementById('msg-input');
   if (input) { input.value = ''; input.blur(); }
-  for (const room of rooms.values()) {
-    if (room.callState !== 'idle') {
-      sendSignal(room, room.callState === 'incoming' ? 'call-decline' : 'call-hangup', {});
-      endCall(room, null, room.callState === 'incoming' ? 'Declined call' : null);
+  if (manual) {
+    for (const room of rooms.values()) {
+      if (room.callState !== 'idle') {
+        sendSignal(room, room.callState === 'incoming' ? 'call-decline' : 'call-hangup', {});
+        endCall(room, null, room.callState === 'incoming' ? 'Declined call' : null);
+      }
+      disconnectSignaling(room);
     }
-    disconnectSignaling(room);
+    clearAndroidCallNotifications();
   }
-  clearAndroidCallNotifications();
-  try { window.VaultlixAndroid?.activateQuickLock(); } catch (e) {}
-  try { window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'activateQuickLock' }); } catch (e) {}
+  setTimeout(() => document.getElementById('app-lock-passcode')?.focus(), 50);
 }
 
-function requestQuickUnlock() {
+async function unlockAppLock(event) {
+  event?.preventDefault();
   if (!quickLockActive || quickLockUnlocking) return;
+  const error = document.getElementById('app-lock-error');
+  const input = document.getElementById('app-lock-passcode');
+  const waitCopy = appLockWaitCopy();
+  if (waitCopy) { if (error) error.textContent = waitCopy; return; }
+  const passcode = input?.value || '';
+  if (!passcode) return;
   quickLockUnlocking = true;
   renderQuickLock();
   try {
-    if (window.VaultlixAndroid?.authenticateQuickLock) {
-      window.VaultlixAndroid.authenticateQuickLock();
+    if (await verifyAppLockPasscode(passcode)) {
+      localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+      if (input) input.value = '';
+      completeQuickUnlock();
       return;
     }
-    if (window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action: 'authenticateQuickLock' });
-      return;
-    }
-  } catch (e) {}
-  // Ordinary browsers cannot invoke the phone's protected authentication UI.
-  // Keep the feature useful as a privacy screen, without pretending this
-  // fallback provides biometric security.
-  completeQuickUnlock();
+    const failures = recordAppLockFailure();
+    if (input) { input.value = ''; input.focus(); }
+    if (error) error.textContent = appLockWaitCopy(failures) || 'Incorrect Vaultlix passcode.';
+  } catch (e) {
+    if (error) error.textContent = 'Vaultlix could not verify the passcode. Try again.';
+  } finally {
+    quickLockUnlocking = false;
+    renderQuickLock();
+  }
 }
 
 function completeQuickUnlock() {
@@ -7052,17 +7167,70 @@ function completeQuickUnlock() {
   reconnectSignalingForAllRooms();
 }
 
-window.addEventListener('vaultlix:quick-lock-auth', (event) => {
-  if (event.detail?.success) completeQuickUnlock();
-  else {
-    quickLockUnlocking = false;
-    renderQuickLock();
-    if (event.detail?.error) toast(event.detail.error);
-  }
-});
+function updateAppLockStatus() {
+  const status = document.getElementById('app-lock-status');
+  if (status) status.textContent = appLockConfigured() ? 'On' : 'Set up';
+}
+
+function openAppLockSettings() {
+  closeSettings();
+  const enabled = appLockConfigured();
+  document.getElementById('app-lock-current-wrap').style.display = enabled ? 'block' : 'none';
+  document.getElementById('app-lock-current').required = enabled;
+  document.getElementById('app-lock-disable').style.display = enabled ? '' : 'none';
+  document.getElementById('app-lock-new-label').textContent = enabled ? 'New passcode' : 'Vaultlix passcode';
+  document.getElementById('app-lock-setup-copy').textContent = enabled
+    ? 'Enter the current Vaultlix passcode to change or disable App Lock.'
+    : 'Create a passcode that is different from your phone passcode. Vaultlix will require it every time the app is reopened.';
+  document.getElementById('app-lock-setup-form').reset();
+  document.getElementById('app-lock-setup-error').textContent = '';
+  document.getElementById('app-lock-overlay').classList.add('open');
+  setTimeout(() => document.getElementById(enabled ? 'app-lock-current' : 'app-lock-new')?.focus(), 50);
+}
+
+function closeAppLockSettings() { document.getElementById('app-lock-overlay')?.classList.remove('open'); }
+
+async function saveAppLock(event) {
+  event.preventDefault();
+  const enabled = appLockConfigured();
+  const error = document.getElementById('app-lock-setup-error');
+  const current = document.getElementById('app-lock-current').value;
+  const next = document.getElementById('app-lock-new').value;
+  const confirmation = document.getElementById('app-lock-confirm').value;
+  if (enabled && !(await verifyAppLockPasscode(current))) { error.textContent = 'Current Vaultlix passcode is incorrect.'; return; }
+  if (next.length < 6) { error.textContent = 'Use at least 6 characters.'; return; }
+  if (next !== confirmation) { error.textContent = 'The new passcodes do not match.'; return; }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const verifier = await deriveAppLockVerifier(next, salt);
+  localStorage.setItem(APP_LOCK_CONFIG_KEY, JSON.stringify({ version:1, iterations:APP_LOCK_ITERATIONS, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
+  localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+  closeAppLockSettings();
+  updateAppLockStatus();
+  activateAppLock(true);
+}
+
+async function disableAppLock() {
+  const current = document.getElementById('app-lock-current').value;
+  const error = document.getElementById('app-lock-setup-error');
+  if (!(await verifyAppLockPasscode(current))) { error.textContent = 'Current Vaultlix passcode is incorrect.'; return; }
+  localStorage.removeItem(APP_LOCK_CONFIG_KEY);
+  localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+  sessionStorage.removeItem(QUICK_LOCK_KEY);
+  quickLockActive = false;
+  closeAppLockSettings();
+  updateAppLockStatus();
+  toast('Vaultlix App Lock disabled');
+}
+
+async function forgetAppLock() {
+  if (!confirm('Forgot your Vaultlix passcode? This will erase all Vaultlix data and vault keys from this device. Device-only vaults may be permanently unrecoverable.')) return;
+  if (!confirm('Erase Vaultlix from this device now? This cannot be undone.')) return;
+  await clearVaultlixDeviceData();
+  location.replace(location.origin + '/');
+}
 
 renderQuickLock();
-window.addEventListener('pagehide', () => { showPrivacyCover(); });
+window.addEventListener('pagehide', () => { if (appLockConfigured()) activateAppLock(false); else showPrivacyCover(); });
 
 // ── EMERGENCY EXIT ─────────────────────────────────────────────────────
 let emergencyHoldTimer = null;
@@ -7246,7 +7414,8 @@ function confirmRead(room, msgIds) {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    showPrivacyCover();
+    if (appLockConfigured()) activateAppLock(false);
+    else showPrivacyCover();
     tabFocused = false;
     // In the signed iOS wrapper, an incoming background call belongs to
     // PushKit/CallKit and the native libwebrtc engine.  WebKit remains alive
