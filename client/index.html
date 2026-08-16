@@ -7089,8 +7089,8 @@ function openEmergencyExit() {
   if (!current) document.querySelector('input[name="emergency-scope"][value="device"]')?.click();
   const list = document.getElementById('emergency-vaults');
   if (list) list.innerHTML = [...rooms.values()].map(room => {
-    const label = escapeHtml(room.localLabel || room.myName || room.code);
-    return `<label class="emergency-choice"><input type="checkbox" value="${escapeHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${escapeHtml(room.code)}</small></span></label>`;
+    const label = escHtml(room.localLabel || room.myName || room.code);
+    return `<label class="emergency-choice"><input type="checkbox" value="${escHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${escHtml(room.code)}</small></span></label>`;
   }).join('') || '<div class="settings-row-sub">No vaults are stored on this device.</div>';
   document.getElementById('emergency-ack').checked = false;
   renderEmergencySelection();
