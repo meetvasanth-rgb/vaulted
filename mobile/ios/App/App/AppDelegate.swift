@@ -46,22 +46,52 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         ["vaultlix", "classic", "minimal", "radiant", "digital", "urgent"].contains(value) ? value : "vaultlix"
     }
 
-    /// CallKit presents above Vaultlix but does not automatically resign the
-    /// WebView's active text control. Clear the first responder across every
-    /// app window before reporting either side of a call, otherwise InputUI
-    /// can remain layered beneath the native call controls.
+    /// CallKit presents above Vaultlix but does not automatically clear a
+    /// focused HTML control. UIKit's `endEditing` alone only detaches InputUI
+    /// temporarily; WebKit can restore the DOM-focused textarea during the
+    /// scene transition. Blur and briefly lock the composer in the DOM first,
+    /// then clear every native responder before reporting the call.
     private func dismissAppKeyboard() {
+        let script = """
+        (() => {
+          const active = document.activeElement;
+          if (active && typeof active.blur === 'function') active.blur();
+          const input = document.getElementById('msg-input');
+          if (input) {
+            input.blur();
+            input.readOnly = true;
+            input.dataset.vaultlixCallKeyboardGuard = '1';
+            window.setTimeout(() => {
+              if (input.dataset.vaultlixCallKeyboardGuard === '1') {
+                delete input.dataset.vaultlixCallKeyboardGuard;
+                input.readOnly = false;
+              }
+            }, 1500);
+          }
+          return active ? active.id || active.tagName : 'none';
+        })();
+        """
+        var webViewCount = 0
+        var nativeDismissed = false
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows {
+                if let controller = window.rootViewController as? CAPBridgeViewController,
+                   let webView = controller.webView {
+                    webViewCount += 1
+                    webView.evaluateJavaScript(script) { value, error in
+                        print("VXCALL keyboard DOM blur value=\(String(describing: value)) error=\(String(describing: error))")
+                    }
+                }
+                nativeDismissed = window.endEditing(true) || nativeDismissed
+            }
+        }
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
             to: nil,
             from: nil,
             for: nil
         )
-        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
-            for window in scene.windows {
-                window.endEditing(true)
-            }
-        }
+        print("VXCALL keyboard dismiss webViews=\(webViewCount) native=\(nativeDismissed)")
     }
 
     func setNotificationTones(messageTone: String, callTone: String) {
@@ -161,9 +191,15 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
         // iOS requires every VoIP push to be reported to CallKit promptly.
         dismissAppKeyboard()
-        provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
-            if error != nil { self?.calls.removeValue(forKey: callID) }
-            completion()
+        // One short main-run-loop window lets WebKit commit the DOM blur before
+        // InCallService takes over. This remains well inside PushKit's prompt
+        // reporting requirement and has no perceptible effect on ringing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+            guard let self else { completion(); return }
+            self.provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
+                if error != nil { self?.calls.removeValue(forKey: callID) }
+                completion()
+            }
         }
     }
 
@@ -317,15 +353,17 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         let handle = CXHandle(type: .generic, value: String(peer.prefix(80)))
         let action = CXStartCallAction(call: callID, handle: handle)
         action.isVideo = false
-        callController.request(CXTransaction(action: action)) { [weak self] error in
-            guard let error else { return }
-            print("VXCALL manager outgoing transaction failed: \(error.localizedDescription)")
-            DispatchQueue.main.async {
-                self?.calls.removeValue(forKey: callID)
-                self?.nativeMediaCalls.remove(callID)
-                self?.outgoingCalls.remove(callID)
-                NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
-                self?.postAction("nativeFailed", callID: callID, payload: payload)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+            self?.callController.request(CXTransaction(action: action)) { [weak self] error in
+                guard let error else { return }
+                print("VXCALL manager outgoing transaction failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self?.calls.removeValue(forKey: callID)
+                    self?.nativeMediaCalls.remove(callID)
+                    self?.outgoingCalls.remove(callID)
+                    NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
+                    self?.postAction("nativeFailed", callID: callID, payload: payload)
+                }
             }
         }
         return true
