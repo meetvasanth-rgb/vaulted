@@ -4722,12 +4722,16 @@ function refreshCallButton() {
 async function startCall() {
   const room = getActiveRoom();
   if (!canStartCall(room)) return;
-  dismissComposerForCall();
   activeCallRoomCode = room.code;
   room.callState = 'outgoing';
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
   room.nativeCallActive = false;
+  // CallKit can snapshot WKWebView before iOS has completed its keyboard
+  // dismissal animation. Mark the call busy first (preventing a second tap),
+  // then wait only when an editable control really had focus before handing
+  // presentation to the native bridge.
+  await dismissComposerForCall(true);
   // Reused by the 3-second invite retries below, but regenerated for every
   // new call attempt. randomUUID is available in supported WebViews; keep a
   // random fallback for older embedded browsers during rolling upgrades.
@@ -5463,12 +5467,23 @@ function renderCallOverlay(room) {
   notifyLockedCallReady();
 }
 
-function dismissComposerForCall() {
+async function dismissComposerForCall(waitForKeyboard = false) {
   const focused = document.activeElement;
+  const hadEditableFocus = !!focused && (
+    /^(INPUT|TEXTAREA|SELECT)$/.test(focused.tagName || '') ||
+    focused.isContentEditable
+  );
   if (focused && typeof focused.blur === 'function') focused.blur();
   document.getElementById('msg-input')?.blur();
   closeAttachOptions();
   closeAllMsgActions();
+  if (waitForKeyboard && hadEditableFocus) {
+    // UIKit's normal keyboard dismissal animation is about a quarter second.
+    // Two frames ensure WebKit commits the focus change; the remaining wait
+    // lets the native keyboard leave before CallKit snapshots/presents.
+    await new Promise(resolve => requestAnimationFrame(() =>
+      requestAnimationFrame(() => setTimeout(resolve, 280))));
+  }
 }
 
 function hideCallOverlay() {
