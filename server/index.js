@@ -28,6 +28,7 @@ const NAMED_ROOM_TTL = 4 * 24 * 60 * 60 * 1000;
 const ONE_TIME_ROOM_TTL = 24 * 60 * 60 * 1000;
 
 const rooms = new Map();
+const { markInviteTerminated, isInviteTerminated } = require('./call-invite-state');
 const accounts = new Map();
 
 // ── /api/send content sizing ─────────────────────────────────────────────
@@ -1922,11 +1923,11 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!matchedRoom) return res200(res, { ok: true });
 
     const calleeToken = matchedRoom.nativeCalleeToken;
+    markInviteTerminated(matchedRoom, matchedRoom.nativeInviteId);
     matchedRoom.ringingUntil = 0;
     matchedRoom.activeCall = false;
     matchedRoom.nativeCallId = null;
     matchedRoom.nativeCalleeToken = null;
-    matchedRoom.nativeInviteId = null;
     matchedRoom.lastActivity = Date.now();
 
     // This control frame contains no message/call content. It is delivered
@@ -3233,6 +3234,12 @@ wss.on('connection', (ws) => {
       if (!room2 || !room2.members.has(token)) { try { ws.close(4001, 'No longer in room'); } catch(e) {} return; }
       room2.lastActivity = Date.now();
 
+      // A terminal native action can race the caller's already-scheduled
+      // three-second invitation retry. Drop that exact invitation before it
+      // is relayed or allowed to create another native notification. A new
+      // call carries a fresh random inviteId and remains unaffected.
+      if (msg2.type === 'call-invite' && isInviteTerminated(room2, msg2.inviteId)) return;
+
       // 1:1 rooms only ever have one other member — relay to them if they
       // currently have a live socket. If they don't (call app not open on
       // their end right now), the message is simply dropped; there's no
@@ -3374,11 +3381,11 @@ wss.on('connection', (ws) => {
           room2.ringingUntil = 0;
           room2.activeCall = true;
         } else if (msg2.type === 'call-decline' || msg2.type === 'call-busy') {
+          markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId);
           room2.ringingUntil = 0;
           room2.activeCall = false;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
-          room2.nativeInviteId = null;
         } else if (msg2.type === 'call-hangup') {
           // A hangup landing while the ring window is still open means
           // nobody ever answered — the caller gave up (their own 30s ring
@@ -3389,6 +3396,7 @@ wss.on('connection', (ws) => {
           // surfaced anything past that first notification — same as a phone
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
+          markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId, now);
           const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
           room2.ringingUntil = 0;
           room2.activeCall = false;
@@ -3396,7 +3404,6 @@ wss.on('connection', (ws) => {
           const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
-          room2.nativeInviteId = null;
           if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId).catch(() => {});
           // Android's full-screen incoming-call surface is native too. Its
           // WebSocket may be frozen while the keyguard is up, so send a
@@ -3610,6 +3617,8 @@ function loadSnapshot() {
       room.nativeCallId = null;
       room.nativeCalleeToken = null;
       room.nativeInviteId = null;
+      room.terminatedInviteId = null;
+      room.terminatedInviteUntil = 0;
       // The ONLY path a pushSub can reach webpush.sendNotification without
       // ever having passed validatePushSubscription: a snapshot written by
       // an older deploy (before the allowlist existed, or before a later

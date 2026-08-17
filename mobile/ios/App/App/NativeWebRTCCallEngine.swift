@@ -193,6 +193,24 @@ final class NativeWebRTCCallEngine: NSObject {
             flushQueuedSignalsLocked()
             return
         }
+        // Android can decline from its native notification before its
+        // encrypted WebView socket exists. The server authenticates this
+        // socket as the matching caller and sends a content-free terminal
+        // control frame. Handle it before requiring an encrypted envelope;
+        // otherwise an outgoing iOS CallKit call keeps ringing indefinitely.
+        if type == "native-call-declined" {
+            trace("signal type=native-call-declined")
+            if outgoing, let callID {
+                DispatchQueue.main.async {
+                    VaultlixCallManager.shared.nativeCallDidEnd(
+                        callID: callID,
+                        action: "nativeDeclined"
+                    )
+                }
+            }
+            resetLocked()
+            return
+        }
         guard let envelope = object["envelope"] as? String else {
             trace("signal ignored-envelope")
             return
