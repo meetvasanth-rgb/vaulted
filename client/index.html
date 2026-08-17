@@ -4722,6 +4722,7 @@ function refreshCallButton() {
 async function startCall() {
   const room = getActiveRoom();
   if (!canStartCall(room)) return;
+  dismissComposerForCall();
   activeCallRoomCode = room.code;
   room.callState = 'outgoing';
   room.callPeerName = room.peerName || 'them';
@@ -5271,6 +5272,12 @@ function renderCallOverlay(room) {
   let overlay = document.getElementById('call-overlay');
   const isNew = !overlay;
   if (isNew) {
+    // iOS keeps the software keyboard visible until the focused textarea is
+    // explicitly blurred. Do this before inserting the fixed call surface so
+    // its first frame uses the full viewport instead of appearing above the
+    // message keyboard. Incoming calls and native bridge-driven calls also
+    // reach this path, not only startCall().
+    dismissComposerForCall();
     overlay = document.createElement('div');
     overlay.id = 'call-overlay';
     overlay.className = 'call-overlay';
@@ -5454,6 +5461,14 @@ function renderCallOverlay(room) {
   // Reveal the native keyguard-safe WebView only after this render has
   // produced the restricted call UI. This prevents a blank or partial frame.
   notifyLockedCallReady();
+}
+
+function dismissComposerForCall() {
+  const focused = document.activeElement;
+  if (focused && typeof focused.blur === 'function') focused.blur();
+  document.getElementById('msg-input')?.blur();
+  closeAttachOptions();
+  closeAllMsgActions();
 }
 
 function hideCallOverlay() {
