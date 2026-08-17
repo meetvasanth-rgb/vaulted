@@ -46,6 +46,24 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         ["vaultlix", "classic", "minimal", "radiant", "digital", "urgent"].contains(value) ? value : "vaultlix"
     }
 
+    /// CallKit presents above Vaultlix but does not automatically resign the
+    /// WebView's active text control. Clear the first responder across every
+    /// app window before reporting either side of a call, otherwise InputUI
+    /// can remain layered beneath the native call controls.
+    private func dismissAppKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows {
+                window.endEditing(true)
+            }
+        }
+    }
+
     func setNotificationTones(messageTone: String, callTone: String) {
         let safeMessage = ["default", "note", "soft", "chime", "glass", "pulse", "silent"].contains(messageTone) ? messageTone : "default"
         let safeCall = Self.validCallTone(callTone)
@@ -142,6 +160,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
 
         // iOS requires every VoIP push to be reported to CallKit promptly.
+        dismissAppKeyboard()
         provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
             if error != nil { self?.calls.removeValue(forKey: callID) }
             completion()
@@ -279,6 +298,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String) -> Bool {
+        dismissAppKeyboard()
         let callID = UUID()
         let payload: [String: Any] = [
             "callId": callID.uuidString,
