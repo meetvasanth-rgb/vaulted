@@ -65,10 +65,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
     }
 
     private func flushPendingCallActions() {
-        // PushKit and CallKit give the process background execution time. Do
-        // not wait for foreground activation: the caller needs the answer or
-        // decline acknowledgement immediately while the lock screen is up.
-        guard webReady else { return }
+        // NativeWebRTCCallEngine sends answer/decline/hang-up acknowledgements
+        // itself while the device is locked. These queued actions are only
+        // for mirroring native state into the WebView UI. Evaluating JS while
+        // WKWebView is background-suspended can report no useful error yet
+        // discard the event; consuming it here permanently loses rows such as
+        // "Missed call". Keep the queue intact until the scene is foreground.
+        guard webReady,
+              window?.windowScene?.activationState == .foregroundActive else { return }
         for action in VaultlixCallManager.shared.consumePendingActions() {
             emit(name: "vaultlix:call-action", detail: action)
         }
@@ -132,10 +136,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
            let peer = body["peer"] as? String,
            roomHandle.range(of: "^[A-Za-z0-9_-]{16,64}$", options: .regularExpression) != nil,
            code.count <= 128 {
-            let success = VaultlixCallManager.shared.startOutgoingCall(
-                roomHandle: roomHandle, code: code, caller: caller, peer: peer
-            )
-            if !success { emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code]) }
+            // A JavaScript blur is not sufficient on every iOS release: the
+            // system InputUI process can remain attached while CallKit takes
+            // its first snapshot, leaving the message keyboard over the call
+            // screen. End editing at the native window/WebView boundary and
+            // give UIKit one dismissal animation window before presentation.
+            window?.endEditing(true)
+            (window?.rootViewController as? CAPBridgeViewController)?.webView?.endEditing(true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                let success = VaultlixCallManager.shared.startOutgoingCall(
+                    roomHandle: roomHandle, code: code, caller: caller, peer: peer
+                )
+                if !success {
+                    self?.emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code])
+                }
+            }
             return
         }
         if action == "setSpeaker",
