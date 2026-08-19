@@ -1367,6 +1367,12 @@ body.select-mode .chat-ftr{display:none}
 .emergency-actions button{flex:1;border-radius:12px;padding:12px;border:1px solid #DED6D9;background:#FFF;font:600 13px 'Inter',sans-serif}
 .emergency-actions .danger{background:#9B2945;border-color:#9B2945;color:#FFF}
 .emergency-actions .danger:disabled{opacity:.4}
+.safety-overlay{position:fixed;inset:0;z-index:10015;background:rgba(14,8,11,.66);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.safety-overlay.open{display:flex}.safety-sheet{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#FFF;border-radius:22px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
+.safety-title{font:500 27px 'Cormorant Garamond',serif;color:#351522;margin:0 0 6px}.safety-copy{font:400 12px/1.55 'Inter',sans-serif;color:#766870;margin:0 0 14px}
+.safety-reason{display:block;margin:10px 0 6px;font:600 12px 'Inter',sans-serif;color:#4B3D46}.safety-select,.safety-details{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:12px;background:#FFF;color:#271D25;padding:12px;font:500 14px 'Inter',sans-serif}
+.safety-details{min-height:78px;resize:vertical;margin-top:10px}.safety-consent{display:flex;gap:9px;align-items:flex-start;margin:13px 0;font:500 12px/1.45 'Inter',sans-serif;color:#5E4D54}
+.safety-actions{display:flex;gap:10px;margin-top:14px}.safety-actions button{flex:1;border-radius:12px;padding:12px;border:1px solid #DED6D9;background:#FFF;font:600 13px 'Inter',sans-serif}.safety-actions .danger{background:#9B2945;border-color:#9B2945;color:#FFF}.safety-actions .danger:disabled{opacity:.4}
 
 /* ── VAULTLIX 2026 UI SYSTEM ──────────────────────────────────────────
    One visual language across onboarding, rooms, calls and settings. */
@@ -2588,7 +2594,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="legal-section">
       <h3>Legal requests and abuse reports</h3>
       <p>If we receive a valid legal request — a court order or a request from law enforcement made under applicable Indian law — we will review it and respond as required by law. What we can actually provide is limited by how Vaultlix is built: we can only disclose what exists in server memory at the moment the request is received (the encrypted content of an active vault, the display names in it, and whatever standard access logs Railway retains) — we cannot decrypt message content ourselves, and we cannot produce anything for a vault that has already been closed or has already expired, because nothing remains anywhere once that happens.</p>
-      <p>To report abuse, suspected illegal content, or a violation of our Terms of Service, contact <strong>legal@vaultlix.com</strong>. We may act on a credible report by disabling or deleting the vault in question. We do not proactively monitor message content — because it's end-to-end encrypted, we couldn't even if we wanted to — so we only become aware of what a specific vault contains if it's reported to us, or compelled by valid legal process while that vault still exists.</p>
+      <p>You can use <strong>Report and block</strong> in a vault's Safety settings, or contact <strong>legal@vaultlix.com</strong>, to report abuse, suspected illegal content, or a violation of our Terms of Service. An in-app report contains the selected reason, optional details, the report time, and one-way identifiers for the vault and reporter. Vaultlix cannot read encrypted conversations. Up to five recent decrypted text messages are included only when you expressly select that option; the confirmation explains that their plaintext will be shared with Vaultlix safety staff. Reports are access-restricted and automatically deleted after 90 days unless they must be retained longer to investigate an active safety matter or comply with law. We may act on a credible report by disabling or deleting the vault in question.</p>
     </div>
 
     <div class="legal-section">
@@ -2850,6 +2856,21 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="settings-divider"></div>
 
     <div class="settings-section-label">Safety</div>
+    <div class="settings-row" onclick="blockActiveVault()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg></div>
+      <div class="settings-row-text"><div class="settings-row-title">Block participant</div><div class="settings-row-sub">Stop contact through this vault and erase its access from this device</div></div>
+    </div>
+    <div class="settings-divider"></div>
+    <div class="settings-row" onclick="openReportPanel()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945;"><svg viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 5h12l-2 4 2 4H5"/></svg></div>
+      <div class="settings-row-text"><div class="settings-row-title">Report and block</div><div class="settings-row-sub">Report abuse, then immediately block this participant</div></div>
+    </div>
+    <div class="settings-divider"></div>
+    <div class="settings-row" id="delete-account-row" onclick="openDeleteAccount()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945;"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></div>
+      <div class="settings-row-text"><div class="settings-row-title" style="color:#9B2945">Delete Account</div><div class="settings-row-sub">Permanently delete your account, vaults, encrypted bundle and every signed-in session</div></div>
+    </div>
+    <div class="settings-divider"></div>
     <button class="emergency-hold" id="emergency-hold" type="button" aria-label="Press and hold to open Emergency Exit"><span>Press and hold for Emergency Exit</span></button>
     <div class="settings-divider"></div>
 
@@ -2967,6 +2988,18 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       Vaultlix · Version 1.0<br/>
       <span style="color:#C4B8AC;">Anonymous · Encrypted · Unreadable to us</span>
     </div>
+  </div>
+</div>
+
+<div class="safety-overlay" id="report-overlay" role="dialog" aria-modal="true" aria-labelledby="report-title" onclick="if(event.target===this)closeReportPanel()">
+  <div class="safety-sheet">
+    <h2 class="safety-title" id="report-title">Report and block</h2>
+    <p class="safety-copy">Vaultlix cannot read encrypted conversations. Your report sends the reason and a one-way vault identifier. Recent decrypted messages are included only if you explicitly choose to share them.</p>
+    <label class="safety-reason" for="report-reason">Reason</label>
+    <select class="safety-select" id="report-reason"><option value="spam">Spam or scam</option><option value="harassment">Harassment or bullying</option><option value="threats">Threats or violence</option><option value="sexual">Sexual or exploitative content</option><option value="illegal">Suspected illegal activity</option><option value="other">Other</option></select>
+    <textarea class="safety-details" id="report-details" maxlength="500" placeholder="Optional details (do not include passwords or private keys)"></textarea>
+    <label class="safety-consent"><input type="checkbox" id="report-include-messages"><span>Include up to five recent readable text messages with this report. I understand this shares their decrypted content with Vaultlix safety staff.</span></label>
+    <div class="safety-actions"><button type="button" onclick="closeReportPanel()">Cancel</button><button class="danger" id="report-submit" type="button" onclick="submitReportAndBlock()">Report and block</button></div>
   </div>
 </div>
 
@@ -6491,6 +6524,7 @@ function unlockAudio() {
 // peer identity) is ever written to this key, consistent with the app
 // never keeping a trace of what was actually said.
 const SETTINGS_KEY = 'vaultlix_settings';
+const BLOCKED_VAULTS_KEY = 'vaultlix_blocked_vaults_v1';
 let settingsOpen = false;
 let chimeEnabled = true;
 
@@ -6517,6 +6551,60 @@ function openSettings() {
   // Naming the room directly in the "This room" section label is that link.
   const roomSectionName = document.getElementById('settings-room-section-name');
   if (roomSectionName) roomSectionName.textContent = room ? roomDisplayLabel(room) : '—';
+  const deleteRow = document.getElementById('delete-account-row');
+  if (deleteRow) deleteRow.style.display = loadAccountState() ? '' : 'none';
+}
+
+async function blockedVaultFingerprint(code) {
+  const digest = await sha256Bytes(new TextEncoder().encode(`vaultlix-block-v1\0${String(code || '').toLowerCase()}`));
+  return bytesToBase64Url(digest);
+}
+function loadBlockedVaults() { try { return JSON.parse(localStorage.getItem(BLOCKED_VAULTS_KEY) || '[]'); } catch (e) { return []; } }
+async function rememberBlockedVault(code) {
+  const value = await blockedVaultFingerprint(code);
+  const blocked = new Set(loadBlockedVaults()); blocked.add(value);
+  localStorage.setItem(BLOCKED_VAULTS_KEY, JSON.stringify([...blocked].slice(-100)));
+}
+async function isBlockedVaultCode(code) { return loadBlockedVaults().includes(await blockedVaultFingerprint(code)); }
+
+async function finishBlockingRoom(room, message) {
+  if (!room) return;
+  if (room.callState && room.callState !== 'idle') { try { sendSignal(room, 'call-hangup', {}); } catch (e) {} endCall(room); }
+  try { await rememberBlockedVault(room.code); } catch (e) { console.warn('Could not persist blocked vault fingerprint:', e.message); }
+  try { await api('/api/push-unsubscribe', { code:room.code, token:room.token }); } catch (e) {}
+  try { await api('/api/leave', { code:room.code, token:room.token }); } catch (e) {}
+  removeRoomFromState(room.code); clearAndroidCallNotifications(); closeSettings();
+  switchToNextRoomOrLanding(); toast(message);
+}
+
+async function blockActiveVault() {
+  const room = getActiveRoom(); if (!room) return;
+  if (!confirm(`Block ${room.peerName || 'this participant'}? This removes this vault from this device and stops its calls and notifications.`)) return;
+  await finishBlockingRoom(room, 'Participant blocked');
+}
+function openReportPanel() {
+  if (!getActiveRoom()) return;
+  closeSettings(); document.getElementById('report-details').value = ''; document.getElementById('report-include-messages').checked = false;
+  document.getElementById('report-overlay').classList.add('open');
+}
+function closeReportPanel() { document.getElementById('report-overlay')?.classList.remove('open'); }
+async function submitReportAndBlock() {
+  const room = getActiveRoom(); if (!room) return;
+  const button = document.getElementById('report-submit'); button.disabled = true; button.textContent = 'Reporting…';
+  const includeMessages = document.getElementById('report-include-messages').checked;
+  const recentMessages = includeMessages ? (room.messages || []).filter(m => !m.deleted && m.kind === 'text' && typeof m.content === 'string').slice(-5).map(m => ({ content:m.content.slice(0,500), isMe:!!m.isMe, ts:Number(m.ts || Date.now()) })) : [];
+  try {
+    const result = await api('/api/report', { code:room.code, token:room.token, reason:document.getElementById('report-reason').value, details:document.getElementById('report-details').value.trim(), includeMessages, messages:recentMessages });
+    if (result?.error) throw new Error(result.error);
+    closeReportPanel(); await finishBlockingRoom(room, 'Report received and participant blocked');
+  } catch (error) { toast(error?.message || 'Report could not be sent. Nothing was blocked.'); }
+  finally { button.disabled = false; button.textContent = 'Report and block'; }
+}
+function openDeleteAccount() {
+  if (!loadAccountState()) { toast('Sign in to delete an account'); return; }
+  openEmergencyExit();
+  const choice = document.querySelector('input[name="emergency-scope"][value="account"]');
+  if (choice) { choice.checked = true; renderEmergencySelection(); }
 }
 
 // Shows the "Make this a permanent room?" row for an ordinary room the
@@ -9749,6 +9837,7 @@ async function handleSetup() {
       const code = document.getElementById('code-input').value.trim().toLowerCase();
       const password = document.getElementById('password-input')?.value.trim() || null;
       if (!code) { showErr('Please enter the vault code'); resetSetupBtn(); return; }
+      if (await isBlockedVaultCode(code)) { showErr('This vault is blocked on this device.'); resetSetupBtn(); return; }
       if (rooms.has(code)) { showErr('That vault is already open.'); resetSetupBtn(); return; }
 
       const room = makeRoom({ code: null, token: null, myName: name });

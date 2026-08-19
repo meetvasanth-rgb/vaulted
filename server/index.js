@@ -1902,6 +1902,31 @@ const srv = http.createServer((req, res) => {
 
 async function api(path, method, d, p, res, ip, headers) {
 
+  if (path === '/api/report' && method === 'POST') {
+    if (rateLimited(`safety-report:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many reports — try again later.', 429);
+    const room = rooms.get(d.code);
+    const member = room && typeof d.token === 'string' ? room.members.get(d.token) : null;
+    if (!room || !member) return resErr(res, 'This vault is no longer available.', 403);
+    const reasons = new Set(['spam','harassment','threats','sexual','illegal','other']);
+    if (!reasons.has(d.reason)) return resErr(res, 'Choose a valid report reason.', 400);
+    const details = typeof d.details === 'string' ? d.details.trim().slice(0, 500) : '';
+    const includeMessages = d.includeMessages === true;
+    const messages = includeMessages && Array.isArray(d.messages) ? d.messages.slice(-5).map(msg => ({
+      content: typeof msg.content === 'string' ? msg.content.slice(0, 500) : '',
+      isReporter: !!msg.isMe,
+      ts: Number.isFinite(msg.ts) ? msg.ts : Date.now(),
+    })).filter(msg => msg.content) : [];
+    try {
+      appendSafetyReport({
+        id: crypto.randomUUID(), createdAt: new Date().toISOString(), reason:d.reason, details,
+        vaultHash: crypto.createHash('sha256').update(`vaultlix-report-v1\0${d.code}`).digest('hex'),
+        reporterHash: crypto.createHash('sha256').update(`vaultlix-reporter-v1\0${d.token}`).digest('hex'),
+        messages,
+      });
+    } catch (error) { console.error('Safety report save failed:', error.message); return resErr(res, 'Report could not be saved.', 503); }
+    return res200(res, { ok:true });
+  }
+
   // Native Android can reject an incoming call before its WebView/signalling
   // socket has opened. The random server-issued call ID is a short-lived
   // capability scoped to the one currently ringing call; no room code,
@@ -3472,6 +3497,26 @@ const SNAPSHOT_PATH = path.join(SNAPSHOT_DIR, 'rooms-snapshot.json');
 const SNAPSHOT_TMP_PATH = SNAPSHOT_PATH + '.tmp';
 const ACCOUNTS_PATH = path.join(SNAPSHOT_DIR, 'accounts.json');
 const ACCOUNTS_TMP_PATH = ACCOUNTS_PATH + '.tmp';
+const REPORTS_PATH = path.join(SNAPSHOT_DIR, 'safety-reports.jsonl');
+const REPORTS_TMP_PATH = REPORTS_PATH + '.tmp';
+const SAFETY_REPORT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+function appendSafetyReport(report) {
+  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
+  let retained = [];
+  if (fs.existsSync(REPORTS_PATH)) {
+    const cutoff = Date.now() - SAFETY_REPORT_RETENTION_MS;
+    retained = fs.readFileSync(REPORTS_PATH, 'utf8').split('\n').filter(Boolean).flatMap(line => {
+      try { const parsed = JSON.parse(line); return Date.parse(parsed.createdAt) >= cutoff ? [parsed] : []; }
+      catch (e) { return []; }
+    });
+  }
+  retained.push(report);
+  retained = retained.slice(-10000);
+  fs.writeFileSync(REPORTS_TMP_PATH, retained.map(item => JSON.stringify(item)).join('\n') + '\n', { encoding:'utf8', mode:0o600 });
+  fs.renameSync(REPORTS_TMP_PATH, REPORTS_PATH);
+  fs.chmodSync(REPORTS_PATH, 0o600);
+}
 
 // Unlike the one-shot room shutdown snapshot, anonymous account ciphertext
 // must survive every restart.  Atomic replacement prevents a power loss or
