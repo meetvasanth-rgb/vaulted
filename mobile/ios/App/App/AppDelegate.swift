@@ -35,15 +35,9 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
         configuration.includesCallsInRecents = false
-        let savedTone = UserDefaults.standard.string(forKey: "vaultlix.callTone") ?? "vaultlix"
-        configuration.ringtoneSound = "vault_call_\(Self.validCallTone(savedTone)).caf"
         provider = CXProvider(configuration: configuration)
         super.init()
         provider.setDelegate(self, queue: nil)
-    }
-
-    private static func validCallTone(_ value: String) -> String {
-        ["vaultlix", "classic", "minimal", "radiant", "digital", "urgent"].contains(value) ? value : "vaultlix"
     }
 
     /// CallKit presents above Vaultlix but does not automatically clear a
@@ -92,16 +86,6 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             for: nil
         )
         print("VXCALL keyboard dismiss webViews=\(webViewCount) native=\(nativeDismissed)")
-    }
-
-    func setNotificationTones(messageTone: String, callTone: String) {
-        let safeMessage = ["default", "note", "soft", "chime", "glass", "pulse", "silent"].contains(messageTone) ? messageTone : "default"
-        let safeCall = Self.validCallTone(callTone)
-        UserDefaults.standard.set(safeMessage, forKey: "vaultlix.messageTone")
-        UserDefaults.standard.set(safeCall, forKey: "vaultlix.callTone")
-        let configuration = provider.configuration
-        configuration.ringtoneSound = "vault_call_\(safeCall).caf"
-        provider.configuration = configuration
     }
 
     func start() {

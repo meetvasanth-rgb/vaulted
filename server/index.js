@@ -371,11 +371,10 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   if (!APNS_CONFIGURED || !member.apnsToken) return Promise.resolve(false);
   let parsed;
   try { parsed = JSON.parse(payload); } catch (e) { return Promise.resolve(false); }
-  const messageTone = ['default','note','soft','chime','glass','pulse','silent'].includes(member.messageTone) ? member.messageTone : 'default';
   const body = JSON.stringify({
     aps: {
       alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
-      ...(messageTone === 'silent' ? {} : { sound: messageTone === 'default' ? 'default' : `vault_${messageTone}.caf` }),
+      sound: 'default',
       'thread-id': parsed.code || 'vaultlix',
     },
     // No message text, encrypted payload, room credential, or member token is
@@ -468,10 +467,10 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         body: parsed.body || 'New activity',
       };
       message.android.notification = {
-        channelId: `vaultlix_messages_${['default','note','soft','chime','glass','pulse','silent'].includes(member.messageTone) ? member.messageTone : 'default'}`,
+        channelId: 'vaultlix_messages_system',
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
-        sound: member.messageTone === 'silent' ? undefined : (['note','soft','chime','glass','pulse'].includes(member.messageTone) ? `vault_${member.messageTone}` : 'default'),
+        sound: 'default',
       };
     }
     await firebaseMessaging.send(message);
@@ -2485,8 +2484,6 @@ async function api(path, method, d, p, res, ip, headers) {
     } else {
       return resErr(res,'Invalid native platform.',400);
     }
-    m.messageTone = ['default','note','soft','chime','glass','pulse','silent'].includes(d.messageTone) ? d.messageTone : 'default';
-    m.callTone = ['vaultlix','classic','minimal','radiant','digital','urgent'].includes(d.callTone) ? d.callTone : 'vaultlix';
     room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }

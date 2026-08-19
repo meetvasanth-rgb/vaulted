@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.media.AudioAttributes;
+import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.PowerManager;
 import android.service.notification.StatusBarNotification;
@@ -56,11 +57,7 @@ public class VaultlixMessagingService extends MessagingService {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
 
-        String callTone = getSharedPreferences("vaultlix_sounds", MODE_PRIVATE)
-                .getString("callTone", "vaultlix");
-        if (!("classic".equals(callTone) || "minimal".equals(callTone) || "radiant".equals(callTone)
-                || "digital".equals(callTone) || "urgent".equals(callTone))) callTone = "vaultlix";
-        String callChannelId = CALL_CHANNEL_PREFIX + callTone;
+        String callChannelId = CALL_CHANNEL_PREFIX + "system";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     callChannelId,
@@ -69,15 +66,12 @@ public class VaultlixMessagingService extends MessagingService {
             );
             channel.setDescription("Incoming encrypted call alerts");
             channel.enableVibration(true);
-            int soundId = getResources().getIdentifier("vault_call_" + callTone, "raw", getPackageName());
-            if (soundId != 0) {
-                Uri sound = Uri.parse("android.resource://" + getPackageName() + "/" + soundId);
-                AudioAttributes attributes = new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build();
-                channel.setSound(sound, attributes);
-            }
+            Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+            channel.setSound(sound, attributes);
             channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(channel);
         }
