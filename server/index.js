@@ -25,7 +25,12 @@ else if (FRIENDS_ACCESS_KEY.length < 16) console.warn('FRIENDS_ACCESS_KEY is sho
 // silently deleted named rooms (and logged everyone out of them) within
 // minutes of going idle. room.isNamed (set at creation) picks the right one.
 const NAMED_ROOM_TTL = 4 * 24 * 60 * 60 * 1000;
-const ONE_TIME_ROOM_TTL = 24 * 60 * 60 * 1000;
+const ONE_TIME_ROOM_TTL = process.env.NODE_ENV === 'test' && process.env.TEST_ONE_TIME_ROOM_TTL_MS
+  ? Number(process.env.TEST_ONE_TIME_ROOM_TTL_MS)
+  : 24 * 60 * 60 * 1000;
+const ROOM_EXPIRY_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST_ROOM_EXPIRY_SWEEP_MS
+  ? Number(process.env.TEST_ROOM_EXPIRY_SWEEP_MS)
+  : 30 * 1000;
 
 const rooms = new Map();
 const { markInviteTerminated, isInviteTerminated } = require('./call-invite-state');
@@ -1624,7 +1629,7 @@ setInterval(() => {
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
     if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Room ${logCode(k)} expired`); }
   }
-}, 30000);
+}, ROOM_EXPIRY_SWEEP_MS);
 
 // Server-side enforcement for disappearing-message timers. Previously, the
 // countdown (startDeleteTimer/startReceiveDeleteTimer in index.html) only
@@ -2231,7 +2236,9 @@ async function api(path, method, d, p, res, ip, headers) {
       const m = room.members.get(d.token);
       m.lastSeen = Date.now();
       if (d.pubKey) m.pubKey = d.pubKey;
-      room.lastActivity = Date.now();
+      // Reconnects are automatic for every locally saved vault. Treating
+      // that background housekeeping as vault activity prevents temporary
+      // rooms from ever reaching their 24-hour inactivity deadline.
       // peerName rides along now too — without it, a reconnecting client had
       // nothing to show in its header until its first regular poll came
       // back, which meant the raw room code sat there visibly if that poll
@@ -2464,7 +2471,6 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validated) return resErr(res, 'Invalid push subscription.', 400);
     const m = room.members.get(d.token);
     m.pushSub = validated;
-    room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
 
@@ -2484,7 +2490,6 @@ async function api(path, method, d, p, res, ip, headers) {
     m.voipToken = null;
     m.voipEnvironment = null;
     m.nativeRoomHandle = null;
-    room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
 
@@ -2509,7 +2514,6 @@ async function api(path, method, d, p, res, ip, headers) {
     } else {
       return resErr(res,'Invalid native platform.',400);
     }
-    room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
 
@@ -2528,7 +2532,6 @@ async function api(path, method, d, p, res, ip, headers) {
     m.voipEnvironment = d.environment;
     m.nativeRoomHandle = d.roomHandle;
     console.log(`VoIP token registered for room ${logCode(d.code)} (${d.environment}).`);
-    room.lastActivity = Date.now();
     return res200(res, { ok: true });
   }
 
@@ -2731,7 +2734,6 @@ async function api(path, method, d, p, res, ip, headers) {
 
     const m = room.members.get(token);
     m.lastSeen = Date.now();
-    room.lastActivity = Date.now();
 
     // Peer info
     let peerName=null, peerOnline=false, peerPubKey=null;
@@ -2823,7 +2825,6 @@ async function api(path, method, d, p, res, ip, headers) {
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (msg && msg.type === 'message' && !msg.deliveredAt) {
       msg.deliveredAt = Date.now();
-      room.lastActivity = Date.now();
     }
     return res200(res, { ok: true });
   }
