@@ -14,11 +14,13 @@ const scryptAsync = promisify(crypto.scrypt);
 const PORT = process.env.PORT || 3000;
 const PROCESS_STARTED_AT = Date.now();
 const FRIENDS_ACCESS_KEY = process.env.FRIENDS_ACCESS_KEY || '';
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
 const FRIENDS_TOKEN_SECRET = FRIENDS_ACCESS_KEY
   ? crypto.createHash('sha256').update(`vaultlix-friends-entitlement-v1\0${FRIENDS_ACCESS_KEY}`).digest()
   : null;
 if (!FRIENDS_ACCESS_KEY) console.warn('Friends access is disabled: FRIENDS_ACCESS_KEY is not set.');
 else if (FRIENDS_ACCESS_KEY.length < 16) console.warn('FRIENDS_ACCESS_KEY is shorter than 16 characters — replace it with a stronger key.');
+if (ADMIN_KEY && ADMIN_KEY.length < 32) console.warn('ADMIN_KEY is shorter than 32 characters — replace it with a stronger key.');
 // Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
 // to be a single flat 5-minute TTL for every room regardless of type, which
@@ -31,6 +33,9 @@ const ONE_TIME_ROOM_TTL = process.env.NODE_ENV === 'test' && process.env.TEST_ON
 const ROOM_EXPIRY_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST_ROOM_EXPIRY_SWEEP_MS
   ? Number(process.env.TEST_ROOM_EXPIRY_SWEEP_MS)
   : 30 * 1000;
+const ADMIN_AUTH_WINDOW_MS = process.env.NODE_ENV === 'test' && process.env.TEST_ADMIN_AUTH_WINDOW_MS
+  ? Number(process.env.TEST_ADMIN_AUTH_WINDOW_MS)
+  : 10 * 60 * 1000;
 
 const rooms = new Map();
 const { markInviteTerminated, isInviteTerminated } = require('./call-invite-state');
@@ -711,6 +716,15 @@ function rateLimited(key, maxCount, windowMs) {
   }
   bucket.count++;
   return bucket.count > maxCount;
+}
+
+// Check an existing failure bucket without incrementing it. Admin auth uses
+// this before comparing credentials so a correct guess cannot bypass the
+// lockout after the failure budget has already been exhausted.
+function isRateLimited(key, maxCount, windowMs) {
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || Date.now() - bucket.windowStart >= windowMs) return false;
+  return bucket.count >= maxCount;
 }
 
 // Anonymous account authentication uses client-derived random-looking
@@ -1853,6 +1867,9 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
   const u = new URL(req.url, 'http://x');
+  if (u.pathname === '/install' || u.pathname === '/install.html') {
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  }
   if (u.pathname === '/admin' || u.pathname === '/admin.html' || u.pathname === '/admin.js' || u.pathname === '/admin.css') {
     res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     res.setHeader('Cache-Control', 'no-store');
@@ -2564,13 +2581,17 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/turn-credentials' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (rateLimited(`turn:${d.token}`, 6, 60 * 1000)) return resErr(res,'Too many requests.',429);
     if (!process.env.CF_TURN_KEY_ID || !process.env.CF_TURN_KEY_API_TOKEN) {
       console.error('TURN credentials requested but CF_TURN_KEY_ID/CF_TURN_KEY_API_TOKEN not set.');
       return resErr(res,'Calling is not configured.',503);
     }
     try {
+      const turnApiBase = process.env.NODE_ENV === 'test' && process.env.TEST_CF_TURN_API_BASE
+        ? process.env.TEST_CF_TURN_API_BASE.replace(/\/$/, '')
+        : 'https://rtc.live.cloudflare.com/v1/turn';
       const cfRes = await fetch(
-        `https://rtc.live.cloudflare.com/v1/turn/keys/${process.env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`,
+        `${turnApiBase}/keys/${process.env.CF_TURN_KEY_ID}/credentials/generate-ice-servers`,
         {
           method: 'POST',
           headers: {
@@ -2997,8 +3018,11 @@ async function api(path, method, d, p, res, ip, headers) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
-    const expectedKey = process.env.ADMIN_KEY;
+    const expectedKey = ADMIN_KEY;
     if (!expectedKey || !providedKey) {
+      res.writeHead(404); res.end(); return;
+    }
+    if (isRateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS)) {
       res.writeHead(404); res.end(); return;
     }
     const providedBuf = Buffer.from(providedKey);
@@ -3007,7 +3031,7 @@ async function api(path, method, d, p, res, ip, headers) {
       // Count failed guesses only. The dashboard refreshes every 15 seconds;
       // counting successful requests here locked a legitimate administrator
       // out after ten refreshes even though every supplied key was correct.
-      rateLimited(`admin-auth:${ip}`, 10, 10 * 60 * 1000);
+      rateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS);
       res.writeHead(404); res.end(); return;
     }
     const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;
