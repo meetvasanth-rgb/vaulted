@@ -9814,6 +9814,13 @@ async function handleSetup() {
       room.codeLabelLen = result.labelLength || null;
       addRoomToState(room);
       persistRoom(room);
+      // Register this creator-side room while it is still on the waiting
+      // screen. Previously push registration only began in
+      // startRoomPolling(), which runs after the peer has already joined.
+      // The server's one-time "invitation accepted" push therefore had no
+      // APNs/FCM/Web Push destination to send to. Starting registration now
+      // ensures the destination exists before the invitation is shared.
+      initPushForRoom(room).catch(() => {});
       pendingRoomCode = room.code;
 
       revealCode(result.code, room.codeLabelLen);
