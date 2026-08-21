@@ -9936,7 +9936,7 @@ async function buildInviteLink(code) {
 }
 async function buildInviteMessage(code) {
   const fullLink = await buildInviteLink(code);
-  return `Let's talk privately on Vaultlix — no account needed, nothing we can read.\n\nOpen this link and we're connected:\n${fullLink}\n\nTap the link → pick any name → we're in`;
+  return `Let's talk privately on Vaultlix\n\n${fullLink}`;
 }
 
 // ── INVITE QR CODE ──────────────────────────────────────────────────────
