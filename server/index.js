@@ -34,6 +34,7 @@ const ROOM_EXPIRY_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST
 
 const rooms = new Map();
 const { markInviteTerminated, isInviteTerminated } = require('./call-invite-state');
+const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 const accounts = new Map();
 
 // ── /api/send content sizing ─────────────────────────────────────────────
@@ -2334,7 +2335,26 @@ async function api(path, method, d, p, res, ip, headers) {
     // — confusing since the app had just told them "You're X" a moment
     // earlier. The other member still gets it normally, which is the whole
     // point of the message.
-    pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${name} joined`, ts: Date.now(), from: token });
+    const joinedEventId = uid();
+    pushRoomMsg(room, { seq: ++room.seq, id: joinedEventId, type:'system', content:`${name} joined`, ts: Date.now(), from: token });
+
+    // The creator may have shared the invitation and moved on to another
+    // vault (or locked the phone) while waiting. Notify that existing member
+    // exactly when a fresh peer accepts a temporary vault. Reconnects return
+    // from the earlier token branch, so they cannot produce duplicate alerts.
+    const acceptedPayload = buildTemporaryVaultAcceptedPayload({
+      persistent: room.persistent,
+      code: roomCode,
+      peerName: name,
+      eventId: joinedEventId,
+    });
+    if (acceptedPayload) {
+      for (const [memberToken, member] of room.members) {
+        if (memberToken !== token && hasPushDestination(member)) {
+          sendMemberPush(member, acceptedPayload, { urgency: 'high', TTL: 3600, label: 'vault accepted' });
+        }
+      }
+    }
 
     // peerName included here too now, same as the reconnect branch above —
     // if a client ever IS legitimately forced through this fresh-join path
