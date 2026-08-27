@@ -300,6 +300,9 @@ function destroyRoom(code) {
   const room = rooms.get(code);
   if (room) totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0));
   rooms.delete(code);
+  // Closing/expiry must reach durable state immediately so a backup taken
+  // before the next periodic pass cannot resurrect an already-erased vault.
+  saveSnapshot({ log: false });
 }
 
 // VAPID keys identify this server to push services (Apple/Google/Mozilla's push
@@ -3517,19 +3520,12 @@ setInterval(() => {
   });
 }, 25000);
 
-// ── SHUTDOWN SNAPSHOT ─────────────────────────────────────────────────────
-// `rooms` lives only in process memory — by design, there's no database.
-// The cost of that is real: any process restart (a deploy, a manual
-// restart, Railway recycling the container) used to wipe every open room
-// and any message not yet delivered, with nothing to signal either party.
-// This doesn't fix that for a hard crash or OOM kill — the process never
-// gets a chance to run any code in that case, nothing short of a
-// continuously-replicated store like Redis could. What it does fix is the
-// far more common case: a graceful restart, where the process receives
-// SIGTERM and gets a brief moment to act before it actually exits. On that
-// signal, serialize the whole `rooms` Map to disk once; on boot, reload it
-// (skipping anything that would already have expired anyway) and delete the
-// file so a later, truly-fresh boot never finds a stale leftover.
+// ── DURABLE ROOM CHECKPOINT ──────────────────────────────────────────────────
+// Rooms remain live in memory, but an atomic checkpoint is also refreshed on
+// persistent storage. This makes a Railway volume backup useful: a backup
+// taken while the process is running contains a recent room map rather than
+// only account files. Shutdown still writes one final checkpoint, while the
+// periodic writer covers hard crashes and backups taken during normal use.
 //
 // SNAPSHOT_DIR must point at storage that survives the *container* being
 // torn down and recreated, not just the process inside it — i.e. a Railway
@@ -3540,6 +3536,7 @@ setInterval(() => {
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || path.join(__dirname, '.data');
 const SNAPSHOT_PATH = path.join(SNAPSHOT_DIR, 'rooms-snapshot.json');
 const SNAPSHOT_TMP_PATH = SNAPSHOT_PATH + '.tmp';
+const ROOM_CHECKPOINT_INTERVAL_MS = Math.max(1000, parseInt(process.env.ROOM_CHECKPOINT_INTERVAL_MS || '15000', 10));
 const ACCOUNTS_PATH = path.join(SNAPSHOT_DIR, 'accounts.json');
 const ACCOUNTS_TMP_PATH = ACCOUNTS_PATH + '.tmp';
 const REPORTS_PATH = path.join(SNAPSHOT_DIR, 'safety-reports.jsonl');
@@ -3563,8 +3560,8 @@ function appendSafetyReport(report) {
   fs.chmodSync(REPORTS_PATH, 0o600);
 }
 
-// Unlike the one-shot room shutdown snapshot, anonymous account ciphertext
-// must survive every restart.  Atomic replacement prevents a power loss or
+// Anonymous account ciphertext must survive every restart independently of
+// the live-room checkpoint. Atomic replacement prevents a power loss or
 // container kill during a write from truncating the only copy.
 function saveAccounts() {
   try {
@@ -3597,7 +3594,7 @@ function loadAccounts() {
   } catch (e) { console.error('Anonymous account load failed:', e.message); }
 }
 
-function saveSnapshot() {
+function saveSnapshot({ log = true } = {}) {
   try {
     fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
     // Map values aren't JSON-serializable as-is — `members` is itself a
@@ -3648,7 +3645,7 @@ function saveSnapshot() {
     fs.chmodSync(SNAPSHOT_TMP_PATH, 0o600);
     fs.renameSync(SNAPSHOT_TMP_PATH, SNAPSHOT_PATH);
     fs.chmodSync(SNAPSHOT_PATH, 0o600);
-    console.log(`Snapshot saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
+    if (log) console.log(`Room checkpoint saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
   } catch (e) {
     console.error('Snapshot save failed:', e.message);
   }
@@ -3735,17 +3732,16 @@ function loadSnapshot() {
       rooms.set(roomCode, room);
       restored++;
     }
-    fs.unlinkSync(SNAPSHOT_PATH); // one-shot — never let a later normal boot see a stale file
-    console.log(`Snapshot restored: ${restored} room(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
+    saveSnapshot({ log: false });
+    console.log(`Room checkpoint restored: ${restored} room(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
   } catch (e) {
     console.error('Snapshot load failed:', e.message);
   }
 }
 
-// Separate from SNAPSHOT_PATH on purpose — that file is one-shot (deleted on
-// every load, see fs.unlinkSync above) and only ever holds currently-live
-// rooms. This one needs to persist indefinitely across restarts, so it lives
-// in its own file. Just two running integers — no IP, room code, or
+// Separate from SNAPSHOT_PATH on purpose: that checkpoint holds live rooms,
+// while this file holds aggregate counters. Just running integers — no IP,
+// room code, or
 // timestamp is ever stored alongside them.
 const ANALYTICS_PATH = path.join(SNAPSHOT_DIR, 'analytics.json');
 let analytics = {
@@ -3804,15 +3800,17 @@ loadAnalytics();
 loadAccounts();
 
 if (!process.env.SNAPSHOT_DIR) {
-  console.warn('SNAPSHOT_DIR not set — shutdown snapshots will use local container disk, which does NOT survive a Railway deploy (only survives if the same container process restarts in place). To make rooms survive real deploys: attach a Railway Volume to this service, mount it (e.g. at /data), and set the SNAPSHOT_DIR variable to that mount path.');
+  console.warn('SNAPSHOT_DIR not set — durable room checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
 }
 loadSnapshot();
+const roomCheckpointTimer = setInterval(() => saveSnapshot({ log: false }), ROOM_CHECKPOINT_INTERVAL_MS);
+roomCheckpointTimer.unref();
 
 let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`${signal} received — saving snapshot before exit...`);
+  console.log(`${signal} received — saving final room checkpoint before exit...`);
   saveAnalytics();
   saveAccounts();
   saveSnapshot();

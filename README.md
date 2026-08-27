@@ -5,13 +5,13 @@ Two people. One conversation. Disappears when you leave.
 ## What this is
 - Anonymous text chat — no phone number or email required; guest access plus optional encrypted anonymous-ID sync
 - Secret room codes — share a 3-word code, connect instantly
-- Server memory only, with one narrow exception — a brief snapshot written to disk during a planned restart, deleted the moment it reloads
+- Server memory with an atomic encrypted-room checkpoint on persistent storage for crash and backup recovery
 - Auto-erases — room closes when either person leaves
 
 ## Tech
 - Node.js WebSocket server (ws library)
 - Single HTML file frontend — no React, no build step
-- Zero database — all in server memory only
+- Zero database — active encrypted room state is checkpointed to the attached persistent volume
 
 ---
 
@@ -70,8 +70,8 @@ vaulted-anon/
 6. Either person clicks "Close & erase" → room gone, messages gone
 
 ## What is NEVER stored
-- Messages (relayed in memory; briefly written to disk only during a planned-restart snapshot, deleted immediately after reload)
-- Codenames or room codes (kept in memory for the room's full lifetime, not dropped on disconnect — also included in that same restart snapshot)
+- Plaintext messages (the server only receives encrypted ciphertext; active encrypted room state is checkpointed for recovery)
+- Real-world identities (chosen display names and room codes exist for the vault lifetime and in retained recovery backups)
 - IP addresses (not logged)
-- Timestamps (kept in memory alongside messages, same as everything else here — also included in the restart snapshot)
+- Readable message content (timestamps and encrypted room metadata are included in recovery checkpoints)
 - Any metadata beyond the above — public keys and push-subscription details ARE kept for the room's lifetime (both required for encryption and notifications to work at all), and anonymous aggregate usage counts (vaults created, temporary vs. permanent) persist indefinitely as running totals, never linked to a specific vault, code, or IP
