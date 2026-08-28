@@ -1966,16 +1966,16 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-eyebrow{display:block;margin-bottom:13px;font:750 10px/1 'Manrope',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#9B7784}
 #s-landing .marketing-title{max-width:760px;margin:0 0 18px;font:750 clamp(31px,5vw,52px)/1.06 'Manrope',sans-serif;letter-spacing:-.05em;color:#271D25}
 #s-landing .marketing-lede{max-width:720px;margin:0;font:450 16px/1.7 'Manrope',sans-serif;color:#6E6067}
-#s-landing .privacy-hook{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:28px;align-items:start}
+#s-landing .privacy-hook{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:28px;align-items:stretch}
 #s-landing .privacy-hook-copy{padding:30px;border-radius:26px;background:linear-gradient(145deg,#3A2934,#251B22);color:#fff;box-shadow:0 18px 42px rgba(39,29,37,.13)}
 #s-landing .privacy-hook-copy .marketing-eyebrow{color:#E6A4B3}
 #s-landing .privacy-hook-copy .marketing-title{font-size:clamp(29px,4vw,45px);color:#fff}
 #s-landing .privacy-hook-copy .marketing-lede{color:#DDD1D6}
 #s-landing .privacy-hook-copy p+ p{margin-top:16px}
-#s-landing .privacy-compare{overflow:hidden;border:1px solid #E1D4D9;border-radius:24px;background:rgba(255,255,255,.86);box-shadow:0 12px 32px rgba(39,29,37,.055)}
-#s-landing .privacy-compare-row{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(150px,1fr) minmax(170px,1.15fr);border-top:1px solid #E9DFE3}
+#s-landing .privacy-compare{display:grid;grid-template-rows:auto repeat(6,minmax(0,1fr));overflow:hidden;border:1px solid #E1D4D9;border-radius:24px;background:rgba(255,255,255,.86);box-shadow:0 12px 32px rgba(39,29,37,.055)}
+#s-landing .privacy-compare-row{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(150px,1fr) minmax(170px,1.15fr);align-items:stretch;border-top:1px solid #E9DFE3}
 #s-landing .privacy-compare-row:first-child{border-top:0;background:#F3E9EC;color:#682C43}
-#s-landing .privacy-compare-row>span{padding:17px 18px;font:500 12px/1.45 'Manrope',sans-serif;color:#6E6067}
+#s-landing .privacy-compare-row>span{display:flex;align-items:center;padding:17px 18px;font:500 12px/1.45 'Manrope',sans-serif;color:#6E6067}
 #s-landing .privacy-compare-row>span:first-child{font-weight:750;color:#34272F}
 #s-landing .privacy-compare-row:first-child>span{font-size:10px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#682C43}
 #s-landing .privacy-compare-row>span:last-child{background:rgba(238,243,239,.72);color:#4C6B55;font-weight:650}
@@ -2030,10 +2030,12 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .marketing-lede{font-size:14px}
   #s-landing .safety-strip{grid-template-columns:1fr}
   #s-landing .privacy-hook-copy{padding:25px 22px}
+  #s-landing .privacy-compare{display:block}
   #s-landing .privacy-compare-row{grid-template-columns:1fr 1fr}
   #s-landing .privacy-compare-row:first-child{display:none}
   #s-landing .privacy-compare-row>span{padding:13px 14px}
   #s-landing .privacy-compare-row>span:first-child{grid-column:1/-1;padding-bottom:5px;background:#fff;color:#34272F}
+  #s-landing .privacy-compare-row>span:nth-child(2),#s-landing .privacy-compare-row>span:nth-child(3){display:block}
   #s-landing .privacy-compare-row>span:nth-child(2)::before,#s-landing .privacy-compare-row>span:nth-child(3)::before{display:block;margin-bottom:5px;font-size:8px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#9B7784}
   #s-landing .privacy-compare-row>span:nth-child(2)::before{content:'Conventional messaging'}
   #s-landing .privacy-compare-row>span:nth-child(3)::before{content:'Vaultlix'}
