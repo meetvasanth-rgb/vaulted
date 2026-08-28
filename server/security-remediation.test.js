@@ -123,4 +123,13 @@ test('Tier 1 security remediations enforce limits and keep install scripts local
   const qrAsset = await request(base, '/vendor/qrcode.min.js');
   assert.equal(qrAsset.response.status, 200);
   assert.match(qrAsset.data, /QRCode/);
+
+  const walkthroughVideo = await fetch(base + '/media/vaultlix-create-connect-walkthrough-human-voice.mp4');
+  assert.equal(walkthroughVideo.status, 200);
+  assert.equal(walkthroughVideo.headers.get('content-type'), 'video/mp4');
+  await walkthroughVideo.body.cancel();
+  const walkthroughPoster = await fetch(base + '/media/vaultlix-walkthrough-poster.jpg');
+  assert.equal(walkthroughPoster.status, 200);
+  assert.equal(walkthroughPoster.headers.get('content-type'), 'image/jpeg');
+  await walkthroughPoster.body.cancel();
 });

@@ -1766,7 +1766,7 @@ function serveStatic(req, res) {
       sendHtmlShell(req, res, data);
       return;
     }
-    const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.svg':'image/svg+xml'};
+    const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4'};
     // Explicit Content-Length (rather than letting Node fall back to
     // chunked transfer-encoding on HTTP/1.1) matters specifically for
     // og:image — link-preview crawlers (WhatsApp's included) are known to
