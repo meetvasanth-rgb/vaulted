@@ -1791,6 +1791,15 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .landing-glow{display:none}
 #s-landing .landing-content{position:relative;z-index:1;width:100%;max-width:560px;padding:0!important;text-align:left!important}
 #s-landing .landing-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:52px}
+#s-landing .landing-menu{position:relative}
+#s-landing .landing-menu summary{height:38px;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 12px;border:1px solid #DFD2D7;border-radius:999px;background:rgba(255,255,255,.86);color:#54474E;cursor:pointer;list-style:none;font:750 10px/1 'Manrope',sans-serif;box-shadow:0 6px 18px rgba(39,29,37,.05)}
+#s-landing .landing-menu summary::-webkit-details-marker{display:none}
+#s-landing .landing-menu summary svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+#s-landing .landing-menu[open] summary{border-color:#CDB9C1;color:#682C43;background:#fff}
+#s-landing .landing-menu-panel{position:absolute;z-index:20;top:46px;right:0;width:230px;padding:8px;border:1px solid #E2D5DA;border-radius:18px;background:rgba(255,255,255,.98);box-shadow:0 20px 46px rgba(39,29,37,.18);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+#s-landing .landing-menu-panel a{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border-radius:11px;color:#46383F;text-decoration:none;font:700 11px/1.2 'Manrope',sans-serif}
+#s-landing .landing-menu-panel a:hover,#s-landing .landing-menu-panel a:focus-visible{background:#F5E9ED;color:#682C43;outline:none}
+#s-landing .landing-menu-panel a::after{content:'›';font-size:17px;font-weight:500;color:#A17D8A}
 #s-landing .landing-lockup{display:flex!important;align-items:center;gap:12px;margin:0!important}
 #s-landing .landing-mark{width:48px!important;height:48px!important;display:grid!important;place-items:center;border:0!important;border-radius:15px!important;background:#682C43!important;box-shadow:0 10px 26px rgba(104,44,67,.20)!important}
 #s-landing .landing-mark svg{width:23px;height:23px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -1808,6 +1817,9 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .logo-sub{margin:0 0 13px!important;font:700 10px/1.4 'Manrope',sans-serif!important;letter-spacing:.17em!important;text-transform:uppercase;color:#682C43!important}
 #s-landing .landing-title{font-family:'Manrope',sans-serif;font-size:clamp(35px,7vw,50px);font-weight:750;letter-spacing:-.048em;line-height:1.04;color:#271D25;margin:0 0 17px;max-width:530px}
 #s-landing .tagline{font-family:'Manrope',sans-serif!important;font-size:16px!important;font-weight:450!important;font-style:normal!important;letter-spacing:-.01em!important;line-height:1.55!important;color:#6E6067!important;text-align:left!important;max-width:460px!important;margin:0!important}
+#s-landing .identity-proof{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+#s-landing .identity-proof span{display:flex;align-items:center;gap:7px;padding:9px 11px;border:1px solid #DECED4;border-radius:999px;background:rgba(255,255,255,.82);color:#682C43;font:750 10px/1 'Manrope',sans-serif;box-shadow:0 5px 15px rgba(39,29,37,.045)}
+#s-landing .identity-proof span::before{content:'✓';width:16px;height:16px;display:grid;place-items:center;border-radius:50%;background:#EAF1EC;color:#557660;font-size:10px}
 #s-landing .landing-actions{margin-bottom:18px}
 #s-landing .landing-section-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
 #s-landing .landing-section-heading span{display:block;font:750 9px/1 'Manrope',sans-serif;letter-spacing:.17em;color:#9B7784;margin-bottom:8px}
@@ -1850,6 +1862,9 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   #s-landing .landing-mark{width:44px!important;height:44px!important;border-radius:14px!important}
   #s-landing .landing-trust-pill{display:none}
   #s-landing .landing-account-btn{height:40px;max-width:118px;padding:0 11px;font-size:10px}
+  #s-landing .landing-menu summary{width:40px;height:40px;padding:0}
+  #s-landing .landing-menu-label{display:none}
+  #s-landing .landing-menu-panel{position:fixed;top:calc(74px + env(safe-area-inset-top));left:15px;right:15px;width:auto}
   #s-landing .landing-hero{margin-bottom:34px}
   #s-landing .landing-title{font-size:36px;line-height:1.06}
   #s-landing .tagline{font-size:15px!important}
@@ -1947,6 +1962,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 /* Browser homepage — product education below the working vault launcher. */
 #s-landing .landing-marketing{width:100%;margin-top:58px;font-family:'Manrope',sans-serif;color:#34272F}
 #s-landing .marketing-section{padding:70px 0;border-top:1px solid rgba(104,44,67,.12)}
+#s-landing .marketing-section{scroll-margin-top:22px}
 #s-landing .marketing-eyebrow{display:block;margin-bottom:13px;font:750 10px/1 'Manrope',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#9B7784}
 #s-landing .marketing-title{max-width:760px;margin:0 0 18px;font:750 clamp(31px,5vw,52px)/1.06 'Manrope',sans-serif;letter-spacing:-.05em;color:#271D25}
 #s-landing .marketing-lede{max-width:720px;margin:0;font:450 16px/1.7 'Manrope',sans-serif;color:#6E6067}
@@ -2231,6 +2247,20 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </div>
       <div class="landing-header-actions">
         <div class="landing-trust-pill"><span></span> Encrypted</div>
+        <details class="landing-menu">
+          <summary aria-label="Open website menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            <span class="landing-menu-label">Menu</span>
+          </summary>
+          <nav class="landing-menu-panel" aria-label="Website sections">
+            <a href="#how-it-works" onclick="this.closest('details').removeAttribute('open')">How it works</a>
+            <a href="#product-walkthrough" onclick="this.closest('details').removeAttribute('open')">Walkthrough</a>
+            <a href="#privacy-architecture" onclick="this.closest('details').removeAttribute('open')">Privacy architecture</a>
+            <a href="#vault-types" onclick="this.closest('details').removeAttribute('open')">Vault types</a>
+            <a href="#safety-controls" onclick="this.closest('details').removeAttribute('open')">Safety controls</a>
+            <a href="#use-vaultlix" onclick="this.closest('details').removeAttribute('open')">Use Vaultlix</a>
+          </nav>
+        </details>
         <button class="landing-account-btn" id="landing-account-btn" type="button" onclick="openAccountPanel()" aria-label="Sign in to Vaultlix" title="Sign in to Vaultlix">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>
           <span class="landing-account-label" id="landing-account-label">Sign in</span>
@@ -2242,7 +2272,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <div class="logo-rule" id="logoRule"></div>
       <div class="logo-sub" id="logoSub">A private space for two</div>
       <h1 class="landing-title">Conversations without the identity trail.</h1>
-      <p class="tagline" id="logoTag">Speak freely, without tying the conversation to your identity.</p>
+      <p class="tagline" id="logoTag">Start anonymously without giving Vaultlix a phone number, email address, or identity-based account.</p>
+      <div class="identity-proof" aria-label="Anonymous access benefits"><span>No phone number</span><span>No email address</span><span>No identity-based account</span></div>
     </section>
 
     <section class="landing-actions" id="use-vaultlix" aria-labelledby="landing-actions-title">
@@ -2277,7 +2308,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <aside class="landing-assurance">
       <div class="assurance-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-      <div><strong>Built to know less</strong><span>No phone number or email. Anonymous guest access. No readable conversation history.</span></div>
+      <div><strong>Anonymous guest access</strong><span>No phone number, no email address, and no identity-based account required.</span></div>
     </aside>
 
     <!-- PWA install affordance — platform-aware, populated by refreshInstallUI() -->
@@ -2288,7 +2319,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div id="install-note" class="install-note" style="display:none">Open in Safari to install Vaultlix</div>
 
     <div class="landing-marketing" aria-label="About Vaultlix">
-      <section class="marketing-section">
+      <section class="marketing-section" id="how-it-works">
         <span class="marketing-eyebrow">HOW IT WORKS</span>
         <h2 class="marketing-title">A private conversation begins in three quiet steps.</h2>
         <p class="marketing-lede">Create a vault, share its invitation privately, and communicate without making a phone number or email address the centre of the relationship.</p>
@@ -2298,7 +2329,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
           <article class="marketing-card"><div class="marketing-number">03</div><h3>Talk privately</h3><p>Exchange encrypted messages and calls using vault identities chosen for that conversation.</p></article>
         </div>
       </section>
-      <section class="marketing-section" aria-labelledby="walkthrough-title">
+      <section class="marketing-section" id="product-walkthrough" aria-labelledby="walkthrough-title">
         <span class="marketing-eyebrow">PRODUCT WALKTHROUGH</span>
         <h2 class="marketing-title" id="walkthrough-title">See a vault come to life.</h2>
         <div class="walkthrough-shell">
@@ -2311,7 +2342,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
           <div class="walkthrough-copy"><h3>Create. Invite. Communicate.</h3><p>Watch the complete experience in under 40 seconds: create a vault on iPhone, join it from Android, communicate privately, and close it when the conversation is finished.</p><ol class="walkthrough-list"><li><span>1</span>Create a temporary or permanent vault</li><li><span>2</span>Share the invitation with your counterpart</li><li><span>3</span>Message or call inside the private space</li></ol></div>
         </div>
       </section>
-      <section class="marketing-section">
+      <section class="marketing-section" id="privacy-architecture">
         <span class="marketing-eyebrow">PRIVACY ARCHITECTURE</span>
         <h2 class="marketing-title">Designed to protect content and minimise identity.</h2>
         <p class="marketing-lede">Vaultlix separates the conversation from the identifiers that ordinary messengers often require. The security claims below describe the system precisely.</p>
@@ -2323,7 +2354,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         </div>
         <div class="marketing-note">Optional account sync stores a client-encrypted account bundle. Infrastructure may process operational data needed to deliver the service, while message content and call media remain protected by their respective encryption layers.</div>
       </section>
-      <section class="marketing-section">
+      <section class="marketing-section" id="vault-types">
         <span class="marketing-eyebrow">CHOOSE YOUR SPACE</span>
         <h2 class="marketing-title">Short-lived when you need it. Persistent when you choose it.</h2>
         <div class="vault-comparison">
@@ -2331,7 +2362,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
           <article class="vault-type"><h3>Permanent vault</h3><p>For trusted conversations you want to return to over time.</p><ul><li>One private counterpart</li><li>Remains until explicitly closed</li><li>Supports encrypted account sync</li><li>Retains your chosen vault identity</li></ul></article>
         </div>
       </section>
-      <section class="marketing-section">
+      <section class="marketing-section" id="safety-controls">
         <span class="marketing-eyebrow">SAFETY CONTROLS</span>
         <h2 class="marketing-title">Privacy also means control after the conversation begins.</h2>
         <div class="safety-strip">
@@ -10819,7 +10850,7 @@ let landingTaglineInterval = null;
 function startLandingTaglineRotation() {
   stopLandingTaglineRotation();
   const el = document.getElementById('logoTag');
-  if (el) el.textContent = 'Speak freely, without tying the conversation to your identity.';
+  if (el) el.textContent = 'Start anonymously without giving Vaultlix a phone number, email address, or identity-based account.';
 }
 function stopLandingTaglineRotation() {
   if (landingTaglineInterval) { clearInterval(landingTaglineInterval); landingTaglineInterval = null; }
