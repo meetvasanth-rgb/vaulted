@@ -1966,6 +1966,19 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-eyebrow{display:block;margin-bottom:13px;font:750 10px/1 'Manrope',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#9B7784}
 #s-landing .marketing-title{max-width:760px;margin:0 0 18px;font:750 clamp(31px,5vw,52px)/1.06 'Manrope',sans-serif;letter-spacing:-.05em;color:#271D25}
 #s-landing .marketing-lede{max-width:720px;margin:0;font:450 16px/1.7 'Manrope',sans-serif;color:#6E6067}
+#s-landing .privacy-hook{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:28px;align-items:start}
+#s-landing .privacy-hook-copy{padding:30px;border-radius:26px;background:linear-gradient(145deg,#3A2934,#251B22);color:#fff;box-shadow:0 18px 42px rgba(39,29,37,.13)}
+#s-landing .privacy-hook-copy .marketing-eyebrow{color:#E6A4B3}
+#s-landing .privacy-hook-copy .marketing-title{font-size:clamp(29px,4vw,45px);color:#fff}
+#s-landing .privacy-hook-copy .marketing-lede{color:#DDD1D6}
+#s-landing .privacy-hook-copy p+ p{margin-top:16px}
+#s-landing .privacy-compare{overflow:hidden;border:1px solid #E1D4D9;border-radius:24px;background:rgba(255,255,255,.86);box-shadow:0 12px 32px rgba(39,29,37,.055)}
+#s-landing .privacy-compare-row{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(150px,1fr) minmax(170px,1.15fr);border-top:1px solid #E9DFE3}
+#s-landing .privacy-compare-row:first-child{border-top:0;background:#F3E9EC;color:#682C43}
+#s-landing .privacy-compare-row>span{padding:17px 18px;font:500 12px/1.45 'Manrope',sans-serif;color:#6E6067}
+#s-landing .privacy-compare-row>span:first-child{font-weight:750;color:#34272F}
+#s-landing .privacy-compare-row:first-child>span{font-size:10px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#682C43}
+#s-landing .privacy-compare-row>span:last-child{background:rgba(238,243,239,.72);color:#4C6B55;font-weight:650}
 #s-landing .marketing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:26px}
 #s-landing .marketing-card{padding:25px;border:1px solid #E4DADF;border-radius:22px;background:rgba(255,255,255,.82);box-shadow:0 10px 28px rgba(39,29,37,.055)}
 #s-landing .marketing-number{width:38px;height:38px;display:grid;place-items:center;margin-bottom:34px;border-radius:50%;background:#682C43;color:#fff;font:750 12px/1 'Manrope',sans-serif}
@@ -2006,6 +2019,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .landing-marketing{margin-top:24px}
   #s-landing .marketing-section{padding:42px 0}
   #s-landing .marketing-grid,#s-landing .privacy-grid,#s-landing .vault-comparison{grid-template-columns:1fr}
+  #s-landing .privacy-hook{grid-template-columns:1fr}
   #s-landing .walkthrough-shell{grid-template-columns:1fr;padding:18px}
   #s-landing .walkthrough-preview{padding:16px}
   #s-landing .safety-strip{grid-template-columns:1fr 1fr}
@@ -2015,6 +2029,14 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .marketing-title{font-size:32px}
   #s-landing .marketing-lede{font-size:14px}
   #s-landing .safety-strip{grid-template-columns:1fr}
+  #s-landing .privacy-hook-copy{padding:25px 22px}
+  #s-landing .privacy-compare-row{grid-template-columns:1fr 1fr}
+  #s-landing .privacy-compare-row:first-child{display:none}
+  #s-landing .privacy-compare-row>span{padding:13px 14px}
+  #s-landing .privacy-compare-row>span:first-child{grid-column:1/-1;padding-bottom:5px;background:#fff;color:#34272F}
+  #s-landing .privacy-compare-row>span:nth-child(2)::before,#s-landing .privacy-compare-row>span:nth-child(3)::before{display:block;margin-bottom:5px;font-size:8px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#9B7784}
+  #s-landing .privacy-compare-row>span:nth-child(2)::before{content:'Conventional messaging'}
+  #s-landing .privacy-compare-row>span:nth-child(3)::before{content:'Vaultlix'}
 }
 @media(min-width:900px){
   #s-landing .landing-content{min-height:calc(100dvh - 80px)}
@@ -2253,6 +2275,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
             <span class="landing-menu-label">Menu</span>
           </summary>
           <nav class="landing-menu-panel" aria-label="Website sections">
+            <a href="#privacy-difference" onclick="this.closest('details').removeAttribute('open')">Privacy difference</a>
             <a href="#how-it-works" onclick="this.closest('details').removeAttribute('open')">How it works</a>
             <a href="#product-walkthrough" onclick="this.closest('details').removeAttribute('open')">Walkthrough</a>
             <a href="#privacy-architecture" onclick="this.closest('details').removeAttribute('open')">Privacy architecture</a>
@@ -2319,6 +2342,23 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div id="install-note" class="install-note" style="display:none">Open in Safari to install Vaultlix</div>
 
     <div class="landing-marketing" aria-label="About Vaultlix">
+      <section class="marketing-section privacy-hook" id="privacy-difference">
+        <div class="privacy-hook-copy">
+          <span class="marketing-eyebrow">DESIGNED TO LEAVE LESS BEHIND</span>
+          <h2 class="marketing-title">Private conversations should remain inaccessible after they are erased.</h2>
+          <p class="marketing-lede">With many messaging apps, deleted messages may remain recoverable from backups, stored copies, or device data.</p>
+          <p class="marketing-lede">Vaultlix minimizes retained message data and uses encryption and expiry controls so erased conversations are designed to remain inaccessible.</p>
+        </div>
+        <div class="privacy-compare" role="table" aria-label="Conventional messaging compared with Vaultlix">
+          <div class="privacy-compare-row" role="row"><span role="columnheader">Feature</span><span role="columnheader">Conventional messaging</span><span role="columnheader">Vaultlix</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Sign-up identifier</span><span role="cell">Often requires a phone number</span><span role="cell">No phone number or email required</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Contact access</span><span role="cell">May request your address book</span><span role="cell">No contact upload required</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Conversation identity</span><span role="cell">Usually tied to one account</span><span role="cell">A separate identity for every vault</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Voice and video calls</span><span role="cell">Depends on the provider</span><span role="cell">Media is encrypted between participant devices</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Operational metadata</span><span role="cell">May be collected broadly</span><span role="cell">Minimized to what is required to operate the service</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Advertising identity</span><span role="cell">May connect activity to a wider ecosystem</span><span role="cell">No advertising identity required</span></div>
+        </div>
+      </section>
       <section class="marketing-section" id="how-it-works">
         <span class="marketing-eyebrow">HOW IT WORKS</span>
         <h2 class="marketing-title">A private conversation begins in three quiet steps.</h2>
