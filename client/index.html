@@ -1956,11 +1956,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
 #s-landing .marketing-card p{margin:0;font:450 13px/1.6 'Manrope',sans-serif;color:#766970}
 #s-landing .walkthrough-shell{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:30px;align-items:center;margin-top:34px;padding:30px;border-radius:28px;background:#2F232B;color:#fff;box-shadow:0 22px 50px rgba(39,29,37,.16)}
-#s-landing .walkthrough-preview{position:relative;min-height:310px;display:grid;place-items:center;overflow:hidden;border:1px solid rgba(255,255,255,.13);border-radius:22px;background:radial-gradient(circle at 50% 15%,rgba(200,117,136,.34),transparent 38%),linear-gradient(145deg,#4A3040,#21181E)}
-#s-landing .walkthrough-preview::before{content:'VAULTLIX';position:absolute;top:24px;font:650 9px/1 'Manrope',sans-serif;letter-spacing:.28em;color:rgba(255,255,255,.48)}
-#s-landing .walkthrough-play{width:68px;height:68px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.28);border-radius:50%;background:rgba(255,255,255,.1);color:#fff}
-#s-landing .walkthrough-play svg{width:23px;height:23px;fill:currentColor;transform:translateX(2px)}
-#s-landing .walkthrough-status{position:absolute;bottom:22px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.1);font:650 10px/1 'Manrope',sans-serif;letter-spacing:.08em;color:#E5D9DE}
+#s-landing .walkthrough-preview{position:relative;display:grid;place-items:center;overflow:hidden;padding:22px;border:1px solid rgba(255,255,255,.13);border-radius:22px;background:radial-gradient(circle at 50% 15%,rgba(200,117,136,.34),transparent 38%),linear-gradient(145deg,#4A3040,#21181E)}
+#s-landing .walkthrough-video{display:block;width:min(100%,320px);aspect-ratio:9/16;object-fit:cover;border-radius:18px;background:#2F232B;box-shadow:0 20px 42px rgba(0,0,0,.28)}
 #s-landing .walkthrough-copy h3{margin:0 0 12px;font:750 27px/1.15 'Manrope',sans-serif;letter-spacing:-.035em}
 #s-landing .walkthrough-copy p{margin:0 0 22px;font:450 13px/1.65 'Manrope',sans-serif;color:#D7CBD1}
 #s-landing .walkthrough-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
@@ -1994,7 +1991,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .marketing-section{padding:52px 0}
   #s-landing .marketing-grid,#s-landing .privacy-grid,#s-landing .vault-comparison{grid-template-columns:1fr}
   #s-landing .walkthrough-shell{grid-template-columns:1fr;padding:18px}
-  #s-landing .walkthrough-preview{min-height:270px}
+  #s-landing .walkthrough-preview{padding:16px}
   #s-landing .safety-strip{grid-template-columns:1fr 1fr}
   #s-landing .marketing-cta{align-items:flex-start;flex-direction:column;padding:28px 24px}
 }
@@ -2305,8 +2302,13 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <span class="marketing-eyebrow">PRODUCT WALKTHROUGH</span>
         <h2 class="marketing-title" id="walkthrough-title">See a vault come to life.</h2>
         <div class="walkthrough-shell">
-          <div class="walkthrough-preview" aria-label="Vaultlix walkthrough video coming soon"><div class="walkthrough-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></svg></div><div class="walkthrough-status">WALKTHROUGH COMING SOON</div></div>
-          <div class="walkthrough-copy"><h3>Create. Invite. Communicate.</h3><p>Your forthcoming video will live here and guide a first-time visitor through the complete experience without leaving the homepage.</p><ol class="walkthrough-list"><li><span>1</span>Create a temporary or permanent vault</li><li><span>2</span>Share the invitation with your counterpart</li><li><span>3</span>Message or call inside the private space</li></ol></div>
+          <div class="walkthrough-preview">
+            <video class="walkthrough-video" controls playsinline preload="metadata" poster="/media/vaultlix-walkthrough-poster.jpg" aria-label="Vaultlix walkthrough showing vault creation, invitation, messaging and closure">
+              <source src="/media/vaultlix-create-connect-walkthrough-human-voice.mp4" type="video/mp4">
+              Your browser does not support embedded video. <a href="/media/vaultlix-create-connect-walkthrough-human-voice.mp4">Open the Vaultlix walkthrough</a>.
+            </video>
+          </div>
+          <div class="walkthrough-copy"><h3>Create. Invite. Communicate.</h3><p>Watch the complete experience in under 40 seconds: create a vault on iPhone, join it from Android, communicate privately, and close it when the conversation is finished.</p><ol class="walkthrough-list"><li><span>1</span>Create a temporary or permanent vault</li><li><span>2</span>Share the invitation with your counterpart</li><li><span>3</span>Message or call inside the private space</li></ol></div>
         </div>
       </section>
       <section class="marketing-section">
