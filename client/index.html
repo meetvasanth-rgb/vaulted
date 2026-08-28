@@ -2009,6 +2009,14 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .safety-item{padding:20px 18px;border-radius:18px;background:#F4EAED}
 #s-landing .safety-item strong{display:block;margin-bottom:7px;font:750 14px/1.3 'Manrope',sans-serif}
 #s-landing .safety-item span{font:450 11.5px/1.55 'Manrope',sans-serif;color:#766970}
+#s-landing .faq-list{display:grid;gap:10px;margin-top:26px}
+#s-landing .faq-item{overflow:hidden;border:1px solid #E1D4D9;border-radius:18px;background:rgba(255,255,255,.86)}
+#s-landing .faq-item summary{position:relative;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px 54px 20px 22px;cursor:pointer;list-style:none;font:750 15px/1.35 'Manrope',sans-serif;color:#34272F}
+#s-landing .faq-item summary::-webkit-details-marker{display:none}
+#s-landing .faq-item summary::after{content:'+';position:absolute;right:21px;top:50%;transform:translateY(-50%);font:500 25px/1 'Manrope',sans-serif;color:#682C43}
+#s-landing .faq-item[open] summary::after{content:'−'}
+#s-landing .faq-item p{margin:0;padding:0 22px 21px;max-width:850px;font:450 13px/1.65 'Manrope',sans-serif;color:#6E6067}
+#s-landing .faq-item[open] summary{color:#682C43}
 #s-landing .marketing-note{margin-top:24px;padding:22px 24px;border-left:4px solid #71947C;border-radius:0 18px 18px 0;background:#EEF3EF;font:500 12.5px/1.65 'Manrope',sans-serif;color:#4C6B55}
 #s-landing .marketing-cta{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:38px;border:0;border-radius:28px;background:linear-gradient(135deg,#75314B,#4E2033);color:#fff}
 #s-landing .marketing-cta h2{margin:0 0 8px;font:750 30px/1.12 'Manrope',sans-serif;letter-spacing:-.04em}
@@ -2283,6 +2291,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
             <a href="#privacy-architecture" onclick="this.closest('details').removeAttribute('open')">Privacy architecture</a>
             <a href="#vault-types" onclick="this.closest('details').removeAttribute('open')">Vault types</a>
             <a href="#safety-controls" onclick="this.closest('details').removeAttribute('open')">Safety controls</a>
+            <a href="#frequently-asked-questions" onclick="this.closest('details').removeAttribute('open')">FAQ</a>
             <a href="#use-vaultlix" onclick="this.closest('details').removeAttribute('open')">Use Vaultlix</a>
           </nav>
         </details>
@@ -2412,6 +2421,19 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
           <article class="safety-item"><strong>Quick Lock</strong><span>Hide the active conversation immediately when privacy matters.</span></article>
           <article class="safety-item"><strong>Emergency Exit</strong><span>Erase local vault access and keys through a deliberate, confirmed action.</span></article>
           <article class="safety-item"><strong>Block and report</strong><span>Stop contact, report abuse, and discover account deletion from Settings.</span></article>
+        </div>
+      </section>
+      <section class="marketing-section" id="frequently-asked-questions" aria-labelledby="homepage-faq-title">
+        <span class="marketing-eyebrow">FREQUENTLY ASKED QUESTIONS</span>
+        <h2 class="marketing-title" id="homepage-faq-title">The important questions, answered clearly.</h2>
+        <div class="faq-list">
+          <details class="faq-item"><summary>What is Vaultlix?</summary><p>Vaultlix is a private communication app for two people. It does not require a phone number, email address, contact upload, or real name. Each conversation takes place inside its own vault.</p></details>
+          <details class="faq-item"><summary>Do I need an account?</summary><p>No. You can use Vaultlix without an identity-based account. An optional anonymous Vaultlix ID can preserve encrypted vault access across devices without collecting your phone number, email address, or real name.</p></details>
+          <details class="faq-item"><summary>Is Vaultlix end-to-end encrypted?</summary><p>Yes. Messages are encrypted with keys held by the participants. Voice and video calls are encrypted between participant devices with DTLS-SRTP. A TURN service may relay encrypted call packets but cannot decrypt the call media.</p></details>
+          <details class="faq-item"><summary>What is a vault identity?</summary><p>Every vault can use a separate name chosen for that conversation. Your identity in one vault does not need to match the identity you use in another.</p></details>
+          <details class="faq-item"><summary>What happens when a temporary vault expires?</summary><p>A temporary vault expires after 24 hours of inactivity. New activity resets that period. When it expires, access to the vault and its conversation data is removed.</p></details>
+          <details class="faq-item"><summary>What is the difference between temporary and permanent vaults?</summary><p>A temporary vault expires after inactivity and is suited to short-lived conversations. A permanent vault remains available until it is deliberately closed.</p></details>
+          <details class="faq-item"><summary>Can more than two people join a vault?</summary><p>No. Vaultlix is designed exclusively for private, one-to-one communication.</p></details>
         </div>
       </section>
       <section class="marketing-section marketing-cta">
