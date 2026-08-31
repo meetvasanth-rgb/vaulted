@@ -2209,7 +2209,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 .account-overlay.open{display:flex}
 .account-card{width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
 .account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
-.onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.username-choice-label{font:600 12px Inter,sans-serif;color:#4B3D46;margin:13px 0 8px}.username-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.username-option{border:1px solid #DCCDD2;border-radius:13px;background:#fff;color:#682C43;padding:13px 4px;font:700 14px ui-monospace,SFMono-Regular,monospace}.username-option.selected{border-color:#682C43;background:#F2E8EC;box-shadow:0 0 0 2px rgba(104,44,67,.11)}.username-refresh{border:0;background:transparent;color:#806F78;text-decoration:underline;text-underline-offset:3px;font:600 11px Inter,sans-serif;padding:10px 0}.account-step{display:none}.account-step.active{display:block}
+.onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.private-number-card{margin:14px 0;padding:18px;border:1px solid #DFCDD4;border-radius:18px;background:linear-gradient(145deg,#F8F0F3,#fff);text-align:center}.private-number-label{font:700 11px Inter,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#936174}.private-number-value{margin:8px 0 5px;font:700 28px ui-monospace,SFMono-Regular,monospace;letter-spacing:.05em;color:#682C43}.private-number-caption{font:500 12px/1.5 Inter,sans-serif;color:#75656D}.private-number-refresh{margin-top:12px;border:1px solid #D7C6CD;border-radius:12px;background:#fff;color:#682C43;padding:10px 14px;font:700 12px Inter,sans-serif}.account-step{display:none}.account-step.active{display:block}
 @media(min-width:700px){.account-overlay{align-items:center;padding:24px}.account-card{border-radius:26px;padding-bottom:25px}}
 </style>
 <script type="application/ld+json">
@@ -2231,7 +2231,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   "mainEntity": [
     { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no phone number or email required, nothing we can read. Use it as a guest or create an optional anonymous ID for encrypted vault sync." } },
     { "@type": "Question", "name": "Do I need an account or a phone number?", "acceptedAnswer": { "@type": "Answer", "text": "No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it." } },
-    { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "Vaultlix requires no phone number, email or real name. Optional Vaultlix IDs use an anonymous username and store only an encrypted vault bundle that the service cannot read." } },
+    { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "Vaultlix requires no phone number, email or real name. A system-generated Vaultlix Private Number identifies the account while the service stores only an encrypted vault bundle that it cannot read." } },
     { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Messages are end-to-end encrypted with keys held by participants. WebRTC call media is encrypted between participant devices with DTLS-SRTP; Cloudflare TURN relays encrypted packets and cannot decrypt call audio or video. Optional account sync uploads vault credentials only inside a separate client-encrypted bundle that Vaultlix cannot decrypt." } },
     { "@type": "Question", "name": "What happens when I close a vault?", "acceptedAnswer": { "@type": "Answer", "text": "It's deleted immediately, for both people, along with everything inside it. Not archived, not hidden — gone." } },
     { "@type": "Question", "name": "Temporary vs. permanent vault?", "acceptedAnswer": { "@type": "Answer", "text": "A temporary vault is for one conversation and expires within a day. A permanent vault never expires — reopen it anytime with the same code." } },
@@ -2429,7 +2429,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <h2 class="marketing-title" id="homepage-faq-title">The important questions, answered clearly.</h2>
         <div class="faq-list">
           <details class="faq-item"><summary>What is Vaultlix?</summary><p>Vaultlix is a private communication app for two people. It does not require a phone number, email address, contact upload, or real name. Each conversation takes place inside its own vault.</p></details>
-          <details class="faq-item"><summary>Do I need an account?</summary><p>No. You can use Vaultlix without an identity-based account. An optional anonymous Vaultlix ID can preserve encrypted vault access across devices without collecting your phone number, email address, or real name.</p></details>
+          <details class="faq-item"><summary>What identifies my account?</summary><p>A system-generated Vaultlix Private Number. It preserves encrypted vault access across devices without collecting your phone number, email address, or real name.</p></details>
           <details class="faq-item"><summary>Is Vaultlix end-to-end encrypted?</summary><p>Yes. Messages are encrypted with keys held by the participants. Voice and video calls are encrypted between participant devices with DTLS-SRTP. A TURN service may relay encrypted call packets but cannot decrypt the call media.</p></details>
           <details class="faq-item"><summary>What is a vault identity?</summary><p>Every vault can use a separate name chosen for that conversation. Your identity in one vault does not need to match the identity you use in another.</p></details>
           <details class="faq-item"><summary>What happens when a temporary vault expires?</summary><p>A temporary vault expires after 24 hours of inactivity. New activity resets that period. When it expires, access to the vault and its conversation data is removed.</p></details>
@@ -2753,7 +2753,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="legal-section">
       <h3>What we collect</h3>
-      <p>Nothing that identifies you in real life. Vaultlix requires no account, email address, phone number, or personal information for guest use. Optional anonymous Vaultlix IDs require only a username chosen by you.</p>
+      <p>Nothing that identifies you in real life. Vaultlix requires no email address, phone number, or real name. Accounts use a system-generated Vaultlix Private Number and your chosen name or pseudonym.</p>
       <p>What exists on our servers is:</p>
       <ul>
         <li>The encrypted content of messages, held in server memory so it can be delivered to the other person — not "in transit" only, but for the vault's lifetime; see "How long things last" below</li>
@@ -2762,7 +2762,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <li>If a vault is created with a password, a one-way cryptographic hash of that password (scrypt) — never the password itself</li>
         <li>Standard server access logs generated by Railway (our hosting provider) which may include IP addresses and request timestamps</li>
         <li>Anonymous, aggregate usage counts (for example, how many vaults are created and whether they're temporary or permanent) — never linked to a specific vault, code, or IP address, kept indefinitely as running totals only, and used only to understand which features are actually useful</li>
-        <li>If you create an optional anonymous Vaultlix ID: a hash used to locate that username, memory-hard authentication verifiers, encrypted key wrappers, active-session verifiers, and an opaque encrypted bundle containing your vault credentials. We do not receive the password, recovery code, readable vault list, room tokens, codenames, or private keys.</li>
+        <li>If you create a Vaultlix identity: its system-generated Private Number and chosen display name, memory-hard authentication verifiers, encrypted key wrappers, active-session verifiers, and an opaque encrypted bundle containing your vault credentials. We do not receive the password, recovery code, readable vault list, room tokens, codenames, or private keys.</li>
       </ul>
       <p>Your session token is created by the server when you open or join a vault, then kept on your device too — in your browser's own localStorage, so the app can restore your open vaults if you reload or reopen it, and in IndexedDB if notifications are enabled, so a push notification can be matched to the right vault without a browser tab needing to be open. It travels with each request to prove you belong to that vault. It isn't a real-world identity and stops working when the vault closes. While a vault is open, its encrypted state and access tokens are periodically checkpointed to restricted persistent storage so it can survive service failures and backup restoration.</p>
     </div>
@@ -2923,17 +2923,17 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="legal-section">
       <h3>What is Vaultlix?</h3>
-      <p>A private chat app for two people — no phone number or email required, nothing we can read. Continue as a guest or create an optional anonymous Vaultlix ID to preserve encrypted vault access across devices.</p>
+      <p>A private chat app for two people — no phone number or email required, nothing we can read. Your system-generated Vaultlix Private Number preserves encrypted vault access across devices.</p>
     </div>
 
     <div class="legal-section">
       <h3>Do I need an account or a phone number?</h3>
-      <p>No. Guest access requires no sign-up. If you want encrypted vault recovery and multi-device access, you can create an optional anonymous username with no phone number, email or real name.</p>
+      <p>No. Vaultlix does not require a phone number, email or real name. It gives you a system-generated Private Number for sign-in, recovery and exact-number connections.</p>
     </div>
 
     <div class="legal-section">
       <h3>Is it actually anonymous?</h3>
-      <p>Guest mode has no account identity. Optional Vaultlix IDs use an anonymous username and an opaque encrypted vault bundle; no phone number, email or real name is collected.</p>
+      <p>Vaultlix uses a system-generated Private Number and an opaque encrypted vault bundle; no phone number, email or real name is collected. The Private Number is not a cellular number and cannot receive SMS or ordinary calls.</p>
     </div>
 
     <div class="legal-section">
@@ -3052,7 +3052,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
       </div>
       <div class="settings-row-text">
-        <div class="settings-row-title">Anonymous Vaultlix ID</div>
+        <div class="settings-row-title">Vaultlix Private Number</div>
         <div class="settings-row-sub" id="account-settings-sub">Optional encrypted backup for all active vaults across your devices</div>
       </div>
       <div class="settings-status settings-status-action" id="account-settings-status">Set up</div>
@@ -3237,9 +3237,9 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
 <div class="account-overlay" id="account-overlay" onclick="if(event.target===this)closeAccountPanel()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
-    <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix address</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix Private Number</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
     <div id="account-guest-view">
-      <div class="account-copy">Choose the name people see and a unique address they can use to find you. No email address or phone number is required.</div>
+      <div class="account-copy">Choose the name people see. Vaultlix will generate a permanent Private Number people can use to find you—without your phone number or email.</div>
       <div class="account-tabs">
         <button class="account-tab active" data-account-tab="create" onclick="showAccountTab('create')">Create</button>
         <button class="account-tab" data-account-tab="login" onclick="showAccountTab('login')">Sign in</button>
@@ -3249,15 +3249,17 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <div class="onboarding-progress" aria-label="Account creation progress"><span class="active"></span><span></span><span></span></div>
         <div class="account-step active" id="account-create-step-identity">
           <label class="account-field"><span>Your permanent name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required placeholder="Vasanth Kumar"/></label>
-          <div class="username-choice-label">Choose your six-character username</div>
-          <input id="account-create-username" type="hidden"/>
-          <div class="username-options" id="account-username-options"><span class="account-note">Generating choices…</span></div>
-          <button class="username-refresh" type="button" onclick="loadUsernameOptions(true)">Show three different choices</button>
+          <div class="private-number-card">
+            <div class="private-number-label">Your Vaultlix Private Number</div>
+            <div class="private-number-value" id="account-private-number-value">Generating…</div>
+            <div class="private-number-caption">Share this number or its Vaultlix link so people can connect with you.</div>
+            <button class="private-number-refresh" type="button" onclick="generatePrivateNumber()">Generate a different number</button>
+          </div>
           <button class="account-primary" type="button" onclick="showCreateSecurityStep()">Continue</button>
-          <div class="account-note">Your username is system generated and does not use your phone number, email address or device identity.</div>
+          <div class="account-note">This is not a cellular phone number. It cannot receive SMS or ordinary phone calls.</div>
         </div>
         <div class="account-step" id="account-create-step-security">
-          <div class="account-status-card"><div class="account-status-name" id="account-create-summary">—</div><div class="account-status-sub">This is the identity people can use to find you.</div></div>
+          <div class="account-status-card"><div class="account-status-name" id="account-create-summary">—</div><div class="account-status-sub">Use this name and Private Number to sign in and connect.</div></div>
           <label class="account-field"><span>Password</span><input id="account-create-password" type="password" autocomplete="new-password" minlength="12" placeholder="At least 12 characters"/></label>
           <label class="account-field"><span>Confirm password</span><input id="account-create-confirm" type="password" autocomplete="new-password" minlength="12"/></label>
           <button class="account-primary" type="submit">Create my Vaultlix identity</button>
@@ -3266,12 +3268,12 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         </div>
       </form>
       <form class="account-form" id="account-login-form" onsubmit="loginAnonymousAccount(event)">
-        <label class="account-field"><span>Username</span><input id="account-login-username" autocomplete="username" required/></label>
+        <label class="account-field"><span>Vaultlix Private Number</span><input id="account-login-private-number" inputmode="numeric" autocomplete="username" placeholder="73-4821-6590" required/></label>
         <label class="account-field"><span>Password</span><input id="account-login-password" type="password" autocomplete="current-password" required/></label>
         <button class="account-primary" type="submit">Restore my vaults</button>
       </form>
       <form class="account-form" id="account-recover-form" onsubmit="recoverAnonymousAccount(event)">
-        <label class="account-field"><span>Username</span><input id="account-recover-username" autocomplete="username" required/></label>
+        <label class="account-field"><span>Vaultlix Private Number</span><input id="account-recover-private-number" inputmode="numeric" autocomplete="username" placeholder="73-4821-6590" required/></label>
         <label class="account-field"><span>Permanent recovery code</span><input id="account-recovery-code" autocomplete="off" required placeholder="VX-…"/></label>
         <label class="account-field"><span>New password</span><input id="account-recover-password" type="password" autocomplete="new-password" minlength="12" required/></label>
         <button class="account-primary" type="submit">Recover and change password</button>
@@ -3298,7 +3300,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 <div class="account-overlay" id="public-profile-overlay" onclick="if(event.target===this)closePublicProfile()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
     <div class="account-head"><div><div class="account-kicker">Vaultlix identity</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
-    <div class="account-copy" id="public-profile-username">—</div>
+    <div class="account-copy" id="public-profile-private-number">—</div>
     <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Request a private vault</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
   </div>
@@ -3492,9 +3494,13 @@ function friendsAccessToken() {
 
 function maxRoomsAllowed() { return friendsAccessToken() ? FRIENDS_MAX_ROOMS : STANDARD_MAX_ROOMS; }
 
-function normalizeAccountUsername(value) {
-  const username = String(value || '').trim().toLowerCase();
-  return /^[a-z2-9]{6}$/.test(username) ? username : '';
+function normalizePrivateNumber(value) {
+  const privateNumber = String(value || '').replace(/\D/g, '');
+  return /^[2-9][0-9]{9}$/.test(privateNumber) ? privateNumber : '';
+}
+function formatPrivateNumber(value) {
+  const privateNumber = normalizePrivateNumber(value);
+  return privateNumber ? `${privateNumber.slice(0, 2)}-${privateNumber.slice(2, 6)}-${privateNumber.slice(6)}` : '';
 }
 function base64UrlToBytes(value) {
   const b64 = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
@@ -3507,8 +3513,8 @@ async function sha256Bytes(value) {
   const input = typeof value === 'string' ? new TextEncoder().encode(value) : value;
   return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
 }
-async function derivePasswordMaterial(username, password) {
-  const salt = (await sha256Bytes('vaultlix-password-v2\0' + username)).slice(0, 16);
+async function derivePasswordMaterial(privateNumber, password) {
+  const salt = (await sha256Bytes('vaultlix-private-number-password-v1\0' + privateNumber)).slice(0, 16);
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations:ACCOUNT_PBKDF2_ITERATIONS }, base, 512));
   return { authSecret: bytesToBase64UrlCompact(bits.slice(0, 32)), wrapKey: bits.slice(32, 64) };
@@ -3540,7 +3546,7 @@ async function aesDecryptJson(keyBytes, envelope) {
 function loadAccountState() {
   try {
     const state = JSON.parse(localStorage.getItem(ACCOUNT_STATE_KEY) || 'null');
-    if (state && state.v === 3 && state.displayName && state.username && state.accountId) return state;
+    if (state && state.v === 4 && state.displayName && normalizePrivateNumber(state.privateNumber) && state.accountId) return state;
     if (state) localStorage.removeItem(ACCOUNT_STATE_KEY);
   } catch(e) {}
   return null;
@@ -7043,13 +7049,13 @@ function updateAccountSettingsStatus() {
   const landingLabel = document.getElementById('landing-account-label');
   const footerAccountLabel = document.getElementById('landing-footer-account-label');
   if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
-  if (sub) sub.textContent = state ? `@${state.username} · encrypted vault sync` : 'Create your private Vaultlix identity';
+  if (sub) sub.textContent = state ? `${formatPrivateNumber(state.privateNumber)} · encrypted vault sync` : 'Create your Vaultlix Private Number';
   if (landingLabel) landingLabel.textContent = state ? state.displayName : 'Sign in';
   if (footerAccountLabel) footerAccountLabel.textContent = state ? state.displayName : 'Sign in';
   if (landingButton) {
     landingButton.classList.toggle('signed-in', !!state);
-    landingButton.setAttribute('aria-label', state ? `Open account for ${state.username}` : 'Sign in to Vaultlix');
-    landingButton.title = state ? `Signed in as ${state.username}` : 'Sign in to Vaultlix';
+    landingButton.setAttribute('aria-label', state ? `Open account for ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix');
+    landingButton.title = state ? `Signed in with ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix';
   }
 }
 function openAccountPanel() {
@@ -7058,10 +7064,10 @@ function openAccountPanel() {
   document.getElementById('account-guest-view').style.display = state ? 'none' : '';
   document.getElementById('account-signed-view').classList.toggle('open', !!state);
   document.getElementById('account-recovery-result').style.display = 'none';
-  if (state) document.getElementById('account-signed-name').textContent = `${state.displayName} · @${state.username}`;
+  if (state) document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
+  else generatePrivateNumber();
   document.getElementById('account-overlay').classList.add('open');
   if (state) refreshConnectionRequests();
-  else loadUsernameOptions(false);
 }
 function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
 let pendingConnectionAcceptance = null;
@@ -7082,7 +7088,7 @@ async function refreshConnectionRequests() {
     return;
   }
   if (!incoming.length) { list.textContent = 'No new private-vault requests.'; return; }
-  list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">@${escapeHtml(r.senderUsername)} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept and create vault</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept and create vault</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
 }
 function acceptConnectionRequest(requestId) {
   pendingConnectionAcceptance = requestId;
@@ -7097,24 +7103,22 @@ async function rejectConnectionRequest(requestId) {
 function showAccountTab(name) {
   document.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
   document.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
-  if (name === 'create') loadUsernameOptions(false);
 }
-async function loadUsernameOptions(force) {
-  const container = document.getElementById('account-username-options');
-  const selected = document.getElementById('account-create-username');
-  if (!container || (!force && container.dataset.loaded === '1')) return;
-  container.dataset.loaded = '0'; container.innerHTML = '<span class="account-note">Generating choices…</span>';
+let pendingPrivateNumber = '';
+async function generatePrivateNumber() {
+  const output = document.getElementById('account-private-number-value');
+  if (!output) return;
+  output.textContent = 'Generating…';
+  pendingPrivateNumber = '';
   try {
-    const result = await api('/api/account/username-options', {});
-    if (result.error || !Array.isArray(result.options) || result.options.length !== 3) throw new Error(result.error || 'Invalid username choices');
-    selected.value = '';
-    container.innerHTML = result.options.map(value => `<button class="username-option" type="button" data-username="${value}" onclick="selectUsernameOption('${value}',this)">@${value}</button>`).join('');
-    container.dataset.loaded = '1';
-  } catch (e) { container.innerHTML = '<span class="account-note">Could not generate usernames. Tap “Show three different choices” to retry.</span>'; }
-}
-function selectUsernameOption(username, button) {
-  document.getElementById('account-create-username').value = username;
-  document.querySelectorAll('.username-option').forEach(el => el.classList.toggle('selected', el === button));
+    const result = await api('/api/account/private-number', {});
+    if (result.error || !normalizePrivateNumber(result.privateNumber)) throw new Error(result.error || 'Invalid number');
+    pendingPrivateNumber = normalizePrivateNumber(result.privateNumber);
+    output.textContent = formatPrivateNumber(pendingPrivateNumber);
+  } catch (e) {
+    output.textContent = 'Try again';
+    toast('Could not generate a Private Number');
+  }
 }
 function setCreateStep(step) {
   document.getElementById('account-create-step-identity').classList.toggle('active', step === 1);
@@ -7122,12 +7126,11 @@ function setCreateStep(step) {
   document.querySelectorAll('#account-create-form .onboarding-progress span').forEach((el, index) => el.classList.toggle('active', index < step));
 }
 function showCreateIdentityStep() { setCreateStep(1); }
-function showCreateSecurityStep() {
+async function showCreateSecurityStep() {
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
-  const username = normalizeAccountUsername(document.getElementById('account-create-username').value);
   if (displayName.length < 2 || displayName.length > 40) { toast('Enter a permanent name or pseudonym'); return; }
-  if (!username) { toast('Choose one of the three usernames'); return; }
-  document.getElementById('account-create-summary').textContent = `${displayName} · @${username}`;
+  if (!pendingPrivateNumber) { await generatePrivateNumber(); if (!pendingPrivateNumber) return; }
+  document.getElementById('account-create-summary').textContent = `${displayName} · ${formatPrivateNumber(pendingPrivateNumber)}`;
   setCreateStep(2);
   document.getElementById('account-create-password').focus();
 }
@@ -7143,23 +7146,23 @@ function formatRecoveryCode(rawBytes) {
 }
 async function createAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
-  const username = normalizeAccountUsername(document.getElementById('account-create-username').value);
+  const privateNumber = normalizePrivateNumber(pendingPrivateNumber);
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   const password = document.getElementById('account-create-password').value;
   if (displayName.length < 2 || displayName.length > 40) { toast('Enter a name or pseudonym between 2 and 40 characters'); return; }
-  if (!username) { toast('Choose one of the generated six-character usernames'); showCreateIdentityStep(); return; }
+  if (!privateNumber) { toast('Generate a Vaultlix Private Number'); showCreateIdentityStep(); return; }
   if (password.length < 12) { toast('Use a password of at least 12 characters'); return; }
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
   setAccountBusy(form, true);
   try {
-    const passwordMaterial = await derivePasswordMaterial(username, password);
+    const passwordMaterial = await derivePasswordMaterial(privateNumber, password);
     const accountId = randomAccountId();
     const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
     const recoveryCode = formatRecoveryCode(recoveryBytes);
     const recovery = await recoveryMaterial(recoveryCode);
     const masterKey = crypto.getRandomValues(new Uint8Array(32));
     const payload = {
-      accountId, username, displayName,
+      accountId, privateNumber, displayName,
       authSecret: passwordMaterial.authSecret,
       recoverySecret: recovery.authSecret,
       passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
@@ -7171,7 +7174,7 @@ async function createAnonymousAccount(event) {
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
-    saveAccountState({ v:3, username, displayName, accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
+    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
     document.getElementById('account-recovery-result').style.display = '';
@@ -7180,42 +7183,42 @@ async function createAnonymousAccount(event) {
 }
 async function loginAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
-  const username = normalizeAccountUsername(document.getElementById('account-login-username').value);
+  const privateNumber = normalizePrivateNumber(document.getElementById('account-login-private-number').value);
   const password = document.getElementById('account-login-password').value;
-  if (!username) { toast('Enter a valid Vaultlix ID'); return; }
+  if (!privateNumber) { toast('Enter a valid Vaultlix Private Number'); return; }
   setAccountBusy(form, true);
   try {
-    const material = await derivePasswordMaterial(username, password);
-    const result = await api('/api/account/login', { username, authSecret:material.authSecret });
+    const material = await derivePasswordMaterial(privateNumber, password);
+    const result = await api('/api/account/login', { privateNumber, authSecret:material.authSecret });
     if (result.error) { toast(result.error); return; }
     const wrapped = await aesDecryptJson(material.wrapKey, result.passwordWrap);
     const masterKey = base64UrlToBytes(wrapped.masterKey);
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
-    saveAccountState({ v:3, username, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
+    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
     toast('Vaults restored'); setTimeout(() => location.reload(), 350);
-  } catch (e) { console.error(e); toast('Vaultlix ID or password is incorrect'); }
+  } catch (e) { console.error(e); toast('Vaultlix Private Number or password is incorrect'); }
   finally { setAccountBusy(form, false); }
 }
 async function recoverAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
-  const username = normalizeAccountUsername(document.getElementById('account-recover-username').value);
+  const privateNumber = normalizePrivateNumber(document.getElementById('account-recover-private-number').value);
   const code = document.getElementById('account-recovery-code').value;
   const password = document.getElementById('account-recover-password').value;
-  if (!username || password.length < 12) { toast('Check the ID and use a 12-character password'); return; }
+  if (!privateNumber || password.length < 12) { toast('Check the Private Number and use a 12-character password'); return; }
   setAccountBusy(form, true);
   try {
     const recovery = await recoveryMaterial(code);
-    const existing = await api('/api/account/recovery-bundle', { username, recoverySecret:recovery.authSecret });
+    const existing = await api('/api/account/recovery-bundle', { privateNumber, recoverySecret:recovery.authSecret });
     if (existing.error) { toast(existing.error); return; }
     const recovered = await aesDecryptJson(recovery.wrapKey, existing.recoveryWrap);
     const masterKey = base64UrlToBytes(recovered.masterKey);
-    const material = await derivePasswordMaterial(username, password);
+    const material = await derivePasswordMaterial(privateNumber, password);
     const passwordWrap = await aesEncryptJson(material.wrapKey, { masterKey:recovered.masterKey });
-    const result = await api('/api/account/recover', { username, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
+    const result = await api('/api/account/recover', { privateNumber, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
     if (result.error) { toast(result.error); return; }
     importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
-    saveAccountState({ v:3, username, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
+    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
     toast('Password changed and vaults restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
   finally { setAccountBusy(form, false); }
@@ -7282,7 +7285,7 @@ function finishAccountCreation() {
   document.getElementById('account-recovery-result').style.display='none';
   document.getElementById('account-signed-view').classList.add('open');
   const state=loadAccountState();
-  document.getElementById('account-signed-name').textContent=state ? `${state.displayName} · @${state.username}` : 'Protected ID';
+  document.getElementById('account-signed-name').textContent=state ? `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}` : 'Protected identity';
   updateAccountSettingsStatus();
   closeAccountPanel();
   if (isNativeApp()) showEnableNativeNotificationsBanner();
@@ -9994,21 +9997,19 @@ function parseJoinLinkCode() {
   return m ? decodeURIComponent(m[1]).toLowerCase() : null;
 }
 
-const PUBLIC_PROFILE_RESERVED = new Set(['','join','privacy','terms','faq','media','api','admin','account','settings','support','help','about','download','downloads','app','apps','login','signin','signup','register']);
-function parsePublicUsername() {
-  const match = location.pathname.match(/^\/([a-z0-9][a-z0-9._-]{2,30}[a-z0-9])\/?$/i);
-  const username = match ? decodeURIComponent(match[1]).toLowerCase() : '';
-  return username && !PUBLIC_PROFILE_RESERVED.has(username) ? username : null;
+function parsePublicPrivateNumber() {
+  const match = location.pathname.match(/^\/([2-9][0-9]{9})\/?$/);
+  return match ? match[1] : null;
 }
 let activePublicProfile = null;
-async function openPublicProfile(username) {
+async function openPublicProfile(privateNumber) {
   try {
-    const response = await fetch(`/api/profile/${encodeURIComponent(username)}`, { headers:{ Accept:'application/json' } });
+    const response = await fetch(`/api/profile/${encodeURIComponent(privateNumber)}`, { headers:{ Accept:'application/json' } });
     const result = await response.json();
-    if (!response.ok || !result.profile) { toast(result.error || 'Vaultlix username not found'); history.replaceState(null, '', '/'); return; }
+    if (!response.ok || !result.profile) { toast(result.error || 'Vaultlix Private Number not found'); history.replaceState(null, '', '/'); return; }
     activePublicProfile = result.profile;
     document.getElementById('public-profile-name').textContent = result.profile.displayName;
-    document.getElementById('public-profile-username').textContent = `@${result.profile.username} · vaultlix.com/${result.profile.username}`;
+    document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
     const signedIn = loadAccountState();
     const button = document.getElementById('public-profile-request');
     button.textContent = signedIn ? 'Request a private vault' : 'Sign in to connect';
@@ -10020,7 +10021,7 @@ async function requestPrivateVault() {
   const state = loadAccountState();
   if (!state) { closePublicProfile(); openAccountPanel(); return; }
   if (!activePublicProfile) return;
-  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, username:activePublicProfile.username });
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
   if (result.error) { toast(result.error); return; }
   toast(`Request sent to ${activePublicProfile.displayName}`);
   closePublicProfile();
@@ -11168,7 +11169,7 @@ window.addEventListener('load', async () => {
   // Captured up front, before anything else touches the URL — read once
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
-  const publicUsername = parsePublicUsername();
+  const publicPrivateNumber = parsePublicPrivateNumber();
   // Android's native incoming-call surface has already collected the user's
   // Answer decision. Preserve it across WebView startup/room restoration and
   // consume it exactly once when the authenticated encrypted call-invite
@@ -11410,7 +11411,7 @@ window.addEventListener('load', async () => {
   // commitment was already dropped from state and storage inside the loop
   // above; this is purely the explanation.
   if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
-  if (publicUsername) openPublicProfile(publicUsername);
+  if (publicPrivateNumber) openPublicProfile(publicPrivateNumber);
 });
 
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────

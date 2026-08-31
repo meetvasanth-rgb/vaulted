@@ -41,9 +41,8 @@ const rooms = new Map();
 const { markInviteTerminated, isInviteTerminated } = require('./call-invite-state');
 const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 const accounts = new Map();
-const usernames = new Map(); // normalized public username -> private account id
+const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const RESERVED_USERNAMES = new Set(['api','join','privacy','terms','faq','media','admin','account','settings','support','help','about','download','downloads','app','apps','login','signin','signup','register']);
 
 // ── /api/send content sizing ─────────────────────────────────────────────
 // These were measured against the client's actual code, not guessed. A
@@ -751,36 +750,30 @@ async function verifyAccountSecret(secret, verifier) {
 function validAccountId(value) { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
 function validAccountSecret(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{40,96}$/.test(value); }
 function validEncryptedField(value, max) { return typeof value === 'string' && value.length >= 20 && value.length <= max; }
-function normalizeUsername(value) {
-  const username = String(value || '').trim().toLowerCase();
-  return /^[a-z2-9]{6}$/.test(username) && !RESERVED_USERNAMES.has(username) ? username : '';
+function normalizePrivateNumber(value) {
+  const privateNumber = String(value || '').replace(/\D/g, '');
+  return /^[2-9][0-9]{9}$/.test(privateNumber) ? privateNumber : '';
 }
-const USERNAME_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-function generateUsernameOption() {
+function generatePrivateNumber() {
   for (let attempt = 0; attempt < 100; attempt++) {
-    const bytes = crypto.randomBytes(6);
-    let username = '';
-    for (const byte of bytes) username += USERNAME_ALPHABET[byte % USERNAME_ALPHABET.length];
-    if (!usernames.has(username)) return username;
+    const bytes = crypto.randomBytes(10);
+    let privateNumber = String(2 + (bytes[0] % 8));
+    for (let i = 1; i < bytes.length; i++) privateNumber += String(bytes[i] % 10);
+    if (!privateNumbers.has(privateNumber)) return privateNumber;
   }
-  throw new Error('Could not allocate a username');
-}
-function generateUsernameOptions(count = 3) {
-  const options = new Set();
-  while (options.size < count) options.add(generateUsernameOption());
-  return [...options];
+  throw new Error('Could not allocate a Vaultlix Private Number');
 }
 function normalizeDisplayName(value) {
   const displayName = String(value || '').trim().replace(/\s+/g, ' ');
   return displayName.length >= 2 && displayName.length <= 40 && !/[<>\u0000-\u001f]/.test(displayName) ? displayName : '';
 }
-function accountByUsername(value) {
-  const username = normalizeUsername(value);
-  const accountId = username ? usernames.get(username) : null;
+function accountByPrivateNumber(value) {
+  const privateNumber = normalizePrivateNumber(value);
+  const accountId = privateNumber ? privateNumbers.get(privateNumber) : null;
   return accountId ? { accountId, account:accounts.get(accountId) } : null;
 }
 function publicAccount(account) {
-  return { username:account.username, displayName:account.displayName, address:`https://vaultlix.com/${account.username}` };
+  return { privateNumber:account.privateNumber, displayName:account.displayName, address:`https://vaultlix.com/${account.privateNumber}` };
 }
 function newAccountSession(account) {
   const token = crypto.randomBytes(32).toString('base64url');
@@ -2037,29 +2030,29 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true });
   }
 
-  // Username-first Vaultlix identity. The public username is deliberately
+  // The public Vaultlix Private Number is deliberately
   // separate from the random internal accountId. Vault data is an AES-GCM
   // ciphertext produced on the device. The server
   // can authenticate, replace and return that blob, but cannot list its
   // vaults, codenames, room tokens or E2E private keys.
-  if (path === '/api/account/username-options' && method === 'POST') {
-    if (rateLimited(`username-options:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many username requests — try again later.', 429);
+  if (path === '/api/account/private-number' && method === 'POST') {
+    if (rateLimited(`private-number:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, options:generateUsernameOptions(3) });
+    return res200(res, { ok:true, privateNumber:generatePrivateNumber() });
   }
 
   if (path === '/api/account/register' && method === 'POST') {
     if (rateLimited(`account-register:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many registration attempts — try again later.', 429);
-    const username = normalizeUsername(d.username);
+    const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
-    if (!username || !displayName || !validAccountId(d.accountId) || !validAccountSecret(d.authSecret) ||
+    if (!privateNumber || !displayName || !validAccountId(d.accountId) || !validAccountSecret(d.authSecret) ||
         !validAccountSecret(d.recoverySecret) || !validEncryptedField(d.passwordWrap, 4096) ||
         !validEncryptedField(d.recoveryWrap, 4096) || !validEncryptedField(d.bundle, 1024 * 1024)) {
       return resErr(res, 'Invalid account data.', 400);
     }
-    if (accounts.has(d.accountId) || usernames.has(username)) return resErr(res, 'That username is unavailable.', 409);
+    if (accounts.has(d.accountId) || privateNumbers.has(privateNumber)) return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
     const account = {
-      version: 2, username, displayName,
+      version: 2, privateNumber, displayName,
       authVerifier: await hashAccountSecret(d.authSecret),
       recoveryVerifier: await hashAccountSecret(d.recoverySecret),
       passwordWrap: d.passwordWrap,
@@ -2070,7 +2063,7 @@ async function api(path, method, d, p, res, ip, headers) {
     };
     const sessionToken = newAccountSession(account);
     accounts.set(d.accountId, account);
-    usernames.set(username, d.accountId);
+    privateNumbers.set(privateNumber, d.accountId);
     saveAccounts();
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision });
@@ -2078,13 +2071,13 @@ async function api(path, method, d, p, res, ip, headers) {
 
   if (path === '/api/account/login' && method === 'POST') {
     if (rateLimited(`account-login:${ip}`, 10, 15 * 60 * 1000)) return resErr(res, 'Too many login attempts — try again later.', 429);
-    const found = accountByUsername(d.username);
+    const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     // Always perform a scrypt check, including for an unknown ID, to avoid a
-    // cheap username-existence timing oracle.
+    // cheap Private-Number-existence timing oracle.
     const verifier = account ? account.authVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.authSecret, verifier);
-    if (!account || !valid) return resErr(res, 'Vaultlix ID or password is incorrect.', 403);
+    if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
     const sessionToken = newAccountSession(account);
     saveAccounts();
     res.setHeader('Cache-Control', 'no-store');
@@ -2093,11 +2086,11 @@ async function api(path, method, d, p, res, ip, headers) {
 
   if (path === '/api/account/recover' && method === 'POST') {
     if (rateLimited(`account-recover:${ip}`, 6, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
-    const found = accountByUsername(d.username);
+    const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.recoverySecret, verifier);
-    if (!account || !valid) return resErr(res, 'Vaultlix ID or recovery code is incorrect.', 403);
+    if (!account || !valid) return resErr(res, 'Vaultlix Private Number or recovery code is incorrect.', 403);
     if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) return resErr(res, 'Invalid recovery update.', 400);
     account.authVerifier = await hashAccountSecret(d.newAuthSecret);
     account.passwordWrap = d.passwordWrap;
@@ -2111,11 +2104,11 @@ async function api(path, method, d, p, res, ip, headers) {
 
   if (path === '/api/account/recovery-bundle' && method === 'POST') {
     if (rateLimited(`account-recovery-read:${ip}`, 8, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
-    const found = accountByUsername(d.username);
+    const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.recoverySecret, verifier);
-    if (!account || !valid) return resErr(res, 'Vaultlix ID or recovery code is incorrect.', 403);
+    if (!account || !valid) return resErr(res, 'Vaultlix Private Number or recovery code is incorrect.', 403);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
   }
@@ -2123,7 +2116,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path === '/api/account/sync' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
-    if (!account) return resErr(res, 'Your Vaultlix ID session has expired.', 401);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     if (!validEncryptedField(d.bundle, 1024 * 1024)) return resErr(res, 'Encrypted vault index is invalid or too large.', 400);
     if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
       res.setHeader('Cache-Control', 'no-store');
@@ -2140,7 +2133,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path === '/api/account/fetch' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
-    if (!account) return resErr(res, 'Your Vaultlix ID session has expired.', 401);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, bundle: account.bundle, revision: account.revision });
   }
@@ -2163,8 +2156,8 @@ async function api(path, method, d, p, res, ip, headers) {
     if (rateLimited(`account-delete:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many account deletion attempts — try again later.', 429);
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
-    if (!account) return resErr(res, 'Your Vaultlix ID session has expired.', 401);
-    usernames.delete(account.username);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    privateNumbers.delete(account.privateNumber);
     accounts.delete(d.accountId);
     saveAccounts();
     res.setHeader('Cache-Control', 'no-store');
@@ -2172,8 +2165,8 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path.startsWith('/api/profile/') && method === 'GET') {
-    const found = accountByUsername(decodeURIComponent(path.slice('/api/profile/'.length)));
-    if (!found) return resErr(res, 'Username not found.', 404);
+    const found = accountByPrivateNumber(decodeURIComponent(path.slice('/api/profile/'.length)));
+    if (!found) return resErr(res, 'Vaultlix Private Number not found.', 404);
     res.setHeader('Cache-Control', 'public, max-age=60');
     return res200(res, { ok:true, profile:publicAccount(found.account) });
   }
@@ -2181,15 +2174,15 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path === '/api/connections/request' && method === 'POST') {
     if (rateLimited(`connection-request:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many requests — try again later.', 429);
     const sender = authenticateAccountSession(d.accountId, d.sessionToken);
-    const recipient = accountByUsername(d.username);
+    const recipient = accountByPrivateNumber(d.privateNumber);
     if (!sender) return resErr(res, 'Your session has expired.', 401);
-    if (!recipient) return resErr(res, 'Username not found.', 404);
+    if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
     if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
     const now = Date.now();
     recipient.account.connectionRequests = (recipient.account.connectionRequests || []).filter(r => r.expiresAt > now && r.status !== 'rejected').slice(-99);
     const duplicate = recipient.account.connectionRequests.find(r => r.senderAccountId === d.accountId && r.status === 'pending');
     if (duplicate) return res200(res, { ok:true, requestId:duplicate.id, status:'pending' });
-    const request = { id:uid(), senderAccountId:d.accountId, senderUsername:sender.username, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientUsername:recipient.account.username, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
+    const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
     recipient.account.connectionRequests.push(request);
     sender.connectionRequests = (sender.connectionRequests || []).filter(r => r.expiresAt > now).slice(-99);
     sender.connectionRequests.push({ ...request, direction:'outgoing' });
@@ -3684,12 +3677,12 @@ function loadAccounts() {
     for (const entry of parsed) {
       if (!Array.isArray(entry) || entry.length !== 2 || !validAccountId(entry[0])) continue;
       const record = entry[1];
-      if (!record || record.version !== 2 || !normalizeUsername(record.username) || !normalizeDisplayName(record.displayName) || !record.authVerifier || !record.recoveryVerifier ||
+      if (!record || record.version !== 2 || !normalizePrivateNumber(record.privateNumber) || !normalizeDisplayName(record.displayName) || !record.authVerifier || !record.recoveryVerifier ||
           !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
           !validEncryptedField(record.bundle, 1024 * 1024)) continue;
       record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
       accounts.set(entry[0], record);
-      usernames.set(record.username, entry[0]);
+      privateNumbers.set(record.privateNumber, entry[0]);
     }
     console.log(`Anonymous accounts loaded: ${accounts.size}.`);
   } catch (e) { console.error('Anonymous account load failed:', e.message); }
