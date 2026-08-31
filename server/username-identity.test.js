@@ -39,8 +39,11 @@ test('accepted connections retain the peer Private Number inside conversation de
   assert.match(client, /Save both your private number and recovery code\./);
 });
 
-test('the conversation gear opens the settings menu instead of forcing Chats', () => {
-  assert.match(client, /function toggleSettings\(\) \{ settingsOpen \? closeSettings\(\) : openSettings\('chat'\); \}/);
+test('the conversation gear is isolated from global settings', () => {
+  assert.match(client, /function toggleSettings\(\) \{ settingsOpen \? closeSettings\(\) : openSettings\('chat', 'chats'\); \}/);
+  assert.match(client, /settingsContextMode === 'chat' \? 'Conversation settings'/);
+  assert.match(client, /if \(settingsContextMode === 'chat'\) closeSettings\(\)/);
+  assert.match(client, /settingsContextMode === 'chat' && category === 'chats'/);
 });
 
 test('vault setup uses the permanent identity name', () => {

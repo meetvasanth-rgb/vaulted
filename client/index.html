@@ -6723,10 +6723,11 @@ let settingsCategory = null;
 let settingsContextMode = 'general';
 let chimeEnabled = true;
 
-function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat'); }
+function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat', 'chats'); }
 
 function settingsBack() {
-  if (settingsCategory) showSettingsMenu();
+  if (settingsContextMode === 'chat') closeSettings();
+  else if (settingsCategory) showSettingsMenu();
   else closeSettings();
 }
 
@@ -6748,7 +6749,7 @@ function openSettingsCategory(category) {
   const room = getActiveRoom();
   const titles = { profile:'Profile', privacy:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help' };
   document.getElementById('settings-menu').style.display = 'none';
-  document.getElementById('settings-header-title').textContent = titles[category] || 'Settings';
+  document.getElementById('settings-header-title').textContent = settingsContextMode === 'chat' ? 'Conversation settings' : (titles[category] || 'Settings');
   const generalSection = document.getElementById('settings-general-section');
   const generalRows = {
     profile:['settings-account-row'],
@@ -6764,7 +6765,8 @@ function openSettingsCategory(category) {
     sectionLabel.style.display = '';
   }
   selectedRows.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
-  document.getElementById('settings-participant-section').style.display = category === 'privacy' && room ? '' : 'none';
+  const conversationSafetyVisible = !!room && (category === 'privacy' || (settingsContextMode === 'chat' && category === 'chats'));
+  document.getElementById('settings-participant-section').style.display = conversationSafetyVisible ? '' : 'none';
   document.getElementById('settings-general-safety-section').style.display = category === 'privacy' ? '' : 'none';
   document.getElementById('settings-room-section').style.display = category === 'chats' && room ? '' : 'none';
   updateConversationProfileRow(room);
