@@ -27,3 +27,13 @@ test('vault setup uses the permanent identity name', () => {
   assert.match(client, /const name = identity\.displayName/);
   assert.match(client, /id="identity-name-field" style="display:none"/);
 });
+
+test('registration uses three system-generated six-character usernames', () => {
+  assert.match(server, /const USERNAME_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'/);
+  assert.match(server, /path === '\/api\/account\/username-options'/);
+  assert.match(server, /options:generateUsernameOptions\(3\)/);
+  assert.match(server, /\^\[a-z2-9\]\{6\}\$/);
+  assert.match(client, /id="account-username-options"/);
+  assert.match(client, /Choose your six-character username/);
+  assert.match(client, /function selectUsernameOption/);
+});

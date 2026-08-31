@@ -753,7 +753,22 @@ function validAccountSecret(value) { return typeof value === 'string' && /^[A-Za
 function validEncryptedField(value, max) { return typeof value === 'string' && value.length >= 20 && value.length <= max; }
 function normalizeUsername(value) {
   const username = String(value || '').trim().toLowerCase();
-  return /^[a-z0-9][a-z0-9._-]{2,30}[a-z0-9]$/.test(username) && !RESERVED_USERNAMES.has(username) ? username : '';
+  return /^[a-z2-9]{6}$/.test(username) && !RESERVED_USERNAMES.has(username) ? username : '';
+}
+const USERNAME_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+function generateUsernameOption() {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let username = '';
+    for (const byte of bytes) username += USERNAME_ALPHABET[byte % USERNAME_ALPHABET.length];
+    if (!usernames.has(username)) return username;
+  }
+  throw new Error('Could not allocate a username');
+}
+function generateUsernameOptions(count = 3) {
+  const options = new Set();
+  while (options.size < count) options.add(generateUsernameOption());
+  return [...options];
 }
 function normalizeDisplayName(value) {
   const displayName = String(value || '').trim().replace(/\s+/g, ' ');
@@ -2027,6 +2042,12 @@ async function api(path, method, d, p, res, ip, headers) {
   // ciphertext produced on the device. The server
   // can authenticate, replace and return that blob, but cannot list its
   // vaults, codenames, room tokens or E2E private keys.
+  if (path === '/api/account/username-options' && method === 'POST') {
+    if (rateLimited(`username-options:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many username requests — try again later.', 429);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, options:generateUsernameOptions(3) });
+  }
+
   if (path === '/api/account/register' && method === 'POST') {
     if (rateLimited(`account-register:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many registration attempts — try again later.', 429);
     const username = normalizeUsername(d.username);

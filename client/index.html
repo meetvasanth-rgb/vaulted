@@ -2209,6 +2209,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 .account-overlay.open{display:flex}
 .account-card{width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
 .account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
+.onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.username-choice-label{font:600 12px Inter,sans-serif;color:#4B3D46;margin:13px 0 8px}.username-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.username-option{border:1px solid #DCCDD2;border-radius:13px;background:#fff;color:#682C43;padding:13px 4px;font:700 14px ui-monospace,SFMono-Regular,monospace}.username-option.selected{border-color:#682C43;background:#F2E8EC;box-shadow:0 0 0 2px rgba(104,44,67,.11)}.username-refresh{border:0;background:transparent;color:#806F78;text-decoration:underline;text-underline-offset:3px;font:600 11px Inter,sans-serif;padding:10px 0}.account-step{display:none}.account-step.active{display:block}
 @media(min-width:700px){.account-overlay{align-items:center;padding:24px}.account-card{border-radius:26px;padding-bottom:25px}}
 </style>
 <script type="application/ld+json">
@@ -3245,12 +3246,24 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <button class="account-tab" data-account-tab="recover" onclick="showAccountTab('recover')">Recover</button>
       </div>
       <form class="account-form active" id="account-create-form" onsubmit="createAnonymousAccount(event)">
-        <label class="account-field"><span>Your name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required placeholder="Vasanth Kumar"/></label>
-        <label class="account-field"><span>Unique username</span><input id="account-create-username" autocomplete="username" minlength="4" maxlength="32" required placeholder="xtmyx"/></label>
-        <label class="account-field"><span>Password</span><input id="account-create-password" type="password" autocomplete="new-password" minlength="12" required placeholder="At least 12 characters"/></label>
-        <label class="account-field"><span>Confirm password</span><input id="account-create-confirm" type="password" autocomplete="new-password" minlength="12" required/></label>
-        <button class="account-primary" type="submit">Create my Vaultlix address</button>
-        <div class="account-note">Your current vault credentials are encrypted on this device before upload. Your password cannot be recovered by Vaultlix.</div>
+        <div class="onboarding-progress" aria-label="Account creation progress"><span class="active"></span><span></span><span></span></div>
+        <div class="account-step active" id="account-create-step-identity">
+          <label class="account-field"><span>Your permanent name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required placeholder="Vasanth Kumar"/></label>
+          <div class="username-choice-label">Choose your six-character username</div>
+          <input id="account-create-username" type="hidden"/>
+          <div class="username-options" id="account-username-options"><span class="account-note">Generating choices…</span></div>
+          <button class="username-refresh" type="button" onclick="loadUsernameOptions(true)">Show three different choices</button>
+          <button class="account-primary" type="button" onclick="showCreateSecurityStep()">Continue</button>
+          <div class="account-note">Your username is system generated and does not use your phone number, email address or device identity.</div>
+        </div>
+        <div class="account-step" id="account-create-step-security">
+          <div class="account-status-card"><div class="account-status-name" id="account-create-summary">—</div><div class="account-status-sub">This is the identity people can use to find you.</div></div>
+          <label class="account-field"><span>Password</span><input id="account-create-password" type="password" autocomplete="new-password" minlength="12" placeholder="At least 12 characters"/></label>
+          <label class="account-field"><span>Confirm password</span><input id="account-create-confirm" type="password" autocomplete="new-password" minlength="12"/></label>
+          <button class="account-primary" type="submit">Create my Vaultlix identity</button>
+          <button class="account-secondary" type="button" onclick="showCreateIdentityStep()">Back</button>
+          <div class="account-note">Your credentials are encrypted on this device before upload. Vaultlix cannot recover your password.</div>
+        </div>
       </form>
       <form class="account-form" id="account-login-form" onsubmit="loginAnonymousAccount(event)">
         <label class="account-field"><span>Username</span><input id="account-login-username" autocomplete="username" required/></label>
@@ -3277,7 +3290,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <div class="account-copy"><strong>Save this recovery code now.</strong> It is the only way to reset a forgotten password.</div>
       <div class="recovery-box"><div class="recovery-code" id="account-recovery-result-code"></div></div>
       <button class="account-primary" onclick="copyRecoveryCode()">Copy recovery code</button>
-      <button class="account-secondary" onclick="finishAccountCreation()">I saved it safely</button>
+      <button class="account-secondary" onclick="finishAccountCreation()">I saved it safely — continue</button>
     </div>
   </div>
 </div>
@@ -3481,7 +3494,7 @@ function maxRoomsAllowed() { return friendsAccessToken() ? FRIENDS_MAX_ROOMS : S
 
 function normalizeAccountUsername(value) {
   const username = String(value || '').trim().toLowerCase();
-  return /^[a-z0-9][a-z0-9._-]{2,30}[a-z0-9]$/.test(username) ? username : '';
+  return /^[a-z2-9]{6}$/.test(username) ? username : '';
 }
 function base64UrlToBytes(value) {
   const b64 = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
@@ -7048,6 +7061,7 @@ function openAccountPanel() {
   if (state) document.getElementById('account-signed-name').textContent = `${state.displayName} · @${state.username}`;
   document.getElementById('account-overlay').classList.add('open');
   if (state) refreshConnectionRequests();
+  else loadUsernameOptions(false);
 }
 function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
 let pendingConnectionAcceptance = null;
@@ -7083,6 +7097,39 @@ async function rejectConnectionRequest(requestId) {
 function showAccountTab(name) {
   document.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
   document.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
+  if (name === 'create') loadUsernameOptions(false);
+}
+async function loadUsernameOptions(force) {
+  const container = document.getElementById('account-username-options');
+  const selected = document.getElementById('account-create-username');
+  if (!container || (!force && container.dataset.loaded === '1')) return;
+  container.dataset.loaded = '0'; container.innerHTML = '<span class="account-note">Generating choices…</span>';
+  try {
+    const result = await api('/api/account/username-options', {});
+    if (result.error || !Array.isArray(result.options) || result.options.length !== 3) throw new Error(result.error || 'Invalid username choices');
+    selected.value = '';
+    container.innerHTML = result.options.map(value => `<button class="username-option" type="button" data-username="${value}" onclick="selectUsernameOption('${value}',this)">@${value}</button>`).join('');
+    container.dataset.loaded = '1';
+  } catch (e) { container.innerHTML = '<span class="account-note">Could not generate usernames. Tap “Show three different choices” to retry.</span>'; }
+}
+function selectUsernameOption(username, button) {
+  document.getElementById('account-create-username').value = username;
+  document.querySelectorAll('.username-option').forEach(el => el.classList.toggle('selected', el === button));
+}
+function setCreateStep(step) {
+  document.getElementById('account-create-step-identity').classList.toggle('active', step === 1);
+  document.getElementById('account-create-step-security').classList.toggle('active', step === 2);
+  document.querySelectorAll('#account-create-form .onboarding-progress span').forEach((el, index) => el.classList.toggle('active', index < step));
+}
+function showCreateIdentityStep() { setCreateStep(1); }
+function showCreateSecurityStep() {
+  const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
+  const username = normalizeAccountUsername(document.getElementById('account-create-username').value);
+  if (displayName.length < 2 || displayName.length > 40) { toast('Enter a permanent name or pseudonym'); return; }
+  if (!username) { toast('Choose one of the three usernames'); return; }
+  document.getElementById('account-create-summary').textContent = `${displayName} · @${username}`;
+  setCreateStep(2);
+  document.getElementById('account-create-password').focus();
 }
 function setAccountBusy(form, busy) {
   const button = form.querySelector('button[type="submit"]');
@@ -7100,7 +7147,7 @@ async function createAnonymousAccount(event) {
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   const password = document.getElementById('account-create-password').value;
   if (displayName.length < 2 || displayName.length > 40) { toast('Enter a name or pseudonym between 2 and 40 characters'); return; }
-  if (!username) { toast('Use 4–32 lowercase letters, numbers, dots, dashes or underscores'); return; }
+  if (!username) { toast('Choose one of the generated six-character usernames'); showCreateIdentityStep(); return; }
   if (password.length < 12) { toast('Use a password of at least 12 characters'); return; }
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
   setAccountBusy(form, true);
@@ -7231,7 +7278,16 @@ async function copyRecoveryCode() {
   const text = document.getElementById('account-recovery-result-code').textContent;
   try { await navigator.clipboard.writeText(text); toast('Recovery code copied'); } catch(e) { toast('Press and hold the code to copy it'); }
 }
-function finishAccountCreation() { document.getElementById('account-recovery-result').style.display='none'; document.getElementById('account-signed-view').classList.add('open'); const state=loadAccountState(); document.getElementById('account-signed-name').textContent=state?.username||'Protected ID'; }
+function finishAccountCreation() {
+  document.getElementById('account-recovery-result').style.display='none';
+  document.getElementById('account-signed-view').classList.add('open');
+  const state=loadAccountState();
+  document.getElementById('account-signed-name').textContent=state ? `${state.displayName} · @${state.username}` : 'Protected ID';
+  updateAccountSettingsStatus();
+  closeAccountPanel();
+  if (isNativeApp()) showEnableNativeNotificationsBanner();
+  toast('Your Vaultlix identity is ready');
+}
 function openAccountVaults() {
   closeAccountPanel();
   if (rooms.size > 0) { showScreen('s-vault-list'); return; }
