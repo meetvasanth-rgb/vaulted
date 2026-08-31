@@ -3,6 +3,7 @@ package com.vaultlix.app;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -10,9 +11,15 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -27,6 +34,7 @@ public class MainActivity extends BridgeActivity {
     private boolean previousSpeakerphoneOn;
     private AudioDeviceInfo previousCommunicationDevice;
     private boolean audioRouteConfigured;
+    private View appSwitcherPrivacyCover;
     private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
     private final Runnable enforceConnectedAudioRoute = () -> {
         if (!isFinishing() && !isDestroyed()) applyPreferredCallAudioRoute();
@@ -38,6 +46,54 @@ public class MainActivity extends BridgeActivity {
         activeInstance = new WeakReference<>(this);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
         openVaultlixInvite(getIntent());
+    }
+
+    @Override
+    protected void onPause() {
+        showAppSwitcherPrivacyCover();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        hideAppSwitcherPrivacyCover();
+    }
+
+    private void showAppSwitcherPrivacyCover() {
+        if (appSwitcherPrivacyCover != null || isFinishing() || isDestroyed()) return;
+
+        FrameLayout cover = new FrameLayout(this);
+        cover.setBackgroundColor(Color.rgb(36, 27, 30));
+        cover.setClickable(true);
+        cover.setFocusable(true);
+        cover.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+
+        TextView wordmark = new TextView(this);
+        wordmark.setText("Vaultlix");
+        wordmark.setTextColor(Color.rgb(248, 241, 234));
+        wordmark.setTextSize(30);
+        wordmark.setGravity(Gravity.CENTER);
+        wordmark.setLetterSpacing(0.12f);
+        cover.addView(wordmark, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        addContentView(cover, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        cover.bringToFront();
+        appSwitcherPrivacyCover = cover;
+    }
+
+    private void hideAppSwitcherPrivacyCover() {
+        View cover = appSwitcherPrivacyCover;
+        appSwitcherPrivacyCover = null;
+        if (cover == null) return;
+        ViewParent parent = cover.getParent();
+        if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(cover);
     }
 
     @Override

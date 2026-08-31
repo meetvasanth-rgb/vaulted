@@ -9,6 +9,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
     private var observers: [NSObjectProtocol] = []
     private var webReady = false
     private var pendingUniversalLink: URL?
+    private var appSwitcherPrivacyCover: UIView?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -228,7 +229,43 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         )
     }
 
+    private func showAppSwitcherPrivacyCover() {
+        guard appSwitcherPrivacyCover == nil, let window else { return }
+
+        let cover = UIView(frame: window.bounds)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        cover.backgroundColor = UIColor(red: 36 / 255, green: 27 / 255, blue: 30 / 255, alpha: 1)
+        cover.isAccessibilityElement = true
+        cover.accessibilityLabel = "Vaultlix content hidden"
+
+        let wordmark = UILabel()
+        wordmark.translatesAutoresizingMaskIntoConstraints = false
+        wordmark.text = "Vaultlix"
+        wordmark.textColor = UIColor(red: 248 / 255, green: 241 / 255, blue: 234 / 255, alpha: 1)
+        wordmark.font = UIFont(name: "Georgia", size: 30) ?? .systemFont(ofSize: 30, weight: .light)
+        wordmark.textAlignment = .center
+        cover.addSubview(wordmark)
+        NSLayoutConstraint.activate([
+            wordmark.centerXAnchor.constraint(equalTo: cover.centerXAnchor),
+            wordmark.centerYAnchor.constraint(equalTo: cover.centerYAnchor),
+        ])
+
+        window.addSubview(cover)
+        window.bringSubviewToFront(cover)
+        appSwitcherPrivacyCover = cover
+    }
+
+    private func hideAppSwitcherPrivacyCover() {
+        appSwitcherPrivacyCover?.removeFromSuperview()
+        appSwitcherPrivacyCover = nil
+    }
+
+    func sceneWillResignActive(_ scene: UIScene) {
+        showAppSwitcherPrivacyCover()
+    }
+
     func sceneDidBecomeActive(_ scene: UIScene) {
+        hideAppSwitcherPrivacyCover()
         if webReady,
            let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {
