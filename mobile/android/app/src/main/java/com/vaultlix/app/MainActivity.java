@@ -49,13 +49,13 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onPause() {
+    public void onPause() {
         showAppSwitcherPrivacyCover();
         super.onPause();
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         hideAppSwitcherPrivacyCover();
     }
