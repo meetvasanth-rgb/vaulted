@@ -35,6 +35,9 @@ test('registration uses a system-generated ten-digit Private Number', () => {
   assert.match(server, /privateNumbers\.has\(privateNumber\)/);
   assert.match(client, /id="account-private-number-value"/);
   assert.match(client, /function generatePrivateNumber\(\)/);
+  assert.match(client, /Generation limit reached\. Try again in about one hour\./);
+  assert.match(client, /Password policy:<\/strong> Minimum 8 characters/);
+  assert.match(client, /password\.length < 8/);
   assert.match(client, /This is not a cellular phone number/);
   assert.match(client, /vaultlix\.com\/\$\{result\.profile\.privateNumber\}/);
 });
