@@ -6723,7 +6723,7 @@ let settingsCategory = null;
 let settingsContextMode = 'general';
 let chimeEnabled = true;
 
-function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat', 'chats'); }
+function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat'); }
 
 function settingsBack() {
   if (settingsCategory) showSettingsMenu();
@@ -6806,19 +6806,26 @@ function openSettings(mode = 'general', initialCategory = null) {
   else showSettingsMenu();
 }
 
+function conversationPeerPrivateNumber(room = getActiveRoom()) {
+  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  const selfNumber = normalizePrivateNumber(loadAccountState()?.privateNumber);
+  return privateNumber && privateNumber !== selfNumber ? privateNumber : null;
+}
+
 function updateConversationProfileRow(room = getActiveRoom()) {
   const row = document.getElementById('settings-conversation-profile-row');
   const divider = document.getElementById('settings-conversation-profile-divider');
   const sub = document.getElementById('settings-conversation-profile-sub');
-  const visible = !!(room && normalizePrivateNumber(room.peerPrivateNumber));
+  const privateNumber = conversationPeerPrivateNumber(room);
+  const visible = !!(room && privateNumber);
   if (row) row.style.display = visible ? '' : 'none';
   if (divider) divider.style.display = visible ? '' : 'none';
-  if (sub && visible) sub.textContent = `${room.peerName || 'Connected participant'} · ${formatPrivateNumber(room.peerPrivateNumber)}`;
+  if (sub && visible) sub.textContent = `${room.peerName || 'Connected participant'} · ${formatPrivateNumber(privateNumber)}`;
 }
 
 function openConversationProfile() {
   const room = getActiveRoom();
-  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  const privateNumber = conversationPeerPrivateNumber(room);
   if (!room || !privateNumber) { toast('Private number is unavailable for this conversation'); return; }
   document.getElementById('conversation-profile-title').textContent = room.peerName || 'Connected participant';
   document.getElementById('conversation-profile-private-number').textContent = formatPrivateNumber(privateNumber);
@@ -6828,14 +6835,14 @@ function openConversationProfile() {
 function closeConversationProfile() { document.getElementById('conversation-profile-overlay').classList.remove('open'); }
 async function copyConversationPrivateNumber() {
   const room = getActiveRoom();
-  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  const privateNumber = conversationPeerPrivateNumber(room);
   if (!privateNumber) return;
   try { await navigator.clipboard.writeText(formatPrivateNumber(privateNumber)); toast('Private number copied'); }
   catch (e) { toast('Press and hold the number to copy it'); }
 }
 async function shareConversationPrivateNumber() {
   const room = getActiveRoom();
-  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  const privateNumber = conversationPeerPrivateNumber(room);
   if (!privateNumber) return;
   const text = `${room.peerName || 'Vaultlix participant'} — Vaultlix private number: ${formatPrivateNumber(privateNumber)}`;
   if (navigator.share) {
@@ -7080,11 +7087,38 @@ let pendingJoinPeerPrivateNumber = null;
 let pendingJoinPeerName = null;
 let pendingIncomingConnections = [];
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function peerIdentityFromConnection(request, state = loadAccountState()) {
+  const selfNumber = normalizePrivateNumber(state?.privateNumber);
+  const senderNumber = normalizePrivateNumber(request?.senderPrivateNumber);
+  const recipientNumber = normalizePrivateNumber(request?.recipientPrivateNumber);
+  if (senderNumber && senderNumber !== selfNumber) return { privateNumber:senderNumber, displayName:request.senderDisplayName || null };
+  if (recipientNumber && recipientNumber !== selfNumber) return { privateNumber:recipientNumber, displayName:request.recipientDisplayName || null };
+  return { privateNumber:null, displayName:null };
+}
+async function reconcileConversationPeerIdentities(requests, state) {
+  for (const request of requests || []) {
+    if (request.status !== 'accepted' || !request.inviteUrl) continue;
+    const peer = peerIdentityFromConnection(request, state);
+    if (!peer.privateNumber) continue;
+    let code = null;
+    try { code = new URL(request.inviteUrl).pathname.split('/').filter(Boolean).pop()?.toLowerCase() || null; } catch (e) {}
+    const room = code ? rooms.get(code) : null;
+    if (!room) continue;
+    const current = normalizePrivateNumber(room.peerPrivateNumber);
+    const selfNumber = normalizePrivateNumber(state.privateNumber);
+    if (!current || current === selfNumber) {
+      room.peerPrivateNumber = peer.privateNumber;
+      if (peer.displayName) room.peerName = peer.displayName;
+      await persistRoom(room);
+    }
+  }
+}
 async function refreshConnectionRequests() {
   const state = loadAccountState(); const list = document.getElementById('connection-request-list');
   if (!state || !list) return;
   const result = await api('/api/connections/list', { accountId:state.accountId, sessionToken:state.sessionToken });
   if (result.error) { list.textContent = result.error; return; }
+  await reconcileConversationPeerIdentities(result.requests, state);
   const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending');
   pendingIncomingConnections = incoming;
   if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
@@ -7093,8 +7127,9 @@ async function refreshConnectionRequests() {
     localStorage.setItem(`vaultlix:connection:${accepted.id}`, 'opened');
     closeAccountPanel();
     const url = new URL(accepted.inviteUrl);
-    pendingJoinPeerPrivateNumber = normalizePrivateNumber(accepted.recipientPrivateNumber) || null;
-    pendingJoinPeerName = accepted.recipientDisplayName || null;
+    const peer = peerIdentityFromConnection(accepted, state);
+    pendingJoinPeerPrivateNumber = peer.privateNumber;
+    pendingJoinPeerName = peer.displayName;
     pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
     await openJoinFromLink(url.pathname.split('/').filter(Boolean).pop(), true);
     return;
@@ -7104,8 +7139,9 @@ async function refreshConnectionRequests() {
 }
 async function acceptConnectionRequest(requestId) {
   const request = pendingIncomingConnections.find(item => item.id === requestId);
-  pendingConnectionPeerName = request?.senderDisplayName || null;
-  pendingConnectionPeerPrivateNumber = normalizePrivateNumber(request?.senderPrivateNumber) || null;
+  const peer = peerIdentityFromConnection(request);
+  pendingConnectionPeerName = peer.displayName;
+  pendingConnectionPeerPrivateNumber = peer.privateNumber;
   pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId);
   pendingConnectionAcceptance = requestId;
   closeAccountPanel();

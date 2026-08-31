@@ -25,14 +25,22 @@ test('Private Number profiles and authenticated connection requests are exposed'
 });
 
 test('accepted connections retain the peer Private Number inside conversation details', () => {
-  assert.match(client, /pendingConnectionPeerPrivateNumber = normalizePrivateNumber\(request\?\.senderPrivateNumber\)/);
-  assert.match(client, /pendingJoinPeerPrivateNumber = normalizePrivateNumber\(accepted\.recipientPrivateNumber\)/);
+  assert.match(client, /function peerIdentityFromConnection\(request, state = loadAccountState\(\)\)/);
+  assert.match(client, /senderNumber !== selfNumber/);
+  assert.match(client, /recipientNumber !== selfNumber/);
+  assert.match(client, /await reconcileConversationPeerIdentities\(result\.requests, state\)/);
+  assert.match(client, /function conversationPeerPrivateNumber\(room = getActiveRoom\(\)\)/);
+  assert.match(client, /privateNumber && privateNumber !== selfNumber/);
   assert.match(client, /peerPrivateNumber: room\.peerPrivateNumber \|\| null/);
   assert.match(client, /peerPrivateNumber:session\.peerPrivateNumber/);
   assert.match(client, /id="conversation-profile-private-number"/);
   assert.match(client, /Copy private number/);
   assert.match(client, /Share private number/);
   assert.match(client, /Save both your private number and recovery code\./);
+});
+
+test('the conversation gear opens the settings menu instead of forcing Chats', () => {
+  assert.match(client, /function toggleSettings\(\) \{ settingsOpen \? closeSettings\(\) : openSettings\('chat'\); \}/);
 });
 
 test('vault setup uses the permanent identity name', () => {
