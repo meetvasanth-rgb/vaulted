@@ -1344,6 +1344,14 @@ body.select-mode .chat-ftr{display:none}
 .settings-about-badge{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px 20px;margin:8px 20px;background:#F7F4F0;border-radius:8px;border:0.5px solid #E8E2DA}
 .settings-about-rule{width:30px;height:1px;background:#682C43}
 .settings-about-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:#1A1510}
+.settings-menu{padding:10px 10px 28px}
+.settings-menu .settings-link-row{background:#fff;border:1px solid #EEE5E8;box-shadow:0 6px 18px rgba(70,38,49,.045);margin:8px 0;padding:15px 14px;border-radius:15px}
+.settings-menu .settings-row-icon{width:42px;height:42px;border-radius:13px}
+.settings-menu .settings-row-title{font-size:15px;font-weight:650}
+.settings-menu .settings-row-sub{font-size:11.5px}
+.settings-category-page{display:none}
+.settings-category-page.active{display:block}
+.settings-empty-note{margin:16px 20px;padding:16px;border:1px solid #EEE5E8;border-radius:14px;background:#FAF7F8;color:#81747A;font-size:12px;line-height:1.55}
 
 /* Emergency Exit is intentionally unlike an ordinary settings tap. The
    entry control must be held long enough to make an accidental activation
@@ -2945,7 +2953,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <label class="app-lock-field"><span id="app-lock-new-label">New Vaultlix passcode</span><input id="app-lock-new" type="password" autocomplete="new-password" minlength="6" required/></label>
     <label class="app-lock-field"><span>Confirm passcode</span><input id="app-lock-confirm" type="password" autocomplete="new-password" minlength="6" required/></label>
     <div class="app-lock-error" id="app-lock-setup-error" aria-live="polite"></div>
-    <div class="app-lock-copy"><strong>Important:</strong> Vaultlix cannot recover this passcode. Resetting it erases local vault credentials; device-only vaults may be permanently lost.</div>
+    <div class="app-lock-copy"><strong>Important:</strong> Vaultlix cannot recover this passcode. Resetting it erases local conversation credentials; conversations stored only on this device may be permanently lost.</div>
     <div class="app-lock-actions"><button class="danger" id="app-lock-disable" type="button" onclick="disableAppLock()" style="display:none">Disable App Lock</button><button type="button" onclick="closeAppLockSettings()">Cancel</button><button class="primary" type="submit">Save</button></div>
   </form>
 </div>
@@ -2954,17 +2962,26 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 <div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
 <div class="settings-panel" id="settings-panel">
   <div class="settings-header">
-    <button class="settings-back" onclick="closeSettings()">
+    <button class="settings-back" id="settings-back" onclick="settingsBack()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <span class="settings-header-title" id="settings-header-title">Settings</span>
   </div>
 
   <div class="settings-body">
+    <div class="settings-menu" id="settings-menu">
+      <div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Profile</div><div class="settings-row-sub">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Privacy &amp; Security</div><div class="settings-row-sub">App lock, blocking, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Notifications</div><div class="settings-row-sub">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('chats')"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Chats</div><div class="settings-row-sub">Conversation label, message controls and chat safety</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('calls')"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Calls</div><div class="settings-row-sub">Call privacy, permissions and audio routing guidance</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('help')"><div class="settings-row-icon" style="background:#F4F0FA;color:#725B91"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3 1.1-1.8 1.5-1.8 3.3"/><path d="M12 18h.01"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Help</div><div class="settings-row-sub">How to use Vaultlix, FAQ, policies and version</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+    </div>
+
     <div id="settings-general-section">
     <div class="settings-section-label">App-wide</div>
 
-    <div class="settings-row" onclick="openAppLockSettings()" style="cursor:pointer">
+    <div class="settings-row" id="settings-app-lock-row" onclick="openAppLockSettings()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
         <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
       </div>
@@ -2977,7 +2994,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="settings-divider"></div>
 
-    <div class="settings-row">
+    <div class="settings-row" id="settings-chime-row">
       <div class="settings-row-icon" style="background:#F0F7F3;color:#71947C;">
         <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       </div>
@@ -2994,7 +3011,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="settings-divider"></div>
 
-    <div class="settings-row">
+    <div class="settings-row" id="settings-push-row">
       <div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1;">
         <svg viewBox="0 0 24 24"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><circle cx="19" cy="5" r="3" fill="currentColor" stroke="none"/></svg>
       </div>
@@ -3007,7 +3024,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="settings-divider"></div>
 
-    <div class="settings-row" onclick="openAccountPanel()" style="cursor:pointer">
+    <div class="settings-row" id="settings-account-row" onclick="openAccountPanel()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F2E8EC;color:#682C43;">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
       </div>
@@ -3018,6 +3035,15 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <div class="settings-status settings-status-action" id="account-settings-status">Set up</div>
     </div>
 
+    <div id="settings-calls-section" class="settings-category-page">
+      <div class="settings-section-label">Call privacy and controls</div>
+      <div class="settings-row"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Encrypted audio and video</div><div class="settings-row-sub">Call media is encrypted between participant devices</div></div><div class="settings-status settings-status-on">Protected</div></div>
+      <div class="settings-divider"></div>
+      <div class="settings-row"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Audio route</div><div class="settings-row-sub">Choose phone, speaker, or an available Bluetooth device during a call</div></div><div class="settings-status settings-status-off">During call</div></div>
+      <div class="settings-divider"></div>
+      <div class="settings-row"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Microphone and camera</div><div class="settings-row-sub">Permissions are controlled by your phone’s system settings</div></div><div class="settings-status settings-status-off">Device</div></div>
+    </div>
+
     <div class="settings-divider"></div>
 
     </div>
@@ -3026,7 +3052,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="settings-section-label">Current conversation safety</div>
     <div class="settings-row" onclick="blockActiveVault()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg></div>
-      <div class="settings-row-text"><div class="settings-row-title">Block participant</div><div class="settings-row-sub">Stop contact through this vault and erase its access from this device</div></div>
+      <div class="settings-row-text"><div class="settings-row-title">Block participant</div><div class="settings-row-sub">Stop contact through this conversation and erase its access from this device</div></div>
     </div>
     <div class="settings-divider"></div>
     <div class="settings-row" onclick="openReportPanel()" style="cursor:pointer">
@@ -3056,8 +3082,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
       </div>
       <div class="settings-row-text">
-        <div class="settings-row-title" id="settings-label-title">Label this vault</div>
-        <div class="settings-row-sub">Never shared with your peer; included only inside encrypted sync if you enable an anonymous ID</div>
+        <div class="settings-row-title" id="settings-label-title">Label this conversation</div>
+        <div class="settings-row-sub">A private label visible only to you and included in your encrypted account sync</div>
       </div>
     </div>
 
@@ -3069,7 +3095,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </div>
       <div class="settings-row-text">
         <div class="settings-row-title" style="color:#C87588;">Clear chat</div>
-        <div class="settings-row-sub">Erase all messages for both of you — the vault stays open</div>
+        <div class="settings-row-sub">Erase all messages for both participants while keeping the connection open</div>
       </div>
     </div>
 
@@ -3119,6 +3145,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     </div>
     </div>
 
+    <div class="settings-empty-note" id="settings-chat-empty" style="display:none">Open a conversation to manage its label, clear its messages, or use participant safety controls.</div>
+
     <div id="settings-about-section">
     <div class="settings-section-label">About</div>
 
@@ -3127,6 +3155,13 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <div class="settings-about-name">Vaultlix</div>
       <div class="settings-about-rule"></div>
     </div>
+
+    <div class="settings-link-row" onclick="showScreen('s-faq'); closeSettings();">
+      <div class="settings-row-icon" style="background:#F4F0FA;color:#725B91;"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3 1.1-1.8 1.5-1.8 3.3"/><path d="M12 18h.01"/></svg></div>
+      <div class="settings-row-text"><div class="settings-row-title">FAQ and how to use Vaultlix</div><div class="settings-row-sub">Private numbers, conversations, calls, deletion, and safety</div></div>
+      <div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+    </div>
+    <div class="settings-divider"></div>
 
     <div class="settings-link-row" onclick="showScreen('s-privacy'); closeSettings();">
       <div class="settings-row-icon" style="background:#F7F4F0;color:#9A8C7E;">
@@ -3240,7 +3275,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </form>
     </div>
     <div class="account-signed" id="account-signed-view">
-      <div class="account-copy">Your active vault credentials are protected by end-to-end encrypted account sync.</div>
+      <div class="account-copy">Your active conversation credentials are protected by end-to-end encrypted account sync.</div>
       <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub" id="account-sync-status">Encrypted sync active</div></div>
       <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
       <button class="account-primary" onclick="openAccountVaults()">Open my vaults</button>
@@ -6651,12 +6686,68 @@ function unlockAudio() {
 const SETTINGS_KEY = 'vaultlix_settings';
 const BLOCKED_VAULTS_KEY = 'vaultlix_blocked_vaults_v1';
 let settingsOpen = false;
+let settingsCategory = null;
+let settingsContextMode = 'general';
 let chimeEnabled = true;
 
-function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat'); }
+function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat', 'chats'); }
 
-function openSettings(mode = 'chat') {
+function settingsBack() {
+  if (settingsCategory) showSettingsMenu();
+  else closeSettings();
+}
+
+function showSettingsMenu() {
+  settingsCategory = null;
+  document.getElementById('settings-menu').style.display = '';
+  document.getElementById('settings-header-title').textContent = 'Settings';
+  document.getElementById('settings-general-section').style.display = 'none';
+  document.getElementById('settings-participant-section').style.display = 'none';
+  document.getElementById('settings-general-safety-section').style.display = 'none';
+  document.getElementById('settings-room-section').style.display = 'none';
+  document.getElementById('settings-chat-empty').style.display = 'none';
+  document.getElementById('settings-calls-section').classList.remove('active');
+  document.getElementById('settings-about-section').style.display = 'none';
+}
+
+function openSettingsCategory(category) {
+  settingsCategory = category;
+  const room = getActiveRoom();
+  const titles = { profile:'Profile', privacy:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help' };
+  document.getElementById('settings-menu').style.display = 'none';
+  document.getElementById('settings-header-title').textContent = titles[category] || 'Settings';
+  const generalSection = document.getElementById('settings-general-section');
+  const generalRows = {
+    profile:['settings-account-row'],
+    privacy:['settings-app-lock-row'],
+    notifications:['settings-chime-row','settings-push-row']
+  };
+  const selectedRows = generalRows[category] || [];
+  generalSection.style.display = selectedRows.length || category === 'calls' ? '' : 'none';
+  Array.from(generalSection.children).forEach(el => { el.style.display = 'none'; });
+  const sectionLabel = generalSection.querySelector('.settings-section-label');
+  if (sectionLabel && selectedRows.length) {
+    sectionLabel.textContent = titles[category];
+    sectionLabel.style.display = '';
+  }
+  selectedRows.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+  document.getElementById('settings-participant-section').style.display = category === 'privacy' && room ? '' : 'none';
+  document.getElementById('settings-general-safety-section').style.display = category === 'privacy' ? '' : 'none';
+  document.getElementById('settings-room-section').style.display = category === 'chats' && room ? '' : 'none';
+  document.getElementById('settings-chat-empty').style.display = category === 'chats' && !room ? '' : 'none';
+  const callsSection = document.getElementById('settings-calls-section');
+  callsSection.classList.toggle('active', category === 'calls');
+  callsSection.style.display = category === 'calls' ? '' : 'none';
+  document.getElementById('settings-about-section').style.display = category === 'help' ? '' : 'none';
+  document.getElementById('persistent-suggestion-section').style.display = 'none';
+  document.getElementById('anon-link-section').style.display = 'none';
+  const deleteRow = document.getElementById('delete-account-row');
+  if (deleteRow) deleteRow.style.display = category === 'privacy' && loadAccountState() ? '' : 'none';
+}
+
+function openSettings(mode = 'general', initialCategory = null) {
   settingsOpen = true;
+  settingsContextMode = mode === true ? 'general' : mode;
   document.getElementById('settings-overlay').classList.add('open');
   document.getElementById('settings-panel').classList.add('open');
   document.getElementById('settings-btn')?.classList.add('active');
@@ -6664,23 +6755,10 @@ function openSettings(mode = 'chat') {
   updateAnonLinkSection();
   updatePersistentSuggestion();
   updateAppLockStatus();
-  const general = mode === true || mode === 'general';
-  const room = general ? null : getActiveRoom();
-  const generalSection = document.getElementById('settings-general-section');
-  const generalSafetySection = document.getElementById('settings-general-safety-section');
-  const aboutSection = document.getElementById('settings-about-section');
-  const participantSection = document.getElementById('settings-participant-section');
-  const roomSection = document.getElementById('settings-room-section');
-  const headerTitle = document.getElementById('settings-header-title');
-  if (generalSection) generalSection.style.display = general ? '' : 'none';
-  if (generalSafetySection) generalSafetySection.style.display = general ? '' : 'none';
-  if (aboutSection) aboutSection.style.display = general ? '' : 'none';
-  if (participantSection) participantSection.style.display = room ? '' : 'none';
-  if (roomSection) roomSection.style.display = room ? '' : 'none';
-  if (headerTitle) headerTitle.textContent = general ? 'General settings' : 'Chat settings';
+  const room = getActiveRoom();
   const labelTitleEl = document.getElementById('settings-label-title');
   if (labelTitleEl) {
-    labelTitleEl.textContent = (room && room.nickname) ? 'Edit vault label' : 'Label this vault';
+    labelTitleEl.textContent = (room && room.nickname) ? 'Edit conversation label' : 'Label this conversation';
   }
   // The gear icon lives in the shared header above the room tabs, not
   // inside any one room's own area — with several rooms open at once that
@@ -6689,8 +6767,8 @@ function openSettings(mode = 'chat') {
   // Naming the room directly in the "This room" section label is that link.
   const roomSectionName = document.getElementById('settings-room-section-name');
   if (roomSectionName) roomSectionName.textContent = room ? roomDisplayLabel(room) : '—';
-  const deleteRow = document.getElementById('delete-account-row');
-  if (deleteRow) deleteRow.style.display = loadAccountState() ? '' : 'none';
+  if (initialCategory) openSettingsCategory(initialCategory);
+  else showSettingsMenu();
 }
 
 async function blockedVaultFingerprint(code) {
@@ -6898,7 +6976,7 @@ function updateAccountSettingsStatus() {
   const landingLabel = document.getElementById('landing-account-label');
   const footerAccountLabel = document.getElementById('landing-footer-account-label');
   if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
-  if (sub) sub.textContent = state ? `${formatPrivateNumber(state.privateNumber)} · encrypted vault sync` : 'Create your Vaultlix Private Number';
+  if (sub) sub.textContent = state ? `${formatPrivateNumber(state.privateNumber)} · encrypted conversation sync` : 'Create your Vaultlix private number';
   if (landingLabel) landingLabel.textContent = state ? state.displayName : 'Sign in';
   if (footerAccountLabel) footerAccountLabel.textContent = state ? state.displayName : 'Sign in';
   if (landingButton) {
