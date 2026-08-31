@@ -1471,6 +1471,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 #s-vault-list{background:var(--vx-ivory)}
 .vault-list-hdr{background:rgba(255,255,255,.94)!important;border-color:var(--vx-line)!important;box-shadow:0 5px 18px rgba(31,28,23,.05)}
 .vault-list-title{font-size:20px!important;color:var(--vx-ink)!important}
+.vault-list-settings{color:#682C43!important;background:#F7EFF2!important;border:1px solid #E6D4DA!important}
+.vault-list-settings:active{background:#EEDFE4!important}
 .vault-list-body{padding:16px!important;gap:10px!important}
 .vault-list-item,.vault-item{background:#fff!important;border:1px solid var(--vx-line)!important;border-radius:16px!important;box-shadow:var(--vx-shadow-sm)}
 .settings-overlay{background:rgba(14,17,23,.48);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
@@ -2638,10 +2640,6 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     </div>
   </div>
   <div style="position:relative">
-  <div class="daily-nudge" id="daily-nudge" style="display:none">
-    <span class="daily-nudge-text">Haven't said anything today — a quick hello keeps it going.</span>
-    <button class="daily-nudge-close" onclick="dismissDailyNudge(getActiveRoom())" aria-label="Dismiss">×</button>
-  </div>
   <div class="reply-preview" id="reply-preview">
     <img class="reply-preview-thumb" id="reply-thumb" style="display:none" alt=""/>
     <span class="reply-preview-text"><span class="reply-preview-name" id="reply-name"></span><span id="reply-text"></span></span>
@@ -3642,8 +3640,7 @@ function makeRoom({ code, token, myName, deleteTimerSeconds, persistent, connect
     // room (set only in /api/send). Deliberately NOT persisted into the
     // localStorage room blob — it's always refreshed fresh from /api/join
     // and /api/poll, so it can never be the thing that corrupts a stored
-    // keypair (see persistRoom's safe-write rules). Drives the "haven't
-    // said anything today" nudge.
+    // keypair (see persistRoom's safe-write rules). Used for inbox ordering.
     lastMessageAt: lastMessageAt || 0,
     // How many distinct times this device has reopened THIS ordinary room
     // (never bumped once persistent is true — the suggestion only makes
@@ -4078,53 +4075,6 @@ function loadRoomSession(code) {
     if (!s || (!s.persistent && Date.now() - s.savedAt > SESSION_TTL)) { clearRoomStorage(code); return null; }
     return s;
   } catch(e) { return null; }
-}
-
-// ── DAILY NUDGE ──────────────────────────────────────────────────────────
-// "Haven't said anything today" pill above the composer. Its dismiss-state
-// lives in its OWN dedicated localStorage key, entirely separate from the
-// per-room session blob (roomStorageKey) that holds the E2E keypair — that
-// separation is deliberate, not an accident: a bug earlier in this project
-// corrupted stored keypairs by writing an unrelated counter into that same
-// blob via the non-merging persistRoom(). A frequently-written, purely
-// cosmetic thing like "did they dismiss today's nudge" has no business
-// anywhere near the blob that holds encryption keys, so it gets its own key
-// and can never repeat that failure mode even by accident.
-const NUDGE_DISMISSED_KEY = 'vaultlix_nudge_dismissed';
-function todayLocalStr() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-}
-function startOfLocalDayMs() {
-  const d = new Date(); d.setHours(0,0,0,0); return d.getTime();
-}
-function loadNudgeDismissedMap() {
-  try { return JSON.parse(localStorage.getItem(NUDGE_DISMISSED_KEY) || '{}'); } catch(e) { return {}; }
-}
-function markNudgeDismissedToday(code) {
-  try {
-    const map = loadNudgeDismissedMap();
-    map[code] = todayLocalStr();
-    localStorage.setItem(NUDGE_DISMISSED_KEY, JSON.stringify(map));
-  } catch(e) {}
-}
-function shouldShowDailyNudge(room) {
-  if (!room || !room.everOnline) return false; // no point nudging before the peer's ever actually been here
-  if (room.lastMessageAt && room.lastMessageAt >= startOfLocalDayMs()) return false; // someone already said something today
-  const map = loadNudgeDismissedMap();
-  if (map[room.code] === todayLocalStr()) return false; // dismissed already, once per day
-  return true;
-}
-function updateDailyNudge(room) {
-  if (!room || room.code !== activeRoomCode) return; // only ever touches the DOM for the room actually on screen
-  const el = document.getElementById('daily-nudge');
-  if (!el) return;
-  el.style.display = shouldShowDailyNudge(room) ? 'flex' : 'none';
-}
-function dismissDailyNudge(room) {
-  if (!room) return;
-  markNudgeDismissedToday(room.code);
-  updateDailyNudge(room);
 }
 
 // ── SHAREABLE MILESTONE CARD ────────────────────────────────────────────
@@ -7067,6 +7017,7 @@ function openAccountPanel() {
 }
 function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
 let pendingConnectionAcceptance = null;
+let pendingConnectionPeerName = null;
 let pendingIncomingConnections = [];
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function refreshConnectionRequests() {
@@ -7090,20 +7041,21 @@ async function refreshConnectionRequests() {
   list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
 }
 async function acceptConnectionRequest(requestId) {
+  const request = pendingIncomingConnections.find(item => item.id === requestId);
+  pendingConnectionPeerName = request?.senderDisplayName || null;
   pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId);
   pendingConnectionAcceptance = requestId;
   closeAccountPanel();
   const identity = loadAccountState();
   if (!identity) { openAccountPanel(); return; }
   mode = 'connection';
-  showScreen('s-setup');
   document.getElementById('setup-title').textContent = 'Creating your private conversation…';
   document.getElementById('join-field').style.display = 'none';
   document.getElementById('named-field').style.display = 'none';
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'none';
   document.getElementById('name-input').value = identity.displayName;
-  await handleSetup();
+  await handleSetup({ silent: true });
 }
 async function rejectConnectionRequest(requestId) {
   const state=loadAccountState(); if(!state)return;
@@ -8453,7 +8405,6 @@ function setActiveRoom(code) {
   updateDocumentTitle();
   updateTimerBar(room);
   refreshCallButton();
-  updateDailyNudge(room);
   checkMilestone(room);
 }
 
@@ -9727,11 +9678,9 @@ async function doPoll(room) {
     // link live without needing a full reconnect — cheap since it's already
     // riding along on every poll response rather than a dedicated call.
     if (data.totalMessageCount !== undefined) room.totalMessageCount = data.totalMessageCount;
-    // Drives the "haven't said anything today" nudge — server-authoritative
-    // so it's correct even if this device never sent the most recent
-    // message itself (peer sending today also counts as "not silent").
+    // Keep inbox ordering server-authoritative even when the peer sent the
+    // most recent message from another device.
     if (data.lastMessageAt !== undefined) room.lastMessageAt = data.lastMessageAt;
-    updateDailyNudge(room);
     checkMilestone(room);
 
     // Safety net: a scheduled disappearing-message setTimeout can get
@@ -9871,10 +9820,8 @@ async function sendMsg() {
   renderMessageRecord(room, rec, true);
   if (rec.jumbo) triggerEmojiEffect(rec.content);
   cancelReply();
-  // Hide the nudge the instant we send, optimistically — no need to wait for
-  // the next poll to echo back the real server timestamp.
+  // Update inbox ordering immediately rather than waiting for the next poll.
   room.lastMessageAt = Date.now();
-  updateDailyNudge(room);
 
   try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
 }
@@ -10077,10 +10024,22 @@ function parseKeyCommitmentFromHash(hash) {
 // room was showing, same idea as a notification tap).
 async function openJoinFromLink(code, connectImmediately = false) {
   history.replaceState(null, '', '/'); // don't leave /join/<code> in the URL bar once handled
-  startJoin();
+  if (connectImmediately) {
+    const identity = loadAccountState();
+    if (!identity) { openAccountPanel(); return; }
+    mode = 'join';
+    document.getElementById('join-field').style.display = 'block';
+    document.getElementById('named-field').style.display = 'none';
+    document.getElementById('timer-field').style.display = 'none';
+    document.getElementById('password-field').style.display = 'block';
+    document.getElementById('name-input').value = identity.displayName;
+    if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
+  } else {
+    startJoin();
+  }
   const codeInput = document.getElementById('code-input');
   if (codeInput) codeInput.value = code;
-  if (connectImmediately) await handleSetup();
+  if (connectImmediately) await handleSetup({ silent: true });
 }
 
 // iOS Universal Links can arrive while the native app and this page are
@@ -10127,7 +10086,7 @@ function resumeWaitingScreen(room) {
 // permanent room) can reuse the exact same wait-for-peer behavior instead of
 // duplicating it — a fresh room minted there needs to sit on s-waiting the
 // same way a brand-new one from the setup form does.
-function startWaitingForPeer(room) {
+function startWaitingForPeer(room, { silent = false } = {}) {
   if (room.waitInterval) clearInterval(room.waitInterval);
   room.waitInterval = setInterval(async () => {
     const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0 });
@@ -10151,6 +10110,12 @@ function startWaitingForPeer(room) {
       // the time the chat screen is actually interactive, signaling has
       // very likely already finished connecting.
       startRoomPolling(room);
+      if (silent) {
+        showScreen('s-vault-list');
+        renderVaultList();
+        playChime();
+        return;
+      }
       await triggerConnectionMoment('peer_joined', () => {
         showScreen('s-chat');
         // Gated on sharedKey, not just unconditionally true — deriveSharedKey
@@ -10166,7 +10131,7 @@ function startWaitingForPeer(room) {
 }
 
 // ── SETUP: create / join a room, ADDING it alongside any already open ──
-async function handleSetup() {
+async function handleSetup({ silent = false } = {}) {
   unlockAudio();
   const identity = loadAccountState();
   if (!identity) { openAccountPanel(); return; }
@@ -10177,7 +10142,8 @@ async function handleSetup() {
 
   const roomLimit = maxRoomsAllowed();
   if (rooms.size >= roomLimit) {
-    showErr(`You already have ${roomLimit} vaults open — leave one first.`);
+    if (silent) toast(`You already have ${roomLimit} chats open — leave one first.`);
+    else showErr(`You already have ${roomLimit} vaults open — leave one first.`);
     resetSetupBtn();
     return;
   }
@@ -10207,6 +10173,7 @@ async function handleSetup() {
 
       room.code = result.code;
       room.token = result.token;
+      if (mode === 'connection' && pendingConnectionPeerName) room.peerName = pendingConnectionPeerName;
       room.deleteTimerSeconds = result.deleteTimer || timerVal;
       room.persistent = !!result.persistent;
       room.codeLabelLen = result.labelLength || null;
@@ -10214,6 +10181,7 @@ async function handleSetup() {
       persistRoom(room);
       if (pendingConnectionAcceptance) {
         const requestId = pendingConnectionAcceptance; pendingConnectionAcceptance = null;
+        pendingConnectionPeerName = null;
         const state = loadAccountState();
         const accepted = await api('/api/connections/respond', { accountId:state.accountId, sessionToken:state.sessionToken, requestId, action:'accepted', inviteUrl:await buildInviteLink(room.code) });
         if (accepted.error) toast(accepted.error); else toast('Private vault created — the requester can now join');
@@ -10242,8 +10210,14 @@ async function handleSetup() {
       // fallback rather than replacing it.
       const shareBtn = document.getElementById('share-code-btn');
       if (shareBtn) shareBtn.style.display = canUseSystemShare() ? 'inline-flex' : 'none';
-      showScreen('s-waiting');
-      startWaitingForPeer(room);
+      if (silent) {
+        showScreen('s-vault-list');
+        renderVaultList();
+        startWaitingForPeer(room, { silent: true });
+      } else {
+        showScreen('s-waiting');
+        startWaitingForPeer(room);
+      }
     } else {
       const code = document.getElementById('code-input').value.trim().toLowerCase();
       const password = document.getElementById('password-input')?.value.trim() || null;
@@ -10258,6 +10232,7 @@ async function handleSetup() {
 
       room.code = result.code;
       room.token = result.token;
+      if (result.peerName) room.peerName = result.peerName;
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
       room.persistent = !!result.persistent;
       room.connectedSince = result.connectedSince || null;
@@ -10285,6 +10260,13 @@ async function handleSetup() {
       // Same reordering as the peer_joined branch above — start
       // connecting now, in parallel with the ceremony, not after it.
       startRoomPolling(room);
+      if (silent) {
+        showScreen('s-vault-list');
+        renderVaultList();
+        enableInput(!!room.sharedKey, true);
+        playChime();
+        return;
+      }
       await triggerConnectionMoment('joined', () => {
         showScreen('s-chat');
         // Same reasoning as the peer_joined branch above — only enable once
@@ -10294,7 +10276,10 @@ async function handleSetup() {
       });
     }
   } catch(e) {
-    showErr('Connection failed. Please try again.');
+    if (silent) {
+      toast('Connection failed. Please try again.');
+      showScreen('s-vault-list');
+    } else showErr('Connection failed. Please try again.');
     resetSetupBtn();
   }
 }
