@@ -2547,9 +2547,9 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 <!-- CHAT -->
 <div id="s-chat" class="screen">
   <div class="chat-hdr">
-    <button class="chat-home-btn" type="button" onclick="openVaultInbox()" title="Open your vaults" aria-label="Open your vault inbox">
+    <button class="chat-home-btn" type="button" onclick="openVaultInbox()" title="Open home" aria-label="Open home">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg>
-      <span class="chat-home-btn-label">Vaults</span>
+      <span class="chat-home-btn-label">Home</span>
       <span class="chat-vault-unread" id="chat-vault-unread" aria-hidden="true"></span>
     </button>
     <!-- Identity zone: logo, room name, connection status — all one glance,
@@ -3229,7 +3229,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
 <div class="account-overlay" id="account-overlay" onclick="if(event.target===this)closeAccountPanel()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
-    <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix Private Number</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix private number</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
     <div id="account-guest-view">
       <div class="account-copy">Choose the name people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.</div>
       <div class="account-tabs">
@@ -3275,11 +3275,9 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </form>
     </div>
     <div class="account-signed" id="account-signed-view">
-      <div class="account-copy">Your active conversation credentials are protected by end-to-end encrypted account sync.</div>
-      <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub" id="account-sync-status">Encrypted sync active</div></div>
+      <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub">Your private identity</div></div>
+      <div id="account-sync-status" hidden></div>
       <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
-      <button class="account-primary" onclick="openAccountVaults()">Open my vaults</button>
-      <button class="account-secondary" onclick="syncAnonymousAccount(true)">Sync now</button>
       <button class="account-secondary" onclick="signOutAnonymousAccount()">Sign out on this device</button>
     </div>
     <div id="account-recovery-result" style="display:none">
@@ -6991,6 +6989,8 @@ function openAccountPanel() {
   document.getElementById('account-guest-view').style.display = state ? 'none' : '';
   document.getElementById('account-signed-view').classList.toggle('open', !!state);
   document.getElementById('account-recovery-result').style.display = 'none';
+  const accountTitle = document.getElementById('account-title');
+  if (accountTitle) accountTitle.textContent = state ? 'Your Vaultlix private number' : 'Create your Vaultlix private number';
   if (state) document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
   else generatePrivateNumber();
   document.getElementById('account-overlay').classList.add('open');
