@@ -24,6 +24,17 @@ test('Private Number profiles and authenticated connection requests are exposed'
   assert.match(client, /Accept connection/);
 });
 
+test('accepted connections retain the peer Private Number inside conversation details', () => {
+  assert.match(client, /pendingConnectionPeerPrivateNumber = normalizePrivateNumber\(request\?\.senderPrivateNumber\)/);
+  assert.match(client, /pendingJoinPeerPrivateNumber = normalizePrivateNumber\(accepted\.recipientPrivateNumber\)/);
+  assert.match(client, /peerPrivateNumber: room\.peerPrivateNumber \|\| null/);
+  assert.match(client, /peerPrivateNumber:session\.peerPrivateNumber/);
+  assert.match(client, /id="conversation-profile-private-number"/);
+  assert.match(client, /Copy private number/);
+  assert.match(client, /Share private number/);
+  assert.match(client, /Save both your private number and recovery code\./);
+});
+
 test('vault setup uses the permanent identity name', () => {
   assert.match(client, /const name = identity\.displayName/);
   assert.match(client, /id="identity-name-field" style="display:none"/);
