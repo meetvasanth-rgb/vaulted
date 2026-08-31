@@ -19,19 +19,19 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="shortcut icon" href="/favicon.ico">
-<title>Vaultlix – Anonymous End-to-End Encrypted Chat</title>
-<meta name="description" content="Vaultlix is an anonymous, end-to-end encrypted chat app. No phone number or email required — use it as a guest or protect your vaults with an optional anonymous ID.">
+<title>Vaultlix – Private Number Messenger</title>
+<meta name="description" content="Vaultlix is a private, end-to-end encrypted messenger. Create a Vaultlix Private Number, connect without sharing your phone number or email, and communicate one to one.">
 <link rel="canonical" href="https://vaultlix.com/">
 <meta name="google-site-verification" content="iUxelLTt2YqTWtiOtuZF7LNBiFjOhf_XIX0DuZ2VCaY" />
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Vaultlix">
 <meta property="og:title" content="Vaultlix">
-<meta property="og:description" content="Anonymous, end-to-end encrypted chat. No phone number or email required, nothing we can read.">
+<meta property="og:description" content="Create a Vaultlix Private Number and connect without sharing your phone number, email, or contacts.">
 <meta property="og:url" content="https://vaultlix.com">
 <meta property="og:image" content="https://vaultlix.com/icons/icon-512.png?v=20260806">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Vaultlix">
-<meta name="twitter:description" content="Anonymous, end-to-end encrypted chat. No phone number or email required, nothing we can read.">
+<meta name="twitter:description" content="Create a Vaultlix Private Number and connect without sharing your phone number, email, or contacts.">
 <meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260806">
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -1981,7 +1981,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .privacy-compare-row>span:first-child{font-weight:750;color:#34272F}
 #s-landing .privacy-compare-row:first-child>span{font-size:10px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#682C43}
 #s-landing .privacy-compare-row>span:last-child{background:rgba(238,243,239,.72);color:#4C6B55;font-weight:650}
-#s-landing .marketing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:26px}
+#s-landing .marketing-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:26px}
 #s-landing .marketing-card{padding:25px;border:1px solid #E4DADF;border-radius:22px;background:rgba(255,255,255,.82);box-shadow:0 10px 28px rgba(39,29,37,.055)}
 #s-landing .marketing-number{width:38px;height:38px;display:grid;place-items:center;margin-bottom:34px;border-radius:50%;background:#682C43;color:#fff;font:750 12px/1 'Manrope',sans-serif}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
@@ -2053,6 +2053,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
 @media(min-width:900px){
   #s-landing .landing-content{min-height:calc(100dvh - 80px)}
   #s-landing .landing-marketing{grid-column:1/-1;grid-row:4;margin-top:24px}
+  #s-landing .marketing-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
   #s-landing .landing-footer{position:relative!important;right:auto;bottom:auto;width:100%;margin-top:18px!important;text-align:center}
 }
 
@@ -2219,7 +2220,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "Vaultlix",
-  "description": "Anonymous, end-to-end encrypted 1:1 chat with no phone number or email required and nothing we can read.",
+  "description": "A private, end-to-end encrypted 1:1 messenger that uses a Vaultlix Private Number instead of your phone number or email.",
   "url": "https://vaultlix.com/",
   "applicationCategory": "CommunicationApplication",
   "operatingSystem": "Any (Progressive Web App)",
@@ -2231,12 +2232,12 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private chat app for two people — no phone number or email required, nothing we can read. Use it as a guest or create an optional anonymous ID for encrypted vault sync." } },
-    { "@type": "Question", "name": "Do I need an account or a phone number?", "acceptedAnswer": { "@type": "Answer", "text": "No. There's no sign-up and Vaultlix never asks for a phone number. Pick any name for the conversation, and that's it." } },
+    { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private one-to-one messenger that gives each account a permanent Vaultlix Private Number without collecting a phone number, email address, contact list, or real name." } },
+    { "@type": "Question", "name": "Do I need a phone number or email address?", "acceptedAnswer": { "@type": "Answer", "text": "No. Create a name or pseudonym and Vaultlix generates a permanent Private Number for sign-in and exact-number connections." } },
     { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "Vaultlix requires no phone number, email or real name. A system-generated Vaultlix Private Number identifies the account while the service stores only an encrypted vault bundle that it cannot read." } },
     { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Messages are end-to-end encrypted with keys held by participants. WebRTC call media is encrypted between participant devices with DTLS-SRTP; Cloudflare TURN relays encrypted packets and cannot decrypt call audio or video. Optional account sync uploads vault credentials only inside a separate client-encrypted bundle that Vaultlix cannot decrypt." } },
-    { "@type": "Question", "name": "What happens when I close a vault?", "acceptedAnswer": { "@type": "Answer", "text": "It's deleted immediately, for both people, along with everything inside it. Not archived, not hidden — gone." } },
-    { "@type": "Question", "name": "Temporary vs. permanent vault?", "acceptedAnswer": { "@type": "Answer", "text": "A temporary vault is for one conversation and expires within a day. A permanent vault never expires — reopen it anytime with the same code." } },
+    { "@type": "Question", "name": "How do I connect with someone?", "acceptedAnswer": { "@type": "Answer", "text": "Exchange Vaultlix Private Numbers, enter the other person's exact number, and send a connection request. After acceptance, the encrypted conversation is created automatically." } },
+    { "@type": "Question", "name": "Can people search for me?", "acceptedAnswer": { "@type": "Answer", "text": "No. Vaultlix does not search contacts or suggest people. Someone needs your exact Private Number to send a connection request." } },
     { "@type": "Question", "name": "Can more than two people join?", "acceptedAnswer": { "@type": "Answer", "text": "No — Vaultlix is built for one-to-one conversations only." } }
   ]
 }
@@ -2290,9 +2291,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
           <nav class="landing-menu-panel" aria-label="Website sections">
             <a href="#privacy-difference" onclick="this.closest('details').removeAttribute('open')">Privacy difference</a>
             <a href="#how-it-works" onclick="this.closest('details').removeAttribute('open')">How it works</a>
-            <a href="#product-walkthrough" onclick="this.closest('details').removeAttribute('open')">Walkthrough</a>
             <a href="#privacy-architecture" onclick="this.closest('details').removeAttribute('open')">Privacy architecture</a>
-            <a href="#vault-types" onclick="this.closest('details').removeAttribute('open')">Vault types</a>
             <a href="#safety-controls" onclick="this.closest('details').removeAttribute('open')">Safety controls</a>
             <a href="#frequently-asked-questions" onclick="this.closest('details').removeAttribute('open')">FAQ</a>
             <a href="#use-vaultlix" onclick="this.closest('details').removeAttribute('open')">Use Vaultlix</a>
@@ -2307,37 +2306,31 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <section class="landing-hero">
       <div class="logo-rule" id="logoRule"></div>
-      <div class="logo-sub" id="logoSub">A private space for two</div>
-      <h1 class="landing-title">Conversations without the identity trail.</h1>
-      <p class="tagline" id="logoTag">Start anonymously without giving Vaultlix a phone number, email address, or identity-based account.</p>
-      <div class="identity-proof" aria-label="Anonymous access benefits"><span>No phone number</span><span>No email address</span><span>No identity-based account</span></div>
+      <div class="logo-sub" id="logoSub">Your private number. Not your phone number.</div>
+      <h1 class="landing-title">Connect privately, without sharing your public identity.</h1>
+      <p class="tagline" id="logoTag">Create a permanent Vaultlix Private Number, share it only with people you choose, and start encrypted one-to-one conversations.</p>
+      <div class="identity-proof" aria-label="Private identity benefits"><span>No phone number</span><span>No email address</span><span>No contact upload</span></div>
     </section>
 
     <section class="landing-actions" id="use-vaultlix" aria-labelledby="landing-actions-title">
       <div class="landing-section-heading">
         <div>
           <span>START HERE</span>
-          <h2 id="landing-actions-title">Choose your vault</h2>
+          <h2 id="landing-actions-title">Start with your Private Number</h2>
         </div>
-        <div class="landing-count" aria-label="Three options">3</div>
+        <div class="landing-count" aria-label="Two options">2</div>
       </div>
 
       <div class="cards" id="cards">
-        <button class="card card-primary" type="button" onclick="startCreate()">
-          <span class="card-icon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
-          <span class="card-copy"><strong class="card-title">Create temporary vault</strong><small class="card-desc">One private conversation. Gone within a day.</small></span>
+        <button class="card card-primary" type="button" onclick="openAccountPanel()">
+          <span class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>
+          <span class="card-copy"><strong class="card-title">Create my Private Number</strong><small class="card-desc">Choose a name or pseudonym and receive your permanent Vaultlix number.</small></span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
         </button>
 
-        <button class="card card-join" type="button" onclick="startJoin()">
-          <span class="card-icon"><svg viewBox="0 0 24 24"><path d="M10 7H6a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h4M14 7h4a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-4M8 12h8"/></svg></span>
-          <span class="card-copy"><strong class="card-title">Join with code</strong><small class="card-desc">Enter a vault shared with you.</small></span>
-          <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-        </button>
-
-        <button class="card card-permanent" type="button" onclick="startNamed()">
-          <span class="card-icon"><svg viewBox="0 0 24 24"><path d="M7 3h10a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/><path d="M9 12h6M12 9v6"/></svg></span>
-          <span class="card-copy"><strong class="card-title">Create permanent vault</strong><small class="card-desc">Return anytime. Close it only when you choose.</small></span>
+        <button class="card card-join" type="button" onclick="openAccountPanel();showAccountTab('login')">
+          <span class="card-icon"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span>
+          <span class="card-copy"><strong class="card-title">Sign in</strong><small class="card-desc">Use your Vaultlix Private Number and password to return to your conversations.</small></span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
         </button>
       </div>
@@ -2345,7 +2338,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <aside class="landing-assurance">
       <div class="assurance-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-      <div><strong>Anonymous guest access</strong><span>No phone number, no email address, and no identity-based account required.</span></div>
+      <div><strong>A private identity you control</strong><span>Your Vaultlix Private Number is not a cellular number and is never linked to your phone number or email.</span></div>
     </aside>
 
     <!-- PWA install affordance — platform-aware, populated by refreshInstallUI() -->
@@ -2367,7 +2360,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
           <div class="privacy-compare-row" role="row"><span role="columnheader">Feature</span><span role="columnheader">Conventional messaging</span><span role="columnheader">Vaultlix</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Sign-up identifier</span><span role="cell">Often requires a phone number</span><span role="cell">No phone number or email required</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Contact access</span><span role="cell">May request your address book</span><span role="cell">No contact upload required</span></div>
-          <div class="privacy-compare-row" role="row"><span role="rowheader">Conversation identity</span><span role="cell">Usually tied to one account</span><span role="cell">A separate identity for every vault</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Private identity</span><span role="cell">Usually tied to a phone number or email</span><span role="cell">A permanent Vaultlix Private Number</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Voice and video calls</span><span role="cell">Depends on the provider</span><span role="cell">Media is encrypted between participant devices</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Operational metadata</span><span role="cell">May be collected broadly</span><span role="cell">Minimized to what is required to operate the service</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Advertising identity</span><span role="cell">May connect activity to a wider ecosystem</span><span role="cell">No advertising identity required</span></div>
@@ -2375,25 +2368,13 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </section>
       <section class="marketing-section" id="how-it-works">
         <span class="marketing-eyebrow">HOW IT WORKS</span>
-        <h2 class="marketing-title">A private conversation begins in three quiet steps.</h2>
-        <p class="marketing-lede">Create a vault, share its invitation privately, and communicate without making a phone number or email address the centre of the relationship.</p>
+        <h2 class="marketing-title">From Private Number to private conversation.</h2>
+        <p class="marketing-lede">Vaultlix replaces invitation codes and manual room setup with a familiar, direct connection flow.</p>
         <div class="marketing-grid">
-          <article class="marketing-card"><div class="marketing-number">01</div><h3>Create a vault</h3><p>Choose a temporary space for a short-lived conversation or a permanent vault you close on your terms.</p></article>
-          <article class="marketing-card"><div class="marketing-number">02</div><h3>Invite one person</h3><p>Send the private invitation link through any channel you already use. The link opens the correct vault directly.</p></article>
-          <article class="marketing-card"><div class="marketing-number">03</div><h3>Talk privately</h3><p>Exchange encrypted messages and calls using vault identities chosen for that conversation.</p></article>
-        </div>
-      </section>
-      <section class="marketing-section" id="product-walkthrough" aria-labelledby="walkthrough-title">
-        <span class="marketing-eyebrow">PRODUCT WALKTHROUGH</span>
-        <h2 class="marketing-title" id="walkthrough-title">See a vault come to life.</h2>
-        <div class="walkthrough-shell">
-          <div class="walkthrough-preview">
-            <video class="walkthrough-video" controls playsinline preload="metadata" poster="/media/vaultlix-walkthrough-poster.jpg" aria-label="Vaultlix walkthrough showing vault creation, invitation, messaging and closure">
-              <source src="/media/vaultlix-create-connect-walkthrough-human-voice.mp4" type="video/mp4">
-              Your browser does not support embedded video. <a href="/media/vaultlix-create-connect-walkthrough-human-voice.mp4">Open the Vaultlix walkthrough</a>.
-            </video>
-          </div>
-          <div class="walkthrough-copy"><h3>Create. Invite. Communicate.</h3><p>Watch the complete experience in under 40 seconds: create a vault on iPhone, join it from Android, communicate privately, and close it when the conversation is finished.</p><ol class="walkthrough-list"><li><span>1</span>Create a temporary or permanent vault</li><li><span>2</span>Share the invitation with your counterpart</li><li><span>3</span>Message or call inside the private space</li></ol></div>
+          <article class="marketing-card"><div class="marketing-number">01</div><h3>Create your identity</h3><p>Choose the name or pseudonym people will see. Vaultlix gives you a permanent Private Number.</p></article>
+          <article class="marketing-card"><div class="marketing-number">02</div><h3>Exchange numbers</h3><p>Share only your Vaultlix Private Number. Your phone number, email, and contacts stay private.</p></article>
+          <article class="marketing-card"><div class="marketing-number">03</div><h3>Connect by consent</h3><p>Enter the other person's number and send a request. A conversation appears after they accept.</p></article>
+          <article class="marketing-card"><div class="marketing-number">04</div><h3>Message or call</h3><p>Communicate inside an encrypted one-to-one space created automatically in the background.</p></article>
         </div>
       </section>
       <section class="marketing-section" id="privacy-architecture">
@@ -2403,18 +2384,10 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <div class="privacy-grid">
           <article class="privacy-card"><strong>Encrypted messages</strong><span>Message content is encrypted between participants using AES-256-GCM. Vaultlix stores ciphertext, not readable message content.</span></article>
           <article class="privacy-card"><strong>Encrypted calls</strong><span>WebRTC media is protected between participant devices with DTLS-SRTP. Cloudflare TURN can relay encrypted packets and connection metadata, but cannot decrypt the media.</span></article>
-          <article class="privacy-card"><strong>Identity-minimised access</strong><span>Guest mode does not require a phone number or email address. Each vault can use a separate conversation identity.</span></article>
+          <article class="privacy-card"><strong>Identity-minimised access</strong><span>Your Vaultlix Private Number works without collecting a phone number, email address, contact list, or real name.</span></article>
           <article class="privacy-card"><strong>Durable encrypted state</strong><span>Active-vault state and access data are checkpointed to restricted persistent storage for resilience and backups. Encrypted content remains unreadable to the service.</span></article>
         </div>
         <div class="marketing-note">Optional account sync stores a client-encrypted account bundle. Infrastructure may process operational data needed to deliver the service, while message content and call media remain protected by their respective encryption layers.</div>
-      </section>
-      <section class="marketing-section" id="vault-types">
-        <span class="marketing-eyebrow">CHOOSE YOUR SPACE</span>
-        <h2 class="marketing-title">Short-lived when you need it. Persistent when you choose it.</h2>
-        <div class="vault-comparison">
-          <article class="vault-type"><h3>Temporary vault</h3><p>For a focused conversation that should not remain indefinitely.</p><ul><li>One private counterpart</li><li>Expires after 24 hours of inactivity</li><li>Activity resets the expiry period</li><li>Can be closed sooner</li></ul></article>
-          <article class="vault-type"><h3>Permanent vault</h3><p>For trusted conversations you want to return to over time.</p><ul><li>One private counterpart</li><li>Remains until explicitly closed</li><li>Supports encrypted account sync</li><li>Retains your chosen vault identity</li></ul></article>
-        </div>
       </section>
       <section class="marketing-section" id="safety-controls">
         <span class="marketing-eyebrow">SAFETY CONTROLS</span>
@@ -2430,17 +2403,16 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <span class="marketing-eyebrow">FREQUENTLY ASKED QUESTIONS</span>
         <h2 class="marketing-title" id="homepage-faq-title">The important questions, answered clearly.</h2>
         <div class="faq-list">
-          <details class="faq-item"><summary>What is Vaultlix?</summary><p>Vaultlix is a private communication app for two people. It does not require a phone number, email address, contact upload, or real name. Each conversation takes place inside its own vault.</p></details>
-          <details class="faq-item"><summary>What identifies my account?</summary><p>A system-generated Vaultlix Private Number. It preserves encrypted vault access across devices without collecting your phone number, email address, or real name.</p></details>
+          <details class="faq-item"><summary>What is Vaultlix?</summary><p>Vaultlix is a private one-to-one messenger. It does not require your phone number, email address, contact list, or real name.</p></details>
+          <details class="faq-item"><summary>What identifies my account?</summary><p>A permanent, system-generated Vaultlix Private Number and the name or pseudonym you choose. The number is not a cellular number and cannot receive SMS or ordinary calls.</p></details>
+          <details class="faq-item"><summary>How do I connect with someone?</summary><p>Exchange Vaultlix Private Numbers, enter their exact number, and send a connection request. Once accepted, Vaultlix creates the encrypted conversation automatically.</p></details>
           <details class="faq-item"><summary>Is Vaultlix end-to-end encrypted?</summary><p>Yes. Messages are encrypted with keys held by the participants. Voice and video calls are encrypted between participant devices with DTLS-SRTP. A TURN service may relay encrypted call packets but cannot decrypt the call media.</p></details>
-          <details class="faq-item"><summary>What is a vault identity?</summary><p>Every vault can use a separate name chosen for that conversation. Your identity in one vault does not need to match the identity you use in another.</p></details>
-          <details class="faq-item"><summary>What happens when a temporary vault expires?</summary><p>A temporary vault expires after 24 hours of inactivity. New activity resets that period. When it expires, access to the vault and its conversation data is removed.</p></details>
-          <details class="faq-item"><summary>What is the difference between temporary and permanent vaults?</summary><p>A temporary vault expires after inactivity and is suited to short-lived conversations. A permanent vault remains available until it is deliberately closed.</p></details>
-          <details class="faq-item"><summary>Can more than two people join a vault?</summary><p>No. Vaultlix is designed exclusively for private, one-to-one communication.</p></details>
+          <details class="faq-item"><summary>Can people search for me?</summary><p>No. Vaultlix does not search contacts or suggest people. Someone needs your exact Private Number before they can send a connection request.</p></details>
+          <details class="faq-item"><summary>Can more than two people join a conversation?</summary><p>No. Vaultlix is designed exclusively for private, one-to-one communication.</p></details>
         </div>
       </section>
       <section class="marketing-section marketing-cta">
-        <div><h2>Ready for a private space?</h2><p>Start in the browser or continue in the Vaultlix app.</p></div>
+        <div><h2>Ready for your Private Number?</h2><p>Create your Vaultlix identity, share only what you choose, and connect privately.</p></div>
         <button type="button" onclick="document.getElementById('use-vaultlix').scrollIntoView({behavior:'smooth',block:'center'})">Use Vaultlix</button>
       </section>
     </div>
@@ -11084,7 +11056,7 @@ let landingTaglineInterval = null;
 function startLandingTaglineRotation() {
   stopLandingTaglineRotation();
   const el = document.getElementById('logoTag');
-  if (el) el.textContent = 'Start anonymously without giving Vaultlix a phone number, email address, or identity-based account.';
+  if (el) el.textContent = 'Create a permanent Vaultlix Private Number, share it only with people you choose, and start encrypted one-to-one conversations.';
 }
 function stopLandingTaglineRotation() {
   if (landingTaglineInterval) { clearInterval(landingTaglineInterval); landingTaglineInterval = null; }
