@@ -43,7 +43,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
 
         if let activity = connectionOptions.userActivities.first(where: {
             $0.activityType == NSUserActivityTypeBrowsingWeb
-        }), let url = activity.webpageURL, isVaultlixInvite(url) {
+        }), let url = activity.webpageURL, isVaultlixLink(url) {
             pendingUniversalLink = url
         }
     }
@@ -203,16 +203,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         SceneDelegateProxy.shared.scene(scene, continue: userActivity)
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb,
            let url = userActivity.webpageURL,
-           isVaultlixInvite(url) {
+           isVaultlixLink(url) {
             pendingUniversalLink = url
             flushPendingUniversalLink()
         }
     }
 
-    private func isVaultlixInvite(_ url: URL) -> Bool {
+    private func isVaultlixLink(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https",
               url.host?.lowercased() == "vaultlix.com" else { return false }
         return url.path.range(of: "^/join/[A-Za-z0-9-]+/?$", options: .regularExpression) != nil
+            || url.path.range(of: "^/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?$", options: .regularExpression) != nil
     }
 
     private func flushPendingUniversalLink() {

@@ -180,11 +180,16 @@ public class MainActivity extends BridgeActivity {
                 || !"https".equalsIgnoreCase(uri.getScheme())
                 || !"vaultlix.com".equalsIgnoreCase(uri.getHost())
                 || uri.getPath() == null
-                || !(uri.getPath().equals("/") || uri.getPath().startsWith("/join/"))) {
+                || !isAllowedVaultlixPath(uri.getPath())) {
             return;
         }
 
         getBridge().getWebView().loadUrl(uri.toString());
+    }
+
+    private boolean isAllowedVaultlixPath(String path) {
+        if (path == null || path.equals("/") || path.startsWith("/join/")) return true;
+        return path.matches("/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?");
     }
 
     private final class AndroidCallBridge {

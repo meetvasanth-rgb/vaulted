@@ -39,7 +39,7 @@
                 <data
                     android:scheme="https"
                     android:host="vaultlix.com"
-                    android:pathPrefix="/join/" />
+                    android:pathPrefix="/" />
             </intent-filter>
 
         </activity>

@@ -12,5 +12,5 @@ test('account badge is refreshed during normal page startup', () => {
 test('account status updates both landing account labels', () => {
   assert.match(clientHtml, /landing-account-label/);
   assert.match(clientHtml, /landing-footer-account-label/);
-  assert.match(clientHtml, /footerAccountLabel\.textContent = state \? state\.username : 'Sign in'/);
+  assert.match(clientHtml, /footerAccountLabel\.textContent = state \? state\.displayName : 'Sign in'/);
 });

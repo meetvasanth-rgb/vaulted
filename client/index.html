@@ -2469,8 +2469,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Back
     </button>
     <div class="setup-logo"><div class="rule"></div><span>Vaultlix</span></div>
-    <div class="setup-title" id="setup-title">Choose a codename</div>
-    <div class="field">
+    <div class="setup-title" id="setup-title">Create a vault</div>
+    <div class="field" id="identity-name-field" style="display:none">
       <label>What should we call you?</label>
       <div class="name-field-wrap">
         <input type="text" id="name-input" maxlength="24" autocomplete="off" onfocus="this.select()"/>
@@ -3236,28 +3236,29 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
 <div class="account-overlay" id="account-overlay" onclick="if(event.target===this)closeAccountPanel()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
-    <div class="account-head"><div><div class="account-kicker">Optional identity</div><div class="account-title" id="account-title">Anonymous Vaultlix ID</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix address</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
     <div id="account-guest-view">
-      <div class="account-copy">Keep temporary and permanent vaults after reinstalling, and open them on another device. No email, phone number or real name is required.</div>
+      <div class="account-copy">Choose the name people see and a unique address they can use to find you. No email address or phone number is required.</div>
       <div class="account-tabs">
         <button class="account-tab active" data-account-tab="create" onclick="showAccountTab('create')">Create</button>
         <button class="account-tab" data-account-tab="login" onclick="showAccountTab('login')">Sign in</button>
         <button class="account-tab" data-account-tab="recover" onclick="showAccountTab('recover')">Recover</button>
       </div>
       <form class="account-form active" id="account-create-form" onsubmit="createAnonymousAccount(event)">
-        <label class="account-field"><span>Anonymous username</span><input id="account-create-username" autocomplete="username" minlength="4" maxlength="32" required placeholder="violet-river-4821"/></label>
+        <label class="account-field"><span>Your name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required placeholder="Vasanth Kumar"/></label>
+        <label class="account-field"><span>Unique username</span><input id="account-create-username" autocomplete="username" minlength="4" maxlength="32" required placeholder="xtmyx"/></label>
         <label class="account-field"><span>Password</span><input id="account-create-password" type="password" autocomplete="new-password" minlength="12" required placeholder="At least 12 characters"/></label>
         <label class="account-field"><span>Confirm password</span><input id="account-create-confirm" type="password" autocomplete="new-password" minlength="12" required/></label>
-        <button class="account-primary" type="submit">Create protected ID</button>
+        <button class="account-primary" type="submit">Create my Vaultlix address</button>
         <div class="account-note">Your current vault credentials are encrypted on this device before upload. Your password cannot be recovered by Vaultlix.</div>
       </form>
       <form class="account-form" id="account-login-form" onsubmit="loginAnonymousAccount(event)">
-        <label class="account-field"><span>Anonymous username</span><input id="account-login-username" autocomplete="username" required/></label>
+        <label class="account-field"><span>Username</span><input id="account-login-username" autocomplete="username" required/></label>
         <label class="account-field"><span>Password</span><input id="account-login-password" type="password" autocomplete="current-password" required/></label>
         <button class="account-primary" type="submit">Restore my vaults</button>
       </form>
       <form class="account-form" id="account-recover-form" onsubmit="recoverAnonymousAccount(event)">
-        <label class="account-field"><span>Anonymous username</span><input id="account-recover-username" autocomplete="username" required/></label>
+        <label class="account-field"><span>Username</span><input id="account-recover-username" autocomplete="username" required/></label>
         <label class="account-field"><span>Permanent recovery code</span><input id="account-recovery-code" autocomplete="off" required placeholder="VX-…"/></label>
         <label class="account-field"><span>New password</span><input id="account-recover-password" type="password" autocomplete="new-password" minlength="12" required/></label>
         <button class="account-primary" type="submit">Recover and change password</button>
@@ -3267,6 +3268,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="account-signed" id="account-signed-view">
       <div class="account-copy">Your active vault credentials are protected by end-to-end encrypted account sync.</div>
       <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub" id="account-sync-status">Encrypted sync active</div></div>
+      <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
       <button class="account-primary" onclick="openAccountVaults()">Open my vaults</button>
       <button class="account-secondary" onclick="syncAnonymousAccount(true)">Sync now</button>
       <button class="account-secondary" onclick="signOutAnonymousAccount()">Sign out on this device</button>
@@ -3277,6 +3279,15 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <button class="account-primary" onclick="copyRecoveryCode()">Copy recovery code</button>
       <button class="account-secondary" onclick="finishAccountCreation()">I saved it safely</button>
     </div>
+  </div>
+</div>
+
+<div class="account-overlay" id="public-profile-overlay" onclick="if(event.target===this)closePublicProfile()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
+    <div class="account-head"><div><div class="account-kicker">Vaultlix identity</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
+    <div class="account-copy" id="public-profile-username">—</div>
+    <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Request a private vault</button>
+    <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
   </div>
 </div>
 
@@ -3483,14 +3494,13 @@ async function sha256Bytes(value) {
   const input = typeof value === 'string' ? new TextEncoder().encode(value) : value;
   return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
 }
-async function accountIdFor(username) { return Array.from(await sha256Bytes('vaultlix-id-v1\0' + username)).map(b => b.toString(16).padStart(2, '0')).join(''); }
 async function derivePasswordMaterial(username, password) {
-  const accountId = await accountIdFor(username);
-  const salt = (await sha256Bytes('vaultlix-password-v1\0' + accountId)).slice(0, 16);
+  const salt = (await sha256Bytes('vaultlix-password-v2\0' + username)).slice(0, 16);
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations:ACCOUNT_PBKDF2_ITERATIONS }, base, 512));
-  return { accountId, authSecret: bytesToBase64UrlCompact(bits.slice(0, 32)), wrapKey: bits.slice(32, 64) };
+  return { authSecret: bytesToBase64UrlCompact(bits.slice(0, 32)), wrapKey: bits.slice(32, 64) };
 }
+function randomAccountId() { return Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join(''); }
 async function recoveryMaterial(code) {
   const clean = String(code || '').trim().replace(/^VX-/i, '').replace(/-/g, '');
   const raw = base64UrlToBytes(clean);
@@ -3514,7 +3524,14 @@ async function aesDecryptJson(keyBytes, envelope) {
   const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:base64UrlToBytes(wrapper.iv) }, key, base64UrlToBytes(wrapper.ct));
   return JSON.parse(new TextDecoder().decode(plain));
 }
-function loadAccountState() { try { return JSON.parse(localStorage.getItem(ACCOUNT_STATE_KEY) || 'null'); } catch(e) { return null; } }
+function loadAccountState() {
+  try {
+    const state = JSON.parse(localStorage.getItem(ACCOUNT_STATE_KEY) || 'null');
+    if (state && state.v === 3 && state.displayName && state.username && state.accountId) return state;
+    if (state) localStorage.removeItem(ACCOUNT_STATE_KEY);
+  } catch(e) {}
+  return null;
+}
 function saveAccountState(state) { localStorage.setItem(ACCOUNT_STATE_KEY, JSON.stringify(state)); updateAccountSettingsStatus(); }
 function claimLocalVaultsForAccount(accountId) {
   if (!accountId) return;
@@ -7013,9 +7030,9 @@ function updateAccountSettingsStatus() {
   const landingLabel = document.getElementById('landing-account-label');
   const footerAccountLabel = document.getElementById('landing-footer-account-label');
   if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
-  if (sub) sub.textContent = state ? `${state.username} · encrypted vault sync` : 'Optional encrypted backup for all active vaults across your devices';
-  if (landingLabel) landingLabel.textContent = state ? state.username : 'Sign in';
-  if (footerAccountLabel) footerAccountLabel.textContent = state ? state.username : 'Sign in';
+  if (sub) sub.textContent = state ? `@${state.username} · encrypted vault sync` : 'Create your private Vaultlix identity';
+  if (landingLabel) landingLabel.textContent = state ? state.displayName : 'Sign in';
+  if (footerAccountLabel) footerAccountLabel.textContent = state ? state.displayName : 'Sign in';
   if (landingButton) {
     landingButton.classList.toggle('signed-in', !!state);
     landingButton.setAttribute('aria-label', state ? `Open account for ${state.username}` : 'Sign in to Vaultlix');
@@ -7028,10 +7045,41 @@ function openAccountPanel() {
   document.getElementById('account-guest-view').style.display = state ? 'none' : '';
   document.getElementById('account-signed-view').classList.toggle('open', !!state);
   document.getElementById('account-recovery-result').style.display = 'none';
-  if (state) document.getElementById('account-signed-name').textContent = state.username;
+  if (state) document.getElementById('account-signed-name').textContent = `${state.displayName} · @${state.username}`;
   document.getElementById('account-overlay').classList.add('open');
+  if (state) refreshConnectionRequests();
 }
 function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
+let pendingConnectionAcceptance = null;
+function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function refreshConnectionRequests() {
+  const state = loadAccountState(); const list = document.getElementById('connection-request-list');
+  if (!state || !list) return;
+  const result = await api('/api/connections/list', { accountId:state.accountId, sessionToken:state.sessionToken });
+  if (result.error) { list.textContent = result.error; return; }
+  const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending');
+  const accepted = result.requests.find(r => r.direction === 'outgoing' && r.status === 'accepted' && r.inviteUrl && !localStorage.getItem(`vaultlix:connection:${r.id}`));
+  if (accepted) {
+    localStorage.setItem(`vaultlix:connection:${accepted.id}`, 'opened');
+    closeAccountPanel();
+    const url = new URL(accepted.inviteUrl);
+    pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
+    openJoinFromLink(url.pathname.split('/').filter(Boolean).pop());
+    return;
+  }
+  if (!incoming.length) { list.textContent = 'No new private-vault requests.'; return; }
+  list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">@${escapeHtml(r.senderUsername)} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept and create vault</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+}
+function acceptConnectionRequest(requestId) {
+  pendingConnectionAcceptance = requestId;
+  closeAccountPanel();
+  startCreate();
+}
+async function rejectConnectionRequest(requestId) {
+  const state=loadAccountState(); if(!state)return;
+  const result=await api('/api/connections/respond',{accountId:state.accountId,sessionToken:state.sessionToken,requestId,action:'rejected'});
+  if(result.error)toast(result.error); else { toast('Request declined'); refreshConnectionRequests(); }
+}
 function showAccountTab(name) {
   document.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
   document.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
@@ -7049,31 +7097,34 @@ function formatRecoveryCode(rawBytes) {
 async function createAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
   const username = normalizeAccountUsername(document.getElementById('account-create-username').value);
+  const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   const password = document.getElementById('account-create-password').value;
+  if (displayName.length < 2 || displayName.length > 40) { toast('Enter a name or pseudonym between 2 and 40 characters'); return; }
   if (!username) { toast('Use 4–32 lowercase letters, numbers, dots, dashes or underscores'); return; }
   if (password.length < 12) { toast('Use a password of at least 12 characters'); return; }
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
   setAccountBusy(form, true);
   try {
     const passwordMaterial = await derivePasswordMaterial(username, password);
+    const accountId = randomAccountId();
     const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
     const recoveryCode = formatRecoveryCode(recoveryBytes);
     const recovery = await recoveryMaterial(recoveryCode);
     const masterKey = crypto.getRandomValues(new Uint8Array(32));
     const payload = {
-      accountId: passwordMaterial.accountId,
+      accountId, username, displayName,
       authSecret: passwordMaterial.authSecret,
       recoverySecret: recovery.authSecret,
       passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
       recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
-      bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(passwordMaterial.accountId, true)),
+      bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true)),
     };
     const result = await api('/api/account/register', payload);
     if (result.error) { toast(result.error); return; }
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
-    claimLocalVaultsForAccount(passwordMaterial.accountId);
-    saveAccountState({ v:2, username, accountId:passwordMaterial.accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
+    claimLocalVaultsForAccount(accountId);
+    saveAccountState({ v:3, username, displayName, accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
     document.getElementById('account-recovery-result').style.display = '';
@@ -7088,13 +7139,13 @@ async function loginAnonymousAccount(event) {
   setAccountBusy(form, true);
   try {
     const material = await derivePasswordMaterial(username, password);
-    const result = await api('/api/account/login', { accountId:material.accountId, authSecret:material.authSecret });
+    const result = await api('/api/account/login', { username, authSecret:material.authSecret });
     if (result.error) { toast(result.error); return; }
     const wrapped = await aesDecryptJson(material.wrapKey, result.passwordWrap);
     const masterKey = base64UrlToBytes(wrapped.masterKey);
     const bundle = await aesDecryptJson(masterKey, result.bundle);
-    importAccountBundle(bundle, material.accountId);
-    saveAccountState({ v:2, username, accountId:material.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
+    importAccountBundle(bundle, result.accountId);
+    saveAccountState({ v:3, username, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
     toast('Vaults restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Vaultlix ID or password is incorrect'); }
   finally { setAccountBusy(form, false); }
@@ -7108,17 +7159,16 @@ async function recoverAnonymousAccount(event) {
   setAccountBusy(form, true);
   try {
     const recovery = await recoveryMaterial(code);
-    const accountId = await accountIdFor(username);
-    const existing = await api('/api/account/recovery-bundle', { accountId, recoverySecret:recovery.authSecret });
+    const existing = await api('/api/account/recovery-bundle', { username, recoverySecret:recovery.authSecret });
     if (existing.error) { toast(existing.error); return; }
     const recovered = await aesDecryptJson(recovery.wrapKey, existing.recoveryWrap);
     const masterKey = base64UrlToBytes(recovered.masterKey);
     const material = await derivePasswordMaterial(username, password);
     const passwordWrap = await aesEncryptJson(material.wrapKey, { masterKey:recovered.masterKey });
-    const result = await api('/api/account/recover', { accountId, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
+    const result = await api('/api/account/recover', { username, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
     if (result.error) { toast(result.error); return; }
-    importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), accountId);
-    saveAccountState({ v:2, username, accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
+    importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
+    saveAccountState({ v:3, username, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
     toast('Password changed and vaults restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
   finally { setAccountBusy(form, false); }
@@ -9821,22 +9871,26 @@ async function checkTyping(room) {
 
 // ── LANDING ACTIONS ──────────────────────────────────────────────────────
 function startCreate() {
+  const identity = loadAccountState();
+  if (!identity) { openAccountPanel(); toast('Create or sign in to your Vaultlix identity first'); return; }
   mode = 'create';
   showScreen('s-setup');
-  document.getElementById('setup-title').textContent = 'Choose a codename';
+  document.getElementById('setup-title').textContent = `Create a vault as ${identity.displayName}`;
   document.getElementById('join-field').style.display = 'none';
   document.getElementById('named-field').style.display = 'none';
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Create vault';
-  fillSuggestedName();
+  document.getElementById('name-input').value = identity.displayName;
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
+  setTimeout(() => document.getElementById('setup-btn').focus(), 100);
 }
 
 function startNamed() {
+  const identity = loadAccountState();
+  if (!identity) { openAccountPanel(); toast('Create or sign in to your Vaultlix identity first'); return; }
   mode = 'named';
   showScreen('s-setup');
   document.getElementById('setup-title').textContent = 'Create a permanent vault';
@@ -9845,15 +9899,17 @@ function startNamed() {
   document.getElementById('timer-field').style.display = 'block';
   document.getElementById('password-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Create permanent vault';
-  fillSuggestedName();
+  document.getElementById('name-input').value = identity.displayName;
   document.getElementById('named-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
+  setTimeout(() => document.getElementById('named-input').focus(), 100);
 }
 
 function startJoin() {
+  const identity = loadAccountState();
+  if (!identity) { openAccountPanel(); toast('Create or sign in to your Vaultlix identity first'); return; }
   mode = 'join';
   showScreen('s-setup');
   document.getElementById('setup-title').textContent = 'Join a vault';
@@ -9862,12 +9918,12 @@ function startJoin() {
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'block';
   document.getElementById('setup-btn').textContent = 'Join vault';
-  fillSuggestedName();
+  document.getElementById('name-input').value = identity.displayName;
   document.getElementById('code-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
   staggerSetupFields();
-  setTimeout(() => document.getElementById('name-input').focus(), 100);
+  setTimeout(() => document.getElementById('code-input').focus(), 100);
 }
 
 // ── SHARED INVITE LINKS (vaultlix.com/join/<code>) ──────────────────────
@@ -9880,6 +9936,38 @@ function startJoin() {
 function parseJoinLinkCode() {
   const m = location.pathname.match(/^\/join\/([a-z0-9-]+)\/?$/i);
   return m ? decodeURIComponent(m[1]).toLowerCase() : null;
+}
+
+const PUBLIC_PROFILE_RESERVED = new Set(['','join','privacy','terms','faq','media','api','admin','account','settings','support','help','about','download','downloads','app','apps','login','signin','signup','register']);
+function parsePublicUsername() {
+  const match = location.pathname.match(/^\/([a-z0-9][a-z0-9._-]{2,30}[a-z0-9])\/?$/i);
+  const username = match ? decodeURIComponent(match[1]).toLowerCase() : '';
+  return username && !PUBLIC_PROFILE_RESERVED.has(username) ? username : null;
+}
+let activePublicProfile = null;
+async function openPublicProfile(username) {
+  try {
+    const response = await fetch(`/api/profile/${encodeURIComponent(username)}`, { headers:{ Accept:'application/json' } });
+    const result = await response.json();
+    if (!response.ok || !result.profile) { toast(result.error || 'Vaultlix username not found'); history.replaceState(null, '', '/'); return; }
+    activePublicProfile = result.profile;
+    document.getElementById('public-profile-name').textContent = result.profile.displayName;
+    document.getElementById('public-profile-username').textContent = `@${result.profile.username} · vaultlix.com/${result.profile.username}`;
+    const signedIn = loadAccountState();
+    const button = document.getElementById('public-profile-request');
+    button.textContent = signedIn ? 'Request a private vault' : 'Sign in to connect';
+    document.getElementById('public-profile-overlay').classList.add('open');
+  } catch (e) { toast('Could not open this Vaultlix identity'); }
+}
+function closePublicProfile() { document.getElementById('public-profile-overlay').classList.remove('open'); history.replaceState(null, '', '/'); }
+async function requestPrivateVault() {
+  const state = loadAccountState();
+  if (!state) { closePublicProfile(); openAccountPanel(); return; }
+  if (!activePublicProfile) return;
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, username:activePublicProfile.username });
+  if (result.error) { toast(result.error); return; }
+  toast(`Request sent to ${activePublicProfile.displayName}`);
+  closePublicProfile();
 }
 
 // VLX-01: reads the invite-link commitment out of the URL fragment —
@@ -9920,9 +10008,13 @@ window.vaultlixOpenInviteURL = function(rawURL) {
     const url = new URL(rawURL);
     if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return;
     const match = url.pathname.match(/^\/join\/([a-z0-9-]+)\/?$/i);
-    if (!match) return;
-    pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
-    openJoinFromLink(decodeURIComponent(match[1]).toLowerCase());
+    if (match) {
+      pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
+      openJoinFromLink(decodeURIComponent(match[1]).toLowerCase());
+      return;
+    }
+    const profile = url.pathname.match(/^\/([a-z0-9][a-z0-9._-]{2,30}[a-z0-9])\/?$/i);
+    if (profile && !PUBLIC_PROFILE_RESERVED.has(profile[1].toLowerCase())) openPublicProfile(profile[1].toLowerCase());
   } catch (e) {}
 };
 
@@ -9993,8 +10085,9 @@ function startWaitingForPeer(room) {
 // ── SETUP: create / join a room, ADDING it alongside any already open ──
 async function handleSetup() {
   unlockAudio();
-  const name = document.getElementById('name-input').value.trim();
-  if (!name) { showErr('Please enter a codename'); return; }
+  const identity = loadAccountState();
+  if (!identity) { openAccountPanel(); return; }
+  const name = identity.displayName;
   document.getElementById('err-msg').style.display = 'none';
   document.getElementById('setup-btn').textContent = 'Connecting…';
   document.getElementById('setup-btn').disabled = true;
@@ -10036,6 +10129,12 @@ async function handleSetup() {
       room.codeLabelLen = result.labelLength || null;
       addRoomToState(room);
       persistRoom(room);
+      if (pendingConnectionAcceptance) {
+        const requestId = pendingConnectionAcceptance; pendingConnectionAcceptance = null;
+        const state = loadAccountState();
+        const accepted = await api('/api/connections/respond', { accountId:state.accountId, sessionToken:state.sessionToken, requestId, action:'accepted', inviteUrl:await buildInviteLink(room.code) });
+        if (accepted.error) toast(accepted.error); else toast('Private vault created — the requester can now join');
+      }
       // Register this creator-side room while it is still on the waiting
       // screen. Previously push registration only began in
       // startRoomPolling(), which runs after the peer has already joined.
@@ -10435,6 +10534,7 @@ function goBack() {
   // "Back" from the setup screen — never tears down rooms that are already
   // open; just returns to wherever we came from (an active chat if this was
   // opened via the "+" tab, otherwise the landing page).
+  pendingConnectionAcceptance = null;
   if (rooms.size > 0) {
     showScreen('s-vault-list');
   } else {
@@ -10882,6 +10982,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateAccountSettingsStatus();
   refreshInstallUI();
   checkAndroidInstalledStatus(); // async — re-runs refreshInstallUI once it resolves
+  if (loadAccountState()) setInterval(refreshConnectionRequests, 15000);
 });
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
@@ -11011,6 +11112,7 @@ window.addEventListener('load', async () => {
   // Captured up front, before anything else touches the URL — read once
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
+  const publicUsername = parsePublicUsername();
   // Android's native incoming-call surface has already collected the user's
   // Answer decision. Preserve it across WebView startup/room restoration and
   // consume it exactly once when the authenticated encrypted call-invite
@@ -11252,6 +11354,7 @@ window.addEventListener('load', async () => {
   // commitment was already dropped from state and storage inside the loop
   // above; this is purely the explanation.
   if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
+  if (publicUsername) openPublicProfile(publicUsername);
 });
 
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────

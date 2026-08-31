@@ -243,7 +243,8 @@ public class LockedCallActivity extends BridgeActivity {
                 || !"https".equalsIgnoreCase(uri.getScheme())
                 || !"vaultlix.com".equalsIgnoreCase(uri.getHost())) return false;
         String path = uri.getPath();
-        return path != null && (path.equals("/") || path.startsWith("/join/"));
+        return path != null && (path.equals("/") || path.startsWith("/join/")
+                || path.matches("/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?"));
     }
 
     @Override
