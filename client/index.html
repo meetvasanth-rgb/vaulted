@@ -2395,7 +2395,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         <div class="safety-strip">
           <article class="safety-item"><strong>Independent App Lock</strong><span>Protect Vaultlix with a passcode separate from the device passcode.</span></article>
           <article class="safety-item"><strong>Quick Lock</strong><span>Hide the active conversation immediately when privacy matters.</span></article>
-          <article class="safety-item"><strong>Emergency Exit</strong><span>Erase local vault access and keys through a deliberate, confirmed action.</span></article>
+          <article class="safety-item"><strong>Emergency Exit</strong><span>Remove conversation access, erase this device, or delete the account through a deliberate, confirmed action.</span></article>
           <article class="safety-item"><strong>Block and report</strong><span>Stop contact, report abuse, and discover account deletion from Settings.</span></article>
         </div>
       </section>
@@ -3013,25 +3013,13 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </div>
       <div class="settings-row-text">
         <div class="settings-row-title">Vaultlix Private Number</div>
-        <div class="settings-row-sub" id="account-settings-sub">Optional encrypted backup for all active vaults across your devices</div>
+        <div class="settings-row-sub" id="account-settings-sub">Encrypted backup for your conversations and identity across devices</div>
       </div>
       <div class="settings-status settings-status-action" id="account-settings-status">Set up</div>
     </div>
 
     <div class="settings-divider"></div>
 
-    <div class="settings-row" onclick="activateFriendsAccess()" style="cursor:pointer">
-      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
-        <svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1.5 1.5-2 2L17 10l-3 3"/></svg>
-      </div>
-      <div class="settings-row-text">
-        <div class="settings-row-title">Friends access</div>
-        <div class="settings-row-sub">Enter a private application key to open up to 15 vaults on this device</div>
-      </div>
-      <div class="settings-status settings-status-action" id="friends-access-status">Unlock</div>
-    </div>
-
-    <div class="settings-divider"></div>
     </div>
 
     <div id="settings-participant-section">
@@ -3050,7 +3038,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div id="settings-general-safety-section">
     <div class="settings-row" id="delete-account-row" onclick="openDeleteAccount()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945;"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></div>
-      <div class="settings-row-text"><div class="settings-row-title" style="color:#9B2945">Delete Account</div><div class="settings-row-sub">Permanently delete your account, vaults, encrypted bundle and every signed-in session</div></div>
+      <div class="settings-row-text"><div class="settings-row-title" style="color:#9B2945">Delete Account</div><div class="settings-row-sub">Permanently delete your account, conversations, encrypted bundle, and every signed-in session</div></div>
     </div>
     <div class="settings-divider"></div>
     <button class="emergency-hold" id="emergency-hold" type="button" aria-label="Press and hold to open Emergency Exit"><span>Press and hold for Emergency Exit</span></button>
@@ -3193,14 +3181,14 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 <div class="emergency-overlay" id="emergency-overlay" role="dialog" aria-modal="true" aria-labelledby="emergency-title">
   <div class="emergency-sheet">
     <h2 class="emergency-title" id="emergency-title">Emergency Exit</h2>
-    <div class="emergency-warning"><strong>Recovery is impossible.</strong> Deleting local encryption keys makes any remaining ciphertext permanently unreadable. Account-wide deletion also signs out every device and cannot be reversed.</div>
-    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="current" checked onchange="renderEmergencySelection()"><span>Exit this vault<small>Leave this device's active vault and remove its local keys.</small></span></label>
-    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="selected" onchange="renderEmergencySelection()"><span>Exit selected vaults<small>Choose which vaults to leave and erase from this device.</small></span></label>
+    <div class="emergency-warning"><strong>Choose carefully.</strong> Removing a conversation deletes its local encryption keys, making retained ciphertext unreadable. Device erasure and account deletion cannot be undone.</div>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="current" checked onchange="renderEmergencySelection()"><span>Remove this conversation<small>Leave the current conversation and delete its access and keys from this device.</small></span></label>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="selected" onchange="renderEmergencySelection()"><span>Remove selected conversations<small>Choose conversations to leave and erase from this device.</small></span></label>
     <div class="emergency-vaults" id="emergency-vaults"></div>
-    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="device" onchange="renderEmergencySelection()"><span>Erase Vaultlix from this device<small>Remove every local vault, key, cache, token binding, and notification.</small></span></label>
-    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="account" onchange="renderEmergencySelection()"><span>Close my Vaultlix account everywhere<small>Erase all vaults, the encrypted account bundle, account records, and every signed-in session.</small></span></label>
-    <label class="emergency-confirm"><input type="checkbox" id="emergency-ack" onchange="updateEmergencyConfirm()"><span id="emergency-ack-copy">I understand this removes access and deleted encryption keys cannot be recovered.</span></label>
-    <div class="emergency-actions"><button type="button" onclick="closeEmergencyExit()">Cancel</button><button class="danger" id="emergency-confirm" type="button" onclick="performEmergencyExit()" disabled>Exit permanently</button></div>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="device" onchange="renderEmergencySelection()"><span>Erase Vaultlix from this device<small>Remove all local conversations, keys, cached data, notification tokens, and sign-in access.</small></span></label>
+    <label class="emergency-choice"><input type="radio" name="emergency-scope" value="account" onchange="renderEmergencySelection()"><span>Delete my Vaultlix account everywhere<small>Delete every conversation, encrypted account bundle, account record, and signed-in session.</small></span></label>
+    <label class="emergency-confirm"><input type="checkbox" id="emergency-ack" onchange="updateEmergencyConfirm()"><span id="emergency-ack-copy">I understand removed access and encryption keys cannot be recovered.</span></label>
+    <div class="emergency-actions"><button type="button" onclick="closeEmergencyExit()">Cancel</button><button class="danger" id="emergency-confirm" type="button" onclick="performEmergencyExit()" disabled>Continue</button></div>
   </div>
 </div>
 
@@ -3439,9 +3427,6 @@ let swRegistration = null;
 const rooms = new Map();           // code -> Room
 let activeRoomCode = null;
 
-const STANDARD_MAX_ROOMS = 5;
-const FRIENDS_MAX_ROOMS = 15;
-const FRIENDS_ACCESS_TOKEN_KEY = 'vaultlix_friends_access_token';
 const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
 const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 const ACCOUNT_STATE_KEY = 'vaultlix_anonymous_account_v1';
@@ -3455,26 +3440,6 @@ let accountSyncTimer = null;
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
-
-function friendsAccessToken() {
-  try {
-    const token = localStorage.getItem(FRIENDS_ACCESS_TOKEN_KEY) || '';
-    const payloadPart = token.split('.')[0];
-    if (!payloadPart) return '';
-    const padded = payloadPart.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - payloadPart.length % 4) % 4);
-    const payload = JSON.parse(atob(padded));
-    if (payload.v !== 1 || payload.tier !== 'friends' || !payload.exp || payload.exp <= Date.now()) {
-      localStorage.removeItem(FRIENDS_ACCESS_TOKEN_KEY);
-      return '';
-    }
-    return token;
-  } catch (e) {
-    try { localStorage.removeItem(FRIENDS_ACCESS_TOKEN_KEY); } catch (_) {}
-    return '';
-  }
-}
-
-function maxRoomsAllowed() { return friendsAccessToken() ? FRIENDS_MAX_ROOMS : STANDARD_MAX_ROOMS; }
 
 function normalizePrivateNumber(value) {
   const privateNumber = String(value || '').replace(/\D/g, '');
@@ -3571,7 +3536,7 @@ function importAccountBundle(bundle, accountId) {
     const selected = !current || (ownedSession.savedAt || 0) > (current.savedAt || 0) ? ownedSession : current;
     merged.set(session.code, { ...selected, ownerAccountId:accountId });
   }
-  const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0)).slice(-maxRoomsAllowed());
+  const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
   saveRoomsIndex(sessions.map(s => s.code));
   if (bundle.activeRoomCode && merged.has(bundle.activeRoomCode)) saveActiveRoomCode(bundle.activeRoomCode);
@@ -3935,14 +3900,14 @@ function removeRoomFromState(code) {
   idbRemoveSession(code).catch(() => {});
 }
 
-// ── PER-ROOM localStorage PERSISTENCE (5 standard / 15 Friends access) ──
+// ── PER-CONVERSATION localStorage PERSISTENCE ──
 function roomStorageKey(code) { return 'vaulted_room_' + code; }
 
 function loadRoomsIndex() {
   try { return JSON.parse(localStorage.getItem(ROOMS_INDEX_KEY) || '[]'); } catch(e) { return []; }
 }
 function saveRoomsIndex(codes) {
-  try { localStorage.setItem(ROOMS_INDEX_KEY, JSON.stringify(codes.slice(0, maxRoomsAllowed()))); } catch(e) {}
+  try { localStorage.setItem(ROOMS_INDEX_KEY, JSON.stringify(codes)); } catch(e) {}
 }
 function saveActiveRoomCode(code) {
   try { localStorage.setItem(ACTIVE_ROOM_KEY, code || ''); } catch(e) {}
@@ -6880,7 +6845,7 @@ async function regenerateAnonLink() {
     const newRoom = makeRoom({ code: null, token: null, myName, deleteTimerSeconds: timerSeconds, persistent: true });
     newRoom.nickname = nickname;
     const pubKey = await getOrGenerateKeyPair(newRoom);
-    const result = await api('/api/create', { name: myName, pubKey, deleteTimer: timerSeconds, persistent: true, accessToken: friendsAccessToken() || undefined });
+    const result = await api('/api/create', { name: myName, pubKey, deleteTimer: timerSeconds, persistent: true });
     if (result.error) { switchToNextRoomOrLanding(); return; }
 
     newRoom.code = result.code;
@@ -6922,40 +6887,7 @@ function loadSettingsState() {
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
   } catch (e) {}
   updatePushStatus();
-  updateFriendsAccessStatus();
   updateAccountSettingsStatus();
-}
-
-function updateFriendsAccessStatus() {
-  const el = document.getElementById('friends-access-status');
-  if (!el) return;
-  const unlocked = !!friendsAccessToken();
-  el.textContent = unlocked ? '15 vaults' : 'Unlock';
-  el.className = unlocked
-    ? 'settings-status settings-status-on'
-    : 'settings-status settings-status-action';
-}
-
-async function activateFriendsAccess() {
-  if (friendsAccessToken()) {
-    toast('Friends access is active — up to 15 vaults');
-    return;
-  }
-  const key = prompt('Enter your Vaultlix Friends application key');
-  if (!key) return;
-  try {
-    const result = await api('/api/friends/unlock', { key });
-    if (result.error || !result.token) {
-      toast(result.error || 'Access key not recognised');
-      return;
-    }
-    localStorage.setItem(FRIENDS_ACCESS_TOKEN_KEY, result.token);
-    updateFriendsAccessStatus();
-    renderRoomTabs();
-    toast('Friends access unlocked — up to 15 vaults');
-  } catch (e) {
-    toast('Could not verify the access key — try again');
-  }
 }
 
 function updateAccountSettingsStatus() {
@@ -7645,9 +7577,10 @@ function openEmergencyExit() {
   if (!current) document.querySelector('input[name="emergency-scope"][value="device"]')?.click();
   const list = document.getElementById('emergency-vaults');
   if (list) list.innerHTML = [...rooms.values()].map(room => {
-    const label = escHtml(room.localLabel || room.myName || room.code);
-    return `<label class="emergency-choice"><input type="checkbox" value="${escHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${escHtml(room.code)}</small></span></label>`;
-  }).join('') || '<div class="settings-row-sub">No vaults are stored on this device.</div>';
+    const label = escHtml(room.localLabel || room.peerName || 'Private conversation');
+    const detail = room.peerName && room.localLabel ? escHtml(room.peerName) : 'Encrypted one-to-one conversation';
+    return `<label class="emergency-choice"><input type="checkbox" value="${escHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${detail}</small></span></label>`;
+  }).join('') || '<div class="settings-row-sub">No conversations are stored on this device.</div>';
   document.getElementById('emergency-ack').checked = false;
   renderEmergencySelection();
   document.getElementById('emergency-overlay')?.classList.add('open');
@@ -7668,8 +7601,10 @@ function renderEmergencySelection() {
   const accountRadio = document.querySelector('input[name="emergency-scope"][value="account"]');
   if (accountRadio) accountRadio.disabled = !account;
   document.getElementById('emergency-ack-copy').textContent = emergencyScope() === 'account'
-    ? 'I understand my account, every session, encrypted bundles, vaults, messages, and local encryption keys will be permanently deleted.'
-    : 'I understand this removes access and deleted encryption keys cannot be recovered.';
+    ? 'I understand my account, every signed-in session, encrypted bundle, conversation, message, and local encryption key will be permanently deleted.'
+    : emergencyScope() === 'device'
+      ? 'I understand all Vaultlix data and sign-in access will be erased from this device.'
+      : 'I understand removed conversation access and encryption keys cannot be recovered.';
   updateEmergencyConfirm();
 }
 
@@ -7718,7 +7653,7 @@ async function performEmergencyExit() {
       return;
     }
   }
-  if (!targets.length && (scope === 'current' || scope === 'selected')) { toast('Select at least one vault'); return; }
+  if (!targets.length && (scope === 'current' || scope === 'selected')) { toast('Select at least one conversation'); return; }
 
   emergencyExitBusy = true; updateEmergencyConfirm();
   const button = document.getElementById('emergency-confirm');
@@ -7752,12 +7687,12 @@ async function performEmergencyExit() {
     }
     document.getElementById('emergency-overlay')?.classList.remove('open');
     switchToNextRoomOrLanding();
-    toast(targets.length === 1 ? 'Vault access erased' : 'Selected vault access erased');
+    toast(targets.length === 1 ? 'Conversation access erased' : 'Selected conversations erased');
   } catch (error) {
     toast(error?.message || 'Emergency Exit could not finish. Try again.');
   } finally {
     emergencyExitBusy = false;
-    if (button) button.textContent = 'Exit permanently';
+    if (button) button.textContent = 'Continue';
     updateEmergencyConfirm();
   }
 }
@@ -8244,7 +8179,7 @@ function renderRoomTabs() {
           ${room.unread > 0 && !active ? `<span class="rt-badge">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
         </div>`;
       }
-      html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add vault"${rooms.size >= maxRoomsAllowed() ? ' disabled' : ''}>+</button>`;
+      html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add conversation">+</button>`;
       html += `<button type="button" class="room-tab-add" id="vault-list-btn" title="All vaults"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>`;
       wrap.innerHTML = html;
       wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
@@ -8456,8 +8391,6 @@ function renderChatBody(room) {
 }
 
 function addRoomFlow() {
-  const limit = maxRoomsAllowed();
-  if (rooms.size >= limit) { toast(`Maximum ${limit} vaults open`); return; }
   showScreen('s-landing');
   triggerLandingAnim();
 }
@@ -10111,14 +10044,6 @@ async function handleSetup({ silent = false } = {}) {
   document.getElementById('setup-btn').textContent = 'Connecting…';
   document.getElementById('setup-btn').disabled = true;
 
-  const roomLimit = maxRoomsAllowed();
-  if (rooms.size >= roomLimit) {
-    if (silent) toast(`You already have ${roomLimit} chats open — leave one first.`);
-    else showErr(`You already have ${roomLimit} vaults open — leave one first.`);
-    resetSetupBtn();
-    return;
-  }
-
   try {
     if (mode === 'create' || mode === 'named' || mode === 'connection') {
       const namedCode = mode === 'named' ? document.getElementById('named-input')?.value.trim().toLowerCase() : null;
@@ -10139,7 +10064,7 @@ async function handleSetup({ silent = false } = {}) {
 
       const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal, persistent: persistentVal });
       const pubKey = await getOrGenerateKeyPair(room);
-      const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal, accessToken: friendsAccessToken() || undefined });
+      const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal });
       if (result.error) { showErr(result.error); resetSetupBtn(); return; }
 
       room.code = result.code;
