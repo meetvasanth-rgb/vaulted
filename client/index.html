@@ -2585,7 +2585,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     </div>
     <!-- Actions zone: settings + the two room-ending actions, pinned right. -->
     <div class="chat-hdr-actions">
-      <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Vault settings" aria-label="Vault settings">
+      <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Chat settings" aria-label="Chat settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -2633,7 +2633,6 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   </div>
   <div class="push-banner" id="push-banner"></div>
   <div class="chat-body" id="chat-body">
-    <div class="sys-msg" id="welcome-msg"></div>
     <div class="typing-indicator" id="typing-indicator">
       <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
     </div>
@@ -2695,7 +2694,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <button class="vault-list-settings" type="button" onclick="openNewConnection()" title="New connection" aria-label="Find a Vaultlix Private Number">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
       </button>
-      <button class="vault-list-settings" type="button" onclick="openSettings(true)" title="Settings" aria-label="Open Vaultlix settings">
+      <button class="vault-list-settings" type="button" onclick="openSettings('general')" title="General settings" aria-label="Open general settings">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.14.37.36.7.66.96.3.26.68.4 1.08.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
       </button>
     </div>
@@ -2988,10 +2987,11 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <button class="settings-back" onclick="closeSettings()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <span class="settings-header-title">Settings</span>
+    <span class="settings-header-title" id="settings-header-title">Settings</span>
   </div>
 
   <div class="settings-body">
+    <div id="settings-general-section">
     <div class="settings-section-label">App-wide</div>
 
     <div class="settings-row" onclick="openAppLockSettings()" style="cursor:pointer">
@@ -3062,6 +3062,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     </div>
 
     <div class="settings-divider"></div>
+    </div>
 
     <div id="settings-participant-section">
     <div class="settings-section-label">Current conversation safety</div>
@@ -3076,6 +3077,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     </div>
     <div class="settings-divider"></div>
     </div>
+    <div id="settings-general-safety-section">
     <div class="settings-row" id="delete-account-row" onclick="openDeleteAccount()" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945;"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></div>
       <div class="settings-row-text"><div class="settings-row-title" style="color:#9B2945">Delete Account</div><div class="settings-row-sub">Permanently delete your account, vaults, encrypted bundle and every signed-in session</div></div>
@@ -3083,6 +3085,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="settings-divider"></div>
     <button class="emergency-hold" id="emergency-hold" type="button" aria-label="Press and hold to open Emergency Exit"><span>Press and hold for Emergency Exit</span></button>
     <div class="settings-divider"></div>
+    </div>
 
     <div id="settings-room-section">
     <div class="settings-section-label" style="display:flex;align-items:center;justify-content:space-between">
@@ -3158,6 +3161,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     </div>
     </div>
 
+    <div id="settings-about-section">
     <div class="settings-section-label">About</div>
 
     <div class="settings-about-badge">
@@ -3199,6 +3203,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="settings-version">
       Vaultlix · Version 1.0<br/>
       <span style="color:#C4B8AC;">Anonymous · Encrypted · Unreadable to us</span>
+    </div>
     </div>
   </div>
 </div>
@@ -4144,36 +4149,6 @@ function markMilestoneShown(code, id) {
 }
 let currentMilestone = null;
 
-// ── ONE-TIME "VERIFY THIS CONVERSATION" NUDGE ──────────────────────────
-// Shown exactly once ever per room, the first time a peer actually joins —
-// not on every reconnect. Own dedicated key, same isolation reasoning as
-// NUDGE_DISMISSED_KEY/MILESTONES_SHOWN_KEY above — never touches the
-// per-room session blob that holds the E2E keypair.
-const VERIFY_NUDGE_SHOWN_KEY = 'vaultlix_verify_nudge_shown';
-function loadVerifyNudgeShownMap() {
-  try { return JSON.parse(localStorage.getItem(VERIFY_NUDGE_SHOWN_KEY) || '{}'); } catch(e) { return {}; }
-}
-function markVerifyNudgeShown(code) {
-  try {
-    const map = loadVerifyNudgeShownMap();
-    map[code] = true;
-    localStorage.setItem(VERIFY_NUDGE_SHOWN_KEY, JSON.stringify(map));
-  } catch(e) {}
-}
-function maybeShowVerifyNudge(room) {
-  if (!room) return;
-  const map = loadVerifyNudgeShownMap();
-  if (map[room.code]) return;
-  markVerifyNudgeShown(room.code);
-  const rec = {
-    id: 'sys-verify-nudge-' + room.code,
-    kind: 'sys',
-    content: "Don't just take our word for it — tap to verify this conversation is directly between you two, with no one in between.",
-    verifyNudge: true,
-  };
-  room.messages.push(rec);
-  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
-}
 function checkMilestone(room) {
   // Only permanent rooms have a connectedSince long enough to mean
   // anything — an ordinary room is gone in 24h-4 days, well before any of
@@ -6792,9 +6767,9 @@ const BLOCKED_VAULTS_KEY = 'vaultlix_blocked_vaults_v1';
 let settingsOpen = false;
 let chimeEnabled = true;
 
-function toggleSettings() { settingsOpen ? closeSettings() : openSettings(); }
+function toggleSettings() { settingsOpen ? closeSettings() : openSettings('chat'); }
 
-function openSettings(universal = false) {
+function openSettings(mode = 'chat') {
   settingsOpen = true;
   document.getElementById('settings-overlay').classList.add('open');
   document.getElementById('settings-panel').classList.add('open');
@@ -6803,11 +6778,20 @@ function openSettings(universal = false) {
   updateAnonLinkSection();
   updatePersistentSuggestion();
   updateAppLockStatus();
-  const room = universal ? null : getActiveRoom();
+  const general = mode === true || mode === 'general';
+  const room = general ? null : getActiveRoom();
+  const generalSection = document.getElementById('settings-general-section');
+  const generalSafetySection = document.getElementById('settings-general-safety-section');
+  const aboutSection = document.getElementById('settings-about-section');
   const participantSection = document.getElementById('settings-participant-section');
   const roomSection = document.getElementById('settings-room-section');
+  const headerTitle = document.getElementById('settings-header-title');
+  if (generalSection) generalSection.style.display = general ? '' : 'none';
+  if (generalSafetySection) generalSafetySection.style.display = general ? '' : 'none';
+  if (aboutSection) aboutSection.style.display = general ? '' : 'none';
   if (participantSection) participantSection.style.display = room ? '' : 'none';
   if (roomSection) roomSection.style.display = room ? '' : 'none';
+  if (headerTitle) headerTitle.textContent = general ? 'General settings' : 'Chat settings';
   const labelTitleEl = document.getElementById('settings-label-title');
   if (labelTitleEl) {
     labelTitleEl.textContent = (room && room.nickname) ? 'Edit vault label' : 'Label this vault';
@@ -8541,9 +8525,9 @@ async function changeRoomTimer(value) {
 
 function renderChatBody(room) {
   const body = document.getElementById('chat-body');
-  body.innerHTML = `<div class="sys-msg" id="welcome-msg">You're "${escHtml(room.myName)}" — ${escHtml(room.code)}</div><div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
+  body.innerHTML = `<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   for (const rec of room.messages) {
-    if (rec.deleted) continue;
+    if (rec.deleted || rec.verifyNudge) continue;
     renderMessageRecord(room, rec);
   }
   body.scrollTop = body.scrollHeight;
@@ -9086,14 +9070,10 @@ function renderMessageRecord(room, rec, animate) {
   const typing = document.getElementById('typing-indicator');
 
   if (rec.kind === 'sys') {
+    if (rec.verifyNudge) return null;
     const div = document.createElement('div');
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
-    if (rec.verifyNudge) {
-      div.className += ' sys-msg-nudge';
-      div.innerHTML = `Don't just take our word for it — <span class="sys-msg-link" onclick="showVerifyPanel()">tap to verify</span> this conversation is directly between you two, with no one in between.`;
-    } else {
-      div.textContent = rec.content;
-    }
+    div.textContent = rec.content;
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
     return div;
@@ -10180,7 +10160,6 @@ function startWaitingForPeer(room) {
         // catches up once the peer's key does show up.
         enableInput(!!room.sharedKey, true);
         playChime();
-        maybeShowVerifyNudge(room);
       });
     }
   }, 2000);
@@ -10312,7 +10291,6 @@ async function handleSetup() {
         // a real key is actually in hand, not unconditionally.
         enableInput(!!room.sharedKey, true);
         playChime();
-        maybeShowVerifyNudge(room);
       });
     }
   } catch(e) {
