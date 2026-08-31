@@ -2938,7 +2938,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   <div class="pc-word">Vaultlix</div>
   <div class="pc-lock-copy">Enter your independent Vaultlix passcode. The phone's passcode cannot unlock Vaultlix.</div>
   <form class="app-lock-form" id="app-lock-form" onsubmit="unlockAppLock(event)">
-    <input class="app-lock-input" id="app-lock-passcode" type="password" autocomplete="off" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode"/>
+    <input class="app-lock-input" id="app-lock-passcode" type="password" autocomplete="off" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode" oninput="scheduleAppLockAutoUnlock()"/>
     <div class="app-lock-error" id="app-lock-error" aria-live="polite"></div>
     <button class="pc-unlock" id="app-lock-unlock" type="submit">Unlock Vaultlix</button>
     <button class="app-lock-forgot" type="button" onclick="forgetAppLock()">Forgot passcode? Erase Vaultlix from this device</button>
@@ -7553,6 +7553,8 @@ function appLockConfigured() { return Boolean(loadAppLockConfig()); }
 // with a random salt, and comparison is performed without an early exit.
 let quickLockActive = appLockConfigured() || sessionStorage.getItem(QUICK_LOCK_KEY) === '1';
 let quickLockUnlocking = false;
+let appLockAutoUnlockTimer = null;
+let appLockAutoUnlockAttempt = 0;
 
 async function deriveAppLockVerifier(passcode, salt, iterations = APP_LOCK_ITERATIONS) {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passcode), 'PBKDF2', false, ['deriveBits']);
@@ -7647,6 +7649,8 @@ function activateAppLock(manual = false) {
 
 async function unlockAppLock(event) {
   event?.preventDefault();
+  clearTimeout(appLockAutoUnlockTimer);
+  appLockAutoUnlockAttempt += 1;
   if (!quickLockActive || quickLockUnlocking) return;
   const error = document.getElementById('app-lock-error');
   const input = document.getElementById('app-lock-passcode');
@@ -7674,7 +7678,33 @@ async function unlockAppLock(event) {
   }
 }
 
+function scheduleAppLockAutoUnlock() {
+  clearTimeout(appLockAutoUnlockTimer);
+  const attempt = ++appLockAutoUnlockAttempt;
+  if (!quickLockActive || quickLockUnlocking || appLockWaitCopy()) return;
+  const input = document.getElementById('app-lock-passcode');
+  const passcode = input?.value || '';
+  const configuredLength = Number(loadAppLockConfig()?.passcodeLength || 0);
+  if (passcode.length < 6 || (configuredLength && passcode.length !== configuredLength)) return;
+  appLockAutoUnlockTimer = setTimeout(async () => {
+    if (attempt !== appLockAutoUnlockAttempt || !quickLockActive || quickLockUnlocking) return;
+    try {
+      const candidate = input?.value || '';
+      const verified = await verifyAppLockPasscode(candidate);
+      if (verified && attempt === appLockAutoUnlockAttempt && candidate === (input?.value || '')) {
+        localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+        if (input) input.value = '';
+        completeQuickUnlock();
+      }
+    } catch (e) {
+      // Keep the explicit Unlock button available if automatic verification fails.
+    }
+  }, 180);
+}
+
 function completeQuickUnlock() {
+  clearTimeout(appLockAutoUnlockTimer);
+  appLockAutoUnlockAttempt += 1;
   quickLockActive = false;
   quickLockUnlocking = false;
   sessionStorage.removeItem(QUICK_LOCK_KEY);
@@ -7723,7 +7753,7 @@ async function saveAppLock(event) {
   if (next !== confirmation) { error.textContent = 'The new passcodes do not match.'; return; }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const verifier = await deriveAppLockVerifier(next, salt);
-  localStorage.setItem(APP_LOCK_CONFIG_KEY, JSON.stringify({ version:1, iterations:APP_LOCK_ITERATIONS, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
+  localStorage.setItem(APP_LOCK_CONFIG_KEY, JSON.stringify({ version:1, iterations:APP_LOCK_ITERATIONS, passcodeLength:next.length, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
   localStorage.removeItem(APP_LOCK_FAILURE_KEY);
   closeAppLockSettings();
   updateAppLockStatus();
