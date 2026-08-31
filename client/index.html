@@ -328,6 +328,7 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .vault-list-row-unread{background:#C87588;color:#fff;border-radius:10px;min-width:20px;height:20px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;line-height:1;font-weight:700}
 .vault-list-actions{position:fixed;left:0;right:0;bottom:0;padding:12px 18px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(251,247,248,0),#FBF7F8 18%);display:flex;gap:10px;justify-content:center;z-index:5}
 .vault-list-action{min-height:50px;border-radius:17px;padding:0 20px;font:700 14px/1 inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;flex:1;max-width:365px}
+.vault-list-actions .vault-list-action:only-child{max-width:760px}
 .vault-list-action svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .vault-list-action.primary{background:#682C43;color:#fff;border:1px solid #682C43;box-shadow:0 10px 24px rgba(104,44,67,.2)}
 .vault-list-action.secondary{background:#fff;color:#682C43;border:1px solid #DCCDD2}
@@ -2702,7 +2703,6 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   </main>
   <div class="vault-list-actions">
     <button class="vault-list-action primary" type="button" onclick="openNewConnection()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New connection</button>
-    <button class="vault-list-action secondary" type="button" onclick="openAccountPanel()"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>My number</button>
   </div>
 </div>
 
