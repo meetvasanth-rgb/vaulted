@@ -311,6 +311,14 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .vault-list-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #E8DDE0;border-radius:22px;box-shadow:0 12px 32px rgba(67,35,48,.07)}
 .vault-list-empty{padding:52px 26px;text-align:center;color:#746A70;font-size:14px;line-height:1.55}
 .vault-list-empty strong{display:block;color:#271D25;font-size:19px;margin-bottom:6px}
+.vault-list-request{margin:14px;padding:16px;border:1px solid #DCCDD2;border-radius:18px;background:#FBF4F6;box-shadow:0 8px 20px rgba(104,44,67,.08)}
+.vault-list-request-name{font-size:16px;font-weight:750;color:#271D25}
+.vault-list-request-number{font-size:12.5px;color:#81767C;margin-top:3px}
+.vault-list-request-copy{font-size:12.5px;color:#682C43;margin-top:9px}
+.vault-list-request-actions{display:flex;gap:8px;margin-top:13px}
+.vault-list-request-actions button{min-height:38px;border-radius:12px;padding:0 14px;font:700 12px/1 inherit;cursor:pointer;flex:1}
+.vault-list-request-accept{border:1px solid #682C43;background:#682C43;color:#fff}
+.vault-list-request-decline{border:1px solid #DCCDD2;background:#fff;color:#682C43}
 .vault-list-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;column-gap:12px;padding:15px 16px;border-bottom:1px solid #F1E9EB;cursor:pointer;transition:background .15s;position:relative}
 .vault-list-row:last-child{border-bottom:0}
 .vault-list-row:hover,.vault-list-row:active{background:#FDF9FA}
@@ -2691,8 +2699,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   <div class="vault-list-hdr">
     <div class="vault-list-brandmark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></div>
     <div class="vault-list-heading">
-      <div class="vault-list-title">Vault Inbox</div>
-      <div class="vault-list-subtitle">Your private spaces</div>
+      <div class="vault-list-title">Chats</div>
+      <div class="vault-list-subtitle" id="vault-list-private-number">Your private conversations</div>
     </div>
     <div class="vault-list-nav">
       <button class="vault-list-home" type="button" onclick="openMainHome()" title="Open Vaultlix home" aria-label="Open Vaultlix home">
@@ -2708,14 +2716,14 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   </div>
   <main class="vault-list-main">
     <div class="vault-list-toolbar">
-      <div><div class="vault-list-eyebrow">Your private spaces</div><div class="vault-list-count" id="vault-list-count">Your vaults</div></div>
+      <div><div class="vault-list-eyebrow">Private conversations</div><div class="vault-list-count" id="vault-list-count">Your chats</div></div>
       <button class="vault-preview-toggle" id="vault-preview-toggle" type="button" aria-pressed="false" onclick="toggleVaultPreviews()">Previews hidden</button>
     </div>
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
   <div class="vault-list-actions">
-    <button class="vault-list-action primary" type="button" onclick="addRoomFlow()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New vault</button>
-    <button class="vault-list-action secondary" type="button" onclick="startJoin()"><svg viewBox="0 0 24 24"><path d="M10 7H6a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h4M14 7h4a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-4M8 12h8"/></svg>Join</button>
+    <button class="vault-list-action primary" type="button" onclick="openNewConnection()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New connection</button>
+    <button class="vault-list-action secondary" type="button" onclick="openAccountPanel()"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>My number</button>
   </div>
 </div>
 
@@ -3303,6 +3311,18 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="account-copy" id="public-profile-private-number">—</div>
     <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Request a private vault</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
+  </div>
+</div>
+
+<div class="account-overlay" id="new-connection-overlay" onclick="if(event.target===this)closeNewConnection()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="new-connection-title">
+    <div class="account-head"><div><div class="account-kicker">New private connection</div><div class="account-title" id="new-connection-title">Enter their Private Number</div></div><button class="account-close" onclick="closeNewConnection()" aria-label="Close">×</button></div>
+    <div class="account-copy">Enter the exact 10-digit Vaultlix Private Number shared with you. Vaultlix does not search contacts or suggest people.</div>
+    <form class="account-form active" onsubmit="findPrivateNumber(event)">
+      <label class="account-field"><span>Vaultlix Private Number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" placeholder="73-4821-6590" required/></label>
+      <button class="account-primary" type="submit">Find person</button>
+      <button class="account-secondary" type="button" onclick="closeNewConnection();startJoin()">Join with an invitation instead</button>
+    </form>
   </div>
 </div>
 
@@ -7071,6 +7091,7 @@ function openAccountPanel() {
 }
 function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
 let pendingConnectionAcceptance = null;
+let pendingIncomingConnections = [];
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function refreshConnectionRequests() {
   const state = loadAccountState(); const list = document.getElementById('connection-request-list');
@@ -7078,27 +7099,40 @@ async function refreshConnectionRequests() {
   const result = await api('/api/connections/list', { accountId:state.accountId, sessionToken:state.sessionToken });
   if (result.error) { list.textContent = result.error; return; }
   const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending');
+  pendingIncomingConnections = incoming;
+  if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
   const accepted = result.requests.find(r => r.direction === 'outgoing' && r.status === 'accepted' && r.inviteUrl && !localStorage.getItem(`vaultlix:connection:${r.id}`));
   if (accepted) {
     localStorage.setItem(`vaultlix:connection:${accepted.id}`, 'opened');
     closeAccountPanel();
     const url = new URL(accepted.inviteUrl);
     pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
-    openJoinFromLink(url.pathname.split('/').filter(Boolean).pop());
+    await openJoinFromLink(url.pathname.split('/').filter(Boolean).pop(), true);
     return;
   }
-  if (!incoming.length) { list.textContent = 'No new private-vault requests.'; return; }
-  list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept and create vault</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  if (!incoming.length) { list.textContent = 'No new connection requests.'; return; }
+  list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
 }
-function acceptConnectionRequest(requestId) {
+async function acceptConnectionRequest(requestId) {
+  pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId);
   pendingConnectionAcceptance = requestId;
   closeAccountPanel();
-  startCreate();
+  const identity = loadAccountState();
+  if (!identity) { openAccountPanel(); return; }
+  mode = 'connection';
+  showScreen('s-setup');
+  document.getElementById('setup-title').textContent = 'Creating your private conversation…';
+  document.getElementById('join-field').style.display = 'none';
+  document.getElementById('named-field').style.display = 'none';
+  document.getElementById('timer-field').style.display = 'none';
+  document.getElementById('password-field').style.display = 'none';
+  document.getElementById('name-input').value = identity.displayName;
+  await handleSetup();
 }
 async function rejectConnectionRequest(requestId) {
   const state=loadAccountState(); if(!state)return;
   const result=await api('/api/connections/respond',{accountId:state.accountId,sessionToken:state.sessionToken,requestId,action:'rejected'});
-  if(result.error)toast(result.error); else { toast('Request declined'); refreshConnectionRequests(); }
+  if(result.error)toast(result.error); else { pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId); renderVaultList(); toast('Request declined'); refreshConnectionRequests(); }
 }
 function showAccountTab(name) {
   document.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
@@ -7289,7 +7323,8 @@ function finishAccountCreation() {
   updateAccountSettingsStatus();
   closeAccountPanel();
   if (isNativeApp()) showEnableNativeNotificationsBanner();
-  toast('Your Vaultlix identity is ready');
+  showScreen('s-vault-list');
+  toast('Your Vaultlix Private Number is ready');
 }
 function openAccountVaults() {
   closeAccountPanel();
@@ -7298,8 +7333,8 @@ function openAccountVaults() {
   // the normal startup restore then rebuilds live Room objects, keypairs,
   // polling and notification registration from those records.
   if (loadRoomsIndex().length > 0) { location.reload(); return; }
-  showScreen('s-landing');
-  toast('No active vaults are saved in this ID yet');
+  showScreen('s-vault-list');
+  toast('Start your first private connection');
 }
 
 // Always derived live from the platform, never from a stored flag — there's
@@ -8382,19 +8417,23 @@ function vaultInboxPreview(room, allowContent) {
 function renderVaultList() {
   const body = document.getElementById('vault-list-body');
   if (!body) return;
+  const identity = loadAccountState();
+  const identityLabel = document.getElementById('vault-list-private-number');
+  if (identityLabel) identityLabel.textContent = identity ? `Private Number ${formatPrivateNumber(identity.privateNumber)}` : 'Your private conversations';
   const count = document.getElementById('vault-list-count');
-  if (count) count.textContent = rooms.size === 1 ? '1 vault' : `${rooms.size} vaults`;
+  if (count) count.textContent = rooms.size === 1 ? '1 chat' : `${rooms.size} chats`;
   const previews = vaultPreviewsEnabled();
   const toggle = document.getElementById('vault-preview-toggle');
   if (toggle) {
     toggle.setAttribute('aria-pressed', previews ? 'true' : 'false');
     toggle.textContent = previews ? 'Previews shown' : 'Previews hidden';
   }
-  if (rooms.size === 0) {
-    body.innerHTML = `<div class="vault-list-empty"><strong>Your first vault starts here</strong>Create a private space or join one using an invitation.</div>`;
+  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">Wants to start a private conversation</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">Accept</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">Decline</button></div></div>`).join('');
+  if (rooms.size === 0 && pendingIncomingConnections.length === 0) {
+    body.innerHTML = `<div class="vault-list-empty"><strong>Start your first private conversation</strong>Tap New connection and enter the other person's Vaultlix Private Number.</div>`;
     return;
   }
-  let html = '';
+  let html = requestHtml;
   const orderedRooms = [...rooms.values()].sort((a, b) => vaultLastActivity(b) - vaultLastActivity(a));
   for (const room of orderedRooms) {
     const label = roomDisplayLabel(room);
@@ -10002,6 +10041,26 @@ function parsePublicPrivateNumber() {
   return match ? match[1] : null;
 }
 let activePublicProfile = null;
+function openNewConnection() {
+  const state = loadAccountState();
+  if (!state) { openAccountPanel(); return; }
+  const input = document.getElementById('new-connection-private-number');
+  if (input) input.value = '';
+  document.getElementById('new-connection-overlay').classList.add('open');
+  setTimeout(() => input?.focus(), 120);
+}
+function closeNewConnection() {
+  document.getElementById('new-connection-overlay').classList.remove('open');
+}
+async function findPrivateNumber(event) {
+  event.preventDefault();
+  const privateNumber = normalizePrivateNumber(document.getElementById('new-connection-private-number').value);
+  if (!privateNumber) { toast('Enter a valid 10-digit Vaultlix Private Number'); return; }
+  const state = loadAccountState();
+  if (state?.privateNumber === privateNumber) { toast('That is your own Private Number'); return; }
+  closeNewConnection();
+  await openPublicProfile(privateNumber);
+}
 async function openPublicProfile(privateNumber) {
   try {
     const response = await fetch(`/api/profile/${encodeURIComponent(privateNumber)}`, { headers:{ Accept:'application/json' } });
@@ -10049,11 +10108,12 @@ function parseKeyCommitmentFromHash(hash) {
 // rooms open yet, where it replaces the landing screen entirely) or one
 // that already has other rooms open (where it surfaces on top of whatever
 // room was showing, same idea as a notification tap).
-function openJoinFromLink(code) {
+async function openJoinFromLink(code, connectImmediately = false) {
   history.replaceState(null, '', '/'); // don't leave /join/<code> in the URL bar once handled
   startJoin();
   const codeInput = document.getElementById('code-input');
   if (codeInput) codeInput.value = code;
+  if (connectImmediately) await handleSetup();
 }
 
 // iOS Universal Links can arrive while the native app and this page are
@@ -10070,8 +10130,8 @@ window.vaultlixOpenInviteURL = function(rawURL) {
       openJoinFromLink(decodeURIComponent(match[1]).toLowerCase());
       return;
     }
-    const profile = url.pathname.match(/^\/([a-z0-9][a-z0-9._-]{2,30}[a-z0-9])\/?$/i);
-    if (profile && !PUBLIC_PROFILE_RESERVED.has(profile[1].toLowerCase())) openPublicProfile(profile[1].toLowerCase());
+    const profile = url.pathname.match(/^\/([2-9][0-9]{9})\/?$/);
+    if (profile) openPublicProfile(profile[1]);
   } catch (e) {}
 };
 
@@ -10157,7 +10217,7 @@ async function handleSetup() {
   }
 
   try {
-    if (mode === 'create' || mode === 'named') {
+    if (mode === 'create' || mode === 'named' || mode === 'connection') {
       const namedCode = mode === 'named' ? document.getElementById('named-input')?.value.trim().toLowerCase() : null;
       // Quick rooms never show a password field, so they must never send one
       // either — reading the shared #password-input regardless of mode meant
@@ -10172,7 +10232,7 @@ async function handleSetup() {
       // chat room" flow (mode 'create') always stays on the normal 24hr TTL.
       // One fewer decision, and the label on the landing card can never end
       // up lying about what the room actually does.
-      const persistentVal = mode === 'named';
+      const persistentVal = mode === 'named' || mode === 'connection';
 
       const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal, persistent: persistentVal });
       const pubKey = await getOrGenerateKeyPair(room);
@@ -11039,7 +11099,10 @@ document.addEventListener('DOMContentLoaded', () => {
   updateAccountSettingsStatus();
   refreshInstallUI();
   checkAndroidInstalledStatus(); // async — re-runs refreshInstallUI once it resolves
-  if (loadAccountState()) setInterval(refreshConnectionRequests, 15000);
+  // Keep foreground connection requests live even when the account is first
+  // created during this launch. The refresh is a no-op until an account exists.
+  refreshConnectionRequests();
+  setInterval(refreshConnectionRequests, 15000);
 });
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
@@ -11404,7 +11467,13 @@ window.addEventListener('load', async () => {
   } else {
     hideRestoreSkeleton();
     if (joinLinkCode) openJoinFromLink(joinLinkCode);
-    else triggerLandingAnim();
+    else if (loadAccountState()) showScreen('s-vault-list');
+    else {
+      triggerLandingAnim();
+      // Native apps use a messenger-style first-run journey: establish the
+      // permanent Private Number before showing an empty conversation list.
+      if (isNativeApp()) setTimeout(openAccountPanel, 180);
+    }
   }
   // VLX-01: shown last, on top of whatever screen the logic above settled
   // on — a saved room whose key no longer matches its invite-link
