@@ -8908,7 +8908,8 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // the media itself has its own onclick (view/download) plus long-press
   // (attachLongPress below), so this is a secondary way in, not the primary
   // one.
-  const bubble = div.querySelector('.bubble') || div.querySelector('.msg-meta');
+  const textBubble = div.querySelector('.bubble');
+  const bubble = textBubble || div.querySelector('.msg-meta');
   const actions = div.querySelector(`#actions-${msgId}`);
   const picker = div.querySelector(`#picker-${msgId}`);
   if (!bubble || !actions || !picker) return;
@@ -8920,6 +8921,12 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // opens just that one photo.
   const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce, .msg-album-grid, .msg-voice');
   if (media) attachLongPress(media, msgId);
+  // Ordinary text bubbles previously only had the short-tap recognizer
+  // below. Holding past its 400ms cutoff therefore did nothing at all,
+  // despite the UI promising long-press actions. Give text the same 450ms
+  // recognizer as media; the trailing click guard below keeps release from
+  // immediately closing the row that the long press just opened.
+  if (textBubble) attachLongPress(textBubble, msgId);
 
   // While a multi-select is in progress, tapping any message toggles its
   // selection instead of opening the Reply/React/Delete row — checked first
@@ -8941,7 +8948,11 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
     const dt = Date.now() - touchStartTime;
     if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); handleTap(); }
   });
-  bubble.onclick = (e) => { e.stopPropagation(); handleTap(); };
+  bubble.onclick = (e) => {
+    e.stopPropagation();
+    if (wasJustLongPressed()) return;
+    handleTap();
+  };
 
   actions.querySelector('[data-action="reply"]').onclick = (e) => {
     e.stopPropagation();
