@@ -8,6 +8,7 @@ const webpush = require('web-push');
 const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
+const { PostgresStore } = require('./postgres');
 
 const scryptAsync = promisify(crypto.scrypt);
 
@@ -36,6 +37,8 @@ const { markInviteTerminated, isInviteTerminated } = require('./call-invite-stat
 const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 const accounts = new Map();
 const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
+const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
+let postgresEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ── /api/send content sizing ─────────────────────────────────────────────
@@ -765,6 +768,13 @@ function authenticateAccountSession(accountId, token) {
     if (actual.length === expected.length && crypto.timingSafeEqual(actual, expected)) return account;
   }
   return null;
+}
+
+async function persistAccount(accountId) {
+  const account = accounts.get(accountId);
+  if (!account) return;
+  if (postgresEnabled) await postgresStore.saveAccount(accountId, account);
+  else saveAccounts();
 }
 
 // Sweep stale buckets periodically so IPs/tokens that stopped being active
@@ -2038,7 +2048,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const sessionToken = newAccountSession(account);
     accounts.set(d.accountId, account);
     privateNumbers.set(privateNumber, d.accountId);
-    saveAccounts();
+    await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision });
   }
@@ -2053,7 +2063,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const valid = await verifyAccountSecret(d.authSecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
     const sessionToken = newAccountSession(account);
-    saveAccounts();
+    await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision });
   }
@@ -2071,7 +2081,7 @@ async function api(path, method, d, p, res, ip, headers) {
     account.sessions = [];
     const sessionToken = newAccountSession(account);
     account.updatedAt = Date.now();
-    saveAccounts();
+    await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
   }
@@ -2099,7 +2109,7 @@ async function api(path, method, d, p, res, ip, headers) {
     account.bundle = d.bundle;
     account.revision++;
     account.updatedAt = Date.now();
-    saveAccounts();
+    await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, revision: account.revision });
   }
@@ -2159,7 +2169,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (account && typeof d.sessionToken === 'string') {
       const tokenHash = crypto.createHash('sha256').update(d.sessionToken).digest('hex');
       account.sessions = (account.sessions || []).filter(s => s.tokenHash !== tokenHash);
-      saveAccounts();
+      await persistAccount(d.accountId);
     }
     return res200(res, { ok: true });
   }
@@ -2175,7 +2185,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     privateNumbers.delete(account.privateNumber);
     accounts.delete(d.accountId);
-    saveAccounts();
+    if (postgresEnabled) await postgresStore.deleteAccount(d.accountId); else saveAccounts();
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true });
   }
@@ -2202,7 +2212,7 @@ async function api(path, method, d, p, res, ip, headers) {
     recipient.account.connectionRequests.push(request);
     sender.connectionRequests = (sender.connectionRequests || []).filter(r => r.expiresAt > now).slice(-99);
     sender.connectionRequests.push({ ...request, direction:'outgoing' });
-    saveAccounts();
+    await Promise.all([persistAccount(d.accountId), persistAccount(recipient.accountId)]);
     publishInboxAccount(recipient.accountId, 'connection-request');
     return res200(res, { ok:true, requestId:request.id, status:'pending' });
   }
@@ -2229,7 +2239,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const sender = accounts.get(request.senderAccountId);
     const outgoing = (sender?.connectionRequests || []).find(r => r.id === request.id);
     if (outgoing) { outgoing.status=request.status; outgoing.respondedAt=request.respondedAt; if (request.inviteUrl) outgoing.inviteUrl=request.inviteUrl; }
-    saveAccounts();
+    await Promise.all([persistAccount(d.accountId), request.senderAccountId ? persistAccount(request.senderAccountId) : Promise.resolve()]);
     publishInboxAccount(request.senderAccountId, 'connection-response');
     return res200(res, { ok:true, status:request.status });
   }
@@ -3822,13 +3832,11 @@ function saveAccounts() {
   } catch (e) { console.error('Anonymous account save failed:', e.message); }
 }
 
-function loadAccounts() {
-  try {
-    if (fs.existsSync(ACCOUNTS_TMP_PATH)) fs.unlinkSync(ACCOUNTS_TMP_PATH);
-    if (!fs.existsSync(ACCOUNTS_PATH)) return;
-    const parsed = JSON.parse(fs.readFileSync(ACCOUNTS_PATH, 'utf8'));
-    if (!Array.isArray(parsed)) throw new Error('invalid accounts file');
-    for (const entry of parsed) {
+function hydrateAccounts(entries, source) {
+  if (!Array.isArray(entries)) throw new Error(`invalid ${source} account records`);
+  accounts.clear();
+  privateNumbers.clear();
+  for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2 || !validAccountId(entry[0])) continue;
       const record = entry[1];
       if (!record || record.version !== 2 || !normalizePrivateNumber(record.privateNumber) || !normalizeDisplayName(record.displayName) || !record.authVerifier || !record.recoveryVerifier ||
@@ -3837,8 +3845,15 @@ function loadAccounts() {
       record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
       accounts.set(entry[0], record);
       privateNumbers.set(record.privateNumber, entry[0]);
-    }
-    console.log(`Anonymous accounts loaded: ${accounts.size}.`);
+  }
+  console.log(`Anonymous accounts loaded from ${source}: ${accounts.size}.`);
+}
+
+function loadAccounts() {
+  try {
+    if (fs.existsSync(ACCOUNTS_TMP_PATH)) fs.unlinkSync(ACCOUNTS_TMP_PATH);
+    if (!fs.existsSync(ACCOUNTS_PATH)) return;
+    hydrateAccounts(JSON.parse(fs.readFileSync(ACCOUNTS_PATH, 'utf8')), 'local fallback');
   } catch (e) { console.error('Anonymous account load failed:', e.message); }
 }
 
@@ -4044,24 +4059,17 @@ function saveAnalytics() {
     fs.chmodSync(ANALYTICS_PATH, 0o600);
   } catch (e) { console.error('Analytics save failed:', e.message); }
 }
-loadAnalytics();
-loadAccounts();
-
-if (!process.env.SNAPSHOT_DIR) {
-  console.warn('SNAPSHOT_DIR not set — durable room checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
-}
-loadSnapshot();
-const roomCheckpointTimer = setInterval(() => saveSnapshot({ log: false }), ROOM_CHECKPOINT_INTERVAL_MS);
-roomCheckpointTimer.unref();
+let roomCheckpointTimer = null;
 
 let shuttingDown = false;
-function shutdown(signal) {
+async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`${signal} received — saving final room checkpoint before exit...`);
   saveAnalytics();
-  saveAccounts();
+  if (!postgresEnabled) saveAccounts();
   saveSnapshot();
+  try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
   // Belt-and-suspenders: if something (a lingering keep-alive connection,
   // an open WebSocket) keeps srv.close() from ever calling back, don't hang
@@ -4069,7 +4077,33 @@ function shutdown(signal) {
   // so there's nothing left worth waiting for.
   setTimeout(() => process.exit(0), 3000).unref();
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => { shutdown('SIGTERM').catch(() => process.exit(1)); });
+process.on('SIGINT', () => { shutdown('SIGINT').catch(() => process.exit(1)); });
 
-srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));
+async function bootstrap() {
+  loadAnalytics();
+  if (postgresStore.enabled) {
+    // A configured production database is authoritative. Failure is fatal:
+    // silently booting from an older volume copy would accept writes into a
+    // split-brain store and make account deletion/recovery inconsistent.
+    await postgresStore.initialize();
+    postgresEnabled = true;
+    hydrateAccounts(await postgresStore.loadAccounts(), 'PostgreSQL');
+    console.log('PostgreSQL v2 account store ready.');
+  } else {
+    loadAccounts();
+    console.warn('DATABASE_URL is not set — using the local account-store fallback.');
+  }
+  if (!process.env.SNAPSHOT_DIR) {
+    console.warn('SNAPSHOT_DIR not set — durable room checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
+  }
+  loadSnapshot();
+  roomCheckpointTimer = setInterval(() => saveSnapshot({ log: false }), ROOM_CHECKPOINT_INTERVAL_MS);
+  roomCheckpointTimer.unref();
+  srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));
+}
+
+bootstrap().catch(err => {
+  console.error('Vaultlix startup failed:', err.message);
+  process.exit(1);
+});
