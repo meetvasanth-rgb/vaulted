@@ -115,7 +115,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
 
         TextView name = label(caller, 32, Color.WHITE);
-        name.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(25), 0, dp(8));
@@ -227,7 +227,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         callRoot.setGravity(Gravity.CENTER);
         callRoot.setBackgroundColor(VANISH_BACKGROUND);
         TextView mark = label("V", 64, VANISH_BURGUNDY);
-        mark.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        mark.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         mark.setAlpha(0f);
         mark.setScaleX(.8f);
         mark.setScaleY(.8f);

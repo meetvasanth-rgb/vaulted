@@ -140,15 +140,15 @@ public class IncomingCallActivity extends Activity {
         halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
         portrait.addView(halo, centered(dp(132), dp(132)));
         TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
-        avatar.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        avatar.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         avatar.setBackground(circle(IVORY));
         portrait.addView(avatar, centered(dp(104), dp(104)));
         root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
 
         TextView name = text(displayName, 34, Color.WHITE);
-        // Match the iOS call identity treatment (Cormorant-style light
-        // serif) instead of Android's visually heavier default bold face.
-        name.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        // Pin the identity to Android's sans-serif family so OEM-specific
+        // serif substitutions cannot make the same build look different.
+        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(28), 0, dp(9));
