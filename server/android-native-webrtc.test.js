@@ -14,6 +14,8 @@ test('Android native calls use encrypted signaling and forced TURN', () => {
   assert.match(engine, /"nativeCall", true/);
   assert.match(engine, /call-accept/);
   assert.match(engine, /scheduleTurnRetry/);
+  assert.match(engine, /send hangup room=/);
+  assert.match(engine, /250, TimeUnit\.MILLISECONDS/);
 });
 
 test('Android native call credentials are device-bound and removed with a vault', () => {

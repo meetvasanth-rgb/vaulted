@@ -88,6 +88,7 @@ final class NativeWebRtcCallEngine {
     private final String sessionId = UUID.randomUUID().toString();
     private String callerName = "Someone";
     private volatile String currentRoomCode = "";
+    private volatile String preparingRoomCode = "";
     private int generation;
 
     private NativeWebRtcCallEngine(Context context) {
@@ -106,6 +107,8 @@ final class NativeWebRtcCallEngine {
     boolean prepareIncoming(String code) {
         NativeCallRoomStore.Room saved = roomStore.byCode(code);
         if (saved == null) return false;
+        if (code.equals(currentRoomCode) || code.equals(preparingRoomCode)) return true;
+        preparingRoomCode = code;
         Log.i(TAG, "prepare incoming room=" + code);
         executor.execute(() -> prepare(saved, false, "Someone"));
         return true;
@@ -117,7 +120,8 @@ final class NativeWebRtcCallEngine {
             Log.w(TAG, "native room unavailable for foreground incoming call");
             return false;
         }
-        if (saved.code.equals(currentRoomCode) && !outgoing) return true;
+        if (saved.code.equals(currentRoomCode) || saved.code.equals(preparingRoomCode)) return true;
+        preparingRoomCode = saved.code;
         Log.i(TAG, "prepare foreground incoming room=" + saved.code);
         executor.execute(() -> prepare(saved, false, caller));
         return true;
@@ -150,14 +154,27 @@ final class NativeWebRtcCallEngine {
 
     void end(boolean notifyPeer) {
         executor.execute(() -> {
-            if (notifyPeer) sendSignal("call-hangup", new JSONObject());
-            reset("ended");
+            if (!notifyPeer || socket == null) {
+                reset("ended");
+                return;
+            }
+            Log.i(TAG, "send hangup room=" + currentRoomCode);
+            sendSignal("call-hangup", new JSONObject());
+            // OkHttp queues WebSocket.send asynchronously. Cancelling the
+            // socket in reset() in this same tick discarded the final frame,
+            // leaving the peer's native call alive until its timeout. Give
+            // the encrypted control frame a short bounded flush window.
+            int run = generation;
+            scheduler.schedule(() -> executor.execute(() -> {
+                if (run == generation) reset("ended");
+            }), 250, TimeUnit.MILLISECONDS);
         });
     }
 
     private void prepare(NativeCallRoomStore.Room saved, boolean isOutgoing, String caller) {
         reset(null);
         room = saved;
+        preparingRoomCode = "";
         currentRoomCode = saved.code;
         outgoing = isOutgoing;
         callerName = caller == null ? "Someone" : caller;
@@ -398,6 +415,7 @@ final class NativeWebRtcCallEngine {
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
         if (reason != null) for (Listener listener : listeners) listener.onEnded(reason);
         currentRoomCode = "";
+        preparingRoomCode = "";
     }
 
     private final class PeerObserver implements PeerConnection.Observer {
