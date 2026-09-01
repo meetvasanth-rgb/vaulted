@@ -6845,7 +6845,10 @@ function openSettingsCategory(category) {
     notifications:['settings-chime-row','settings-push-row']
   };
   const selectedRows = generalRows[category] || [];
-  generalSection.style.display = selectedRows.length || category === 'calls' ? '' : 'none';
+  // Calls and Language are full category pages nested inside the shared
+  // settings container. Keep their parent visible even though they do not
+  // use any of the individual general-setting rows.
+  generalSection.style.display = selectedRows.length || category === 'calls' || category === 'language' ? '' : 'none';
   Array.from(generalSection.children).forEach(el => { el.style.display = 'none'; });
   const sectionLabel = generalSection.querySelector('.settings-section-label');
   if (sectionLabel && selectedRows.length) {
