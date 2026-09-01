@@ -509,7 +509,7 @@ body.select-mode .chat-ftr{display:none}
 .closed-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:28px}
 .closed-note{font-size:11px;color:var(--hint);line-height:1.6;background:var(--surface2);border:0.5px solid var(--border);border-radius:2px;padding:12px 16px;margin-bottom:24px;text-align:left}
 .closed-note strong{color:var(--muted)}
-.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:2px;padding:9px 16px;font-size:12px;color:var(--cream);z-index:999;animation:toast-in .2s ease;pointer-events:none;display:flex;align-items:center;gap:8px}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:0.5px solid var(--gold-border);border-radius:2px;padding:9px 16px;font-size:12px;color:var(--cream);z-index:13050;animation:toast-in .2s ease;pointer-events:none;display:flex;align-items:center;gap:8px}
 @keyframes toast-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 /* "Busy" toast (peer's on another call) gets its own beat and its own
    position: dead center of the screen rather than the corner, like a real
@@ -3276,7 +3276,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <form class="account-form" id="account-login-form" onsubmit="loginAnonymousAccount(event)">
         <label class="account-field"><span>Vaultlix Private Number</span><input id="account-login-private-number" inputmode="numeric" autocomplete="username" placeholder="73-4821-6590" required/></label>
         <label class="account-field"><span>Password</span><input id="account-login-password" type="password" autocomplete="current-password" required/></label>
-        <button class="account-primary" type="submit">Restore my vaults</button>
+        <button class="account-primary" type="submit" data-busy-label="Signing in…">Sign in</button>
+        <div class="account-note" id="account-login-status" role="status" aria-live="polite" hidden></div>
       </form>
       <form class="account-form" id="account-recover-form" onsubmit="recoverAnonymousAccount(event)">
         <div class="account-note"><strong>Save both your private number and recovery code.</strong> You need both to recover the account if you forget the password.</div>
@@ -7206,7 +7207,7 @@ function setAccountBusy(form, busy) {
   const button = form.querySelector('button[type="submit"]');
   if (!button) return;
   if (!button.dataset.label) button.dataset.label = button.textContent;
-  button.disabled = busy; button.textContent = busy ? 'Protecting…' : button.dataset.label;
+  button.disabled = busy; button.textContent = busy ? (button.dataset.busyLabel || 'Protecting…') : button.dataset.label;
 }
 function formatRecoveryCode(rawBytes) {
   const compact = bytesToBase64UrlCompact(rawBytes);
@@ -7254,19 +7255,25 @@ async function loginAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
   const privateNumber = normalizePrivateNumber(document.getElementById('account-login-private-number').value);
   const password = document.getElementById('account-login-password').value;
+  const status = document.getElementById('account-login-status');
+  status.hidden = true; status.textContent = '';
   if (!privateNumber) { toast('Enter a valid Vaultlix private number'); return; }
   setAccountBusy(form, true);
   try {
     const material = await derivePasswordMaterial(privateNumber, password);
     const result = await api('/api/account/login', { privateNumber, authSecret:material.authSecret });
-    if (result.error) { toast(result.error); return; }
+    if (result.error) { status.textContent = result.error; status.hidden = false; toast(result.error); return; }
     const wrapped = await aesDecryptJson(material.wrapKey, result.passwordWrap);
     const masterKey = base64UrlToBytes(wrapped.masterKey);
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
     saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
-    toast('Vaults restored'); setTimeout(() => location.reload(), 350);
-  } catch (e) { console.error(e); toast('Vaultlix private number or password is incorrect'); }
+    toast('Signed in'); setTimeout(() => location.reload(), 350);
+  } catch (e) {
+    console.error(e);
+    const message = 'Vaultlix private number or password is incorrect';
+    status.textContent = message; status.hidden = false; toast(message);
+  }
   finally { setAccountBusy(form, false); }
 }
 async function recoverAnonymousAccount(event) {
