@@ -2638,7 +2638,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <input type="file" id="image-input" multiple style="display:none" accept="image/*" onchange="handleFileSelect(event)"/>
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
-    <textarea id="msg-input" placeholder="Type a message…" rows="1" disabled></textarea>
+    <textarea id="msg-input" placeholder="Type a message…" data-i18n-placeholder="message_placeholder" rows="1" disabled></textarea>
     <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled style="display:none">
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
@@ -2667,7 +2667,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 <div id="s-vault-list" class="screen">
   <div class="vault-list-hdr">
     <div class="vault-list-heading">
-      <div class="vault-list-title">Chats</div>
+      <div class="vault-list-title" data-i18n="chats">Chats</div>
     </div>
     <div class="vault-list-nav">
       <button class="vault-list-settings" type="button" onclick="openNewConnection()" title="New connection" aria-label="Find a Vaultlix private number">
@@ -2682,7 +2682,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
   <div class="vault-list-actions">
-    <button class="vault-list-action primary" type="button" onclick="openNewConnection()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New connection</button>
+    <button class="vault-list-action primary" type="button" onclick="openNewConnection()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="new_connection">New connection</span></button>
   </div>
 </div>
 
@@ -2965,17 +2965,18 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <button class="settings-back" id="settings-back" onclick="settingsBack()">
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <span class="settings-header-title" id="settings-header-title">Settings</span>
+    <span class="settings-header-title" id="settings-header-title" data-i18n="settings">Settings</span>
   </div>
 
   <div class="settings-body">
     <div class="settings-menu" id="settings-menu">
-      <div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Profile</div><div class="settings-row-sub">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-      <div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Privacy &amp; Security</div><div class="settings-row-sub">App lock, blocking, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-      <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Notifications</div><div class="settings-row-sub">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-      <div class="settings-link-row" onclick="openSettingsCategory('chats')"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Chats</div><div class="settings-row-sub">Conversation label, message controls and chat safety</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-      <div class="settings-link-row" onclick="openSettingsCategory('calls')"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Calls</div><div class="settings-row-sub">Call privacy, permissions and audio routing guidance</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-      <div class="settings-link-row" onclick="openSettingsCategory('help')"><div class="settings-row-icon" style="background:#F4F0FA;color:#725B91"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3 1.1-1.8 1.5-1.8 3.3"/><path d="M12 18h.01"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Help</div><div class="settings-row-sub">How to use Vaultlix, FAQ, policies and version</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="profile">Profile</div><div class="settings-row-sub">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub">App lock, blocking, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="notifications">Notifications</div><div class="settings-row-sub" data-i18n="notifications_subtitle">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('chats')"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="chats">Chats</div><div class="settings-row-sub" data-i18n="chats_subtitle">Conversation label, message controls and chat safety</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('calls')"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="calls">Calls</div><div class="settings-row-sub" data-i18n="calls_subtitle">Call privacy, permissions and audio routing guidance</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('help')"><div class="settings-row-icon" style="background:#F4F0FA;color:#725B91"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3 1.1-1.8 1.5-1.8 3.3"/><path d="M12 18h.01"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="help">Help</div><div class="settings-row-sub" data-i18n="help_subtitle">How to use Vaultlix, FAQ, policies and version</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('language')"><div class="settings-row-icon" style="background:#EEF7F7;color:#3D7B7B"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="language">Language</div><div class="settings-row-sub" data-i18n="language_subtitle">Use your device language or choose another</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
     </div>
 
     <div id="settings-general-section">
@@ -3042,6 +3043,22 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <div class="settings-row"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Audio route</div><div class="settings-row-sub">Choose phone, speaker, or an available Bluetooth device during a call</div></div><div class="settings-status settings-status-off">During call</div></div>
       <div class="settings-divider"></div>
       <div class="settings-row"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Microphone and camera</div><div class="settings-row-sub">Permissions are controlled by your phone’s system settings</div></div><div class="settings-status settings-status-off">Device</div></div>
+    </div>
+
+    <div id="settings-language-section" class="settings-category-page">
+      <div class="settings-section-label" data-i18n="language">Language</div>
+      <label class="account-field" style="margin:8px 20px 20px"><span data-i18n="app_language">App language</span>
+        <select id="app-language-select" onchange="setAppLanguage(this.value)" style="width:100%;margin-top:8px;padding:14px;border:1px solid #dfd1d6;border-radius:14px;background:#fff;font:inherit;color:#271d25">
+          <option value="system" data-i18n="system_default">System default</option>
+          <option value="en">English</option>
+          <option value="zh">简体中文</option>
+          <option value="ru">Русский</option>
+          <option value="hi">हिन्दी</option>
+          <option value="ar">العربية</option>
+          <option value="hy">Հայերեն</option>
+        </select>
+      </label>
+      <div class="settings-row-sub" style="padding:0 20px 22px" data-i18n="language_note">The change applies immediately. Arabic uses a right-to-left layout.</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -3246,9 +3263,9 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div id="account-guest-view">
       <div class="account-copy">Choose the name people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.</div>
       <div class="account-tabs">
-        <button class="account-tab active" data-account-tab="create" onclick="showAccountTab('create')">Create</button>
-        <button class="account-tab" data-account-tab="login" onclick="showAccountTab('login')">Sign in</button>
-        <button class="account-tab" data-account-tab="recover" onclick="showAccountTab('recover')">Recover</button>
+        <button class="account-tab active" data-account-tab="create" data-i18n="create" onclick="showAccountTab('create')">Create</button>
+        <button class="account-tab" data-account-tab="login" data-i18n="sign_in" onclick="showAccountTab('login')">Sign in</button>
+        <button class="account-tab" data-account-tab="recover" data-i18n="recover" onclick="showAccountTab('recover')">Recover</button>
       </div>
       <form class="account-form active" id="account-create-form" onsubmit="createAnonymousAccount(event)">
         <div class="onboarding-progress" aria-label="Account creation progress"><span class="active"></span><span></span><span></span></div>
@@ -3366,6 +3383,74 @@ var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),
 
 <script>
 // ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
+const VAULTLIX_LANGUAGE_KEY = 'vaultlix_language_v1';
+const VAULTLIX_LANGUAGES = ['en', 'zh', 'ru', 'hi', 'ar', 'hy'];
+const VAULTLIX_TRANSLATIONS = {
+  en: {
+    settings:'Settings', profile:'Profile', privacy_security:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help',
+    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.',
+    system_default:'System default', new_connection:'New connection', sign_in:'Sign in', create_account:'Create account', recover_account:'Recover account',
+    private_number:'Vaultlix private number', display_name:'Display name', password:'Password', continue:'Continue', cancel:'Cancel', save:'Save', close:'Close',
+    search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
+    start_conversation:'Start your first private conversation', start_conversation_help:"Tap New connection and enter the other person's Vaultlix private number.",
+    message_placeholder:'Type a message…', system_language:'System default', create:'Create', recover:'Recover',
+    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings'
+  },
+  zh: {
+    settings:'设置', profile:'个人资料', privacy_security:'隐私与安全', notifications:'通知', chats:'聊天', calls:'通话', help:'帮助',
+    language:'语言', language_subtitle:'使用设备语言或选择其他语言', app_language:'应用语言', language_note:'更改会立即生效。阿拉伯语采用从右到左布局。',
+    system_default:'跟随系统', new_connection:'新建连接', sign_in:'登录', create_account:'创建账户', recover_account:'恢复账户', private_number:'Vaultlix 私人号码', display_name:'显示名称', password:'密码', continue:'继续', cancel:'取消', save:'保存', close:'关闭', search:'搜索', home:'主页', encrypted_conversation:'加密对话', no_conversations:'暂无对话', start_conversation:'开始你的第一次私人对话', start_conversation_help:'点击“新建连接”，输入对方的 Vaultlix 私人号码。', message_placeholder:'输入消息…', create:'创建', recover:'恢复', notifications_subtitle:'消息声音、提醒和设备权限状态', chats_subtitle:'对话标签、消息控制和聊天安全', calls_subtitle:'通话隐私、权限和音频路由', help_subtitle:'Vaultlix 使用方法、常见问题、政策和版本'
+  },
+  ru: {
+    settings:'Настройки', profile:'Профиль', privacy_security:'Конфиденциальность и безопасность', notifications:'Уведомления', chats:'Чаты', calls:'Звонки', help:'Помощь',
+    language:'Язык', language_subtitle:'Использовать язык устройства или выбрать другой', app_language:'Язык приложения', language_note:'Изменение применяется сразу. Для арабского используется направление справа налево.', system_default:'Как в системе', new_connection:'Новое соединение', sign_in:'Войти', create_account:'Создать аккаунт', recover_account:'Восстановить аккаунт', private_number:'Личный номер Vaultlix', display_name:'Отображаемое имя', password:'Пароль', continue:'Продолжить', cancel:'Отмена', save:'Сохранить', close:'Закрыть', search:'Поиск', home:'Главная', encrypted_conversation:'Зашифрованный разговор', no_conversations:'Разговоров пока нет', start_conversation:'Начните первый приватный разговор', start_conversation_help:'Нажмите «Новое соединение» и введите личный номер Vaultlix собеседника.', message_placeholder:'Введите сообщение…', create:'Создать', recover:'Восстановить', notifications_subtitle:'Звуки, оповещения и статус разрешений', chats_subtitle:'Метка диалога, управление сообщениями и безопасность', calls_subtitle:'Конфиденциальность, разрешения и аудиомаршрут', help_subtitle:'Использование Vaultlix, FAQ, политики и версия'
+  },
+  hi: {
+    settings:'सेटिंग्स', profile:'प्रोफ़ाइल', privacy_security:'गोपनीयता और सुरक्षा', notifications:'सूचनाएँ', chats:'चैट', calls:'कॉल', help:'सहायता',
+    language:'भाषा', language_subtitle:'डिवाइस की भाषा उपयोग करें या दूसरी चुनें', app_language:'ऐप की भाषा', language_note:'बदलाव तुरंत लागू होगा। अरबी में दाएँ-से-बाएँ लेआउट उपयोग होता है।', system_default:'सिस्टम डिफ़ॉल्ट', new_connection:'नया कनेक्शन', sign_in:'साइन इन', create_account:'खाता बनाएँ', recover_account:'खाता वापस पाएँ', private_number:'Vaultlix निजी नंबर', display_name:'दिखाया जाने वाला नाम', password:'पासवर्ड', continue:'जारी रखें', cancel:'रद्द करें', save:'सहेजें', close:'बंद करें', search:'खोजें', home:'होम', encrypted_conversation:'एन्क्रिप्टेड बातचीत', no_conversations:'अभी कोई बातचीत नहीं', start_conversation:'अपनी पहली निजी बातचीत शुरू करें', start_conversation_help:'नया कनेक्शन दबाएँ और दूसरे व्यक्ति का Vaultlix निजी नंबर दर्ज करें।', message_placeholder:'संदेश लिखें…', create:'बनाएँ', recover:'वापस पाएँ', notifications_subtitle:'संदेश ध्वनि, अलर्ट और डिवाइस अनुमति', chats_subtitle:'बातचीत लेबल, संदेश नियंत्रण और चैट सुरक्षा', calls_subtitle:'कॉल गोपनीयता, अनुमति और ऑडियो राउटिंग', help_subtitle:'Vaultlix का उपयोग, FAQ, नीतियाँ और संस्करण'
+  },
+  ar: {
+    settings:'الإعدادات', profile:'الملف الشخصي', privacy_security:'الخصوصية والأمان', notifications:'الإشعارات', chats:'الدردشات', calls:'المكالمات', help:'المساعدة',
+    language:'اللغة', language_subtitle:'استخدم لغة الجهاز أو اختر لغة أخرى', app_language:'لغة التطبيق', language_note:'يُطبّق التغيير فورًا. تستخدم العربية تخطيطًا من اليمين إلى اليسار.', system_default:'لغة النظام', new_connection:'اتصال جديد', sign_in:'تسجيل الدخول', create_account:'إنشاء حساب', recover_account:'استرداد الحساب', private_number:'رقم Vaultlix الخاص', display_name:'الاسم الظاهر', password:'كلمة المرور', continue:'متابعة', cancel:'إلغاء', save:'حفظ', close:'إغلاق', search:'بحث', home:'الرئيسية', encrypted_conversation:'محادثة مشفرة', no_conversations:'لا توجد محادثات بعد', start_conversation:'ابدأ أول محادثة خاصة', start_conversation_help:'اضغط على اتصال جديد وأدخل رقم Vaultlix الخاص بالشخص الآخر.', message_placeholder:'اكتب رسالة…', create:'إنشاء', recover:'استرداد', notifications_subtitle:'أصوات الرسائل والتنبيهات وأذونات الجهاز', chats_subtitle:'تسمية المحادثة وأدوات الرسائل وأمان الدردشة', calls_subtitle:'خصوصية المكالمات والأذونات وتوجيه الصوت', help_subtitle:'طريقة استخدام Vaultlix والأسئلة والسياسات والإصدار'
+  },
+  hy: {
+    settings:'Կարգավորումներ', profile:'Պրոֆիլ', privacy_security:'Գաղտնիություն և անվտանգություն', notifications:'Ծանուցումներ', chats:'Զրույցներ', calls:'Զանգեր', help:'Օգնություն',
+    language:'Լեզու', language_subtitle:'Օգտագործել սարքի լեզուն կամ ընտրել այլ լեզու', app_language:'Հավելվածի լեզու', language_note:'Փոփոխությունն անմիջապես կկիրառվի։ Արաբերենն օգտագործում է աջից ձախ դասավորություն։', system_default:'Համակարգի լեզու', new_connection:'Նոր կապ', sign_in:'Մուտք գործել', create_account:'Ստեղծել հաշիվ', recover_account:'Վերականգնել հաշիվը', private_number:'Vaultlix անձնական համար', display_name:'Ցուցադրվող անուն', password:'Գաղտնաբառ', continue:'Շարունակել', cancel:'Չեղարկել', save:'Պահպանել', close:'Փակել', search:'Որոնել', home:'Գլխավոր', encrypted_conversation:'Գաղտնագրված զրույց', no_conversations:'Զրույցներ դեռ չկան', start_conversation:'Սկսեք ձեր առաջին անձնական զրույցը', start_conversation_help:'Սեղմեք «Նոր կապ» և մուտքագրեք մյուս անձի Vaultlix անձնական համարը։', message_placeholder:'Գրեք հաղորդագրություն…', create:'Ստեղծել', recover:'Վերականգնել', notifications_subtitle:'Հաղորդագրության ձայներ, զգուշացումներ և սարքի թույլտվություններ', chats_subtitle:'Զրույցի պիտակ, հաղորդագրությունների կառավարում և անվտանգություն', calls_subtitle:'Զանգերի գաղտնիություն, թույլտվություններ և ձայնի ուղղում', help_subtitle:'Vaultlix-ի օգտագործում, FAQ, քաղաքականություններ և տարբերակ'
+  }
+};
+function normalizeVaultlixLanguage(value) {
+  const base = String(value || '').toLowerCase().split(/[-_]/)[0];
+  return VAULTLIX_LANGUAGES.includes(base) ? base : 'en';
+}
+function currentAppLanguage() {
+  const stored = localStorage.getItem(VAULTLIX_LANGUAGE_KEY) || 'system';
+  return stored === 'system' ? normalizeVaultlixLanguage(navigator.languages?.[0] || navigator.language) : normalizeVaultlixLanguage(stored);
+}
+function i18n(key) {
+  const lang = currentAppLanguage();
+  return VAULTLIX_TRANSLATIONS[lang]?.[key] || VAULTLIX_TRANSLATIONS.en[key] || key;
+}
+function applyAppLanguage() {
+  const lang = currentAppLanguage();
+  document.documentElement.lang = lang === 'zh' ? 'zh-Hans' : lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.body?.classList.toggle('vaultlix-rtl', lang === 'ar');
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = i18n(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = i18n(el.dataset.i18nPlaceholder); });
+  const select = document.getElementById('app-language-select');
+  if (select) select.value = localStorage.getItem(VAULTLIX_LANGUAGE_KEY) || 'system';
+  document.dispatchEvent(new CustomEvent('vaultlixlanguagechange', { detail:{ language:lang } }));
+}
+function setAppLanguage(value) {
+  localStorage.setItem(VAULTLIX_LANGUAGE_KEY, value === 'system' ? 'system' : normalizeVaultlixLanguage(value));
+  applyAppLanguage();
+  if (typeof renderVaultList === 'function') renderVaultList();
+  if (settingsOpen) {
+    if (settingsCategory) openSettingsCategory(settingsCategory);
+    else showSettingsMenu();
+  }
+}
+document.addEventListener('DOMContentLoaded', applyAppLanguage, { once:true });
 function syncAndroidSystemInsets(){
   const bridge=window.VaultlixAndroid;
   if(!bridge||typeof bridge.statusBarInsetCssPx!=='function')return;
@@ -6735,22 +6820,24 @@ function settingsBack() {
 function showSettingsMenu() {
   settingsCategory = null;
   document.getElementById('settings-menu').style.display = '';
-  document.getElementById('settings-header-title').textContent = 'Settings';
+  document.getElementById('settings-header-title').textContent = i18n('settings');
   document.getElementById('settings-general-section').style.display = 'none';
   document.getElementById('settings-participant-section').style.display = 'none';
   document.getElementById('settings-general-safety-section').style.display = 'none';
   document.getElementById('settings-room-section').style.display = 'none';
   document.getElementById('settings-chat-empty').style.display = 'none';
   document.getElementById('settings-calls-section').classList.remove('active');
+  document.getElementById('settings-language-section').classList.remove('active');
+  document.getElementById('settings-language-section').style.display = 'none';
   document.getElementById('settings-about-section').style.display = 'none';
 }
 
 function openSettingsCategory(category) {
   settingsCategory = category;
   const room = getActiveRoom();
-  const titles = { profile:'Profile', privacy:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help' };
+  const titles = { profile:i18n('profile'), privacy:i18n('privacy_security'), notifications:i18n('notifications'), chats:i18n('chats'), calls:i18n('calls'), help:i18n('help'), language:i18n('language') };
   document.getElementById('settings-menu').style.display = 'none';
-  document.getElementById('settings-header-title').textContent = settingsContextMode === 'chat' ? 'Conversation settings' : (titles[category] || 'Settings');
+  document.getElementById('settings-header-title').textContent = settingsContextMode === 'chat' ? i18n('conversation_settings') : (titles[category] || i18n('settings'));
   const generalSection = document.getElementById('settings-general-section');
   const generalRows = {
     profile:['settings-account-row'],
@@ -6775,6 +6862,10 @@ function openSettingsCategory(category) {
   const callsSection = document.getElementById('settings-calls-section');
   callsSection.classList.toggle('active', category === 'calls');
   callsSection.style.display = category === 'calls' ? '' : 'none';
+  const languageSection = document.getElementById('settings-language-section');
+  languageSection.classList.toggle('active', category === 'language');
+  languageSection.style.display = category === 'language' ? '' : 'none';
+  if (category === 'language') applyAppLanguage();
   document.getElementById('settings-about-section').style.display = category === 'help' ? '' : 'none';
   document.getElementById('persistent-suggestion-section').style.display = 'none';
   document.getElementById('anon-link-section').style.display = 'none';
@@ -8497,7 +8588,7 @@ function renderVaultList() {
   const previews = vaultPreviewsEnabled();
   const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">Wants to start a private conversation</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">Accept</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">Decline</button></div></div>`).join('');
   if (rooms.size === 0 && pendingIncomingConnections.length === 0) {
-    body.innerHTML = `<div class="vault-list-empty"><strong>Start your first private conversation</strong>Tap New connection and enter the other person's Vaultlix private number.</div>`;
+    body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
   }
   let html = requestHtml;

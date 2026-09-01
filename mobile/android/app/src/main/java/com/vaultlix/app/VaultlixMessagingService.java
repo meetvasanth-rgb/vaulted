@@ -51,8 +51,8 @@ public class VaultlixMessagingService extends MessagingService {
         if (caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
             caller = body.substring(0, body.length() - " is calling".length()).trim();
         }
-        if (caller.isEmpty()) caller = "Vaultlix caller";
-        if (body.isEmpty()) body = "Tap to answer";
+        if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
+        if (body.isEmpty()) body = getString(R.string.tap_to_answer);
 
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
@@ -61,10 +61,10 @@ public class VaultlixMessagingService extends MessagingService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     callChannelId,
-                    "Calls",
+                    getString(R.string.calls_channel),
                     NotificationManager.IMPORTANCE_HIGH
             );
-            channel.setDescription("Incoming encrypted call alerts");
+            channel.setDescription(getString(R.string.calls_channel_description));
             channel.enableVibration(true);
             Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
             AudioAttributes attributes = new AudioAttributes.Builder()

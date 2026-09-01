@@ -29,7 +29,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private(set) var voIPToken: String?
 
     private override init() {
-        let configuration = CXProviderConfiguration(localizedName: "Vaultlix")
+        let configuration = CXProviderConfiguration(localizedName: NSLocalizedString("call_service_name", comment: "CallKit service name"))
         configuration.supportsVideo = true
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
