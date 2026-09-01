@@ -1,6 +1,7 @@
 'use strict';
 
 const { Pool } = require('pg');
+const crypto = require('crypto');
 
 // PostgreSQL contains ciphertext, hashes, delivery state and deletion
 // tombstones only. Message plaintext and conversation keys never enter this
@@ -69,7 +70,7 @@ CREATE INDEX IF NOT EXISTS encrypted_messages_sync_idx
 
 CREATE TABLE IF NOT EXISTS inbox_events (
   account_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-  sequence bigint GENERATED ALWAYS AS IDENTITY,
+  sequence bigint NOT NULL,
   conversation_id text,
   event_type varchar(32) NOT NULL,
   encrypted_payload text,
@@ -77,8 +78,37 @@ CREATE TABLE IF NOT EXISTS inbox_events (
   expires_at bigint,
   PRIMARY KEY (account_id, sequence)
 );
+ALTER TABLE inbox_events ALTER COLUMN sequence DROP IDENTITY IF EXISTS;
 CREATE INDEX IF NOT EXISTS inbox_events_sync_idx
   ON inbox_events(account_id, sequence);
+
+CREATE TABLE IF NOT EXISTS account_inbox_counters (
+  account_id char(64) PRIMARY KEY REFERENCES accounts(account_id) ON DELETE CASCADE,
+  next_sequence bigint NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS message_receipts (
+  conversation_id text NOT NULL,
+  message_id text NOT NULL,
+  delivered_at bigint,
+  read_at bigint,
+  receipt_sequence bigint NOT NULL,
+  PRIMARY KEY (conversation_id, message_id),
+  FOREIGN KEY (conversation_id, message_id)
+    REFERENCES encrypted_messages(conversation_id, message_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS message_reactions (
+  conversation_id text NOT NULL,
+  message_id text NOT NULL,
+  reactor_token_hash char(64) NOT NULL,
+  encrypted_reaction text,
+  reaction_sequence bigint NOT NULL,
+  updated_at bigint NOT NULL,
+  PRIMARY KEY (conversation_id, message_id, reactor_token_hash),
+  FOREIGN KEY (conversation_id, message_id)
+    REFERENCES encrypted_messages(conversation_id, message_id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS deletion_tombstones (
   conversation_id text NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
@@ -97,7 +127,7 @@ CREATE TABLE IF NOT EXISTS device_sync_cursors (
   PRIMARY KEY (account_id, device_id)
 );
 
-INSERT INTO vaultlix_schema(version) VALUES (1) ON CONFLICT DO NOTHING;
+INSERT INTO vaultlix_schema(version) VALUES (1), (2) ON CONFLICT DO NOTHING;
 `;
 
 class PostgresStore {
@@ -150,6 +180,84 @@ class PostgresStore {
 
   async deleteAccount(accountId) {
     if (this.enabled) await this.pool.query('DELETE FROM accounts WHERE account_id=$1', [accountId]);
+  }
+
+  async createConversation(record) {
+    if (!this.enabled) return;
+    await this.pool.query(`INSERT INTO conversations (
+      conversation_id, persistent, delete_timer, created_at, updated_at, last_message_at
+    ) VALUES ($1,$2,$3,$4,$4,$5)
+    ON CONFLICT (conversation_id) DO NOTHING`, [
+      record.id, !!record.persistent, record.deleteTimer || 0,
+      record.createdAt, record.lastMessageAt || 0,
+    ]);
+  }
+
+  async upsertConversationMember(conversationId, slot, token, member) {
+    if (!this.enabled) return;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    await this.pool.query(`INSERT INTO conversation_members (
+      conversation_id, member_slot, token_hash, encrypted_name, public_key,
+      push_state, last_seen
+    ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
+    ON CONFLICT (conversation_id, member_slot) DO UPDATE SET
+      token_hash=EXCLUDED.token_hash, encrypted_name=EXCLUDED.encrypted_name,
+      public_key=EXCLUDED.public_key, push_state=EXCLUDED.push_state,
+      last_seen=EXCLUDED.last_seen`, [
+      conversationId, slot, tokenHash, member.name || null, member.pubKey || null,
+      JSON.stringify({ pushSub:member.pushSub || null, apnsToken:member.apnsToken || null, fcmToken:member.fcmToken || null }),
+      member.lastSeen || 0,
+    ]);
+  }
+
+  async deleteConversationMember(conversationId, slot) {
+    if (!this.enabled) return;
+    await this.pool.query('DELETE FROM conversation_members WHERE conversation_id=$1 AND member_slot=$2', [conversationId, slot]);
+  }
+
+  async appendEncryptedMessage(conversationId, token, message) {
+    if (!this.enabled) return;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`INSERT INTO encrypted_messages (
+        conversation_id, message_id, sender_token_hash, sequence, ciphertext,
+        created_at, expires_at, view_once
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (conversation_id, message_id) DO NOTHING`, [
+        conversationId, message.id, tokenHash, message.seq, message.content,
+        message.ts, message.expiresAt || null, !!message.viewOnce,
+      ]);
+      await client.query(`UPDATE conversations SET
+        updated_at=$2, last_message_at=GREATEST(last_message_at,$2),
+        next_message_sequence=GREATEST(next_message_sequence,$3)
+        WHERE conversation_id=$1`, [conversationId, message.ts, message.seq + 1]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async deleteEncryptedMessage(conversationId, messageId, deletionSequence, deletedAt, expiresAt) {
+    if (!this.enabled) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM encrypted_messages WHERE conversation_id=$1 AND message_id=$2', [conversationId, messageId]);
+      await client.query(`INSERT INTO deletion_tombstones (
+        conversation_id, message_id, deletion_sequence, deleted_at, expires_at
+      ) VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (conversation_id,message_id) DO UPDATE SET
+        deletion_sequence=GREATEST(deletion_tombstones.deletion_sequence,EXCLUDED.deletion_sequence),
+        deleted_at=EXCLUDED.deleted_at, expires_at=EXCLUDED.expires_at`,
+      [conversationId, messageId, deletionSequence, deletedAt, expiresAt]);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
   }
 
   async close() { if (this.pool?.end) await this.pool.end(); }

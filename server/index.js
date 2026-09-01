@@ -40,6 +40,7 @@ const privateNumbers = new Map(); // public Vaultlix Private Number -> private r
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
 let postgresEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ── /api/send content sizing ─────────────────────────────────────────────
 // These were measured against the client's actual code, not guessed. A
@@ -2282,8 +2283,9 @@ async function api(path, method, d, p, res, ip, headers) {
     // sweep and the stale-member eviction logic below both check to exempt
     // it from the usual short-lived-room assumptions.
     const persistent = !!d.persistent;
-    rooms.set(roomCode, {
-      lastActivity: Date.now(),
+    const createdAt = Date.now();
+    const room = {
+      lastActivity: createdAt,
       isNamed: !!namedCode,
       persistent,
       // Set once the second person actually joins — used for the "connected
@@ -2309,15 +2311,25 @@ async function api(path, method, d, p, res, ip, headers) {
       // enabling/changing the timer can never retroactively delete anything
       // already in the room. Irrelevant at creation (nothing's been sent
       // yet), but kept consistent with /api/set-timer below.
-      deleteTimerSetAt: Date.now(),
+      deleteTimerSetAt: createdAt,
       passwordHash,
       seq: 0,          // global message sequence counter
       reactionSeq: 0,  // separate counter so reaction updates can be synced like read receipts
       deletionSeq: 0,  // same pattern again, for "delete for everyone" — see /api/delete-message
-      members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() }]]),
+      members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: createdAt, slot:1 }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
       byteSize: 0,     // running total of msgs[].content.length — see pushRoomMsg/deleteRoomMsgContent
-    });
+    };
+    rooms.set(roomCode, room);
+    try {
+      if (postgresEnabled) {
+        await postgresStore.createConversation({ id:roomCode, persistent, deleteTimer:room.deleteTimer, createdAt });
+        await postgresStore.upsertConversationMember(roomCode, 1, token, room.members.get(token));
+      }
+    } catch (error) {
+      rooms.delete(roomCode);
+      throw error;
+    }
     if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
     trackAggregate(persistent ? 'vaultsPermanent' : 'vaultsTemporary');
     console.log(`Room created: ${logCode(roomCode)}${persistent ? ' (permanent room)' : ''}`);
@@ -2427,13 +2439,20 @@ async function api(path, method, d, p, res, ip, headers) {
     if (room.members.size >= 2) {
       const staleThreshold = Date.now() - STALE_MEMBER_MS;
       for (const [t, m] of room.members) {
-        if (m.lastSeen < staleThreshold) room.members.delete(t);
+        if (m.lastSeen < staleThreshold) {
+          room.members.delete(t);
+          if (postgresEnabled && m.slot) await postgresStore.deleteConversationMember(roomCode, m.slot);
+        }
       }
     }
     if (room.members.size >= 2) return resErr(res,'Room is full.',403);
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
-    room.members.set(token, { name, pubKey: d.pubKey||null, lastSeen: Date.now() });
+    const usedSlots = new Set([...room.members.values()].map(member => member.slot).filter(Boolean));
+    const slot = usedSlots.has(1) ? 2 : 1;
+    const member = { name, pubKey: d.pubKey||null, lastSeen: Date.now(), slot };
+    if (postgresEnabled) await postgresStore.upsertConversationMember(roomCode, slot, token, member);
+    room.members.set(token, member);
     analytics.joins = (analytics.joins || 0) + 1;
     trackAggregate('joins');
     room.lastActivity = Date.now();
@@ -2519,7 +2538,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
-    const seq = ++room.seq;
+    const seq = room.seq + 1;
     // viewOnce travels as a plain top-level field (client/index.html's
     // sendFileMessage/sendAlbumMessage) alongside the encrypted content —
     // this server can't see inside that encrypted payload, so without this
@@ -2529,7 +2548,10 @@ async function api(path, method, d, p, res, ip, headers) {
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    pushRoomMsg(room, { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    if (postgresEnabled) await postgresStore.appendEncryptedMessage(d.code, d.token, message);
+    room.seq = seq;
+    pushRoomMsg(room, message);
     publishInboxRoom(d.code, 'message', { excludeToken:d.token });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     room.lastMessageAt = Date.now();
@@ -2751,6 +2773,9 @@ async function api(path, method, d, p, res, ip, headers) {
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
     if (msg.from !== d.token) return resErr(res,'Only the sender can delete this for everyone.',403);
+    const deletedAt = Date.now();
+    const deletionSequence = room.deletionSeq + 1;
+    if (postgresEnabled) await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS);
     deleteRoomMsgContent(room, msg);
     room.lastActivity = Date.now();
     publishInboxRoom(d.code, 'deletion', { excludeToken:d.token });
@@ -2781,6 +2806,9 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!msg) return resErr(res,'Message not found.',404);
     if (msg.viewOnce !== true || msg.from === d.token) return resErr(res,'Not authorized to open this message.',403);
     if (!msg.deleted) {
+      const deletedAt = Date.now();
+      const deletionSequence = room.deletionSeq + 1;
+      if (postgresEnabled) await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS);
       deleteRoomMsgContent(room, msg);
       room.lastActivity = Date.now();
       publishInboxRoom(d.code, 'deletion', { excludeToken:d.token });
