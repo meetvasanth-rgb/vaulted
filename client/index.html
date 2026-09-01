@@ -3270,7 +3270,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       <form class="account-form active" id="account-create-form" onsubmit="createAnonymousAccount(event)">
         <div class="onboarding-progress" aria-label="Account creation progress"><span class="active"></span><span></span><span></span></div>
         <div class="account-step active" id="account-create-step-identity">
-          <label class="account-field"><span>Your permanent name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required placeholder="Vasanth Kumar"/></label>
+          <label class="account-field"><span>Your permanent name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required/></label>
           <div class="private-number-card">
             <div class="private-number-label">Your Vaultlix Private Number</div>
             <div class="private-number-value" id="account-private-number-value">Generating…</div>
@@ -3291,15 +3291,15 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
         </div>
       </form>
       <form class="account-form" id="account-login-form" onsubmit="loginAnonymousAccount(event)">
-        <label class="account-field"><span>Vaultlix Private Number</span><input id="account-login-private-number" inputmode="numeric" autocomplete="username" placeholder="73-4821-6590" required/></label>
+        <label class="account-field"><span>Vaultlix Private Number</span><input id="account-login-private-number" inputmode="numeric" autocomplete="username" required/></label>
         <label class="account-field"><span>Password</span><input id="account-login-password" type="password" autocomplete="current-password" required/></label>
         <button class="account-primary" type="submit" data-busy-label="Signing in…">Sign in</button>
         <div class="account-note" id="account-login-status" role="status" aria-live="polite" hidden></div>
       </form>
       <form class="account-form" id="account-recover-form" onsubmit="recoverAnonymousAccount(event)">
         <div class="account-note"><strong>Save both your private number and recovery code.</strong> You need both to recover the account if you forget the password.</div>
-        <label class="account-field"><span>Vaultlix Private Number</span><input id="account-recover-private-number" inputmode="numeric" autocomplete="username" placeholder="73-4821-6590" required/></label>
-        <label class="account-field"><span>Permanent recovery code</span><input id="account-recovery-code" autocomplete="off" required placeholder="VX-…"/></label>
+        <label class="account-field"><span>Vaultlix Private Number</span><input id="account-recover-private-number" inputmode="numeric" autocomplete="username" required/></label>
+        <label class="account-field"><span>Permanent recovery code</span><input id="account-recovery-code" autocomplete="off" required/></label>
         <label class="account-field"><span>New password</span><input id="account-recover-password" type="password" autocomplete="new-password" minlength="8" required/></label>
         <div class="password-policy"><strong>Password policy:</strong> Minimum 8 characters. For stronger protection, use a unique mix of uppercase and lowercase letters, numbers, and symbols.</div>
         <button class="account-primary" type="submit">Recover and change password</button>
@@ -3350,7 +3350,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
     <div class="account-head"><div><div class="account-kicker" data-i18n="new_private_connection">New private connection</div><div class="account-title" id="new-connection-title" data-i18n="enter_their_private_number">Enter their Private Number</div></div><button class="account-close" onclick="closeNewConnection()" aria-label="Close">×</button></div>
     <div class="account-copy" data-i18n="new_connection_instructions">Enter the exact 10-digit Vaultlix private number shared with you. Vaultlix does not search contacts or suggest people.</div>
     <form class="account-form active" onsubmit="findPrivateNumber(event)">
-      <label class="account-field"><span data-i18n="private_number">Vaultlix private number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" placeholder="73-4821-6590" required/></label>
+      <label class="account-field"><span data-i18n="private_number">Vaultlix private number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" required/></label>
       <button class="account-primary" type="submit" data-i18n="find_person">Find person</button>
     </form>
   </div>
