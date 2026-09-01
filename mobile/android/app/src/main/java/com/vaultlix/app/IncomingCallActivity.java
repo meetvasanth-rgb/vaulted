@@ -42,6 +42,7 @@ public class IncomingCallActivity extends Activity {
         getWindow().addFlags(
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         );
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
 
         handleIntent(getIntent());
     }
@@ -83,6 +84,9 @@ public class IncomingCallActivity extends Activity {
             return;
         }
         showIncomingCall(caller);
+        // The full-screen call surface now owns presentation. Remove the
+        // duplicate heads-up notification so Android never shows two call UIs.
+        cancelNotification();
         if (intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)) answerCall();
     }
 
@@ -129,6 +133,8 @@ public class IncomingCallActivity extends Activity {
         actions.addView(answer, new LinearLayout.LayoutParams(0, dp(58), 1));
 
         root.addView(actions, actionsParams);
+        root.setFocusableInTouchMode(true);
+        root.requestFocus();
         setContentView(root);
     }
 

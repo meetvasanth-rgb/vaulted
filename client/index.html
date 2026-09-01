@@ -4971,9 +4971,12 @@ async function handleSignalMessage(room, type, payload, inviteId) {
           room.nativeIncomingPrepared = false;
         }
       }
-      renderCallOverlay(room);
+      // Once Android's native engine owns the incoming call, do not leave the
+      // legacy WebView call sheet (and its focused composer/keyboard) visible
+      // underneath the full-screen native activity.
+      if (!room.nativeIncomingPrepared) renderCallOverlay(room);
       refreshCallButton();
-      playChime();
+      if (!room.nativeIncomingPrepared) playChime();
     }
     // Ack receipt so the caller can show "Ringing…" instead of a flat
     // "Calling…" the whole way through — same idea as WhatsApp distinguishing

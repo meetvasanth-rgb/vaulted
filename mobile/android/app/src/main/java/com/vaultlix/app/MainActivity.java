@@ -392,7 +392,18 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean prepareIncomingCall(String roomHandle, String caller) {
-            return nativeCallEngine.prepareIncomingHandle(roomHandle, caller);
+            boolean prepared = nativeCallEngine.prepareIncomingHandle(roomHandle, caller);
+            if (prepared) runOnUiThread(() -> {
+                View focused = getCurrentFocus();
+                InputMethodManager keyboard = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (keyboard != null) {
+                    View tokenView = focused != null ? focused : getWindow().getDecorView();
+                    keyboard.hideSoftInputFromWindow(tokenView.getWindowToken(), 0);
+                }
+                if (focused != null) focused.clearFocus();
+                getWindow().getDecorView().requestFocus();
+            });
+            return prepared;
         }
 
         @JavascriptInterface

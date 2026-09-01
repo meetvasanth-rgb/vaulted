@@ -40,4 +40,10 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(main, /prepareIncomingHandle/);
   assert.match(main, /NativeCallActivity\.class/);
   assert.match(client, /startOutgoingCall\([\s\S]*room\.callPeerName/);
+  assert.match(client, /if \(!room\.nativeIncomingPrepared\) renderCallOverlay\(room\)/);
+  assert.match(client, /if \(!room\.nativeIncomingPrepared\) playChime\(\)/);
+  assert.match(incoming, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
+  assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\)/);
+  const nativeActivity = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
+  assert.match(nativeActivity, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
 });

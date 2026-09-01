@@ -58,6 +58,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         setShowWhenLocked(true);
         setTurnScreenOn(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         getWindow().setStatusBarColor(INK);
         getWindow().setNavigationBarColor(INK);
         roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE);
@@ -143,6 +144,8 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         actions.addView(routeControl, controlParams());
         actions.addView(endControl, controlParams());
         root.addView(actions, new LinearLayout.LayoutParams(-1, dp(112)));
+        root.setFocusableInTouchMode(true);
+        root.requestFocus();
         setContentView(root);
     }
 
