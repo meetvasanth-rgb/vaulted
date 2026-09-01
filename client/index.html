@@ -1068,6 +1068,7 @@ body.select-mode .chat-ftr{display:none}
 .call-identity{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;min-height:0}
 .call-peer-name{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:#fff;letter-spacing:.06em}
 .call-status{font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.4)}
+.call-status.call-security{color:rgba(255,255,255,.76);font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.22)}
 .call-status.pulsing{animation:call-status-pulse 1.5s ease-in-out infinite}
 @keyframes call-status-pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .call-timer-display{font-family:'Inter',sans-serif;font-size:34px;font-weight:300;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums;margin-top:4px}
@@ -5816,7 +5817,7 @@ function renderCallOverlay(room) {
         <div class="call-hollow-dot"></div>
         <div class="call-peer-name">${name}</div>
         <div class="call-status pulsing">${room.callAnswerAcknowledged ? 'Connecting…' : (room.callRinging ? 'Ringing…' : 'Calling…')}</div>
-        <div class="call-status">End-to-end encrypted</div>
+        <div class="call-status call-security">End-to-end encrypted</div>
       </div>
       <div class="call-actions">
         <div class="call-btn-wrap">
@@ -5905,7 +5906,7 @@ function renderCallOverlay(room) {
         <span class="call-peer-name-compact">${name}</span>
         <span class="call-timer-compact" id="call-timer">${waitingForNativeMedia ? 'Connecting…' : '00:00'}</span>` : `
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
-        <div class="call-status">End-to-end encrypted call</div>
+        <div class="call-status call-security">End-to-end encrypted call</div>
         <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>
         <div class="call-tagline">This call never existed.</div>`;
     overlay.innerHTML = `
