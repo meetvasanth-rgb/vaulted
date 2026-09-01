@@ -803,6 +803,11 @@ body.select-mode .chat-ftr{display:none}
 .attach-opt-icon svg { width:20px; height:20px; fill:none; stroke:#4A4038; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .attach-opt-label { font-size:10px; color:#8A7F72; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
+.msg-gif{display:block;width:min(240px,70vw);max-height:280px;object-fit:contain;border-radius:12px;background:#F3EEE6;cursor:pointer}
+.klipy-picker{position:fixed;inset:0;z-index:10020;background:rgba(20,15,18,.52);display:flex;align-items:flex-end;justify-content:center}
+.klipy-sheet{width:min(620px,100%);height:min(72vh,650px);background:#fff;border-radius:24px 24px 0 0;padding:14px;display:flex;flex-direction:column;box-shadow:0 -14px 45px rgba(0,0,0,.2)}
+.klipy-head{display:flex;align-items:center;gap:10px}.klipy-search{flex:1;border:1px solid #E0D9D0;border-radius:14px;padding:12px 14px;font:500 14px/1.2 Manrope,sans-serif;outline:none}.klipy-close{border:0;background:#F3EEE6;border-radius:50%;width:38px;height:38px;font-size:22px;cursor:pointer}
+.klipy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;overflow:auto;margin-top:12px;min-height:0}.klipy-result{border:0;padding:0;background:#F3EEE6;border-radius:10px;overflow:hidden;cursor:pointer;min-height:110px}.klipy-result img{display:block;width:100%;height:150px;object-fit:cover}.klipy-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px 2px;color:#786D73;font-size:11px}.klipy-more{border:1px solid #DCCFD4;background:#fff;border-radius:10px;padding:7px 12px;color:#682C43;cursor:pointer}.klipy-status{text-align:center;color:#8A7F72;padding:30px 8px;grid-column:1/-1}
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
 .msg-media-blocked { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; color:#8A7F72; font-size:12px; }
@@ -2758,12 +2763,13 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
     <div class="legal-section">
       <h3>Cookies and tracking</h3>
-      <p>We do not use cookies, analytics trackers, advertising pixels, or any third-party tracking tools. We do not use Google Analytics or any equivalent service.</p>
+      <p>Vaultlix does not use cookies, analytics trackers, or advertising pixels, and does not use Google Analytics or an equivalent analytics service. Optional GIF search is provided by KLIPY as described below.</p>
     </div>
 
     <div class="legal-section">
       <h3>Third-party services</h3>
       <p>Vaultlix is hosted on Railway (railway.app). Railway may collect standard infrastructure logs including IP addresses. Please review Railway's privacy policy for details. We use Google Fonts for typography — fonts are loaded from Google's servers. Voice and video calls use Cloudflare's TURN service, which relays DTLS-SRTP-encrypted media packets and processes the connection metadata required to operate the relay but cannot decrypt call audio or video. Push notifications are delivered through Apple's and Google's respective push notification services, which see that a notification was sent to your device but not its content.</p>
+      <p>If you open the GIF picker, your device sends searches, language/region settings, and ordinary network information such as your IP address directly to KLIPY. When a GIF is displayed, the recipient's device loads it directly from KLIPY. The selected GIF reference is included inside the end-to-end encrypted Vaultlix message, but the GIF file itself is delivered by KLIPY and is not end-to-end encrypted by Vaultlix. Vaultlix does not send your private number to KLIPY or proxy, cache, or re-host KLIPY media.</p>
     </div>
 
     <div class="legal-section">
@@ -8919,7 +8925,7 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // message as a whole, same as it would for a single photo; a quick tap
   // on an individual tile (handleAlbumImageTap) is a separate gesture that
   // opens just that one photo.
-  const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce, .msg-album-grid, .msg-voice');
+  const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif');
   if (media) attachLongPress(media, msgId);
   // Ordinary text bubbles previously only had the short-tap recognizer
   // below. Holding past its 400ms cutoff therefore did nothing at all,
@@ -9329,6 +9335,11 @@ function renderMessageRecord(room, rec, animate) {
     contentHtml = `<div class="msg-media-wrap">${buildAlbumGridHtml(rec)}</div>`;
   } else if (rec.kind === 'voice') {
     contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
+  } else if (rec.kind === 'gif') {
+    const gifUrl = safeKlipyMediaUrl(rec.url);
+    contentHtml = gifUrl
+      ? `<div class="msg-media-wrap"><img class="msg-gif" src="${gifUrl}" alt="${escHtml(rec.title || 'GIF')}" loading="lazy" draggable="false" oncontextmenu="return false"/></div>`
+      : MEDIA_BLOCKED_HTML;
   } else if (rec.kind === 'blocked') {
     // decryptMsg's E2E_DOWNGRADE case — see DOWNGRADE_BLOCKED_HTML above.
     // rec deliberately has no .content field for this kind, so there is
@@ -9366,7 +9377,7 @@ function renderMessageRecord(room, rec, animate) {
     ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
 
-  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked') ? '' : rec.content), rec.isMe, rec);
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked') ? '' : rec.content)), rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   renderReactionsForRec(div, rec);
@@ -9674,6 +9685,9 @@ async function processIncomingContent(room, content, name, time, msgId) {
     }
     if (parsed.type === 'voice' && parsed.data) {
       return { ...base, kind: 'voice', mime: parsed.mime, base64: parsed.data, duration: parsed.duration || 0 };
+    }
+    if (parsed.type === 'klipy-gif' && safeKlipyMediaUrl(parsed.url)) {
+      return { ...base, kind: 'gif', klipyId: String(parsed.id || ''), title: String(parsed.title || 'GIF').slice(0, 200), url: parsed.url };
     }
     if (parsed.text && parsed.reply) {
       return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };
@@ -11801,6 +11815,91 @@ window.addEventListener('load', async () => {
   if (publicPrivateNumber) openPublicProfile(publicPrivateNumber);
 });
 
+// ── KLIPY GIFS ───────────────────────────────────────────────────────────
+// KLIPY's standard integration requires searches and media delivery to go
+// directly from the client. The selected URL is placed inside Vaultlix's
+// existing encrypted message envelope; Vaultlix never proxies or re-hosts it.
+const KLIPY_API_KEY = 'rqd0c22ngDvGGVM5gPVgl7x0WAo11d2u3Bmyjajhrl3q6LWIbynGgrPHonT6n977';
+const KLIPY_LOCALES = { en:['en_US','US'], zh:['zh_CN','CN'], ru:['ru_RU','RU'], hi:['hi_IN','IN'], ar:['ar_SA','SA'], hy:['hy_AM','AM'] };
+let klipyNext = null, klipyQuery = '', klipySearchTimer = null;
+
+function safeKlipyMediaUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const allowed = ['static.klipy.com', 'static1.klipy.com', 'static2.klipy.com'];
+    return url.protocol === 'https:' && allowed.includes(url.hostname) ? url.href.replace(/&/g, '&amp;').replace(/"/g, '&quot;') : null;
+  } catch (e) { return null; }
+}
+
+function klipyLocale() {
+  const lang = currentAppLanguage();
+  return KLIPY_LOCALES[lang] || KLIPY_LOCALES.en;
+}
+
+function openKlipyPicker() {
+  if (!getActiveRoom() || document.getElementById('klipy-picker')) return;
+  const picker = document.createElement('div');
+  picker.id = 'klipy-picker'; picker.className = 'klipy-picker';
+  picker.innerHTML = `<section class="klipy-sheet" role="dialog" aria-modal="true" aria-label="GIF picker">
+    <div class="klipy-head"><input id="klipy-search" class="klipy-search" type="search" placeholder="Search KLIPY" autocomplete="off"/><button class="klipy-close" type="button" aria-label="Close">×</button></div>
+    <div id="klipy-grid" class="klipy-grid"><div class="klipy-status">Loading GIFs…</div></div>
+    <div class="klipy-foot"><span>Powered by KLIPY</span><button id="klipy-more" class="klipy-more" type="button" hidden>Load more</button></div>
+  </section>`;
+  document.body.appendChild(picker);
+  picker.querySelector('.klipy-close').onclick = closeKlipyPicker;
+  picker.onclick = e => { if (e.target === picker) closeKlipyPicker(); };
+  const input = picker.querySelector('#klipy-search');
+  input.oninput = () => { clearTimeout(klipySearchTimer); klipySearchTimer = setTimeout(() => loadKlipy(input.value.trim(), false), 350); };
+  picker.querySelector('#klipy-more').onclick = () => loadKlipy(klipyQuery, true);
+  loadKlipy('', false);
+  setTimeout(() => input.focus(), 80);
+}
+
+function closeKlipyPicker() { clearTimeout(klipySearchTimer); document.getElementById('klipy-picker')?.remove(); }
+
+async function loadKlipy(query, append) {
+  const grid = document.getElementById('klipy-grid'); if (!grid) return;
+  if (!append) { grid.innerHTML = '<div class="klipy-status">Loading GIFs…</div>'; klipyNext = null; }
+  const [locale, country] = klipyLocale();
+  const params = new URLSearchParams({ key:KLIPY_API_KEY, q:query || 'trending', locale, country, contentfilter:'high', media_filter:'gif,tinygif', limit:'20' });
+  if (append && klipyNext) params.set('pos', klipyNext);
+  try {
+    const response = await fetch(`https://api.klipy.com/v2/search?${params}`);
+    if (!response.ok) throw new Error('KLIPY unavailable');
+    const data = await response.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    if (!append) grid.innerHTML = '';
+    for (const item of results) {
+      const full = safeKlipyMediaUrl(item.media_formats?.gif?.url || item.url);
+      const preview = safeKlipyMediaUrl(item.media_formats?.tinygif?.url || item.media_formats?.gif?.url || item.url);
+      if (!full || !preview) continue;
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'klipy-result';
+      const img = document.createElement('img'); img.src = preview.replace(/&amp;/g, '&'); img.alt = String(item.title || 'GIF').slice(0, 200); img.loading = 'lazy';
+      button.appendChild(img); button.onclick = () => sendKlipyGif({ id:item.id, title:item.title, url:full.replace(/&amp;/g, '&') }, query);
+      grid.appendChild(button);
+    }
+    if (!grid.children.length) grid.innerHTML = '<div class="klipy-status">No GIFs found</div>';
+    klipyQuery = query; klipyNext = data.next || null;
+    const more = document.getElementById('klipy-more'); if (more) more.hidden = !klipyNext;
+  } catch (e) { grid.innerHTML = '<div class="klipy-status">Could not load GIFs. Please try again.</div>'; }
+}
+
+async function sendKlipyGif(item, searchQuery) {
+  const room = getActiveRoom(); const url = safeKlipyMediaUrl(item.url);
+  if (!room || !url) return;
+  const payload = JSON.stringify({ type:'klipy-gif', id:String(item.id || ''), title:String(item.title || 'GIF').slice(0, 200), url:url.replace(/&amp;/g, '&') });
+  let encrypted; try { encrypted = await encryptTextMsg(room, payload); } catch (e) { toast("Couldn't encrypt — GIF not sent"); return; }
+  const now = new Date(), msgId = newMsgId();
+  const rec = { id:msgId, kind:'gif', isMe:true, name:room.myName, time:now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'), klipyId:String(item.id || ''), title:String(item.title || 'GIF'), url:url.replace(/&amp;/g, '&'), receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null };
+  room.messages.push(rec); renderMessageRecord(room, rec, true); room.lastMessageAt = Date.now(); closeKlipyPicker();
+  try {
+    await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId });
+    const [locale, country] = klipyLocale();
+    const share = new URLSearchParams({ key:KLIPY_API_KEY, id:rec.klipyId, locale, country, q:searchQuery || '' });
+    fetch(`https://api.klipy.com/v2/registershare?${share}`).catch(() => {});
+  } catch (e) { toast('GIF could not be sent'); }
+}
+
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────
 // Small icon popover anchored right above the + button (no full-screen
 // overlay). Three dedicated inputs sit behind this (see the HTML): a
@@ -11831,11 +11930,16 @@ function showAttachOptions() {
       <span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span>
       <span class="attach-opt-label">File</span>
     </button>
+    <button type="button" class="attach-opt" id="attach-gif">
+      <span class="attach-opt-icon" style="font-weight:800;font-size:12px;color:#682C43">GIF</span>
+      <span class="attach-opt-label">GIF</span>
+    </button>
   `;
   document.body.appendChild(pop);
   pop.querySelector('#attach-camera').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('camera-input').click(); };
   pop.querySelector('#attach-gallery').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('image-input').click(); };
   pop.querySelector('#attach-doc').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); document.getElementById('file-input').click(); };
+  pop.querySelector('#attach-gif').onclick = (e) => { e.stopPropagation(); closeAttachOptions(); openKlipyPicker(); };
   setTimeout(() => document.addEventListener('click', handleAttachOutsideClick), 0);
 }
 
