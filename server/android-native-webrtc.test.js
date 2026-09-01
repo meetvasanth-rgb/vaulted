@@ -51,4 +51,6 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\)/);
   const nativeActivity = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
   assert.match(nativeActivity, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
+  assert.match(nativeActivity, /showCallEndedMoment\(\)/);
+  assert.match(nativeActivity, /native_call_vanished/);
 });

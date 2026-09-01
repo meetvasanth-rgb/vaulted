@@ -42,6 +42,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private boolean muted;
     private boolean speaker;
     private AudioManager audioManager;
+    private LinearLayout callRoot;
     private String roomCode;
     private boolean finishingCall;
     private final Runnable tick = new Runnable() {
@@ -73,6 +74,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         String caller = callerValue == null || callerValue.trim().isEmpty()
                 ? getString(R.string.native_private_call) : callerValue.trim();
         LinearLayout root = new LinearLayout(this);
+        callRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(dp(28), dp(28), dp(28), dp(28));
@@ -195,7 +197,30 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.removeCallbacks(tick);
         String history = connectedAt == 0 ? "" : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
         MainActivity.notifyDedicatedCallEnded(roomCode, history);
-        finish(); overridePendingTransition(0,0);
+        showCallEndedMoment();
+    }
+
+    private void showCallEndedMoment() {
+        if (callRoot == null) { finish(); overridePendingTransition(0, 0); return; }
+        callRoot.removeAllViews();
+        callRoot.setGravity(Gravity.CENTER);
+        TextView mark = label("V", 62, IVORY);
+        mark.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        mark.setAlpha(0f);
+        callRoot.addView(mark, new LinearLayout.LayoutParams(-1, -2));
+        TextView message = label(getString(R.string.native_call_vanished), 17, MUTED_TEXT);
+        message.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        message.setAlpha(0f);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(-1, -2);
+        messageParams.setMargins(0, dp(18), 0, 0);
+        callRoot.addView(message, messageParams);
+        mark.animate().alpha(1f).setDuration(180).start();
+        message.animate().alpha(1f).setStartDelay(100).setDuration(220).start();
+        handler.postDelayed(() -> {
+            mark.animate().alpha(0f).translationY(dp(12)).setDuration(260).start();
+            message.animate().alpha(0f).translationY(dp(10)).setDuration(300).start();
+        }, 650);
+        handler.postDelayed(() -> { finish(); overridePendingTransition(0, 0); }, 1_000);
     }
 
     @Override protected void onDestroy() { handler.removeCallbacks(tick); if (engine != null) engine.removeListener(this); restoreAudio(); super.onDestroy(); }

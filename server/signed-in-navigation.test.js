@@ -13,3 +13,7 @@ test('landing sign-in entry routes an existing account to its inbox', () => {
 test('signed-in identity panel exposes new connection directly', () => {
   assert.match(client, /id="account-signed-view"[\s\S]*openNewConnection\(\)[\s\S]*Sign out on this device/);
 });
+
+test('leaving a conversation requires explicit confirmation', () => {
+  assert.match(client, /async function leaveActiveRoom\(\)[\s\S]*confirm\(LEAVE_VAULT_CONFIRMATIONS\[currentAppLanguage\(\)\][\s\S]*\/api\/leave/);
+});

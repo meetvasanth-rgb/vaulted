@@ -3402,6 +3402,14 @@ var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),
 // ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
 const VAULTLIX_LANGUAGE_KEY = 'vaultlix_language_v1';
 const VAULTLIX_LANGUAGES = ['en', 'zh', 'ru', 'hi', 'ar', 'hy'];
+const LEAVE_VAULT_CONFIRMATIONS = {
+  en:'Leave this conversation? It will be removed from this device. You will need a new connection request to chat again.',
+  zh:'要离开此对话吗？它将从此设备移除。若要再次聊天，需要重新发送连接请求。',
+  ru:'Покинуть этот разговор? Он будет удалён с этого устройства. Чтобы снова общаться, потребуется новый запрос на соединение.',
+  hi:'इस बातचीत को छोड़ें? यह इस डिवाइस से हटा दी जाएगी। फिर से चैट करने के लिए नया कनेक्शन अनुरोध चाहिए होगा।',
+  ar:'هل تريد مغادرة هذه المحادثة؟ ستُزال من هذا الجهاز، وستحتاج إلى طلب اتصال جديد للدردشة مرة أخرى.',
+  hy:'Դուրս գա՞լ այս զրույցից։ Այն կհեռացվի այս սարքից։ Կրկին զրուցելու համար անհրաժեշտ կլինի կապի նոր հարցում։'
+};
 const VAULTLIX_TRANSLATIONS = {
   en: {
     settings:'Settings', profile:'Profile', privacy_security:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help',
@@ -5366,11 +5374,18 @@ function clearCallAcceptRetry(room) {
 
 // Missed/declined/unanswered calls get a small permanent-feeling trace in
 // the chat itself — a toast alone disappears in a couple seconds and is
-// easy to miss (the exact problem it's meant to solve). This is local-only,
-// same as the existing "Reconnected"/"X joined" system messages: pushed
-// into room.messages so it survives switching tabs and scrolling back, but
-// never sent to or stored on the server — consistent with "no call history
-// persisted anywhere" from the calling security design.
+// easy to miss. Call-event text is encrypted with the vault key before it
+// joins the normal ciphertext history, so reopening the app can restore it
+// while the service still cannot learn that a call occurred or read it.
+async function persistCallSysMsg(room, rec) {
+  try {
+    const encrypted = await encryptTextMsg(room, JSON.stringify({ type:'call-event', text:rec.content }));
+    await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId:rec.id });
+  } catch (e) {
+    console.warn('Call history could not be synchronized:', e?.message || e);
+  }
+}
+
 function addCallSysMsg(room, text, eventId = null) {
   // Stamped with a clock time, same as the roadmap's original "Missed call
   // · 11:42" design — a bare "Missed call" a scrollback-length later gives
@@ -5378,10 +5393,12 @@ function addCallSysMsg(room, text, eventId = null) {
   // gone by then.
   const stamped = `${text} · ${formatMsgTime(Date.now())}`;
   const rec = { id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), kind: 'sys', content: stamped };
+  if (room.messages.some(existing => existing.id === rec.id)) return;
   room.messages.push(rec);
   if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
   else if (/^Missed call/.test(text)) room.unread++;
   renderRoomTabs();
+  persistCallSysMsg(room, rec);
 }
 
 // Callee-side safety net: normally an incoming-call screen is cleared by a
@@ -5408,6 +5425,8 @@ function checkStaleIncomingCalls() {
 async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   if (!room) return;
   const wasNativeCall = room.nativeCallActive;
+  const callHistoryEventId = room.callInviteId ? `call-event-${room.callInviteId}` : null;
+  room.lastCallHistoryEventId = callHistoryEventId;
   clearAndroidCallNotifications();
   try {
     window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code });
@@ -5472,11 +5491,11 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
     // that adds the "Encrypted call · MM:SS" system message once the room
     // is visible again. toastMsg (if any — e.g. a mid-call connection
     // failure) still surfaces afterward so the reason isn't lost.
-    await dissolveCallScreen(room, duration);
+    await dissolveCallScreen(room, duration, callHistoryEventId);
     if (toastMsg) toast(toastMsg, toastVariant);
   } else {
     hideCallOverlay();
-    if (sysMsgText) addCallSysMsg(room, sysMsgText);
+    if (sysMsgText) addCallSysMsg(room, sysMsgText, callHistoryEventId);
     if (toastMsg) toast(toastMsg, toastVariant);
   }
   notifyLockedCallEnded();
@@ -5512,7 +5531,8 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
     if (historyText) room.callStartedAt = null;
     endCall(room, null, historyText || null);
   } else if (room && historyText) {
-    addCallSysMsg(room, historyText);
+    addCallSysMsg(room, historyText, room.lastCallHistoryEventId || null);
+    room.lastCallHistoryEventId = null;
   } else {
     hideCallOverlay();
     activeCallRoomCode = null;
@@ -9912,6 +9932,9 @@ async function processIncomingContent(room, content, name, time, msgId) {
     if (parsed.type === 'klipy-gif' && safeKlipyMediaUrl(parsed.url)) {
       return { ...base, kind: 'gif', klipyId: String(parsed.id || ''), title: String(parsed.title || 'GIF').slice(0, 200), url: parsed.url };
     }
+    if (parsed.type === 'call-event' && typeof parsed.text === 'string') {
+      return { ...base, kind: 'sys', content: parsed.text.slice(0, 240) };
+    }
     if (parsed.text && parsed.reply) {
       return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };
     }
@@ -11121,6 +11144,9 @@ async function closeRoom() {
 async function leaveActiveRoom() {
   const room = getActiveRoom();
   if (!room) return;
+  // Leaving removes this conversation and its local keys from this device.
+  // Require explicit confirmation because a mistaken tap is not reversible.
+  if (!confirm(LEAVE_VAULT_CONFIRMATIONS[currentAppLanguage()] || LEAVE_VAULT_CONFIRMATIONS.en)) return;
   try { await api('/api/leave', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
   removeRoomFromState(room.code);
   switchToNextRoomOrLanding();
@@ -11385,9 +11411,9 @@ function wrapSandChars(text) {
   }).join('');
 }
 
-async function dissolveCallScreen(room, duration) {
+async function dissolveCallScreen(room, duration, eventId = null) {
   const overlay = document.getElementById('call-overlay');
-  if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`); return; }
+  if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId); return; }
 
   const floatOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-float-fade'); };
   const fadeOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-dissolve-hide'); };
@@ -11466,7 +11492,7 @@ async function dissolveCallScreen(room, duration) {
   await delay(1150);
 
   overlay.remove();
-  addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`);
+  addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId);
 }
 
 // ── PWA INSTALL ──────────────────────────────────────────────────────────

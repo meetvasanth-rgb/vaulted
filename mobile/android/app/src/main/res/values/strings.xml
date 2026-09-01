@@ -16,5 +16,6 @@
     <string name="native_phone">Phone</string>
     <string name="native_end">End</string>
     <string name="native_encrypted_call_duration">Encrypted call · %1$s</string>
+    <string name="native_call_vanished">This call never existed.</string>
     <string name="calls_channel_description">Incoming encrypted call alerts</string>
 </resources>

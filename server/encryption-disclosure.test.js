@@ -19,3 +19,9 @@ test('storage disclosure describes durable encrypted room checkpoints and backup
   assert.match(clientHtml, /older backup copies remain subject to Railway's configured backup-retention period/i);
   assert.doesNotMatch(clientHtml, /Conversation content lives only in memory during normal operation/i);
 });
+
+test('call history survives restart only as encrypted conversation content', () => {
+  assert.match(clientHtml, /encryptTextMsg\(room, JSON\.stringify\(\{ type:'call-event'/);
+  assert.match(clientHtml, /parsed\.type === 'call-event'/);
+  assert.match(clientHtml, /call-event-\$\{room\.callInviteId\}/);
+});
