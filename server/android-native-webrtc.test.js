@@ -42,7 +42,8 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /startOutgoingCall\([\s\S]*room\.callPeerName/);
   assert.match(client, /if \(!room\.nativeIncomingPrepared\) renderCallOverlay\(room\)/);
   assert.match(client, /if \(!room\.nativeIncomingPrepared\) playChime\(\)/);
-  assert.match(client, /\.call-status\.call-security\{color:rgba\(255,255,255,\.76\);font-weight:500/);
+  assert.match(client, /\.call-status\.call-security\{color:rgba\(255,255,255,\.9\);font-weight:500/);
+  assert.match(client, /\.call-btn-label\{[\s\S]*color:rgba\(255,255,255,\.74\)/);
   assert.match(client, /call-status call-security">End-to-end encrypted/);
   assert.match(client, /if \(usesDedicatedAndroidCallUi\) hideCallOverlay\(\)/);
   assert.match(client, /if \(room\.nativeCallActive\) \{[\s\S]*hideCallOverlay\(\)/);
