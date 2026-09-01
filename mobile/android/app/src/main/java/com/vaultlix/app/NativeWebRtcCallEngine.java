@@ -149,7 +149,7 @@ final class NativeWebRtcCallEngine {
         callerName = caller == null ? "Someone" : caller;
         int run = generation;
         connectSocket(run);
-        fetchTurn(run);
+        fetchTurn(run, 1);
         notifyState(isOutgoing ? "calling" : "ringing");
     }
 
@@ -216,21 +216,32 @@ final class NativeWebRtcCallEngine {
         } catch (Exception error) { Log.w(TAG, "signal parse failed", error); }
     }
 
-    private void fetchTurn(int run) {
+    private void fetchTurn(int run, int attempt) {
         try {
             JSONObject body = new JSONObject().put("code", room.code).put("token", room.token);
             Request request = new Request.Builder().url("https://vaultlix.com/api/turn-credentials")
                     .post(RequestBody.create(body.toString(), MediaType.get("application/json"))).build();
             http.newCall(request).enqueue(new Callback() {
-                @Override public void onFailure(Call call, java.io.IOException e) { }
+                @Override public void onFailure(Call call, java.io.IOException e) { scheduleTurnRetry(run, attempt); }
                 @Override public void onResponse(Call call, Response response) {
                     try (Response closeable = response) {
+                        if (!closeable.isSuccessful()) { scheduleTurnRetry(run, attempt); return; }
                         String value = closeable.body() == null ? "" : closeable.body().string();
                         executor.execute(() -> { if (run == generation) createPeer(value); });
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) { scheduleTurnRetry(run, attempt); }
                 }
             });
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) { scheduleTurnRetry(run, attempt); }
+    }
+
+    private void scheduleTurnRetry(int run, int attempt) {
+        if (attempt >= 4) {
+            executor.execute(() -> { if (run == generation && room != null && peer == null) reset("turn-failed"); });
+            return;
+        }
+        scheduler.schedule(() -> executor.execute(() -> {
+            if (run == generation && room != null && peer == null) fetchTurn(run, attempt + 1);
+        }), Math.min(4000, 500L << (attempt - 1)), TimeUnit.MILLISECONDS);
     }
 
     private void createPeer(String turnJson) {
@@ -381,7 +392,7 @@ final class NativeWebRtcCallEngine {
         }
         @Override public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
             if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
-                executor.execute(() -> { notifyState("connected"); for (Listener listener : listeners) listener.onConnected(); });
+                executor.execute(() -> { for (Listener listener : listeners) listener.onConnected(); });
             } else if (state == PeerConnection.IceConnectionState.FAILED) executor.execute(() -> reset("connection-failed"));
         }
         @Override public void onSignalingChange(PeerConnection.SignalingState state) {}

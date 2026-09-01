@@ -1,6 +1,7 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -248,6 +249,7 @@ public class LockedCallActivity extends BridgeActivity {
     }
 
     @Override
+    @SuppressLint({"MissingSuperCall", "GestureBackNavigation"})
     public void onBackPressed() {
         // Do not reveal navigation or the chat surface above keyguard.
     }
