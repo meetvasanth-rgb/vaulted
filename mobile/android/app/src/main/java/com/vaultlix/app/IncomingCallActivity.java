@@ -146,14 +146,16 @@ public class IncomingCallActivity extends Activity {
         root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
 
         TextView name = text(displayName, 34, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        // Match the iOS call identity treatment (Cormorant-style light
+        // serif) instead of Android's visually heavier default bold face.
+        name.setTypeface(Typeface.create("serif", Typeface.NORMAL));
         name.setMaxLines(2);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(28), 0, dp(9));
         root.addView(name, nameParams);
 
         TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 17, ROSE);
-        subtitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        subtitle.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         root.addView(subtitle);
 
         LinearLayout privacy = new LinearLayout(this);
@@ -203,6 +205,12 @@ public class IncomingCallActivity extends Activity {
         NativeCallActions.markAnswerStarted(this, callId);
         NativeCallActions.answer(this, callId);
         cancelNotification();
+        // ColorOS can retain/re-present the CallStyle heads-up surface while
+        // handing off from this full-screen activity to NativeCallActivity.
+        // Clear every Vaultlix call-channel notification, not just the ID
+        // attached to this particular PendingIntent. Ordinary message
+        // notifications use other channels and are left untouched.
+        VaultlixMessagingService.clearActiveCallNotifications(this);
         if (nativePrepared) {
             NativeWebRtcCallEngine.get(this).answer();
             Intent call = new Intent(this, NativeCallActivity.class)

@@ -69,6 +69,14 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE);
         engine = NativeWebRtcCallEngine.get(this);
         engine.addListener(this);
+        clearIncomingCallBanner();
+        // Some OEM System UI builds complete the incoming-call heads-up
+        // transition after the answer PendingIntent has already cancelled
+        // it. Repeat the narrowly scoped cleanup across that short handoff
+        // window so the stale Answer/Decline card cannot cover a live call.
+        handler.postDelayed(this::clearIncomingCallBanner, 180);
+        handler.postDelayed(this::clearIncomingCallBanner, 750);
+        handler.postDelayed(this::clearIncomingCallBanner, 1800);
         audioManager = getSystemService(AudioManager.class);
         configureAudio(false);
         buildUi(getIntent().getStringExtra(EXTRA_CALLER));
@@ -93,7 +101,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         lock.setBackground(circle(CONTROL));
         brandRow.addView(lock, new LinearLayout.LayoutParams(dp(38), dp(38)));
         TextView brand = label("Vaultlix", 20, IVORY);
-        brand.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         brand.setLetterSpacing(-0.02f);
         LinearLayout.LayoutParams brandText = new LinearLayout.LayoutParams(-2, -2);
         brandText.setMargins(dp(11), 0, 0, 0);
@@ -107,7 +115,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
 
         TextView name = label(caller, 32, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setTypeface(Typeface.create("serif", Typeface.NORMAL));
         name.setMaxLines(2);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(25), 0, dp(8));
@@ -192,7 +200,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     @Override public void onState(String value) { runOnUiThread(() -> { if (connectedAt == 0 && status != null) status.setText(R.string.native_connecting_securely); }); }
-    @Override public void onConnected() { runOnUiThread(() -> { if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
+    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
     @Override public void onEnded(String reason) { runOnUiThread(this::finishCall); }
 
     private void finishCall() {
@@ -265,6 +273,10 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     @Override protected void onDestroy() { handler.removeCallbacks(tick); if (engine != null) engine.removeListener(this); restoreAudio(); super.onDestroy(); }
+
+    private void clearIncomingCallBanner() {
+        VaultlixMessagingService.clearActiveCallNotifications(this);
+    }
 
     @SuppressWarnings("deprecation") private void configureAudio(boolean useSpeaker) {
         if (audioManager == null) return; audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);

@@ -49,8 +49,16 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /detail\.action === 'declineOrEnd'[\s\S]*room\.callState === 'active' \|\| room\.callState === 'outgoing'/);
   assert.match(incoming, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
   assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\)/);
+  assert.match(incoming, /answerCall\(\)[\s\S]*clearActiveCallNotifications\(this\)/);
+  assert.match(incoming, /name\.setTypeface\(Typeface\.create\("serif", Typeface\.NORMAL\)\)/);
   const nativeActivity = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
   assert.match(nativeActivity, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
+  assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 180\)/);
+  assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 750\)/);
+  assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 1800\)/);
+  assert.match(nativeActivity, /onConnected\(\)[\s\S]*clearIncomingCallBanner\(\)/);
+  assert.match(nativeActivity, /brand\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
+  assert.match(nativeActivity, /name\.setTypeface\(Typeface\.create\("serif", Typeface\.NORMAL\)\)/);
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
   assert.match(nativeActivity, /native_call_vanished/);
 });
