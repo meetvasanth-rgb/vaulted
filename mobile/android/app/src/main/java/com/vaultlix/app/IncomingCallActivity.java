@@ -1,6 +1,8 @@
 package com.vaultlix.app;
 
 import android.app.Activity;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.graphics.Color;
@@ -22,11 +24,14 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_CALLER = "caller";
     public static final String EXTRA_AUTO_ANSWER = "autoAnswer";
     public static final String EXTRA_CALL_ID = "callId";
+    public static final String EXTRA_NATIVE_PREPARED = "nativePrepared";
 
     private String inviteUri;
     private int notificationId;
     private String callId;
     private boolean answerInProgress;
+    private boolean nativePrepared;
+    private String caller;
     private static WeakReference<IncomingCallActivity> activeActivity = new WeakReference<>(null);
 
     @Override
@@ -62,6 +67,8 @@ public class IncomingCallActivity extends Activity {
     private void handleIntent(Intent intent) {
         inviteUri = intent.getStringExtra(EXTRA_INVITE_URI);
         callId = intent.getStringExtra(EXTRA_CALL_ID);
+        caller = intent.getStringExtra(EXTRA_CALLER);
+        nativePrepared = intent.getBooleanExtra(EXTRA_NATIVE_PREPARED, false);
         notificationId = intent.getIntExtra(
                 VaultlixMessagingService.EXTRA_CALL_NOTIFICATION_ID,
                 Integer.MIN_VALUE
@@ -75,7 +82,7 @@ public class IncomingCallActivity extends Activity {
             overridePendingTransition(0, 0);
             return;
         }
-        showIncomingCall(intent.getStringExtra(EXTRA_CALLER));
+        showIncomingCall(caller);
         if (intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)) answerCall();
     }
 
@@ -127,14 +134,38 @@ public class IncomingCallActivity extends Activity {
 
     private void answerCall() {
         if (answerInProgress) return;
+        if (nativePrepared && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, 71);
+            return;
+        }
         answerInProgress = true;
         NativeCallActions.markAnswerStarted(this, callId);
         NativeCallActions.answer(this, callId);
         cancelNotification();
+        if (nativePrepared) {
+            NativeWebRtcCallEngine.get(this).answer();
+            Intent call = new Intent(this, NativeCallActivity.class)
+                    .putExtra(NativeCallActivity.EXTRA_CALLER, caller)
+                    .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, extractRoomCode());
+            startActivity(call);
+            finish();
+            return;
+        }
         // Use one dedicated call-only host in every device state. Besides
         // keeping chat hidden above keyguard, this gives foreground and
         // background answers the same branded secure-connection transition.
         openLockedCall();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 71 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) answerCall();
+    }
+
+    private String extractRoomCode() {
+        try { return Uri.parse(inviteUri).getQueryParameter("room"); }
+        catch (Exception ignored) { return ""; }
     }
 
     private void openLockedCall() {

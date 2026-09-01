@@ -1,6 +1,8 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -36,6 +38,13 @@ public class MainActivity extends BridgeActivity {
     private boolean audioRouteConfigured;
     private View appSwitcherPrivacyCover;
     private SecureMessageStore secureMessageStore;
+    private NativeCallRoomStore nativeCallRoomStore;
+    private NativeWebRtcCallEngine nativeCallEngine;
+    private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
+        @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
+        @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
+        @Override public void onEnded(String reason) { emitNativeCallAction("ended"); }
+    };
     private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
     private final Runnable enforceConnectedAudioRoute = () -> {
         if (!isFinishing() && !isDestroyed()) applyPreferredCallAudioRoute();
@@ -46,6 +55,9 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         activeInstance = new WeakReference<>(this);
         secureMessageStore = new SecureMessageStore(this);
+        nativeCallRoomStore = new NativeCallRoomStore(this);
+        nativeCallEngine = NativeWebRtcCallEngine.get(this);
+        nativeCallEngine.addListener(nativeCallListener);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
         openVaultlixInvite(getIntent());
     }
@@ -103,6 +115,7 @@ public class MainActivity extends BridgeActivity {
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
         restoreAudioRoute();
         if (activeInstance.get() == this) activeInstance.clear();
+        if (nativeCallEngine != null) nativeCallEngine.removeListener(nativeCallListener);
         super.onDestroy();
     }
 
@@ -301,6 +314,8 @@ public class MainActivity extends BridgeActivity {
                 VaultlixMessagingService.clearActiveCallNotifications(MainActivity.this);
                 NotificationManager manager = getSystemService(NotificationManager.class);
                 if (manager != null) manager.cancelAll();
+                nativeCallEngine.end(false);
+                nativeCallRoomStore.clear();
                 restoreAudioRoute();
             });
         }
@@ -332,6 +347,41 @@ public class MainActivity extends BridgeActivity {
         public void callEnded(String historyText) {
             runOnUiThread(MainActivity.this::restoreAudioRoute);
         }
+
+        @JavascriptInterface
+        public boolean supportsNativeWebRtc() { return true; }
+
+        @JavascriptInterface
+        public boolean hasNativeAudioPermission() {
+            return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @JavascriptInterface
+        public void requestNativeAudioPermission() {
+            runOnUiThread(() -> requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, 72));
+        }
+
+        @JavascriptInterface
+        public boolean provisionCallRoom(String handle, String code, String token, String keyBase64) {
+            return nativeCallRoomStore.save(handle, code, token, keyBase64);
+        }
+
+        @JavascriptInterface
+        public void removeCallRoom(String handle, String code) {
+            nativeCallRoomStore.remove(handle == null ? "" : handle, code == null ? "" : code);
+        }
+
+        @JavascriptInterface
+        public boolean startOutgoingCall(String roomHandle, String caller) {
+            configureCallAudioRoute();
+            return nativeCallEngine.prepareOutgoing(roomHandle, caller);
+        }
+
+        @JavascriptInterface
+        public void endNativeCall() { nativeCallEngine.end(true); }
+
+        @JavascriptInterface
+        public void setNativeMuted(boolean muted) { nativeCallEngine.setMuted(muted); }
 
         @JavascriptInterface
         public boolean secureStoreMessage(String conversationId, String messageId, String plaintext, double createdAt) {
@@ -377,5 +427,18 @@ public class MainActivity extends BridgeActivity {
                 "window.vaultlixNativeCallEnded&&window.vaultlixNativeCallEnded(" + encodedCode + "," + encodedHistory + ");",
                 null
         ));
+    }
+
+    private void emitNativeCallAction(String action) {
+        String encoded = JSONObject.quote(action);
+        String encodedCode = JSONObject.quote(nativeCallEngine == null ? "" : nativeCallEngine.currentRoomCode());
+        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('vaultlix:call-action',{detail:{action:" + encoded + ",code:" + encodedCode + "}}));",
+                null));
+    }
+
+    private static String capitalize(String value) {
+        if (value == null || value.isEmpty()) return "";
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 }

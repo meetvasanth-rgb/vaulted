@@ -67,6 +67,16 @@
             android:turnScreenOn="true"
             android:theme="@style/AppTheme.LockedCall" />
 
+        <activity
+            android:name=".NativeCallActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/AppTheme.LockedCall" />
+
         <service
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
             tools:node="remove" />

@@ -4034,6 +4034,12 @@ async function handleNativeCallAction(detail) {
     clearCallRingInterval(room);
     room.callAnswerAcknowledged = true;
     renderCallOverlay(room);
+  } else if (detail.action === 'nativeConnecting') {
+    if (room.callState !== 'outgoing') return;
+    clearCallTimeout(room);
+    clearCallRingInterval(room);
+    room.callAnswerAcknowledged = true;
+    renderCallOverlay(room);
   } else if (detail.action === 'audioActivated') {
     // CallKit activates audio immediately after the user answers, while ICE
     // may still need a few seconds.  Show the correct vault and an explicit
@@ -4070,6 +4076,7 @@ async function handleNativeCallAction(detail) {
     else if (room.callState === 'active') hangupCall();
     else pendingNativeCallActions.set(room.code, 'declineOrEnd');
   } else if (detail.action === 'ended' && room.callState !== 'idle') {
+    room.nativeCallActive = false;
     endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
       room.callState === 'incoming' ? 'Missed call' : null);
   } else if (detail.action === 'nativeDeclined' && room.callState !== 'idle') {
@@ -4109,6 +4116,9 @@ function removeRoomFromState(code) {
     if (room.callState !== 'idle') endCall(room);
   }
   secureNativeClearConversation(code);
+  if (room) {
+    try { window.VaultlixAndroid?.removeCallRoom?.(room.nativeRoomHandle || '', code); } catch (e) {}
+  }
   rooms.delete(code);
   subscribeInboxRooms();
   clearRoomStorage(code);
@@ -4488,7 +4498,7 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
       // Native iOS calls must use the same key while WKWebView is suspended.
       // Keep browser/PWA keys non-extractable; only the signed wrapper gets
       // an extractable in-memory key that is immediately moved to Keychain.
-      !!window.webkit?.messageHandlers?.vaultlixCall, ['encrypt','decrypt']
+      !!window.webkit?.messageHandlers?.vaultlixCall || !!window.VaultlixAndroid?.supportsNativeWebRtc?.(), ['encrypt','decrypt']
     );
     if (window.webkit?.messageHandlers?.vaultlixCall) {
       try {
@@ -4502,6 +4512,17 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
         });
       } catch (e) {
         console.error('Native call room provisioning failed');
+      }
+    }
+    if (window.VaultlixAndroid?.supportsNativeWebRtc?.()) {
+      try {
+        const rawNativeKey = await crypto.subtle.exportKey('raw', room.sharedKey);
+        window.VaultlixAndroid.provisionCallRoom(
+          room.nativeRoomHandle, room.code, room.token,
+          bytesToBase64(new Uint8Array(rawNativeKey))
+        );
+      } catch (e) {
+        console.error('Android native call room provisioning failed');
       }
     }
     // Only pulse the bar if it's actually showing this room right now —
@@ -5101,6 +5122,31 @@ async function startCall() {
   // acceptance instead of adding another network round-trip afterward.
   fetchTurnCredentials(room);
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
+  const androidNativeBridge = window.VaultlixAndroid;
+  if (androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeRoomHandle) {
+    if (!androidNativeBridge.hasNativeAudioPermission()) {
+      androidNativeBridge.requestNativeAudioPermission();
+      endCall(room, 'Allow microphone access, then try the call again.');
+      return;
+    }
+    room.nativeCallActive = true;
+    disconnectSignaling(room);
+    try {
+      if (!androidNativeBridge.startOutgoingCall(room.nativeRoomHandle, room.myName || 'Someone')) {
+        throw new Error('native room unavailable');
+      }
+    } catch (e) {
+      endCall(room, 'Calling isn’t available right now.');
+      return;
+    }
+    room.speakerAvailable = true;
+    renderCallOverlay(room);
+    refreshCallButton();
+    room.callTimeoutTimer = setTimeout(() => {
+      if (room.callState === 'outgoing') endCall(room, 'No answer.', 'Call not answered');
+    }, CALL_RING_TIMEOUT_MS);
+    return;
+  }
   if (iosBridge && room.nativeRoomHandle) {
     // The signed iOS wrapper owns outgoing media too. This gives both sides
     // the same CallKit/libwebrtc audio session and makes receiver/speaker
@@ -5322,6 +5368,9 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   try {
     window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code });
   } catch (e) {}
+  if (room.nativeCallActive) {
+    try { window.VaultlixAndroid?.endNativeCall?.(); } catch (e) {}
+  }
   // Capture before the state reset below — this is the only point that
   // still knows whether a real, connected call is what's ending here (as
   // opposed to a ring that was declined/missed/canceled before anyone ever
@@ -6234,7 +6283,14 @@ async function flushPendingIceCandidates(room) {
 
 function toggleMute() {
   const room = rooms.get(activeCallRoomCode);
-  if (!room || !room.localStream) return;
+  if (!room) return;
+  if (room.nativeCallActive && window.VaultlixAndroid?.supportsNativeWebRtc?.()) {
+    room.callMuted = !room.callMuted;
+    try { window.VaultlixAndroid.setNativeMuted(room.callMuted); } catch (e) {}
+    renderCallOverlay(room);
+    return;
+  }
+  if (!room.localStream) return;
   room.callMuted = !room.callMuted;
   room.localStream.getAudioTracks().forEach(t => { t.enabled = !room.callMuted; });
   renderCallOverlay(room);

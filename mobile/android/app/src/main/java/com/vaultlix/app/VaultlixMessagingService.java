@@ -29,6 +29,7 @@ public class VaultlixMessagingService extends MessagingService {
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         Map<String, String> data = remoteMessage.getData();
         if ("true".equalsIgnoreCase(data.get("isCallEnd"))) {
+            NativeWebRtcCallEngine.get(this).end(false);
             clearActiveCallNotifications(this);
             IncomingCallActivity.finishActiveCall();
             LockedCallActivity.finishActiveCall();
@@ -53,6 +54,7 @@ public class VaultlixMessagingService extends MessagingService {
         }
         if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
         if (body.isEmpty()) body = getString(R.string.tap_to_answer);
+        boolean nativePrepared = NativeWebRtcCallEngine.get(this).prepareIncoming(code);
 
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
@@ -84,7 +86,7 @@ public class VaultlixMessagingService extends MessagingService {
                 .appendQueryParameter("nativeCallAction", "answer")
                 .build();
         int requestCode = code.hashCode();
-        Intent displayIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, false);
+        Intent displayIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, false, nativePrepared);
 
         PendingIntent displayCall = PendingIntent.getActivity(
                 this,
@@ -93,7 +95,7 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Intent answerIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, true);
+        Intent answerIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, true, nativePrepared);
         PendingIntent answerCall = PendingIntent.getActivity(
                 this,
                 requestCode + 1,
@@ -136,13 +138,14 @@ public class VaultlixMessagingService extends MessagingService {
         manager.notify(requestCode, notification.build());
     }
 
-    private Intent incomingCallIntent(Uri inviteUri, String caller, String callId, int notificationId, boolean autoAnswer) {
+    private Intent incomingCallIntent(Uri inviteUri, String caller, String callId, int notificationId, boolean autoAnswer, boolean nativePrepared) {
         Intent intent = new Intent(this, IncomingCallActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra(IncomingCallActivity.EXTRA_INVITE_URI, inviteUri.toString());
         intent.putExtra(IncomingCallActivity.EXTRA_CALLER, caller);
         intent.putExtra(IncomingCallActivity.EXTRA_CALL_ID, callId);
         intent.putExtra(IncomingCallActivity.EXTRA_AUTO_ANSWER, autoAnswer);
+        intent.putExtra(IncomingCallActivity.EXTRA_NATIVE_PREPARED, nativePrepared);
         intent.putExtra(EXTRA_CALL_NOTIFICATION_ID, notificationId);
         return intent;
     }
