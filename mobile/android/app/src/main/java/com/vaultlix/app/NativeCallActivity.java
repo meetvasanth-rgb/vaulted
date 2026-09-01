@@ -117,12 +117,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
         root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1.05f));
         TextView avatar = label(initialFor(caller), 39, IVORY);
-        avatar.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        avatar.setTypeface(identityTypeface());
         avatar.setBackground(circle(CONTROL_ACTIVE));
         root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
 
         TextView name = label(caller, 32, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        name.setTypeface(identityTypeface());
         name.setMaxLines(2);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(25), 0, dp(8));
@@ -237,7 +237,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         callRoot.setGravity(Gravity.CENTER);
         callRoot.setBackgroundColor(VANISH_BACKGROUND);
         TextView mark = label("V", 64, VANISH_BURGUNDY);
-        mark.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        mark.setTypeface(identityTypeface());
         mark.setAlpha(0f);
         mark.setScaleX(.8f);
         mark.setScaleY(.8f);
@@ -306,6 +306,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private String initialFor(String value){ String trimmed=value == null ? "" : value.trim(); return trimmed.isEmpty() ? "V" : trimmed.substring(0,1).toUpperCase(java.util.Locale.getDefault()); }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private String formatDuration(long value){return String.format(java.util.Locale.US,"%02d:%02d",value/60,value%60);}
+    private Typeface identityTypeface(){return getResources().getFont(R.font.cormorant_garamond);}
 
     /** Subtle vertical encrypted-data rain behind the live call UI. */
     private final class BinaryStreamView extends android.view.View {
