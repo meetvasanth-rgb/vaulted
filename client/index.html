@@ -2167,8 +2167,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
 @media(max-width:360px){
   #s-chat .chat-hdr-logo{display:none!important}
   #s-chat .chat-hdr-room{max-width:105px!important}
-  #s-chat .e2e-bar{font-size:0!important}
-  #s-chat .e2e-bar::after{content:'Encrypted';font:650 10px/1 'Manrope',sans-serif}
+  #s-chat .e2e-bar{font-size:10px!important}
 }
 /* WKWebView-only legibility pass. Android's sizing is already balanced; iOS
    needs a compact encryption chip and a larger reading scale. Keep this after
@@ -3357,7 +3356,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
     <div class="account-head"><div><div class="account-kicker">Vaultlix identity</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
     <div class="account-copy" id="public-profile-private-number">—</div>
-    <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Request a private vault</button>
+    <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Send connection request</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
   </div>
 </div>
@@ -3419,7 +3418,7 @@ const VAULTLIX_TRANSLATIONS = {
     search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
     start_conversation:'Start your first private conversation', start_conversation_help:"Tap New connection and enter the other person's Vaultlix private number.",
     message_placeholder:'Type a message…', system_language:'System default', create:'Create', recover:'Recover',
-    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings', profile_subtitle:'Private number, name, account and encrypted sync', privacy_security_subtitle:'App lock, blocking, account deletion and Emergency Exit', private_vault:'Private vault', encrypted:'Encrypted', disappearing_messages:'Disappearing messages', off:'Off', one_minute:'1 minute', five_minutes:'5 minutes', thirty_minutes:'30 minutes', one_hour:'1 hour', eight_hours:'8 hours', yesterday:'Yesterday', missed_encrypted_call:'Missed encrypted call', new_encrypted_message:'New encrypted message', new_encrypted_messages:'new encrypted messages', waiting_for_other_person:'Waiting for the other person', online_encrypted_conversation:'Online · encrypted conversation', you_prefix:'You: ', photo:'Photo', voice_message:'Voice message', attachment:'Attachment', connection_request_text:'Wants to start a private conversation', accept:'Accept', decline:'Decline', close_erase_confirm:'Close & erase this vault? This deletes it and everything in it for both of you immediately. This cannot be undone.', reconnected:'Reconnected', current_conversation_safety:'Current conversation safety', block_participant:'Block participant', block_participant_subtitle:'Stop contact through this conversation and erase its access from this device', report_and_block:'Report and block', report_and_block_subtitle:'Report abuse, then immediately block this participant', current_conversation:'Current conversation', profile_details:'Profile / Details', view_participant_private_number:'View this participant’s Vaultlix private number', open:'Open', label_conversation:'Label this conversation', edit_conversation_label:'Edit conversation label', conversation_label_subtitle:'A private label visible only to you and included in your encrypted account sync', clear_chat:'Clear chat', clear_chat_subtitle:'Erase all messages for both participants while keeping the connection open', conversation:'Conversation', peer_number_privacy:'Visible only inside your connected conversation with this participant.', copy_private_number:'Copy private number', share_private_number:'Share private number', clear_chat_confirm:'Clear all messages in this conversation for both of you? This cannot be undone. The conversation itself stays open.', clear_chat_failed:'Could not clear chat — try again.', chat_cleared:'Chat cleared', new_private_connection:'New private connection', enter_their_private_number:'Enter their private number', new_connection_instructions:'Enter the exact 10-digit Vaultlix private number shared with you. Vaultlix does not search contacts or suggest people.', find_person:'Find person', invalid_private_number:'Enter a valid 10-digit Vaultlix private number', own_private_number:'That is your own private number', private_number_not_found:'Vaultlix private number not found'
+    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings', profile_subtitle:'Private number, name, account and encrypted sync', privacy_security_subtitle:'App lock, blocking, account deletion and Emergency Exit', private_vault:'Private conversation', encrypted:'Encrypted', disappearing_messages:'Disappearing messages', off:'Off', one_minute:'1 minute', five_minutes:'5 minutes', thirty_minutes:'30 minutes', one_hour:'1 hour', eight_hours:'8 hours', yesterday:'Yesterday', missed_encrypted_call:'Missed encrypted call', new_encrypted_message:'New encrypted message', new_encrypted_messages:'new encrypted messages', waiting_for_other_person:'Waiting for the other person', online_encrypted_conversation:'Online · encrypted conversation', you_prefix:'You: ', photo:'Photo', voice_message:'Voice message', attachment:'Attachment', connection_request_text:'Wants to start a private conversation', accept:'Accept', decline:'Decline', close_erase_confirm:'Close & erase this conversation? This deletes it and everything in it for both of you immediately. This cannot be undone.', reconnected:'Reconnected', current_conversation_safety:'Current conversation safety', block_participant:'Block participant', block_participant_subtitle:'Stop contact through this conversation and erase its access from this device', report_and_block:'Report and block', report_and_block_subtitle:'Report abuse, then immediately block this participant', current_conversation:'Current conversation', profile_details:'Profile / Details', view_participant_private_number:'View this participant’s Vaultlix private number', open:'Open', label_conversation:'Label this conversation', edit_conversation_label:'Edit conversation label', conversation_label_subtitle:'A private label visible only to you and included in your encrypted account sync', clear_chat:'Clear chat', clear_chat_subtitle:'Erase all messages for both participants while keeping the connection open', conversation:'Conversation', peer_number_privacy:'Visible only inside your connected conversation with this participant.', copy_private_number:'Copy private number', share_private_number:'Share private number', clear_chat_confirm:'Clear all messages in this conversation for both of you? This cannot be undone. The conversation itself stays open.', clear_chat_failed:'Could not clear chat — try again.', chat_cleared:'Chat cleared', new_private_connection:'New private connection', enter_their_private_number:'Enter their private number', new_connection_instructions:'Enter the exact 10-digit Vaultlix private number shared with you. Vaultlix does not search contacts or suggest people.', find_person:'Find person', invalid_private_number:'Enter a valid 10-digit Vaultlix private number', own_private_number:'That is your own private number', private_number_not_found:'Vaultlix private number not found'
   },
   zh: {
     settings:'设置', profile:'个人资料', privacy_security:'隐私与安全', notifications:'通知', chats:'聊天', calls:'通话', help:'帮助',
@@ -8463,6 +8462,19 @@ async function registerNativeTokenForRoom(room) {
   });
 }
 
+async function registerNativeTokenForAccount() {
+  const platform = nativePlatform();
+  const account = loadAccountState();
+  if (!platform || !nativePushToken || !account?.accountId || !account?.sessionToken) return;
+  await api('/api/account/native-push-subscribe', {
+    accountId: account.accountId,
+    sessionToken: account.sessionToken,
+    deviceToken: nativePushToken,
+    platform,
+    environment: nativeVoipRegistration?.environment || 'production',
+  });
+}
+
 async function registerNativeTokenForAllRooms() {
   for (const room of rooms.values()) {
     try { await registerNativeTokenForRoom(room); } catch (e) {}
@@ -8476,6 +8488,7 @@ async function ensureNativePushListeners() {
   nativePushListenersReady = true;
   await plugin.addListener('registration', token => {
     nativePushToken = token?.value || null;
+    registerNativeTokenForAccount().catch(() => {});
     registerNativeTokenForAllRooms().catch(() => {});
   });
   await plugin.addListener('registrationError', () => {
@@ -10621,7 +10634,7 @@ async function openPublicProfile(privateNumber) {
     document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
     const signedIn = loadAccountState();
     const button = document.getElementById('public-profile-request');
-    button.textContent = signedIn ? 'Request a private vault' : 'Sign in to connect';
+    button.textContent = signedIn ? 'Send connection request' : 'Sign in to connect';
     document.getElementById('public-profile-overlay').classList.add('open');
   } catch (e) { toast('Could not open this Vaultlix identity'); }
 }
@@ -10632,7 +10645,7 @@ async function requestPrivateVault() {
   if (!activePublicProfile) return;
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
   if (result.error) { toast(result.error); return; }
-  toast(`Request sent to ${activePublicProfile.displayName}`);
+  toast(`Connection request sent to ${activePublicProfile.displayName}`);
   closePublicProfile();
 }
 
@@ -10814,7 +10827,7 @@ async function handleSetup({ silent = false } = {}) {
         pendingConnectionPeerPrivateNumber = null;
         const state = loadAccountState();
         const accepted = await api('/api/connections/respond', { accountId:state.accountId, sessionToken:state.sessionToken, requestId, action:'accepted', inviteUrl:await buildInviteLink(room.code) });
-        if (accepted.error) toast(accepted.error); else toast('Private vault created — the requester can now join');
+        if (accepted.error) toast(accepted.error); else toast('Private conversation created — the requester can now join');
       }
       // Register this creator-side room while it is still on the waiting
       // screen. Previously push registration only began in

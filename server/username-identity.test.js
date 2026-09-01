@@ -20,7 +20,7 @@ test('Private Number profiles and authenticated connection requests are exposed'
   assert.match(server, /path\.startsWith\('\/api\/profile\/'\)/);
   assert.match(server, /path === '\/api\/connections\/request'/);
   assert.match(server, /path === '\/api\/connections\/respond'/);
-  assert.match(client, /Request a private vault/);
+  assert.match(client, /Send connection request/);
   assert.match(client, /Accept connection/);
 });
 

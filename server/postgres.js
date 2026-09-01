@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   revision bigint NOT NULL DEFAULT 1,
   sessions jsonb NOT NULL DEFAULT '[]'::jsonb,
   connection_requests jsonb NOT NULL DEFAULT '[]'::jsonb,
+  push_destinations jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
@@ -127,6 +128,8 @@ CREATE TABLE IF NOT EXISTS device_sync_cursors (
   PRIMARY KEY (account_id, device_id)
 );
 
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS push_destinations jsonb NOT NULL DEFAULT '[]'::jsonb;
+
 INSERT INTO vaultlix_schema(version) VALUES (1), (2) ON CONFLICT DO NOTHING;
 `;
 
@@ -153,6 +156,7 @@ class PostgresStore {
       passwordWrap:row.password_wrap, recoveryWrap:row.recovery_wrap,
       bundle:row.encrypted_bundle, revision:Number(row.revision),
       sessions:row.sessions || [], connectionRequests:row.connection_requests || [],
+      pushDestinations:row.push_destinations || [],
       createdAt:Number(row.created_at), updatedAt:Number(row.updated_at),
     }]);
   }
@@ -162,19 +166,20 @@ class PostgresStore {
     await this.pool.query(`INSERT INTO accounts (
       account_id, private_number, display_name, auth_verifier, recovery_verifier,
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
-      connection_requests, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13)
+      connection_requests, push_destinations, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, display_name=EXCLUDED.display_name,
       auth_verifier=EXCLUDED.auth_verifier, recovery_verifier=EXCLUDED.recovery_verifier,
       password_wrap=EXCLUDED.password_wrap, recovery_wrap=EXCLUDED.recovery_wrap,
       encrypted_bundle=EXCLUDED.encrypted_bundle, revision=EXCLUDED.revision,
       sessions=EXCLUDED.sessions, connection_requests=EXCLUDED.connection_requests,
+      push_destinations=EXCLUDED.push_destinations,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.displayName, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
       account.bundle, account.revision, JSON.stringify(account.sessions || []),
-      JSON.stringify(account.connectionRequests || []), account.createdAt, account.updatedAt,
+      JSON.stringify(account.connectionRequests || []), JSON.stringify(account.pushDestinations || []), account.createdAt, account.updatedAt,
     ]);
   }
 

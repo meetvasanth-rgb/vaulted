@@ -2102,7 +2102,7 @@ async function api(path, method, d, p, res, ip, headers) {
       recoveryWrap: d.recoveryWrap,
       bundle: d.bundle,
       revision: 1,
-      createdAt: Date.now(), updatedAt: Date.now(), sessions: [], connectionRequests:[],
+      createdAt: Date.now(), updatedAt: Date.now(), sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account);
     accounts.set(d.accountId, account);
@@ -2273,7 +2273,42 @@ async function api(path, method, d, p, res, ip, headers) {
     sender.connectionRequests.push({ ...request, direction:'outgoing' });
     await Promise.all([persistAccount(d.accountId), persistAccount(recipient.accountId)]);
     publishInboxAccount(recipient.accountId, 'connection-request');
+    const requestPushPayload = JSON.stringify({
+      title:'Vaultlix',
+      body:`${sender.displayName} sent you a connection request`,
+      tag:`connection-request-${request.id}`,
+      connectionRequest:true,
+    });
+    for (const destination of recipient.account.pushDestinations || []) {
+      sendMemberPush(destination, requestPushPayload, { urgency:'high', TTL:3600, label:'connection request' });
+    }
     return res200(res, { ok:true, requestId:request.id, status:'pending' });
+  }
+
+  if (path === '/api/account/native-push-subscribe' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    if (rateLimited(`account-native-push:${d.accountId}`, 20, 60 * 1000)) return resErr(res, 'Too many notification updates.', 429);
+    let destination;
+    if (d.platform === 'android') {
+      const fcmToken = validateFcmToken(d.deviceToken);
+      if (!fcmToken) return resErr(res, 'Invalid device token.', 400);
+      destination = { platform:'android', fcmToken, updatedAt:Date.now() };
+    } else if (d.platform === 'ios') {
+      const apnsToken = validateApnsToken(d.deviceToken);
+      if (!apnsToken) return resErr(res, 'Invalid device token.', 400);
+      if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res, 'Invalid APNs environment.', 400);
+      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, updatedAt:Date.now() };
+    } else {
+      return resErr(res, 'Invalid native platform.', 400);
+    }
+    const token = destination.fcmToken || destination.apnsToken;
+    account.pushDestinations = (account.pushDestinations || [])
+      .filter(item => (item.fcmToken || item.apnsToken) !== token)
+      .concat(destination)
+      .slice(-10);
+    await persistAccount(d.accountId);
+    return res200(res, { ok:true });
   }
 
   if (path === '/api/connections/list' && method === 'POST') {
@@ -3929,6 +3964,18 @@ function hydrateAccounts(entries, source) {
           !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
           !validEncryptedField(record.bundle, 1024 * 1024)) continue;
       record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
+      record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
+        if (destination?.platform === 'android') {
+          const fcmToken = validateFcmToken(destination.fcmToken);
+          return fcmToken ? [{ platform:'android', fcmToken, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+        }
+        if (destination?.platform === 'ios') {
+          const apnsToken = validateApnsToken(destination.apnsToken);
+          const apnsEnvironment = destination.apnsEnvironment === 'sandbox' ? 'sandbox' : 'production';
+          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+        }
+        return [];
+      }).slice(-10);
       accounts.set(entry[0], record);
       privateNumbers.set(record.privateNumber, entry[0]);
   }
