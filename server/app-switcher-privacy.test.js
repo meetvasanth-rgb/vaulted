@@ -10,8 +10,8 @@ test('Android hides app content before entering the app switcher', () => {
     root,
     'mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java'
   ), 'utf8');
-  assert.match(source, /protected void onPause\(\)\s*\{\s*showAppSwitcherPrivacyCover\(\);\s*super\.onPause\(\);/s);
-  assert.match(source, /protected void onResume\(\)\s*\{\s*super\.onResume\(\);\s*hideAppSwitcherPrivacyCover\(\);/s);
+  assert.match(source, /(?:public|protected) void onPause\(\)\s*\{\s*showAppSwitcherPrivacyCover\(\);\s*super\.onPause\(\);/s);
+  assert.match(source, /(?:public|protected) void onResume\(\)\s*\{\s*super\.onResume\(\);\s*hideAppSwitcherPrivacyCover\(\);/s);
   assert.doesNotMatch(source, /FLAG_SECURE/);
 });
 

@@ -41,7 +41,7 @@ test('accepted connections retain the peer Private Number inside conversation de
 
 test('the conversation gear is isolated from global settings', () => {
   assert.match(client, /function toggleSettings\(\) \{ settingsOpen \? closeSettings\(\) : openSettings\('chat', 'chats'\); \}/);
-  assert.match(client, /settingsContextMode === 'chat' \? 'Conversation settings'/);
+  assert.match(client, /settingsContextMode === 'chat' \? i18n\('conversation_settings'\)/);
   assert.match(client, /if \(settingsContextMode === 'chat'\) closeSettings\(\)/);
   assert.match(client, /settingsContextMode === 'chat' && category === 'chats'/);
 });
