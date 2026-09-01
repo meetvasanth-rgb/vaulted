@@ -68,6 +68,10 @@ final class NativeWebRTCCallEngine: NSObject {
             self.room = stored
             self.callID = callID
             self.connectSignalingLocked()
+            // PushKit wakes us before the user answers. Use that ring time to
+            // prepare TURN/RTCPeerConnection; CallKit keeps media disabled and
+            // no answer is sent until the user explicitly accepts.
+            self.fetchTurnAndCreatePeerLocked()
         }
         return true
     }
@@ -97,6 +101,11 @@ final class NativeWebRTCCallEngine: NSObject {
                 return
             }
             self.trace("start-outgoing accepted-state")
+            // Prepare the relay and peer while CallKit is ringing. Media is
+            // still disabled by CallKit and no offer is sent until the
+            // encrypted call-accept arrives, but this removes TURN setup
+            // from the post-answer critical path.
+            self.fetchTurnAndCreatePeerLocked()
             self.sendOutgoingInviteLocked()
             self.scheduleInviteRetryLocked()
         }
@@ -211,6 +220,15 @@ final class NativeWebRTCCallEngine: NSObject {
             resetLocked()
             return
         }
+        if type == "native-call-answering" {
+            trace("signal type=native-call-answering")
+            if outgoing, let callID {
+                DispatchQueue.main.async {
+                    VaultlixCallManager.shared.nativeOutgoingIsAnswering(callID: callID)
+                }
+            }
+            return
+        }
         guard let envelope = object["envelope"] as? String else {
             trace("signal ignored-envelope")
             return
@@ -236,7 +254,8 @@ final class NativeWebRTCCallEngine: NSObject {
             guard outgoing else { return }
             inviteRetryGeneration += 1
             answered = true
-            fetchTurnAndCreatePeerLocked()
+            if peer == nil { fetchTurnAndCreatePeerLocked() }
+            else { createAndSendOfferLocked() }
         case "offer":
             guard answered, !outgoing else { return }
             offerReceived = true
@@ -319,7 +338,7 @@ final class NativeWebRTCCallEngine: NSObject {
         peer = pc
         prepareAudioTrackLocked()
         if let audioTrack { _ = pc.add(audioTrack, streamIds: ["vaultlix-native-stream"]) }
-        if outgoing { createAndSendOfferLocked() }
+        if outgoing && answered { createAndSendOfferLocked() }
         else if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
     }
 

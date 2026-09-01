@@ -218,8 +218,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && NativeCallActions.consumePendingWebViewCallEnd(this)) {
-            clearUnderlyingCallState(null);
+        String[] pendingEnd = hasFocus ? NativeCallActions.consumePendingWebViewCallEnd(this) : null;
+        if (pendingEnd != null) {
+            clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);
         }
     }
 
@@ -328,7 +329,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void callEnded() {
+        public void callEnded(String historyText) {
             runOnUiThread(MainActivity.this::restoreAudioRoute);
         }
 
@@ -355,7 +356,7 @@ public class MainActivity extends BridgeActivity {
      * foreground WebView. Explicitly clear that underlying call state so its
      * incoming overlay cannot reappear after the call activity finishes.
      */
-    public static void notifyDedicatedCallEnded(String roomCode) {
+    public static void notifyDedicatedCallEnded(String roomCode, String historyText) {
         MainActivity activity = activeInstance.get();
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         // A locked-screen call surface may finish while MainActivity is
@@ -363,16 +364,17 @@ public class MainActivity extends BridgeActivity {
         // keyguard. WebView can discard evaluateJavascript in that state, so
         // persist a one-shot marker and consume it only after window focus is
         // genuinely restored.
-        NativeCallActions.markPendingWebViewCallEnd(activity);
+        NativeCallActions.markPendingWebViewCallEnd(activity, roomCode, historyText);
         if (!activity.hasWindowFocus()) return;
-        NativeCallActions.consumePendingWebViewCallEnd(activity);
-        activity.clearUnderlyingCallState(roomCode);
+        String[] pendingEnd = NativeCallActions.consumePendingWebViewCallEnd(activity);
+        if (pendingEnd != null) activity.clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);
     }
 
-    private void clearUnderlyingCallState(String roomCode) {
+    private void clearUnderlyingCallState(String roomCode, String historyText) {
         String encodedCode = JSONObject.quote(roomCode == null ? "" : roomCode);
+        String encodedHistory = JSONObject.quote(historyText == null ? "" : historyText);
         runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(
-                "window.vaultlixNativeCallEnded&&window.vaultlixNativeCallEnded(" + encodedCode + ");",
+                "window.vaultlixNativeCallEnded&&window.vaultlixNativeCallEnded(" + encodedCode + "," + encodedHistory + ");",
                 null
         ));
     }

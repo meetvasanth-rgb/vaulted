@@ -1965,6 +1965,49 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok:true });
   }
 
+  // Native Android can acknowledge an answer before its call-only WebView and
+  // encrypted signalling socket have finished their cold start. This stops
+  // the caller's ringing timeout immediately; the actual SDP and media setup
+  // still begins only after the E2E call-accept arrives below.
+  if (path === '/api/native-call/answer' && method === 'POST') {
+    if (rateLimited(`native-call-answer:${ip}`, 30, 60 * 1000)) return resErr(res, 'Too many call actions.', 429);
+    const callId = typeof d.callId === 'string' ? d.callId.trim() : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(callId)) {
+      return resErr(res, 'Invalid call action.', 400);
+    }
+
+    let matchedRoom = null;
+    for (const room of rooms.values()) {
+      if (room.nativeCallId === callId) { matchedRoom = room; break; }
+    }
+    if (!matchedRoom) return res200(res, { ok: true });
+
+    const wasRinging = matchedRoom.ringingUntil && matchedRoom.ringingUntil > Date.now();
+    if (wasRinging) {
+      analytics.callsAnswered = (analytics.callsAnswered || 0) + 1;
+      trackAggregate('callsAnswered');
+    }
+    matchedRoom.ringingUntil = 0;
+    matchedRoom.activeCall = true;
+    matchedRoom.lastActivity = Date.now();
+
+    const calleeToken = matchedRoom.nativeCalleeToken;
+    for (const [memberToken] of matchedRoom.members) {
+      if (memberToken === calleeToken) continue;
+      const callerSockets = new Set([
+        nativeCallSignalingSockets.get(memberToken),
+        signalingSockets.get(memberToken),
+      ]);
+      for (const callerSocket of callerSockets) {
+        if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
+          try { callerSocket.send(JSON.stringify({ type: 'native-call-answering' })); } catch (e) {}
+        }
+      }
+      break;
+    }
+    return res200(res, { ok: true });
+  }
+
   // Native Android can reject an incoming call before its WebView/signalling
   // socket has opened. The random server-issued call ID is a short-lived
   // capability scoped to the one currently ringing call; no room code,

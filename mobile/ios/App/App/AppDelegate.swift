@@ -405,6 +405,15 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
+    func nativeOutgoingIsAnswering(callID: UUID) {
+        DispatchQueue.main.async {
+            guard let payload = self.calls[callID],
+                  self.nativeMediaCalls.contains(callID),
+                  self.outgoingCalls.contains(callID) else { return }
+            self.postAction("nativeAnswering", callID: callID, payload: payload)
+        }
+    }
+
     func nativeCallDidEnd(callID: UUID, action: String) {
         DispatchQueue.main.async {
             guard let payload = self.calls[callID] else { return }

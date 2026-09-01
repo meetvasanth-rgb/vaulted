@@ -3817,12 +3817,13 @@ function makeRoom({ code, token, myName, peerPrivateNumber, deleteTimerSeconds, 
     // Caller-side only: has the callee acked our invite yet? Flips the
     // outgoing screen from "Calling…" to "Ringing…" — see the call-invite/
     // call-ringing handling in handleSignalMessage.
-    callRinging: false,
+    callRinging: false, callAnswerAcknowledged: false,
     // Callee-side only: wall-clock time the incoming call first arrived —
     // see checkStaleIncomingCalls.
     callInviteReceivedAt: null,
     // Answerer-side resend loop for 'call-accept' — see acceptCall().
     callAcceptRetryInterval: null, callAcceptRetryTimeout: null, callAcceptConfirmed: false,
+    turnCredentialsPromise: null,
     // Set as soon as the callee accepts, even if iOS resumed us before the
     // signaling socket finished reconnecting. WebKit can suspend interval
     // callbacks behind CallKit, so ws.onopen must be able to flush this
@@ -4026,6 +4027,12 @@ async function handleNativeCallAction(detail) {
   } else if (detail.action === 'nativeRinging') {
     if (room.callState !== 'outgoing') return;
     room.callRinging = true;
+    renderCallOverlay(room);
+  } else if (detail.action === 'nativeAnswering') {
+    if (room.callState !== 'outgoing') return;
+    clearCallTimeout(room);
+    clearCallRingInterval(room);
+    room.callAnswerAcknowledged = true;
     renderCallOverlay(room);
   } else if (detail.action === 'audioActivated') {
     // CallKit activates audio immediately after the user answers, while ICE
@@ -4812,6 +4819,19 @@ function connectSignaling(room) {
       }
       return;
     }
+    // Android acknowledges the physical Answer tap before its dedicated,
+    // encrypted call WebView has completed a cold start. Stop the caller's
+    // ringtone/timeout now, but remain in the outgoing state until the real
+    // E2E call-accept arrives and starts WebRTC negotiation.
+    if (msg && msg.type === 'native-call-answering') {
+      if (room.callState === 'outgoing') {
+        clearCallTimeout(room);
+        clearCallRingInterval(room);
+        room.callAnswerAcknowledged = true;
+        renderCallOverlay(room);
+      }
+      return;
+    }
     if (!msg || typeof msg.type !== 'string' || typeof msg.envelope !== 'string') return;
     // The peer reloading resets THEIR signalSeqOut back to 1 — if my own
     // signalSeqIn is still sitting at a high watermark from earlier in this
@@ -4915,6 +4935,9 @@ async function handleSignalMessage(room, type, payload, inviteId) {
       // very late) while the tab is frozen, but the elapsed real time is
       // still knowable the moment the app comes back to the foreground.
       room.callInviteReceivedAt = Date.now();
+      // Start the content-free TURN credential request while the incoming
+      // screen is ringing. Microphone access still waits for Answer.
+      fetchTurnCredentials(room);
       renderCallOverlay(room);
       refreshCallButton();
       playChime();
@@ -4946,8 +4969,7 @@ async function handleSignalMessage(room, type, payload, inviteId) {
     clearCallTimeout(room);
     clearCallRingInterval(room);
     room.callState = 'active';
-    room.callStartedAt = Date.now();
-    startCallTimer(room);
+    room.callStartedAt = null;
     renderCallOverlay(room);
     refreshCallButton();
     // Both sides have now agreed to the call — the caller becomes the
@@ -5062,6 +5084,7 @@ async function startCall() {
   room.callState = 'outgoing';
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
+  room.callAnswerAcknowledged = false;
   room.nativeCallActive = false;
   // CallKit can snapshot WKWebView before iOS has completed its keyboard
   // dismissal animation. Mark the call busy first (preventing a second tap),
@@ -5073,6 +5096,10 @@ async function startCall() {
   // random fallback for older embedded browsers during rolling upgrades.
   room.callInviteId = crypto.randomUUID ? crypto.randomUUID() :
     ('ci-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14));
+  // TURN credentials contain no message or call content. Fetch them while
+  // the peer is ringing so relay allocation can begin immediately after
+  // acceptance instead of adding another network round-trip afterward.
+  fetchTurnCredentials(room);
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
   if (iosBridge && room.nativeRoomHandle) {
     // The signed iOS wrapper owns outgoing media too. This gives both sides
@@ -5158,7 +5185,7 @@ async function acceptCall(fromNativeCallKit = false) {
     } catch (e) {}
   }
   room.callState = 'active';
-  room.callStartedAt = Date.now();
+  room.callStartedAt = null;
   room.pendingCallAccept = true;
   // A socket left in CONNECTING while iOS was suspended can remain stale.
   // Replace that half-open socket before running the normal connection
@@ -5171,7 +5198,6 @@ async function acceptCall(fromNativeCallKit = false) {
   }
   connectSignaling(room);
   sendSignal(room, 'call-accept', {});
-  startCallTimer(room);
   renderCallOverlay(room);
   refreshCallButton();
 
@@ -5313,6 +5339,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callStartedAt = null;
   room.callConnectedHapticFired = false;
   room.callRinging = false;
+  room.callAnswerAcknowledged = false;
   room.nativeCallActive = false;
   room.nativeAnswerPending = false;
   room.pendingCallAccept = false;
@@ -5329,7 +5356,9 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   // running the normal in-chat dissolve animation above the lock screen.
   if (document.body.classList.contains('native-call-only')) {
     hideCallOverlay();
-    notifyLockedCallEnded();
+    notifyLockedCallEnded(wasActive
+      ? `Encrypted call · ${formatCallTime(duration)}`
+      : (sysMsgText || ''));
     return;
   }
 
@@ -5358,9 +5387,9 @@ function notifyLockedCallReady() {
   try { window.VaultlixLockedCall?.callReady(); } catch (e) {}
 }
 
-function notifyLockedCallEnded() {
-  try { window.VaultlixAndroid?.callEnded(); } catch (e) {}
-  try { window.VaultlixLockedCall?.callEnded(); } catch (e) {}
+function notifyLockedCallEnded(historyText = '') {
+  try { window.VaultlixAndroid?.callEnded(historyText); } catch (e) {}
+  try { window.VaultlixLockedCall?.callEnded(historyText); } catch (e) {}
 }
 
 // A native Android answer is hosted in a second, call-only WebView. Its own
@@ -5369,11 +5398,17 @@ function notifyLockedCallEnded() {
 // Reset that underlying copy of the call state and remove its stale incoming
 // overlay. The normal endCall path is intentionally reused so timers, media,
 // and activeCallRoomCode are cleaned consistently.
-window.vaultlixNativeCallEnded = function(roomCode) {
+window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
   const room = (roomCode && rooms.get(roomCode)) ||
     (activeCallRoomCode && rooms.get(activeCallRoomCode));
   if (room && room.callState !== 'idle') {
-    endCall(room);
+    // The dedicated Android call WebView owns the authoritative duration.
+    // Prevent this hidden copy from manufacturing a second duration, then
+    // add the result supplied by the native host during normal cleanup.
+    if (historyText) room.callStartedAt = null;
+    endCall(room, null, historyText || null);
+  } else if (room && historyText) {
+    addCallSysMsg(room, historyText);
   } else {
     hideCallOverlay();
     activeCallRoomCode = null;
@@ -5631,7 +5666,7 @@ function renderCallOverlay(room) {
       <div class="call-identity">
         <div class="call-hollow-dot"></div>
         <div class="call-peer-name">${name}</div>
-        <div class="call-status pulsing">${room.callRinging ? 'Ringing…' : 'Calling…'}</div>
+        <div class="call-status pulsing">${room.callAnswerAcknowledged ? 'Connecting…' : (room.callRinging ? 'Ringing…' : 'Calling…')}</div>
         <div class="call-status">End-to-end encrypted</div>
       </div>
       <div class="call-actions">
@@ -5716,7 +5751,7 @@ function renderCallOverlay(room) {
     // background; the name is the only thing identifying who that even is
     // at that point, so it stays put until their video actually arrives.
     const videoMode = !!room.remoteVideoActive;
-    const waitingForNativeMedia = !!room.nativeAnswerPending && !room.callStartedAt;
+    const waitingForNativeMedia = !room.callStartedAt;
     const identityHtml = videoMode ? `
         <span class="call-peer-name-compact">${name}</span>
         <span class="call-timer-compact" id="call-timer">${waitingForNativeMedia ? 'Connecting…' : '00:00'}</span>` : `
@@ -5843,28 +5878,32 @@ function hideCallOverlay() {
 // connected (after 'call-accept'), never on page load or on ringing alone.
 
 async function fetchTurnCredentials(room) {
-  try {
-    const result = await api('/api/turn-credentials', { code: room.code, token: room.token });
-    if (result.error || !Array.isArray(result.iceServers)) return null;
-    return result.iceServers;
-  } catch (e) {
-    return null;
-  }
+  if (room.turnCredentialsPromise) return room.turnCredentialsPromise;
+  room.turnCredentialsPromise = (async () => {
+    try {
+      const result = await api('/api/turn-credentials', { code: room.code, token: room.token });
+      if (result.error || !Array.isArray(result.iceServers)) return null;
+      return result.iceServers;
+    } catch (e) {
+      return null;
+    }
+  })();
+  const result = await room.turnCredentialsPromise;
+  if (!result) room.turnCredentialsPromise = null;
+  return result;
 }
 
 // Returns the RTCPeerConnection, or null if setup failed (mic permission
 // denied, no TURN credentials available, etc.) — callers should treat null
 // as "end the call," not retry silently.
 async function setupPeerConnection(room) {
-  const iceServers = await fetchTurnCredentials(room);
-  if (!iceServers) return null;
-
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch (e) {
-    return null; // permission denied, no mic, or insecure context
-  }
+  // Both operations are required but independent. Running them in parallel
+  // removes a full serial network/media round-trip from answer-to-connect.
+  const [iceServers, stream] = await Promise.all([
+    fetchTurnCredentials(room),
+    navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null),
+  ]);
+  if (!iceServers || !stream) return null;
   room.localStream = stream;
   room.callMuted = false;
 
@@ -5979,10 +6018,21 @@ async function setupPeerConnection(room) {
   // on its own — only actually end the call on 'failed', which means ICE
   // genuinely gave up.
   pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      markWebCallMediaConnected(room);
+    }
     if (pc.iceConnectionState === 'failed') endCall(room, 'Call connection lost.');
   };
 
   return pc;
+}
+
+function markWebCallMediaConnected(room) {
+  if (!room || room.callState !== 'active' || room.callStartedAt) return;
+  room.callStartedAt = Date.now();
+  room.nativeAnswerPending = false;
+  startCallTimer(room);
+  renderCallOverlay(room);
 }
 
 // CallKit can activate its AVAudioSession after WKWebView obtained its first

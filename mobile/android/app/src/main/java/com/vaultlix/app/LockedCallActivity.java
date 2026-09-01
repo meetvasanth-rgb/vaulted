@@ -293,10 +293,10 @@ public class LockedCallActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void callEnded() {
+        public void callEnded(String historyText) {
             runOnUiThread(() -> {
                 clearNativeCallState();
-                MainActivity.notifyDedicatedCallEnded(roomCode);
+                MainActivity.notifyDedicatedCallEnded(roomCode, historyText);
                 finish();
             });
         }

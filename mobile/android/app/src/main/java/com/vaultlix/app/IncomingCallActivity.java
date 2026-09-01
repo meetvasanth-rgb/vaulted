@@ -129,6 +129,7 @@ public class IncomingCallActivity extends Activity {
         if (answerInProgress) return;
         answerInProgress = true;
         NativeCallActions.markAnswerStarted(this, callId);
+        NativeCallActions.answer(this, callId);
         cancelNotification();
         // Use one dedicated call-only host in every device state. Besides
         // keeping chat hidden above keyguard, this gives foreground and
