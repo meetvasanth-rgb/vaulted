@@ -294,7 +294,10 @@ function deleteRoomMsgContent(room, msg) {
 // think it's full when the real rooms Map is mostly empty.
 function destroyRoom(code) {
   const room = rooms.get(code);
-  if (room) totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0));
+  if (room) {
+    totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0));
+    publishInboxRoom(code, 'room-closed');
+  }
   rooms.delete(code);
   // Closing/expiry must reach durable state immediately so a backup taken
   // before the next periodic pass cannot resurrect an already-erased vault.
@@ -1669,8 +1672,9 @@ setInterval(() => {
 // through the existing /api/poll sync mechanism with no client changes.
 setInterval(() => {
   const now = Date.now();
-  for (const room of rooms.values()) {
+  for (const [roomCode, room] of rooms) {
     if (!room.deleteTimer) continue;
+    let changed = false;
     for (const msg of room.msgs) {
       if (msg.type !== 'message' || msg.deleted || !msg.readAt) continue;
       // Only messages sent at or after the timer's CURRENT setting took
@@ -1682,8 +1686,10 @@ setInterval(() => {
       if (msg.ts < (room.deleteTimerSetAt || 0)) continue;
       if (now - msg.readAt >= room.deleteTimer * 1000) {
         deleteRoomMsgContent(room, msg);
+        changed = true;
       }
     }
+    if (changed) publishInboxRoom(roomCode, 'deletion');
   }
 }, 5000);
 
@@ -2106,6 +2112,48 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true, bundle: account.bundle, revision: account.revision });
   }
 
+  // One authenticated foreground/reconnect catch-up replaces one request per
+  // conversation. Room credentials are supplied by the device and validated
+  // independently, preserving the account file's no-readable-social-graph
+  // property. The response is an invalidation index; changed rooms are then
+  // fetched through the existing E2E room sync path.
+  if (path === '/api/inbox/sync' && method === 'POST') {
+    if (!validAccountId(d.accountId) || !authenticateAccountSession(d.accountId, d.sessionToken)) {
+      return resErr(res, 'Your Vaultlix session has expired.', 401);
+    }
+    if (!Array.isArray(d.conversations) || d.conversations.length > 20) {
+      return resErr(res, 'Invalid inbox subscription.', 400);
+    }
+    const updates = [];
+    for (const item of d.conversations) {
+      if (!item || typeof item.code !== 'string' || typeof item.token !== 'string') continue;
+      const code = item.code.toLowerCase().trim();
+      const room = rooms.get(code);
+      if (!room) { updates.push({ code, roomGone:true }); continue; }
+      if (!room.members.has(item.token)) continue;
+      const lastSeq = Number.parseInt(item.lastSeq || 0, 10);
+      const lastReceiptSeq = Number.parseInt(item.lastReceiptSeq || 0, 10);
+      const lastReactionSeq = Number.parseInt(item.lastReactionSeq || 0, 10);
+      const lastDeletionSeq = Number.parseInt(item.lastDeletionSeq || 0, 10);
+      const receiptChanged = room.msgs.some(msg => msg.type === 'message' && msg.from === item.token &&
+        msg.deliveredAt && (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)));
+      const peerMessageChanged = room.msgs.some(msg => msg.seq > lastSeq && !msg.deleted && msg.from !== item.token);
+      let typing = false;
+      const now = Date.now();
+      for (const [token, member] of room.members) {
+        if (token !== item.token && member.typing && now - member.typing < 3000) typing = true;
+      }
+      updates.push({
+        code,
+        changed: peerMessageChanged || room.reactionSeq > lastReactionSeq ||
+          room.deletionSeq > lastDeletionSeq || (room.clearedAt || 0) > Number(item.lastKnownClearedAt || 0) || receiptChanged,
+        typing,
+      });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, sequence:inboxSequenceByAccount.get(d.accountId) || 0, updates });
+  }
+
   if (path === '/api/account/logout' && method === 'POST') {
     const account = validAccountId(d.accountId) ? accounts.get(d.accountId) : null;
     if (account && typeof d.sessionToken === 'string') {
@@ -2155,6 +2203,7 @@ async function api(path, method, d, p, res, ip, headers) {
     sender.connectionRequests = (sender.connectionRequests || []).filter(r => r.expiresAt > now).slice(-99);
     sender.connectionRequests.push({ ...request, direction:'outgoing' });
     saveAccounts();
+    publishInboxAccount(recipient.accountId, 'connection-request');
     return res200(res, { ok:true, requestId:request.id, status:'pending' });
   }
 
@@ -2181,6 +2230,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const outgoing = (sender?.connectionRequests || []).find(r => r.id === request.id);
     if (outgoing) { outgoing.status=request.status; outgoing.respondedAt=request.respondedAt; if (request.inviteUrl) outgoing.inviteUrl=request.inviteUrl; }
     saveAccounts();
+    publishInboxAccount(request.senderAccountId, 'connection-response');
     return res200(res, { ok:true, status:request.status });
   }
 
@@ -2392,6 +2442,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // point of the message.
     const joinedEventId = uid();
     pushRoomMsg(room, { seq: ++room.seq, id: joinedEventId, type:'system', content:`${name} joined`, ts: Date.now(), from: token });
+    publishInboxRoom(roomCode, 'membership', { excludeToken:token });
 
     // The creator may have shared the invitation and moved on to another
     // vault (or locked the phone) while waiting. Notify that existing member
@@ -2469,6 +2520,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
     pushRoomMsg(room, { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 });
+    publishInboxRoom(d.code, 'message', { excludeToken:d.token });
     room.totalMessageCount = (room.totalMessageCount || 0) + 1;
     room.lastMessageAt = Date.now();
     analytics.messagesRelayed = (analytics.messagesRelayed || 0) + 1;
@@ -2667,6 +2719,7 @@ async function api(path, method, d, p, res, ip, headers) {
     else delete msg.reactions[d.token];
     msg.reactionSeq = ++room.reactionSeq;
     room.lastActivity = Date.now();
+    publishInboxRoom(d.code, 'reaction', { excludeToken:d.token });
     return res200(res, { ok: true });
   }
 
@@ -2690,6 +2743,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (msg.from !== d.token) return resErr(res,'Only the sender can delete this for everyone.',403);
     deleteRoomMsgContent(room, msg);
     room.lastActivity = Date.now();
+    publishInboxRoom(d.code, 'deletion', { excludeToken:d.token });
     return res200(res, { ok: true });
   }
 
@@ -2719,6 +2773,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!msg.deleted) {
       deleteRoomMsgContent(room, msg);
       room.lastActivity = Date.now();
+      publishInboxRoom(d.code, 'deletion', { excludeToken:d.token });
     }
     return res200(res, { ok: true });
   }
@@ -2754,6 +2809,7 @@ async function api(path, method, d, p, res, ip, headers) {
         : `${m.name} turned off disappearing messages`,
       ts: Date.now(),
     });
+    publishInboxRoom(d.code, 'timer', { excludeToken:d.token });
     return res200(res, { ok: true, deleteTimer: room.deleteTimer });
   }
 
@@ -2778,6 +2834,7 @@ async function api(path, method, d, p, res, ip, headers) {
     room.clearedAt = Date.now();
     room.lastActivity = Date.now();
     pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
+    publishInboxRoom(d.code, 'clear', { excludeToken:d.token });
     return res200(res, { ok: true, clearedAt: room.clearedAt });
   }
 
@@ -2850,9 +2907,11 @@ async function api(path, method, d, p, res, ip, headers) {
     // incremental poll never hit this, since newMsgs already excludes the
     // caller's own messages there — this only matters for the bootstrap
     // case, which is exactly the false-positive scenario being fixed.
+    let deliveredChanged = false;
     for (const msg of newMsgs) {
-      if (msg.type==='message' && msg.from !== token && !msg.deliveredAt) msg.deliveredAt = Date.now();
+      if (msg.type==='message' && msg.from !== token && !msg.deliveredAt) { msg.deliveredAt = Date.now(); deliveredChanged = true; }
     }
+    if (deliveredChanged) publishInboxRoom(roomCode, 'receipt', { excludeToken:token });
 
     // Read receipts for sender's messages
     const readReceipts = [];
@@ -2904,6 +2963,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (msg && msg.type === 'message' && !msg.deliveredAt) {
       msg.deliveredAt = Date.now();
+      publishInboxRoom(d.code, 'receipt', { excludeToken:d.token });
     }
     return res200(res, { ok: true });
   }
@@ -2912,8 +2972,10 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/read' && method==='POST') {
     const room = rooms.get(d.code);
     if (room && room.members.has(d.token) && Array.isArray(d.msgIds)) {
-      for (const msg of room.msgs) if (d.msgIds.includes(msg.id) && !msg.readAt) msg.readAt = Date.now();
+      let changed = false;
+      for (const msg of room.msgs) if (d.msgIds.includes(msg.id) && !msg.readAt) { msg.readAt = Date.now(); changed = true; }
       room.lastActivity = Date.now();
+      if (changed) publishInboxRoom(d.code, 'receipt', { excludeToken:d.token });
     }
     return res200(res, { ok: true });
   }
@@ -2925,6 +2987,7 @@ async function api(path, method, d, p, res, ip, headers) {
       const m = room.members.get(d.token);
       m.lastSeen = Date.now(); m.typing = Date.now();
       room.lastActivity = Date.now();
+      publishInboxRoom(d.code, 'typing', { excludeToken:d.token, payload:{ active:true } });
     }
     return res200(res, { ok: true });
   }
@@ -2979,6 +3042,7 @@ async function api(path, method, d, p, res, ip, headers) {
     room.members.delete(d.token);
     room.lastActivity = Date.now();
     pushRoomMsg(room, { seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
+    publishInboxRoom(d.code, 'membership', { excludeToken:d.token });
     if (room.members.size===0) destroyRoom(d.code);
     return res204(res);
   }
@@ -3176,6 +3240,7 @@ async function api(path, method, d, p, res, ip, headers) {
 // variation across devices, while still being a hard, meaningful cap
 // (down from ws's 100MB default).
 const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+const inboxWss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
 
 // One live socket per participant, keyed by their room token — not by room
 // code, since a signaling message needs to reach one specific person, not
@@ -3188,6 +3253,56 @@ const signalingSockets = new Map();
 // WebRTC engine. When present, it has priority for signals addressed to
 // that participant; the web socket remains available for outgoing web calls.
 const nativeCallSignalingSockets = new Map();
+const inboxAccountSockets = new Map();
+const inboxSequenceByAccount = new Map();
+
+function nextInboxSequence(accountId) {
+  const next = (inboxSequenceByAccount.get(accountId) || 0) + 1;
+  inboxSequenceByAccount.set(accountId, next);
+  return next;
+}
+
+// Live inbox subscriptions deliberately stay process-only. The durable account
+// file therefore still cannot reveal which vaults belong to an identity. When
+// a device reconnects it proves each room membership again with its existing
+// bearer token and catches up from the room's durable sequence counters.
+function publishInboxRoom(roomCode, change, { excludeToken = null, payload = null } = {}) {
+  for (const [accountId, sockets] of inboxAccountSockets) {
+    for (const ws of sockets) {
+      const subscribedToken = ws.inboxSubscriptions?.get(roomCode);
+      if (!subscribedToken || subscribedToken === excludeToken || ws.readyState !== ws.OPEN) continue;
+      try {
+        ws.send(JSON.stringify({
+          type: change === 'typing' ? 'typing' : 'room-update',
+          roomCode,
+          change,
+          sequence: nextInboxSequence(accountId),
+          ...(payload || {}),
+        }));
+      } catch (e) {}
+    }
+  }
+}
+
+function publishInboxAccount(accountId, change, payload = null) {
+  const sockets = inboxAccountSockets.get(accountId);
+  if (!sockets) return;
+  for (const ws of sockets) {
+    if (ws.readyState !== ws.OPEN) continue;
+    try {
+      ws.send(JSON.stringify({ type:'account-update', change, sequence:nextInboxSequence(accountId), ...(payload || {}) }));
+    } catch (e) {}
+  }
+}
+
+function hasLiveInboxSubscription(roomCode, token, exceptSocket = null) {
+  for (const sockets of inboxAccountSockets.values()) {
+    for (const socket of sockets) {
+      if (socket !== exceptSocket && socket.readyState === socket.OPEN && socket.inboxSubscriptions?.get(roomCode) === token) return true;
+    }
+  }
+  return false;
+}
 
 // Every type handleSignalMessage() actually branches on in client/index.html
 // (checked against that source directly, not from memory) — anything else
@@ -3200,6 +3315,10 @@ const SIGNAL_TYPE_ALLOWLIST = new Set([
 srv.on('upgrade', (req, socket, head) => {
   let u;
   try { u = new URL(req.url, 'http://x'); } catch (e) { socket.destroy(); return; }
+  if (u.pathname === '/ws/inbox') {
+    inboxWss.handleUpgrade(req, socket, head, (ws) => inboxWss.emit('connection', ws, req));
+    return;
+  }
   if (u.pathname !== '/ws/signal') { socket.destroy(); return; }
 
   // Auth used to happen right here, reading code/token off the query
@@ -3214,6 +3333,75 @@ srv.on('upgrade', (req, socket, head) => {
   // for the one remaining place it existed.
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit('connection', ws, req);
+  });
+});
+
+inboxWss.on('connection', (ws) => {
+  ws.authenticated = false;
+  ws.isAlive = true;
+  ws.inboxSubscriptions = new Map();
+  ws.on('pong', () => {
+    ws.isAlive = true;
+    const now = Date.now();
+    for (const [code, token] of ws.inboxSubscriptions) {
+      const member = rooms.get(code)?.members.get(token);
+      if (member) member.lastSeen = now;
+    }
+  });
+  ws.on('error', (err) => console.error('Inbox socket error:', err.message));
+  const authTimer = setTimeout(() => {
+    if (!ws.authenticated) { try { ws.close(4003, 'Auth timeout'); } catch (e) {} }
+  }, 5000);
+  authTimer.unref();
+
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch (e) { msg = null; }
+    if (!ws.authenticated) {
+      if (!msg || msg.type !== 'auth' || !validAccountId(msg.accountId) ||
+          !authenticateAccountSession(msg.accountId, msg.sessionToken)) {
+        clearTimeout(authTimer);
+        try { ws.close(4001, 'Unauthorized'); } catch (e) {}
+        return;
+      }
+      clearTimeout(authTimer);
+      ws.authenticated = true;
+      ws.accountId = msg.accountId;
+      let sockets = inboxAccountSockets.get(msg.accountId);
+      if (!sockets) { sockets = new Set(); inboxAccountSockets.set(msg.accountId, sockets); }
+      sockets.add(ws);
+      try { ws.send(JSON.stringify({ type:'ready', sequence:inboxSequenceByAccount.get(msg.accountId) || 0 })); } catch (e) {}
+      return;
+    }
+    if (!msg || msg.type !== 'subscribe' || !Array.isArray(msg.conversations)) return;
+    const subscriptions = new Map();
+    for (const item of msg.conversations.slice(0, 20)) {
+      if (!item || typeof item.code !== 'string' || typeof item.token !== 'string') continue;
+      const code = item.code.toLowerCase().trim();
+      const room = rooms.get(code);
+      if (room?.members.has(item.token)) subscriptions.set(code, item.token);
+    }
+    ws.inboxSubscriptions = subscriptions;
+    for (const [code, token] of subscriptions) {
+      const member = rooms.get(code)?.members.get(token);
+      if (member) member.lastSeen = Date.now();
+      publishInboxRoom(code, 'presence', { excludeToken:token });
+    }
+    try { ws.send(JSON.stringify({ type:'subscribed', count:subscriptions.size })); } catch (e) {}
+  });
+
+  ws.on('close', () => {
+    if (!ws.accountId) return;
+    const sockets = inboxAccountSockets.get(ws.accountId);
+    if (!sockets) return;
+    sockets.delete(ws);
+    if (sockets.size === 0) inboxAccountSockets.delete(ws.accountId);
+    for (const [code, token] of ws.inboxSubscriptions) {
+      if (hasLiveInboxSubscription(code, token, ws)) continue;
+      const member = rooms.get(code)?.members.get(token);
+      if (member) member.lastSeen = 0;
+      publishInboxRoom(code, 'presence', { excludeToken:token });
+    }
   });
 });
 
@@ -3548,7 +3736,7 @@ wss.on('connection', (ws) => {
 // terminate anything that didn't pong back since the last sweep — the
 // client's reconnect-with-backoff logic picks it back up from there.
 setInterval(() => {
-  wss.clients.forEach((ws) => {
+  for (const server of [wss, inboxWss]) server.clients.forEach((ws) => {
     if (ws.isAlive === false) { ws.terminate(); return; }
     ws.isAlive = false;
     try { ws.ping(); } catch (e) {}

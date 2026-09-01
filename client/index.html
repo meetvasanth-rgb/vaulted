@@ -3890,6 +3890,7 @@ async function registerNativeVoipForRoom(room) {
 
 function addRoomToState(room) {
   rooms.set(room.code, room);
+  subscribeInboxRooms();
   registerNativeVoipForRoom(room);
 }
 
@@ -4049,6 +4050,7 @@ function removeRoomFromState(code) {
     if (room.callState !== 'idle') endCall(room);
   }
   rooms.delete(code);
+  subscribeInboxRooms();
   clearRoomStorage(code);
   idbRemoveSession(code).catch(() => {});
 }
@@ -7439,6 +7441,7 @@ async function signOutAnonymousAccount() {
     return session ? api('/api/push-unsubscribe', { code:session.code, token:session.token }) : Promise.resolve();
   }));
   try { await api('/api/account/logout', { accountId:state.accountId, sessionToken:state.sessionToken }); } catch(e) {}
+  disconnectInbox();
   localStorage.removeItem(ACCOUNT_STATE_KEY);
   clearTimeout(accountSyncTimer);
   for (const code of ownedCodes) removeRoomFromState(code);
@@ -7462,6 +7465,7 @@ function finishAccountCreation() {
   closeAccountPanel();
   if (isNativeApp()) showEnableNativeNotificationsBanner();
   showScreen('s-vault-list');
+  connectInbox();
   toast('Your Vaultlix private number is ready');
 }
 function openAccountVaults() {
@@ -7588,13 +7592,13 @@ function playChime() {
   } catch(e) {}
 }
 
-// ── TAB VISIBILITY / CATCH-UP POLL ──────────────────────────────────────
-// While the app is genuinely backgrounded on iOS, no JS timer runs — every
-// room's setInterval(doPoll, 2000) loop is fully suspended by the OS. What we
-// CAN control is the moment the app comes back to the foreground: force an
-// immediate poll of every open room right then instead of waiting up to 2s.
+// ── TAB VISIBILITY / INBOX CATCH-UP ─────────────────────────────────────
+// Mobile platforms suspend WebSockets in the background. On foreground we
+// reconnect the single user channel and run one batched cursor comparison;
+// only conversations that actually changed need a room delta fetch.
 function catchUpPoll() {
-  for (const room of rooms.values()) doPoll(room);
+  connectInbox();
+  syncInbox({ refreshAll:false }).catch(() => {});
 }
 
 // WebKit's 'pushsubscriptionchange' event (the platform's own hook for "your
@@ -9733,7 +9737,7 @@ async function restoreRoomHistory(room) {
 
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
-      for (const r of data.readReceipts) if (r.readAt && r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
+      for (const r of data.readReceipts) if (r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
     }
     if (data.reactionUpdates && data.reactionUpdates.length > 0) {
       for (const u of data.reactionUpdates) {
@@ -9761,14 +9765,130 @@ async function restoreRoomHistory(room) {
   } catch(e) { console.error('E2E: restoreRoomHistory failed:', e.message); }
 }
 
-// ── POLLING (per room) ──────────────────────────────────────────────────
+// ── USER-LEVEL INBOX SYNCHRONIZATION ────────────────────────────────────
+// One authenticated socket carries invalidations for every locally owned
+// conversation. The server still stores ciphertext in each vault and the
+// existing room sync response remains the authoritative delta format, but
+// idle conversations no longer generate HTTP traffic every two seconds.
+let inboxSocket = null;
+let inboxReconnectTimer = null;
+let inboxReconnectAttempts = 0;
+let inboxSequence = 0;
+let inboxFallbackInterval = null;
+
+function ensureInboxFallback() {
+  if (inboxFallbackInterval) return;
+  inboxFallbackInterval = setInterval(() => {
+    if (!inboxSocket || inboxSocket.readyState !== WebSocket.OPEN) syncInbox().catch(() => {});
+  }, 30000);
+}
+
+function inboxConversationCredentials() {
+  return [...rooms.values()].filter(room => room.code && room.token).slice(0, 20).map(room => ({
+    code:room.code,
+    token:room.token,
+    lastSeq:room.lastSeq || 0,
+    lastReceiptSeq:room.lastReceiptSeq || 0,
+    lastReactionSeq:room.lastReactionSeq || 0,
+    lastDeletionSeq:room.lastDeletionSeq || 0,
+    lastKnownClearedAt:room.lastKnownClearedAt || 0,
+  }));
+}
+
+function subscribeInboxRooms() {
+  if (!inboxSocket || inboxSocket.readyState !== WebSocket.OPEN) return;
+  try { inboxSocket.send(JSON.stringify({ type:'subscribe', conversations:inboxConversationCredentials() })); } catch (e) {}
+}
+
+function disconnectInbox() {
+  if (inboxReconnectTimer) { clearTimeout(inboxReconnectTimer); inboxReconnectTimer = null; }
+  if (inboxFallbackInterval) { clearInterval(inboxFallbackInterval); inboxFallbackInterval = null; }
+  const socket = inboxSocket;
+  inboxSocket = null;
+  if (socket) { try { socket.close(1000, 'Signed out'); } catch (e) {} }
+}
+
+async function syncInbox({ refreshAll = false } = {}) {
+  const account = loadAccountState();
+  if (!account) return;
+  const credentials = inboxConversationCredentials();
+  let result;
+  try {
+    result = await api('/api/inbox/sync', {
+      accountId:account.accountId,
+      sessionToken:account.sessionToken,
+      conversations:credentials,
+    });
+  } catch (e) { return; }
+  if (!result || result.error) return;
+  if (Number.isFinite(result.sequence)) inboxSequence = Math.max(inboxSequence, result.sequence);
+  for (const update of result.updates || []) {
+    const room = rooms.get(update.code);
+    if (!room) continue;
+    if (update.roomGone || update.changed || refreshAll) doPoll(room);
+    if (room.code === activeRoomCode) showTypingIndicator(!!update.typing);
+  }
+}
+
+function connectInbox() {
+  const account = loadAccountState();
+  if (!account || !account.accountId || !account.sessionToken) return;
+  ensureInboxFallback();
+  if (inboxSocket && (inboxSocket.readyState === WebSocket.OPEN || inboxSocket.readyState === WebSocket.CONNECTING)) return;
+  if (inboxReconnectTimer) { clearTimeout(inboxReconnectTimer); inboxReconnectTimer = null; }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  let socket;
+  try { socket = new WebSocket(`${proto}//${location.host}/ws/inbox`); } catch (e) { return; }
+  inboxSocket = socket;
+  socket.onopen = () => {
+    try { socket.send(JSON.stringify({ type:'auth', accountId:account.accountId, sessionToken:account.sessionToken })); } catch (e) {}
+  };
+  socket.onmessage = (event) => {
+    let message;
+    try { message = JSON.parse(event.data); } catch (e) { return; }
+    if (Number.isFinite(message.sequence)) inboxSequence = Math.max(inboxSequence, message.sequence);
+    if (message.type === 'ready') {
+      inboxReconnectAttempts = 0;
+      subscribeInboxRooms();
+      syncInbox().catch(() => {});
+      refreshConnectionRequests().catch(() => {});
+      return;
+    }
+    if (message.type === 'account-update') {
+      refreshConnectionRequests().catch(() => {});
+      return;
+    }
+    const room = message.roomCode ? rooms.get(message.roomCode) : null;
+    if (!room) return;
+    if (message.type === 'typing') {
+      if (room.inboxTypingHideTimer) clearTimeout(room.inboxTypingHideTimer);
+      if (room.code === activeRoomCode) showTypingIndicator(message.active !== false);
+      room.inboxTypingHideTimer = setTimeout(() => {
+        if (room.code === activeRoomCode) showTypingIndicator(false);
+      }, 3200);
+      return;
+    }
+    if (message.type === 'room-update') doPoll(room);
+  };
+  socket.onclose = () => {
+    if (inboxSocket === socket) inboxSocket = null;
+    if (!loadAccountState()) return;
+    const delay = Math.min(30000, 1000 * (2 ** Math.min(inboxReconnectAttempts++, 5)));
+    inboxReconnectTimer = setTimeout(connectInbox, delay);
+  };
+  socket.onerror = () => {};
+}
+
+// ── EVENT-DRIVEN ROOM SYNCHRONIZATION ───────────────────────────────────
 function startRoomPolling(room) {
   if (room.pollInterval) clearInterval(room.pollInterval);
-  room.pollInterval = setInterval(() => doPoll(room), 2000);
+  room.pollInterval = null;
   doPoll(room); // immediate first poll
+  connectInbox();
+  subscribeInboxRooms();
   connectSignaling(room);
   if (room.typingInterval) clearInterval(room.typingInterval);
-  room.typingInterval = setInterval(() => checkTyping(room), 2500);
+  room.typingInterval = null;
   initPushForRoom(room).catch(() => {});
 }
 
@@ -11286,7 +11406,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Keep foreground connection requests live even when the account is first
   // created during this launch. The refresh is a no-op until an account exists.
   refreshConnectionRequests();
-  setInterval(refreshConnectionRequests, 15000);
+  setInterval(() => {
+    if (!inboxSocket || inboxSocket.readyState !== WebSocket.OPEN) refreshConnectionRequests();
+  }, 60000);
 });
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
@@ -11659,6 +11781,7 @@ window.addEventListener('load', async () => {
       if (isNativeApp()) setTimeout(openAccountPanel, 180);
     }
   }
+  if (loadAccountState()) connectInbox();
   // VLX-01: shown last, on top of whatever screen the logic above settled
   // on — a saved room whose key no longer matches its invite-link
   // commitment was already dropped from state and storage inside the loop
