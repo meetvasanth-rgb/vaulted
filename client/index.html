@@ -5390,7 +5390,11 @@ function clearCallAcceptRetry(room) {
 async function persistCallSysMsg(room, rec) {
   try {
     const encrypted = await encryptTextMsg(room, JSON.stringify({ type:'call-event', text:rec.content }));
-    await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId:rec.id });
+    // Call history is synchronized through the encrypted message stream so
+    // both devices retain the same chat timeline, but it is not a new chat
+    // message. Suppress the ordinary "New message" push or both endpoints
+    // alert each other immediately after every completed call.
+    await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId:rec.id, suppressNotification:true });
   } catch (e) {
     console.warn('Call history could not be synchronized:', e?.message || e);
   }

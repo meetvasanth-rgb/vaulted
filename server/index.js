@@ -2656,7 +2656,11 @@ async function api(path, method, d, p, res, ip, headers) {
     // generic — only the sender's already-plaintext display name goes out,
     // never message content. Fire-and-forget: a slow/failed push must never
     // delay the send response.
-    for (const [t, mb] of room.members) {
+    // Encrypted call-history records use the same durable message stream so
+    // they appear on both devices, but they must not masquerade as a new chat
+    // message after hang-up. The flag affects notification fan-out only; the
+    // encrypted record, inbox event, receipts and catch-up behavior are kept.
+    if (d.suppressNotification !== true) for (const [t, mb] of room.members) {
       if (t !== d.token && hasPushDestination(mb)) {
         // tag used to just be d.code (the room code) — same tag for every
         // message in the room, combined with sw.js's renotify:true. That
