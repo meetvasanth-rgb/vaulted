@@ -1,0 +1,15 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+
+test('account registration safely handles a lost first response', () => {
+  assert.match(server, /existingNumberOwner === d\.accountId/);
+  assert.match(server, /verifyAccountSecret\(d\.authSecret, existing\.authVerifier\)/);
+  assert.match(server, /newAccountSession\(existing\)/);
+  assert.match(client, /for \(let attempt = 0; attempt < 2; attempt\+\+\)/);
+  assert.match(client, /setTimeout\(resolve, 650\)/);
+});

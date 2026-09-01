@@ -2078,7 +2078,22 @@ async function api(path, method, d, p, res, ip, headers) {
         !validEncryptedField(d.recoveryWrap, 4096) || !validEncryptedField(d.bundle, 1024 * 1024)) {
       return resErr(res, 'Invalid account data.', 400);
     }
-    if (accounts.has(d.accountId) || privateNumbers.has(privateNumber)) return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
+    const existing = accounts.get(d.accountId);
+    const existingNumberOwner = privateNumbers.get(privateNumber);
+    // Registration is idempotent for the same authenticated account. Mobile
+    // WebViews can lose the first response while their network stack is still
+    // warming up; allowing the exact client to repeat the request prevents a
+    // successfully-created identity from being reported as a failure.
+    if (existing && existingNumberOwner === d.accountId && existing.privateNumber === privateNumber) {
+      if (!(await verifyAccountSecret(d.authSecret, existing.authVerifier))) {
+        return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
+      }
+      const sessionToken = newAccountSession(existing);
+      await persistAccount(d.accountId);
+      res.setHeader('Cache-Control', 'no-store');
+      return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision });
+    }
+    if (existing || existingNumberOwner) return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
     const account = {
       version: 2, privateNumber, displayName,
       authVerifier: await hashAccountSecret(d.authSecret),

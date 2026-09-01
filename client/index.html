@@ -7576,7 +7576,16 @@ async function createAnonymousAccount(event) {
       recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
       bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true)),
     };
-    const result = await api('/api/account/register', payload);
+    let result;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        result = await api('/api/account/register', payload);
+        if (!result?.status || result.status < 500 || attempt === 1) break;
+      } catch (error) {
+        if (attempt === 1) throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 650));
+    }
     if (result.error) { toast(result.error); return; }
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
