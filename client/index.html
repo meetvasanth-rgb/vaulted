@@ -5144,7 +5144,9 @@ async function startCall() {
     room.nativeCallActive = true;
     disconnectSignaling(room);
     try {
-      if (!androidNativeBridge.startOutgoingCall(room.nativeRoomHandle, room.myName || 'Someone')) {
+      if (!androidNativeBridge.startOutgoingCall(
+        room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call'
+      )) {
         throw new Error('native room unavailable');
       }
     } catch (e) {

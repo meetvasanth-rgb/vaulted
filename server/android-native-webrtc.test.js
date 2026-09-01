@@ -38,4 +38,6 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /prepareIncomingCall/);
   assert.match(client, /answerIncomingCall/);
   assert.match(main, /prepareIncomingHandle/);
+  assert.match(main, /NativeCallActivity\.class/);
+  assert.match(client, /startOutgoingCall\([\s\S]*room\.callPeerName/);
 });

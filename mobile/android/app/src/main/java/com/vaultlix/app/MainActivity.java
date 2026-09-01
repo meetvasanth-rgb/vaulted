@@ -19,6 +19,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowInsets;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -372,9 +373,21 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public boolean startOutgoingCall(String roomHandle, String caller) {
+        public boolean startOutgoingCall(String roomHandle, String caller, String peer) {
             configureCallAudioRoute();
-            return nativeCallEngine.prepareOutgoing(roomHandle, caller);
+            NativeCallRoomStore.Room saved = nativeCallRoomStore.byHandle(roomHandle);
+            if (saved == null || !nativeCallEngine.prepareOutgoing(roomHandle, caller)) return false;
+            runOnUiThread(() -> {
+                View focused = getCurrentFocus();
+                InputMethodManager keyboard = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (keyboard != null && focused != null) keyboard.hideSoftInputFromWindow(focused.getWindowToken(), 0);
+                Intent call = new Intent(MainActivity.this, NativeCallActivity.class)
+                        .putExtra(NativeCallActivity.EXTRA_CALLER, peer)
+                        .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code);
+                startActivity(call);
+                overridePendingTransition(0, 0);
+            });
+            return true;
         }
 
         @JavascriptInterface

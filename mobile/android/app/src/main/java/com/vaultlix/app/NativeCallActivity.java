@@ -1,8 +1,10 @@
 package com.vaultlix.app;
 
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.os.Build;
@@ -11,19 +13,31 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
-import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Space;
 import android.widget.TextView;
 
-/** Keyguard-safe presentation for the single native Android WebRTC engine. */
+/** Keyguard-safe, audio-only presentation for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
+    private static final int INK = Color.rgb(39, 29, 37);
+    private static final int IVORY = Color.rgb(250, 246, 247);
+    private static final int MUTED_TEXT = Color.rgb(190, 177, 184);
+    private static final int CONTROL = Color.rgb(63, 48, 58);
+    private static final int CONTROL_ACTIVE = Color.rgb(104, 44, 67);
+    private static final int END = Color.rgb(190, 76, 99);
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private NativeWebRtcCallEngine engine;
     private TextView status;
+    private TextView muteLabel;
+    private TextView routeLabel;
+    private ImageButton muteButton;
+    private ImageButton routeButton;
     private long connectedAt;
     private boolean muted;
     private boolean speaker;
@@ -41,8 +55,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        setShowWhenLocked(true); setTurnScreenOn(true);
+        setShowWhenLocked(true);
+        setTurnScreenOn(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().setStatusBarColor(INK);
+        getWindow().setNavigationBarColor(INK);
         roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE);
         engine = NativeWebRtcCallEngine.get(this);
         engine.addListener(this);
@@ -51,24 +68,118 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         buildUi(getIntent().getStringExtra(EXTRA_CALLER));
     }
 
-    private void buildUi(String caller) {
+    private void buildUi(String callerValue) {
+        String caller = callerValue == null || callerValue.trim().isEmpty()
+                ? getString(R.string.native_private_call) : callerValue.trim();
         LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(26), dp(38), dp(26), dp(38)); root.setBackgroundColor(Color.rgb(39,29,37));
-        TextView brand = label("V A U L T L I X", 17, Color.rgb(200,117,136)); root.addView(brand);
-        TextView name = label(caller == null || caller.trim().isEmpty() ? getString(R.string.native_private_call) : caller.trim(), 34, Color.WHITE);
-        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-2,-2); np.setMargins(0,dp(72),0,dp(14)); root.addView(name,np);
-        status = label(getString(R.string.native_connecting_securely), 21, Color.rgb(248,241,234)); root.addView(status);
-        TextView secure = label(getString(R.string.native_encrypted_relayed), 14, Color.rgb(180,170,176));
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2,-2); sp.setMargins(0,dp(12),0,dp(84)); root.addView(secure,sp);
-        LinearLayout actions = new LinearLayout(this); actions.setGravity(Gravity.CENTER);
-        Button mute = button(getString(R.string.native_mute)); mute.setOnClickListener(v -> { muted=!muted; engine.setMuted(muted); mute.setText(muted?R.string.native_unmute:R.string.native_mute); });
-        Button route = button(getString(R.string.native_speaker)); route.setOnClickListener(v -> { speaker=!speaker; configureAudio(speaker); route.setText(speaker?R.string.native_phone:R.string.native_speaker); });
-        Button end = button(getString(R.string.native_end)); end.setTextColor(Color.WHITE); end.setBackgroundColor(Color.rgb(185,79,99));
-        end.setOnClickListener(v -> { engine.end(true); finishCall(); });
-        actions.addView(mute, actionParams()); actions.addView(route, actionParams()); actions.addView(end, actionParams()); root.addView(actions);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setPadding(dp(28), dp(28), dp(28), dp(28));
+        root.setBackgroundColor(INK);
+
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView lock = new ImageView(this);
+        lock.setImageResource(R.drawable.ic_call_lock);
+        lock.setImageTintList(ColorStateList.valueOf(IVORY));
+        lock.setPadding(dp(9), dp(9), dp(9), dp(9));
+        lock.setBackground(circle(CONTROL));
+        brandRow.addView(lock, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        TextView brand = label("Vaultlix", 20, IVORY);
+        brand.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        brand.setLetterSpacing(-0.02f);
+        LinearLayout.LayoutParams brandText = new LinearLayout.LayoutParams(-2, -2);
+        brandText.setMargins(dp(11), 0, 0, 0);
+        brandRow.addView(brand, brandText);
+        root.addView(brandRow, new LinearLayout.LayoutParams(-2, dp(42)));
+
+        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1.05f));
+        TextView avatar = label(initialFor(caller), 39, IVORY);
+        avatar.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        avatar.setBackground(circle(CONTROL_ACTIVE));
+        root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
+
+        TextView name = label(caller, 32, Color.WHITE);
+        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setMaxLines(2);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
+        nameParams.setMargins(0, dp(25), 0, dp(8));
+        root.addView(name, nameParams);
+
+        status = label(getString(R.string.native_connecting_securely), 18, IVORY);
+        root.addView(status);
+
+        LinearLayout privacyPill = new LinearLayout(this);
+        privacyPill.setGravity(Gravity.CENTER);
+        privacyPill.setPadding(dp(14), dp(8), dp(14), dp(8));
+        privacyPill.setBackground(roundRect(Color.rgb(48, 64, 57), 99));
+        ImageView privacyLock = new ImageView(this);
+        privacyLock.setImageResource(R.drawable.ic_call_lock);
+        privacyLock.setImageTintList(ColorStateList.valueOf(Color.rgb(165, 214, 181)));
+        privacyPill.addView(privacyLock, new LinearLayout.LayoutParams(dp(15), dp(15)));
+        TextView secure = label(getString(R.string.native_encrypted_relayed), 12, Color.rgb(202, 218, 207));
+        LinearLayout.LayoutParams secureParams = new LinearLayout.LayoutParams(-2, -2);
+        secureParams.setMargins(dp(7), 0, 0, 0);
+        privacyPill.addView(secure, secureParams);
+        LinearLayout.LayoutParams pillParams = new LinearLayout.LayoutParams(-2, -2);
+        pillParams.setMargins(0, dp(20), 0, 0);
+        root.addView(privacyPill, pillParams);
+
+        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .9f));
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER);
+        actions.setBaselineAligned(false);
+        LinearLayout muteControl = control(R.drawable.ic_call_mic, R.string.native_mute, CONTROL, false);
+        muteButton = (ImageButton) muteControl.getChildAt(0);
+        muteLabel = (TextView) muteControl.getChildAt(1);
+        muteButton.setOnClickListener(v -> toggleMute());
+        LinearLayout routeControl = control(R.drawable.ic_call_speaker, R.string.native_speaker, CONTROL, false);
+        routeButton = (ImageButton) routeControl.getChildAt(0);
+        routeLabel = (TextView) routeControl.getChildAt(1);
+        routeButton.setOnClickListener(v -> toggleSpeaker());
+        LinearLayout endControl = control(R.drawable.ic_call_end, R.string.native_end, END, true);
+        ((ImageButton) endControl.getChildAt(0)).setOnClickListener(v -> { engine.end(true); finishCall(); });
+        actions.addView(muteControl, controlParams());
+        actions.addView(routeControl, controlParams());
+        actions.addView(endControl, controlParams());
+        root.addView(actions, new LinearLayout.LayoutParams(-1, dp(112)));
         setContentView(root);
+    }
+
+    private LinearLayout control(int icon, int label, int color, boolean end) {
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.setGravity(Gravity.CENTER_HORIZONTAL);
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(icon);
+        button.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        int iconPadding = dp(end ? 18 : 20);
+        button.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
+        button.setBackground(circle(color));
+        button.setContentDescription(getString(label));
+        wrapper.addView(button, new LinearLayout.LayoutParams(dp(68), dp(68)));
+        TextView text = label(getString(label), 12, end ? Color.rgb(245, 203, 211) : MUTED_TEXT);
+        text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(-1, -2);
+        textParams.setMargins(0, dp(9), 0, 0);
+        wrapper.addView(text, textParams);
+        return wrapper;
+    }
+
+    private void toggleMute() {
+        muted = !muted;
+        engine.setMuted(muted);
+        muteButton.setBackground(circle(muted ? CONTROL_ACTIVE : CONTROL));
+        muteLabel.setText(muted ? R.string.native_unmute : R.string.native_mute);
+        muteButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+    }
+
+    private void toggleSpeaker() {
+        speaker = !speaker;
+        configureAudio(speaker);
+        routeButton.setBackground(circle(speaker ? CONTROL_ACTIVE : CONTROL));
+        routeLabel.setText(speaker ? R.string.native_phone : R.string.native_speaker);
+        routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
     @Override public void onState(String value) { runOnUiThread(() -> { if (connectedAt == 0 && status != null) status.setText(R.string.native_connecting_securely); }); }
@@ -95,10 +206,13 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             }
         } else audioManager.setSpeakerphoneOn(useSpeaker);
     }
+
     @SuppressWarnings("deprecation") private void restoreAudio() { if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
-    private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);return v; }
-    private Button button(String value){ Button b=new Button(this);b.setText(value);b.setTextColor(Color.rgb(248,241,234));b.setBackgroundColor(Color.rgb(104,44,67));return b; }
-    private LinearLayout.LayoutParams actionParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(58),1);p.setMargins(dp(5),0,dp(5),0);return p; }
+    private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);return v; }
+    private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(4),0,dp(4),0);return p; }
+    private GradientDrawable circle(int color){ GradientDrawable d=new GradientDrawable();d.setShape(GradientDrawable.OVAL);d.setColor(color);return d; }
+    private GradientDrawable roundRect(int color,int radius){ GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d; }
+    private String initialFor(String value){ String trimmed=value == null ? "" : value.trim(); return trimmed.isEmpty() ? "V" : trimmed.substring(0,1).toUpperCase(java.util.Locale.getDefault()); }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private String formatDuration(long value){return String.format(java.util.Locale.US,"%02d:%02d",value/60,value%60);}
 }
