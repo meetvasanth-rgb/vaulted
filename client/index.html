@@ -4008,6 +4008,7 @@ async function handleNativeCallAction(detail) {
     showScreen('s-chat');
     setActiveRoom(room.code);
   };
+  const usesDedicatedAndroidCallUi = !!window.VaultlixAndroid?.supportsNativeWebRtc?.();
   if (detail.action === 'nativeConnected') {
     // Native CallKit/libwebrtc owns signaling and media for this incoming
     // iOS call. Mirror only its established state into the foreground page;
@@ -4024,24 +4025,25 @@ async function handleNativeCallAction(detail) {
     room.callStartedAt = Number.isFinite(detail.connectedAt) ? detail.connectedAt : Date.now();
     requestNativeIOSSpeakerState(room);
     startCallTimer(room);
-    renderCallOverlay(room);
+    if (usesDedicatedAndroidCallUi) hideCallOverlay();
+    else renderCallOverlay(room);
     refreshCallButton();
   } else if (detail.action === 'nativeRinging') {
     if (room.callState !== 'outgoing') return;
     room.callRinging = true;
-    renderCallOverlay(room);
+    if (!usesDedicatedAndroidCallUi) renderCallOverlay(room);
   } else if (detail.action === 'nativeAnswering') {
     if (room.callState !== 'outgoing') return;
     clearCallTimeout(room);
     clearCallRingInterval(room);
     room.callAnswerAcknowledged = true;
-    renderCallOverlay(room);
+    if (!usesDedicatedAndroidCallUi) renderCallOverlay(room);
   } else if (detail.action === 'nativeConnecting') {
     if (room.callState !== 'outgoing') return;
     clearCallTimeout(room);
     clearCallRingInterval(room);
     room.callAnswerAcknowledged = true;
-    renderCallOverlay(room);
+    if (!usesDedicatedAndroidCallUi) renderCallOverlay(room);
   } else if (detail.action === 'audioActivated') {
     // CallKit activates audio immediately after the user answers, while ICE
     // may still need a few seconds.  Show the correct vault and an explicit
@@ -4075,7 +4077,7 @@ async function handleNativeCallAction(detail) {
     else pendingNativeCallActions.set(room.code, 'answer');
   } else if (detail.action === 'declineOrEnd') {
     if (room.callState === 'incoming') declineCall();
-    else if (room.callState === 'active') hangupCall();
+    else if (room.callState === 'active' || room.callState === 'outgoing') hangupCall();
     else pendingNativeCallActions.set(room.code, 'declineOrEnd');
   } else if (detail.action === 'ended' && room.callState !== 'idle') {
     room.nativeCallActive = false;
@@ -5157,7 +5159,7 @@ async function startCall() {
       return;
     }
     room.speakerAvailable = true;
-    renderCallOverlay(room);
+    hideCallOverlay();
     refreshCallButton();
     room.callTimeoutTimer = setTimeout(() => {
       if (room.callState === 'outgoing') endCall(room, 'No answer.', 'Call not answered');
@@ -5232,7 +5234,7 @@ async function acceptCall(fromNativeCallKit = false) {
         room.callState = 'incoming';
       }
       if (room.nativeCallActive) {
-        renderCallOverlay(room);
+        hideCallOverlay();
         refreshCallButton();
         return;
       }
@@ -5451,6 +5453,16 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
     notifyLockedCallEnded(wasActive
       ? `Encrypted call · ${formatCallTime(duration)}`
       : (sysMsgText || ''));
+    return;
+  }
+
+  // Android presents native WebRTC in NativeCallActivity. Its WebView copy
+  // must reset state silently; running the legacy dissolve here recreates
+  // the second call interface for a moment as the native activity closes.
+  if (wasNativeCall && window.VaultlixAndroid?.supportsNativeWebRtc?.()) {
+    hideCallOverlay();
+    if (toastMsg) toast(toastMsg, toastVariant);
+    notifyLockedCallEnded();
     return;
   }
 
