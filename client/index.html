@@ -3991,6 +3991,9 @@ acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
+  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeBusy','nativeFailed']);
+  const occurredAt = Number(detail.occurredAt || 0);
+  const staleTerminalAction = terminalNativeActions.has(detail.action) && occurredAt > 0 && Date.now() - occurredAt > 5000;
   const nativeRoomCode = typeof detail.code === 'string' ? detail.code : '';
   const nativeRoomHandle = typeof detail.roomHandle === 'string' ? detail.roomHandle : '';
   // Privacy-preserving PushKit payloads intentionally contain no vault code.
@@ -4001,6 +4004,10 @@ async function handleNativeCallAction(detail) {
       ? Array.from(rooms.values()).find(candidate => candidate.nativeRoomHandle === nativeRoomHandle)
       : (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null));
   if (!room) {
+    // A terminal action restored after a background/locked launch has no UI
+    // state left to terminate. Do not retain it until a later invite and
+    // accidentally apply an old hang-up to a new call.
+    if (terminalNativeActions.has(detail.action)) return;
     if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail.action);
     else pendingNativeUnscopedAction = detail.action;
     return;
@@ -4083,13 +4090,17 @@ async function handleNativeCallAction(detail) {
     if (room.callState === 'incoming') await acceptCall(true);
     else pendingNativeCallActions.set(room.code, 'answer');
   } else if (detail.action === 'declineOrEnd') {
-    if (room.callState === 'incoming') declineCall();
+    if (staleTerminalAction && room.callState !== 'idle') {
+      room.nativeCallActive = false;
+      await endCall(room, null, null, null, { silentPresentation:true });
+    } else if (room.callState === 'incoming') declineCall();
     else if (room.callState === 'active' || room.callState === 'outgoing') hangupCall();
     else pendingNativeCallActions.set(room.code, 'declineOrEnd');
   } else if (detail.action === 'ended' && room.callState !== 'idle') {
     room.nativeCallActive = false;
-    endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
-      room.callState === 'incoming' ? 'Missed call' : null);
+    await endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
+      room.callState === 'incoming' ? 'Missed call' : null, null,
+      { silentPresentation:staleTerminalAction });
   } else if (detail.action === 'nativeDeclined' && room.callState !== 'idle') {
     endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
   } else if (detail.action === 'nativeBusy' && room.callState !== 'idle') {
@@ -5421,7 +5432,7 @@ function checkStaleIncomingCalls() {
   }
 }
 
-async function endCall(room, toastMsg, sysMsgText, toastVariant) {
+async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (!room) return;
   const wasNativeCall = room.nativeCallActive;
   const callHistoryEventId = room.callInviteId ? `call-event-${room.callInviteId}` : null;
@@ -5461,6 +5472,17 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   refreshCallButton();
   if (wasNativeCall && !room.signalWs) {
     setTimeout(() => { if (room.callState === 'idle' && !quickLockActive) connectSignaling(room); }, 250);
+  }
+
+  // Native iOS can deliver a terminal CallKit mirror event only when the
+  // suspended WebView returns to foreground. The native call already ended
+  // at the original timestamp, so silently reconcile state instead of
+  // presenting a several-minutes-late call-ending screen over a new message.
+  if (options.silentPresentation) {
+    hideCallOverlay();
+    if (sysMsgText) addCallSysMsg(room, sysMsgText, callHistoryEventId);
+    notifyLockedCallEnded();
+    return;
   }
 
   // The keyguard-safe Android host is a transient call surface, not a chat

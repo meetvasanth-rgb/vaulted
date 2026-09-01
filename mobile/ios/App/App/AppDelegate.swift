@@ -188,13 +188,29 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     private func postAction(_ action: String, callID: UUID, payload: [String: Any]) {
-        var detail: [String: Any] = ["action": action, "callId": callID.uuidString]
+        var detail: [String: Any] = [
+            "action": action,
+            "callId": callID.uuidString,
+            "occurredAt": Date().timeIntervalSince1970 * 1000,
+        ]
         if let code = payload["code"] as? String { detail["code"] = code }
         // APNs receives only this opaque device-local handle. Passing it on
         // to the already-provisioned WebView lets the foreground UI select
         // the right vault without exposing or reconstructing the vault code.
         if let roomHandle = payload["roomHandle"] as? String { detail["roomHandle"] = roomHandle }
         if let caller = payload["caller"] as? String { detail["caller"] = String(caller.prefix(80)) }
+        // When iOS keeps the WebView suspended behind the lock screen, it can
+        // queue connected/audio events and the later terminal event together.
+        // Replaying that history on the next foreground used to resurrect the
+        // call UI only to play its ending animation minutes after the call.
+        // A terminal action supersedes every earlier presentation action for
+        // the same call; the encrypted call-history message remains canonical.
+        let terminalActions: Set<String> = [
+            "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeBusy", "nativeFailed",
+        ]
+        if terminalActions.contains(action) {
+            pendingActions.removeAll { ($0["callId"] as? String) == callID.uuidString }
+        }
         pendingActions.append(detail)
         NotificationCenter.default.post(name: .vaultlixCallAction, object: nil,
                                         userInfo: detail)

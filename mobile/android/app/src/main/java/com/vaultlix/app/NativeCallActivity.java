@@ -20,6 +20,8 @@ import android.widget.LinearLayout;
 import android.widget.Space;
 import android.widget.TextView;
 
+import java.util.Random;
+
 /** Keyguard-safe, audio-only presentation for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
     static final String EXTRA_CALLER = "caller";
@@ -30,6 +32,8 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private static final int CONTROL = Color.rgb(63, 48, 58);
     private static final int CONTROL_ACTIVE = Color.rgb(104, 44, 67);
     private static final int END = Color.rgb(190, 76, 99);
+    private static final int VANISH_BACKGROUND = Color.rgb(250, 245, 247);
+    private static final int VANISH_BURGUNDY = Color.rgb(104, 44, 67);
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private NativeWebRtcCallEngine engine;
@@ -202,25 +206,62 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     private void showCallEndedMoment() {
         if (callRoot == null) { finish(); overridePendingTransition(0, 0); return; }
+        getWindow().setStatusBarColor(VANISH_BACKGROUND);
+        getWindow().setNavigationBarColor(VANISH_BACKGROUND);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int flags = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
         callRoot.removeAllViews();
         callRoot.setGravity(Gravity.CENTER);
-        TextView mark = label("V", 62, IVORY);
+        callRoot.setBackgroundColor(VANISH_BACKGROUND);
+        TextView mark = label("V", 64, VANISH_BURGUNDY);
         mark.setTypeface(Typeface.create("serif", Typeface.NORMAL));
         mark.setAlpha(0f);
+        mark.setScaleX(.8f);
+        mark.setScaleY(.8f);
         callRoot.addView(mark, new LinearLayout.LayoutParams(-1, -2));
-        TextView message = label(getString(R.string.native_call_vanished), 17, MUTED_TEXT);
-        message.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        LinearLayout message = new LinearLayout(this);
+        message.setGravity(Gravity.CENTER);
         message.setAlpha(0f);
-        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(-1, -2);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(-2, -2);
         messageParams.setMargins(0, dp(18), 0, 0);
         callRoot.addView(message, messageParams);
-        mark.animate().alpha(1f).setDuration(180).start();
-        message.animate().alpha(1f).setStartDelay(100).setDuration(220).start();
+        String vanished = getString(R.string.native_call_vanished).toUpperCase(java.util.Locale.getDefault());
+        for (int index = 0; index < vanished.length(); index++) {
+            TextView grain = label(String.valueOf(vanished.charAt(index)), 11, VANISH_BURGUNDY);
+            grain.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+            grain.setLetterSpacing(.08f);
+            grain.setTag(index);
+            message.addView(grain, new LinearLayout.LayoutParams(-2, -2));
+        }
+        mark.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(400).start();
+        message.animate().alpha(.8f).setStartDelay(550).setDuration(400).start();
         handler.postDelayed(() -> {
-            mark.animate().alpha(0f).translationY(dp(12)).setDuration(260).start();
-            message.animate().alpha(0f).translationY(dp(10)).setDuration(300).start();
-        }, 650);
-        handler.postDelayed(() -> { finish(); overridePendingTransition(0, 0); }, 1_000);
+            mark.animate().alpha(0f).translationY(-dp(24)).setDuration(600).start();
+        }, 1_700);
+        handler.postDelayed(() -> {
+            Random random = new Random();
+            for (int index = 0; index < message.getChildCount(); index++) {
+                TextView grain = (TextView) message.getChildAt(index);
+                if (grain.getText().toString().trim().isEmpty()) continue;
+                float dx = dp(random.nextInt(35) - 17);
+                float dy = dp(16 + random.nextInt(27));
+                float rotation = random.nextInt(61) - 30;
+                grain.animate()
+                        .alpha(0f)
+                        .translationX(dx)
+                        .translationY(dy)
+                        .rotation(rotation)
+                        .setStartDelay(index * 16L + random.nextInt(46))
+                        .setDuration(850)
+                        .start();
+            }
+        }, 2_350);
+        handler.postDelayed(() -> { finish(); overridePendingTransition(0, 0); }, 3_650);
     }
 
     @Override protected void onDestroy() { handler.removeCallbacks(tick); if (engine != null) engine.removeListener(this); restoreAudio(); super.onDestroy(); }
