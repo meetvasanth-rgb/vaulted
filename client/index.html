@@ -2549,7 +2549,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   <div class="chat-hdr">
     <button class="chat-home-btn" type="button" onclick="openVaultInbox()" title="Open home" aria-label="Open home">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/></svg>
-      <span class="chat-home-btn-label">Home</span>
+      <span class="chat-home-btn-label" data-i18n="home">Home</span>
       <span class="chat-vault-unread" id="chat-vault-unread" aria-hidden="true"></span>
     </button>
     <!-- Identity zone: logo, room name, connection status — all one glance,
@@ -2563,7 +2563,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
       </div>
       <div class="chat-hdr-meta">
         <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
-        <div class="chat-hdr-presence"><div class="status-dot" id="status-dot" title="Connected"></div><span>Private vault</span></div>
+        <div class="chat-hdr-presence"><div class="status-dot" id="status-dot" title="Connected"></div><span data-i18n="private_vault">Private vault</span></div>
       </div>
     </div>
     <!-- Actions zone: settings + the two room-ending actions, pinned right. -->
@@ -2590,7 +2590,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="chat-tools">
-  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><span style="font-size:0.87em">🔒</span> Encrypted</div>
+  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><span style="font-size:0.87em">🔒</span> <span data-i18n="encrypted">Encrypted</span></div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
        with multiple rooms open, having it in the header made it ambiguous
@@ -2599,14 +2599,14 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
        the tabs) makes "this acts on the room you're looking at" clear. -->
   <div class="timer-bar">
     <div class="timer-bar-controls">
-      <span class="timer-bar-label">⏱ Disappearing messages</span>
+      <span class="timer-bar-label">⏱ <span data-i18n="disappearing_messages">Disappearing messages</span></span>
       <select id="timer-bar-select" onchange="changeRoomTimer(this.value)">
-        <option value="0">Off</option>
-        <option value="60">1 minute</option>
-        <option value="300">5 minutes</option>
-        <option value="1800">30 minutes</option>
-        <option value="3600">1 hour</option>
-        <option value="28800">8 hours</option>
+        <option value="0" data-i18n="off">Off</option>
+        <option value="60" data-i18n="one_minute">1 minute</option>
+        <option value="300" data-i18n="five_minutes">5 minutes</option>
+        <option value="1800" data-i18n="thirty_minutes">30 minutes</option>
+        <option value="3600" data-i18n="one_hour">1 hour</option>
+        <option value="28800" data-i18n="eight_hours">8 hours</option>
       </select>
     </div>
     <button class="call-btn" id="call-btn" onclick="startCall()" title="Voice call" disabled>
@@ -2970,8 +2970,8 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 
   <div class="settings-body">
     <div class="settings-menu" id="settings-menu">
-      <div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="profile">Profile</div><div class="settings-row-sub">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-      <div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub">App lock, blocking, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+<div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="profile">Profile</div><div class="settings-row-sub" data-i18n="profile_subtitle">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+<div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub" data-i18n="privacy_security_subtitle">App lock, blocking, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="notifications">Notifications</div><div class="settings-row-sub" data-i18n="notifications_subtitle">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('chats')"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="chats">Chats</div><div class="settings-row-sub" data-i18n="chats_subtitle">Conversation label, message controls and chat safety</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('calls')"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="calls">Calls</div><div class="settings-row-sub" data-i18n="calls_subtitle">Call privacy, permissions and audio routing guidance</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
@@ -3394,12 +3394,12 @@ const VAULTLIX_TRANSLATIONS = {
     search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
     start_conversation:'Start your first private conversation', start_conversation_help:"Tap New connection and enter the other person's Vaultlix private number.",
     message_placeholder:'Type a message…', system_language:'System default', create:'Create', recover:'Recover',
-    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings'
+    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings', profile_subtitle:'Private number, name, account and encrypted sync', privacy_security_subtitle:'App lock, blocking, account deletion and Emergency Exit', private_vault:'Private vault', encrypted:'Encrypted', disappearing_messages:'Disappearing messages', off:'Off', one_minute:'1 minute', five_minutes:'5 minutes', thirty_minutes:'30 minutes', one_hour:'1 hour', eight_hours:'8 hours', yesterday:'Yesterday', missed_encrypted_call:'Missed encrypted call', new_encrypted_message:'New encrypted message', new_encrypted_messages:'new encrypted messages', waiting_for_other_person:'Waiting for the other person', online_encrypted_conversation:'Online · encrypted conversation', you_prefix:'You: ', photo:'Photo', voice_message:'Voice message', attachment:'Attachment', connection_request_text:'Wants to start a private conversation', accept:'Accept', decline:'Decline', close_erase_confirm:'Close & erase this vault? This deletes it and everything in it for both of you immediately. This cannot be undone.', reconnected:'Reconnected'
   },
   zh: {
     settings:'设置', profile:'个人资料', privacy_security:'隐私与安全', notifications:'通知', chats:'聊天', calls:'通话', help:'帮助',
     language:'语言', language_subtitle:'使用设备语言或选择其他语言', app_language:'应用语言', language_note:'更改会立即生效。阿拉伯语采用从右到左布局。',
-    system_default:'跟随系统', new_connection:'新建连接', sign_in:'登录', create_account:'创建账户', recover_account:'恢复账户', private_number:'Vaultlix 私人号码', display_name:'显示名称', password:'密码', continue:'继续', cancel:'取消', save:'保存', close:'关闭', search:'搜索', home:'主页', encrypted_conversation:'加密对话', no_conversations:'暂无对话', start_conversation:'开始你的第一次私人对话', start_conversation_help:'点击“新建连接”，输入对方的 Vaultlix 私人号码。', message_placeholder:'输入消息…', create:'创建', recover:'恢复', notifications_subtitle:'消息声音、提醒和设备权限状态', chats_subtitle:'对话标签、消息控制和聊天安全', calls_subtitle:'通话隐私、权限和音频路由', help_subtitle:'Vaultlix 使用方法、常见问题、政策和版本'
+    system_default:'跟随系统', new_connection:'新建连接', sign_in:'登录', create_account:'创建账户', recover_account:'恢复账户', private_number:'Vaultlix 私人号码', display_name:'显示名称', password:'密码', continue:'继续', cancel:'取消', save:'保存', close:'关闭', search:'搜索', home:'主页', encrypted_conversation:'加密对话', no_conversations:'暂无对话', start_conversation:'开始你的第一次私人对话', start_conversation_help:'点击“新建连接”，输入对方的 Vaultlix 私人号码。', message_placeholder:'输入消息…', create:'创建', recover:'恢复', notifications_subtitle:'消息声音、提醒和设备权限状态', chats_subtitle:'对话标签、消息控制和聊天安全', calls_subtitle:'通话隐私、权限和音频路由', help_subtitle:'Vaultlix 使用方法、常见问题、政策和版本', conversation_settings:'对话设置', profile_subtitle:'私人号码、名称、账户和加密同步', privacy_security_subtitle:'应用锁、屏蔽、账户删除和紧急退出', private_vault:'私人对话', encrypted:'已加密', disappearing_messages:'消失消息', off:'关闭', one_minute:'1 分钟', five_minutes:'5 分钟', thirty_minutes:'30 分钟', one_hour:'1 小时', eight_hours:'8 小时', yesterday:'昨天', missed_encrypted_call:'未接加密通话', new_encrypted_message:'新加密消息', new_encrypted_messages:'条新加密消息', waiting_for_other_person:'等待对方', online_encrypted_conversation:'在线 · 加密对话', you_prefix:'你：', photo:'照片', voice_message:'语音消息', attachment:'附件', connection_request_text:'想与你开始私人对话', accept:'接受', decline:'拒绝', close_erase_confirm:'关闭并删除此对话？这将立即删除双方的对话及其全部内容，且无法撤销。', reconnected:'已重新连接'
   },
   ru: {
     settings:'Настройки', profile:'Профиль', privacy_security:'Конфиденциальность и безопасность', notifications:'Уведомления', chats:'Чаты', calls:'Звонки', help:'Помощь',
@@ -8560,7 +8560,7 @@ function formatVaultInboxTime(value) {
   const now = new Date();
   if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (date.toDateString() === yesterday.toDateString()) return i18n('yesterday');
   return date.toLocaleDateString([], { day: 'numeric', month: 'short' });
 }
 
@@ -8568,18 +8568,18 @@ function vaultInboxPreview(room, allowContent) {
   const messages = room.messages || [];
   const last = messages[messages.length - 1];
   const missed = [...messages].reverse().find(rec => rec?.kind === 'sys' && /^Missed call/.test(rec.content || ''));
-  if (missed && (!last || missed === last)) return { text: 'Missed encrypted call', alert: true };
+  if (missed && (!last || missed === last)) return { text: i18n('missed_encrypted_call'), alert: true };
   if (!allowContent) {
-    if (room.unread > 0) return { text: room.unread === 1 ? 'New encrypted message' : `${room.unread} new encrypted messages`, alert: false };
-    if (!room.everOnline) return { text: 'Waiting for the other person', alert: false };
-    return { text: room.peerOnline ? 'Online · encrypted conversation' : 'Encrypted conversation', alert: false };
+    if (room.unread > 0) return { text: room.unread === 1 ? i18n('new_encrypted_message') : `${room.unread} ${i18n('new_encrypted_messages')}`, alert: false };
+    if (!room.everOnline) return { text: i18n('waiting_for_other_person'), alert: false };
+    return { text: room.peerOnline ? i18n('online_encrypted_conversation') : i18n('encrypted_conversation'), alert: false };
   }
-  if (!last) return { text: room.everOnline ? 'Encrypted conversation' : 'Waiting for the other person', alert: false };
-  if (last.kind === 'text') return { text: `${last.isMe ? 'You: ' : ''}${String(last.content || '').slice(0, 72)}`, alert: false };
-  if (last.kind === 'image') return { text: `${last.isMe ? 'You: ' : ''}Photo`, alert: false };
-  if (last.kind === 'voice') return { text: `${last.isMe ? 'You: ' : ''}Voice message`, alert: false };
-  if (last.kind === 'file') return { text: `${last.isMe ? 'You: ' : ''}Attachment`, alert: false };
-  return { text: String(last.content || 'Encrypted conversation').replace(/\s+/g, ' ').slice(0, 72), alert: /^Missed call/.test(last.content || '') };
+  if (!last) return { text: room.everOnline ? i18n('encrypted_conversation') : i18n('waiting_for_other_person'), alert: false };
+  if (last.kind === 'text') return { text: `${last.isMe ? i18n('you_prefix') : ''}${String(last.content || '').slice(0, 72)}`, alert: false };
+  if (last.kind === 'image') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('photo')}`, alert: false };
+  if (last.kind === 'voice') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('voice_message')}`, alert: false };
+  if (last.kind === 'file') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('attachment')}`, alert: false };
+  return { text: String(last.content || i18n('encrypted_conversation')).replace(/\s+/g, ' ').slice(0, 72), alert: /^Missed call/.test(last.content || '') };
 }
 
 // Privacy-first returning-user home. The list itself and preview preference
@@ -8589,7 +8589,7 @@ function renderVaultList() {
   const body = document.getElementById('vault-list-body');
   if (!body) return;
   const previews = vaultPreviewsEnabled();
-  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">Wants to start a private conversation</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">Accept</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">Decline</button></div></div>`).join('');
+  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
   if (rooms.size === 0 && pendingIncomingConnections.length === 0) {
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
@@ -9260,7 +9260,7 @@ function renderMessageRecord(room, rec, animate) {
     if (rec.verifyNudge) return null;
     const div = document.createElement('div');
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
-    div.textContent = rec.content;
+    div.textContent = rec.content === 'Reconnected' ? i18n('reconnected') : rec.content;
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
     return div;
@@ -10764,7 +10764,7 @@ async function closeActiveRoom() {
   // Destructive and immediate for both people, with no undo — same
   // confirm() pattern already used by Clear Chat, so a mis-tap on "Close &
   // erase" doesn't instantly wipe the room before the person can back out.
-  if (!confirm('Close & erase this vault? This deletes it and everything in it for both of you immediately. This cannot be undone.')) return;
+  if (!confirm(i18n('close_erase_confirm'))) return;
   try { await api('/api/close', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
   removeRoomFromState(room.code);
   // #chat-body still shows this room's messages at this point — the vanish
