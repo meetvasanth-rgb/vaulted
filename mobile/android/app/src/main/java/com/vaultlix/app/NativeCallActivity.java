@@ -2,7 +2,9 @@ package com.vaultlix.app;
 
 import android.app.Activity;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioDeviceInfo;
@@ -16,6 +18,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Space;
 import android.widget.TextView;
@@ -85,12 +88,16 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private void buildUi(String callerValue) {
         String caller = callerValue == null || callerValue.trim().isEmpty()
                 ? getString(R.string.native_private_call) : callerValue.trim();
+        FrameLayout stage = new FrameLayout(this);
+        stage.setBackgroundColor(INK);
+        stage.addView(new BinaryStreamView(), new FrameLayout.LayoutParams(-1, -1));
+
         LinearLayout root = new LinearLayout(this);
         callRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(dp(28), dp(28), dp(28), dp(28));
-        root.setBackgroundColor(INK);
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         LinearLayout brandRow = new LinearLayout(this);
         brandRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -162,7 +169,8 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         root.addView(actions, new LinearLayout.LayoutParams(-1, dp(112)));
         root.setFocusableInTouchMode(true);
         root.requestFocus();
-        setContentView(root);
+        stage.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(stage);
     }
 
     private LinearLayout control(int icon, int label, int color, boolean end) {
@@ -298,4 +306,50 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private String initialFor(String value){ String trimmed=value == null ? "" : value.trim(); return trimmed.isEmpty() ? "V" : trimmed.substring(0,1).toUpperCase(java.util.Locale.getDefault()); }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private String formatDuration(long value){return String.format(java.util.Locale.US,"%02d:%02d",value/60,value%60);}
+
+    /** Subtle horizontal encrypted-data texture behind the live call UI. */
+    private final class BinaryStreamView extends android.view.View {
+        private static final int STREAM_COUNT = 18;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Random random = new Random(0x5641554cL);
+        private final float[] x = new float[STREAM_COUNT];
+        private final float[] y = new float[STREAM_COUNT];
+        private final float[] speed = new float[STREAM_COUNT];
+        private final String[] bits = new String[STREAM_COUNT];
+        private long lastFrame;
+
+        BinaryStreamView() {
+            super(NativeCallActivity.this);
+            paint.setTypeface(Typeface.create("monospace", Typeface.NORMAL));
+            paint.setTextSize(dp(11));
+            for (int i = 0; i < STREAM_COUNT; i++) {
+                speed[i] = dp(8 + random.nextInt(13));
+                StringBuilder value = new StringBuilder();
+                for (int bit = 0; bit < 9 + random.nextInt(11); bit++) value.append(random.nextBoolean() ? '1' : '0');
+                bits[i] = value.toString();
+            }
+        }
+
+        @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+            for (int i = 0; i < STREAM_COUNT; i++) {
+                x[i] = random.nextInt(Math.max(1, width));
+                y[i] = dp(58) + random.nextInt(Math.max(1, height - dp(116)));
+            }
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            long now = System.nanoTime();
+            float elapsed = lastFrame == 0 ? 0f : Math.min(.05f, (now - lastFrame) / 1_000_000_000f);
+            lastFrame = now;
+            for (int i = 0; i < STREAM_COUNT; i++) {
+                x[i] += speed[i] * elapsed;
+                float width = paint.measureText(bits[i]);
+                if (x[i] > getWidth() + dp(20)) x[i] = -width - random.nextInt(dp(90));
+                paint.setColor(i % 3 == 0 ? Color.argb(30, 221, 129, 151) : Color.argb(19, 250, 246, 247));
+                canvas.drawText(bits[i], x[i], y[i], paint);
+            }
+            postInvalidateOnAnimation();
+        }
+    }
 }
