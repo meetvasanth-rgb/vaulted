@@ -46,6 +46,12 @@ test('the conversation gear is isolated from global settings', () => {
   assert.match(client, /settingsContextMode === 'chat' && category === 'chats'/);
 });
 
+test('new connection keeps its number form visible on Android', () => {
+  assert.match(client, /#new-connection-overlay \.account-form\{order:2\}/);
+  assert.match(client, /#new-connection-overlay \.account-copy\{order:3/);
+  assert.match(client, /html\.vaultlix-native-android #new-connection-overlay \.account-card/);
+});
+
 test('vault setup uses the permanent identity name', () => {
   assert.match(client, /const name = identity\.displayName/);
   assert.match(client, /id="identity-name-field" style="display:none"/);
