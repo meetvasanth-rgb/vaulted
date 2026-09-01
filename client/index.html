@@ -2351,7 +2351,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
         </button>
 
-        <button class="card card-join" type="button" onclick="openAccountPanel();showAccountTab('login')">
+        <button class="card card-join" type="button" onclick="openLoginOrInbox()">
           <span class="card-icon"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span>
           <span class="card-copy"><strong class="card-title">Sign in</strong><small class="card-desc">Use your Vaultlix private number and password to return to your conversations.</small></span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
@@ -3326,6 +3326,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub">Your private identity</div></div>
       <div id="account-sync-status" hidden></div>
       <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
+      <button class="account-primary" type="button" onclick="closeAccountPanel();openNewConnection()">New connection</button>
       <button class="account-secondary" onclick="signOutAnonymousAccount()">Sign out on this device</button>
     </div>
     <div id="account-recovery-result" style="display:none">
@@ -7336,6 +7337,14 @@ function openAccountPanel() {
   else generatePrivateNumber();
   document.getElementById('account-overlay').classList.add('open');
   if (state) refreshConnectionRequests();
+}
+function openLoginOrInbox() {
+  if (loadAccountState()) {
+    showScreen('s-vault-list');
+    return;
+  }
+  openAccountPanel();
+  showAccountTab('login');
 }
 function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
 let pendingConnectionAcceptance = null;
