@@ -3254,6 +3254,12 @@ const signalingSockets = new Map();
 // that participant; the web socket remains available for outgoing web calls.
 const nativeCallSignalingSockets = new Map();
 const inboxAccountSockets = new Map();
+// Direct fan-out index: room code -> sockets currently subscribed to it.
+// Without this, every message/receipt/typing event scanned every online
+// account socket just to find the two participants, making event delivery
+// O(all online devices). Keep account ownership separately for auth and
+// cleanup, while this index makes ordinary room delivery O(participants).
+const inboxSocketsByRoom = new Map();
 const inboxSequenceByAccount = new Map();
 
 function nextInboxSequence(accountId) {
@@ -3267,20 +3273,20 @@ function nextInboxSequence(accountId) {
 // a device reconnects it proves each room membership again with its existing
 // bearer token and catches up from the room's durable sequence counters.
 function publishInboxRoom(roomCode, change, { excludeToken = null, payload = null } = {}) {
-  for (const [accountId, sockets] of inboxAccountSockets) {
-    for (const ws of sockets) {
-      const subscribedToken = ws.inboxSubscriptions?.get(roomCode);
-      if (!subscribedToken || subscribedToken === excludeToken || ws.readyState !== ws.OPEN) continue;
-      try {
-        ws.send(JSON.stringify({
-          type: change === 'typing' ? 'typing' : 'room-update',
-          roomCode,
-          change,
-          sequence: nextInboxSequence(accountId),
-          ...(payload || {}),
-        }));
-      } catch (e) {}
-    }
+  const sockets = inboxSocketsByRoom.get(roomCode);
+  if (!sockets) return;
+  for (const ws of sockets) {
+    const subscribedToken = ws.inboxSubscriptions?.get(roomCode);
+    if (!subscribedToken || subscribedToken === excludeToken || ws.readyState !== ws.OPEN || !ws.accountId) continue;
+    try {
+      ws.send(JSON.stringify({
+        type: change === 'typing' ? 'typing' : 'room-update',
+        roomCode,
+        change,
+        sequence: nextInboxSequence(ws.accountId),
+        ...(payload || {}),
+      }));
+    } catch (e) {}
   }
 }
 
@@ -3296,12 +3302,28 @@ function publishInboxAccount(accountId, change, payload = null) {
 }
 
 function hasLiveInboxSubscription(roomCode, token, exceptSocket = null) {
-  for (const sockets of inboxAccountSockets.values()) {
-    for (const socket of sockets) {
-      if (socket !== exceptSocket && socket.readyState === socket.OPEN && socket.inboxSubscriptions?.get(roomCode) === token) return true;
-    }
+  const sockets = inboxSocketsByRoom.get(roomCode);
+  if (!sockets) return false;
+  for (const socket of sockets) {
+    if (socket !== exceptSocket && socket.readyState === socket.OPEN && socket.inboxSubscriptions?.get(roomCode) === token) return true;
   }
   return false;
+}
+
+function replaceInboxSubscriptions(ws, subscriptions) {
+  for (const code of ws.inboxSubscriptions.keys()) {
+    if (subscriptions.has(code)) continue;
+    const sockets = inboxSocketsByRoom.get(code);
+    if (!sockets) continue;
+    sockets.delete(ws);
+    if (sockets.size === 0) inboxSocketsByRoom.delete(code);
+  }
+  for (const code of subscriptions.keys()) {
+    let sockets = inboxSocketsByRoom.get(code);
+    if (!sockets) { sockets = new Set(); inboxSocketsByRoom.set(code, sockets); }
+    sockets.add(ws);
+  }
+  ws.inboxSubscriptions = subscriptions;
 }
 
 // Every type handleSignalMessage() actually branches on in client/index.html
@@ -3381,7 +3403,7 @@ inboxWss.on('connection', (ws) => {
       const room = rooms.get(code);
       if (room?.members.has(item.token)) subscriptions.set(code, item.token);
     }
-    ws.inboxSubscriptions = subscriptions;
+    replaceInboxSubscriptions(ws, subscriptions);
     for (const [code, token] of subscriptions) {
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = Date.now();
@@ -3396,7 +3418,9 @@ inboxWss.on('connection', (ws) => {
     if (!sockets) return;
     sockets.delete(ws);
     if (sockets.size === 0) inboxAccountSockets.delete(ws.accountId);
-    for (const [code, token] of ws.inboxSubscriptions) {
+    const closingSubscriptions = new Map(ws.inboxSubscriptions);
+    replaceInboxSubscriptions(ws, new Map());
+    for (const [code, token] of closingSubscriptions) {
       if (hasLiveInboxSubscription(code, token, ws)) continue;
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = 0;

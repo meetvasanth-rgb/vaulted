@@ -21,6 +21,15 @@ test('client uses one inbox channel instead of per-conversation polling timers',
   assert.doesNotMatch(client, /room\.typingInterval = setInterval\(\(\) => checkTyping\(room\), 2500\)/);
 });
 
+test('room events use a direct subscription index instead of scanning every account socket', () => {
+  const server = readFileSync(join(__dirname, 'index.js'), 'utf8');
+  assert.match(server, /const inboxSocketsByRoom = new Map\(\)/);
+  assert.match(server, /const sockets = inboxSocketsByRoom\.get\(roomCode\)/);
+  assert.match(server, /replaceInboxSubscriptions\(ws, subscriptions\)/);
+  const publishBody = server.match(/function publishInboxRoom[\s\S]*?\n}\n\nfunction publishInboxAccount/)?.[0] || '';
+  assert.doesNotMatch(publishBody, /inboxAccountSockets\.values|for \(const \[accountId, sockets\] of inboxAccountSockets\)/);
+});
+
 async function freePort() {
   const server = createServer();
   await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
