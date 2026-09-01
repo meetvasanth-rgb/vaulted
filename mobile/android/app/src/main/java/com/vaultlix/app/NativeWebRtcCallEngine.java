@@ -106,7 +106,20 @@ final class NativeWebRtcCallEngine {
     boolean prepareIncoming(String code) {
         NativeCallRoomStore.Room saved = roomStore.byCode(code);
         if (saved == null) return false;
+        Log.i(TAG, "prepare incoming room=" + code);
         executor.execute(() -> prepare(saved, false, "Someone"));
+        return true;
+    }
+
+    boolean prepareIncomingHandle(String handle, String caller) {
+        NativeCallRoomStore.Room saved = roomStore.byHandle(handle);
+        if (saved == null) {
+            Log.w(TAG, "native room unavailable for foreground incoming call");
+            return false;
+        }
+        if (saved.code.equals(currentRoomCode) && !outgoing) return true;
+        Log.i(TAG, "prepare foreground incoming room=" + saved.code);
+        executor.execute(() -> prepare(saved, false, caller));
         return true;
     }
 
@@ -124,6 +137,7 @@ final class NativeWebRtcCallEngine {
     void answer() {
         executor.execute(() -> {
             if (room == null || outgoing) return;
+            Log.i(TAG, "answer room=" + room.code);
             answered = true;
             if (audioTrack != null) audioTrack.setEnabled(true);
             sendSignal("call-accept", new JSONObject());
@@ -267,6 +281,7 @@ final class NativeWebRtcCallEngine {
             audioTrack = factory.createAudioTrack("vaultlix-native-audio", audioSource);
             audioTrack.setEnabled(answered);
             peer.addTrack(audioTrack, Collections.singletonList("vaultlix-native-stream"));
+            Log.i(TAG, "native peer ready room=" + room.code);
             if (outgoing && answered) createOffer();
         } catch (Exception error) { Log.w(TAG, "TURN/peer setup failed", error); }
     }
@@ -391,6 +406,7 @@ final class NativeWebRtcCallEngine {
                     .put("sdpMid", candidate.sdpMid).put("sdpMLineIndex", candidate.sdpMLineIndex).put("candidate", candidate.sdp))); } catch (Exception ignored) {} });
         }
         @Override public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
+            Log.i(TAG, "ICE " + state + " room=" + currentRoomCode);
             if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
                 executor.execute(() -> { for (Listener listener : listeners) listener.onConnected(); });
             } else if (state == PeerConnection.IceConnectionState.FAILED) executor.execute(() -> reset("connection-failed"));

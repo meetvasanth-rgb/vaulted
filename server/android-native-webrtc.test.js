@@ -31,4 +31,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(messaging, /prepareIncoming\(code\)/);
   assert.match(incoming, /NativeWebRtcCallEngine\.get\(this\)\.answer\(\)/);
   assert.match(incoming, /NativeCallActivity\.class/);
+  const client = read('client/index.html');
+  const main = read('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java');
+  assert.match(client, /prepareIncomingCall/);
+  assert.match(client, /answerIncomingCall/);
+  assert.match(main, /prepareIncomingHandle/);
 });

@@ -3819,6 +3819,7 @@ function makeRoom({ code, token, myName, peerPrivateNumber, deleteTimerSeconds, 
     // outgoing screen from "Calling…" to "Ringing…" — see the call-invite/
     // call-ringing handling in handleSignalMessage.
     callRinging: false, callAnswerAcknowledged: false,
+    nativeIncomingPrepared: false,
     // Callee-side only: wall-clock time the incoming call first arrived —
     // see checkStaleIncomingCalls.
     callInviteReceivedAt: null,
@@ -4960,6 +4961,16 @@ async function handleSignalMessage(room, type, payload, inviteId) {
       // Start the content-free TURN credential request while the incoming
       // screen is ringing. Microphone access still waits for Answer.
       fetchTurnCredentials(room);
+      const androidNativeBridge = window.VaultlixAndroid;
+      if (androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeRoomHandle) {
+        try {
+          room.nativeIncomingPrepared = !!androidNativeBridge.prepareIncomingCall(
+            room.nativeRoomHandle, room.callPeerName || 'Someone'
+          );
+        } catch (e) {
+          room.nativeIncomingPrepared = false;
+        }
+      }
       renderCallOverlay(room);
       refreshCallButton();
       playChime();
@@ -5196,6 +5207,31 @@ async function acceptCall(fromNativeCallKit = false) {
   if (!room || room.callState !== 'incoming') return;
   clearAndroidCallNotifications();
   if (!fromNativeCallKit) {
+    const androidNativeBridge = window.VaultlixAndroid;
+    if (androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeIncomingPrepared) {
+      if (!androidNativeBridge.hasNativeAudioPermission()) {
+        androidNativeBridge.requestNativeAudioPermission();
+        toast('Allow microphone access, then tap Answer again.');
+        return;
+      }
+      room.nativeCallActive = true;
+      room.callState = 'active';
+      room.callStartedAt = null;
+      room.pendingCallAccept = false;
+      disconnectSignaling(room);
+      try {
+        androidNativeBridge.answerIncomingCall();
+      } catch (e) {
+        room.nativeCallActive = false;
+        room.nativeIncomingPrepared = false;
+        room.callState = 'incoming';
+      }
+      if (room.nativeCallActive) {
+        renderCallOverlay(room);
+        refreshCallButton();
+        return;
+      }
+    }
     const nativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
     if (nativeBridge) {
       // The signed iOS wrapper owns every incoming call through
@@ -5391,6 +5427,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant) {
   room.callRinging = false;
   room.callAnswerAcknowledged = false;
   room.nativeCallActive = false;
+  room.nativeIncomingPrepared = false;
   room.nativeAnswerPending = false;
   room.pendingCallAccept = false;
   room.callInviteReceivedAt = null;

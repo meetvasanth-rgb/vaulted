@@ -378,6 +378,17 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean prepareIncomingCall(String roomHandle, String caller) {
+            return nativeCallEngine.prepareIncomingHandle(roomHandle, caller);
+        }
+
+        @JavascriptInterface
+        public void answerIncomingCall() {
+            configureCallAudioRoute();
+            nativeCallEngine.answer();
+        }
+
+        @JavascriptInterface
         public void endNativeCall() { nativeCallEngine.end(true); }
 
         @JavascriptInterface
