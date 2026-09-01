@@ -134,7 +134,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         privacyPill.addView(privacyLock, new LinearLayout.LayoutParams(dp(15), dp(15)));
         TextView secure = label(getString(R.string.native_encrypted_relayed), 12, Color.rgb(202, 218, 207));
         LinearLayout.LayoutParams secureParams = new LinearLayout.LayoutParams(-2, -2);
-        secureParams.setMargins(dp(7), 0, 0, 0);
+        // Keep the lock visually attached to the privacy copy across OEM
+        // font metrics and display scaling (notably OnePlus/ColorOS).
+        secureParams.setMargins(dp(4), 0, 0, 0);
         privacyPill.addView(secure, secureParams);
         LinearLayout.LayoutParams pillParams = new LinearLayout.LayoutParams(-2, -2);
         pillParams.setMargins(0, dp(20), 0, 0);
