@@ -35,6 +35,7 @@ public class MainActivity extends BridgeActivity {
     private AudioDeviceInfo previousCommunicationDevice;
     private boolean audioRouteConfigured;
     private View appSwitcherPrivacyCover;
+    private SecureMessageStore secureMessageStore;
     private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
     private final Runnable enforceConnectedAudioRoute = () -> {
         if (!isFinishing() && !isDestroyed()) applyPreferredCallAudioRoute();
@@ -44,6 +45,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         activeInstance = new WeakReference<>(this);
+        secureMessageStore = new SecureMessageStore(this);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
         openVaultlixInvite(getIntent());
     }
@@ -328,6 +330,21 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void callEnded() {
             runOnUiThread(MainActivity.this::restoreAudioRoute);
+        }
+
+        @JavascriptInterface
+        public boolean secureStoreMessage(String conversationId, String messageId, String plaintext, double createdAt) {
+            return secureMessageStore.put(conversationId, messageId, plaintext, (long) createdAt);
+        }
+
+        @JavascriptInterface
+        public boolean secureDeleteMessage(String conversationId, String messageId) {
+            return secureMessageStore.delete(conversationId, messageId);
+        }
+
+        @JavascriptInterface
+        public boolean secureClearConversation(String conversationId) {
+            return secureMessageStore.clearConversation(conversationId);
         }
     }
 

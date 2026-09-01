@@ -12,10 +12,10 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.5.0"),
-        // Community distribution of binaries built from Google's upstream
-        // libwebrtc source. Pin exactly so calling behavior cannot change on
-        // an unrelated package resolution.
+        // Keep native calling and encrypted storage pinned: this generated
+        // package must be reviewed after every future `cap sync ios`.
         .package(url: "https://github.com/stasel/WebRTC.git", exact: "150.0.0"),
+        .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.18.0"),
         .package(name: "CapacitorApp", path: "../../../node_modules/@capacitor/app"),
         .package(name: "CapacitorPushNotifications", path: "../../../node_modules/@capacitor/push-notifications")
     ],
@@ -26,6 +26,7 @@ let package = Package(
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
                 .product(name: "Cordova", package: "capacitor-swift-pm"),
                 .product(name: "WebRTC", package: "WebRTC"),
+                .product(name: "SQLCipher", package: "SQLCipher.swift"),
                 .product(name: "CapacitorApp", package: "CapacitorApp"),
                 .product(name: "CapacitorPushNotifications", package: "CapacitorPushNotifications")
             ]

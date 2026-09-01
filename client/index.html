@@ -3471,6 +3471,42 @@ function syncAndroidSystemInsets(){
 if(window.VaultlixAndroid||window.webkit?.messageHandlers?.vaultlixCall||window.Capacitor?.isNativePlatform?.()){
   document.documentElement.classList.add('vaultlix-native');
 }
+
+function secureNativeStoreMessage(room, rec) {
+  if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked') return;
+  let plaintext;
+  try { plaintext = JSON.stringify(rec); } catch (e) { return; }
+  try {
+    if (typeof window.VaultlixAndroid?.secureStoreMessage === 'function') {
+      window.VaultlixAndroid.secureStoreMessage(room.code, rec.id, plaintext, Date.now());
+    } else {
+      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
+        action:'secureStoreMessage', conversationId:room.code, messageId:rec.id,
+        plaintext, createdAt:Date.now(),
+      });
+    }
+  } catch (e) { console.warn('Native encrypted cache write failed'); }
+}
+function secureNativeDeleteMessage(conversationId, messageId) {
+  if (!conversationId || !messageId) return;
+  try {
+    if (typeof window.VaultlixAndroid?.secureDeleteMessage === 'function') {
+      window.VaultlixAndroid.secureDeleteMessage(conversationId, messageId);
+    } else {
+      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'secureDeleteMessage', conversationId, messageId });
+    }
+  } catch (e) { console.warn('Native cryptographic deletion failed'); }
+}
+function secureNativeClearConversation(conversationId) {
+  if (!conversationId) return;
+  try {
+    if (typeof window.VaultlixAndroid?.secureClearConversation === 'function') {
+      window.VaultlixAndroid.secureClearConversation(conversationId);
+    } else {
+      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'secureClearConversation', conversationId });
+    }
+  } catch (e) { console.warn('Native conversation erase failed'); }
+}
 syncAndroidSystemInsets();
 window.addEventListener('resize',syncAndroidSystemInsets,{passive:true});
 document.addEventListener('visibilitychange',()=>{
@@ -4055,6 +4091,7 @@ function removeRoomFromState(code) {
     // running timer, or the app permanently thinking a call is in progress.
     if (room.callState !== 'idle') endCall(room);
   }
+  secureNativeClearConversation(code);
   rooms.delete(code);
   subscribeInboxRooms();
   clearRoomStorage(code);
@@ -9287,6 +9324,12 @@ function renderMessageRecord(room, rec, animate) {
     return div;
   }
 
+  // Native builds keep an encrypted offline copy. The serialized record is
+  // handed straight to native code: it never enters localStorage/IndexedDB.
+  // Native generates a distinct hardware-backed key for this message, so
+  // deletion can destroy that key before cleaning up the SQLCipher row.
+  secureNativeStoreMessage(room, rec);
+
   const div = document.createElement('div');
   div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
   div.dataset.msgId = rec.id;
@@ -9469,6 +9512,7 @@ function startReceiveDeleteTimer(room, msgId, seconds) {
 // element, so a message disappears on time even if you're looking at a
 // different room's tab when the countdown ends.
 function removeMessageRecord(room, msgId) {
+  secureNativeDeleteMessage(room.code, msgId);
   const idx = room.messages.findIndex(m => m.id === msgId);
   if (idx !== -1) room.messages.splice(idx, 1);
   room.msgTimers.delete(msgId);
@@ -10962,6 +11006,7 @@ async function handleClearChat() {
 // touch localStorage, since message content was never persisted there in
 // the first place (see restoreRoomHistory's full=1 bootstrap-on-reload).
 function clearRoomChatLocally(room) {
+  secureNativeClearConversation(room.code);
   for (const handle of room.msgTimers.values()) clearTimeout(handle);
   room.msgTimers.clear();
   room.messages = [];

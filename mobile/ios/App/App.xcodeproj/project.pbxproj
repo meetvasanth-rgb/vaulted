@@ -18,6 +18,7 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */; };
 		A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00430A1000100000001 /* NativeCallRoomStore.swift */; };
+		A11CE00530A1000100000001 /* SecureMessageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00630A1000100000001 /* SecureMessageStore.swift */; };
 		B00D000130B0000100000001 /* vault_note.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001130B0000100000001 /* vault_note.caf */; };
 		B00D000230B0000100000001 /* vault_soft.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001230B0000100000001 /* vault_soft.caf */; };
 		B00D000330B0000100000001 /* vault_call_vaultlix.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001330B0000100000001 /* vault_call_vaultlix.caf */; };
@@ -45,6 +46,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWebRTCCallEngine.swift; sourceTree = "<group>"; };
 		A11CE00430A1000100000001 /* NativeCallRoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallRoomStore.swift; sourceTree = "<group>"; };
+		A11CE00630A1000100000001 /* SecureMessageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureMessageStore.swift; sourceTree = "<group>"; };
 		B00D001130B0000100000001 /* vault_note.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_note.caf; path = App/Sounds/vault_note.caf; sourceTree = "<group>"; };
 		B00D001230B0000100000001 /* vault_soft.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_soft.caf; path = App/Sounds/vault_soft.caf; sourceTree = "<group>"; };
 		B00D001330B0000100000001 /* vault_call_vaultlix.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_vaultlix.caf; path = App/Sounds/vault_call_vaultlix.caf; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
+				A11CE00630A1000100000001 /* SecureMessageStore.swift */,
 				A11CE00430A1000100000001 /* NativeCallRoomStore.swift */,
 				A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
@@ -222,6 +225,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A11CE00530A1000100000001 /* SecureMessageStore.swift in Sources */,
 				A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */,
 				A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,

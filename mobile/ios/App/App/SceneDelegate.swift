@@ -115,6 +115,25 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             VaultlixCallManager.shared.endAllCalls()
             return
         }
+        if action == "secureStoreMessage",
+           let conversationID = body["conversationId"] as? String,
+           let messageID = body["messageId"] as? String,
+           let plaintext = body["plaintext"] as? String {
+            _ = SecureMessageStore.shared.put(conversationID: conversationID, messageID: messageID,
+                                              plaintext: plaintext, createdAt: body["createdAt"] as? Int64 ?? Int64(Date().timeIntervalSince1970 * 1000))
+            return
+        }
+        if action == "secureDeleteMessage",
+           let conversationID = body["conversationId"] as? String,
+           let messageID = body["messageId"] as? String {
+            _ = SecureMessageStore.shared.delete(conversationID: conversationID, messageID: messageID)
+            return
+        }
+        if action == "secureClearConversation",
+           let conversationID = body["conversationId"] as? String {
+            _ = SecureMessageStore.shared.clear(conversationID: conversationID)
+            return
+        }
         if action == "getSpeakerState" {
             emitSpeakerState(success: true)
             return
