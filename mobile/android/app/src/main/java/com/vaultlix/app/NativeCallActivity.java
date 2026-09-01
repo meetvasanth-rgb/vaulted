@@ -307,7 +307,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private String formatDuration(long value){return String.format(java.util.Locale.US,"%02d:%02d",value/60,value%60);}
 
-    /** Subtle horizontal encrypted-data texture behind the live call UI. */
+    /** Subtle vertical encrypted-data rain behind the live call UI. */
     private final class BinaryStreamView extends android.view.View {
         private static final int STREAM_COUNT = 18;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -333,7 +333,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
             for (int i = 0; i < STREAM_COUNT; i++) {
                 x[i] = random.nextInt(Math.max(1, width));
-                y[i] = dp(58) + random.nextInt(Math.max(1, height - dp(116)));
+                y[i] = random.nextInt(Math.max(1, height));
             }
         }
 
@@ -343,11 +343,16 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             float elapsed = lastFrame == 0 ? 0f : Math.min(.05f, (now - lastFrame) / 1_000_000_000f);
             lastFrame = now;
             for (int i = 0; i < STREAM_COUNT; i++) {
-                x[i] += speed[i] * elapsed;
-                float width = paint.measureText(bits[i]);
-                if (x[i] > getWidth() + dp(20)) x[i] = -width - random.nextInt(dp(90));
-                paint.setColor(i % 3 == 0 ? Color.argb(30, 221, 129, 151) : Color.argb(19, 250, 246, 247));
-                canvas.drawText(bits[i], x[i], y[i], paint);
+                y[i] += speed[i] * elapsed;
+                float columnHeight = bits[i].length() * dp(12);
+                if (y[i] - columnHeight > getHeight() + dp(20)) {
+                    y[i] = -random.nextInt(dp(140));
+                    x[i] = random.nextInt(Math.max(1, getWidth()));
+                }
+                paint.setColor(i % 3 == 0 ? Color.argb(66, 229, 137, 160) : Color.argb(43, 250, 246, 247));
+                for (int bit = 0; bit < bits[i].length(); bit++) {
+                    canvas.drawText(String.valueOf(bits[i].charAt(bit)), x[i], y[i] - (bits[i].length() - bit) * dp(12), paint);
+                }
             }
             postInvalidateOnAnimation();
         }
