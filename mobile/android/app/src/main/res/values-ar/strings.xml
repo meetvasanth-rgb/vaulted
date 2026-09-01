@@ -1,1 +1,21 @@
-<resources><string name="app_name">Vaultlix</string><string name="vaultlix_caller">متصل Vaultlix</string><string name="tap_to_answer">اضغط للرد</string><string name="calls_channel">المكالمات</string><string name="calls_channel_description">تنبيهات المكالمات المشفرة الواردة</string><string name="native_private_call">مكالمة خاصة</string><string name="native_connecting_securely">جارٍ الاتصال بأمان…</string><string name="native_encrypted_relayed">مشفرة من طرف إلى طرف · ترحيل خاص</string><string name="native_mute">كتم</string><string name="native_unmute">إلغاء الكتم</string><string name="native_speaker">مكبر الصوت</string><string name="native_phone">الهاتف</string><string name="native_end">إنهاء</string><string name="native_encrypted_call_duration">مكالمة مشفرة · %1$s</string></resources>
+<?xml version="1.0"?>
+<resources>
+  <string name="app_name">Vaultlix</string>
+  <string name="vaultlix_caller">&#x645;&#x62A;&#x635;&#x644; Vaultlix</string>
+  <string name="tap_to_answer">&#x627;&#x636;&#x63A;&#x637; &#x644;&#x644;&#x631;&#x62F;</string>
+  <string name="calls_channel">&#x627;&#x644;&#x645;&#x643;&#x627;&#x644;&#x645;&#x627;&#x62A;</string>
+  <string name="calls_channel_description">&#x62A;&#x646;&#x628;&#x64A;&#x647;&#x627;&#x62A; &#x627;&#x644;&#x645;&#x643;&#x627;&#x644;&#x645;&#x627;&#x62A; &#x627;&#x644;&#x645;&#x634;&#x641;&#x631;&#x629; &#x627;&#x644;&#x648;&#x627;&#x631;&#x62F;&#x629;</string>
+  <string name="native_private_call">&#x645;&#x643;&#x627;&#x644;&#x645;&#x629; &#x62E;&#x627;&#x635;&#x629;</string>
+  <string name="native_connecting_securely">&#x62C;&#x627;&#x631;&#x64D; &#x627;&#x644;&#x627;&#x62A;&#x635;&#x627;&#x644; &#x628;&#x623;&#x645;&#x627;&#x646;&#x2026;</string>
+  <string name="native_encrypted_relayed">&#x645;&#x634;&#x641;&#x631;&#x629; &#x645;&#x646; &#x637;&#x631;&#x641; &#x625;&#x644;&#x649; &#x637;&#x631;&#x641; &#xB7; &#x62A;&#x631;&#x62D;&#x64A;&#x644; &#x62E;&#x627;&#x635;</string>
+  <string name="native_mute">&#x643;&#x62A;&#x645;</string>
+  <string name="native_unmute">&#x625;&#x644;&#x63A;&#x627;&#x621; &#x627;&#x644;&#x643;&#x62A;&#x645;</string>
+  <string name="native_speaker">&#x645;&#x643;&#x628;&#x631; &#x627;&#x644;&#x635;&#x648;&#x62A;</string>
+  <string name="native_phone">&#x627;&#x644;&#x647;&#x627;&#x62A;&#x641;</string>
+  <string name="native_end">&#x625;&#x646;&#x647;&#x627;&#x621;</string>
+  <string name="native_encrypted_call_duration">&#x645;&#x643;&#x627;&#x644;&#x645;&#x629; &#x645;&#x634;&#x641;&#x631;&#x629; &#xB7; %1$s</string>
+  <string name="native_incoming_encrypted_call">مكالمة مشفرة واردة</string>
+  <string name="native_private_identity_protected">هويتك الخاصة محمية</string>
+  <string name="native_decline">رفض</string>
+  <string name="native_answer">رد</string>
+</resources>

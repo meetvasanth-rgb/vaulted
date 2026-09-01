@@ -6,6 +6,7 @@ const path = require('node:path');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 const ios = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'AppDelegate.swift'), 'utf8');
 const android = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActivity.java'), 'utf8');
+const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
 
 test('locked iOS terminal call actions cannot resurrect stale call UI', () => {
   assert.match(ios, /"occurredAt": Date\(\)\.timeIntervalSince1970 \* 1000/);
@@ -19,4 +20,11 @@ test('native Android ending uses the Vaultlix sand treatment', () => {
   assert.match(android, /VANISH_BURGUNDY = Color\.rgb\(104, 44, 67\)/);
   assert.match(android, /random\.nextInt\(35\) - 17/);
   assert.match(android, /\.setDuration\(850\)/);
+});
+
+test('locked Android incoming call uses the polished Vaultlix call surface', () => {
+  assert.match(androidIncoming, /verticalGradient\(INK_SOFT, INK\)/);
+  assert.match(androidIncoming, /native_private_identity_protected/);
+  assert.match(androidIncoming, /callAction\(R\.drawable\.ic_call_end, R\.string\.native_answer, ANSWER, true\)/);
+  assert.match(androidIncoming, /ring\.animate\(\)\.scaleX\(1\.08f\)/);
 });

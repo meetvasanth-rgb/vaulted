@@ -1,1 +1,21 @@
-<resources><string name="app_name">Vaultlix</string><string name="vaultlix_caller">Vaultlix कॉलर</string><string name="tap_to_answer">जवाब देने के लिए टैप करें</string><string name="calls_channel">कॉल</string><string name="calls_channel_description">एन्क्रिप्टेड इनकमिंग कॉल अलर्ट</string><string name="native_private_call">निजी कॉल</string><string name="native_connecting_securely">सुरक्षित रूप से कनेक्ट हो रहा है…</string><string name="native_encrypted_relayed">एंड-टू-एंड एन्क्रिप्टेड · निजी रिले</string><string name="native_mute">म्यूट</string><string name="native_unmute">अनम्यूट</string><string name="native_speaker">स्पीकर</string><string name="native_phone">फ़ोन</string><string name="native_end">समाप्त</string><string name="native_encrypted_call_duration">एन्क्रिप्टेड कॉल · %1$s</string></resources>
+<?xml version="1.0"?>
+<resources>
+  <string name="app_name">Vaultlix</string>
+  <string name="vaultlix_caller">Vaultlix &#x915;&#x949;&#x932;&#x930;</string>
+  <string name="tap_to_answer">&#x91C;&#x935;&#x93E;&#x92C; &#x926;&#x947;&#x928;&#x947; &#x915;&#x947; &#x932;&#x93F;&#x90F; &#x91F;&#x948;&#x92A; &#x915;&#x930;&#x947;&#x902;</string>
+  <string name="calls_channel">&#x915;&#x949;&#x932;</string>
+  <string name="calls_channel_description">&#x90F;&#x928;&#x94D;&#x915;&#x94D;&#x930;&#x93F;&#x92A;&#x94D;&#x91F;&#x947;&#x921; &#x907;&#x928;&#x915;&#x92E;&#x93F;&#x902;&#x917; &#x915;&#x949;&#x932; &#x905;&#x932;&#x930;&#x94D;&#x91F;</string>
+  <string name="native_private_call">&#x928;&#x93F;&#x91C;&#x940; &#x915;&#x949;&#x932;</string>
+  <string name="native_connecting_securely">&#x938;&#x941;&#x930;&#x915;&#x94D;&#x937;&#x93F;&#x924; &#x930;&#x942;&#x92A; &#x938;&#x947; &#x915;&#x928;&#x947;&#x915;&#x94D;&#x91F; &#x939;&#x94B; &#x930;&#x939;&#x93E; &#x939;&#x948;&#x2026;</string>
+  <string name="native_encrypted_relayed">&#x90F;&#x902;&#x921;-&#x91F;&#x942;-&#x90F;&#x902;&#x921; &#x90F;&#x928;&#x94D;&#x915;&#x94D;&#x930;&#x93F;&#x92A;&#x94D;&#x91F;&#x947;&#x921; &#xB7; &#x928;&#x93F;&#x91C;&#x940; &#x930;&#x93F;&#x932;&#x947;</string>
+  <string name="native_mute">&#x92E;&#x94D;&#x92F;&#x942;&#x91F;</string>
+  <string name="native_unmute">&#x905;&#x928;&#x92E;&#x94D;&#x92F;&#x942;&#x91F;</string>
+  <string name="native_speaker">&#x938;&#x94D;&#x92A;&#x940;&#x915;&#x930;</string>
+  <string name="native_phone">&#x92B;&#x93C;&#x94B;&#x928;</string>
+  <string name="native_end">&#x938;&#x92E;&#x93E;&#x92A;&#x94D;&#x924;</string>
+  <string name="native_encrypted_call_duration">&#x90F;&#x928;&#x94D;&#x915;&#x94D;&#x930;&#x93F;&#x92A;&#x94D;&#x91F;&#x947;&#x921; &#x915;&#x949;&#x932; &#xB7; %1$s</string>
+  <string name="native_incoming_encrypted_call">इनकमिंग एन्क्रिप्टेड कॉल</string>
+  <string name="native_private_identity_protected">निजी पहचान सुरक्षित है</string>
+  <string name="native_decline">अस्वीकार करें</string>
+  <string name="native_answer">जवाब दें</string>
+</resources>

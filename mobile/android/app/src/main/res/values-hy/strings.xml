@@ -1,1 +1,21 @@
-<resources><string name="app_name">Vaultlix</string><string name="vaultlix_caller">Vaultlix զանգահարող</string><string name="tap_to_answer">Հպեք՝ պատասխանելու համար</string><string name="calls_channel">Զանգեր</string><string name="calls_channel_description">Մուտքային գաղտնագրված զանգերի ծանուցումներ</string><string name="native_private_call">Մասնավոր զանգ</string><string name="native_connecting_securely">Անվտանգ միացում…</string><string name="native_encrypted_relayed">Ծայրից ծայր գաղտնագրված · մասնավոր փոխանցում</string><string name="native_mute">Անջատել ձայնը</string><string name="native_unmute">Միացնել ձայնը</string><string name="native_speaker">Բարձրախոս</string><string name="native_phone">Հեռախոս</string><string name="native_end">Ավարտել</string><string name="native_encrypted_call_duration">Գաղտնագրված զանգ · %1$s</string></resources>
+<?xml version="1.0"?>
+<resources>
+  <string name="app_name">Vaultlix</string>
+  <string name="vaultlix_caller">Vaultlix &#x566;&#x561;&#x576;&#x563;&#x561;&#x570;&#x561;&#x580;&#x578;&#x572;</string>
+  <string name="tap_to_answer">&#x540;&#x57A;&#x565;&#x584;&#x55D; &#x57A;&#x561;&#x57F;&#x561;&#x57D;&#x56D;&#x561;&#x576;&#x565;&#x56C;&#x578;&#x582; &#x570;&#x561;&#x574;&#x561;&#x580;</string>
+  <string name="calls_channel">&#x536;&#x561;&#x576;&#x563;&#x565;&#x580;</string>
+  <string name="calls_channel_description">&#x544;&#x578;&#x582;&#x57F;&#x584;&#x561;&#x575;&#x56B;&#x576; &#x563;&#x561;&#x572;&#x57F;&#x576;&#x561;&#x563;&#x580;&#x57E;&#x561;&#x56E; &#x566;&#x561;&#x576;&#x563;&#x565;&#x580;&#x56B; &#x56E;&#x561;&#x576;&#x578;&#x582;&#x581;&#x578;&#x582;&#x574;&#x576;&#x565;&#x580;</string>
+  <string name="native_private_call">&#x544;&#x561;&#x57D;&#x576;&#x561;&#x57E;&#x578;&#x580; &#x566;&#x561;&#x576;&#x563;</string>
+  <string name="native_connecting_securely">&#x531;&#x576;&#x57E;&#x57F;&#x561;&#x576;&#x563; &#x574;&#x56B;&#x561;&#x581;&#x578;&#x582;&#x574;&#x2026;</string>
+  <string name="native_encrypted_relayed">&#x53E;&#x561;&#x575;&#x580;&#x56B;&#x581; &#x56E;&#x561;&#x575;&#x580; &#x563;&#x561;&#x572;&#x57F;&#x576;&#x561;&#x563;&#x580;&#x57E;&#x561;&#x56E; &#xB7; &#x574;&#x561;&#x57D;&#x576;&#x561;&#x57E;&#x578;&#x580; &#x583;&#x578;&#x56D;&#x561;&#x576;&#x581;&#x578;&#x582;&#x574;</string>
+  <string name="native_mute">&#x531;&#x576;&#x57B;&#x561;&#x57F;&#x565;&#x56C; &#x571;&#x561;&#x575;&#x576;&#x568;</string>
+  <string name="native_unmute">&#x544;&#x56B;&#x561;&#x581;&#x576;&#x565;&#x56C; &#x571;&#x561;&#x575;&#x576;&#x568;</string>
+  <string name="native_speaker">&#x532;&#x561;&#x580;&#x571;&#x580;&#x561;&#x56D;&#x578;&#x57D;</string>
+  <string name="native_phone">&#x540;&#x565;&#x57C;&#x561;&#x56D;&#x578;&#x57D;</string>
+  <string name="native_end">&#x531;&#x57E;&#x561;&#x580;&#x57F;&#x565;&#x56C;</string>
+  <string name="native_encrypted_call_duration">&#x533;&#x561;&#x572;&#x57F;&#x576;&#x561;&#x563;&#x580;&#x57E;&#x561;&#x56E; &#x566;&#x561;&#x576;&#x563; &#xB7; %1$s</string>
+  <string name="native_incoming_encrypted_call">Մուտքային գաղտնագրված զանգ</string>
+  <string name="native_private_identity_protected">Մասնավոր ինքնությունը պաշտպանված է</string>
+  <string name="native_decline">Մերժել</string>
+  <string name="native_answer">Պատասխանել</string>
+</resources>

@@ -1,1 +1,21 @@
-<resources><string name="app_name">Vaultlix</string><string name="vaultlix_caller">Звонок Vaultlix</string><string name="tap_to_answer">Нажмите, чтобы ответить</string><string name="calls_channel">Звонки</string><string name="calls_channel_description">Уведомления о зашифрованных звонках</string><string name="native_private_call">Приватный звонок</string><string name="native_connecting_securely">Безопасное подключение…</string><string name="native_encrypted_relayed">Сквозное шифрование · приватная ретрансляция</string><string name="native_mute">Выкл. звук</string><string name="native_unmute">Вкл. звук</string><string name="native_speaker">Динамик</string><string name="native_phone">Телефон</string><string name="native_end">Завершить</string><string name="native_encrypted_call_duration">Зашифрованный звонок · %1$s</string></resources>
+<?xml version="1.0"?>
+<resources>
+  <string name="app_name">Vaultlix</string>
+  <string name="vaultlix_caller">&#x417;&#x432;&#x43E;&#x43D;&#x43E;&#x43A; Vaultlix</string>
+  <string name="tap_to_answer">&#x41D;&#x430;&#x436;&#x43C;&#x438;&#x442;&#x435;, &#x447;&#x442;&#x43E;&#x431;&#x44B; &#x43E;&#x442;&#x432;&#x435;&#x442;&#x438;&#x442;&#x44C;</string>
+  <string name="calls_channel">&#x417;&#x432;&#x43E;&#x43D;&#x43A;&#x438;</string>
+  <string name="calls_channel_description">&#x423;&#x432;&#x435;&#x434;&#x43E;&#x43C;&#x43B;&#x435;&#x43D;&#x438;&#x44F; &#x43E; &#x437;&#x430;&#x448;&#x438;&#x444;&#x440;&#x43E;&#x432;&#x430;&#x43D;&#x43D;&#x44B;&#x445; &#x437;&#x432;&#x43E;&#x43D;&#x43A;&#x430;&#x445;</string>
+  <string name="native_private_call">&#x41F;&#x440;&#x438;&#x432;&#x430;&#x442;&#x43D;&#x44B;&#x439; &#x437;&#x432;&#x43E;&#x43D;&#x43E;&#x43A;</string>
+  <string name="native_connecting_securely">&#x411;&#x435;&#x437;&#x43E;&#x43F;&#x430;&#x441;&#x43D;&#x43E;&#x435; &#x43F;&#x43E;&#x434;&#x43A;&#x43B;&#x44E;&#x447;&#x435;&#x43D;&#x438;&#x435;&#x2026;</string>
+  <string name="native_encrypted_relayed">&#x421;&#x43A;&#x432;&#x43E;&#x437;&#x43D;&#x43E;&#x435; &#x448;&#x438;&#x444;&#x440;&#x43E;&#x432;&#x430;&#x43D;&#x438;&#x435; &#xB7; &#x43F;&#x440;&#x438;&#x432;&#x430;&#x442;&#x43D;&#x430;&#x44F; &#x440;&#x435;&#x442;&#x440;&#x430;&#x43D;&#x441;&#x43B;&#x44F;&#x446;&#x438;&#x44F;</string>
+  <string name="native_mute">&#x412;&#x44B;&#x43A;&#x43B;. &#x437;&#x432;&#x443;&#x43A;</string>
+  <string name="native_unmute">&#x412;&#x43A;&#x43B;. &#x437;&#x432;&#x443;&#x43A;</string>
+  <string name="native_speaker">&#x414;&#x438;&#x43D;&#x430;&#x43C;&#x438;&#x43A;</string>
+  <string name="native_phone">&#x422;&#x435;&#x43B;&#x435;&#x444;&#x43E;&#x43D;</string>
+  <string name="native_end">&#x417;&#x430;&#x432;&#x435;&#x440;&#x448;&#x438;&#x442;&#x44C;</string>
+  <string name="native_encrypted_call_duration">&#x417;&#x430;&#x448;&#x438;&#x444;&#x440;&#x43E;&#x432;&#x430;&#x43D;&#x43D;&#x44B;&#x439; &#x437;&#x432;&#x43E;&#x43D;&#x43E;&#x43A; &#xB7; %1$s</string>
+  <string name="native_incoming_encrypted_call">Входящий зашифрованный звонок</string>
+  <string name="native_private_identity_protected">Приватная личность защищена</string>
+  <string name="native_decline">Отклонить</string>
+  <string name="native_answer">Ответить</string>
+</resources>

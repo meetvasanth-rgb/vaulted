@@ -5,21 +5,34 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.app.NotificationManager;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Space;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
 
 public class IncomingCallActivity extends Activity {
+    private static final int INK = Color.rgb(35, 25, 33);
+    private static final int INK_SOFT = Color.rgb(57, 39, 51);
+    private static final int IVORY = Color.rgb(250, 246, 247);
+    private static final int ROSE = Color.rgb(205, 119, 140);
+    private static final int BURGUNDY = Color.rgb(111, 39, 66);
+    private static final int DECLINE = Color.rgb(196, 67, 91);
+    private static final int ANSWER = Color.rgb(65, 164, 116);
     public static final String EXTRA_INVITE_URI = "inviteUri";
     public static final String EXTRA_CALLER = "caller";
     public static final String EXTRA_AUTO_ANSWER = "autoAnswer";
@@ -42,6 +55,11 @@ public class IncomingCallActivity extends Activity {
         getWindow().addFlags(
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         );
+        getWindow().setStatusBarColor(INK);
+        getWindow().setNavigationBarColor(INK);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getWindow().getDecorView().setSystemUiVisibility(0);
+        }
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
 
         handleIntent(getIntent());
@@ -91,47 +109,84 @@ public class IncomingCallActivity extends Activity {
     }
 
     private void showIncomingCall(String caller) {
-        int padding = dp(28);
+        String displayName = caller == null || caller.trim().isEmpty()
+                ? getString(R.string.native_private_call) : caller.trim();
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setPadding(padding, padding, padding, padding);
-        root.setBackgroundColor(Color.rgb(39, 29, 37));
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setPadding(dp(30), dp(30), dp(30), dp(30));
+        root.setBackground(verticalGradient(INK_SOFT, INK));
 
-        TextView brand = text("Vaultlix", 18, Color.rgb(251, 247, 248));
-        brand.setLetterSpacing(0.18f);
-        root.addView(brand);
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setGravity(Gravity.CENTER);
+        ImageView brandLock = new ImageView(this);
+        brandLock.setImageResource(R.drawable.ic_call_lock);
+        brandLock.setImageTintList(ColorStateList.valueOf(ROSE));
+        brandLock.setPadding(dp(7), dp(7), dp(7), dp(7));
+        brandLock.setBackground(circle(Color.argb(42, 255, 255, 255)));
+        brandRow.addView(brandLock, new LinearLayout.LayoutParams(dp(32), dp(32)));
+        TextView brand = text("VAULTLIX", 13, IVORY);
+        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        brand.setLetterSpacing(0.24f);
+        LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(-2, -2);
+        brandParams.setMargins(dp(10), 0, 0, 0);
+        brandRow.addView(brand, brandParams);
+        root.addView(brandRow, new LinearLayout.LayoutParams(-1, dp(40)));
 
-        TextView name = text(
-                caller == null || caller.trim().isEmpty() ? "Incoming call" : caller.trim(),
-                34,
-                Color.WHITE
-        );
-        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-2, -2);
-        nameParams.setMargins(0, dp(54), 0, dp(10));
+        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .75f));
+
+        FrameLayout portrait = new FrameLayout(this);
+        View halo = new View(this);
+        halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
+        portrait.addView(halo, centered(dp(132), dp(132)));
+        TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
+        avatar.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        avatar.setBackground(circle(IVORY));
+        portrait.addView(avatar, centered(dp(104), dp(104)));
+        root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
+
+        TextView name = text(displayName, 34, Color.WHITE);
+        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setMaxLines(2);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
+        nameParams.setMargins(0, dp(28), 0, dp(9));
         root.addView(name, nameParams);
 
-        TextView subtitle = text("Incoming encrypted call", 15, Color.rgb(200, 117, 136));
+        TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 17, ROSE);
+        subtitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         root.addView(subtitle);
+
+        LinearLayout privacy = new LinearLayout(this);
+        privacy.setGravity(Gravity.CENTER);
+        ImageView privacyLock = new ImageView(this);
+        privacyLock.setImageResource(R.drawable.ic_call_lock);
+        privacyLock.setImageTintList(ColorStateList.valueOf(Color.rgb(202, 190, 197)));
+        privacy.addView(privacyLock, new LinearLayout.LayoutParams(dp(14), dp(14)));
+        TextView privacyText = text(getString(R.string.native_private_identity_protected), 12, Color.rgb(202, 190, 197));
+        LinearLayout.LayoutParams privacyTextParams = new LinearLayout.LayoutParams(-2, -2);
+        privacyTextParams.setMargins(dp(7), 0, 0, 0);
+        privacy.addView(privacyText, privacyTextParams);
+        LinearLayout.LayoutParams privacyParams = new LinearLayout.LayoutParams(-2, dp(34));
+        privacyParams.setMargins(0, dp(18), 0, 0);
+        root.addView(privacy, privacyParams);
+
+        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1f));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, -2);
-        actionsParams.setMargins(0, dp(72), 0, 0);
+        LinearLayout decline = callAction(R.drawable.ic_call_end, R.string.native_decline, DECLINE, false);
+        actionButton(decline).setOnClickListener(view -> declineCall());
+        actions.addView(decline, new LinearLayout.LayoutParams(0, dp(114), 1));
 
-        Button decline = actionButton("Decline", Color.rgb(184, 55, 78));
-        decline.setOnClickListener(view -> declineCall());
-        actions.addView(decline, new LinearLayout.LayoutParams(0, dp(58), 1));
+        LinearLayout answer = callAction(R.drawable.ic_call_end, R.string.native_answer, ANSWER, true);
+        ImageButton answerButton = actionButton(answer);
+        answerButton.setRotation(180f);
+        answerButton.setOnClickListener(view -> answerCall());
+        actions.addView(answer, new LinearLayout.LayoutParams(0, dp(114), 1));
 
-        View gap = new View(this);
-        actions.addView(gap, new LinearLayout.LayoutParams(dp(18), 1));
-
-        Button answer = actionButton("Answer", Color.rgb(63, 151, 104));
-        answer.setOnClickListener(view -> answerCall());
-        actions.addView(answer, new LinearLayout.LayoutParams(0, dp(58), 1));
-
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, dp(114));
+        actionsParams.setMargins(dp(8), 0, dp(8), dp(20));
         root.addView(actions, actionsParams);
         root.setFocusableInTouchMode(true);
         root.requestFocus();
@@ -211,14 +266,67 @@ public class IncomingCallActivity extends Activity {
         return view;
     }
 
-    private Button actionButton(String label, int color) {
-        Button button = new Button(this);
-        button.setText(label);
-        button.setTextColor(Color.WHITE);
-        button.setTextSize(17);
-        button.setAllCaps(false);
-        button.setBackgroundColor(color);
-        return button;
+    private LinearLayout callAction(int icon, int label, int color, boolean pulse) {
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.setGravity(Gravity.CENTER_HORIZONTAL);
+        FrameLayout buttonStage = new FrameLayout(this);
+        if (pulse) {
+            View ring = new View(this);
+            ring.setBackground(circle(Color.argb(38, 116, 225, 169)));
+            buttonStage.addView(ring, centered(dp(88), dp(88)));
+            ring.setScaleX(.82f);
+            ring.setScaleY(.82f);
+            ring.setAlpha(.7f);
+            ring.animate().scaleX(1.08f).scaleY(1.08f).alpha(0f).setDuration(1_450).withEndAction(() -> {
+                ring.setScaleX(.82f); ring.setScaleY(.82f); ring.setAlpha(.7f);
+                ring.animate().scaleX(1.08f).scaleY(1.08f).alpha(0f).setDuration(1_450).start();
+            }).start();
+        }
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(icon);
+        button.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        button.setPadding(dp(21), dp(21), dp(21), dp(21));
+        button.setBackground(circle(color));
+        button.setContentDescription(getString(label));
+        buttonStage.addView(button, centered(dp(72), dp(72)));
+        wrapper.addView(buttonStage, new LinearLayout.LayoutParams(dp(92), dp(88)));
+        TextView caption = text(getString(label), 14, IVORY);
+        caption.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        wrapper.addView(caption, new LinearLayout.LayoutParams(-1, dp(26)));
+        return wrapper;
+    }
+
+    private FrameLayout.LayoutParams centered(int width, int height) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
+        params.gravity = Gravity.CENTER;
+        return params;
+    }
+
+    private ImageButton actionButton(LinearLayout control) {
+        FrameLayout stage = (FrameLayout) control.getChildAt(0);
+        return (ImageButton) stage.getChildAt(stage.getChildCount() - 1);
+    }
+
+    private GradientDrawable circle(int color) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.OVAL);
+        drawable.setColor(color);
+        return drawable;
+    }
+
+    private GradientDrawable verticalGradient(int top, int bottom) {
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] { top, INK, bottom }
+        );
+        drawable.setGradientType(GradientDrawable.LINEAR_GRADIENT);
+        return drawable;
+    }
+
+    private String initialFor(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        return trimmed.isEmpty() ? "V" : trimmed.substring(0, 1).toUpperCase(java.util.Locale.getDefault());
     }
 
     private int dp(int value) {
