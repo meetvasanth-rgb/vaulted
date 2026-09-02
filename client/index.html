@@ -2242,6 +2242,17 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 .account-card{width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
 .account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.password-policy{margin:-3px 0 13px;padding:11px 13px;border-radius:12px;background:#F7F0F3;color:#75656D;font:500 11px/1.5 Inter,sans-serif}.password-policy strong{color:#682C43}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
 .onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.private-number-card{margin:14px 0;padding:18px;border:1px solid #DFCDD4;border-radius:18px;background:linear-gradient(145deg,#F8F0F3,#fff);text-align:center}.private-number-label{font:700 11px Inter,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#936174}.private-number-value{margin:8px 0 5px;font:700 28px ui-monospace,SFMono-Regular,monospace;letter-spacing:.05em;color:#682C43}.private-number-caption{font:500 12px/1.5 Inter,sans-serif;color:#75656D}.private-number-refresh{margin-top:12px;border:1px solid #D7C6CD;border-radius:12px;background:#fff;color:#682C43;padding:10px 14px;font:700 12px Inter,sans-serif}.account-step{display:none}.account-step.active{display:block}
+/* Installed apps use a focused first-run journey instead of the public,
+   scrollable marketing homepage. */
+#s-native-onboarding{overflow:hidden;background:radial-gradient(circle at 86% 10%,rgba(200,117,136,.22),transparent 30%),radial-gradient(circle at 5% 88%,rgba(113,148,124,.17),transparent 28%),#FBF7F8;color:#271D25}
+.native-onboarding-shell{width:100%;height:100%;min-height:100dvh;display:flex;flex-direction:column;padding:calc(28px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));box-sizing:border-box}
+.native-onboarding-brand{display:flex;align-items:center;gap:11px;font:750 20px/1 Inter,sans-serif;letter-spacing:-.025em}.native-onboarding-brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:#682C43;color:#fff;box-shadow:0 10px 24px rgba(104,44,67,.22)}.native-onboarding-brand-mark svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.native-onboarding-progress{display:flex;gap:7px;margin-top:25px}.native-onboarding-progress span{height:4px;flex:1;border-radius:99px;background:#E5D8DD}.native-onboarding-progress span.active{background:#682C43}
+.native-onboarding-page{display:none;flex:1;flex-direction:column;justify-content:center;padding:24px 0}.native-onboarding-page.active{display:flex}.native-onboarding-art{width:128px;height:128px;display:grid;place-items:center;margin:0 auto 38px;border-radius:42px;background:linear-gradient(145deg,#73314B,#512033);color:#fff;box-shadow:0 24px 54px rgba(104,44,67,.25)}.native-onboarding-art svg{width:58px;height:58px;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round}
+.native-onboarding-kicker{font:750 10px/1.2 Inter,sans-serif;letter-spacing:.17em;text-transform:uppercase;color:#A15F76;margin-bottom:13px}.native-onboarding-title{max-width:440px;margin:0;font:750 clamp(34px,10vw,46px)/1.04 Inter,sans-serif;letter-spacing:-.05em}.native-onboarding-copy{max-width:430px;margin:17px 0 0;font:450 15px/1.6 Inter,sans-serif;color:#71636B}.native-onboarding-points{display:grid;gap:10px;margin:26px 0 0}.native-onboarding-point{display:flex;align-items:center;gap:11px;padding:13px 14px;border:1px solid #E3D7DC;border-radius:15px;background:rgba(255,255,255,.76);font:650 12px/1.35 Inter,sans-serif;color:#51434B}.native-onboarding-point::before{content:'✓';width:22px;height:22px;display:grid;place-items:center;flex:none;border-radius:50%;background:#E8F0EA;color:#557660;font-size:11px}
+.native-onboarding-actions{display:grid;gap:10px}.native-onboarding-primary,.native-onboarding-secondary{width:100%;min-height:54px;border-radius:17px;font:750 14px/1 Inter,sans-serif}.native-onboarding-primary{border:0;background:#682C43;color:#fff;box-shadow:0 12px 28px rgba(104,44,67,.20)}.native-onboarding-secondary{border:1px solid #D9C9CF;background:rgba(255,255,255,.82);color:#682C43}.native-onboarding-note{text-align:center;margin-top:12px;font:500 10.5px/1.45 Inter,sans-serif;color:#93868D}
+.account-overlay.native-onboarding-account{align-items:stretch;background:#FBF7F8;backdrop-filter:none;padding:0}.account-overlay.native-onboarding-account .account-card{width:100%;max-width:none;max-height:none;height:100dvh;border-radius:0;box-shadow:none;padding:calc(28px + env(safe-area-inset-top)) 22px calc(24px + env(safe-area-inset-bottom))}.account-overlay.native-onboarding-account .account-close{display:none}.account-overlay.native-onboarding-account .account-card>div{max-width:520px;margin-left:auto;margin-right:auto}
+html.vaultlix-native-android .native-onboarding-shell{padding-top:calc(28px + var(--android-safe-area-top,0px));padding-bottom:calc(24px + var(--android-safe-area-bottom,0px))}html.vaultlix-native-android .account-overlay.native-onboarding-account .account-card{padding-top:calc(28px + var(--android-safe-area-top,0px));padding-bottom:calc(24px + var(--android-safe-area-bottom,0px))}
 /* Large Android system text could push the number field below the initially
    visible part of this bottom sheet. Put the action first and keep the sheet
    inside the native safe area; the explanatory copy remains available below. */
@@ -2480,6 +2491,39 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <span class="ios-banner-text">Install Vaultlix for the best experience · Tap Share <svg viewBox="0 0 24 24" width="11" height="11" style="fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3v12"/><polyline points="7 8 12 3 17 8"/></svg> → Add to Home Screen</span>
     <button class="ios-banner-close" onclick="dismissIOSBanner()">×</button>
   </div>
+</div>
+
+<!-- NATIVE FIRST RUN — concise app onboarding; the public website remains
+     available to browser visitors but is not used as the installed-app home. -->
+<div id="s-native-onboarding" class="screen">
+  <main class="native-onboarding-shell">
+    <div class="native-onboarding-brand"><span class="native-onboarding-brand-mark"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></span><span>Vaultlix</span></div>
+    <div class="native-onboarding-progress" aria-label="Onboarding progress"><span class="active"></span><span></span><span></span></div>
+    <section class="native-onboarding-page active" data-native-onboarding-page="welcome">
+      <div class="native-onboarding-art"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+      <div class="native-onboarding-kicker">Private by design</div>
+      <h1 class="native-onboarding-title">Your identity belongs to you.</h1>
+      <p class="native-onboarding-copy">Vaultlix gives you a private number for encrypted conversations—without asking for your phone number, email, or contacts.</p>
+      <div class="native-onboarding-points"><div class="native-onboarding-point">No phone number or email</div><div class="native-onboarding-point">No contact-list upload</div><div class="native-onboarding-point">Connections require your approval</div></div>
+    </section>
+    <section class="native-onboarding-page" data-native-onboarding-page="identity">
+      <div class="native-onboarding-kicker">Step 2 of 3</div>
+      <h1 class="native-onboarding-title">Set up your private identity.</h1>
+      <p class="native-onboarding-copy">Create a new Vaultlix Private Number, or sign in to an identity you already use.</p>
+      <div class="native-onboarding-points"><div class="native-onboarding-point">Choose a name or pseudonym</div><div class="native-onboarding-point">Receive a permanent 10-digit Private Number</div><div class="native-onboarding-point">Protect it with your password and recovery code</div></div>
+    </section>
+    <section class="native-onboarding-page" data-native-onboarding-page="notifications">
+      <div class="native-onboarding-art"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></div>
+      <div class="native-onboarding-kicker">Step 3 of 3</div>
+      <h1 class="native-onboarding-title">Know when someone reaches you.</h1>
+      <p class="native-onboarding-copy">Enable notifications for incoming calls, connection requests, and new encrypted messages. Message contents stay hidden from notification services.</p>
+    </section>
+    <div class="native-onboarding-actions" id="native-onboarding-actions">
+      <button class="native-onboarding-primary" id="native-onboarding-primary" type="button" onclick="advanceNativeOnboarding()">Continue</button>
+      <button class="native-onboarding-secondary" id="native-onboarding-secondary" type="button" onclick="nativeOnboardingSecondary()" style="display:none">Sign in</button>
+      <div class="native-onboarding-note" id="native-onboarding-note">You can change notification access later in Settings.</div>
+    </div>
+  </main>
 </div>
 
 <!-- SETUP -->
@@ -7475,6 +7519,47 @@ function updateAccountSettingsStatus() {
     landingButton.title = state ? `Signed in with ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix';
   }
 }
+const NATIVE_ONBOARDING_KEY = 'vaultlix_native_onboarding_v1';
+let nativeOnboardingPage = 'welcome';
+function renderNativeOnboarding(page) {
+  nativeOnboardingPage = page;
+  document.querySelectorAll('[data-native-onboarding-page]').forEach(el => el.classList.toggle('active', el.dataset.nativeOnboardingPage === page));
+  const order = { welcome:1, identity:2, notifications:3 };
+  document.querySelectorAll('#s-native-onboarding .native-onboarding-progress span').forEach((el, index) => el.classList.toggle('active', index < order[page]));
+  const primary = document.getElementById('native-onboarding-primary');
+  const secondary = document.getElementById('native-onboarding-secondary');
+  const note = document.getElementById('native-onboarding-note');
+  primary.textContent = page === 'welcome' ? 'Get started' : page === 'identity' ? 'Create my Private Number' : 'Enable notifications';
+  secondary.style.display = page === 'welcome' || page === 'identity' || page === 'notifications' ? '' : 'none';
+  secondary.textContent = page === 'notifications' ? 'Not now' : 'Sign in';
+  note.style.display = page === 'notifications' ? '' : 'none';
+}
+function openNativeOnboarding(page = 'welcome') {
+  localStorage.setItem(NATIVE_ONBOARDING_KEY, page);
+  showScreen('s-native-onboarding');
+  renderNativeOnboarding(page);
+}
+function openNativeOnboardingAccount(tab) {
+  document.getElementById('account-overlay').classList.add('native-onboarding-account');
+  openAccountPanel();
+  showAccountTab(tab);
+}
+function advanceNativeOnboarding() {
+  if (nativeOnboardingPage === 'welcome') { openNativeOnboarding('identity'); return; }
+  if (nativeOnboardingPage === 'identity') { openNativeOnboardingAccount('create'); return; }
+  finishNativeOnboarding(true);
+}
+function nativeOnboardingSecondary() {
+  if (nativeOnboardingPage === 'notifications') { finishNativeOnboarding(false); return; }
+  openNativeOnboardingAccount('login');
+}
+async function finishNativeOnboarding(enableNotifications) {
+  if (enableNotifications) await requestNativePushPermission();
+  localStorage.setItem(NATIVE_ONBOARDING_KEY, 'complete');
+  document.getElementById('account-overlay').classList.remove('native-onboarding-account');
+  showScreen('s-vault-list');
+  connectInbox();
+}
 function openAccountPanel() {
   closeSettings();
   const state = loadAccountState();
@@ -7496,7 +7581,14 @@ function openLoginOrInbox() {
   openAccountPanel();
   showAccountTab('login');
 }
-function closeAccountPanel() { document.getElementById('account-overlay').classList.remove('open'); }
+function closeAccountPanel() {
+  const overlay = document.getElementById('account-overlay');
+  overlay.classList.remove('open');
+  if (overlay.classList.contains('native-onboarding-account')) {
+    overlay.classList.remove('native-onboarding-account');
+    openNativeOnboarding(loadAccountState() ? 'notifications' : 'identity');
+  }
+}
 let pendingConnectionAcceptance = null;
 let pendingConnectionPeerName = null;
 let pendingConnectionPeerPrivateNumber = null;
@@ -7667,6 +7759,7 @@ async function createAnonymousAccount(event) {
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
     saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
+    if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-number').textContent = formatPrivateNumber(privateNumber);
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
@@ -7691,6 +7784,7 @@ async function loginAnonymousAccount(event) {
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
     saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision });
+    if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Signed in'); setTimeout(() => location.reload(), 350);
   } catch (e) {
     console.error(e);
@@ -7718,6 +7812,7 @@ async function recoverAnonymousAccount(event) {
     if (result.error) { toast(result.error); return; }
     importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
     saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
+    if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Password changed and conversations restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
   finally { setAccountBusy(form, false); }
@@ -7789,7 +7884,12 @@ function finishAccountCreation() {
   const state=loadAccountState();
   document.getElementById('account-signed-name').textContent=state ? `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}` : 'Protected identity';
   updateAccountSettingsStatus();
-  closeAccountPanel();
+  const nativeFirstRun = document.getElementById('account-overlay').classList.contains('native-onboarding-account');
+  document.getElementById('account-overlay').classList.remove('open', 'native-onboarding-account');
+  if (nativeFirstRun) {
+    openNativeOnboarding('notifications');
+    return;
+  }
   if (isNativeApp()) showEnableNativeNotificationsBanner();
   showScreen('s-vault-list');
   connectInbox();
@@ -8641,7 +8741,9 @@ async function bootstrapNativePushOnLaunch() {
   for (let attempt = 0; attempt < 20; attempt++) {
     if (isNativeApp()) {
       await refreshNativePushPermission();
-      if (nativePushPermission === 'prompt') showEnableNativeNotificationsBanner();
+      const onboardingState = localStorage.getItem(NATIVE_ONBOARDING_KEY);
+      const onboardingActive = ['welcome','identity','notifications'].includes(onboardingState);
+      if (nativePushPermission === 'prompt' && !onboardingActive) showEnableNativeNotificationsBanner();
       return;
     }
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -12122,6 +12224,8 @@ window.addEventListener('load', async () => {
       // straight to the relevant conversation.
       showScreen('s-chat');
       setActiveRoom(activate);
+    } else if (isNativeApp() && localStorage.getItem(NATIVE_ONBOARDING_KEY) === 'notifications') {
+      openNativeOnboarding('notifications');
     } else {
       // Normal launches now land on the privacy-first Vault Inbox. Remember
       // the previous room for navigation without opening it or clearing its
@@ -12147,12 +12251,15 @@ window.addEventListener('load', async () => {
   } else {
     hideRestoreSkeleton();
     if (joinLinkCode) openJoinFromLink(joinLinkCode);
-    else if (loadAccountState()) showScreen('s-vault-list');
+    else if (loadAccountState()) {
+      if (isNativeApp() && localStorage.getItem(NATIVE_ONBOARDING_KEY) === 'notifications') openNativeOnboarding('notifications');
+      else showScreen('s-vault-list');
+    }
     else {
-      triggerLandingAnim();
       // Native apps use a messenger-style first-run journey: establish the
       // permanent Private Number before showing an empty conversation list.
-      if (isNativeApp()) setTimeout(openAccountPanel, 180);
+      if (isNativeApp()) openNativeOnboarding('welcome');
+      else triggerLandingAnim();
     }
   }
   if (loadAccountState()) connectInbox();
