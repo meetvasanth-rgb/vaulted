@@ -404,6 +404,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     caller: parsed.caller || '',
     callId: parsed.callId || '',
     msgId: parsed.msgId || '',
+    connectionRequest: !!parsed.connectionRequest,
   });
   return new Promise((resolve) => {
     let client;
@@ -468,6 +469,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         caller: String(parsed.caller || ''),
         callId: String(parsed.callId || ''),
         msgId: String(parsed.msgId || ''),
+        connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
       },

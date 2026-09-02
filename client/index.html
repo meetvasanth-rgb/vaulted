@@ -1055,6 +1055,7 @@ body.select-mode .chat-ftr{display:none}
 .call-overlay.has-video .call-data-rain{display:none}
 .call-overlay>.call-hdr-block,.call-overlay>.call-identity,.call-overlay>.call-actions,.call-overlay>.call-reaction-picker{position:relative;z-index:1}
 .call-data-column{position:absolute;top:-55%;display:flex;flex-direction:column;gap:7px;color:rgba(250,246,247,.34);font:500 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-shadow:0 0 7px rgba(250,246,247,.18);animation:call-data-fall linear infinite;will-change:transform}
+.call-data-rain.ios-call-data-rain .call-data-column{font-size:20px;gap:10px}
 .call-data-column.rose{color:rgba(229,137,160,.52);text-shadow:0 0 9px rgba(229,137,160,.28)}
 @keyframes call-data-fall{from{transform:translateY(-12vh)}to{transform:translateY(170vh)}}
 /* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
@@ -3713,7 +3714,15 @@ function loadAccountState() {
   } catch(e) {}
   return null;
 }
-function saveAccountState(state) { localStorage.setItem(ACCOUNT_STATE_KEY, JSON.stringify(state)); updateAccountSettingsStatus(); }
+function saveAccountState(state) {
+  localStorage.setItem(ACCOUNT_STATE_KEY, JSON.stringify(state));
+  updateAccountSettingsStatus();
+  // Push registration can finish before a freshly installed app creates or
+  // signs in to an account. Bind the already-issued native token as soon as
+  // account state exists so the very first connection request can alert this
+  // device instead of waiting for a later token refresh or app restart.
+  registerNativeTokenForAccount().catch(() => {});
+}
 function claimLocalVaultsForAccount(accountId) {
   if (!accountId) return;
   for (const code of loadRoomsIndex()) {
@@ -5749,17 +5758,20 @@ function callHeaderBlock() {
 }
 
 function callDataRainHtml() {
+  const iosRain = isNativeIosApp();
   const columns = Array.from({ length: 18 }, (_, index) => {
     let bits = '';
     for (let bit = 0; bit < 13 + (index % 8); bit++) {
       bits += `<span>${((index * 7 + bit * 5) % 11) < 5 ? '0' : '1'}</span>`;
     }
     const left = 2 + index * 5.6;
-    const duration = 11 + (index % 6) * 1.7;
+    // iOS uses larger, slower digits for legibility on its full-screen call
+    // presentation: twice the duration means exactly half the fall speed.
+    const duration = (11 + (index % 6) * 1.7) * (iosRain ? 2 : 1);
     const delay = -((index * 2.3) % duration);
     return `<span class="call-data-column${index % 3 === 0 ? ' rose' : ''}" style="left:${left}%;animation-duration:${duration}s;animation-delay:${delay}s">${bits}</span>`;
   }).join('');
-  return `<div class="call-data-rain" aria-hidden="true">${columns}</div>`;
+  return `<div class="call-data-rain${iosRain ? ' ios-call-data-rain' : ''}" aria-hidden="true">${columns}</div>`;
 }
 
 // Shared drag-to-trigger gesture for the accept/decline/cancel buttons —

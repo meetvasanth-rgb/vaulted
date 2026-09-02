@@ -11,8 +11,17 @@ test('connection requests use account-level native notifications', () => {
   assert.match(server, /\/api\/account\/native-push-subscribe/);
   assert.match(server, /sent you a connection request/);
   assert.match(server, /recipient\.account\.pushDestinations/);
+  assert.match(server, /connectionRequest: !!parsed\.connectionRequest/);
+  assert.match(server, /connectionRequest: parsed\.connectionRequest \? 'true' : 'false'/);
   assert.match(postgres, /push_destinations jsonb/);
   assert.match(client, /registerNativeTokenForAccount/);
+  assert.match(client, /saveAccountState\(state\)[\s\S]*registerNativeTokenForAccount\(\)\.catch/);
+});
+
+test('iOS call data rain is larger and runs at half speed', () => {
+  assert.match(client, /ios-call-data-rain/);
+  assert.match(client, /ios-call-data-rain \.call-data-column\{font-size:20px/);
+  assert.match(client, /\* \(iosRain \? 2 : 1\)/);
 });
 
 test('connection UI uses conversation language and one encryption label', () => {
