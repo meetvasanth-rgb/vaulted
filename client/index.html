@@ -1836,6 +1836,11 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .landing-account-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #s-landing .landing-account-btn.signed-in{background:#fff;color:#682C43;border-color:#DCCDD2;box-shadow:0 6px 18px rgba(39,29,37,.07)}
 #s-landing .landing-hero{max-width:510px;margin-bottom:42px}
+.identity-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 34px;max-width:620px}
+.identity-flow-step{position:relative;padding:15px 16px;border:1px solid rgba(104,44,67,.14);border-radius:18px;background:rgba(255,255,255,.7);box-shadow:0 8px 28px rgba(71,38,51,.05)}
+.identity-flow-step:not(:last-child)::after{content:'→';position:absolute;right:-10px;top:50%;z-index:2;transform:translate(50%,-50%);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#682C43;color:#fff;font-size:12px}
+.identity-flow-step strong{display:block;color:#682C43;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+.identity-flow-step span{display:block;color:#5f5359;font-size:13px;line-height:1.4}
 #s-landing .logo-rule{width:42px!important;height:4px!important;margin:0 0 16px!important;border-radius:5px;background:#C87588!important}
 #s-landing .logo-sub{margin:0 0 13px!important;font:700 10px/1.4 'Manrope',sans-serif!important;letter-spacing:.17em!important;text-transform:uppercase;color:#682C43!important}
 #s-landing .landing-title{font-family:'Manrope',sans-serif;font-size:clamp(35px,7vw,50px);font-weight:750;letter-spacing:-.048em;line-height:1.04;color:#271D25;margin:0 0 17px;max-width:530px}
@@ -1889,6 +1894,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   #s-landing .landing-menu-label{display:none}
   #s-landing .landing-menu-panel{position:fixed;top:calc(74px + env(safe-area-inset-top));left:15px;right:15px;width:auto}
   #s-landing .landing-hero{margin-bottom:34px}
+  .identity-flow{grid-template-columns:1fr;margin-bottom:28px}
+  .identity-flow-step:not(:last-child)::after{content:'↓';right:auto;left:50%;top:auto;bottom:-10px;transform:translate(-50%,50%)}
   #s-landing .landing-title{font-size:36px;line-height:1.06}
   #s-landing .tagline{font-size:15px!important}
   #s-landing .landing-section-heading h2{font-size:22px}
@@ -1934,6 +1941,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   #s-landing .landing-brand-note{font-size:9.5px;margin-top:6px}
   #s-landing .landing-trust-pill{padding:10px 14px;font-size:11px;background:rgba(255,255,255,.88)}
   #s-landing .landing-hero{grid-column:1;grid-row:2;max-width:610px;margin:0;padding-right:20px;align-self:center}
+  #s-landing .identity-flow{grid-column:1;grid-row:3;max-width:610px;margin:0;padding-right:20px;align-self:start}
   #s-landing .logo-rule{width:52px!important;margin-bottom:22px!important}
   #s-landing .logo-sub{font-size:11px!important;margin-bottom:18px!important}
   #s-landing .landing-title{font-size:clamp(52px,5.2vw,72px);line-height:1.01;letter-spacing:-.055em;margin-bottom:24px;max-width:650px}
@@ -1964,6 +1972,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
     grid-column:1;grid-row:3;max-width:540px;margin:0;padding:19px 20px;
     border:1px solid rgba(255,255,255,.08);border-radius:21px;
   }
+  #s-landing .landing-assurance{display:none}
   #s-landing .assurance-icon{width:42px;height:42px}
   #s-landing .landing-assurance strong{font-size:14px}
   #s-landing .landing-assurance span{font-size:11.5px}
@@ -2336,17 +2345,23 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <section class="landing-hero">
       <div class="logo-rule" id="logoRule"></div>
-      <div class="logo-sub" id="logoSub">Your private number. Not your phone number.</div>
-      <h1 class="landing-title">Connect privately, without sharing your public identity.</h1>
-      <p class="tagline" id="logoTag">Create a permanent Vaultlix private number, share it only with people you choose, and start encrypted one-to-one conversations.</p>
+      <div class="logo-sub" id="logoSub">One private identity. People connect by consent.</div>
+      <h1 class="landing-title">Be known by your Vaultlix number—not your phone number.</h1>
+      <p class="tagline" id="logoTag">Create your private identity, exchange Vaultlix numbers, and decide who can start an encrypted one-to-one conversation with you.</p>
       <div class="identity-proof" aria-label="Private identity benefits"><span>No phone number</span><span>No email address</span><span>No contact upload</span></div>
+    </section>
+
+    <section class="identity-flow" aria-label="How private connections work">
+      <div class="identity-flow-step"><strong>01 · Identify</strong><span>Receive your permanent Vaultlix private number.</span></div>
+      <div class="identity-flow-step"><strong>02 · Approve</strong><span>Accept connection requests only from people you choose.</span></div>
+      <div class="identity-flow-step"><strong>03 · Connect</strong><span>Message and call inside an encrypted conversation.</span></div>
     </section>
 
     <section class="landing-actions" id="use-vaultlix" aria-labelledby="landing-actions-title">
       <div class="landing-section-heading">
         <div>
           <span>START HERE</span>
-          <h2 id="landing-actions-title">Start with your private number</h2>
+          <h2 id="landing-actions-title">Choose your private identity</h2>
         </div>
         <div class="landing-count" aria-label="Two options">2</div>
       </div>
@@ -2354,7 +2369,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="cards" id="cards">
         <button class="card card-primary" type="button" onclick="openAccountPanel()">
           <span class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>
-          <span class="card-copy"><strong class="card-title">Create my private number</strong><small class="card-desc">Choose a name or pseudonym and receive your permanent Vaultlix number.</small></span>
+          <span class="card-copy"><strong class="card-title">Create my identity</strong><small class="card-desc">Choose a name or pseudonym and receive your permanent Vaultlix private number.</small></span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
         </button>
 
@@ -2368,7 +2383,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <aside class="landing-assurance">
       <div class="assurance-icon"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-      <div><strong>A private identity you control</strong><span>Your Vaultlix private number is not a cellular number and is never linked to your phone number or email.</span></div>
+      <div><strong>Your identity, your consent</strong><span>Your Vaultlix private number is not a cellular number. People must know the exact number and you decide whether to connect.</span></div>
     </aside>
 
     <!-- PWA install affordance — platform-aware, populated by refreshInstallUI() -->
@@ -2399,7 +2414,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <section class="marketing-section" id="how-it-works">
         <span class="marketing-eyebrow">HOW IT WORKS</span>
         <h2 class="marketing-title">From private number to private conversation.</h2>
-        <p class="marketing-lede">Vaultlix replaces invitation codes and manual room setup with a familiar, direct connection flow.</p>
+        <p class="marketing-lede">Vaultlix replaces invitation codes and manual conversation setup with a familiar, direct connection flow.</p>
         <div class="marketing-grid">
           <article class="marketing-card"><div class="marketing-number">01</div><h3>Create your identity</h3><p>Choose the name or pseudonym people will see. Vaultlix gives you a permanent private number.</p></article>
           <article class="marketing-card"><div class="marketing-number">02</div><h3>Exchange numbers</h3><p>Share only your Vaultlix private number. Your phone number, email, and contacts stay private.</p></article>
@@ -2415,7 +2430,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           <article class="privacy-card"><strong>Encrypted messages</strong><span>Message content is encrypted between participants using AES-256-GCM. Vaultlix stores ciphertext, not readable message content.</span></article>
           <article class="privacy-card"><strong>Encrypted calls</strong><span>WebRTC media is protected between participant devices with DTLS-SRTP. Cloudflare TURN can relay encrypted packets and connection metadata, but cannot decrypt the media.</span></article>
           <article class="privacy-card"><strong>Identity-minimised access</strong><span>Your Vaultlix private number works without collecting a phone number, email address, contact list, or real name.</span></article>
-          <article class="privacy-card"><strong>Durable encrypted state</strong><span>Active-vault state and access data are checkpointed to restricted persistent storage for resilience and backups. Encrypted content remains unreadable to the service.</span></article>
+          <article class="privacy-card"><strong>Durable encrypted state</strong><span>Active-conversation state and access data are checkpointed to restricted persistent storage for resilience and backups. Encrypted content remains unreadable to the service.</span></article>
         </div>
         <div class="marketing-note">Optional account sync stores a client-encrypted account bundle. Infrastructure may process operational data needed to deliver the service, while message content and call media remain protected by their respective encryption layers.</div>
       </section>
@@ -2474,7 +2489,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>Back
     </button>
     <div class="setup-logo"><div class="rule"></div><span>Vaultlix</span></div>
-    <div class="setup-title" id="setup-title">Create a vault</div>
+    <div class="setup-title" id="setup-title">Create a conversation</div>
     <div class="field" id="identity-name-field" style="display:none">
       <label>What should we call you?</label>
       <div class="name-field-wrap">
@@ -2486,9 +2501,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="field-note">Not your real name — just for this conversation</div>
     </div>
     <div id="named-field" class="field" style="display:none">
-      <label>Vault name</label>
+      <label>Conversation label</label>
       <input type="text" id="named-input" placeholder="e.g. family-trip, date-night, book-club" autocomplete="off" maxlength="16"/>
-      <div class="field-note">A label so you can recognise this vault. We'll add a random suffix to keep the code private.</div>
+      <div class="field-note">A private label that helps you recognise this conversation. A random suffix keeps its access code private.</div>
     <div id="timer-field" class="field" style="display:none">
       <label>Messages disappear after</label>
       <select id="timer-select" class="timer-select">
@@ -2502,7 +2517,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     </div>
     </div>
     <div id="join-field" class="field" style="display:none">
-      <label>Vault code</label>
+      <label>Conversation access code</label>
       <input type="text" id="code-input" placeholder="e.g. amber-frost-42 or monsoon" autocomplete="off" style="font-family:monospace;letter-spacing:.04em"/>
     </div>
     <div id="password-field" class="field" style="display:none">
@@ -2531,7 +2546,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div style="height:1px;background:var(--gold);width:60px;margin:0 auto 12px"></div>
       <span style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:300;letter-spacing:.12em;color:var(--cream)">Vaultlix</span>
     </div>
-    <div class="w-title" id="w-title">Vault ready</div>
+    <div class="w-title" id="w-title">Conversation ready</div>
     <div class="w-sub" id="w-sub">Send the link to one person.<br/>They tap it, pick a name, you're connected.</div>
     <div class="code-box" onclick="copyBareCode()" title="Tap to copy just the code">
       <div class="code-label" id="code-label">Secret code</div>
@@ -2562,7 +2577,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     </div>
     <div class="w-pulse"><div class="pulse-dot"></div><div class="pulse-dot"></div><div class="pulse-dot"></div></div>
     <div class="w-note" id="w-note">Waiting for the other person to join…</div>
-    <button class="close-btn" onclick="closeRoom()">Cancel &amp; close vault</button>
+    <button class="close-btn" onclick="closeRoom()">Cancel &amp; close conversation</button>
   </div>
 </div>
 
@@ -2585,7 +2600,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       </div>
       <div class="chat-hdr-meta">
         <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
-        <div class="chat-hdr-presence"><div class="status-dot" id="status-dot" title="Connected"></div><span data-i18n="private_vault">Private vault</span></div>
+        <div class="chat-hdr-presence"><div class="status-dot" id="status-dot" title="Connected"></div><span data-i18n="private_vault">Private conversation</span></div>
       </div>
     </div>
     <!-- Actions zone: settings + the two room-ending actions, pinned right. -->
@@ -2602,7 +2617,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
   <button class="cross-vault-banner" id="cross-vault-banner" type="button" onclick="openCrossVaultMessage()" aria-live="polite">
     <span class="cross-vault-banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="4"/><path d="m8 20 3-3"/></svg></span>
-    <span class="cross-vault-banner-copy"><strong id="cross-vault-banner-title">New message</strong><span>Tap to open vault</span></span>
+    <span class="cross-vault-banner-copy"><strong id="cross-vault-banner-title">New message</strong><span>Tap to open conversation</span></span>
     <span class="cross-vault-banner-arrow" aria-hidden="true">›</span>
   </button>
   <div class="select-bar" id="select-bar">
@@ -2712,13 +2727,13 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div id="s-closed" class="screen">
   <div class="closed-card">
     <div class="closed-icon" id="closed-icon"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
-    <div class="closed-title" id="closed-title">Vault erased</div>
+    <div class="closed-title" id="closed-title">Conversation erased</div>
     <div class="closed-sub" id="closed-sub">The conversation has been permanently deleted.</div>
     <div class="closed-note">
-      <strong>What was erased:</strong><br/>All messages · Vault code · Connection details<br/><br/>
+      <strong>What was erased:</strong><br/>All messages · Conversation access · Connection details<br/><br/>
       <strong>What was never stored:</strong><br/>Your identity · Your device · Your location
     </div>
-    <button class="btn-gold" id="closed-btn" onclick="startFresh()">Start a new vault</button>
+    <button class="btn-gold" id="closed-btn" onclick="startFresh()">Return to conversations</button>
   </div>
 </div>
 
@@ -2737,7 +2752,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="legal-date">Effective date: July 2026 · vaultlix.com</div>
 
     <div class="legal-highlight">
-      <strong>The short version:</strong> We don't ask who you are, and we can't read your conversations. When a vault closes, its contents are gone — see below for exactly what that covers.
+      <strong>The short version:</strong> We don't ask for your public identity, and we can't read your conversations. When a conversation is erased, its live contents and access are removed — see below for exactly what that covers.
     </div>
 
     <div class="legal-section">
@@ -2745,37 +2760,37 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <p>Nothing that identifies you in real life. Vaultlix requires no email address, phone number, or real name. Accounts use a system-generated Vaultlix private number and your chosen name or pseudonym.</p>
       <p>What exists on our servers is:</p>
       <ul>
-        <li>The encrypted content of messages, held in server memory so it can be delivered to the other person — not "in transit" only, but for the vault's lifetime; see "How long things last" below</li>
-        <li>The display name each person chooses when creating or joining a vault</li>
+        <li>The encrypted content of messages, retained so it can be delivered to the other person for the conversation's lifetime; see "How long things last" below</li>
+        <li>The display name each person chooses for their Vaultlix identity</li>
         <li>If notifications are enabled, a Web Push subscription (an endpoint address tied to your device, provided by Apple's or Google's push service) so a message or call can wake the app</li>
-        <li>If a vault is created with a password, a one-way cryptographic hash of that password (scrypt) — never the password itself</li>
+        <li>Memory-hard authentication verifiers for identity sign-in — never the password itself</li>
         <li>Standard server access logs generated by Railway (our hosting provider) which may include IP addresses and request timestamps</li>
-        <li>Anonymous, aggregate usage counts (for example, how many vaults are created and whether they're temporary or permanent) — never linked to a specific vault, code, or IP address, kept indefinitely as running totals only, and used only to understand which features are actually useful</li>
-        <li>If you create a Vaultlix identity: its system-generated Private Number and chosen display name, memory-hard authentication verifiers, encrypted key wrappers, active-session verifiers, and an opaque encrypted bundle containing your vault credentials. We do not receive the password, recovery code, readable vault list, room tokens, codenames, or private keys.</li>
+        <li>Anonymous, aggregate usage counts (for example, how many conversations are active) — never linked to a readable conversation, private number, or message</li>
+        <li>Your system-generated Private Number and chosen display name, encrypted key wrappers, active-session verifiers, and an opaque encrypted account bundle containing conversation credentials. We do not receive the password, recovery code, readable conversation list, access tokens, or private keys.</li>
       </ul>
-      <p>Your session token is created by the server when you open or join a vault, then kept on your device too — in your browser's own localStorage, so the app can restore your open vaults if you reload or reopen it, and in IndexedDB if notifications are enabled, so a push notification can be matched to the right vault without a browser tab needing to be open. It travels with each request to prove you belong to that vault. It isn't a real-world identity and stops working when the vault closes. While a vault is open, its encrypted state and access tokens are periodically checkpointed to restricted persistent storage so it can survive service failures and backup restoration.</p>
+      <p>A conversation access token is created after a connection is accepted and kept on your device so the app can restore your conversations and route notifications correctly. It proves access to that conversation without being a real-world identity. Active encrypted state and access tokens are checkpointed to restricted persistent storage so the service can survive failures and backup restoration.</p>
     </div>
 
     <div class="legal-section">
       <h3>How messages work</h3>
       <p>All messages are end-to-end encrypted using AES-256-GCM with keys generated in your browser. The server never sees your message content — only encrypted ciphertext that it cannot read.</p>
-      <p>Encrypted conversation ciphertext, vault membership data, chosen display names, notification routing details and access tokens are held in memory and periodically written as an atomic checkpoint to restricted persistent storage. This lets active vaults survive service failures, planned deployments and volume-backup restoration. Railway volume backups may retain a checkpoint until that backup expires or is deleted. Vaultlix still cannot decrypt message ciphertext. Closing or expiring a vault removes it from the live checkpoint; older backup copies remain subject to Railway's configured backup-retention period. Optional anonymous-account records—including opaque encrypted vault bundles and authentication verifiers—also persist so a user can restore access after reinstalling. Vaultlix cannot decrypt those bundles.</p>
+      <p>Encrypted conversation ciphertext, participant access data, chosen display names, notification routing details and access tokens are periodically written to restricted persistent storage. This lets conversations survive service failures and planned deployments. Infrastructure backups may retain an encrypted copy until the backup expires or is deleted; Vaultlix still cannot decrypt message ciphertext. Account records—including opaque encrypted account bundles and authentication verifiers—persist so a user can restore access after reinstalling.</p>
     </div>
 
     <div class="legal-section">
       <h3>How long things last</h3>
-      <p>A vault and everything in it (messages, member names, subscriptions) is deleted immediately if either person uses "Close & erase." Otherwise, a temporary vault is automatically and permanently deleted after 24 hours of inactivity, measured from the last activity in that vault, not from when it was created. Simply closing your browser tab does not immediately delete a vault; the idle timer above is what eventually does. A permanent vault does not have an inactivity timer at all — it stays available indefinitely until someone uses "Close & erase" or revokes it from within the app, at which point it and everything in it are deleted the same way.</p>
-      <p>Disappearing-message timers, when enabled, delete an individual message from the server as soon as its timer expires, independent of the vault's own lifetime.</p>
+      <p>A conversation and its live message state are deleted immediately if either person uses "Close & erase." Established private-number connections remain available until someone closes them. Older encrypted infrastructure backups remain subject to the provider's configured retention period.</p>
+      <p>Disappearing-message timers, when enabled, delete an individual message from live storage as soon as its timer expires.</p>
     </div>
 
     <div class="legal-section">
       <h3>File attachments</h3>
-      <p>Files are encrypted in your browser before upload, transmitted as encrypted data, and delivered directly to the recipient. Files are not stored on our servers beyond the same vault lifetime described above.</p>
+      <p>Files are encrypted on your device before upload, transmitted as encrypted data, and delivered to the recipient. They follow the same conversation retention controls described above.</p>
     </div>
 
     <div class="legal-section">
       <h3>Voice and video calls</h3>
-      <p>Call signaling is encrypted with the vault's end-to-end encryption key. WebRTC then encrypts audio and video between the participants' devices using DTLS-SRTP. To prevent either participant from learning the other's IP address, Vaultlix routes call traffic through Cloudflare's TURN service instead of using a direct peer-to-peer network path. Cloudflare relays the already-encrypted media packets and processes the connection metadata required to operate that relay, but it cannot decrypt the call audio or video. Vaultlix does not record or store call media.</p>
+      <p>Call signaling is encrypted with the conversation's end-to-end encryption key. WebRTC then encrypts audio and video between participant devices using DTLS-SRTP. To prevent either participant from learning the other's IP address, Vaultlix routes call traffic through Cloudflare's TURN service. Cloudflare relays encrypted media packets and processes the connection metadata required to operate that relay, but cannot decrypt call audio or video. Vaultlix does not record or store call media.</p>
     </div>
 
     <div class="legal-section">
@@ -2801,8 +2816,8 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>Legal requests and abuse reports</h3>
-      <p>If we receive a valid legal request — a court order or a request from law enforcement made under applicable Indian law — we will review it and respond as required by law. What we can actually provide is limited by how Vaultlix is built: we can only disclose what exists in server memory at the moment the request is received (the encrypted content of an active vault, the display names in it, and whatever standard access logs Railway retains) — we cannot decrypt message content ourselves, and we cannot produce anything for a vault that has already been closed or has already expired, because nothing remains anywhere once that happens.</p>
-      <p>You can use <strong>Report and block</strong> in a vault's Safety settings, or contact <strong>legal@vaultlix.com</strong>, to report abuse, suspected illegal content, or a violation of our Terms of Service. An in-app report contains the selected reason, optional details, the report time, and one-way identifiers for the vault and reporter. Vaultlix cannot read encrypted conversations. Up to five recent decrypted text messages are included only when you expressly select that option; the confirmation explains that their plaintext will be shared with Vaultlix safety staff. Reports are access-restricted and automatically deleted after 90 days unless they must be retained longer to investigate an active safety matter or comply with law. We may act on a credible report by disabling or deleting the vault in question.</p>
+      <p>If we receive a valid legal request under applicable Indian law, we will review it and respond as required. What we can provide is limited to records that exist at that time, including encrypted conversation content, identity profile data and infrastructure logs. We cannot decrypt message content ourselves.</p>
+      <p>You can use <strong>Report and block</strong> in Conversation Safety, or contact <strong>legal@vaultlix.com</strong>. An in-app report contains the selected reason, optional details, report time, and one-way identifiers for the conversation and reporter. Up to five recent decrypted text messages are included only when you expressly choose to share them. Reports are access-restricted and automatically deleted after 90 days unless retention is needed for an active safety matter or legal obligation.</p>
     </div>
 
     <div class="legal-section">
@@ -2840,7 +2855,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>What Vaultlix is</h3>
-      <p>Vaultlix is an anonymous, encrypted messaging, voice, and video-calling service. It allows two people to communicate privately without accounts or stored data. Vaults are temporary: they are deleted immediately when either person uses "Close & erase," and otherwise expire automatically after a period of inactivity, as described in our Privacy Policy.</p>
+      <p>Vaultlix is a private, encrypted messaging, voice, and video-calling service. Each user receives a Vaultlix Private Number and can exchange connection requests without providing Vaultlix a phone number, email address, contact list, or real name. Conversations are one-to-one and subject to the deletion and retention controls described in our Privacy Policy.</p>
     </div>
 
     <div class="legal-section">
@@ -2878,8 +2893,8 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>Abuse reports and legal process</h3>
-      <p>To report suspected illegal activity, abuse, or a violation of the Acceptable use section above, contact <strong>legal@vaultlix.com</strong>. We may suspend, disable, or delete any vault without notice if we believe it violates these terms.</p>
-      <p>We will cooperate with valid legal process to the extent legally required. Because Vaultlix is deliberately built to retain as little as possible, what we're actually able to provide is limited to whatever exists in server memory at the time a request is received — see the Privacy Policy for exactly what that is, and what it no longer includes once a vault has closed or expired.</p>
+      <p>To report suspected illegal activity, abuse, or a violation of the Acceptable use section above, contact <strong>legal@vaultlix.com</strong>. We may suspend an identity or disable a conversation if we believe it violates these terms.</p>
+      <p>We will cooperate with valid legal process to the extent legally required. Because Vaultlix minimizes retained data and encrypts message content, what we can provide is limited to the records that exist when a valid request is received; see the Privacy Policy for details.</p>
     </div>
 
     <div class="legal-section">
@@ -2913,7 +2928,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>What is Vaultlix?</h3>
-      <p>A private chat app for two people — no phone number or email required, nothing we can read. Your system-generated Vaultlix private number preserves encrypted vault access across devices.</p>
+      <p>A private messaging and calling app built around a system-generated Vaultlix Private Number. People connect by exact number and mutual consent, without uploading contacts or providing a phone number or email address.</p>
     </div>
 
     <div class="legal-section">
@@ -2923,22 +2938,22 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>Is it actually anonymous?</h3>
-      <p>Vaultlix uses a system-generated Private Number and an opaque encrypted vault bundle; no phone number, email or real name is collected. The Private Number is not a cellular number and cannot receive SMS or ordinary calls.</p>
+      <p>Vaultlix uses a system-generated Private Number and an opaque encrypted account bundle; no phone number, email or real name is collected. The Private Number is not a cellular number and cannot receive SMS or ordinary calls.</p>
     </div>
 
     <div class="legal-section">
       <h3>Is it end-to-end encrypted?</h3>
-      <p>Yes. Messages are end-to-end encrypted with keys held by the participants. WebRTC call audio and video is encrypted between participant devices with DTLS-SRTP. Cloudflare TURN relays the encrypted packets to hide participants' IP addresses from each other, but cannot decrypt the call media. In guest mode private keys remain local. If encrypted sync is enabled, vault credentials are wrapped inside a separate client-encrypted account bundle before upload; Vaultlix cannot decrypt that bundle.</p>
+      <p>Yes. Messages are end-to-end encrypted with keys held by the participants. WebRTC call audio and video is encrypted between participant devices with DTLS-SRTP. Cloudflare TURN relays encrypted packets to hide participants' IP addresses from each other, but cannot decrypt call media. Conversation credentials are wrapped inside a separate client-encrypted account bundle before sync; Vaultlix cannot decrypt that bundle.</p>
     </div>
 
     <div class="legal-section">
-      <h3>What happens when I close a vault?</h3>
+      <h3>What happens when I close a conversation?</h3>
       <p>It's deleted immediately, for both people, along with everything inside it. Not archived, not hidden — gone.</p>
     </div>
 
     <div class="legal-section">
-      <h3>Temporary vs. permanent vault?</h3>
-      <p>A temporary vault is for one conversation and expires within a day. A permanent vault never expires — reopen it anytime with the same code.</p>
+      <h3>How do private connections work?</h3>
+      <p>Enter an exact Vaultlix Private Number and send a request. The other person must accept before a one-to-one conversation is created. Either person can later close and erase the conversation.</p>
     </div>
 
     <div class="legal-section">
@@ -3160,10 +3175,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title">Make this a permanent vault?</div>
-          <div class="settings-row-sub">You've come back to this vault a few times — turn it into one that never expires, same code, same history.</div>
+          <div class="settings-row-title">Keep this conversation?</div>
+          <div class="settings-row-sub">You've returned to this conversation several times. Keep it available until either person closes it.</div>
           <div style="display:flex;gap:8px;margin-top:10px">
-            <button onclick="acceptPersistentSuggestion()" style="background:#682C43;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Make it permanent</button>
+            <button onclick="acceptPersistentSuggestion()" style="background:#682C43;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Keep conversation</button>
             <button onclick="dismissPersistentSuggestion()" style="background:transparent;color:#9A8C7E;border:0.5px solid #E4DDD3;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Not now</button>
           </div>
         </div>
@@ -3172,14 +3187,14 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     </div>
 
     <div id="anon-link-section" style="display:none">
-      <div class="settings-section-label">Permanent Vault</div>
+      <div class="settings-section-label">Persistent conversation</div>
 
       <div class="settings-row" style="cursor:default">
         <div class="settings-row-icon" style="background:#FBF6EC;color:#682C43;">
           <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title">This is a permanent vault</div>
+          <div class="settings-row-title">This conversation stays available</div>
           <div class="settings-row-sub" id="anon-link-stats">—</div>
         </div>
       </div>
@@ -3257,7 +3272,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div class="safety-overlay" id="report-overlay" role="dialog" aria-modal="true" aria-labelledby="report-title" onclick="if(event.target===this)closeReportPanel()">
   <div class="safety-sheet">
     <h2 class="safety-title" id="report-title">Report and block</h2>
-    <p class="safety-copy">Vaultlix cannot read encrypted conversations. Your report sends the reason and a one-way vault identifier. Recent decrypted messages are included only if you explicitly choose to share them.</p>
+    <p class="safety-copy">Vaultlix cannot read encrypted conversations. Your report sends the reason and a one-way conversation identifier. Recent decrypted messages are included only if you explicitly choose to share them.</p>
     <label class="safety-reason" for="report-reason">Reason</label>
     <select class="safety-select" id="report-reason"><option value="spam">Spam or scam</option><option value="harassment">Harassment or bullying</option><option value="threats">Threats or violence</option><option value="sexual">Sexual or exploitative content</option><option value="illegal">Suspected illegal activity</option><option value="other">Other</option></select>
     <textarea class="safety-details" id="report-details" maxlength="500" placeholder="Optional details (do not include passwords or private keys)"></textarea>
@@ -3748,7 +3763,7 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions };
 }
 function importAccountBundle(bundle, accountId) {
-  if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid vault backup');
+  if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid conversation backup');
   const merged = new Map();
   for (const code of loadRoomsIndex()) { const local = loadRoomSession(code); if (local) merged.set(code, local); }
   let added = 0;
@@ -5186,7 +5201,7 @@ async function startCall() {
       if (!androidNativeBridge.startOutgoingCall(
         room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call'
       )) {
-        throw new Error('native room unavailable');
+        throw new Error('native call session unavailable');
       }
     } catch (e) {
       endCall(room, 'Calling isn’t available right now.');
@@ -6696,7 +6711,7 @@ async function showVerifyPanel() {
       <div style="font-size:12.5px;color:#7A6E65;line-height:1.55;margin-bottom:16px">
         ${code
           ? 'Compare this code with the other person through a different channel — read it aloud, or send it another way. If it matches on both sides, no one is sitting in the middle of your connection.'
-          : 'A code will appear here once the other person has joined this vault.'}
+          : 'A code will appear here once the other person has joined this conversation.'}
       </div>
       ${code ? `<div style="font-family:ui-monospace,monospace;font-size:18px;letter-spacing:.04em;color:#1A1916;background:#F7F5F1;border:1px solid #EFEFEF;border-radius:10px;padding:14px 8px;margin-bottom:16px">${code}</div>` : ''}
       <button style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:9px 24px;font-size:13px;cursor:pointer" onclick="closeVerifyPanel()">Close</button>
@@ -6749,10 +6764,10 @@ async function blockRoomForKeyMismatch(room, isFirstJoin) {
 // anything.
 function showKeyMismatchOverlay(isFirstJoin) {
   document.getElementById('key-mismatch-overlay')?.remove();
-  const title = isFirstJoin ? "This vault didn't match your invite link" : 'Encryption changed unexpectedly';
+  const title = isFirstJoin ? "This conversation didn't match your invite link" : 'Encryption changed unexpectedly';
   const body = isFirstJoin
-    ? "The encryption key doesn't match what your link expected, so Vaultlix stopped before connecting. Nothing was sent.<br><br>Ask whoever invited you for a fresh link. If it happens again with a new link, don't use this vault."
-    : "The other device's key changed to one that doesn't match your invite link. Vaultlix has disconnected this vault.<br><br>Nothing further was sent. Ask the other person for a new link.";
+    ? "The encryption key doesn't match what your link expected, so Vaultlix stopped before connecting. Nothing was sent.<br><br>Ask whoever invited you for a fresh link. If it happens again, don't use this conversation."
+    : "The other device's key changed to one that doesn't match your invite link. Vaultlix has disconnected this conversation.<br><br>Nothing further was sent. Ask the other person for a new link.";
   const overlay = document.createElement('div');
   overlay.id = 'key-mismatch-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:10000;padding:24px;';
@@ -6793,9 +6808,9 @@ function showRenameRoomPanel() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:340px;width:100%;text-align:center;font-family:inherit">
-      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:8px">Label this vault</div>
+      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:8px">Label this conversation</div>
       <div style="font-size:12.5px;color:#7A6E65;line-height:1.55;margin-bottom:16px">
-        Only visible to you on this device — never sent to the other person or the server. Handy for telling vaults apart when you have a few open at once.
+        Only visible to you on this device — never sent to the other person or the server. Useful for telling conversations apart.
       </div>
       <input id="rename-room-input" type="text" maxlength="24" placeholder="${escHtml(placeholder)}" value="${escHtml(room.nickname || '')}"
         style="width:100%;box-sizing:border-box;font-size:14px;color:#1A1916;background:#F7F5F1;border:1px solid #EFEFEF;border-radius:10px;padding:11px 12px;margin-bottom:16px;font-family:inherit;text-align:center" />
@@ -7009,7 +7024,7 @@ function updateVaultUnreadBadge() {
   for (const room of rooms.values()) if (!isRoomVisible(room)) total += room.unread;
   const badge = document.getElementById('chat-vault-unread');
   const button = document.querySelector('.chat-home-btn');
-  if (button) button.setAttribute('aria-label', total > 0 ? `Open your vault inbox, ${total} unread` : 'Open your vault inbox');
+  if (button) button.setAttribute('aria-label', total > 0 ? `Open your conversations, ${total} unread` : 'Open your conversations');
   if (!badge) return total;
   badge.textContent = total > 9 ? '9+' : String(total);
   badge.classList.toggle('show', total > 0);
@@ -7270,7 +7285,7 @@ async function finishBlockingRoom(room, message) {
 
 async function blockActiveVault() {
   const room = getActiveRoom(); if (!room) return;
-  if (!confirm(`Block ${room.peerName || 'this participant'}? This removes this vault from this device and stops its calls and notifications.`)) return;
+  if (!confirm(`Block ${room.peerName || 'this participant'}? This removes the conversation from this device and stops its calls and notifications.`)) return;
   await finishBlockingRoom(room, 'Participant blocked');
 }
 function openReportPanel() {
@@ -7342,7 +7357,7 @@ async function acceptPersistentSuggestion() {
     updateHeaderRoomLabel(room);
     updatePersistentSuggestion();
     updateAnonLinkSection();
-    toast('This is now a permanent vault');
+    toast('This conversation will remain available');
   } catch (e) {
     toast('Could not do that — try again.');
   }
@@ -7410,9 +7425,9 @@ async function regenerateAnonLink() {
 
     revealCode(result.code);
     const codeLabel = document.getElementById('code-label');
-    if (codeLabel) codeLabel.textContent = 'Permanent vault code';
+    if (codeLabel) codeLabel.textContent = 'Conversation access code';
     const wNote = document.getElementById('w-note');
-    if (wNote) wNote.textContent = 'New permanent vault ready — share it with them to reconnect.';
+    if (wNote) wNote.textContent = 'New conversation link ready — share it with them to reconnect.';
     const shareBtn = document.getElementById('share-code-btn');
     if (shareBtn) shareBtn.style.display = canUseSystemShare() ? 'inline-flex' : 'none';
     showScreen('s-waiting');
@@ -7703,7 +7718,7 @@ async function recoverAnonymousAccount(event) {
     if (result.error) { toast(result.error); return; }
     importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
     saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
-    toast('Password changed and vaults restored'); setTimeout(() => location.reload(), 350);
+    toast('Password changed and conversations restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
   finally { setAccountBusy(form, false); }
 }
@@ -7715,7 +7730,7 @@ async function syncAnonymousAccount(showFeedback) {
     saveAccountState(state);
   }
   const status = document.getElementById('account-sync-status');
-  if (status) status.textContent = 'Encrypting vault index…';
+  if (status) status.textContent = 'Encrypting conversation index…';
   try {
     const bundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
     const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle });
@@ -7728,19 +7743,19 @@ async function syncAnonymousAccount(showFeedback) {
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
       if (retry.error) { if (status) status.textContent = retry.error; return; }
       state.revision = retry.revision; saveAccountState(state);
-      if (status) status.textContent = added ? `${added} vault${added===1?'':'s'} received · reopen to view` : 'Encrypted sync complete';
-      if (showFeedback) toast(added ? 'Vaults merged — reopen Vaultlix to view them' : 'Vaults synced securely');
+      if (status) status.textContent = added ? `${added} conversation${added===1?'':'s'} received · reopen to view` : 'Encrypted sync complete';
+      if (showFeedback) toast(added ? 'Conversations merged — reopen Vaultlix to view them' : 'Conversations synced securely');
       return;
     }
     if (result.error) { if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return; }
     state.revision = result.revision; saveAccountState(state);
     if (status) status.textContent = `Encrypted sync complete · ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
-    if (showFeedback) toast('Vaults synced securely');
+    if (showFeedback) toast('Conversations synced securely');
   } catch (e) { if (status) status.textContent = 'Sync paused — will retry'; if (showFeedback) toast('Could not sync right now'); }
 }
 async function signOutAnonymousAccount() {
   const state = loadAccountState(); if (!state) return;
-  if (!confirm('Sign out on this device? Vaults belonging to this ID will be removed from this device and restored after you sign in again.')) return;
+  if (!confirm('Sign out on this device? Conversations belonging to this identity will be removed from this device and restored after you sign in again.')) return;
   // Accounts created before local ownership tags existed backed up every
   // active vault. Adopt those untagged sessions once so legacy sign-out has
   // the same privacy guarantee as newly created accounts.
@@ -8191,7 +8206,7 @@ async function disableAppLock() {
 }
 
 async function forgetAppLock() {
-  if (!confirm('Forgot your Vaultlix passcode? This will erase all Vaultlix data and vault keys from this device. Device-only vaults may be permanently unrecoverable.')) return;
+  if (!confirm('Forgot your Vaultlix passcode? This will erase all Vaultlix data and conversation keys from this device. Device-only conversations may be permanently unrecoverable.')) return;
   if (!confirm('Erase Vaultlix from this device now? This cannot be undone.')) return;
   await clearVaultlixDeviceData();
   location.replace(location.origin + '/');
@@ -8842,7 +8857,7 @@ function renderRoomTabs() {
         </div>`;
       }
       html += `<button type="button" class="room-tab-add" id="room-tab-add" title="Add conversation">+</button>`;
-      html += `<button type="button" class="room-tab-add" id="vault-list-btn" title="All vaults"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>`;
+      html += `<button type="button" class="room-tab-add" id="vault-list-btn" title="All conversations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>`;
       wrap.innerHTML = html;
       wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
         const room = rooms.get(el.dataset.room);
@@ -10598,12 +10613,12 @@ function startCreate() {
   if (!identity) { openAccountPanel(); toast('Create or sign in to your Vaultlix identity first'); return; }
   mode = 'create';
   showScreen('s-setup');
-  document.getElementById('setup-title').textContent = `Create a vault as ${identity.displayName}`;
+  document.getElementById('setup-title').textContent = `Create a conversation as ${identity.displayName}`;
   document.getElementById('join-field').style.display = 'none';
   document.getElementById('named-field').style.display = 'none';
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'none';
-  document.getElementById('setup-btn').textContent = 'Create vault';
+  document.getElementById('setup-btn').textContent = 'Create conversation';
   document.getElementById('name-input').value = identity.displayName;
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
   document.getElementById('err-msg').style.display = 'none';
@@ -10616,12 +10631,12 @@ function startNamed() {
   if (!identity) { openAccountPanel(); toast('Create or sign in to your Vaultlix identity first'); return; }
   mode = 'named';
   showScreen('s-setup');
-  document.getElementById('setup-title').textContent = 'Create a permanent vault';
+  document.getElementById('setup-title').textContent = 'Create a persistent conversation';
   document.getElementById('join-field').style.display = 'none';
   document.getElementById('named-field').style.display = 'block';
   document.getElementById('timer-field').style.display = 'block';
   document.getElementById('password-field').style.display = 'block';
-  document.getElementById('setup-btn').textContent = 'Create permanent vault';
+  document.getElementById('setup-btn').textContent = 'Create conversation';
   document.getElementById('name-input').value = identity.displayName;
   document.getElementById('named-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
@@ -10635,12 +10650,12 @@ function startJoin() {
   if (!identity) { openAccountPanel(); toast('Create or sign in to your Vaultlix identity first'); return; }
   mode = 'join';
   showScreen('s-setup');
-  document.getElementById('setup-title').textContent = 'Join a vault';
+  document.getElementById('setup-title').textContent = 'Join a conversation';
   document.getElementById('join-field').style.display = 'block';
   document.getElementById('named-field').style.display = 'none';
   document.getElementById('timer-field').style.display = 'none';
   document.getElementById('password-field').style.display = 'block';
-  document.getElementById('setup-btn').textContent = 'Join vault';
+  document.getElementById('setup-btn').textContent = 'Join conversation';
   document.getElementById('name-input').value = identity.displayName;
   document.getElementById('code-input').value = '';
   if (document.getElementById('password-input')) document.getElementById('password-input').value = '';
@@ -10784,7 +10799,7 @@ function resumeWaitingScreen(room) {
   pendingRoomCode = room.code;
   revealCode(room.code, room.codeLabelLen);
   const codeLabel = document.getElementById('code-label');
-  if (codeLabel) codeLabel.textContent = room.persistent ? 'Permanent vault code' : 'Secret code';
+  if (codeLabel) codeLabel.textContent = room.persistent ? 'Conversation access code' : 'Secret code';
   const wNote = document.getElementById('w-note');
   if (wNote) wNote.textContent = room.persistent ? "We added a random ending so this can't be guessed. It won't expire — share it once, reopen it anytime." : 'Waiting for the other person to join…';
   const shareBtn = document.getElementById('share-code-btn');
@@ -10902,7 +10917,7 @@ async function handleSetup({ silent = false } = {}) {
 
       revealCode(result.code, room.codeLabelLen);
       const codeLabel = document.getElementById('code-label');
-      if (codeLabel) codeLabel.textContent = room.persistent ? 'Permanent vault code' : 'Secret code';
+      if (codeLabel) codeLabel.textContent = room.persistent ? 'Conversation access code' : 'Secret code';
       const wNote = document.getElementById('w-note');
       // 'named' mode is always persistent now (see persistentVal above), so
       // the two branches here map 1:1 to the two landing-screen choices —
@@ -10996,7 +11011,7 @@ async function handleSetup({ silent = false } = {}) {
 function resetSetupBtn() {
   const btn = document.getElementById('setup-btn');
   btn.disabled = false;
-  btn.textContent = mode === 'join' ? 'Join vault' : mode === 'named' ? 'Create permanent vault' : 'Create vault';
+  btn.textContent = mode === 'join' ? 'Join conversation' : 'Create conversation';
 }
 
 // ── COPY / SHARE CODE ────────────────────────────────────────────────
@@ -11256,7 +11271,7 @@ async function closeActiveRoom() {
     // earlier by this same ceremony's fade-out step) with nothing ever
     // replacing it, which reads as being stuck on the vanish screen.
     try {
-      toast('Vault erased');
+      toast('Conversation erased');
       // Always leave the erased conversation behind. This selects another
       // open vault when one exists, or returns to the create/join homepage
       // when it was the final vault.
@@ -11800,7 +11815,7 @@ let landingTaglineInterval = null;
 function startLandingTaglineRotation() {
   stopLandingTaglineRotation();
   const el = document.getElementById('logoTag');
-  if (el) el.textContent = 'Create a permanent Vaultlix private number, share it only with people you choose, and start encrypted one-to-one conversations.';
+  if (el) el.textContent = 'Create your private identity, exchange Vaultlix numbers, and decide who can start an encrypted one-to-one conversation with you.';
 }
 function stopLandingTaglineRotation() {
   if (landingTaglineInterval) { clearInterval(landingTaglineInterval); landingTaglineInterval = null; }

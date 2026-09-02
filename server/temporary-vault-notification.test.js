@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 
-test('creates a vault-accepted notification for a temporary vault', () => {
+test('creates an accepted notification for a temporary conversation', () => {
   const payload = JSON.parse(buildTemporaryVaultAcceptedPayload({
     persistent: false,
     code: 'quiet-copper-1234',
@@ -12,13 +12,13 @@ test('creates a vault-accepted notification for a temporary vault', () => {
 
   assert.deepEqual(payload, {
     title: 'Vaultlix',
-    body: 'Lily accepted your temporary vault invitation',
+    body: 'Lily accepted your private conversation invitation',
     tag: 'quiet-copper-1234-accepted-join-event',
     code: 'quiet-copper-1234',
   });
 });
 
-test('does not create a vault-accepted notification for a permanent vault', () => {
+test('does not create an accepted notification for a persistent conversation', () => {
   assert.equal(buildTemporaryVaultAcceptedPayload({
     persistent: true,
     code: 'standing-link-1234',

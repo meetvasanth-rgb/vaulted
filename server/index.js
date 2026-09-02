@@ -1946,7 +1946,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (rateLimited(`safety-report:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many reports — try again later.', 429);
     const room = rooms.get(d.code);
     const member = room && typeof d.token === 'string' ? room.members.get(d.token) : null;
-    if (!room || !member) return resErr(res, 'This vault is no longer available.', 403);
+    if (!room || !member) return resErr(res, 'This conversation is no longer available.', 403);
     const reasons = new Set(['spam','harassment','threats','sexual','illegal','other']);
     if (!reasons.has(d.reason)) return resErr(res, 'Choose a valid report reason.', 400);
     const details = typeof d.details === 'string' ? d.details.trim().slice(0, 500) : '';
@@ -2162,10 +2162,10 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    if (!validEncryptedField(d.bundle, 1024 * 1024)) return resErr(res, 'Encrypted vault index is invalid or too large.', 400);
+    if (!validEncryptedField(d.bundle, 1024 * 1024)) return resErr(res, 'Encrypted conversation index is invalid or too large.', 400);
     if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
       res.setHeader('Cache-Control', 'no-store');
-      return resErr(res, 'Vault index changed on another device. Sign in again to merge it safely.', 409);
+      return resErr(res, 'Conversation index changed on another device. Sign in again to merge it safely.', 409);
     }
     account.bundle = d.bundle;
     account.revision++;
@@ -2329,7 +2329,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!['accepted','rejected'].includes(d.action)) return resErr(res, 'Invalid response.', 400);
     request.status = d.action; request.respondedAt = Date.now();
     if (d.action === 'accepted') {
-      if (typeof d.inviteUrl !== 'string' || d.inviteUrl.length > 512 || !/^https:\/\/vaultlix\.com\/join\/[a-z0-9-]+(?:#k=[A-Za-z0-9_-]{22})?$/.test(d.inviteUrl)) return resErr(res, 'A secure vault invitation is required.', 400);
+      if (typeof d.inviteUrl !== 'string' || d.inviteUrl.length > 512 || !/^https:\/\/vaultlix\.com\/join\/[a-z0-9-]+(?:#k=[A-Za-z0-9_-]{22})?$/.test(d.inviteUrl)) return resErr(res, 'A secure conversation invitation is required.', 400);
       request.inviteUrl = d.inviteUrl;
     }
     const sender = accounts.get(request.senderAccountId);
@@ -2345,7 +2345,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // A short-window abuse limit prevents automated room-creation floods;
     // it is not a per-account or per-device conversation allowance.
     if (rateLimited(`create:${ip}`, 20, 10 * 60 * 1000)) {
-      return resErr(res, 'Too many rooms created from this connection — try again in a few minutes.', 429);
+      return resErr(res, 'Too many conversations created from this connection — try again in a few minutes.', 429);
     }
     // Hard ceiling on total concurrent rooms, independent of the byte
     // budgets above — even an empty room costs real memory (a Map entry,
@@ -2354,7 +2354,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // rather than degrading silently in some other way.
     if (rooms.size >= MAX_CONCURRENT_ROOMS) {
       console.warn(`MAX_CONCURRENT_ROOMS (${MAX_CONCURRENT_ROOMS}) reached — rejecting new room creation.`);
-      return resErr(res, 'Too many active vaults right now — please try again shortly.', 503);
+      return resErr(res, 'Too many active conversations right now — please try again shortly.', 503);
     }
     // The label used to BE the entire room code, with zero entropy of its
     // own — a guessable word like "family" was the whole credential for a
@@ -2368,7 +2368,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // aloud or type by hand.
     const namedLabel = d.namedCode ? d.namedCode.replace(/[^a-z0-9-]/g,'-').slice(0,16) : null;
     const namedCode = namedLabel ? `${namedLabel}-${code()}` : null;
-    if (namedCode && rooms.has(namedCode)) return resErr(res,`Room "${namedCode}" already exists.`,409);
+    if (namedCode && rooms.has(namedCode)) return resErr(res,`Conversation "${namedCode}" already exists.`,409);
     const roomCode = namedCode || code();
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
@@ -2540,7 +2540,7 @@ async function api(path, method, d, p, res, ip, headers) {
         }
       }
     }
-    if (room.members.size >= 2) return resErr(res,'Room is full.',403);
+    if (room.members.size >= 2) return resErr(res,'Conversation is full.',403);
     const token = uid();
     const name = (d.name||'Stranger').slice(0,24);
     const usedSlots = new Set([...room.members.values()].map(member => member.slot).filter(Boolean));
@@ -2599,8 +2599,8 @@ async function api(path, method, d, p, res, ip, headers) {
   // POST /api/send
   if (path==='/api/send' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     // Rate-limited by token (the authenticated sender), not IP — two people
     // in the same room can legitimately share an IP (same NAT/network), and
     // punishing by IP would hit the wrong person. 20 messages per 10
@@ -2724,7 +2724,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // POST /api/push-subscribe — store this member's Web Push subscription
   if (path==='/api/push-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const validated = validatePushSubscription(d.subscription);
     if (!validated) return resErr(res, 'Invalid push subscription.', 400);
     const m = room.members.get(d.token);
@@ -2738,7 +2738,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // identity from continuing to appear on a shared device.
   if (path==='/api/push-unsubscribe' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (rateLimited(`push-unsubscribe:${d.token}`, 20, 60 * 1000)) return resErr(res,'Too many notification updates.',429);
     const m = room.members.get(d.token);
     m.pushSub = null;
@@ -2756,7 +2756,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // sufficient; the caller must also present the random member bearer token.
   if (path==='/api/native-push-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     const m = room.members.get(d.token);
     if (d.platform === 'android') {
@@ -2778,12 +2778,12 @@ async function api(path, method, d, p, res, ip, headers) {
   // A PushKit token is distinct from the ordinary notification token above.
   if (path==='/api/voip-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (rateLimited(`voip-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     if (!validateVoipToken(d.voipToken)) return resErr(res,'Invalid VoIP token.',400);
     if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
     if (typeof d.roomHandle !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(d.roomHandle)) {
-      return resErr(res,'Invalid native room handle.',400);
+      return resErr(res,'Invalid native conversation handle.',400);
     }
     const m = room.members.get(d.token);
     m.voipToken = d.voipToken.toLowerCase();
@@ -2801,7 +2801,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // room-scoped endpoint — a token that isn't in room.members gets nothing.
   if (path==='/api/turn-credentials' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (rateLimited(`turn:${d.token}`, 6, 60 * 1000)) return resErr(res,'Too many requests.',429);
     if (!process.env.CF_TURN_KEY_ID || !process.env.CF_TURN_KEY_API_TOKEN) {
       console.error('TURN credentials requested but CF_TURN_KEY_ID/CF_TURN_KEY_API_TOKEN not set.');
@@ -2841,8 +2841,8 @@ async function api(path, method, d, p, res, ip, headers) {
   // POST /api/react — toggle a single-emoji reaction from this member onto a message
   if (path==='/api/react' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (!msg) return resErr(res,'Message not found.',404);
     if (!msg.reactions) msg.reactions = {};
@@ -2867,8 +2867,8 @@ async function api(path, method, d, p, res, ip, headers) {
   // messages outright.
   if (path==='/api/delete-message' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
     if (msg.from !== d.token) return resErr(res,'Only the sender can delete this for everyone.',403);
@@ -2899,8 +2899,8 @@ async function api(path, method, d, p, res, ip, headers) {
   // /api/delete-message's own check just above.
   if (path==='/api/view-once-opened' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
     if (msg.viewOnce !== true || msg.from === d.token) return resErr(res,'Not authorized to open this message.',403);
@@ -2923,9 +2923,9 @@ async function api(path, method, d, p, res, ip, headers) {
   // one poll cycle without any extra sync mechanism.
   if (path==='/api/set-timer' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
+    if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
-    if (!m) return resErr(res,'Not in room.',403);
+    if (!m) return resErr(res,'Not in conversation.',403);
     const val = parseInt(d.deleteTimer);
     room.deleteTimer = (isNaN(val) || val < 0) ? 0 : val;
     // Anchor point for the sweep below — turning the timer on (or changing
@@ -2962,9 +2962,9 @@ async function api(path, method, d, p, res, ip, headers) {
   // the now-emptied room.msgs has nothing left in it to bootstrap-fetch back.
   if (path==='/api/clear-chat' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
+    if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
-    if (!m) return resErr(res,'Not in room.',403);
+    if (!m) return resErr(res,'Not in conversation.',403);
     room.msgs = [];
     totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0)); // this room's share is gone too
     room.byteSize = 0; // everything that byte total was tracking is gone with room.msgs
@@ -3003,7 +3003,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const includeOwn = d.full === 1 || d.full === '1';
     const room = rooms.get(roomCode);
     if (!room) return res200(res, { roomGone: true });
-    if (!room.members.has(token)) return resErr(res,'Not in room.',403);
+    if (!room.members.has(token)) return resErr(res,'Not in conversation.',403);
 
     const m = room.members.get(token);
     m.lastSeen = Date.now();
@@ -3096,7 +3096,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // triggered from a place that doesn't depend on the page being alive.
   if (path==='/api/mark-delivered' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room || !room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (msg && msg.type === 'message' && !msg.deliveredAt) {
       msg.deliveredAt = Date.now();
@@ -3207,8 +3207,8 @@ async function api(path, method, d, p, res, ip, headers) {
   // it's purely an exemption from the TTL sweep from this point forward.
   if (path==='/api/make-persistent' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (!room.persistent) {
       room.persistent = true;
       // The true historical moment the second person first joined was
@@ -3233,9 +3233,9 @@ async function api(path, method, d, p, res, ip, headers) {
   // rejected rather than silently doing a full close.
   if (path==='/api/revoke-link' && method==='POST') {
     const room = rooms.get(d.code);
-    if (!room) return resErr(res,'Room not found.',404);
-    if (!room.members.has(d.token)) return resErr(res,'Not in room.',403);
-    if (!room.persistent) return resErr(res,'This is not a permanent room.',400);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (!room.persistent) return resErr(res,'This conversation is not persistent.',400);
     destroyRoom(d.code);
     console.log(`Anon Link revoked: ${logCode(d.code)}`);
     return res200(res,{ok:true});
