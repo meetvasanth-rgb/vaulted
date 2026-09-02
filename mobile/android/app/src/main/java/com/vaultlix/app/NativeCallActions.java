@@ -39,7 +39,18 @@ final class NativeCallActions {
     }
 
     static void decline(Context context, String callId, Runnable completion) {
-        markPendingWebViewCallEnd(context);
+        decline(context, callId, completion, true);
+    }
+
+    static void declineWhileBusy(Context context, String callId) {
+        // This decline belongs to a second call. It must stop that caller's
+        // ringtone without publishing a pending end event for the call that
+        // is already active on this device.
+        decline(context, callId, null, false);
+    }
+
+    private static void decline(Context context, String callId, Runnable completion, boolean markPendingEnd) {
+        if (markPendingEnd) markPendingWebViewCallEnd(context);
         String normalizedCallId = normalize(callId);
         if (normalizedCallId.isEmpty()) {
             if (completion != null) completion.run();

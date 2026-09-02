@@ -155,6 +155,22 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         update.supportsGrouping = false
         update.supportsUngrouping = false
         update.supportsDTMF = false
+
+        // The native media engine intentionally owns one encrypted call at a
+        // time. A second PushKit invitation must still be reported to CallKit,
+        // but it must never replace/reset the engine backing the active call.
+        if calls.keys.contains(where: { $0 != callID }) {
+            dismissAppKeyboard()
+            provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
+                if error == nil {
+                    self?.provider.reportCall(with: callID, endedAt: Date(), reason: .declinedElsewhere)
+                }
+                self?.declineCompetingCall(callID: callID)
+                completion()
+            }
+            return
+        }
+
         calls[callID] = data
         if let roomHandle = data["roomHandle"] as? String,
            NativeWebRTCCallEngine.shared.prepareIncoming(callID: callID, roomHandle: roomHandle) {
@@ -185,6 +201,16 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 completion()
             }
         }
+    }
+
+    private func declineCompetingCall(callID: UUID) {
+        guard let url = URL(string: "https://vaultlix.com/api/native-call/decline") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["callId": callID.uuidString])
+        URLSession.shared.dataTask(with: request).resume()
     }
 
     private func postAction(_ action: String, callID: UUID, payload: [String: Any]) {

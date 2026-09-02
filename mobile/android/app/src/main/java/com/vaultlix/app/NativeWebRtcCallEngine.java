@@ -104,6 +104,14 @@ final class NativeWebRtcCallEngine {
     void removeListener(Listener listener) { listeners.remove(listener); }
     String currentRoomCode() { return currentRoomCode; }
 
+    boolean isBusyWithAnotherRoom(String code) {
+        return NativeCallRouting.isCompeting(currentRoomCode, preparingRoomCode, code);
+    }
+
+    boolean shouldHandleRemoteEnd(String code) {
+        return NativeCallRouting.shouldHandleEnd(currentRoomCode, preparingRoomCode, code);
+    }
+
     boolean prepareIncoming(String code) {
         NativeCallRoomStore.Room saved = roomStore.byCode(code);
         if (saved == null) return false;

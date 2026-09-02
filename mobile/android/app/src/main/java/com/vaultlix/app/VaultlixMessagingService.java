@@ -29,7 +29,9 @@ public class VaultlixMessagingService extends MessagingService {
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
         Map<String, String> data = remoteMessage.getData();
         if ("true".equalsIgnoreCase(data.get("isCallEnd"))) {
-            NativeWebRtcCallEngine.get(this).end(false);
+            NativeWebRtcCallEngine engine = NativeWebRtcCallEngine.get(this);
+            if (!engine.shouldHandleRemoteEnd(safe(data.get("code")))) return;
+            engine.end(false);
             clearActiveCallNotifications(this);
             IncomingCallActivity.finishActiveCall();
             LockedCallActivity.finishActiveCall();
@@ -47,6 +49,11 @@ public class VaultlixMessagingService extends MessagingService {
         String callId = safe(data.get("callId"));
         if (NativeCallActions.wasRecentlyDeclined(this, callId)
                 || NativeCallActions.wasRecentlyAnswered(this, callId)) return;
+        NativeWebRtcCallEngine engine = NativeWebRtcCallEngine.get(this);
+        if (engine.isBusyWithAnotherRoom(code)) {
+            NativeCallActions.declineWhileBusy(this, callId);
+            return;
+        }
         String caller = safe(data.get("caller"));
         String body = safe(data.get("body"));
         if (caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
@@ -54,7 +61,7 @@ public class VaultlixMessagingService extends MessagingService {
         }
         if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
         if (body.isEmpty()) body = getString(R.string.tap_to_answer);
-        boolean nativePrepared = NativeWebRtcCallEngine.get(this).prepareIncoming(code);
+        boolean nativePrepared = engine.prepareIncoming(code);
 
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
