@@ -2283,7 +2283,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   "@type": "FAQPage",
   "mainEntity": [
     { "@type": "Question", "name": "What is Vaultlix?", "acceptedAnswer": { "@type": "Answer", "text": "A private one-to-one messenger that gives each account a permanent Vaultlix private number without collecting a phone number, email address, contact list, or real name." } },
-    { "@type": "Question", "name": "Do I need a phone number or email address?", "acceptedAnswer": { "@type": "Answer", "text": "No. Create a name or pseudonym and Vaultlix generates a permanent private number for sign-in and exact-number connections." } },
+    { "@type": "Question", "name": "Do I need a phone number or email address?", "acceptedAnswer": { "@type": "Answer", "text": "No. Choose a username and Vaultlix generates a permanent private number for sign-in and exact-number connections." } },
     { "@type": "Question", "name": "Is it actually anonymous?", "acceptedAnswer": { "@type": "Answer", "text": "Vaultlix requires no phone number, email or real name. A system-generated Vaultlix private number identifies the account while the service stores only an encrypted vault bundle that it cannot read." } },
     { "@type": "Question", "name": "Is it end-to-end encrypted?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Messages are end-to-end encrypted with keys held by participants. WebRTC call media is encrypted between participant devices with DTLS-SRTP; Cloudflare TURN relays encrypted packets and cannot decrypt call audio or video. Optional account sync uploads vault credentials only inside a separate client-encrypted bundle that Vaultlix cannot decrypt." } },
     { "@type": "Question", "name": "How do I connect with someone?", "acceptedAnswer": { "@type": "Answer", "text": "Exchange Vaultlix private numbers, enter the other person's exact number, and send a connection request. After acceptance, the encrypted conversation is created automatically." } },
@@ -2380,7 +2380,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="cards" id="cards">
         <button class="card card-primary" type="button" onclick="openAccountPanel()">
           <span class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg></span>
-          <span class="card-copy"><strong class="card-title">Create my identity</strong><small class="card-desc">Choose a name or pseudonym and receive your permanent Vaultlix private number.</small></span>
+          <span class="card-copy"><strong class="card-title">Create my identity</strong><small class="card-desc">Choose a username and receive your permanent Vaultlix private number.</small></span>
           <span class="card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
         </button>
 
@@ -2427,7 +2427,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <h2 class="marketing-title">From private number to private conversation.</h2>
         <p class="marketing-lede">Vaultlix replaces invitation codes and manual conversation setup with a familiar, direct connection flow.</p>
         <div class="marketing-grid">
-          <article class="marketing-card"><div class="marketing-number">01</div><h3>Create your identity</h3><p>Choose the name or pseudonym people will see. Vaultlix gives you a permanent private number.</p></article>
+          <article class="marketing-card"><div class="marketing-number">01</div><h3>Create your identity</h3><p>Choose the username people will see. Vaultlix gives you a permanent private number.</p></article>
           <article class="marketing-card"><div class="marketing-number">02</div><h3>Exchange numbers</h3><p>Share only your Vaultlix private number. Your phone number, email, and contacts stay private.</p></article>
           <article class="marketing-card"><div class="marketing-number">03</div><h3>Connect by consent</h3><p>Enter the other person's number and send a request. A conversation appears after they accept.</p></article>
           <article class="marketing-card"><div class="marketing-number">04</div><h3>Message or call</h3><p>Communicate inside an encrypted one-to-one space created automatically in the background.</p></article>
@@ -2460,7 +2460,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <h2 class="marketing-title" id="homepage-faq-title">The important questions, answered clearly.</h2>
         <div class="faq-list">
           <details class="faq-item"><summary>What is Vaultlix?</summary><p>Vaultlix is a private one-to-one messenger. It does not require your phone number, email address, contact list, or real name.</p></details>
-          <details class="faq-item"><summary>What identifies my account?</summary><p>A permanent, system-generated Vaultlix private number and the name or pseudonym you choose. The number is not a cellular number and cannot receive SMS or ordinary calls.</p></details>
+          <details class="faq-item"><summary>What identifies my account?</summary><p>A permanent, system-generated Vaultlix private number and the username you choose. The number is not a cellular number and cannot receive SMS or ordinary calls.</p></details>
           <details class="faq-item"><summary>How do I connect with someone?</summary><p>Exchange Vaultlix private numbers, enter their exact number, and send a connection request. Once accepted, Vaultlix creates the encrypted conversation automatically.</p></details>
           <details class="faq-item"><summary>Is Vaultlix end-to-end encrypted?</summary><p>Yes. Messages are encrypted with keys held by the participants. Voice and video calls are encrypted between participant devices with DTLS-SRTP. A TURN service may relay encrypted call packets but cannot decrypt the call media.</p></details>
           <details class="faq-item"><summary>Can people search for me?</summary><p>No. Vaultlix does not search contacts or suggest people. Someone needs your exact private number before they can send a connection request.</p></details>
@@ -2510,7 +2510,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="native-onboarding-kicker">Step 2 of 3</div>
       <h1 class="native-onboarding-title">Set up your private identity.</h1>
       <p class="native-onboarding-copy">Create a new Vaultlix Private Number, or sign in to an identity you already use.</p>
-      <div class="native-onboarding-points"><div class="native-onboarding-point">Choose a name or pseudonym</div><div class="native-onboarding-point">Receive a permanent 10-digit Private Number</div><div class="native-onboarding-point">Protect it with your password and recovery code</div></div>
+      <div class="native-onboarding-points"><div class="native-onboarding-point">Choose your username</div><div class="native-onboarding-point">Receive a permanent 10-digit Private Number</div><div class="native-onboarding-point">Protect it with your password and recovery code</div></div>
     </section>
     <section class="native-onboarding-page" data-native-onboarding-page="notifications">
       <div class="native-onboarding-art"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg></div>
@@ -2801,7 +2801,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>What we collect</h3>
-      <p>Nothing that identifies you in real life. Vaultlix requires no email address, phone number, or real name. Accounts use a system-generated Vaultlix private number and your chosen name or pseudonym.</p>
+      <p>Nothing that identifies you in real life. Vaultlix requires no email address, phone number, or real name. Accounts use a system-generated Vaultlix private number and your chosen username.</p>
       <p>What exists on our servers is:</p>
       <ul>
         <li>The encrypted content of messages, retained so it can be delivered to the other person for the conversation's lifetime; see "How long things last" below</li>
@@ -3343,7 +3343,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
     <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix private number</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
     <div id="account-guest-view">
-      <div class="account-copy">Choose the name people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.</div>
+      <div class="account-copy">Choose the username people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.</div>
       <div class="account-tabs">
         <button class="account-tab active" data-account-tab="create" data-i18n="create" onclick="showAccountTab('create')">Create</button>
         <button class="account-tab" data-account-tab="login" data-i18n="sign_in" onclick="showAccountTab('login')">Sign in</button>
@@ -3352,7 +3352,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <form class="account-form active" id="account-create-form" onsubmit="createAnonymousAccount(event)">
         <div class="onboarding-progress" aria-label="Account creation progress"><span class="active"></span><span></span><span></span></div>
         <div class="account-step active" id="account-create-step-identity">
-          <label class="account-field"><span>Your permanent name or pseudonym</span><input id="account-create-display-name" autocomplete="name" minlength="2" maxlength="40" required/></label>
+          <label class="account-field"><span>Username</span><input id="account-create-display-name" autocomplete="nickname" minlength="2" maxlength="40" required/></label>
           <div class="private-number-card">
             <div class="private-number-label">Your Vaultlix Private Number</div>
             <div class="private-number-value" id="account-private-number-value">Generating…</div>
@@ -7671,8 +7671,9 @@ async function rejectConnectionRequest(requestId) {
   if(result.error)toast(result.error); else { pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId); renderVaultList(); toast('Request declined'); refreshConnectionRequests(); }
 }
 function showAccountTab(name) {
-  document.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
-  document.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
+  const guestView = document.getElementById('account-guest-view');
+  guestView.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
+  guestView.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
 }
 let pendingPrivateNumber = '';
 async function generatePrivateNumber() {
@@ -7703,7 +7704,7 @@ function setCreateStep(step) {
 function showCreateIdentityStep() { setCreateStep(1); }
 async function showCreateSecurityStep() {
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
-  if (displayName.length < 2 || displayName.length > 40) { toast('Enter a permanent name or pseudonym'); return; }
+  if (displayName.length < 2 || displayName.length > 40) { toast('Enter a username between 2 and 40 characters'); return; }
   if (!pendingPrivateNumber) { await generatePrivateNumber(); if (!pendingPrivateNumber) return; }
   document.getElementById('account-create-summary').textContent = `${displayName} · ${formatPrivateNumber(pendingPrivateNumber)}`;
   setCreateStep(2);
@@ -7724,7 +7725,7 @@ async function createAnonymousAccount(event) {
   const privateNumber = normalizePrivateNumber(pendingPrivateNumber);
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   const password = document.getElementById('account-create-password').value;
-  if (displayName.length < 2 || displayName.length > 40) { toast('Enter a name or pseudonym between 2 and 40 characters'); return; }
+  if (displayName.length < 2 || displayName.length > 40) { toast('Enter a username between 2 and 40 characters'); return; }
   if (!privateNumber) { toast('Generate a Vaultlix private number'); showCreateIdentityStep(); return; }
   if (password.length < 8) { toast('Use a password of at least 8 characters'); return; }
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }

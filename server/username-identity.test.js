@@ -50,6 +50,9 @@ test('new connection keeps its number form visible on Android', () => {
   assert.match(client, /#new-connection-overlay \.account-form\{order:2\}/);
   assert.match(client, /#new-connection-overlay \.account-copy\{order:3/);
   assert.match(client, /html\.vaultlix-native-android #new-connection-overlay \.account-card/);
+  assert.match(client, /const guestView = document\.getElementById\('account-guest-view'\)/);
+  assert.match(client, /guestView\.querySelectorAll\('\.account-form'\)/);
+  assert.doesNotMatch(client, /document\.querySelectorAll\('\.account-form'\)\.forEach/);
 });
 
 test('vault setup uses the permanent identity name', () => {
@@ -68,4 +71,6 @@ test('registration uses a system-generated ten-digit Private Number', () => {
   assert.match(client, /password\.length < 8/);
   assert.match(client, /This is not a cellular phone number/);
   assert.match(client, /vaultlix\.com\/\$\{result\.profile\.privateNumber\}/);
+  assert.match(client, /<span>Username<\/span><input id="account-create-display-name"/);
+  assert.doesNotMatch(client, /Your permanent name or pseudonym/);
 });
