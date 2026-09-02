@@ -350,7 +350,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
                     y[i] = -random.nextInt(dp(140));
                     x[i] = random.nextInt(Math.max(1, getWidth()));
                 }
-                paint.setColor(i % 3 == 0 ? Color.argb(66, 229, 137, 160) : Color.argb(43, 250, 246, 247));
+                paint.setColor(i % 3 == 0 ? Color.argb(112, 229, 137, 160) : Color.argb(82, 250, 246, 247));
                 for (int bit = 0; bit < bits[i].length(); bit++) {
                     canvas.drawText(String.valueOf(bits[i].charAt(bit)), x[i], y[i] - (bits[i].length() - bit) * dp(12), paint);
                 }
