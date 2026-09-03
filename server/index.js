@@ -3733,9 +3733,15 @@ wss.on('connection', (ws) => {
         if (msg2.type === 'call-invite') {
           const now = Date.now();
           const inviteId = msg2.inviteId || null;
+          const nativeCallInProgress = Boolean(room2.nativeCallId && room2.nativeCalleeToken);
           const isNewInvitation = inviteId
             ? room2.nativeInviteId !== inviteId
-            : !(room2.ringingUntil && room2.ringingUntil > now);
+            // Older native builds did not attach inviteId. Once the server
+            // has a native call owner or has observed acceptance, a late
+            // retry is still the same call even though ringingUntil is now
+            // zero. Treating it as new created a second CallKit call roughly
+            // 10 seconds after the first was answered.
+            : !(nativeCallInProgress || room2.activeCall || (room2.ringingUntil && room2.ringingUntil > now));
           // A new invitation supersedes any stale native ring retained for
           // this room. Close that old surface before issuing the new call ID
           // so OEM lock screens cannot leave both activities around.
@@ -3749,7 +3755,6 @@ wss.on('connection', (ws) => {
           // CallKit exists, its native call ID remains authoritative until
           // decline/hang-up; otherwise clearing ringingUntil on acceptance
           // lets a late retry create a second lock-screen call.
-          const nativeCallInProgress = Boolean(room2.nativeCallId && room2.nativeCalleeToken);
           const alreadyRinging = inviteId
             ? (!isNewInvitation && (nativeCallInProgress || Boolean(room2.ringingUntil && room2.ringingUntil > now)))
             : (nativeCallInProgress || Boolean(room2.ringingUntil && room2.ringingUntil > now));

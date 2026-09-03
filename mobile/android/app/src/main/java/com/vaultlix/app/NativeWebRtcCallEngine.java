@@ -87,6 +87,7 @@ final class NativeWebRtcCallEngine {
     private String peerSessionId;
     private final String sessionId = UUID.randomUUID().toString();
     private String callerName = "Someone";
+    private String inviteId = "";
     private volatile String currentRoomCode = "";
     private volatile String preparingRoomCode = "";
     private int generation;
@@ -185,6 +186,7 @@ final class NativeWebRtcCallEngine {
         preparingRoomCode = "";
         currentRoomCode = saved.code;
         outgoing = isOutgoing;
+        inviteId = isOutgoing ? UUID.randomUUID().toString() : "";
         callerName = caller == null ? "Someone" : caller;
         int run = generation;
         connectSocket(run);
@@ -362,6 +364,7 @@ final class NativeWebRtcCallEngine {
     private void sendSignal(String type, JSONObject payload) {
         try {
             JSONObject wire = new JSONObject().put("type", type).put("sessionId", sessionId).put("envelope", encrypt(payload));
+            if (!inviteId.isEmpty()) wire.put("inviteId", inviteId);
             if (!signalingReady || socket == null) { if (queuedSignals.size() < 128) queuedSignals.add(wire); return; }
             socket.send(wire.toString());
         } catch (Exception error) { Log.w(TAG, "signal encryption failed", error); }
@@ -420,6 +423,7 @@ final class NativeWebRtcCallEngine {
         if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
         if (audioSource != null) { audioSource.dispose(); audioSource = null; }
         room = null; signalingReady = false; outgoing = false; answered = false; offerReceived = false;
+        inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
         if (reason != null) for (Listener listener : listeners) listener.onEnded(reason);
         currentRoomCode = "";

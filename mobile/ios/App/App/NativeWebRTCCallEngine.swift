@@ -34,6 +34,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var offerReceived = false
     private var outgoing = false
     private var outgoingCaller = "Someone"
+    private var inviteID: String?
     private var inviteRetryGeneration = 0
     private var acceptRetryGeneration = 0
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
@@ -88,6 +89,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.room = stored
             self.callID = callID
             self.outgoing = true
+            self.inviteID = UUID().uuidString
             self.outgoingCaller = String(caller.prefix(80))
             self.connectSignalingLocked()
         }
@@ -432,7 +434,9 @@ final class NativeWebRTCCallEngine: NSObject {
             return
         }
         trace("signal sending type=\(type)")
-        sendRawLocked(["type": type, "sessionId": sessionID, "envelope": envelope])
+        var wire: [String: Any] = ["type": type, "sessionId": sessionID, "envelope": envelope]
+        if let inviteID { wire["inviteId"] = inviteID }
+        sendRawLocked(wire)
     }
 
     private func sendRawLocked(_ object: [String: Any]) {
@@ -557,6 +561,7 @@ final class NativeWebRTCCallEngine: NSObject {
         turnAttempt = 0
         offerReceived = false
         outgoing = false
+        inviteID = nil
         outgoingCaller = "Someone"
     }
 }
