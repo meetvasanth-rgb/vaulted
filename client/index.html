@@ -803,7 +803,7 @@ body.select-mode .chat-ftr{display:none}
 .attach-opt-icon svg { width:20px; height:20px; fill:none; stroke:#4A4038; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .attach-opt-label { font-size:10px; color:#8A7F72; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
-.msg-gif{display:block;width:min(240px,70vw);max-height:280px;object-fit:contain;border-radius:12px;background:#F3EEE6;cursor:pointer}
+.msg-gif{display:block;width:min(240px,70vw);min-height:120px;max-height:280px;object-fit:contain;border-radius:12px;background:#F3EEE6;cursor:pointer;content-visibility:auto}
 .klipy-picker{position:fixed;inset:0;z-index:10020;background:rgba(20,15,18,.52);display:flex;align-items:flex-end;justify-content:center}
 .klipy-sheet{width:min(620px,100%);height:min(72vh,650px);background:#fff;border-radius:24px 24px 0 0;padding:14px;display:flex;flex-direction:column;box-shadow:0 -14px 45px rgba(0,0,0,.2)}
 .klipy-head{display:flex;align-items:center;gap:10px}.klipy-search{flex:1;border:1px solid #E0D9D0;border-radius:14px;padding:12px 14px;font:500 14px/1.2 Manrope,sans-serif;outline:none}.klipy-close{border:0;background:#F3EEE6;border-radius:50%;width:38px;height:38px;font-size:22px;cursor:pointer}
@@ -9162,12 +9162,14 @@ async function changeRoomTimer(value) {
 
 function renderChatBody(room) {
   const body = document.getElementById('chat-body');
+  if (klipyGifObserver) klipyGifObserver.disconnect();
   body.innerHTML = `<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   for (const rec of room.messages) {
     if (rec.deleted || rec.verifyNudge) continue;
     renderMessageRecord(room, rec);
   }
   body.scrollTop = body.scrollHeight;
+  scheduleDeferredKlipyGifs(body);
 }
 
 function addRoomFlow() {
@@ -9711,6 +9713,35 @@ function buildReplyQuotePhotoHtml(replyData) {
 // just sent, or one just landing via poll) — NOT from renderChatBody's bulk
 // repaint when opening/switching to a room, which would otherwise replay
 // the settle-in for the entire scrollback every time you switch tabs.
+let klipyGifObserver = null;
+function loadDeferredKlipyGif(img) {
+  if (!img || img.src || !img.dataset.klipySrc) return;
+  img.src = img.dataset.klipySrc;
+  delete img.dataset.klipySrc;
+}
+function scheduleDeferredKlipyGifs(body) {
+  const images = [...body.querySelectorAll('img.msg-gif[data-klipy-src]')];
+  if (!images.length) return;
+  // Give the conversation its first two paint opportunities before animated
+  // media can use the WebView's main/render threads. Then fetch/decode only
+  // GIFs that are visible or close to the viewport.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!body.isConnected) return;
+    if (!('IntersectionObserver' in window)) {
+      images.forEach(loadDeferredKlipyGif);
+      return;
+    }
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        loadDeferredKlipyGif(entry.target);
+        observer.unobserve(entry.target);
+      }
+    }, { root:body, rootMargin:'320px 0px' });
+    klipyGifObserver = observer;
+    images.forEach(img => observer.observe(img));
+  }));
+}
 function renderMessageRecord(room, rec, animate) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
@@ -9782,7 +9813,7 @@ function renderMessageRecord(room, rec, animate) {
   } else if (rec.kind === 'gif') {
     const gifUrl = safeKlipyMediaUrl(rec.url);
     contentHtml = gifUrl
-      ? `<div class="msg-media-wrap"><img class="msg-gif" src="${gifUrl}" alt="${escHtml(rec.title || 'GIF')}" loading="lazy" draggable="false" oncontextmenu="return false"/></div>`
+      ? `<div class="msg-media-wrap"><img class="msg-gif" data-klipy-src="${escHtml(gifUrl)}" alt="${escHtml(rec.title || 'GIF')}" loading="lazy" decoding="async" fetchpriority="low" draggable="false" oncontextmenu="return false"/></div>`
       : MEDIA_BLOCKED_HTML;
   } else if (rec.kind === 'blocked') {
     // decryptMsg's E2E_DOWNGRADE case — see DOWNGRADE_BLOCKED_HTML above.
@@ -9824,6 +9855,10 @@ function renderMessageRecord(room, rec, animate) {
   wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked') ? '' : rec.content)), rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
+  if (animate && rec.kind === 'gif') {
+    const gif = div.querySelector('img.msg-gif[data-klipy-src]');
+    requestAnimationFrame(() => requestAnimationFrame(() => loadDeferredKlipyGif(gif)));
+  }
   renderReactionsForRec(div, rec);
   // A message arriving (or being scrolled into view) while a selection is
   // already in progress should look like every other message in that mode

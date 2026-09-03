@@ -128,7 +128,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         nameParams.setMargins(0, dp(25), 0, dp(8));
         root.addView(name, nameParams);
 
-        status = label(getString(R.string.native_connecting_securely), 18, IVORY);
+        status = label(statusText(engine.currentState()), 18, IVORY);
         root.addView(status);
 
         LinearLayout privacyPill = new LinearLayout(this);
@@ -209,7 +209,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
-    @Override public void onState(String value) { runOnUiThread(() -> { if (connectedAt == 0 && status != null) status.setText(R.string.native_connecting_securely); }); }
+    @Override public void onState(String value) {
+        runOnUiThread(() -> {
+            if (connectedAt == 0 && status != null) status.setText(statusText(value));
+        });
+    }
     @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
     @Override public void onEnded(String reason) { runOnUiThread(this::finishCall); }
 
@@ -304,6 +308,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private GradientDrawable circle(int color){ GradientDrawable d=new GradientDrawable();d.setShape(GradientDrawable.OVAL);d.setColor(color);return d; }
     private GradientDrawable roundRect(int color,int radius){ GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d; }
     private String initialFor(String value){ String trimmed=value == null ? "" : value.trim(); return trimmed.isEmpty() ? "V" : trimmed.substring(0,1).toUpperCase(java.util.Locale.getDefault()); }
+    private String statusText(String value) {
+        if ("calling".equals(value)) return getString(R.string.native_calling);
+        if ("ringing".equals(value)) return getString(R.string.native_ringing);
+        return getString(R.string.native_connecting_securely);
+    }
     private int dp(int value){return Math.round(value*getResources().getDisplayMetrics().density);}
     private String formatDuration(long value){return String.format(java.util.Locale.US,"%02d:%02d",value/60,value%60);}
     private Typeface identityTypeface(){return getResources().getFont(R.font.cormorant_garamond);}

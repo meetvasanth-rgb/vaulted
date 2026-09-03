@@ -7,6 +7,8 @@
   <string name="calls_channel_description">&#x90F;&#x928;&#x94D;&#x915;&#x94D;&#x930;&#x93F;&#x92A;&#x94D;&#x91F;&#x947;&#x921; &#x907;&#x928;&#x915;&#x92E;&#x93F;&#x902;&#x917; &#x915;&#x949;&#x932; &#x905;&#x932;&#x930;&#x94D;&#x91F;</string>
   <string name="native_private_call">&#x928;&#x93F;&#x91C;&#x940; &#x915;&#x949;&#x932;</string>
   <string name="native_connecting_securely">&#x938;&#x941;&#x930;&#x915;&#x94D;&#x937;&#x93F;&#x924; &#x930;&#x942;&#x92A; &#x938;&#x947; &#x915;&#x928;&#x947;&#x915;&#x94D;&#x91F; &#x939;&#x94B; &#x930;&#x939;&#x93E; &#x939;&#x948;&#x2026;</string>
+  <string name="native_calling">&#x915;&#x949;&#x932; &#x915;&#x940; &#x91C;&#x93E; &#x930;&#x939;&#x940; &#x939;&#x948;&#x2026;</string>
+  <string name="native_ringing">&#x918;&#x902;&#x91F;&#x940; &#x92C;&#x91C; &#x930;&#x939;&#x940; &#x939;&#x948;&#x2026;</string>
   <string name="native_encrypted_relayed">&#x90F;&#x902;&#x921;-&#x91F;&#x942;-&#x90F;&#x902;&#x921; &#x90F;&#x928;&#x94D;&#x915;&#x94D;&#x930;&#x93F;&#x92A;&#x94D;&#x91F;&#x947;&#x921; &#xB7; &#x928;&#x93F;&#x91C;&#x940; &#x930;&#x93F;&#x932;&#x947;</string>
   <string name="native_mute">&#x92E;&#x94D;&#x92F;&#x942;&#x91F;</string>
   <string name="native_unmute">&#x905;&#x928;&#x92E;&#x94D;&#x92F;&#x942;&#x91F;</string>

@@ -7,6 +7,8 @@
   <string name="calls_channel_description">&#x52A0;&#x5BC6;&#x6765;&#x7535;&#x63D0;&#x9192;</string>
   <string name="native_private_call">&#x79C1;&#x4EBA;&#x901A;&#x8BDD;</string>
   <string name="native_connecting_securely">&#x6B63;&#x5728;&#x5B89;&#x5168;&#x8FDE;&#x63A5;&#x2026;</string>
+  <string name="native_calling">&#x6B63;&#x5728;&#x547C;&#x53EB;&#x2026;</string>
+  <string name="native_ringing">&#x6B63;&#x5728;&#x54CD;&#x94C3;&#x2026;</string>
   <string name="native_encrypted_relayed">&#x7AEF;&#x5230;&#x7AEF;&#x52A0;&#x5BC6; &#xB7; &#x79C1;&#x5BC6;&#x4E2D;&#x7EE7;</string>
   <string name="native_mute">&#x9759;&#x97F3;</string>
   <string name="native_unmute">&#x53D6;&#x6D88;&#x9759;&#x97F3;</string>

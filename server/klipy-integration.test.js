@@ -21,3 +21,12 @@ test('KLIPY media is restricted to approved HTTPS delivery hosts', () => {
   assert.match(client, /Vaultlix does not send your private number to KLIPY/);
   assert.doesNotMatch(client, /\/api\/klipy|proxyKlipy|cacheKlipy/);
 });
+
+test('conversation opening defers offscreen KLIPY animation until after first paint', () => {
+  assert.match(client, /data-klipy-src=/);
+  assert.match(client, /decoding="async"/);
+  assert.match(client, /fetchpriority="low"/);
+  assert.match(client, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
+  assert.match(client, /new IntersectionObserver/);
+  assert.match(client, /rootMargin:'320px 0px'/);
+});

@@ -90,6 +90,7 @@ final class NativeWebRtcCallEngine {
     private String inviteId = "";
     private volatile String currentRoomCode = "";
     private volatile String preparingRoomCode = "";
+    private volatile String currentState = "idle";
     private int generation;
 
     private NativeWebRtcCallEngine(Context context) {
@@ -104,6 +105,7 @@ final class NativeWebRtcCallEngine {
     void addListener(Listener listener) { if (listener != null) listeners.add(listener); }
     void removeListener(Listener listener) { listeners.remove(listener); }
     String currentRoomCode() { return currentRoomCode; }
+    String currentState() { return currentState; }
 
     boolean isBusyWithAnotherRoom(String code) {
         return NativeCallRouting.isCompeting(currentRoomCode, preparingRoomCode, code);
@@ -414,7 +416,10 @@ final class NativeWebRtcCallEngine {
         }), 1500, TimeUnit.MILLISECONDS);
     }
 
-    private void notifyState(String state) { for (Listener listener : listeners) listener.onState(state); }
+    private void notifyState(String state) {
+        currentState = state;
+        for (Listener listener : listeners) listener.onState(state);
+    }
 
     private void reset(String reason) {
         generation++;
@@ -428,6 +433,7 @@ final class NativeWebRtcCallEngine {
         if (reason != null) for (Listener listener : listeners) listener.onEnded(reason);
         currentRoomCode = "";
         preparingRoomCode = "";
+        currentState = "idle";
     }
 
     private final class PeerObserver implements PeerConnection.Observer {

@@ -9,6 +9,8 @@
     <string name="calls_channel">Calls</string>
     <string name="native_private_call">Private call</string>
     <string name="native_connecting_securely">Connecting securely…</string>
+    <string name="native_calling">Calling…</string>
+    <string name="native_ringing">Ringing…</string>
     <string name="native_encrypted_relayed">End-to-end encrypted · relayed privately</string>
     <string name="native_mute">Mute</string>
     <string name="native_unmute">Unmute</string>

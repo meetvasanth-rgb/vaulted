@@ -28,6 +28,7 @@ test('Android native call credentials are device-bound and removed with a vault'
 });
 
 test('Android starts its native engine during ringing instead of after answer', () => {
+  const engine = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeWebRtcCallEngine.java');
   const messaging = read('mobile/android/app/src/main/java/com/vaultlix/app/VaultlixMessagingService.java');
   const incoming = read('mobile/android/app/src/main/java/com/vaultlix/app/IncomingCallActivity.java');
   assert.match(messaging, /prepareIncoming\(code\)/);
@@ -64,4 +65,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /name\.setTypeface\(identityTypeface\(\)\)/);
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
   assert.match(nativeActivity, /native_call_vanished/);
+  assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);
+  assert.match(nativeActivity, /"calling"\.equals\(value\)[\s\S]*native_calling/);
+  assert.match(nativeActivity, /"ringing"\.equals\(value\)[\s\S]*native_ringing/);
+  assert.match(engine, /private volatile String currentState = "idle"/);
+  assert.match(engine, /currentState = state;[\s\S]*listener\.onState\(state\)/);
 });
