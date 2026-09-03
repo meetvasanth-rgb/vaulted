@@ -24,6 +24,17 @@ test('Private Number profiles and authenticated connection requests are exposed'
   assert.match(client, /Accept connection/);
 });
 
+test('signed-in settings support username changes and encrypted device recovery-code storage', () => {
+  assert.match(server, /path === '\/api\/account\/profile'/);
+  assert.match(server, /account\.displayName = displayName/);
+  assert.match(client, /id="account-profile-display-name"/);
+  assert.match(client, /updateAccountUsername\(event\)/);
+  assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
+  assert.match(client, /saveRecoveryCodeOnDevice\(event\)/);
+  assert.match(client, /api\('\/api\/account\/recovery-bundle'/);
+  assert.doesNotMatch(server, /account\.recoveryCode\s*=/);
+});
+
 test('accepted connections retain the peer Private Number inside conversation details', () => {
   assert.match(client, /function peerIdentityFromConnection\(request, state = loadAccountState\(\)\)/);
   assert.match(client, /senderNumber !== selfNumber/);

@@ -3390,6 +3390,21 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     </div>
     <div class="account-signed" id="account-signed-view">
       <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub">Your private identity</div></div>
+      <form id="account-profile-form" onsubmit="updateAccountUsername(event)">
+        <label class="account-field"><span>Username</span><input id="account-profile-display-name" autocomplete="nickname" minlength="2" maxlength="40" required/></label>
+        <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
+      </form>
+      <div class="settings-divider" style="margin:18px 0"></div>
+      <div class="account-copy"><strong>Password recovery code</strong><br/>Keep an encrypted copy on this device so you can view or copy it from Settings. Vaultlix never receives the readable code.</div>
+      <div id="account-saved-recovery" style="display:none">
+        <div class="recovery-box"><div class="recovery-code" id="account-saved-recovery-code">••••••••••••••••</div></div>
+        <button class="account-secondary" type="button" onclick="revealSavedRecoveryCode()">Reveal recovery code</button>
+        <button class="account-secondary" type="button" onclick="copySavedRecoveryCode()">Copy recovery details</button>
+      </div>
+      <form id="account-save-recovery-form" onsubmit="saveRecoveryCodeOnDevice(event)" style="display:none">
+        <label class="account-field"><span>Enter your permanent recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
+        <button class="account-secondary" type="submit" data-busy-label="Verifying…">Verify and save on this device</button>
+      </form>
       <div id="account-sync-status" hidden></div>
       <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
       <button class="account-primary" type="button" onclick="closeAccountPanel();openNewConnection()">New connection</button>
@@ -7568,10 +7583,67 @@ function openAccountPanel() {
   document.getElementById('account-recovery-result').style.display = 'none';
   const accountTitle = document.getElementById('account-title');
   if (accountTitle) accountTitle.textContent = state ? 'Your Vaultlix private number' : 'Create your Vaultlix private number';
-  if (state) document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
+  if (state) {
+    document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
+    document.getElementById('account-profile-display-name').value = state.displayName;
+    refreshSavedRecoveryControls(state);
+  }
   else generatePrivateNumber();
   document.getElementById('account-overlay').classList.add('open');
   if (state) refreshConnectionRequests();
+}
+function refreshSavedRecoveryControls(state = loadAccountState()) {
+  const hasSavedCode = !!state?.recoveryCodeWrap;
+  document.getElementById('account-saved-recovery').style.display = hasSavedCode ? '' : 'none';
+  document.getElementById('account-save-recovery-form').style.display = hasSavedCode ? 'none' : '';
+  document.getElementById('account-saved-recovery-code').textContent = '••••••••••••••••';
+}
+async function updateAccountUsername(event) {
+  event.preventDefault(); const form = event.currentTarget; const state = loadAccountState();
+  if (!state) return;
+  const displayName = document.getElementById('account-profile-display-name').value.trim().replace(/\s+/g, ' ');
+  if (displayName.length < 2 || displayName.length > 40 || /[<>\u0000-\u001f]/.test(displayName)) { toast('Enter a username between 2 and 40 characters'); return; }
+  setAccountBusy(form, true);
+  try {
+    const result = await api('/api/account/profile', { accountId:state.accountId, sessionToken:state.sessionToken, displayName });
+    if (result.error) { toast(result.error); return; }
+    state.displayName = result.displayName; saveAccountState(state);
+    document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
+    updateAccountSettingsStatus(); renderVaultList(); toast('Username updated');
+  } finally { setAccountBusy(form, false); }
+}
+async function decryptSavedRecoveryCode(state = loadAccountState()) {
+  if (!state?.recoveryCodeWrap) throw new Error('Recovery code is not saved on this device');
+  const saved = await aesDecryptJson(base64UrlToBytes(state.masterKey), state.recoveryCodeWrap);
+  if (!saved?.recoveryCode) throw new Error('Invalid saved recovery code');
+  return saved.recoveryCode;
+}
+async function revealSavedRecoveryCode() {
+  try { document.getElementById('account-saved-recovery-code').textContent = await decryptSavedRecoveryCode(); }
+  catch (e) { toast('Could not open the saved recovery code'); }
+}
+async function copySavedRecoveryCode() {
+  const state = loadAccountState();
+  try {
+    const code = await decryptSavedRecoveryCode(state);
+    await navigator.clipboard.writeText(`Vaultlix private number: ${formatPrivateNumber(state.privateNumber)}\nRecovery code: ${code}`);
+    toast('Recovery details copied');
+  } catch (e) { toast('Could not copy the recovery code'); }
+}
+async function saveRecoveryCodeOnDevice(event) {
+  event.preventDefault(); const form = event.currentTarget; const state = loadAccountState();
+  if (!state) return;
+  const code = document.getElementById('account-save-recovery-code').value.trim();
+  setAccountBusy(form, true);
+  try {
+    const recovery = await recoveryMaterial(code);
+    const result = await api('/api/account/recovery-bundle', { privateNumber:state.privateNumber, recoverySecret:recovery.authSecret });
+    if (result.error) { toast(result.error); return; }
+    await aesDecryptJson(recovery.wrapKey, result.recoveryWrap);
+    state.recoveryCodeWrap = await aesEncryptJson(base64UrlToBytes(state.masterKey), { recoveryCode:code });
+    saveAccountState(state); form.reset(); refreshSavedRecoveryControls(state); toast('Recovery code saved on this device');
+  } catch (e) { toast('Recovery code is incorrect'); }
+  finally { setAccountBusy(form, false); }
 }
 function openLoginOrInbox() {
   if (loadAccountState()) {
@@ -7759,7 +7831,8 @@ async function createAnonymousAccount(event) {
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
-    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:bytesToBase64UrlCompact(masterKey), revision:result.revision });
+    const masterKeyEncoded = bytesToBase64UrlCompact(masterKey);
+    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }) });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-number').textContent = formatPrivateNumber(privateNumber);
@@ -7812,7 +7885,7 @@ async function recoverAnonymousAccount(event) {
     const result = await api('/api/account/recover', { privateNumber, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
     if (result.error) { toast(result.error); return; }
     importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
-    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision });
+    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode:code.trim() }) });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Password changed and conversations restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }

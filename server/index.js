@@ -2158,6 +2158,20 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
   }
 
+  if (path === '/api/account/profile' && method === 'POST') {
+    if (rateLimited(`account-profile:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many profile changes — try again later.', 429);
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const displayName = normalizeDisplayName(d.displayName);
+    if (!displayName) return resErr(res, 'Enter a username between 2 and 40 characters.', 400);
+    account.displayName = displayName;
+    account.updatedAt = Date.now();
+    await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, displayName });
+  }
+
   if (path === '/api/account/sync' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
