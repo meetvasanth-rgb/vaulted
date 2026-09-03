@@ -2498,7 +2498,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div id="s-native-onboarding" class="screen">
   <main class="native-onboarding-shell">
     <div class="native-onboarding-brand"><span class="native-onboarding-brand-mark"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></span><span>Vaultlix</span></div>
-    <div class="native-onboarding-progress" aria-label="Onboarding progress"><span class="active"></span><span></span><span></span></div>
+    <div class="native-onboarding-progress" aria-label="Onboarding progress"><span class="active"></span><span></span><span></span><span data-android-fullscreen-step></span></div>
     <section class="native-onboarding-page active" data-native-onboarding-page="welcome">
       <div class="native-onboarding-art"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3 7.8 7.5 9.5 4.5-1.7 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
       <div class="native-onboarding-kicker">Private by design</div>
@@ -2517,6 +2517,13 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="native-onboarding-kicker">Step 3 of 3</div>
       <h1 class="native-onboarding-title">Know when someone reaches you.</h1>
       <p class="native-onboarding-copy">Enable notifications for incoming calls, connection requests, and new encrypted messages. Message contents stay hidden from notification services.</p>
+    </section>
+    <section class="native-onboarding-page" data-native-onboarding-page="fullscreen-calls">
+      <div class="native-onboarding-art"><svg viewBox="0 0 24 24"><path d="M7 3H5a2 2 0 0 0-2 2v2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M17 21h2a2 2 0 0 0 2-2v-2"/><path d="M8 12a4 4 0 0 1 8 0v3H8v-3Z"/><path d="M10 15v2h4v-2"/></svg></div>
+      <div class="native-onboarding-kicker">Step 4 of 4 · Android</div>
+      <h1 class="native-onboarding-title">See incoming calls immediately.</h1>
+      <p class="native-onboarding-copy">Allow full-screen incoming calls so Vaultlix can show its answer screen while your phone is locked. Android requires you to approve this special access in Settings.</p>
+      <div class="native-onboarding-points"><div class="native-onboarding-point" id="native-fullscreen-status">Checking full-screen call access…</div><div class="native-onboarding-point">If you skip this, calls use a standard notification instead</div></div>
     </section>
     <div class="native-onboarding-actions" id="native-onboarding-actions">
       <button class="native-onboarding-primary" id="native-onboarding-primary" type="button" onclick="advanceNativeOnboarding()">Continue</button>
@@ -7556,15 +7563,19 @@ let nativeOnboardingPage = 'welcome';
 function renderNativeOnboarding(page) {
   nativeOnboardingPage = page;
   document.querySelectorAll('[data-native-onboarding-page]').forEach(el => el.classList.toggle('active', el.dataset.nativeOnboardingPage === page));
-  const order = { welcome:1, identity:2, notifications:3 };
+  const androidFullScreenStep = nativePlatform() === 'android';
+  document.querySelectorAll('[data-android-fullscreen-step]').forEach(el => { el.style.display = androidFullScreenStep ? '' : 'none'; });
+  const order = { welcome:1, identity:2, notifications:3, 'fullscreen-calls':4 };
   document.querySelectorAll('#s-native-onboarding .native-onboarding-progress span').forEach((el, index) => el.classList.toggle('active', index < order[page]));
   const primary = document.getElementById('native-onboarding-primary');
   const secondary = document.getElementById('native-onboarding-secondary');
   const note = document.getElementById('native-onboarding-note');
-  primary.textContent = page === 'welcome' ? 'Get started' : page === 'identity' ? 'Create my Private Number' : 'Enable notifications';
-  secondary.style.display = page === 'welcome' || page === 'identity' || page === 'notifications' ? '' : 'none';
-  secondary.textContent = page === 'notifications' ? 'Not now' : 'Sign in';
-  note.style.display = page === 'notifications' ? '' : 'none';
+  primary.textContent = page === 'welcome' ? 'Get started' : page === 'identity' ? 'Create my Private Number' : page === 'notifications' ? 'Enable notifications' : 'Open Android Settings';
+  secondary.style.display = '';
+  secondary.textContent = page === 'notifications' ? 'Not now' : page === 'fullscreen-calls' ? 'Continue without full-screen calls' : 'Sign in';
+  note.style.display = page === 'notifications' || page === 'fullscreen-calls' ? '' : 'none';
+  note.textContent = page === 'fullscreen-calls' ? 'You can change this later in Android Settings.' : 'You can change notification access later in Settings.';
+  if (page === 'fullscreen-calls') refreshFullScreenCallAccess();
 }
 function openNativeOnboarding(page = 'welcome') {
   localStorage.setItem(NATIVE_ONBOARDING_KEY, page);
@@ -7576,15 +7587,42 @@ function openNativeOnboardingAccount(tab) {
   openAccountPanel();
   showAccountTab(tab);
 }
-function advanceNativeOnboarding() {
+async function advanceNativeOnboarding() {
   if (nativeOnboardingPage === 'welcome') { openNativeOnboarding('identity'); return; }
   if (nativeOnboardingPage === 'identity') { openNativeOnboardingAccount('create'); return; }
-  finishNativeOnboarding(true);
+  if (nativeOnboardingPage === 'notifications') {
+    await requestNativePushPermission();
+    if (nativePlatform() === 'android') openNativeOnboarding('fullscreen-calls');
+    else finishNativeOnboarding(false);
+    return;
+  }
+  if (nativeOnboardingPage === 'fullscreen-calls') {
+    if (refreshFullScreenCallAccess()) { finishNativeOnboarding(false); return; }
+    try { window.VaultlixAndroid?.openFullScreenCallSettings(); } catch (e) { toast('Open Android Settings → Apps → Vaultlix → Full-screen notifications'); }
+  }
 }
 function nativeOnboardingSecondary() {
-  if (nativeOnboardingPage === 'notifications') { finishNativeOnboarding(false); return; }
+  if (nativeOnboardingPage === 'notifications') {
+    if (nativePlatform() === 'android') openNativeOnboarding('fullscreen-calls');
+    else finishNativeOnboarding(false);
+    return;
+  }
+  if (nativeOnboardingPage === 'fullscreen-calls') { finishNativeOnboarding(false); return; }
   openNativeOnboardingAccount('login');
 }
+function refreshFullScreenCallAccess() {
+  if (nativePlatform() !== 'android') return true;
+  let enabled = false;
+  try { enabled = window.VaultlixAndroid?.canUseFullScreenCalls?.() === true; } catch (e) {}
+  const status = document.getElementById('native-fullscreen-status');
+  const primary = document.getElementById('native-onboarding-primary');
+  if (status) status.textContent = enabled ? 'Full-screen incoming calls enabled' : 'Full-screen incoming calls not enabled';
+  if (primary && nativeOnboardingPage === 'fullscreen-calls') primary.textContent = enabled ? 'Continue' : 'Open Android Settings';
+  return enabled;
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && nativeOnboardingPage === 'fullscreen-calls') refreshFullScreenCallAccess();
+});
 async function finishNativeOnboarding(enableNotifications) {
   if (enableNotifications) await requestNativePushPermission();
   localStorage.setItem(NATIVE_ONBOARDING_KEY, 'complete');
