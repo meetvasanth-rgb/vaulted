@@ -3107,7 +3107,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="settings-divider"></div>
 
-    <div class="settings-row" id="settings-account-row" onclick="openAccountPanel()" style="cursor:pointer">
+    <div class="settings-row" id="settings-account-row" style="cursor:default">
       <div class="settings-row-icon" style="background:#F2E8EC;color:#682C43;">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
       </div>
@@ -3116,6 +3116,24 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <div class="settings-row-sub" id="account-settings-sub">Encrypted backup for your conversations and identity across devices</div>
       </div>
       <div class="settings-status settings-status-action" id="account-settings-status">Set up</div>
+    </div>
+
+    <div id="settings-profile-controls" style="padding:0 20px 24px">
+      <form id="account-profile-form" onsubmit="updateAccountUsername(event)">
+        <label class="account-field"><span>Username</span><input id="account-profile-display-name" autocomplete="nickname" minlength="2" maxlength="40" required/></label>
+        <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
+      </form>
+      <div class="settings-divider" style="margin:20px 0"></div>
+      <div class="account-copy"><strong>Password recovery code</strong><br/>Keep an encrypted copy on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
+      <div id="account-saved-recovery" style="display:none">
+        <div class="recovery-box"><div class="recovery-code" id="account-saved-recovery-code">••••••••••••••••</div></div>
+        <button class="account-secondary" type="button" onclick="revealSavedRecoveryCode()">Reveal recovery code</button>
+        <button class="account-secondary" type="button" onclick="copySavedRecoveryCode()">Copy recovery details</button>
+      </div>
+      <form id="account-save-recovery-form" onsubmit="saveRecoveryCodeOnDevice(event)" style="display:none">
+        <label class="account-field"><span>Enter your permanent recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
+        <button class="account-secondary" type="submit" data-busy-label="Verifying…">Verify and save on this device</button>
+      </form>
     </div>
 
     <div id="settings-calls-section" class="settings-category-page">
@@ -3390,21 +3408,6 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     </div>
     <div class="account-signed" id="account-signed-view">
       <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub">Your private identity</div></div>
-      <form id="account-profile-form" onsubmit="updateAccountUsername(event)">
-        <label class="account-field"><span>Username</span><input id="account-profile-display-name" autocomplete="nickname" minlength="2" maxlength="40" required/></label>
-        <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
-      </form>
-      <div class="settings-divider" style="margin:18px 0"></div>
-      <div class="account-copy"><strong>Password recovery code</strong><br/>Keep an encrypted copy on this device so you can view or copy it from Settings. Vaultlix never receives the readable code.</div>
-      <div id="account-saved-recovery" style="display:none">
-        <div class="recovery-box"><div class="recovery-code" id="account-saved-recovery-code">••••••••••••••••</div></div>
-        <button class="account-secondary" type="button" onclick="revealSavedRecoveryCode()">Reveal recovery code</button>
-        <button class="account-secondary" type="button" onclick="copySavedRecoveryCode()">Copy recovery details</button>
-      </div>
-      <form id="account-save-recovery-form" onsubmit="saveRecoveryCodeOnDevice(event)" style="display:none">
-        <label class="account-field"><span>Enter your permanent recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
-        <button class="account-secondary" type="submit" data-busy-label="Verifying…">Verify and save on this device</button>
-      </form>
       <div id="account-sync-status" hidden></div>
       <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
       <button class="account-primary" type="button" onclick="closeAccountPanel();openNewConnection()">New connection</button>
@@ -7211,7 +7214,7 @@ function openSettingsCategory(category) {
   document.getElementById('settings-header-title').textContent = settingsContextMode === 'chat' ? i18n('conversation_settings') : (titles[category] || i18n('settings'));
   const generalSection = document.getElementById('settings-general-section');
   const generalRows = {
-    profile:['settings-account-row'],
+    profile:['settings-account-row','settings-profile-controls'],
     privacy:['settings-app-lock-row'],
     notifications:['settings-chime-row','settings-push-row']
   };
@@ -7227,6 +7230,7 @@ function openSettingsCategory(category) {
     sectionLabel.style.display = '';
   }
   selectedRows.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+  if (category === 'profile') populateAccountProfileSettings();
   const conversationSafetyVisible = !!room && (category === 'privacy' || (settingsContextMode === 'chat' && category === 'chats'));
   document.getElementById('settings-participant-section').style.display = conversationSafetyVisible ? '' : 'none';
   document.getElementById('settings-general-safety-section').style.display = category === 'privacy' ? '' : 'none';
@@ -7519,6 +7523,7 @@ function loadSettingsState() {
 
 function updateAccountSettingsStatus() {
   const state = loadAccountState();
+  const accountRow = document.getElementById('settings-account-row');
   const status = document.getElementById('account-settings-status');
   const sub = document.getElementById('account-settings-sub');
   const landingButton = document.getElementById('landing-account-btn');
@@ -7526,6 +7531,10 @@ function updateAccountSettingsStatus() {
   const footerAccountLabel = document.getElementById('landing-footer-account-label');
   if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
   if (sub) sub.textContent = state ? `${formatPrivateNumber(state.privateNumber)} · encrypted conversation sync` : 'Create your Vaultlix private number';
+  if (accountRow) {
+    accountRow.style.cursor = state ? 'default' : 'pointer';
+    accountRow.onclick = state ? null : openAccountPanel;
+  }
   if (landingLabel) landingLabel.textContent = state ? state.displayName : 'Sign in';
   if (footerAccountLabel) footerAccountLabel.textContent = state ? state.displayName : 'Sign in';
   if (landingButton) {
@@ -7533,6 +7542,14 @@ function updateAccountSettingsStatus() {
     landingButton.setAttribute('aria-label', state ? `Open account for ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix');
     landingButton.title = state ? `Signed in with ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix';
   }
+}
+function populateAccountProfileSettings(state = loadAccountState()) {
+  const controls = document.getElementById('settings-profile-controls');
+  if (controls) controls.style.display = state ? '' : 'none';
+  if (!state) return;
+  const displayName = document.getElementById('account-profile-display-name');
+  if (displayName) displayName.value = state.displayName;
+  refreshSavedRecoveryControls(state);
 }
 const NATIVE_ONBOARDING_KEY = 'vaultlix_native_onboarding_v1';
 let nativeOnboardingPage = 'welcome';
@@ -7585,8 +7602,6 @@ function openAccountPanel() {
   if (accountTitle) accountTitle.textContent = state ? 'Your Vaultlix private number' : 'Create your Vaultlix private number';
   if (state) {
     document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
-    document.getElementById('account-profile-display-name').value = state.displayName;
-    refreshSavedRecoveryControls(state);
   }
   else generatePrivateNumber();
   document.getElementById('account-overlay').classList.add('open');

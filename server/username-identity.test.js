@@ -29,6 +29,10 @@ test('signed-in settings support username changes and encrypted device recovery-
   assert.match(server, /account\.displayName = displayName/);
   assert.match(client, /id="account-profile-display-name"/);
   assert.match(client, /updateAccountUsername\(event\)/);
+  assert.match(client, /id="settings-profile-controls"[\s\S]*id="account-profile-form"/);
+  assert.doesNotMatch(client, /id="settings-account-row" onclick="openAccountPanel/);
+  assert.match(client, /profile:\['settings-account-row','settings-profile-controls'\]/);
+  assert.match(client, /function populateAccountProfileSettings\(state = loadAccountState\(\)\)/);
   assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
   assert.match(client, /saveRecoveryCodeOnDevice\(event\)/);
   assert.match(client, /api\('\/api\/account\/recovery-bundle'/);
