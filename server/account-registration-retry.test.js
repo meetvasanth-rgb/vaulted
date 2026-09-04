@@ -10,6 +10,8 @@ test('account registration safely handles a lost first response', () => {
   assert.match(server, /existingNumberOwner === d\.accountId/);
   assert.match(server, /verifyAccountSecret\(d\.authSecret, existing\.authVerifier\)/);
   assert.match(server, /newAccountSession\(existing\)/);
-  assert.match(client, /for \(let attempt = 0; attempt < 2; attempt\+\+\)/);
-  assert.match(client, /setTimeout\(resolve, 650\)/);
+  assert.match(client, /for \(let attempt = 0; attempt < 3; attempt\+\+\)/);
+  assert.match(client, /attempt === 0 \? 500 : 1500/);
+  assert.match(client, /Registration returned no response/);
+  assert.match(client, /\[account-register\]/);
 });

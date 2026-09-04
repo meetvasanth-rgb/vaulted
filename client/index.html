@@ -7871,15 +7871,27 @@ async function createAnonymousAccount(event) {
       bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true)),
     };
     let result;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const registrationStartedAt = Date.now();
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         result = await api('/api/account/register', payload);
-        if (!result?.status || result.status < 500 || attempt === 1) break;
+        console.info('[account-register]', {
+          attempt: attempt + 1,
+          elapsedMs: Date.now() - registrationStartedAt,
+          status: result?.status || 200,
+        });
+        if (!result?.status || result.status < 500 || attempt === 2) break;
       } catch (error) {
-        if (attempt === 1) throw error;
+        console.warn('[account-register]', {
+          attempt: attempt + 1,
+          elapsedMs: Date.now() - registrationStartedAt,
+          networkError: true,
+        });
+        if (attempt === 2) throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, 650));
+      await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500));
     }
+    if (!result) throw new Error('Registration returned no response');
     if (result.error) { toast(result.error); return; }
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
