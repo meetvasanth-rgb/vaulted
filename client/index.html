@@ -7856,20 +7856,38 @@ async function createAnonymousAccount(event) {
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
   setAccountBusy(form, true);
   try {
-    const passwordMaterial = await derivePasswordMaterial(privateNumber, password);
     const accountId = randomAccountId();
     const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
     const recoveryCode = formatRecoveryCode(recoveryBytes);
-    const recovery = await recoveryMaterial(recoveryCode);
     const masterKey = crypto.getRandomValues(new Uint8Array(32));
-    const payload = {
-      accountId, privateNumber, displayName,
-      authSecret: passwordMaterial.authSecret,
-      recoverySecret: recovery.authSecret,
-      passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
-      recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:bytesToBase64UrlCompact(masterKey) }),
-      bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true)),
-    };
+    const masterKeyEncoded = bytesToBase64UrlCompact(masterKey);
+    let payload;
+    // A small number of Android WebViews transiently reject the first
+    // PBKDF2/AES operation after a clean install while their crypto provider
+    // is warming up. Previously that escaped to the outer catch before any
+    // request reached the server, so tapping the same button again worked.
+    // Keep one account ID and one key set, and retry only the deterministic
+    // encrypted envelopes. This cannot create a second identity.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const passwordMaterial = await derivePasswordMaterial(privateNumber, password);
+        const recovery = await recoveryMaterial(recoveryCode);
+        payload = {
+          accountId, privateNumber, displayName,
+          authSecret: passwordMaterial.authSecret,
+          recoverySecret: recovery.authSecret,
+          passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:masterKeyEncoded }),
+          recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:masterKeyEncoded }),
+          bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true)),
+        };
+        break;
+      } catch (error) {
+        console.warn('[account-register]', { attempt:attempt + 1, cryptoPreparationError:true });
+        if (attempt === 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 200 : 600));
+      }
+    }
+    if (!payload) throw new Error('Registration encryption was not prepared');
     let result;
     const registrationStartedAt = Date.now();
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -7896,7 +7914,6 @@ async function createAnonymousAccount(event) {
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
-    const masterKeyEncoded = bytesToBase64UrlCompact(masterKey);
     saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }) });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';

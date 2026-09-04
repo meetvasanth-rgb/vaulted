@@ -14,4 +14,7 @@ test('account registration safely handles a lost first response', () => {
   assert.match(client, /attempt === 0 \? 500 : 1500/);
   assert.match(client, /Registration returned no response/);
   assert.match(client, /\[account-register\]/);
+  assert.match(client, /cryptoPreparationError:true/);
+  assert.match(client, /attempt === 0 \? 200 : 600/);
+  assert.match(client, /Registration encryption was not prepared/);
 });
