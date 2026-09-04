@@ -40,9 +40,9 @@
   function render(s) {
     $('live-dot').textContent = 'Live';
     $('updated').textContent = `Updated ${new Date(s.generatedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}`;
+    $('registered-identities').textContent = number(s.live.registeredIdentities);
     $('active-vaults').textContent = number(s.live.activeVaults);
-    $('vault-mix').textContent = `${number(s.live.permanentVaults)} permanent · ${number(s.live.temporaryVaults)} temporary`;
-    $('active-sessions').textContent = number(s.live.activeAnonymousSessions);
+    $('vault-mix').textContent = `${number(s.live.occupiedVaults)} connected · ${number(s.live.temporaryVaults)} temporary`;
     $('signal-sockets').textContent = number(s.live.authenticatedSignalSockets);
     $('calls-now').textContent = number(s.live.activeCalls + s.live.ringingCalls);
     $('calls-detail').textContent = `${number(s.live.activeCalls)} connected · ${number(s.live.ringingCalls)} ringing`;
@@ -60,7 +60,35 @@
     $('uptime').textContent = duration(s.system.uptimeSeconds);
     $('node-version').textContent = s.system.nodeVersion;
     $('cipher-count').textContent = number(s.live.storedCiphertextMessages);
+    renderIdentities(s.identities || []);
     renderChart(s.daily || []);
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+  }
+
+  function formatPrivateNumber(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 10);
+    return digits.length === 10 ? `${digits.slice(0,2)}-${digits.slice(2,6)}-${digits.slice(6)}` : digits || '—';
+  }
+
+  function formatDate(value) {
+    if (!value) return '—';
+    return new Date(value).toLocaleString([], { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+
+  function renderIdentities(identities) {
+    $('identity-count').textContent = `${number(identities.length)} total`;
+    $('identity-rows').innerHTML = identities.length ? identities.map(identity => `<tr>
+      <td><strong>${escapeHtml(identity.displayName || 'Unnamed')}</strong></td>
+      <td><a href="/${encodeURIComponent(identity.privateNumber)}" target="_blank" rel="noopener">${escapeHtml(formatPrivateNumber(identity.privateNumber))}</a></td>
+      <td>${escapeHtml(formatDate(identity.createdAt))}</td>
+      <td>${escapeHtml(formatDate(identity.updatedAt))}</td>
+      <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
+      <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
+      <td>${number(identity.pendingRequests)}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-row">No registered identities yet.</td></tr>';
   }
 
   function setGauge(prefix, value, max) {
@@ -80,7 +108,7 @@
     const points = values => values.map((v,i) => `${pad + i*(W-pad*2)/(values.length-1)},${H-pad-v*(H-pad*2)/max}`).join(' ');
     const grid = [0,.25,.5,.75,1].map(x => `<line x1="${pad}" y1="${pad+x*(H-pad*2)}" x2="${W-pad}" y2="${pad+x*(H-pad*2)}" stroke="#eadfe3"/>`).join('');
     const labels = dates.map((d,i) => i % 3 === 0 || i === 13 ? `<text x="${pad+i*(W-pad*2)/13}" y="218" text-anchor="middle" fill="#8a7a82" font-size="11">${new Date(`${d}T12:00:00`).toLocaleDateString([], {month:'short',day:'numeric'})}</text>` : '').join('');
-    $('trend-chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"><title>Vaults and messages over the last fourteen days</title>${grid}<polyline points="${points(messages)}" fill="none" stroke="#71947c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${points(vaults)}" fill="none" stroke="#682c43" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>${labels}</svg>`;
+    $('trend-chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"><title>Conversations and messages over the last fourteen days</title>${grid}<polyline points="${points(messages)}" fill="none" stroke="#71947c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${points(vaults)}" fill="none" stroke="#682c43" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>${labels}</svg>`;
   }
 
   $('login-form').addEventListener('submit', event => {

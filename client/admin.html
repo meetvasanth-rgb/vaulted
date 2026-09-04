@@ -14,7 +14,7 @@
       <div class="brand-mark" aria-hidden="true">▢</div>
       <p class="eyebrow">Private operations</p>
       <h1>Vaultlix Pulse</h1>
-      <p class="lede">A privacy-safe view of platform health. No identities, vault codes or conversation contents.</p>
+      <p class="lede">A protected view of Vaultlix identities, conversations and platform health.</p>
       <form id="login-form">
         <label for="admin-key">Admin access key</label>
         <div class="key-row">
@@ -28,34 +28,42 @@
 
     <section id="dashboard" class="dashboard" hidden>
       <header class="topbar">
-        <div class="brand"><span class="brand-mark small">▢</span><div><strong>Vaultlix Pulse</strong><span>Aggregate operations</span></div></div>
+        <div class="brand"><span class="brand-mark small">▢</span><div><strong>Vaultlix Pulse</strong><span>Identity operations</span></div></div>
         <div class="top-actions"><span id="live-dot" class="live-dot">Live</span><span id="updated">—</span><button id="refresh" class="quiet">Refresh</button><button id="signout" class="quiet">Sign out</button></div>
       </header>
 
       <section class="hero">
-        <div><p class="eyebrow">Right now</p><h1>The network at a glance.</h1><p>Anonymous operational signals, designed to reveal health—not people.</p></div>
-        <div class="privacy-seal"><span>✓</span><div><strong>Privacy boundary intact</strong><small>Aggregate data only</small></div></div>
+        <div><p class="eyebrow">Right now</p><h1>People and conversations.</h1><p>Account operations for the current Private Number architecture.</p></div>
+        <div class="privacy-seal"><span>✓</span><div><strong>Privacy boundary intact</strong><small>No passwords, keys or message contents</small></div></div>
       </section>
 
       <section class="metric-grid" aria-label="Live metrics">
-        <article class="metric plum"><span>Active vaults</span><strong id="active-vaults">—</strong><small id="vault-mix">—</small></article>
-        <article class="metric rose"><span>Active anonymous sessions</span><strong id="active-sessions">—</strong><small>Seen within the last minute</small></article>
+        <article class="metric plum"><span>Registered identities</span><strong id="registered-identities">—</strong><small>Username + Private Number</small></article>
+        <article class="metric rose"><span>Active conversations</span><strong id="active-vaults">—</strong><small id="vault-mix">—</small></article>
         <article class="metric sage"><span>Signal connections</span><strong id="signal-sockets">—</strong><small>Authenticated WebSockets</small></article>
         <article class="metric coral"><span>Calls now</span><strong id="calls-now">—</strong><small id="calls-detail">—</small></article>
       </section>
 
+      <section class="panel identity-panel">
+        <div class="panel-head"><div><p class="eyebrow">User directory</p><h2>Vaultlix identities</h2><p class="panel-copy">Only account metadata needed for support and operations is shown.</p></div><span class="identity-count" id="identity-count">—</span></div>
+        <div class="table-wrap"><table class="identity-table">
+          <thead><tr><th>Username</th><th>Private Number</th><th>Created</th><th>Updated</th><th>Devices</th><th>Notifications</th><th>Pending requests</th></tr></thead>
+          <tbody id="identity-rows"><tr><td colspan="7" class="empty-row">Loading identities…</td></tr></tbody>
+        </table></div>
+      </section>
+
       <section class="content-grid">
         <article class="panel trend-panel">
-          <div class="panel-head"><div><p class="eyebrow">Last 14 days</p><h2>Vault activity</h2></div><div class="legend"><span class="legend-vault">Vaults</span><span class="legend-message">Messages</span></div></div>
+          <div class="panel-head"><div><p class="eyebrow">Last 14 days</p><h2>Conversation activity</h2></div><div class="legend"><span class="legend-vault">Conversations</span><span class="legend-message">Messages</span></div></div>
           <div id="trend-chart" class="chart" aria-label="Fourteen day activity chart"></div>
         </article>
 
         <article class="panel lifetime-panel">
           <p class="eyebrow">Since metrics began</p><h2>Lifetime signals</h2>
           <dl class="stat-list">
-            <div><dt>Vaults created</dt><dd id="total-created">—</dd></div>
-            <div><dt>Permanent share</dt><dd id="permanent-pct">—</dd></div>
-            <div><dt>Successful joins</dt><dd id="joins">—</dd></div>
+            <div><dt>Conversations created</dt><dd id="total-created">—</dd></div>
+            <div><dt>Persistent conversation share</dt><dd id="permanent-pct">—</dd></div>
+            <div><dt>Successful connections</dt><dd id="joins">—</dd></div>
             <div><dt>Messages relayed</dt><dd id="messages">—</dd></div>
             <div><dt>Calls started</dt><dd id="calls-started">—</dd></div>
             <div><dt>Calls answered</dt><dd id="answer-rate">—</dd></div>
@@ -66,15 +74,15 @@
           <div class="panel-head"><div><p class="eyebrow">Infrastructure</p><h2>System health</h2></div><span class="health-pill">Healthy</span></div>
           <div class="gauges">
             <div class="gauge"><div><span id="memory-ring" style="--value:0"><b id="memory-pct">0%</b></span></div><strong>Ciphertext budget</strong><small id="memory-detail">—</small></div>
-            <div class="gauge"><div><span id="room-ring" style="--value:0"><b id="room-pct">0%</b></span></div><strong>Vault capacity</strong><small id="room-detail">—</small></div>
+            <div class="gauge"><div><span id="room-ring" style="--value:0"><b id="room-pct">0%</b></span></div><strong>Conversation capacity</strong><small id="room-detail">—</small></div>
           </div>
           <div class="system-foot"><span>Process uptime <b id="uptime">—</b></span><span>Node <b id="node-version">—</b></span><span>Buffered ciphertext <b id="cipher-count">—</b></span></div>
         </article>
 
         <article class="panel privacy-panel">
-          <p class="eyebrow">Administrator visibility</p><h2>What this dashboard cannot see</h2>
-          <ul><li>Vault codes or invite links</li><li>Codenames or real identities</li><li>IP addresses or locations</li><li>Message or call contents</li><li>Encryption keys or push tokens</li></ul>
-          <p class="privacy-note">Vaultlix measures whether the service works without learning who uses it.</p>
+          <p class="eyebrow">Administrator visibility</p><h2>Privacy boundary</h2>
+          <ul><li>Passwords or recovery codes</li><li>Conversation codes or invite secrets</li><li>IP addresses or locations</li><li>Message, media or call contents</li><li>Encryption keys or notification tokens</li></ul>
+          <p class="privacy-note">Usernames and Private Numbers are visible for account support. End-to-end encrypted content remains inaccessible.</p>
         </article>
       </section>
     </section>

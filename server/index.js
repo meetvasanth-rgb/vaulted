@@ -3316,8 +3316,11 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res,{ok:true});
   }
 
-  // GET /api/admin/stats — aggregate room-creation counts only, gated by a
-  // shared-secret key set via the ADMIN_KEY env var. Returns a 404 rather
+  // GET /api/admin/stats — identity metadata and aggregate conversation
+  // health, gated by a shared-secret key set via the ADMIN_KEY env var. It
+  // never returns account credentials, recovery material, room credentials,
+  // push endpoints, encryption keys, or encrypted/decrypted message bodies.
+  // Returns a 404 rather
   // than 401/403 on a missing/wrong key so the endpoint's existence isn't
   // revealed to anyone who doesn't already have the key.
   //
@@ -3373,17 +3376,29 @@ async function api(path, method, d, p, res, ip, headers) {
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-90)
       .map(([date, values]) => ({ date, ...values }));
+    const identities = Array.from(accounts.values())
+      .map(account => ({
+        displayName: account.displayName,
+        privateNumber: account.privateNumber,
+        createdAt: account.createdAt || null,
+        updatedAt: account.updatedAt || account.createdAt || null,
+        activeDevices: (account.sessions || []).filter(session => session.expiresAt > now).length,
+        notificationDevices: (account.pushDestinations || []).length,
+        pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
+      }))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, {
       generatedAt: now,
       privacy: {
-        mode: 'aggregate-only',
+        mode: 'identity-operations',
+        showsAccountProfiles: true,
         storesVaultCodes: false,
-        storesCodenames: false,
         storesIpAddresses: false,
         canReadMessages: false,
       },
       live: {
+        registeredIdentities: accounts.size,
         activeVaults: rooms.size,
         occupiedVaults,
         permanentVaults,
@@ -3394,6 +3409,7 @@ async function api(path, method, d, p, res, ip, headers) {
         ringingCalls,
         storedCiphertextMessages,
       },
+      identities,
       lifetime: {
         roomsCreatedTemporary: analytics.roomsCreatedTemporary,
         roomsCreatedPermanent: analytics.roomsCreatedPermanent,
