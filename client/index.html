@@ -5223,19 +5223,47 @@ let activeCallRoomCode = null;
 const CALL_RING_TIMEOUT_MS = 30000;
 
 function canStartCall(room) {
-  return !!room && !!room.signalWs && room.signalWs.readyState === WebSocket.OPEN
-    && room.callState === 'idle' && !activeCallRoomCode;
+  return !!room && room.callState === 'idle' && !activeCallRoomCode;
 }
 
 function refreshCallButton() {
   const btn = document.getElementById('call-btn');
   if (!btn) return;
+  // Transport readiness is deliberately not reflected as a disabled/grey
+  // control. Opening a conversation starts signalling in the background,
+  // and an early tap below briefly awaits that handshake. Native mobile
+  // engines do not need the page WebSocket at all to begin an outgoing call.
   btn.disabled = !canStartCall(getActiveRoom());
+}
+
+function waitForCallSignaling(room, timeoutMs = 3000) {
+  if (room.signalWs?.readyState === WebSocket.OPEN) return Promise.resolve(true);
+  connectSignaling(room);
+  return new Promise(resolve => {
+    const startedAt = Date.now();
+    const check = () => {
+      if (room.signalWs?.readyState === WebSocket.OPEN) return resolve(true);
+      if (Date.now() - startedAt >= timeoutMs) return resolve(false);
+      setTimeout(check, 50);
+    };
+    check();
+  });
 }
 
 async function startCall() {
   const room = getActiveRoom();
   if (!canStartCall(room)) return;
+  const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
+  const androidNativeBridge = window.VaultlixAndroid;
+  let androidNativeReady = false;
+  try {
+    androidNativeReady = !!(room.nativeRoomHandle && androidNativeBridge?.supportsNativeWebRtc?.());
+  } catch (e) {}
+  const iosNativeReady = !!(room.nativeRoomHandle && iosBridge);
+  if (!androidNativeReady && !iosNativeReady && !(await waitForCallSignaling(room))) {
+    toast('Calling isn’t available right now.');
+    return;
+  }
   activeCallRoomCode = room.code;
   room.callState = 'outgoing';
   room.callPeerName = room.peerName || 'them';
@@ -5256,9 +5284,7 @@ async function startCall() {
   // the peer is ringing so relay allocation can begin immediately after
   // acceptance instead of adding another network round-trip afterward.
   fetchTurnCredentials(room);
-  const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
-  const androidNativeBridge = window.VaultlixAndroid;
-  if (androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeRoomHandle) {
+  if (androidNativeReady) {
     if (!androidNativeBridge.hasNativeAudioPermission()) {
       androidNativeBridge.requestNativeAudioPermission();
       endCall(room, 'Allow microphone access, then try the call again.');
