@@ -3,7 +3,6 @@
     "details": [
       {
         "appIDs": ["3KLX2S84MV.com.vaultlix.app"],
-        "paths": ["/join/*", "/??????????"],
         "components": [
           {
             "/": "/join/*",
@@ -14,6 +13,10 @@
             "comment": "Open ten-digit Vaultlix Private Number invitations in the iOS app"
           }
         ]
+      },
+      {
+        "appID": "3KLX2S84MV.com.vaultlix.app",
+        "paths": ["/join/*", "/??????????"]
       }
     ]
   }

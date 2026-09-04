@@ -1830,7 +1830,14 @@ function serveStatic(req, res) {
     const contentType = url === '/.well-known/apple-app-site-association'
       ? 'application/json'
       : (t[path.extname(url)] || 'text/plain');
-    res.writeHead(200,{'Content-Type':contentType,'Content-Length':Buffer.byteLength(data)}); res.end(data);
+    const staticHeaders = {'Content-Type':contentType,'Content-Length':Buffer.byteLength(data)};
+    if (url === '/.well-known/apple-app-site-association') {
+      // Apple normally fetches this through its own CDN. Do not encourage an
+      // additional stale origin copy after paths (such as Private Numbers)
+      // are added to the Universal Link contract.
+      staticHeaders['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    }
+    res.writeHead(200, staticHeaders); res.end(data);
   });
 }
 

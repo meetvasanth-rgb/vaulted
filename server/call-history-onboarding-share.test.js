@@ -35,6 +35,9 @@ test('native iOS outgoing calls generate routed ringback until connection or end
   assert.match(iosCallManager, /nativeCallDidConnect[\s\S]*stopRingback\(callID: callID\)/);
   assert.match(iosCallManager, /perform action: CXEndCallAction[\s\S]*stopRingback\(callID: action\.callUUID\)/);
   assert.match(client, /callState === 'outgoing'[\s\S]*outgoingSpeakerBtnHtml[\s\S]*toggleSpeaker\(\)/);
+  assert.match(iosCallManager, /overrideOutputAudioPort\(enabled \? \.speaker : \.none\)[\s\S]*restartRingbackForCurrentRoute\(\)/);
+  assert.match(iosCallManager, /func audioRouteDidChange\(\)[\s\S]*restartRingbackForCurrentRoute\(\)/);
+  assert.match(iosCallManager, /restartRingbackForCurrentRoute[\s\S]*stopRingbackPlayer\(\)[\s\S]*startRingbackIfPossible\(\)/);
 });
 
 test('number generation exposes its remaining allowance and own profile can share', () => {
@@ -49,6 +52,8 @@ test('number generation exposes its remaining allowance and own profile can shar
 test('Private Number invitations are app links with one URL and branded previews', () => {
   const association = fs.readFileSync(path.join(root, 'client/.well-known/apple-app-site-association'), 'utf8');
   assert.match(association, /\/\?\?\?\?\?\?\?\?\?\?/);
+  assert.match(association, /"appID": "3KLX2S84MV\.com\.vaultlix\.app"/);
+  assert.match(server, /apple-app-site-association'[\s\S]*Cache-Control'[\s\S]*no-cache, no-store/);
   assert.match(client, /og:image:secure_url/);
   assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
   const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));

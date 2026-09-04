@@ -28,7 +28,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         ) { [weak self] _ in self?.flushPendingCallActions() })
         observers.append(NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.emitSpeakerState(success: true) })
+        ) { [weak self] _ in
+            VaultlixCallManager.shared.audioRouteDidChange()
+            self?.emitSpeakerState(success: true)
+        })
 
         // PushKit can issue the token before the remote page finishes loading.
         // Re-emit the persisted value after the bridge has had time to attach.

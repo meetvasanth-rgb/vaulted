@@ -557,6 +557,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 outgoingWebAudioSessionActive = true
             }
             try session.overrideOutputAudioPort(enabled ? .speaker : .none)
+            restartRingbackForCurrentRoute()
             return true
         } catch {
             print("VXCALL manager speaker route failed: \(error.localizedDescription)")
@@ -566,6 +567,24 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func isSpeakerEnabled() -> Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+    }
+
+    /// AVAudioSession replaces its output graph when the user moves between
+    /// the receiver and loudspeaker. An AVAudioPlayerNode can remain marked
+    /// as playing while its old graph is now silent, so rebuild only the
+    /// local ringback player without clearing the outgoing call intent.
+    func audioRouteDidChange() {
+        restartRingbackForCurrentRoute()
+    }
+
+    private func restartRingbackForCurrentRoute() {
+        guard ringbackCallID != nil,
+              callKitAudioSessionActive,
+              ringbackEngine != nil else { return }
+        stopRingbackPlayer()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            self?.startRingbackIfPossible()
+        }
     }
 
     /// iOS does not synthesize ringback for app-provided VoIP calls. Play it
@@ -616,11 +635,15 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     private func stopRingback(callID: UUID? = nil) {
         if let callID, ringbackCallID != callID { return }
+        stopRingbackPlayer()
+        ringbackCallID = nil
+    }
+
+    private func stopRingbackPlayer() {
         ringbackPlayer?.stop()
         ringbackEngine?.stop()
         ringbackPlayer = nil
         ringbackEngine = nil
-        ringbackCallID = nil
     }
 }
 
