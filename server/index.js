@@ -2107,11 +2107,13 @@ async function api(path, method, d, p, res, ip, headers) {
   // can authenticate, replace and return that blob, but cannot list its
   // vaults, codenames, room tokens or E2E private keys.
   if (path === '/api/account/private-number' && method === 'POST') {
-    if (rateLimited(`private-number:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
+    const generationKey = `private-number:${ip}`;
+    if (rateLimited(generationKey, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
     const allowedCategories = new Set(['standard', 'zeros', 'sequence', 'repeated', 'pairs']);
     const category = allowedCategories.has(d.category) ? d.category : 'standard';
-    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:category !== 'standard' });
+    const remaining = Math.max(0, 20 - (rateLimitBuckets.get(generationKey)?.count || 0));
+    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:category !== 'standard', generationsRemaining:remaining });
   }
 
   if (path === '/api/account/register' && method === 'POST') {
@@ -2701,6 +2703,11 @@ async function api(path, method, d, p, res, ip, headers) {
     // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
+    // Call completion is observed independently by both native endpoints.
+    // They deliberately submit the same stable call-event ID, so make the
+    // encrypted message stream idempotent before allocating a new sequence.
+    const existingMessage = (room.messages || []).find(message => message.id === msgId);
+    if (existingMessage) return res200(res, { ok:true, id:msgId, seq:existingMessage.seq, duplicate:true });
     const seq = room.seq + 1;
     // viewOnce travels as a plain top-level field (client/index.html's
     // sendFileMessage/sendAlbumMessage) alongside the encrypted content —

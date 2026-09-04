@@ -3130,6 +3130,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <label class="account-field"><span>Username</span><input id="account-profile-display-name" autocomplete="nickname" minlength="2" maxlength="40" required/></label>
         <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
       </form>
+      <button class="account-primary" type="button" onclick="shareOwnPrivateNumber()">Share my Vaultlix Private Number</button>
       <div class="settings-divider" style="margin:20px 0"></div>
       <div class="account-copy"><strong>Password recovery code</strong><br/>An encrypted copy is kept on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
       <div class="account-note" id="account-recovery-backup-status"></div>
@@ -3385,6 +3386,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
             <div class="private-number-value" id="account-private-number-value">Generating…</div>
             <div class="private-number-caption">Share this number or its Vaultlix link so people can connect with you.</div>
             <div class="private-number-caption" style="margin-top:12px"><strong>Early Tester Reward</strong><br/>Choose one Special Private Number complimentary. It remains yours permanently.</div>
+            <div class="private-number-caption" id="account-generation-counter" style="margin-top:8px">20 number choices remaining this hour</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
               <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('standard')">Quick number</button>
               <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('zeros')">Four zeros</button>
@@ -5544,6 +5546,7 @@ function addCallSysMsg(room, text, eventId = null) {
   const stamped = `${text} · ${formatMsgTime(Date.now())}`;
   const rec = { id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), kind: 'sys', content: stamped };
   if (room.messages.some(existing => existing.id === rec.id)) return;
+  room.seenMsgIds?.add(rec.id);
   room.messages.push(rec);
   if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
   else if (/^Missed call/.test(text)) room.unread++;
@@ -7366,6 +7369,18 @@ async function shareConversationPrivateNumber() {
   try { await navigator.clipboard.writeText(text); toast('Private number copied to share'); }
   catch (e) { toast('Sharing is unavailable on this device'); }
 }
+async function shareOwnPrivateNumber() {
+  const state = loadAccountState();
+  if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
+  const url = `https://vaultlix.com/${state.privateNumber}`;
+  const text = `Connect with ${state.displayName || 'me'} privately on Vaultlix: ${url}`;
+  if (navigator.share) {
+    try { await navigator.share({ title:'Connect with me on Vaultlix', text, url }); return; }
+    catch (e) { if (e?.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(text); toast('Vaultlix invitation link copied'); }
+  catch (e) { toast(`Share this link: ${url}`); }
+}
 
 async function blockedVaultFingerprint(code) {
   const digest = await sha256Bytes(new TextEncoder().encode(`vaultlix-block-v1\0${String(code || '').toLowerCase()}`));
@@ -7888,6 +7903,11 @@ async function generatePrivateNumber(category = 'standard') {
     pendingPrivateNumberReservation = result.reservationToken || '';
     pendingPrivateNumberCategory = result.category || 'standard';
     output.textContent = formatPrivateNumber(pendingPrivateNumber);
+    const counter = document.getElementById('account-generation-counter');
+    if (counter && Number.isFinite(Number(result.generationsRemaining))) {
+      const remaining = Number(result.generationsRemaining);
+      counter.textContent = `${remaining} number choice${remaining === 1 ? '' : 's'} remaining this hour`;
+    }
     if (result.earlyTester) toast('Early Tester Special Number reserved for 5 minutes');
   } catch (e) {
     output.textContent = 'Try again';

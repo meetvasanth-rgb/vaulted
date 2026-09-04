@@ -406,7 +406,8 @@ public class MainActivity extends BridgeActivity {
                 if (keyboard != null && focused != null) keyboard.hideSoftInputFromWindow(focused.getWindowToken(), 0);
                 Intent call = new Intent(MainActivity.this, NativeCallActivity.class)
                         .putExtra(NativeCallActivity.EXTRA_CALLER, peer)
-                        .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code);
+                        .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code)
+                        .putExtra(NativeCallActivity.EXTRA_OUTGOING, true);
                 startActivity(call);
                 overridePendingTransition(0, 0);
             });

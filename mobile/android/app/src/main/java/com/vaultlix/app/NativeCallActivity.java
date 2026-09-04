@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -29,6 +30,7 @@ import java.util.Random;
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
+    static final String EXTRA_OUTGOING = "outgoing";
     private static final int INK = Color.rgb(39, 29, 37);
     private static final int IVORY = Color.rgb(250, 246, 247);
     private static final int MUTED_TEXT = Color.rgb(190, 177, 184);
@@ -52,6 +54,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private LinearLayout callRoot;
     private String roomCode;
     private boolean finishingCall;
+    private boolean outgoing;
+    private ToneGenerator ringbackTone;
+    private final Runnable ringback = new Runnable() {
+        @Override public void run() {
+            if (!outgoing || connectedAt != 0 || finishingCall) return;
+            if (ringbackTone != null) ringbackTone.startTone(ToneGenerator.TONE_SUP_RINGTONE, 1800);
+            handler.postDelayed(this, 3000);
+        }
+    };
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (connectedAt == 0 || status == null) return;
@@ -70,6 +81,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         getWindow().setStatusBarColor(INK);
         getWindow().setNavigationBarColor(INK);
         roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE);
+        outgoing = getIntent().getBooleanExtra(EXTRA_OUTGOING, false);
         engine = NativeWebRtcCallEngine.get(this);
         engine.addListener(this);
         clearIncomingCallBanner();
@@ -83,6 +95,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         audioManager = getSystemService(AudioManager.class);
         configureAudio(false);
         buildUi(getIntent().getStringExtra(EXTRA_CALLER));
+        if (outgoing) {
+            try {
+                ringbackTone = new ToneGenerator(AudioManager.STREAM_VOICE_CALL, 65);
+                handler.post(ringback);
+            } catch (RuntimeException ignored) {}
+        }
     }
 
     private void buildUi(String callerValue) {
@@ -214,12 +232,13 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             if (connectedAt == 0 && status != null) status.setText(statusText(value));
         });
     }
-    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
+    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
     @Override public void onEnded(String reason) { runOnUiThread(this::finishCall); }
 
     private void finishCall() {
         if (finishingCall) return;
         finishingCall = true;
+        stopRingback();
         handler.removeCallbacks(tick);
         String history = connectedAt == 0 ? "" : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
         MainActivity.notifyDedicatedCallEnded(roomCode, history);
@@ -286,7 +305,19 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(() -> { finish(); overridePendingTransition(0, 0); }, 3_650);
     }
 
-    @Override protected void onDestroy() { handler.removeCallbacks(tick); if (engine != null) engine.removeListener(this); restoreAudio(); super.onDestroy(); }
+    private void stopRingback() {
+        handler.removeCallbacks(ringback);
+        if (ringbackTone != null) ringbackTone.stopTone();
+    }
+
+    @Override protected void onDestroy() {
+        handler.removeCallbacks(tick);
+        stopRingback();
+        if (ringbackTone != null) { ringbackTone.release(); ringbackTone = null; }
+        if (engine != null) engine.removeListener(this);
+        restoreAudio();
+        super.onDestroy();
+    }
 
     private void clearIncomingCallBanner() {
         VaultlixMessagingService.clearActiveCallNotifications(this);
