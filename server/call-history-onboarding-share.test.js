@@ -38,5 +38,7 @@ test('Private Number invitations are app links with one URL and branded previews
   assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
   const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));
   assert.doesNotMatch(shareBody, /const text = `[^`]*\$\{url\}/);
+  assert.match(shareBody, /VaultlixAndroid\?\.shareText/);
+  assert.match(shareBody, /shareText\(`\$\{text\}\\n\$\{url\}`\)/);
   assert.match(shareBody, /navigator\.share\(\{ title:'Connect with me on Vaultlix', text, url \}\)/);
 });

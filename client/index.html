@@ -7381,11 +7381,19 @@ async function shareOwnPrivateNumber() {
   // Keep the URL out of text: native share targets such as WhatsApp append
   // the structured URL themselves, otherwise the invitation is duplicated.
   const text = `Connect with ${state.displayName || 'me'} privately on Vaultlix.`;
+  // Android WebView exposes navigator.share but drops its separate `url`
+  // member on some OEM builds. Its native bridge accepts one complete text
+  // payload, so WhatsApp reliably receives the Private Number link exactly
+  // once. iOS stays on structured Web Share to avoid duplicating that URL.
+  if (typeof window.VaultlixAndroid?.shareText === 'function') {
+    window.VaultlixAndroid.shareText(`${text}\n${url}`);
+    return;
+  }
   if (navigator.share) {
     try { await navigator.share({ title:'Connect with me on Vaultlix', text, url }); return; }
     catch (e) { if (e?.name === 'AbortError') return; }
   }
-  try { await navigator.clipboard.writeText(text); toast('Vaultlix invitation link copied'); }
+  try { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Vaultlix invitation link copied'); }
   catch (e) { toast(`Share this link: ${url}`); }
 }
 
