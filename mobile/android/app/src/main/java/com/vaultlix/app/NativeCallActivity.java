@@ -8,8 +8,10 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioDeviceInfo;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
 import android.media.AudioManager;
-import android.media.ToneGenerator;
+import android.media.AudioTrack;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -55,12 +57,18 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private String roomCode;
     private boolean finishingCall;
     private boolean outgoing;
-    private ToneGenerator ringbackTone;
+    private AudioTrack ringbackTrack;
     private final Runnable ringback = new Runnable() {
         @Override public void run() {
             if (!outgoing || connectedAt != 0 || finishingCall) return;
-            if (ringbackTone != null) ringbackTone.startTone(ToneGenerator.TONE_SUP_RINGTONE, 1800);
-            handler.postDelayed(this, 3000);
+            if (ringbackTrack != null && ringbackTrack.getState() == AudioTrack.STATE_INITIALIZED) {
+                try {
+                    if (ringbackTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) ringbackTrack.stop();
+                    ringbackTrack.setPlaybackHeadPosition(0);
+                    ringbackTrack.play();
+                } catch (IllegalStateException ignored) {}
+            }
+            handler.postDelayed(this, 4000);
         }
     };
     private final Runnable tick = new Runnable() {
@@ -97,7 +105,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         buildUi(getIntent().getStringExtra(EXTRA_CALLER));
         if (outgoing) {
             try {
-                ringbackTone = new ToneGenerator(AudioManager.STREAM_VOICE_CALL, 65);
+                ringbackTrack = buildRingbackTrack();
                 handler.post(ringback);
             } catch (RuntimeException ignored) {}
         }
@@ -307,13 +315,57 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     private void stopRingback() {
         handler.removeCallbacks(ringback);
-        if (ringbackTone != null) ringbackTone.stopTone();
+        if (ringbackTrack != null && ringbackTrack.getState() == AudioTrack.STATE_INITIALIZED) {
+            try { ringbackTrack.stop(); } catch (IllegalStateException ignored) {}
+        }
+    }
+
+    /**
+     * Generate ringback ourselves instead of relying on ToneGenerator's
+     * telecom tones. Samsung and OnePlus firmware commonly suppress those
+     * tones once MODE_IN_COMMUNICATION is active. VOICE_COMMUNICATION_SIGNALLING
+     * follows the currently selected communication device, so the sound moves
+     * between earpiece and speaker with the existing route button.
+     */
+    private AudioTrack buildRingbackTrack() {
+        final int sampleRate = 16000;
+        final int durationMs = 1800;
+        final int sampleCount = sampleRate * durationMs / 1000;
+        final short[] samples = new short[sampleCount];
+        final int fadeSamples = sampleRate / 100;
+        for (int i = 0; i < sampleCount; i++) {
+            double envelope = 1.0;
+            if (i < fadeSamples) envelope = i / (double) fadeSamples;
+            else if (i > sampleCount - fadeSamples) envelope = (sampleCount - i) / (double) fadeSamples;
+            double seconds = i / (double) sampleRate;
+            double tone = Math.sin(2.0 * Math.PI * 440.0 * seconds)
+                    + Math.sin(2.0 * Math.PI * 480.0 * seconds);
+            samples[i] = (short) (tone * envelope * Short.MAX_VALUE * 0.12);
+        }
+        AudioAttributes attributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        AudioFormat format = new AudioFormat.Builder()
+                .setSampleRate(sampleRate)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build();
+        AudioTrack track = new AudioTrack.Builder()
+                .setAudioAttributes(attributes)
+                .setAudioFormat(format)
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(samples.length * 2)
+                .build();
+        track.write(samples, 0, samples.length, AudioTrack.WRITE_BLOCKING);
+        track.setVolume(0.8f);
+        return track;
     }
 
     @Override protected void onDestroy() {
         handler.removeCallbacks(tick);
         stopRingback();
-        if (ringbackTone != null) { ringbackTone.release(); ringbackTone = null; }
+        if (ringbackTrack != null) { ringbackTrack.release(); ringbackTrack = null; }
         if (engine != null) engine.removeListener(this);
         restoreAudio();
         super.onDestroy();

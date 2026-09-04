@@ -15,9 +15,11 @@ test('completed calls are synchronized idempotently without duplicate local repl
   assert.match(client, /room\.seenMsgIds\?\.add\(rec\.id\)/);
 });
 
-test('native Android outgoing calls play ringback only until connection or ending', () => {
+test('native Android outgoing calls generate routed ringback until connection or ending', () => {
   assert.match(mainActivity, /EXTRA_OUTGOING, true/);
-  assert.match(callActivity, /ToneGenerator\.TONE_SUP_RINGTONE/);
+  assert.match(callActivity, /AudioTrack\.Builder/);
+  assert.match(callActivity, /USAGE_VOICE_COMMUNICATION_SIGNALLING/);
+  assert.match(callActivity, /Math\.sin\(2\.0 \* Math\.PI \* 440\.0/);
   assert.match(callActivity, /onConnected\(\).*stopRingback\(\)/);
   assert.match(callActivity, /finishingCall = true;\s*stopRingback\(\)/);
 });
