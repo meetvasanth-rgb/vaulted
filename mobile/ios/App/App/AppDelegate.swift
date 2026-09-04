@@ -25,6 +25,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var connectedCalls: Set<UUID> = []
     private var outgoingCalls: Set<UUID> = []
     private var outgoingWebAudioSessionActive = false
+    private var callKitAudioSessionActive = false
     private var ringbackCallID: UUID?
     private var ringbackEngine: AVAudioEngine?
     private var ringbackPlayer: AVAudioPlayerNode?
@@ -303,7 +304,6 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
         ringbackCallID = action.callUUID
-        startRingbackIfPossible()
         NativeWebRTCCallEngine.shared.startOutgoing(callID: action.callUUID)
         action.fulfill()
     }
@@ -484,8 +484,15 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("VXCALL manager didActivate")
-        startRingbackIfPossible()
+        callKitAudioSessionActive = true
         NativeWebRTCCallEngine.shared.callKitDidActivate(audioSession)
+        // CallKit owns the VoIP audio session. Starting a player before this
+        // callback creates an apparently running engine whose route is replaced
+        // during activation, producing silent ringback. Let libwebrtc attach to
+        // the newly active session first, then add the local caller tone.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.startRingbackIfPossible()
+        }
         // Queue this just like answer/end. A plain NotificationCenter event
         // was previously discarded by SceneDelegate's observer, so the web
         // layer never learned that CallKit had made microphone capture legal.
@@ -495,6 +502,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        callKitAudioSessionActive = false
         stopRingback()
         NativeWebRTCCallEngine.shared.callKitDidDeactivate(audioSession)
         if let match = calls.first {
@@ -564,6 +572,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// through CallKit's active communication route while the peer is ringing.
     private func startRingbackIfPossible() {
         guard let callID = ringbackCallID,
+              callKitAudioSessionActive,
               outgoingCalls.contains(callID),
               !connectedCalls.contains(callID),
               ringbackEngine == nil else { return }
@@ -598,6 +607,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             player.play()
             ringbackEngine = engine
             ringbackPlayer = player
+            print("VXCALL manager ringback started route=\(AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue))")
         } catch {
             engine.stop()
             print("VXCALL manager ringback start failed: \(error.localizedDescription)")

@@ -27,10 +27,14 @@ test('native Android outgoing calls generate routed ringback until connection or
 
 test('native iOS outgoing calls generate routed ringback until connection or ending', () => {
   assert.match(iosCallManager, /ringbackCallID = action\.callUUID/);
+  assert.doesNotMatch(iosCallManager, /ringbackCallID = action\.callUUID\s+startRingbackIfPossible\(\)/);
+  assert.match(iosCallManager, /didActivate audioSession:[\s\S]*callKitAudioSessionActive = true[\s\S]*asyncAfter[\s\S]*startRingbackIfPossible\(\)/);
+  assert.match(iosCallManager, /guard let callID = ringbackCallID,\s+callKitAudioSessionActive,/);
   assert.match(iosCallManager, /AVAudioPlayerNode\(\)/);
   assert.match(iosCallManager, /scheduleBuffer\(buffer, at: nil, options: \.loops\)/);
   assert.match(iosCallManager, /nativeCallDidConnect[\s\S]*stopRingback\(callID: callID\)/);
   assert.match(iosCallManager, /perform action: CXEndCallAction[\s\S]*stopRingback\(callID: action\.callUUID\)/);
+  assert.match(client, /callState === 'outgoing'[\s\S]*outgoingSpeakerBtnHtml[\s\S]*toggleSpeaker\(\)/);
 });
 
 test('number generation exposes its remaining allowance and own profile can share', () => {

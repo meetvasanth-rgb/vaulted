@@ -5971,6 +5971,13 @@ function renderCallOverlay(room) {
   const name = escHtml(room.callPeerName || room.peerName || 'them');
 
   if (room.callState === 'outgoing') {
+    const outgoingSpeakerBtnHtml = room.speakerAvailable ? `
+        <div class="call-btn-wrap">
+          <button class="call-speaker-btn${room.speakerOn ? ' active' : ''}" onclick="toggleSpeaker()" title="${room.speakerOn ? 'Speaker on' : 'Speaker off'}">
+            <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" fill="none"/></svg>
+          </button>
+          <div class="call-btn-label">${room.speakerOn ? 'Speaker' : 'Phone'}</div>
+        </div>` : '';
     overlay.innerHTML = `
       ${callDataRainHtml()}
       ${callHeaderBlock()}
@@ -5981,6 +5988,7 @@ function renderCallOverlay(room) {
         <div class="call-status call-security">End-to-end encrypted</div>
       </div>
       <div class="call-actions">
+        ${outgoingSpeakerBtnHtml}
         <div class="call-btn-wrap">
           <button class="call-end-btn" id="call-cancel-btn" title="Cancel">${CALL_PHONE_ICON}</button>
           <div class="call-btn-label">Slide down to cancel</div>
