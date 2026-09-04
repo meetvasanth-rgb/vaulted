@@ -28,11 +28,16 @@
 <meta property="og:title" content="Vaultlix">
 <meta property="og:description" content="Create a Vaultlix private number and connect without sharing your phone number, email, or contacts.">
 <meta property="og:url" content="https://vaultlix.com">
-<meta property="og:image" content="https://vaultlix.com/icons/icon-512.png?v=20260806">
+<meta property="og:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
+<meta property="og:image:secure_url" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Vaultlix private messaging logo">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Vaultlix">
 <meta name="twitter:description" content="Create a Vaultlix private number and connect without sharing your phone number, email, or contacts.">
-<meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260806">
+<meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
@@ -7372,8 +7377,10 @@ async function shareConversationPrivateNumber() {
 async function shareOwnPrivateNumber() {
   const state = loadAccountState();
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
-  const url = `https://vaultlix.com/${state.privateNumber}`;
-  const text = `Connect with ${state.displayName || 'me'} privately on Vaultlix: ${url}`;
+  const url = `https://vaultlix.com/${state.privateNumber}?ref=share`;
+  // Keep the URL out of text: native share targets such as WhatsApp append
+  // the structured URL themselves, otherwise the invitation is duplicated.
+  const text = `Connect with ${state.displayName || 'me'} privately on Vaultlix.`;
   if (navigator.share) {
     try { await navigator.share({ title:'Connect with me on Vaultlix', text, url }); return; }
     catch (e) { if (e?.name === 'AbortError') return; }

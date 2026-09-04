@@ -27,6 +27,16 @@ test('number generation exposes its remaining allowance and own profile can shar
   assert.match(client, /id="account-generation-counter"/);
   assert.match(client, /result\.generationsRemaining/);
   assert.match(client, /function shareOwnPrivateNumber\(\)/);
-  assert.match(client, /https:\/\/vaultlix\.com\/\$\{state\.privateNumber\}/);
+  assert.match(client, /https:\/\/vaultlix\.com\/\$\{state\.privateNumber\}\?ref=share/);
   assert.match(client, /navigator\.share/);
+});
+
+test('Private Number invitations are app links with one URL and branded previews', () => {
+  const association = fs.readFileSync(path.join(root, 'client/.well-known/apple-app-site-association'), 'utf8');
+  assert.match(association, /\/\?\?\?\?\?\?\?\?\?\?/);
+  assert.match(client, /og:image:secure_url/);
+  assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
+  const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));
+  assert.doesNotMatch(shareBody, /const text = `[^`]*\$\{url\}/);
+  assert.match(shareBody, /navigator\.share\(\{ title:'Connect with me on Vaultlix', text, url \}\)/);
 });
