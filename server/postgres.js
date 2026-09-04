@@ -29,6 +29,17 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at bigint NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS private_number_reservations (
+  private_number char(10) PRIMARY KEY,
+  token_hash char(64) NOT NULL UNIQUE,
+  category varchar(32) NOT NULL,
+  reserved_until bigint NOT NULL,
+  assigned_account_id char(64) REFERENCES accounts(account_id) ON DELETE SET NULL,
+  created_at bigint NOT NULL
+);
+CREATE INDEX IF NOT EXISTS private_number_reservations_expiry_idx
+  ON private_number_reservations(reserved_until);
+
 CREATE TABLE IF NOT EXISTS conversations (
   conversation_id text PRIMARY KEY,
   persistent boolean NOT NULL DEFAULT true,
@@ -130,7 +141,7 @@ CREATE TABLE IF NOT EXISTS device_sync_cursors (
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS push_destinations jsonb NOT NULL DEFAULT '[]'::jsonb;
 
-INSERT INTO vaultlix_schema(version) VALUES (1), (2) ON CONFLICT DO NOTHING;
+INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3) ON CONFLICT DO NOTHING;
 `;
 
 class PostgresStore {
@@ -181,6 +192,36 @@ class PostgresStore {
       account.bundle, account.revision, JSON.stringify(account.sessions || []),
       JSON.stringify(account.connectionRequests || []), JSON.stringify(account.pushDestinations || []), account.createdAt, account.updatedAt,
     ]);
+  }
+
+  async reservePrivateNumber(privateNumber, tokenHash, category, reservedUntil) {
+    if (!this.enabled) return true;
+    const { rows } = await this.pool.query(`INSERT INTO private_number_reservations (
+      private_number, token_hash, category, reserved_until, created_at
+    ) SELECT $1,$2,$3,$4,$5
+      WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE private_number=$1)
+    ON CONFLICT (private_number) DO UPDATE SET
+      token_hash=EXCLUDED.token_hash, category=EXCLUDED.category,
+      reserved_until=EXCLUDED.reserved_until, created_at=EXCLUDED.created_at
+    WHERE private_number_reservations.assigned_account_id IS NULL
+      AND private_number_reservations.reserved_until < $5
+    RETURNING private_number`, [privateNumber, tokenHash, category, reservedUntil, Date.now()]);
+    return rows.length === 1;
+  }
+
+  async verifyPrivateNumberReservation(privateNumber, tokenHash, now = Date.now()) {
+    if (!this.enabled) return true;
+    const { rows } = await this.pool.query(`SELECT 1 FROM private_number_reservations
+      WHERE private_number=$1 AND token_hash=$2 AND reserved_until >= $3
+        AND assigned_account_id IS NULL`, [privateNumber, tokenHash, now]);
+    return rows.length === 1;
+  }
+
+  async completePrivateNumberReservation(privateNumber, tokenHash, accountId) {
+    if (!this.enabled) return;
+    await this.pool.query(`UPDATE private_number_reservations
+      SET assigned_account_id=$3 WHERE private_number=$1 AND token_hash=$2`,
+    [privateNumber, tokenHash, accountId]);
   }
 
   async deleteAccount(accountId) {

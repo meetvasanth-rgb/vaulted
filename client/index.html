@@ -3131,11 +3131,13 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
       </form>
       <div class="settings-divider" style="margin:20px 0"></div>
-      <div class="account-copy"><strong>Password recovery code</strong><br/>Keep an encrypted copy on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
+      <div class="account-copy"><strong>Password recovery code</strong><br/>An encrypted copy is kept on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
+      <div class="account-note" id="account-recovery-backup-status"></div>
       <div id="account-saved-recovery" style="display:none">
         <div class="recovery-box"><div class="recovery-code" id="account-saved-recovery-code">••••••••••••••••</div></div>
         <button class="account-secondary" type="button" onclick="revealSavedRecoveryCode()">Reveal recovery code</button>
         <button class="account-secondary" type="button" onclick="copySavedRecoveryCode()">Copy recovery details</button>
+        <button class="account-secondary" id="account-confirm-recovery-backup" type="button" onclick="confirmRecoveryBackup()">I saved it outside this device</button>
       </div>
       <form id="account-save-recovery-form" onsubmit="saveRecoveryCodeOnDevice(event)" style="display:none">
         <label class="account-field"><span>Enter your permanent recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
@@ -3382,7 +3384,14 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
             <div class="private-number-label">Your Vaultlix Private Number</div>
             <div class="private-number-value" id="account-private-number-value">Generating…</div>
             <div class="private-number-caption">Share this number or its Vaultlix link so people can connect with you.</div>
-            <button class="private-number-refresh" type="button" onclick="generatePrivateNumber()">Generate a different number</button>
+            <div class="private-number-caption" style="margin-top:12px"><strong>Early Tester Reward</strong><br/>Choose one Special Private Number complimentary. It remains yours permanently.</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('standard')">Quick number</button>
+              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('zeros')">Four zeros</button>
+              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('sequence')">Number sequence</button>
+              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('repeated')">Repeated digits</button>
+              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('pairs')">Repeated pairs</button>
+            </div>
           </div>
           <button class="account-primary" type="button" onclick="showCreateSecurityStep()">Continue</button>
           <div class="account-note">This is not a cellular phone number. It cannot receive SMS or ordinary phone calls.</div>
@@ -3425,7 +3434,8 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="recovery-box"><div class="private-number-label">Vaultlix private number</div><div class="recovery-code" id="account-recovery-result-number"></div></div>
       <div class="recovery-box"><div class="recovery-code" id="account-recovery-result-code"></div></div>
       <button class="account-primary" onclick="copyRecoveryCode()">Copy recovery details</button>
-      <button class="account-secondary" onclick="finishAccountCreation()">I saved both safely — continue</button>
+      <label class="account-note" style="display:flex;gap:10px;align-items:flex-start"><input id="account-recovery-confirm" type="checkbox" onchange="document.getElementById('account-recovery-finish').disabled=!this.checked"/> <span>I saved these details outside this device. I understand that losing both this device and the recovery code permanently loses this Private Number.</span></label>
+      <button class="account-secondary" id="account-recovery-finish" onclick="finishAccountCreation()" disabled>I saved both safely — continue</button>
     </div>
   </div>
 </div>
@@ -7673,9 +7683,20 @@ function openAccountPanel() {
 }
 function refreshSavedRecoveryControls(state = loadAccountState()) {
   const hasSavedCode = !!state?.recoveryCodeWrap;
+  const externallySaved = !!state?.recoveryBackupConfirmedAt;
   document.getElementById('account-saved-recovery').style.display = hasSavedCode ? '' : 'none';
   document.getElementById('account-save-recovery-form').style.display = hasSavedCode ? 'none' : '';
   document.getElementById('account-saved-recovery-code').textContent = '••••••••••••••••';
+  const status = document.getElementById('account-recovery-backup-status');
+  if (status) status.innerHTML = externallySaved
+    ? '<strong>Recovery protected.</strong> You confirmed an external copy was saved.'
+    : '<strong>Action recommended.</strong> This encrypted device copy is lost if the app or phone is erased. Save another copy outside this device.';
+  const confirmButton = document.getElementById('account-confirm-recovery-backup');
+  if (confirmButton) confirmButton.style.display = externallySaved ? 'none' : '';
+  if (hasSavedCode && !externallySaved && (!state.recoveryReminderAt || Date.now() - state.recoveryReminderAt > 24 * 60 * 60 * 1000)) {
+    state.recoveryReminderAt = Date.now(); saveAccountState(state);
+    setTimeout(() => toast('Protect your Private Number: save the recovery code outside this device'), 250);
+  }
 }
 async function updateAccountUsername(event) {
   event.preventDefault(); const form = event.currentTarget; const state = loadAccountState();
@@ -7697,17 +7718,37 @@ async function decryptSavedRecoveryCode(state = loadAccountState()) {
   if (!saved?.recoveryCode) throw new Error('Invalid saved recovery code');
   return saved.recoveryCode;
 }
+async function authorizeRecoveryCodeAccess() {
+  if (!appLockConfigured()) return confirm('Reveal sensitive recovery details on this screen?');
+  const passcode = prompt('Enter your Vaultlix App Lock passcode to continue.');
+  if (!passcode) return false;
+  const allowed = await verifyAppLockPasscode(passcode);
+  if (!allowed) toast('Incorrect Vaultlix passcode');
+  return allowed;
+}
 async function revealSavedRecoveryCode() {
-  try { document.getElementById('account-saved-recovery-code').textContent = await decryptSavedRecoveryCode(); }
+  try {
+    if (!(await authorizeRecoveryCodeAccess())) return;
+    document.getElementById('account-saved-recovery-code').textContent = await decryptSavedRecoveryCode();
+  }
   catch (e) { toast('Could not open the saved recovery code'); }
 }
 async function copySavedRecoveryCode() {
   const state = loadAccountState();
   try {
+    if (!(await authorizeRecoveryCodeAccess())) return;
     const code = await decryptSavedRecoveryCode(state);
     await navigator.clipboard.writeText(`Vaultlix private number: ${formatPrivateNumber(state.privateNumber)}\nRecovery code: ${code}`);
     toast('Recovery details copied');
   } catch (e) { toast('Could not copy the recovery code'); }
+}
+function confirmRecoveryBackup() {
+  const state = loadAccountState();
+  if (!state?.recoveryCodeWrap) return;
+  state.recoveryBackupConfirmedAt = Date.now();
+  saveAccountState(state);
+  refreshSavedRecoveryControls(state);
+  toast('External recovery copy confirmed');
 }
 async function saveRecoveryCodeOnDevice(event) {
   event.preventDefault(); const form = event.currentTarget; const state = loadAccountState();
@@ -7827,13 +7868,16 @@ function showAccountTab(name) {
   guestView.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
 }
 let pendingPrivateNumber = '';
-async function generatePrivateNumber() {
+let pendingPrivateNumberReservation = '';
+let pendingPrivateNumberCategory = 'standard';
+async function generatePrivateNumber(category = 'standard') {
   const output = document.getElementById('account-private-number-value');
   if (!output) return;
   output.textContent = 'Generating…';
   pendingPrivateNumber = '';
+  pendingPrivateNumberReservation = '';
   try {
-    const result = await api('/api/account/private-number', {});
+    const result = await api('/api/account/private-number', { category });
     if (result.status === 429) {
       output.textContent = 'Limit reached';
       toast('Generation limit reached. Try again in about one hour.');
@@ -7841,7 +7885,10 @@ async function generatePrivateNumber() {
     }
     if (result.error || !normalizePrivateNumber(result.privateNumber)) throw new Error(result.error || 'Invalid number');
     pendingPrivateNumber = normalizePrivateNumber(result.privateNumber);
+    pendingPrivateNumberReservation = result.reservationToken || '';
+    pendingPrivateNumberCategory = result.category || 'standard';
     output.textContent = formatPrivateNumber(pendingPrivateNumber);
+    if (result.earlyTester) toast('Early Tester Special Number reserved for 5 minutes');
   } catch (e) {
     output.textContent = 'Try again';
     toast('Could not generate a Private Number');
@@ -7900,6 +7947,8 @@ async function createAnonymousAccount(event) {
         const recovery = await recoveryMaterial(recoveryCode);
         payload = {
           accountId, privateNumber, displayName,
+          reservationToken: pendingPrivateNumberReservation,
+          numberCategory: pendingPrivateNumberCategory,
           authSecret: passwordMaterial.authSecret,
           recoverySecret: recovery.authSecret,
           passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:masterKeyEncoded }),
@@ -7940,7 +7989,7 @@ async function createAnonymousAccount(event) {
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
-    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }) });
+    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }), recoveryBackupConfirmedAt:0, numberCategory:pendingPrivateNumberCategory });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-number').textContent = formatPrivateNumber(privateNumber);
@@ -8061,10 +8110,12 @@ async function copyRecoveryCode() {
   try { await navigator.clipboard.writeText(text); toast('Recovery details copied'); } catch(e) { toast('Press and hold the details to copy them'); }
 }
 function finishAccountCreation() {
+  const state = loadAccountState();
+  if (state) { state.recoveryBackupConfirmedAt = Date.now(); saveAccountState(state); }
   document.getElementById('account-recovery-result').style.display='none';
   document.getElementById('account-signed-view').classList.add('open');
-  const state=loadAccountState();
-  document.getElementById('account-signed-name').textContent=state ? `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}` : 'Protected identity';
+  const refreshedState=loadAccountState();
+  document.getElementById('account-signed-name').textContent=refreshedState ? `${refreshedState.displayName} · ${formatPrivateNumber(refreshedState.privateNumber)}` : 'Protected identity';
   updateAccountSettingsStatus();
   const nativeFirstRun = document.getElementById('account-overlay').classList.contains('native-onboarding-account');
   document.getElementById('account-overlay').classList.remove('open', 'native-onboarding-account');

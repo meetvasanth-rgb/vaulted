@@ -37,10 +37,12 @@ const { markInviteTerminated, isInviteTerminated } = require('./call-invite-stat
 const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 const accounts = new Map();
 const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
+const privateNumberReservations = new Map();
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
 let postgresEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 
 // ── /api/send content sizing ─────────────────────────────────────────────
 // These were measured against the client's actual code, not guessed. A
@@ -731,14 +733,53 @@ function normalizePrivateNumber(value) {
   const privateNumber = String(value || '').replace(/\D/g, '');
   return /^[2-9][0-9]{9}$/.test(privateNumber) ? privateNumber : '';
 }
-function generatePrivateNumber() {
+function generatePrivateNumberCandidate(category = 'standard') {
+  const digit = () => crypto.randomInt(0, 10);
+  const first = () => crypto.randomInt(2, 10);
+  if (category === 'zeros') return String(first()) + Array.from({ length:5 }, digit).join('') + '0000';
+  if (category === 'sequence') {
+    const runs = ['0123','1234','2345','3456','4567','5678','6789'];
+    return String(first()) + Array.from({ length:5 }, digit).join('') + runs[crypto.randomInt(0, runs.length)];
+  }
+  if (category === 'repeated') {
+    const repeated = String(crypto.randomInt(1, 10)).repeat(4);
+    return String(first()) + Array.from({ length:5 }, digit).join('') + repeated;
+  }
+  if (category === 'pairs') {
+    const pair = String(digit()) + String(digit());
+    return String(first()) + Array.from({ length:3 }, digit).join('') + pair.repeat(3);
+  }
+  const bytes = crypto.randomBytes(10);
+  let privateNumber = String(2 + (bytes[0] % 8));
+  for (let i = 1; i < bytes.length; i++) privateNumber += String(bytes[i] % 10);
+  return privateNumber;
+}
+async function reservePrivateNumber(category = 'standard') {
   for (let attempt = 0; attempt < 100; attempt++) {
-    const bytes = crypto.randomBytes(10);
-    let privateNumber = String(2 + (bytes[0] % 8));
-    for (let i = 1; i < bytes.length; i++) privateNumber += String(bytes[i] % 10);
-    if (!privateNumbers.has(privateNumber)) return privateNumber;
+    const privateNumber = generatePrivateNumberCandidate(category);
+    if (privateNumbers.has(privateNumber)) continue;
+    const reservationToken = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
+    const reservedUntil = Date.now() + PRIVATE_NUMBER_RESERVATION_TTL_MS;
+    const reserved = postgresEnabled
+      ? await postgresStore.reservePrivateNumber(privateNumber, tokenHash, category, reservedUntil)
+      : (() => {
+          const current = privateNumberReservations.get(privateNumber);
+          if (current && current.reservedUntil >= Date.now()) return false;
+          privateNumberReservations.set(privateNumber, { tokenHash, category, reservedUntil });
+          return true;
+        })();
+    if (reserved) return { privateNumber, reservationToken, reservedUntil, category };
   }
   throw new Error('Could not allocate a Vaultlix Private Number');
+}
+async function verifyPrivateNumberReservation(privateNumber, reservationToken) {
+  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(reservationToken)) return false;
+  const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
+  if (postgresEnabled) return postgresStore.verifyPrivateNumberReservation(privateNumber, tokenHash);
+  const reservation = privateNumberReservations.get(privateNumber);
+  return !!reservation && reservation.reservedUntil >= Date.now() &&
+    crypto.timingSafeEqual(Buffer.from(reservation.tokenHash, 'hex'), Buffer.from(tokenHash, 'hex'));
 }
 function normalizeDisplayName(value) {
   const displayName = String(value || '').trim().replace(/\s+/g, ' ');
@@ -2068,7 +2109,9 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path === '/api/account/private-number' && method === 'POST') {
     if (rateLimited(`private-number:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, privateNumber:generatePrivateNumber() });
+    const allowedCategories = new Set(['standard', 'zeros', 'sequence', 'repeated', 'pairs']);
+    const category = allowedCategories.has(d.category) ? d.category : 'standard';
+    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:category !== 'standard' });
   }
 
   if (path === '/api/account/register' && method === 'POST') {
@@ -2079,6 +2122,12 @@ async function api(path, method, d, p, res, ip, headers) {
         !validAccountSecret(d.recoverySecret) || !validEncryptedField(d.passwordWrap, 4096) ||
         !validEncryptedField(d.recoveryWrap, 4096) || !validEncryptedField(d.bundle, 1024 * 1024)) {
       return resErr(res, 'Invalid account data.', 400);
+    }
+    // Reservation tokens close the selection-to-registration race across
+    // simultaneous users and Railway replicas. Missing tokens remain
+    // temporarily accepted for clients cached during the rolling upgrade.
+    if (d.reservationToken && !(await verifyPrivateNumberReservation(privateNumber, d.reservationToken))) {
+      return resErr(res, 'This Private Number reservation expired. Choose the number again.', 409);
     }
     const existing = accounts.get(d.accountId);
     const existingNumberOwner = privateNumbers.get(privateNumber);
@@ -2110,6 +2159,11 @@ async function api(path, method, d, p, res, ip, headers) {
     accounts.set(d.accountId, account);
     privateNumbers.set(privateNumber, d.accountId);
     await persistAccount(d.accountId);
+    if (d.reservationToken) {
+      const tokenHash = crypto.createHash('sha256').update(d.reservationToken).digest('hex');
+      if (postgresEnabled) await postgresStore.completePrivateNumberReservation(privateNumber, tokenHash, d.accountId);
+      else privateNumberReservations.delete(privateNumber);
+    }
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision });
   }
