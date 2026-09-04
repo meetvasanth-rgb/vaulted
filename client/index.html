@@ -10747,8 +10747,13 @@ async function doPoll(room) {
     }
 
     const wasOnline = room.peerOnline;
+    const previousPeerName = room.peerName;
     room.peerOnline = data.peerOnline;
-    room.peerName = data.peerName;
+    if (data.peerName) room.peerName = data.peerName;
+    if (room.peerName && room.peerName !== previousPeerName) {
+      await persistRoom(room);
+      renderVaultList();
+    }
     if (data.peerOnline) room.everOnline = true;
     if (room.code === activeRoomCode) {
       setStatus(data.peerOnline, data.peerName);

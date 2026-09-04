@@ -39,6 +39,15 @@ test('signed-in settings support username changes and encrypted device recovery-
   assert.doesNotMatch(server, /account\.recoveryCode\s*=/);
 });
 
+test('username changes propagate to accepted peers and live conversations', () => {
+  assert.match(server, /request\.senderAccountId === d\.accountId[\s\S]*request\.senderDisplayName = displayName/);
+  assert.match(server, /request\.recipientAccountId === d\.accountId[\s\S]*request\.recipientDisplayName = displayName/);
+  assert.match(server, /memberEntry\[1\]\.name = displayName/);
+  assert.match(server, /postgresStore\.upsertConversationMember\(roomCode/);
+  assert.match(server, /publishInboxRoom\(roomCode, 'profile'\)/);
+  assert.match(client, /room\.peerName !== previousPeerName[\s\S]*await persistRoom\(room\)/);
+});
+
 test('accepted connections retain the peer Private Number inside conversation details', () => {
   assert.match(client, /function peerIdentityFromConnection\(request, state = loadAccountState\(\)\)/);
   assert.match(client, /senderNumber !== selfNumber/);

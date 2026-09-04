@@ -2223,7 +2223,50 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!displayName) return resErr(res, 'Enter a username between 2 and 40 characters.', 400);
     account.displayName = displayName;
     account.updatedAt = Date.now();
-    await persistAccount(d.accountId);
+
+    // Connection requests are durable identity links, but historically they
+    // captured both usernames only once. Keep those snapshots and each live
+    // conversation member in sync so an accepted peer sees a rename without
+    // deleting/recreating the conversation. The accepting recipient creates
+    // the conversation (slot 1); its requester joins as slot 2.
+    const affectedAccountIds = new Set([d.accountId]);
+    const affectedRooms = new Map();
+    for (const [accountId, candidate] of accounts) {
+      let changed = false;
+      for (const request of candidate.connectionRequests || []) {
+        if (request.senderAccountId === d.accountId && request.senderDisplayName !== displayName) {
+          request.senderDisplayName = displayName;
+          changed = true;
+        }
+        if (request.recipientAccountId === d.accountId && request.recipientDisplayName !== displayName) {
+          request.recipientDisplayName = displayName;
+          changed = true;
+        }
+        if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') continue;
+        const match = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i);
+        if (!match) continue;
+        const room = rooms.get(match[1].toLowerCase());
+        if (!room) continue;
+        const slot = request.recipientAccountId === d.accountId ? 1 :
+          (request.senderAccountId === d.accountId ? 2 : null);
+        if (!slot) continue;
+        const memberEntry = [...room.members].find(([, member]) => member.slot === slot);
+        if (!memberEntry) continue;
+        memberEntry[1].name = displayName;
+        affectedRooms.set(match[1].toLowerCase(), { token:memberEntry[0], member:memberEntry[1] });
+      }
+      if (changed) affectedAccountIds.add(accountId);
+    }
+    await Promise.all([
+      ...[...affectedAccountIds].map(persistAccount),
+      ...[...affectedRooms].map(([roomCode, entry]) => postgresEnabled
+        ? postgresStore.upsertConversationMember(roomCode, entry.member.slot, entry.token, entry.member)
+        : Promise.resolve()),
+    ]);
+    for (const [roomCode] of affectedRooms) publishInboxRoom(roomCode, 'profile');
+    for (const accountId of affectedAccountIds) {
+      if (accountId !== d.accountId) publishInboxAccount(accountId, 'peer-profile');
+    }
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, displayName });
   }
