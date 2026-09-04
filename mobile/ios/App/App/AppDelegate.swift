@@ -25,6 +25,9 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var connectedCalls: Set<UUID> = []
     private var outgoingCalls: Set<UUID> = []
     private var outgoingWebAudioSessionActive = false
+    private var ringbackCallID: UUID?
+    private var ringbackEngine: AVAudioEngine?
+    private var ringbackPlayer: AVAudioPlayerNode?
     private var pendingActions: [[String: Any]] = []
     private(set) var voIPToken: String?
 
@@ -299,11 +302,14 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             return
         }
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
+        ringbackCallID = action.callUUID
+        startRingbackIfPossible()
         NativeWebRTCCallEngine.shared.startOutgoing(callID: action.callUUID)
         action.fulfill()
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        stopRingback(callID: action.callUUID)
         let payload = calls.removeValue(forKey: action.callUUID) ?? [:]
         answeredCalls.remove(action.callUUID)
         connectedCalls.remove(action.callUUID)
@@ -315,6 +321,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func providerDidReset(_ provider: CXProvider) {
+        stopRingback()
         calls.removeAll()
         answeredCalls.removeAll()
         nativeMediaCalls.removeAll()
@@ -325,6 +332,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func endCallFromWeb(roomCode: String) {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first else { return }
+        stopRingback(callID: match.key)
         NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true)
         provider.reportCall(with: match.key, endedAt: Date(), reason: .remoteEnded)
         calls.removeValue(forKey: match.key)
@@ -335,6 +343,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func endAllCalls() {
+        stopRingback()
         for callID in Array(calls.keys) {
             NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: true)
             provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
@@ -408,6 +417,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func endCall(callID: UUID) {
         guard let payload = calls[callID] else { return }
+        stopRingback(callID: callID)
         let wasAnswered = answeredCalls.contains(callID)
         NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
         provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
@@ -431,6 +441,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                   self.nativeMediaCalls.contains(callID),
                   !self.connectedCalls.contains(callID) else { return }
             self.connectedCalls.insert(callID)
+            self.stopRingback(callID: callID)
             if self.outgoingCalls.contains(callID) {
                 self.provider.reportOutgoingCall(with: callID, connectedAt: Date())
             }
@@ -459,6 +470,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func nativeCallDidEnd(callID: UUID, action: String) {
         DispatchQueue.main.async {
             guard let payload = self.calls[callID] else { return }
+            self.stopRingback(callID: callID)
             NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
             self.provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
             self.calls.removeValue(forKey: callID)
@@ -472,6 +484,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("VXCALL manager didActivate")
+        startRingbackIfPossible()
         NativeWebRTCCallEngine.shared.callKitDidActivate(audioSession)
         // Queue this just like answer/end. A plain NotificationCenter event
         // was previously discarded by SceneDelegate's observer, so the web
@@ -482,6 +495,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        stopRingback()
         NativeWebRTCCallEngine.shared.callKitDidDeactivate(audioSession)
         if let match = calls.first {
             postAction("audioDeactivated", callID: match.key, payload: match.value)
@@ -544,6 +558,59 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func isSpeakerEnabled() -> Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+    }
+
+    /// iOS does not synthesize ringback for app-provided VoIP calls. Play it
+    /// through CallKit's active communication route while the peer is ringing.
+    private func startRingbackIfPossible() {
+        guard let callID = ringbackCallID,
+              outgoingCalls.contains(callID),
+              !connectedCalls.contains(callID),
+              ringbackEngine == nil else { return }
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+
+        // 1.8 seconds of dual-frequency ringback and 2.2 seconds of silence.
+        let frameCount = AVAudioFrameCount(16_000 * 4)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let channel = buffer.floatChannelData?[0] else { return }
+        buffer.frameLength = frameCount
+        let audibleFrames = 16_000 * 18 / 10
+        let fadeFrames = 160
+        for frame in 0..<Int(frameCount) {
+            guard frame < audibleFrames else { channel[frame] = 0; continue }
+            let envelope: Float
+            if frame < fadeFrames { envelope = Float(frame) / Float(fadeFrames) }
+            else if frame > audibleFrames - fadeFrames {
+                envelope = Float(audibleFrames - frame) / Float(fadeFrames)
+            } else { envelope = 1 }
+            let seconds = Double(frame) / 16_000.0
+            channel[frame] = Float(
+                (sin(2 * Double.pi * 440 * seconds) + sin(2 * Double.pi * 480 * seconds)) * 0.12
+            ) * envelope
+        }
+        player.scheduleBuffer(buffer, at: nil, options: .loops)
+        do {
+            try engine.start()
+            player.play()
+            ringbackEngine = engine
+            ringbackPlayer = player
+        } catch {
+            engine.stop()
+            print("VXCALL manager ringback start failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func stopRingback(callID: UUID? = nil) {
+        if let callID, ringbackCallID != callID { return }
+        ringbackPlayer?.stop()
+        ringbackEngine?.stop()
+        ringbackPlayer = nil
+        ringbackEngine = nil
+        ringbackCallID = nil
     }
 }
 

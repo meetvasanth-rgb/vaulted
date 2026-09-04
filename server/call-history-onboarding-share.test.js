@@ -8,6 +8,7 @@ const client = fs.readFileSync(path.join(root, 'client/index.html'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server/index.js'), 'utf8');
 const mainActivity = fs.readFileSync(path.join(root, 'mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java'), 'utf8');
 const callActivity = fs.readFileSync(path.join(root, 'mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java'), 'utf8');
+const iosCallManager = fs.readFileSync(path.join(root, 'mobile/ios/App/App/AppDelegate.swift'), 'utf8');
 
 test('completed calls are synchronized idempotently without duplicate local replay', () => {
   assert.match(server, /existingMessage = \(room\.messages \|\| \[\]\)\.find/);
@@ -22,6 +23,14 @@ test('native Android outgoing calls generate routed ringback until connection or
   assert.match(callActivity, /Math\.sin\(2\.0 \* Math\.PI \* 440\.0/);
   assert.match(callActivity, /onConnected\(\).*stopRingback\(\)/);
   assert.match(callActivity, /finishingCall = true;\s*stopRingback\(\)/);
+});
+
+test('native iOS outgoing calls generate routed ringback until connection or ending', () => {
+  assert.match(iosCallManager, /ringbackCallID = action\.callUUID/);
+  assert.match(iosCallManager, /AVAudioPlayerNode\(\)/);
+  assert.match(iosCallManager, /scheduleBuffer\(buffer, at: nil, options: \.loops\)/);
+  assert.match(iosCallManager, /nativeCallDidConnect[\s\S]*stopRingback\(callID: callID\)/);
+  assert.match(iosCallManager, /perform action: CXEndCallAction[\s\S]*stopRingback\(callID: action\.callUUID\)/);
 });
 
 test('number generation exposes its remaining allowance and own profile can share', () => {
