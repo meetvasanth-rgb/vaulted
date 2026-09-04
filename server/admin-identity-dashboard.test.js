@@ -14,6 +14,13 @@ test('admin dashboard represents identities and conversations instead of vault a
   assert.match(html, /Vaultlix identities/);
   assert.doesNotMatch(html, />Active vaults</);
   assert.doesNotMatch(html, />Vault activity</);
+  assert.match(html, /Notification readiness/);
+  assert.match(html, /Live conversation load/);
+  assert.match(html, /Encrypted realtime buffer/);
+  assert.match(html, /id="health-pill">Checking/);
+  assert.match(js, /s\.system\.healthStatus/);
+  assert.match(server, /healthStatus/);
+  assert.match(server, /PostgreSQL connected/);
 });
 
 test('admin identity directory returns useful metadata without account secrets', () => {

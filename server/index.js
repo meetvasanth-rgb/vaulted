@@ -3426,6 +3426,9 @@ async function api(path, method, d, p, res, ip, headers) {
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-90)
       .map(([date, values]) => ({ date, ...values }));
+    let activeIdentitySessions = 0;
+    let notificationReadyIdentities = 0;
+    let pendingConnectionRequests = 0;
     const identities = Array.from(accounts.values())
       .map(account => ({
         displayName: account.displayName,
@@ -3437,6 +3440,16 @@ async function api(path, method, d, p, res, ip, headers) {
         pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
       }))
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    for (const identity of identities) {
+      activeIdentitySessions += identity.activeDevices;
+      if (identity.notificationDevices > 0) notificationReadyIdentities++;
+      pendingConnectionRequests += identity.pendingRequests;
+    }
+    const ciphertextLoad = GLOBAL_BYTE_BUDGET ? totalByteSize / GLOBAL_BYTE_BUDGET : 1;
+    const conversationLoad = MAX_CONCURRENT_ROOMS ? rooms.size / MAX_CONCURRENT_ROOMS : 1;
+    const healthStatus = !postgresEnabled ? 'critical'
+      : ciphertextLoad >= 0.85 || conversationLoad >= 0.85 ? 'degraded'
+      : 'healthy';
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, {
       generatedAt: now,
@@ -3449,6 +3462,10 @@ async function api(path, method, d, p, res, ip, headers) {
       },
       live: {
         registeredIdentities: accounts.size,
+        activeIdentitySessions,
+        notificationReadyIdentities,
+        pendingConnectionRequests,
+        activeConversations: rooms.size,
         activeVaults: rooms.size,
         occupiedVaults,
         permanentVaults,
@@ -3471,6 +3488,8 @@ async function api(path, method, d, p, res, ip, headers) {
         callsAnswered: analytics.callsAnswered || 0,
       },
       system: {
+        healthStatus,
+        durableStorage: postgresEnabled ? 'PostgreSQL connected' : 'Unavailable',
         uptimeSeconds: Math.floor((now - PROCESS_STARTED_AT) / 1000),
         nodeVersion: process.version,
         rssBytes: memory.rss,

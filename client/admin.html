@@ -71,12 +71,13 @@
         </article>
 
         <article class="panel system-panel">
-          <div class="panel-head"><div><p class="eyebrow">Infrastructure</p><h2>System health</h2></div><span class="health-pill">Healthy</span></div>
+          <div class="panel-head"><div><p class="eyebrow">Identity infrastructure</p><h2>System health</h2><p class="panel-copy">Live readiness for identities, notifications and encrypted conversations.</p></div><span class="health-pill" id="health-pill">Checking</span></div>
           <div class="gauges">
-            <div class="gauge"><div><span id="memory-ring" style="--value:0"><b id="memory-pct">0%</b></span></div><strong>Ciphertext budget</strong><small id="memory-detail">—</small></div>
-            <div class="gauge"><div><span id="room-ring" style="--value:0"><b id="room-pct">0%</b></span></div><strong>Conversation capacity</strong><small id="room-detail">—</small></div>
+            <div class="gauge"><div><span id="notification-ring" style="--value:0"><b id="notification-pct">0%</b></span></div><strong>Notification readiness</strong><small id="notification-detail">—</small></div>
+            <div class="gauge"><div><span id="room-ring" style="--value:0"><b id="room-pct">0%</b></span></div><strong>Live conversation load</strong><small id="room-detail">—</small></div>
+            <div class="gauge"><div><span id="memory-ring" style="--value:0"><b id="memory-pct">0%</b></span></div><strong>Encrypted realtime buffer</strong><small id="memory-detail">—</small></div>
           </div>
-          <div class="system-foot"><span>Process uptime <b id="uptime">—</b></span><span>Node <b id="node-version">—</b></span><span>Buffered ciphertext <b id="cipher-count">—</b></span></div>
+          <div class="system-foot"><span>Durable storage <b id="storage-status">—</b></span><span>Active identity sessions <b id="identity-sessions">—</b></span><span>Encrypted records in realtime memory <b id="cipher-count">—</b></span><span>Process uptime <b id="uptime">—</b></span><span>Node <b id="node-version">—</b></span></div>
         </article>
 
         <article class="panel privacy-panel">
