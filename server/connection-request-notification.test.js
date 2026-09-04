@@ -16,6 +16,14 @@ test('connection requests use account-level native notifications', () => {
   assert.match(postgres, /push_destinations jsonb/);
   assert.match(client, /registerNativeTokenForAccount/);
   assert.match(client, /saveAccountState\(state\)[\s\S]*registerNativeTokenForAccount\(\)\.catch/);
+  assert.match(client, /pushNotificationReceived/);
+  assert.match(client, /notification\?\.data\?\.connectionRequest/);
+});
+
+test('sent connection requests remain visible while awaiting acceptance', () => {
+  assert.match(client, /pendingOutgoingConnections/);
+  assert.match(client, /direction === 'outgoing' && r\.status === 'pending'/);
+  assert.match(client, /Connection request sent · awaiting acceptance/);
 });
 
 test('iOS call data rain is larger and runs at half speed', () => {

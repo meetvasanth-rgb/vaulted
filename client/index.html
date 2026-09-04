@@ -7825,6 +7825,7 @@ let pendingConnectionPeerPrivateNumber = null;
 let pendingJoinPeerPrivateNumber = null;
 let pendingJoinPeerName = null;
 let pendingIncomingConnections = [];
+let pendingOutgoingConnections = [];
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function peerIdentityFromConnection(request, state = loadAccountState()) {
   const selfNumber = normalizePrivateNumber(state?.privateNumber);
@@ -7859,7 +7860,9 @@ async function refreshConnectionRequests() {
   if (result.error) { list.textContent = result.error; return; }
   await reconcileConversationPeerIdentities(result.requests, state);
   const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending');
+  const outgoing = result.requests.filter(r => r.direction === 'outgoing' && r.status === 'pending');
   pendingIncomingConnections = incoming;
+  pendingOutgoingConnections = outgoing;
   if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
   const accepted = result.requests.find(r => r.direction === 'outgoing' && r.status === 'accepted' && r.inviteUrl && !localStorage.getItem(`vaultlix:connection:${r.id}`));
   if (accepted) {
@@ -7873,8 +7876,10 @@ async function refreshConnectionRequests() {
     await openJoinFromLink(url.pathname.split('/').filter(Boolean).pop(), true);
     return;
   }
-  if (!incoming.length) { list.textContent = 'No new connection requests.'; return; }
-  list.innerHTML = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  const incomingHtml = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  const outgoingHtml = outgoing.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.recipientDisplayName || 'Vaultlix user')}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.recipientPrivateNumber))}</div><div class="account-note">Connection request sent · awaiting acceptance</div></div>`).join('');
+  if (!incomingHtml && !outgoingHtml) { list.textContent = 'No pending connection requests.'; return; }
+  list.innerHTML = `${incomingHtml}${outgoingHtml}`;
 }
 async function acceptConnectionRequest(requestId) {
   const request = pendingIncomingConnections.find(item => item.id === requestId);
@@ -8947,8 +8952,19 @@ async function ensureNativePushListeners() {
   await plugin.addListener('registrationError', () => {
     toast('Vaultlix could not register notifications. Please try again.');
   });
+  await plugin.addListener('pushNotificationReceived', event => {
+    if (event?.data?.connectionRequest === true || event?.data?.connectionRequest === 'true') {
+      refreshConnectionRequests().catch(() => {});
+      toast(event?.body || 'New Vaultlix connection request');
+    }
+  });
   await plugin.addListener('pushNotificationActionPerformed', event => {
-    const code = event?.notification?.data?.code;
+    const notification = event?.notification || {};
+    if (notification?.data?.connectionRequest === true || notification?.data?.connectionRequest === 'true') {
+      refreshConnectionRequests().then(() => showScreen('s-vault-list')).catch(() => {});
+      return;
+    }
+    const code = notification?.data?.code;
     if (code && !switchToRoomByCode(code)) pendingNotificationRoomCode = code;
   });
 }
@@ -9313,11 +9329,12 @@ function renderVaultList() {
   if (!body) return;
   const previews = vaultPreviewsEnabled();
   const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
-  if (rooms.size === 0 && pendingIncomingConnections.length === 0) {
+  const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
+  if (rooms.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
   }
-  let html = requestHtml;
+  let html = `${requestHtml}${outgoingRequestHtml}`;
   const orderedRooms = [...rooms.values()].sort((a, b) => vaultLastActivity(b) - vaultLastActivity(a));
   for (const room of orderedRooms) {
     const label = roomDisplayLabel(room);
