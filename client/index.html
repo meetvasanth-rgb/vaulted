@@ -1039,6 +1039,7 @@ body.select-mode .chat-ftr{display:none}
 #connect-overlay.visible .connect-context{opacity:1}
 
 .connect-status{margin-top:10px;font-family:'Inter',sans-serif;font-size:11px;letter-spacing:.1em;color:rgba(255,255,255,.4);opacity:0;transition:opacity .35s ease 1.5s}
+.connect-status svg{width:13px;height:13px;margin-right:5px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 #connect-overlay.visible .connect-status{opacity:1}
 
 /* ── VANISH MOMENT ────────────────────────────────────────────────── */
@@ -1382,9 +1383,9 @@ body.select-mode .chat-ftr{display:none}
 .emergency-hold::before{content:'';position:absolute;inset:0;background:#9B2945;transform:scaleX(0);transform-origin:left;transition:transform 1.5s linear;opacity:.12}
 .emergency-hold.holding::before{transform:scaleX(1)}
 .emergency-hold span{position:relative;z-index:1}
-.emergency-overlay{position:fixed;inset:0;z-index:10020;background:rgba(14,8,11,.72);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.emergency-overlay{position:fixed;inset:0;z-index:10020;box-sizing:border-box;background:rgba(14,8,11,.72);display:none;align-items:flex-end;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .emergency-overlay.open{display:flex}
-.emergency-sheet{width:min(520px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#FFF;border-radius:22px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
+.emergency-sheet{width:min(520px,100%);max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;background:#FFF;border-radius:22px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
 .emergency-title{font:700 26px/1.15 'Inter',sans-serif;letter-spacing:-.035em;color:#351522;margin:0 0 6px}
 .emergency-warning{font:500 12px/1.55 'Inter',sans-serif;color:#8F344C;background:#FFF2F4;border:1px solid #F0CCD5;border-radius:12px;padding:11px 12px;margin:10px 0 14px}
 .emergency-choice{display:flex;align-items:center;gap:8px;margin:5px 0;padding:7px 9px;border:1px solid transparent;border-radius:14px;font:500 13px/1.35 'Inter',sans-serif;color:#2C2226;cursor:pointer;transition:background .16s ease,border-color .16s ease}
@@ -2177,12 +2178,13 @@ html.vaultlix-native .landing-marketing{display:none!important}
 .cross-vault-banner-arrow{font-size:18px;color:#682C43;flex:none}
 @keyframes vaultNoticeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 #s-chat .chat-hdr-identity{gap:11px!important;overflow:visible!important}
-#s-chat .chat-hdr-logo{width:42px;height:42px;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important}
+#s-chat .chat-hdr-logo{width:42px;height:42px;padding:0;border:0;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important;cursor:pointer}
 #s-chat .chat-hdr-logo svg{width:21px;height:21px;stroke:#fff}
 #s-chat .chat-hdr-meta{min-width:0;display:flex;flex-direction:column;gap:4px}
 #s-chat .chat-hdr-room{max-width:170px!important;font:750 17px/1.1 'Manrope',sans-serif!important;letter-spacing:-.02em!important;color:#271D25!important}
 #s-chat .chat-hdr-presence{display:flex;align-items:center;gap:7px;font:600 10px/1 'Manrope',sans-serif;color:#83757C;letter-spacing:.03em}
-#s-chat .status-dot{width:7px;height:7px;flex:none}
+#s-chat .status-dot{width:9px;height:9px;flex:none;background:#469263;box-shadow:0 0 0 3px rgba(70,146,99,.17)}
+#s-chat .status-dot.away{background:#AAA2A6;box-shadow:0 0 0 2px rgba(122,112,117,.14)}
 #s-chat .chat-hdr-actions{gap:7px!important}
 #s-chat .settings-btn,#s-chat .leave-btn,#s-chat .destroy-btn{width:40px!important;height:40px!important;padding:0!important;margin:0!important;display:grid!important;place-items:center;border-radius:13px!important;font-size:0!important;box-shadow:none!important}
 #s-chat .settings-btn{background:#F6EEF1!important;border:1px solid #E7D6DC!important;color:#682C43!important}
@@ -2197,12 +2199,14 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .room-tab.active{background:#682C43!important;border-color:#682C43!important;color:#fff!important;box-shadow:0 6px 14px rgba(104,44,67,.16)!important}
 #s-chat .room-tab-add{width:38px;height:38px;border-radius:12px!important;border:1px solid #E3D6DB!important;color:#682C43!important;background:#fff!important}
 #s-chat .chat-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch;gap:8px;padding:8px 14px;background:#FBF8F9;border-bottom:1px solid #EFE6E9}
-#s-chat .e2e-bar{min-width:0;display:flex;align-items:center;justify-content:center;border:1px solid #D8E4DB!important;border-radius:12px!important;padding:8px 11px!important;background:#EEF3EF!important;color:#4C6B55!important;font:650 10.5px/1.3 'Manrope',sans-serif!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#s-chat .e2e-bar{min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #D8E4DB!important;border-radius:12px!important;padding:8px 11px!important;background:#EEF3EF!important;color:#4C6B55!important;font:650 10.5px/1.3 'Manrope',sans-serif!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#s-chat .e2e-bar svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 #s-chat .timer-bar{min-width:0;height:auto!important;padding:0!important;border:0!important;background:transparent!important;gap:8px!important}
 #s-chat .timer-bar-controls{height:100%;display:flex!important;align-items:center!important;border:1px solid #E5DADF;border-radius:12px;background:#fff;padding:3px 5px 3px 10px;gap:6px}
 #s-chat .timer-bar-label{font-size:0!important;color:#75666E!important}
 #s-chat .timer-bar-label::before{content:'Timer';font:650 10.5px/1 'Manrope',sans-serif!important}
-#s-chat #timer-bar-select{min-width:60px!important;width:auto!important;border:0!important;padding:5px 22px 5px 4px!important;background-color:transparent!important;color:#4D3D46!important;font:700 10.5px/1 'Manrope',sans-serif!important}
+#s-chat #timer-bar-select{-webkit-appearance:none!important;appearance:none!important;min-width:60px!important;width:auto!important;border:0!important;outline:0!important;box-shadow:none!important;padding:5px 22px 5px 4px!important;background-color:transparent!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23682C43' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 4px center!important;color:#4D3D46!important;font:700 10.5px/1 'Manrope',sans-serif!important}
+#s-chat .timer-bar-controls:focus-within{border-color:#C99AA9;box-shadow:0 0 0 3px rgba(104,44,67,.08)}
 #s-chat .call-btn{width:40px!important;height:40px!important;flex:none;border-radius:12px!important;border:0!important;background:#682C43!important;color:#fff!important;box-shadow:0 6px 14px rgba(104,44,67,.18)!important}
 #s-chat .call-btn svg{width:18px;height:18px;stroke:#fff!important}
 #s-chat .call-btn:disabled{background:#ECE4E7!important;color:#9C8B92!important;box-shadow:none!important;opacity:1!important}
@@ -2213,7 +2217,9 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .msg .bubble{max-width:min(78vw,540px)!important;padding:10px 13px!important;font:450 14px/1.48 'Manrope',sans-serif!important;box-shadow:none!important}
 #s-chat .msg.me .bubble{background:#F2DDE3!important;border:1px solid #E8C9D1!important;color:#30242B!important;border-radius:17px 17px 5px 17px!important}
 #s-chat .msg.them .bubble{background:#fff!important;border:1px solid #E7DDE1!important;color:#30242B!important;border-radius:17px 17px 17px 5px!important;box-shadow:0 5px 16px rgba(39,29,37,.055)!important}
-#s-chat .msg-name{margin:0 0 4px!important;font:700 10px/1 'Manrope',sans-serif!important;color:#682C43!important}
+/* Sender identity stays in the message record for a future group renderer,
+   but a one-to-one chat does not repeat it above every incoming bubble. */
+#s-chat .msg-name{display:none!important}
 #s-chat .msg-time{font:550 9.5px/1 'Manrope',sans-serif!important;color:#8C7D84!important}
 #s-chat .typing-indicator{background:#F8F3F5!important;border:1px solid #E8DDE1!important;box-shadow:none!important}
 #s-chat .push-banner{margin:8px 14px 0;border-radius:12px!important;font-size:11px!important}
@@ -2288,6 +2294,13 @@ html.vaultlix-native-android #s-landing .landing-back-btn{
 }
 html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   padding-top:calc(14px + var(--android-safe-area-top,0px))!important;
+}
+html.vaultlix-native-android .emergency-overlay{
+  padding-top:calc(16px + var(--android-safe-area-top,0px));
+  padding-bottom:calc(16px + var(--android-safe-area-bottom,0px));
+}
+html.vaultlix-native-android .emergency-sheet{
+  max-height:calc(100dvh - 32px - var(--android-safe-area-top,0px) - var(--android-safe-area-bottom,0px));
 }
 /* The shared 8–11px compact labels become physically undersized on 320-dpi
    WebViews. Restrict this pass by resolution so high-density OnePlus and
@@ -2836,9 +2849,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
          gone; that info now lives in Settings > This room and on the
          tappable e2e-bar below, respectively — never duplicated here. -->
     <div class="chat-hdr-identity">
-      <div class="chat-hdr-logo" aria-hidden="true">
+      <button class="chat-hdr-logo" type="button" onclick="quickLockFromHeader()" title="Quick Lock" aria-label="Quick Lock Vaultlix">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      </div>
+      </button>
       <div class="chat-hdr-meta">
         <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
         <div class="chat-hdr-presence"><div class="status-dot" id="status-dot" title="Connected"></div><span data-i18n="private_vault">Private conversation</span></div>
@@ -2868,7 +2881,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="chat-tools">
-  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><span style="font-size:0.87em">🔒</span> <span data-i18n="encrypted">Encrypted</span></div>
+  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span data-i18n="encrypted">Encrypted</span></div>
   <!-- Call button lives here now, inside the current room's own content area
        (below the room-tabs switcher) rather than in the shared header —
        with multiple rooms open, having it in the header made it ambiguous
@@ -3724,6 +3737,10 @@ const VAULTLIX_TRANSLATIONS = {
     language:'Լեզու', language_subtitle:'Օգտագործել սարքի լեզուն կամ ընտրել այլ լեզու', app_language:'Հավելվածի լեզու', language_note:'Փոփոխությունն անմիջապես կկիրառվի։ Արաբերենն օգտագործում է աջից ձախ դասավորություն։', system_default:'Համակարգի լեզու', new_connection:'Նոր կապ', sign_in:'Մուտք գործել', create_account:'Ստեղծել հաշիվ', recover_account:'Վերականգնել հաշիվը', private_number:'Vaultlix անձնական համար', display_name:'Ցուցադրվող անուն', password:'Գաղտնաբառ', continue:'Շարունակել', cancel:'Չեղարկել', save:'Պահպանել', close:'Փակել', search:'Որոնել', home:'Գլխավոր', encrypted_conversation:'Գաղտնագրված զրույց', no_conversations:'Զրույցներ դեռ չկան', start_conversation:'Սկսեք ձեր առաջին անձնական զրույցը', start_conversation_help:'Սեղմեք «Նոր կապ» և մուտքագրեք մյուս անձի Vaultlix անձնական համարը։', message_placeholder:'Գրեք հաղորդագրություն…', create:'Ստեղծել', recover:'Վերականգնել', notifications_subtitle:'Հաղորդագրության ձայներ, զգուշացումներ և սարքի թույլտվություններ', chats_subtitle:'Զրույցի պիտակ, հաղորդագրությունների կառավարում և անվտանգություն', calls_subtitle:'Զանգերի գաղտնիություն, թույլտվություններ և ձայնի ուղղում', help_subtitle:'Vaultlix-ի օգտագործում, FAQ, քաղաքականություններ և տարբերակ', new_private_connection:'Նոր անձնական կապ', enter_their_private_number:'Մուտքագրեք նրա անձնական համարը', new_connection_instructions:'Մուտքագրեք ձեզ փոխանցված Vaultlix-ի ճշգրիտ 10-նիշ անձնական համարը։ Vaultlix-ը չի որոնում կոնտակտներ և մարդկանց չի առաջարկում։', find_person:'Գտնել անձին', invalid_private_number:'Մուտքագրեք Vaultlix-ի վավեր 10-նիշ անձնական համար', own_private_number:'Սա ձեր սեփական անձնական համարն է', private_number_not_found:'Vaultlix անձնական համարը չի գտնվել'
   }
 };
+// Clearer system-message copy. Keep this centralized so older stored
+// `Reconnected` records automatically receive the improved wording.
+VAULTLIX_TRANSLATIONS.en.reconnected = 'Connection restored';
+VAULTLIX_TRANSLATIONS.zh.reconnected = '连接已恢复';
 function normalizeVaultlixLanguage(value) {
   const base = String(value || '').toLowerCase().split(/[-_]/)[0];
   return VAULTLIX_LANGUAGES.includes(base) ? base : 'en';
@@ -4882,13 +4899,13 @@ function updateE2EBar(room) {
     // showing it at all is to make the existing tap-to-verify fingerprint
     // panel (showVerifyPanel) discoverable — it used to be an unlabelled tap
     // target nobody found.
-    bar.innerHTML = '<span style="font-size:0.87em">🔒</span> Encrypted';
+    bar.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Encrypted</span>';
     bar.title = room.keyVerified
       ? 'Encrypted and safety code verified. Tap for details.'
       : 'Encrypted. Tap for encryption details.';
   } else {
     bar.classList.add('pending');
-    bar.innerHTML = '<span style="font-size:0.87em">🔓</span> Establishing encryption…';
+    bar.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></svg><span>Establishing encryption…</span>';
   }
 }
 
@@ -8753,6 +8770,17 @@ function activateAppLock(manual = false) {
   setTimeout(() => document.getElementById('app-lock-passcode')?.focus(), 50);
 }
 
+function quickLockFromHeader() {
+  if (!appLockConfigured()) {
+    toast('Set up Vaultlix App Lock to use Quick Lock');
+    openAppLockSettings();
+    return;
+  }
+  // Privacy covering is not a call action; an active encrypted call should
+  // continue when the conversation is hidden.
+  activateAppLock(false);
+}
+
 async function unlockAppLock(event) {
   event?.preventDefault();
   clearTimeout(appLockAutoUnlockTimer);
@@ -12189,7 +12217,7 @@ async function triggerConnectionMoment(variant, callback) {
     <div class="connect-rule"></div>
     <div class="connect-wordmark">Vaultlix</div>
     <div class="connect-context">${escHtml(contextLine)}</div>
-    <div class="connect-status"><span style="font-size:0.87em">🔒</span> Encrypted · Connected</div>
+    <div class="connect-status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Encrypted · Connected</div>
   `;
   document.body.appendChild(overlay);
 

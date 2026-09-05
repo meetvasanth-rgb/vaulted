@@ -70,6 +70,19 @@ test('contact identity is visually stable and long names remain bounded', () => 
   assert.match(client, /maxlength="32"/);
 });
 
+test('one-to-one conversation polish uses safe areas and native visual language', () => {
+  assert.match(client, /\.emergency-overlay\{[^}]*safe-area-inset-top/);
+  assert.match(client, /vaultlix-native-android \.emergency-overlay/);
+  assert.match(client, /#s-chat \.msg-name\{display:none!important\}/);
+  assert.match(client, /class="e2e-bar"[\s\S]{0,500}<svg/);
+  assert.doesNotMatch(client, /bar\.innerHTML = '[^']*🔒/);
+  assert.match(client, /#s-chat #timer-bar-select\{[^}]*appearance:none!important/);
+  assert.match(client, /\.status-dot\.away\{background:#AAA2A6/);
+  assert.match(client, /reconnected = 'Connection restored'/);
+  assert.match(client, /onclick="quickLockFromHeader\(\)"/);
+  assert.match(client, /function quickLockFromHeader\(\)/);
+});
+
 test('user-facing legacy vault labels are replaced with conversation language', () => {
   for (const legacy of [
     'Create a vault',
