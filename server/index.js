@@ -422,6 +422,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     callId: parsed.callId || '',
     msgId: parsed.msgId || '',
     connectionRequest: !!parsed.connectionRequest,
+    requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
   });
   return new Promise((resolve) => {
     let client;
@@ -487,6 +488,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         callId: String(parsed.callId || ''),
         msgId: String(parsed.msgId || ''),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
+        requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
       },
@@ -2527,6 +2529,7 @@ async function api(path, method, d, p, res, ip, headers) {
       body:`${sender.displayName} sent you a connection request`,
       tag:`connection-request-${request.id}`,
       connectionRequest:true,
+      requestId:request.id,
     });
     for (const destination of recipient.account.pushDestinations || []) {
       sendMemberPush(destination, requestPushPayload, { urgency:'high', TTL:3600, label:'connection request' });

@@ -315,6 +315,9 @@ input,textarea{font-family:'Inter',sans-serif;outline:none}
 .vault-list-request-actions button{min-height:38px;border-radius:12px;padding:0 14px;font:700 12px/1 inherit;cursor:pointer;flex:1}
 .vault-list-request-accept{border:1px solid #682C43;background:#682C43;color:#fff}
 .vault-list-request-decline{border:1px solid #DCCDD2;background:#fff;color:#682C43}
+.vault-list-request.quick-connect-focus{border-color:#682C43;box-shadow:0 0 0 3px rgba(104,44,67,.13),0 12px 28px rgba(104,44,67,.14);animation:quickConnectFocus .45s ease both}
+.account-status-card.quick-connect-focus{border-color:#682C43;box-shadow:0 0 0 3px rgba(104,44,67,.13);animation:quickConnectFocus .45s ease both}
+@keyframes quickConnectFocus{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}
 .vault-list-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;column-gap:12px;padding:15px 16px;border-bottom:1px solid #F1E9EB;cursor:pointer;transition:background .15s;position:relative}
 .vault-list-row:last-child{border-bottom:0}
 .vault-list-row:hover,.vault-list-row:active{background:#FDF9FA}
@@ -3136,6 +3139,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
       </form>
       <button class="account-primary" type="button" onclick="shareOwnPrivateNumber()">Share my Vaultlix Private Number</button>
+      <button class="account-secondary" type="button" onclick="showOwnPrivateNumberQr()">Show my Quick Connect QR</button>
       <div class="settings-divider" style="margin:20px 0"></div>
       <div class="account-copy"><strong>Password recovery code</strong><br/>An encrypted copy is kept on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
       <div class="account-note" id="account-recovery-backup-status"></div>
@@ -3463,9 +3467,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
 <div class="account-overlay" id="public-profile-overlay" onclick="if(event.target===this)closePublicProfile()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
-    <div class="account-head"><div><div class="account-kicker">Vaultlix identity</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker">Quick Connect</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
     <div class="account-copy" id="public-profile-private-number">—</div>
-    <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Send connection request</button>
+    <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Connect privately</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
   </div>
 </div>
@@ -3477,6 +3481,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <form class="account-form active" onsubmit="findPrivateNumber(event)">
       <label class="account-field"><span data-i18n="private_number">Vaultlix private number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" required/></label>
       <button class="account-primary" type="submit" data-i18n="find_person">Find person</button>
+      <button class="account-secondary" type="button" onclick="pasteQuickConnectLink()">Paste Vaultlix link or number</button>
     </form>
   </div>
 </div>
@@ -7405,6 +7410,29 @@ async function shareOwnPrivateNumber() {
   catch (e) { toast(`Share this link: ${url}`); }
 }
 
+async function showOwnPrivateNumberQr() {
+  const state = loadAccountState();
+  if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
+  closeQrPanel();
+  const link = `https://vaultlix.com/${state.privateNumber}?ref=qr`;
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:24px;max-width:340px;width:100%;text-align:center;font-family:inherit">
+      <div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#A65B72;margin-bottom:5px">Vaultlix Quick Connect</div>
+      <div style="font-size:22px;font-weight:700;color:#241B1E;margin-bottom:4px">${escapeHtml(state.displayName || 'My Private Number')}</div>
+      <div style="font-size:13px;color:#7A6E65;margin-bottom:16px">${escapeHtml(formatPrivateNumber(state.privateNumber))}</div>
+      <div style="display:flex;justify-content:center;margin-bottom:18px"><canvas id="qr-canvas"></canvas></div>
+      <div style="font-size:12px;line-height:1.5;color:#7A6E65;margin-bottom:16px">Scan to open this identity and connect privately.</div>
+      <button style="background:#682C43;color:#fff;border:none;border-radius:20px;padding:10px 28px;font-size:13px;cursor:pointer" onclick="closeQrPanel()">Done</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', event => { if (event.target === overlay) closeQrPanel(); });
+  renderQrCanvas(document.getElementById('qr-canvas'), link);
+  qrPanelAutoHideTimer = setTimeout(closeQrPanel, 60000);
+}
+
 async function blockedVaultFingerprint(code) {
   const digest = await sha256Bytes(new TextEncoder().encode(`vaultlix-block-v1\0${String(code || '').toLowerCase()}`));
   return bytesToBase64Url(digest);
@@ -7703,6 +7731,7 @@ async function finishNativeOnboarding(enableNotifications) {
   document.getElementById('account-overlay').classList.remove('native-onboarding-account');
   showScreen('s-vault-list');
   connectInbox();
+  await resumeQuickConnectAfterAuthentication();
 }
 function openAccountPanel() {
   closeSettings();
@@ -7826,6 +7855,7 @@ let pendingJoinPeerPrivateNumber = null;
 let pendingJoinPeerName = null;
 let pendingIncomingConnections = [];
 let pendingOutgoingConnections = [];
+let pendingConnectionFocusId = null;
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function peerIdentityFromConnection(request, state = loadAccountState()) {
   const selfNumber = normalizePrivateNumber(state?.privateNumber);
@@ -7876,10 +7906,24 @@ async function refreshConnectionRequests() {
     await openJoinFromLink(url.pathname.split('/').filter(Boolean).pop(), true);
     return;
   }
-  const incomingHtml = incoming.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  const incomingHtml = incoming.map(r => `<div class="account-status-card${r.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(r.id)}"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
   const outgoingHtml = outgoing.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.recipientDisplayName || 'Vaultlix user')}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.recipientPrivateNumber))}</div><div class="account-note">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (!incomingHtml && !outgoingHtml) { list.textContent = 'No pending connection requests.'; return; }
   list.innerHTML = `${incomingHtml}${outgoingHtml}`;
+  scrollToFocusedConnectionRequest();
+}
+function scrollToFocusedConnectionRequest() {
+  if (!pendingConnectionFocusId) return;
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`[data-connection-request-id="${pendingConnectionFocusId}"]`);
+    if (card) card.scrollIntoView({ behavior:'smooth', block:'center' });
+  });
+}
+async function openConnectionRequest(requestId = null) {
+  pendingConnectionFocusId = typeof requestId === 'string' && /^[A-Za-z0-9-]{8,128}$/.test(requestId) ? requestId : null;
+  showScreen('s-vault-list');
+  await refreshConnectionRequests();
+  scrollToFocusedConnectionRequest();
 }
 async function acceptConnectionRequest(requestId) {
   const request = pendingIncomingConnections.find(item => item.id === requestId);
@@ -7887,6 +7931,7 @@ async function acceptConnectionRequest(requestId) {
   pendingConnectionPeerName = peer.displayName;
   pendingConnectionPeerPrivateNumber = peer.privateNumber;
   pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId);
+  pendingConnectionFocusId = null;
   pendingConnectionAcceptance = requestId;
   closeAccountPanel();
   const identity = loadAccountState();
@@ -7903,7 +7948,7 @@ async function acceptConnectionRequest(requestId) {
 async function rejectConnectionRequest(requestId) {
   const state=loadAccountState(); if(!state)return;
   const result=await api('/api/connections/respond',{accountId:state.accountId,sessionToken:state.sessionToken,requestId,action:'rejected'});
-  if(result.error)toast(result.error); else { pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId); renderVaultList(); toast('Request declined'); refreshConnectionRequests(); }
+  if(result.error)toast(result.error); else { pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId); pendingConnectionFocusId = null; renderVaultList(); toast('Request declined'); refreshConnectionRequests(); }
 }
 function showAccountTab(name) {
   const guestView = document.getElementById('account-guest-view');
@@ -8157,7 +8202,7 @@ async function copyRecoveryCode() {
   const text = `Vaultlix private number: ${privateNumber}\nRecovery code: ${recoveryCode}`;
   try { await navigator.clipboard.writeText(text); toast('Recovery details copied'); } catch(e) { toast('Press and hold the details to copy them'); }
 }
-function finishAccountCreation() {
+async function finishAccountCreation() {
   const state = loadAccountState();
   if (state) { state.recoveryBackupConfirmedAt = Date.now(); saveAccountState(state); }
   document.getElementById('account-recovery-result').style.display='none';
@@ -8175,6 +8220,7 @@ function finishAccountCreation() {
   showScreen('s-vault-list');
   connectInbox();
   toast('Your Vaultlix private number is ready');
+  await resumeQuickConnectAfterAuthentication();
 }
 function openAccountVaults() {
   closeAccountPanel();
@@ -8961,7 +9007,7 @@ async function ensureNativePushListeners() {
   await plugin.addListener('pushNotificationActionPerformed', event => {
     const notification = event?.notification || {};
     if (notification?.data?.connectionRequest === true || notification?.data?.connectionRequest === 'true') {
-      refreshConnectionRequests().then(() => showScreen('s-vault-list')).catch(() => {});
+      openConnectionRequest(notification.data.requestId || null).catch(() => {});
       return;
     }
     const code = notification?.data?.code;
@@ -9328,7 +9374,7 @@ function renderVaultList() {
   const body = document.getElementById('vault-list-body');
   if (!body) return;
   const previews = vaultPreviewsEnabled();
-  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
+  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
   const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (rooms.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
@@ -9351,6 +9397,7 @@ function renderVaultList() {
     </div>`;
   }
   body.innerHTML = html;
+  scrollToFocusedConnectionRequest();
   body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => {
     const room = rooms.get(el.dataset.room);
     if (room && !room.everOnline) resumeWaitingScreen(room);
@@ -9411,6 +9458,10 @@ function switchToRoomByCode(code) {
 let pendingNotificationRoomCode = null;
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'connection-request-click') {
+      openConnectionRequest(event.data.requestId || null).catch(() => {});
+      return;
+    }
     if (event.data && event.data.type === 'notification-click' && event.data.code) {
       if (!switchToRoomByCode(event.data.code)) pendingNotificationRoomCode = event.data.code;
     }
@@ -11115,6 +11166,34 @@ function parsePublicPrivateNumber() {
   const match = location.pathname.match(/^\/([2-9][0-9]{9})\/?$/);
   return match ? match[1] : null;
 }
+const QUICK_CONNECT_TARGET_KEY = 'vaultlix_quick_connect_target_v1';
+function rememberQuickConnectTarget(privateNumber) {
+  const normalized = normalizePrivateNumber(privateNumber);
+  if (normalized) localStorage.setItem(QUICK_CONNECT_TARGET_KEY, normalized);
+}
+function loadQuickConnectTarget() {
+  return normalizePrivateNumber(localStorage.getItem(QUICK_CONNECT_TARGET_KEY));
+}
+function clearQuickConnectTarget() { localStorage.removeItem(QUICK_CONNECT_TARGET_KEY); }
+async function resumeQuickConnectAfterAuthentication() {
+  const target = loadQuickConnectTarget();
+  if (!target || !loadAccountState()) return false;
+  await openPublicProfile(target);
+  if (!activePublicProfile) return false;
+  await requestPrivateVault();
+  return true;
+}
+function privateNumberFromQuickConnectText(value) {
+  const text = String(value || '').trim();
+  try {
+    const url = new URL(text.match(/https:\/\/vaultlix\.com\/[^\s]+/i)?.[0] || text);
+    if (url.protocol === 'https:' && url.hostname.toLowerCase() === 'vaultlix.com') {
+      const match = url.pathname.match(/^\/([2-9][0-9]{9})\/?$/);
+      if (match) return match[1];
+    }
+  } catch (e) {}
+  return normalizePrivateNumber(text);
+}
 let activePublicProfile = null;
 function openNewConnection() {
   const state = loadAccountState();
@@ -11127,6 +11206,16 @@ function openNewConnection() {
 function closeNewConnection() {
   document.getElementById('new-connection-overlay').classList.remove('open');
 }
+async function pasteQuickConnectLink() {
+  try {
+    const value = await navigator.clipboard.readText();
+    const privateNumber = privateNumberFromQuickConnectText(value);
+    if (!privateNumber) { toast('Clipboard does not contain a Vaultlix link or Private Number'); return; }
+    document.getElementById('new-connection-private-number').value = formatPrivateNumber(privateNumber);
+    closeNewConnection();
+    await openPublicProfile(privateNumber);
+  } catch (e) { toast('Allow clipboard access, then try again'); }
+}
 async function findPrivateNumber(event) {
   event.preventDefault();
   const privateNumber = normalizePrivateNumber(document.getElementById('new-connection-private-number').value);
@@ -11137,6 +11226,7 @@ async function findPrivateNumber(event) {
   await openPublicProfile(privateNumber);
 }
 async function openPublicProfile(privateNumber) {
+  activePublicProfile = null;
   try {
     const response = await fetch(`/api/profile/${encodeURIComponent(privateNumber)}`, { headers:{ Accept:'application/json' } });
     const result = await response.json();
@@ -11146,19 +11236,34 @@ async function openPublicProfile(privateNumber) {
     document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
     const signedIn = loadAccountState();
     const button = document.getElementById('public-profile-request');
-    button.textContent = signedIn ? 'Send connection request' : 'Sign in to connect';
+    button.textContent = signedIn ? 'Connect privately' : 'Sign in to connect';
     document.getElementById('public-profile-overlay').classList.add('open');
   } catch (e) { toast('Could not open this Vaultlix identity'); }
 }
 function closePublicProfile() { document.getElementById('public-profile-overlay').classList.remove('open'); history.replaceState(null, '', '/'); }
 async function requestPrivateVault() {
   const state = loadAccountState();
-  if (!state) { closePublicProfile(); openAccountPanel(); return; }
   if (!activePublicProfile) return;
+  if (!state) {
+    rememberQuickConnectTarget(activePublicProfile.privateNumber);
+    closePublicProfile();
+    if (isNativeApp()) openNativeOnboardingAccount('login');
+    else openAccountPanel();
+    toast('Sign in or create your identity to continue this connection');
+    return;
+  }
+  if (normalizePrivateNumber(state.privateNumber) === normalizePrivateNumber(activePublicProfile.privateNumber)) {
+    clearQuickConnectTarget();
+    toast('That is your own Private Number');
+    return;
+  }
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
   if (result.error) { toast(result.error); return; }
+  clearQuickConnectTarget();
   toast(`Connection request sent to ${activePublicProfile.displayName}`);
   closePublicProfile();
+  showScreen('s-vault-list');
+  await refreshConnectionRequests();
 }
 
 // VLX-01: reads the invite-link commitment out of the URL fragment —
@@ -12354,6 +12459,7 @@ window.addEventListener('load', async () => {
   // arrives. This removes the notification -> native -> web triple-answer
   // sequence without exposing a vault above the device keyguard.
   const startupParams = new URLSearchParams(location.search);
+  const startupConnectionRequestId = startupParams.get('connectionRequest');
   if (startupParams.get('nativeCallMode') === 'locked') {
     document.body.classList.add('native-call-only');
   }
@@ -12601,7 +12707,14 @@ window.addEventListener('load', async () => {
   // commitment was already dropped from state and storage inside the loop
   // above; this is purely the explanation.
   if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
-  if (publicPrivateNumber) openPublicProfile(publicPrivateNumber);
+  if (startupConnectionRequestId && loadAccountState()) {
+    history.replaceState(null, '', '/');
+    await openConnectionRequest(startupConnectionRequestId);
+  } else if (publicPrivateNumber) {
+    openPublicProfile(publicPrivateNumber);
+  } else if (loadAccountState() && loadQuickConnectTarget()) {
+    await resumeQuickConnectAfterAuthentication();
+  }
 });
 
 // ── KLIPY GIFS ───────────────────────────────────────────────────────────

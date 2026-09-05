@@ -99,7 +99,13 @@ self.addEventListener('push', (event) => {
       // lets notificationclick below jump straight to the room this
       // notification is actually about, instead of whatever room the app
       // happens to open to — see notificationclick for how it's used.
-      data: { url: '/', isCall, code: data.code || null },
+      data: {
+        url: '/',
+        isCall,
+        code: data.code || null,
+        connectionRequest: !!data.connectionRequest,
+        requestId: data.requestId || null,
+      },
     });
 
     if (hasFocusedClient) {
@@ -149,6 +155,8 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const code = (event.notification.data && event.notification.data.code) || null;
+  const connectionRequest = !!(event.notification.data && event.notification.data.connectionRequest);
+  const requestId = (event.notification.data && event.notification.data.requestId) || null;
   event.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (clientsList.length > 0) {
@@ -161,7 +169,10 @@ self.addEventListener('notificationclick', (event) => {
       // 'message' handler and calls setActiveRoom() if it has that room;
       // if the room list hasn't finished restoring yet, it queues the
       // code and applies it once that finishes instead of dropping it.
-      if (code && 'postMessage' in c) c.postMessage({ type: 'notification-click', code });
+      if ('postMessage' in c) {
+        if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
+        else if (code) c.postMessage({ type: 'notification-click', code });
+      }
       return;
     }
     // No window open at all — same idea, but the page doesn't exist yet to
@@ -169,6 +180,9 @@ self.addEventListener('notificationclick', (event) => {
     // The page reads this on boot, after its own room-restore sequence
     // finishes (see the `?room=` handling in index.html).
     if (self.clients.openWindow) {
+      if (connectionRequest) {
+        return self.clients.openWindow(requestId ? `/?connectionRequest=${encodeURIComponent(requestId)}` : '/?connectionRequest=pending');
+      }
       return self.clients.openWindow(code ? `/?room=${encodeURIComponent(code)}` : '/');
     }
   })());
