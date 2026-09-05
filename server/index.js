@@ -38,11 +38,26 @@ const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notifi
 const accounts = new Map();
 const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
 const privateNumberReservations = new Map();
+const privateNumberLifecycle = new Map();
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
 let postgresEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
+const RECLAIM_QUARANTINE_MS = 365 * DAY_MS;
+const NUMBER_RETENTION_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST_NUMBER_RETENTION_SWEEP_MS
+  ? Number(process.env.TEST_NUMBER_RETENTION_SWEEP_MS)
+  : 6 * 60 * 60 * 1000;
+const ACTIVITY_PERSIST_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const activityPersistedAt = new Map();
+const RECLAIM_WARNING_WINDOWS = [
+  { id:'6-months', remainingMs:183 * DAY_MS, label:'6 months' },
+  { id:'3-months', remainingMs:92 * DAY_MS, label:'3 months' },
+  { id:'30-days', remainingMs:30 * DAY_MS, label:'30 days' },
+  { id:'7-days', remainingMs:7 * DAY_MS, label:'7 days' },
+];
 
 // ── /api/send content sizing ─────────────────────────────────────────────
 // These were measured against the client's actual code, not guessed. A
@@ -758,6 +773,8 @@ async function reservePrivateNumber(category = 'standard') {
   for (let attempt = 0; attempt < 100; attempt++) {
     const privateNumber = generatePrivateNumberCandidate(category);
     if (privateNumbers.has(privateNumber)) continue;
+    const lifecycle = privateNumberLifecycle.get(privateNumber);
+    if (lifecycle && (lifecycle.status === 'retired' || lifecycle.availableAfter > Date.now())) continue;
     const reservationToken = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
     const reservedUntil = Date.now() + PRIVATE_NUMBER_RESERVATION_TTL_MS;
@@ -774,12 +791,14 @@ async function reservePrivateNumber(category = 'standard') {
   throw new Error('Could not allocate a Vaultlix Private Number');
 }
 async function verifyPrivateNumberReservation(privateNumber, reservationToken) {
-  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(reservationToken)) return false;
+  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(reservationToken)) return null;
   const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
   if (postgresEnabled) return postgresStore.verifyPrivateNumberReservation(privateNumber, tokenHash);
   const reservation = privateNumberReservations.get(privateNumber);
-  return !!reservation && reservation.reservedUntil >= Date.now() &&
-    crypto.timingSafeEqual(Buffer.from(reservation.tokenHash, 'hex'), Buffer.from(tokenHash, 'hex'));
+  return reservation && reservation.reservedUntil >= Date.now() &&
+    crypto.timingSafeEqual(Buffer.from(reservation.tokenHash, 'hex'), Buffer.from(tokenHash, 'hex'))
+    ? reservation.category
+    : null;
 }
 function normalizeDisplayName(value) {
   const displayName = String(value || '').trim().replace(/\s+/g, ' ');
@@ -793,12 +812,42 @@ function accountByPrivateNumber(value) {
 function publicAccount(account) {
   return { privateNumber:account.privateNumber, displayName:account.displayName, address:`https://vaultlix.com/${account.privateNumber}` };
 }
+function accountRetention(account, now = Date.now()) {
+  const protection = account.numberProtection || 'free';
+  const premiumUntil = Number(account.premiumUntil) || 0;
+  if (protection === 'purchased' || protection === 'promotional') {
+    return { protected:true, reason:protection, reclaimAt:null, lastActiveAt:account.lastActiveAt };
+  }
+  if (premiumUntil > now) {
+    return { protected:true, reason:'active-premium', reclaimAt:null, premiumUntil, lastActiveAt:account.lastActiveAt };
+  }
+  const activityDeadline = (Number(account.lastActiveAt) || now) + FREE_NUMBER_INACTIVITY_MS;
+  const premiumDeadline = premiumUntil ? premiumUntil + FREE_NUMBER_INACTIVITY_MS : 0;
+  return {
+    protected:false,
+    reason:premiumUntil ? 'expired-premium' : 'free',
+    reclaimAt:Math.max(activityDeadline, premiumDeadline),
+    premiumUntil:premiumUntil || null,
+    lastActiveAt:Number(account.lastActiveAt) || now,
+  };
+}
+function touchAccountActivity(accountId, account, { persist = false } = {}) {
+  const now = Date.now();
+  account.lastActiveAt = now;
+  account.reclaimWarnings = [];
+  if (persist || now - (activityPersistedAt.get(accountId) || 0) >= ACTIVITY_PERSIST_INTERVAL_MS) {
+    activityPersistedAt.set(accountId, now);
+    persistAccount(accountId).catch(error => console.warn('Account activity save failed:', error.message));
+  }
+}
 function newAccountSession(account) {
   const token = crypto.randomBytes(32).toString('base64url');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const now = Date.now();
   account.sessions = (account.sessions || []).filter(s => s.expiresAt > now).slice(-4);
   account.sessions.push({ tokenHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
+  account.lastActiveAt = now;
+  account.reclaimWarnings = [];
   return token;
 }
 function authenticateAccountSession(accountId, token) {
@@ -809,7 +858,10 @@ function authenticateAccountSession(accountId, token) {
   account.sessions = (account.sessions || []).filter(s => s.expiresAt > now);
   for (const session of account.sessions) {
     const expected = Buffer.from(session.tokenHash, 'hex');
-    if (actual.length === expected.length && crypto.timingSafeEqual(actual, expected)) return account;
+    if (actual.length === expected.length && crypto.timingSafeEqual(actual, expected)) {
+      touchAccountActivity(accountId, account);
+      return account;
+    }
   }
   return null;
 }
@@ -820,6 +872,68 @@ async function persistAccount(accountId) {
   if (postgresEnabled) await postgresStore.saveAccount(accountId, account);
   else saveAccounts();
 }
+
+async function releaseAccountNumber(accountId, account, reason) {
+  const permanent = account.numberProtection === 'purchased' || account.numberProtection === 'promotional';
+  const lifecycle = {
+    status:permanent ? 'retired' : 'quarantined',
+    availableAfter:permanent ? null : Date.now() + RECLAIM_QUARANTINE_MS,
+    reason,
+    createdAt:Date.now(),
+  };
+  if (postgresEnabled) await postgresStore.releasePrivateNumber(accountId, account.privateNumber, lifecycle);
+  else {
+    privateNumberLifecycle.set(account.privateNumber, lifecycle);
+    accounts.delete(accountId);
+    saveAccounts();
+    savePrivateNumberLifecycle();
+  }
+  privateNumbers.delete(account.privateNumber);
+  accounts.delete(accountId);
+  activityPersistedAt.delete(accountId);
+}
+
+let numberRetentionSweepRunning = false;
+async function sweepPrivateNumberRetention(now = Date.now()) {
+  if (numberRetentionSweepRunning) return;
+  numberRetentionSweepRunning = true;
+  try {
+    for (const [accountId, account] of accounts) {
+      const retention = accountRetention(account, now);
+      if (retention.protected || retention.reclaimAt > now) {
+        if (retention.protected) continue;
+        const remaining = retention.reclaimAt - now;
+        const warning = RECLAIM_WARNING_WINDOWS.filter(item => remaining <= item.remainingMs).at(-1);
+        if (!warning || (account.reclaimWarnings || []).includes(warning.id)) continue;
+        account.reclaimWarnings = [...(account.reclaimWarnings || []), warning.id];
+        await persistAccount(accountId);
+        const payload = JSON.stringify({
+          title:'Keep your Vaultlix Private Number',
+          body:`Sign in within ${warning.label} to keep ${account.privateNumber}. Opening a notification alone does not reset inactivity.`,
+          tag:`private-number-retention-${warning.id}`,
+          numberRetentionWarning:true,
+          reclaimAt:retention.reclaimAt,
+        });
+        for (const destination of account.pushDestinations || []) {
+          sendMemberPush(destination, payload, { urgency:'normal', TTL:7 * 24 * 60 * 60, label:'number retention warning' });
+        }
+        continue;
+      }
+      // Re-check the live value immediately before removal so authenticated
+      // activity occurring during a long sweep always wins over reclamation.
+      if (accountRetention(account, Date.now()).reclaimAt > Date.now()) continue;
+      await releaseAccountNumber(accountId, account, 'inactivity');
+      console.log(`Reclaimed inactive free Private Number ${account.privateNumber}; quarantined for 12 months.`);
+    }
+  } catch (error) {
+    console.error('Private Number retention sweep failed:', error.message);
+  } finally {
+    numberRetentionSweepRunning = false;
+  }
+}
+
+const numberRetentionTimer = setInterval(() => { sweepPrivateNumberRetention().catch(() => {}); }, NUMBER_RETENTION_SWEEP_MS);
+numberRetentionTimer.unref();
 
 // Sweep stale buckets periodically so IPs/tokens that stopped being active
 // don't sit in memory forever — mirrors the room-expiry sweep further down.
@@ -2132,12 +2246,6 @@ async function api(path, method, d, p, res, ip, headers) {
         !validEncryptedField(d.recoveryWrap, 4096) || !validEncryptedField(d.bundle, 1024 * 1024)) {
       return resErr(res, 'Invalid account data.', 400);
     }
-    // Reservation tokens close the selection-to-registration race across
-    // simultaneous users and Railway replicas. Missing tokens remain
-    // temporarily accepted for clients cached during the rolling upgrade.
-    if (d.reservationToken && !(await verifyPrivateNumberReservation(privateNumber, d.reservationToken))) {
-      return resErr(res, 'This Private Number reservation expired. Choose the number again.', 409);
-    }
     const existing = accounts.get(d.accountId);
     const existingNumberOwner = privateNumbers.get(privateNumber);
     // Registration is idempotent for the same authenticated account. Mobile
@@ -2151,9 +2259,22 @@ async function api(path, method, d, p, res, ip, headers) {
       const sessionToken = newAccountSession(existing);
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
-      return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision });
+      return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision, retention:accountRetention(existing) });
     }
     if (existing || existingNumberOwner) return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
+    // Reservation tokens close the selection-to-registration race across
+    // simultaneous users and Railway replicas. Validate only after the
+    // idempotent retry path above: a first request may have committed and
+    // assigned the reservation even when its response never reached a newly
+    // installed WebView. Missing tokens remain temporarily accepted for
+    // clients cached during the rolling upgrade.
+    const reservedCategory = d.reservationToken
+      ? await verifyPrivateNumberReservation(privateNumber, d.reservationToken)
+      : 'standard';
+    if (!reservedCategory) {
+      return resErr(res, 'This Private Number reservation expired. Choose the number again.', 409);
+    }
+    const now = Date.now();
     const account = {
       version: 2, privateNumber, displayName,
       authVerifier: await hashAccountSecret(d.authSecret),
@@ -2162,7 +2283,12 @@ async function api(path, method, d, p, res, ip, headers) {
       recoveryWrap: d.recoveryWrap,
       bundle: d.bundle,
       revision: 1,
-      createdAt: Date.now(), updatedAt: Date.now(), sessions: [], connectionRequests:[], pushDestinations:[],
+      numberCategory:reservedCategory,
+      // Early-test special numbers are a product grant, not an untrusted
+      // client claim. The category comes from the server-side reservation.
+      numberProtection:reservedCategory === 'standard' ? 'free' : 'promotional',
+      premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
+      createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account);
     accounts.set(d.accountId, account);
@@ -2174,7 +2300,7 @@ async function api(path, method, d, p, res, ip, headers) {
       else privateNumberReservations.delete(privateNumber);
     }
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision });
+    return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision, retention:accountRetention(account) });
   }
 
   if (path === '/api/account/login' && method === 'POST') {
@@ -2189,7 +2315,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const sessionToken = newAccountSession(account);
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision });
+    return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
   }
 
   if (path === '/api/account/recover' && method === 'POST') {
@@ -2207,7 +2333,7 @@ async function api(path, method, d, p, res, ip, headers) {
     account.updatedAt = Date.now();
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
+    return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
   }
 
   if (path === '/api/account/recovery-bundle' && method === 'POST') {
@@ -2217,8 +2343,11 @@ async function api(path, method, d, p, res, ip, headers) {
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.recoverySecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or recovery code is incorrect.', 403);
+    account.lastActiveAt = Date.now();
+    account.reclaimWarnings = [];
+    await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision });
+    return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
   }
 
   if (path === '/api/account/profile' && method === 'POST') {
@@ -2300,7 +2429,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, bundle: account.bundle, revision: account.revision });
+    return res200(res, { ok: true, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
   }
 
   // One authenticated foreground/reconnect catch-up replaces one request per
@@ -2364,9 +2493,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    privateNumbers.delete(account.privateNumber);
-    accounts.delete(d.accountId);
-    if (postgresEnabled) await postgresStore.deleteAccount(d.accountId); else saveAccounts();
+    await releaseAccountNumber(d.accountId, account, 'account-deleted');
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true });
   }
@@ -3430,15 +3557,22 @@ async function api(path, method, d, p, res, ip, headers) {
     let notificationReadyIdentities = 0;
     let pendingConnectionRequests = 0;
     const identities = Array.from(accounts.values())
-      .map(account => ({
-        displayName: account.displayName,
-        privateNumber: account.privateNumber,
-        createdAt: account.createdAt || null,
-        updatedAt: account.updatedAt || account.createdAt || null,
-        activeDevices: (account.sessions || []).filter(session => session.expiresAt > now).length,
-        notificationDevices: (account.pushDestinations || []).length,
-        pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
-      }))
+      .map(account => {
+        const retention = accountRetention(account, now);
+        return {
+          displayName: account.displayName,
+          privateNumber: account.privateNumber,
+          createdAt: account.createdAt || null,
+          updatedAt: account.updatedAt || account.createdAt || null,
+          lastActiveAt:account.lastActiveAt || null,
+          numberCategory:account.numberCategory || 'standard',
+          numberProtection:retention.reason,
+          reclaimAt:retention.reclaimAt,
+          activeDevices: (account.sessions || []).filter(session => session.expiresAt > now).length,
+          notificationDevices: (account.pushDestinations || []).length,
+          pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
+        };
+      })
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     for (const identity of identities) {
       activeIdentitySessions += identity.activeDevices;
@@ -4088,6 +4222,8 @@ const SNAPSHOT_TMP_PATH = SNAPSHOT_PATH + '.tmp';
 const ROOM_CHECKPOINT_INTERVAL_MS = Math.max(1000, parseInt(process.env.ROOM_CHECKPOINT_INTERVAL_MS || '15000', 10));
 const ACCOUNTS_PATH = path.join(SNAPSHOT_DIR, 'accounts.json');
 const ACCOUNTS_TMP_PATH = ACCOUNTS_PATH + '.tmp';
+const NUMBER_LIFECYCLE_PATH = path.join(SNAPSHOT_DIR, 'private-number-lifecycle.json');
+const NUMBER_LIFECYCLE_TMP_PATH = NUMBER_LIFECYCLE_PATH + '.tmp';
 const REPORTS_PATH = path.join(SNAPSHOT_DIR, 'safety-reports.jsonl');
 const REPORTS_TMP_PATH = REPORTS_PATH + '.tmp';
 const SAFETY_REPORT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
@@ -4124,6 +4260,28 @@ function saveAccounts() {
   } catch (e) { console.error('Anonymous account save failed:', e.message); }
 }
 
+function savePrivateNumberLifecycle() {
+  try {
+    fs.mkdirSync(SNAPSHOT_DIR, { recursive:true, mode:0o700 });
+    fs.writeFileSync(NUMBER_LIFECYCLE_TMP_PATH, JSON.stringify([...privateNumberLifecycle.entries()]), { encoding:'utf8', mode:0o600 });
+    fs.renameSync(NUMBER_LIFECYCLE_TMP_PATH, NUMBER_LIFECYCLE_PATH);
+    fs.chmodSync(NUMBER_LIFECYCLE_PATH, 0o600);
+  } catch (error) { console.error('Private Number lifecycle save failed:', error.message); }
+}
+
+function loadPrivateNumberLifecycle() {
+  try {
+    if (fs.existsSync(NUMBER_LIFECYCLE_TMP_PATH)) fs.unlinkSync(NUMBER_LIFECYCLE_TMP_PATH);
+    if (!fs.existsSync(NUMBER_LIFECYCLE_PATH)) return;
+    const entries = JSON.parse(fs.readFileSync(NUMBER_LIFECYCLE_PATH, 'utf8'));
+    if (!Array.isArray(entries)) return;
+    for (const [privateNumber, lifecycle] of entries) {
+      if (!normalizePrivateNumber(privateNumber) || !lifecycle || !['quarantined','retired'].includes(lifecycle.status)) continue;
+      privateNumberLifecycle.set(privateNumber, lifecycle);
+    }
+  } catch (error) { console.error('Private Number lifecycle load failed:', error.message); }
+}
+
 function hydrateAccounts(entries, source) {
   if (!Array.isArray(entries)) throw new Error(`invalid ${source} account records`);
   accounts.clear();
@@ -4135,6 +4293,13 @@ function hydrateAccounts(entries, source) {
           !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
           !validEncryptedField(record.bundle, 1024 * 1024)) continue;
       record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
+      record.lastActiveAt = Number(record.lastActiveAt) || Date.now();
+      record.numberCategory = ['standard','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
+      record.numberProtection = ['free','promotional','purchased'].includes(record.numberProtection) ? record.numberProtection : 'free';
+      record.premiumUntil = Number(record.premiumUntil) || null;
+      record.reclaimWarnings = Array.isArray(record.reclaimWarnings)
+        ? record.reclaimWarnings.filter(id => RECLAIM_WARNING_WINDOWS.some(item => item.id === id))
+        : [];
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
@@ -4158,6 +4323,9 @@ function loadAccounts() {
     if (fs.existsSync(ACCOUNTS_TMP_PATH)) fs.unlinkSync(ACCOUNTS_TMP_PATH);
     if (!fs.existsSync(ACCOUNTS_PATH)) return;
     hydrateAccounts(JSON.parse(fs.readFileSync(ACCOUNTS_PATH, 'utf8')), 'local fallback');
+    // Persist defaults introduced by retention migration so repeated local
+    // restarts cannot keep moving an older identity's inactivity clock.
+    saveAccounts();
   } catch (e) { console.error('Anonymous account load failed:', e.message); }
 }
 
@@ -4371,7 +4539,10 @@ async function shutdown(signal) {
   shuttingDown = true;
   console.log(`${signal} received — saving final room checkpoint before exit...`);
   saveAnalytics();
-  if (!postgresEnabled) saveAccounts();
+  if (!postgresEnabled) {
+    saveAccounts();
+    savePrivateNumberLifecycle();
+  }
   saveSnapshot();
   try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
@@ -4395,9 +4566,13 @@ async function bootstrap() {
     hydrateAccounts(await postgresStore.loadAccounts(), 'PostgreSQL');
     console.log('PostgreSQL v2 account store ready.');
   } else {
+    loadPrivateNumberLifecycle();
     loadAccounts();
     console.warn('DATABASE_URL is not set — using the local account-store fallback.');
   }
+  // Run once at boot as well as on the six-hour timer. Deploys and restarts
+  // must not postpone a due warning or reclamation indefinitely.
+  await sweepPrivateNumberRetention();
   if (!process.env.SNAPSHOT_DIR) {
     console.warn('SNAPSHOT_DIR not set — durable room checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
   }
