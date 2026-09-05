@@ -16,9 +16,9 @@ test('home page explains the private-number user model', () => {
   assert.match(client, /People must know the exact number and you decide whether to connect/);
 });
 
-test('home page footer exposes each destination once', () => {
+test('home page footer does not repeat the FAQ section', () => {
   const footer = client.match(/<div class="landing-footer">([\s\S]*?)<\/div>/)?.[1] || '';
-  assert.equal((footer.match(/showScreen\('s-faq'\)/g) || []).length, 1);
+  assert.equal((footer.match(/showScreen\('s-faq'\)/g) || []).length, 0);
 });
 
 test('home page explains privacy without infrastructure jargon', () => {
