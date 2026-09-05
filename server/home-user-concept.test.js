@@ -45,6 +45,26 @@ test('settings headings share the submenu font family', () => {
   assert.match(client, /\.settings-header-title\{font-family:'Inter',sans-serif/);
   assert.match(client, /\.settings-about-name\{font-family:'Inter',sans-serif/);
   assert.doesNotMatch(client, /\.settings-header-title\{font-family:'(?:Bodoni Moda|Cormorant Garamond)'/);
+  assert.match(client, /\.emergency-title\{font:700 26px\/1\.15 'Inter',sans-serif/);
+  assert.match(client, /\.safety-title\{font:700 26px\/1\.15 'Inter',sans-serif/);
+  assert.match(client, /\.call-peer-name\{[^}]*font-family:'Inter',sans-serif/);
+});
+
+test('emergency choices use accessible Vaultlix radio controls', () => {
+  assert.match(client, /\.emergency-choice input\[type="radio"\]\{[^}]*width:44px;height:44px/);
+  assert.match(client, /\.emergency-choice input\[type="radio"\]:checked\{[^}]*#682C43/);
+  assert.match(client, /input\[type="radio"\]\[value="account"\]:checked/);
+  assert.match(client, /input\[type="radio"\]:focus-visible/);
+  assert.match(client, /\.emergency-choice:has\(input\[type="radio"\]:checked\)/);
+});
+
+test('contact identity is visually stable and long names remain bounded', () => {
+  assert.match(client, /function vaultAvatarPalette\(seed\)/);
+  assert.match(client, /room\.peerPrivateNumber \|\| room\.code/);
+  assert.match(client, /style="\$\{avatarStyle\}"/);
+  assert.match(client, /\.call-peer-name\{[^}]*-webkit-line-clamp:2/);
+  assert.match(client, /\.call-peer-name-compact\{[^}]*text-overflow:ellipsis/);
+  assert.match(client, /maxlength="32"/);
 });
 
 test('user-facing legacy vault labels are replaced with conversation language', () => {

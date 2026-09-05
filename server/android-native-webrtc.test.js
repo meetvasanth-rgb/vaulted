@@ -54,7 +54,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(incoming, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
   assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\)/);
   assert.match(incoming, /answerCall\(\)[\s\S]*clearActiveCallNotifications\(this\)/);
-  assert.match(incoming, /name\.setTypeface\(identityTypeface\(\)\)/);
+  assert.match(incoming, /name\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
+  assert.match(incoming, /name\.setMaxLines\(2\)/);
+  assert.match(incoming, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
   const nativeActivity = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
   assert.match(nativeActivity, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
   assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 180\)/);
@@ -62,7 +64,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 1800\)/);
   assert.match(nativeActivity, /onConnected\(\)[\s\S]*clearIncomingCallBanner\(\)/);
   assert.match(nativeActivity, /brand\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
-  assert.match(nativeActivity, /name\.setTypeface\(identityTypeface\(\)\)/);
+  assert.match(nativeActivity, /name\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
+  assert.match(nativeActivity, /name\.setMaxLines\(2\)/);
+  assert.match(nativeActivity, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
   assert.match(nativeActivity, /native_call_vanished/);
   assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);

@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.WindowManager;
@@ -143,13 +144,14 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
         root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1.05f));
         TextView avatar = label(initialFor(caller), 39, IVORY);
-        avatar.setTypeface(identityTypeface());
+        avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         avatar.setBackground(circle(CONTROL_ACTIVE));
         root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
 
-        TextView name = label(caller, 32, Color.WHITE);
-        name.setTypeface(identityTypeface());
+        TextView name = label(caller, caller.length() > 22 ? 27 : 31, Color.WHITE);
+        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         name.setMaxLines(2);
+        name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(25), 0, dp(8));
         root.addView(name, nameParams);

@@ -12,6 +12,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -140,16 +141,15 @@ public class IncomingCallActivity extends Activity {
         halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
         portrait.addView(halo, centered(dp(132), dp(132)));
         TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
-        avatar.setTypeface(identityTypeface());
+        avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         avatar.setBackground(circle(IVORY));
         portrait.addView(avatar, centered(dp(104), dp(104)));
         root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
 
-        TextView name = text(displayName, 34, Color.WHITE);
-        // Use the packaged face so OEM font substitutions cannot make the
-        // same Vaultlix build look different across Android devices.
-        name.setTypeface(identityTypeface());
+        TextView name = text(displayName, displayName.length() > 22 ? 28 : 32, Color.WHITE);
+        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         name.setMaxLines(2);
+        name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(28), 0, dp(9));
         root.addView(name, nameParams);
@@ -272,10 +272,6 @@ public class IncomingCallActivity extends Activity {
         view.setTextColor(color);
         view.setGravity(Gravity.CENTER);
         return view;
-    }
-
-    private Typeface identityTypeface() {
-        return getResources().getFont(R.font.cormorant_garamond);
     }
 
     private LinearLayout callAction(int icon, int label, int color, boolean pulse) {

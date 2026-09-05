@@ -804,6 +804,8 @@ async function verifyPrivateNumberReservation(privateNumber, reservationToken) {
 }
 function normalizeDisplayName(value) {
   const displayName = String(value || '').trim().replace(/\s+/g, ' ');
+  // Keep accepting legacy stored names up to the original limit during
+  // hydration. New registrations and edits enforce the tighter UI limit.
   return displayName.length >= 2 && displayName.length <= 40 && !/[<>\u0000-\u001f]/.test(displayName) ? displayName : '';
 }
 function accountByPrivateNumber(value) {
@@ -2257,7 +2259,10 @@ async function api(path, method, d, p, res, ip, headers) {
     if (rateLimited(`account-register:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many registration attempts — try again later.', 429);
     const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
-    if (!privateNumber || !displayName || !validAccountId(d.accountId) || !validAccountSecret(d.authSecret) ||
+    if (!displayName || displayName.length > 32) {
+      return resErr(res, 'Username must be between 2 and 32 characters.', 400);
+    }
+    if (!privateNumber || !validAccountId(d.accountId) || !validAccountSecret(d.authSecret) ||
         !validAccountSecret(d.recoverySecret) || !validEncryptedField(d.passwordWrap, 4096) ||
         !validEncryptedField(d.recoveryWrap, 4096) || !validEncryptedField(d.bundle, 1024 * 1024)) {
       return resErr(res, 'Invalid account data.', 400);
@@ -2372,7 +2377,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     const displayName = normalizeDisplayName(d.displayName);
-    if (!displayName) return resErr(res, 'Enter a username between 2 and 40 characters.', 400);
+    if (!displayName || displayName.length > 32) return resErr(res, 'Enter a username between 2 and 32 characters.', 400);
     account.displayName = displayName;
     account.updatedAt = Date.now();
 

@@ -95,3 +95,12 @@ test('registration uses a reserved system-generated ten-digit Private Number', (
   assert.match(client, /<span>Username<\/span><input id="account-create-display-name"/);
   assert.doesNotMatch(client, /Your permanent name or pseudonym/);
 });
+
+test('new and renamed identities enforce the concise display-name limit', () => {
+  assert.match(client, /id="account-create-display-name"[^>]*maxlength="32"/);
+  assert.match(client, /id="account-profile-display-name"[^>]*maxlength="32"/);
+  assert.match(server, /displayName\.length > 32/);
+  assert.match(server, /Enter a username between 2 and 32 characters/);
+  assert.match(server, /legacy stored names/);
+  assert.match(server, /displayName\.length <= 40/);
+});
