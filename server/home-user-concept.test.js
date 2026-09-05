@@ -60,6 +60,9 @@ test('emergency choices use accessible Vaultlix radio controls', () => {
 
 test('contact identity is visually stable and long names remain bounded', () => {
   assert.match(client, /function vaultAvatarPalette\(seed\)/);
+  assert.match(client, /const hue = unsignedHash % 360/);
+  assert.match(client, /--avatar-bg:hsl\(/);
+  assert.doesNotMatch(client, /VAULTLIX_AVATAR_PALETTES/);
   assert.match(client, /room\.peerPrivateNumber \|\| room\.code/);
   assert.match(client, /style="\$\{avatarStyle\}"/);
   assert.match(client, /\.call-peer-name\{[^}]*-webkit-line-clamp:2/);

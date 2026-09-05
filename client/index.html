@@ -9602,11 +9602,6 @@ function vaultInboxPreview(room, allowContent) {
   return { text: String(last.content || i18n('encrypted_conversation')).replace(/\s+/g, ' ').slice(0, 72), alert: /^Missed call/.test(last.content || '') };
 }
 
-const VAULTLIX_AVATAR_PALETTES = [
-  ['#F2E8EC','#8A3655'], ['#E8EFF8','#365F8A'], ['#E8F2EC','#3D7050'],
-  ['#F6EBDC','#865C2E'], ['#EEE8F7','#65488A'], ['#F8E7E3','#91483E'],
-  ['#E5F1F2','#376F73'], ['#F2EBDD','#79622D'],
-];
 function vaultAvatarPalette(seed) {
   const value = String(seed || 'Vaultlix');
   let hash = 2166136261;
@@ -9614,8 +9609,12 @@ function vaultAvatarPalette(seed) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  const [background, foreground] = VAULTLIX_AVATAR_PALETTES[(hash >>> 0) % VAULTLIX_AVATAR_PALETTES.length];
-  return `--avatar-bg:${background};--avatar-fg:${foreground}`;
+  // Use the full hue wheel instead of a short palette. A small palette made
+  // unrelated Private Numbers visibly collide in compact conversation lists.
+  const unsignedHash = hash >>> 0;
+  const hue = unsignedHash % 360;
+  const saturation = 34 + ((unsignedHash >>> 9) % 13);
+  return `--avatar-bg:hsl(${hue} ${saturation}% 92%);--avatar-fg:hsl(${hue} ${Math.min(68, saturation + 20)}% 31%)`;
 }
 
 // Privacy-first returning-user home. The list itself and preview preference
