@@ -2275,6 +2275,71 @@ html.vaultlix-native-android #new-connection-overlay .account-card{max-height:ca
 html.vaultlix-native-android #new-connection-overlay .account-head{margin-bottom:12px}
 html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26px}
 @media(min-width:700px){.account-overlay{align-items:center;padding:24px}.account-card{border-radius:26px;padding-bottom:25px}}
+
+/* Mobile reading scale
+   Phone screens need a comfortable minimum reading size. Keep the desktop
+   composition untouched while using the same accessible scale in Safari,
+   Android browsers, and the shared iOS/Android settings interface. */
+@media(max-width:760px){
+  #s-landing .landing-wordmark{font-size:24px!important}
+  #s-landing .landing-brand-note{font-size:10.5px}
+  #s-landing .landing-menu-panel a{font-size:13px;padding:13px 12px}
+  #s-landing .landing-account-btn{font-size:12px}
+  #s-landing .logo-sub{font-size:11.5px!important;line-height:1.45!important}
+  #s-landing .tagline{font-size:17px!important;line-height:1.6!important}
+  #s-landing .landing-hero-action{font-size:14px;padding:15px 20px}
+  #s-landing .identity-proof span{font-size:12px;padding:10px 12px}
+  #s-landing .identity-flow-step strong{font-size:13px}
+  #s-landing .identity-flow-step span{font-size:15px;line-height:1.5}
+  #s-landing .landing-section-heading span{font-size:11px}
+  #s-landing .landing-section-heading h2{font-size:24px}
+  #s-landing .card-title{font-size:17px!important}
+  #s-landing .card-desc{font-size:13.5px!important;line-height:1.5!important}
+  #s-landing .landing-assurance strong{font-size:15px}
+  #s-landing .landing-assurance span{font-size:13px;line-height:1.55}
+  #s-landing .marketing-eyebrow{font-size:11.5px}
+  #s-landing .marketing-title{font-size:34px}
+  #s-landing .marketing-lede{font-size:16px;line-height:1.65}
+  #s-landing .privacy-compare-row>span{font-size:13.5px;line-height:1.5}
+  #s-landing .marketing-card h3{font-size:20px}
+  #s-landing .marketing-card p,
+  #s-landing .walkthrough-copy p,
+  #s-landing .vault-type p{font-size:15px}
+  #s-landing .walkthrough-list li,
+  #s-landing .vault-type ul{font-size:14px}
+  #s-landing .privacy-card strong{font-size:18px}
+  #s-landing .privacy-card span{font-size:14.5px}
+  #s-landing .safety-item strong{font-size:16px}
+  #s-landing .safety-item span{font-size:14px}
+  #s-landing .faq-item summary{font-size:17px}
+  #s-landing .faq-item p{font-size:15px;line-height:1.7}
+  #s-landing .marketing-note{font-size:14.5px}
+  #s-landing .marketing-cta h2{font-size:31px}
+  #s-landing .marketing-cta p{font-size:15px}
+  #s-landing .marketing-cta button{font-size:14px;padding:15px 21px}
+  #s-landing .landing-footer{font-size:12.5px!important}
+}
+
+@media(max-width:640px){
+  .settings-header-title{font-size:29px}
+  .settings-section-label{font-size:12px;line-height:1.35;padding-top:22px}
+  .settings-row,.settings-link-row{padding-top:15px;padding-bottom:15px;gap:13px}
+  .settings-row-title{font-size:16px;line-height:1.35}
+  .settings-row-sub{font-size:13.5px;line-height:1.5}
+  .settings-status{font-size:13px;line-height:1.3}
+  .settings-menu .settings-row-title{font-size:17px}
+  .settings-menu .settings-row-sub{font-size:14px;line-height:1.45}
+  .settings-empty-note{font-size:14px;line-height:1.6}
+  .settings-version{font-size:13px}
+  .settings-about-name{font-size:18px}
+  #settings-profile-controls .account-field span{font-size:14px}
+  #settings-profile-controls .account-field input{font-size:17px}
+  #settings-profile-controls .account-copy{font-size:15px;line-height:1.6}
+  #settings-profile-controls .account-note{font-size:13px;line-height:1.55}
+  #settings-profile-controls .account-primary,
+  #settings-profile-controls .account-secondary{font-size:15px}
+  #settings-profile-controls .recovery-code{font-size:17px}
+}
 </style>
 <script type="application/ld+json">
 {
