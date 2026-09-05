@@ -6,11 +6,18 @@ const path = require('node:path');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
 test('home page explains the private-number user model', () => {
-  assert.match(client, /Be known by your Vaultlix number—not your phone number/);
+  assert.match(client, /Your private number\.<br>No SIM required\./);
+  assert.match(client, /Get my Vaultlix number/);
+  assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
   assert.match(client, /01 · Identify/);
   assert.match(client, /02 · Approve/);
   assert.match(client, /03 · Connect/);
   assert.match(client, /People must know the exact number and you decide whether to connect/);
+});
+
+test('home page footer exposes each destination once', () => {
+  const footer = client.match(/<div class="landing-footer">([\s\S]*?)<\/div>/)?.[1] || '';
+  assert.equal((footer.match(/showScreen\('s-faq'\)/g) || []).length, 1);
 });
 
 test('user-facing legacy vault labels are replaced with conversation language', () => {
