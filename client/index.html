@@ -11236,7 +11236,9 @@ async function openPublicProfile(privateNumber) {
     document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
     const signedIn = loadAccountState();
     const button = document.getElementById('public-profile-request');
-    button.textContent = signedIn ? 'Connect privately' : 'Sign in to connect';
+    button.textContent = signedIn && roomForPrivateNumber(result.profile.privateNumber)
+      ? 'Open conversation'
+      : signedIn ? 'Connect privately' : 'Sign in to connect';
     document.getElementById('public-profile-overlay').classList.add('open');
   } catch (e) { toast('Could not open this Vaultlix identity'); }
 }
@@ -11257,13 +11259,43 @@ async function requestPrivateVault() {
     toast('That is your own Private Number');
     return;
   }
+  const existingRoom = roomForPrivateNumber(activePublicProfile.privateNumber);
+  if (existingRoom) {
+    clearQuickConnectTarget();
+    closePublicProfile();
+    setActiveRoom(existingRoom.code);
+    showScreen('s-chat');
+    toast('Opened your existing private conversation');
+    return;
+  }
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
   if (result.error) { toast(result.error); return; }
+  if (result.status === 'connected') {
+    clearQuickConnectTarget();
+    closePublicProfile();
+    showScreen('s-vault-list');
+    await refreshConnectionRequests();
+    toast('You are already connected — open the existing conversation');
+    return;
+  }
+  if (result.status === 'action_required') {
+    clearQuickConnectTarget();
+    closePublicProfile();
+    await openConnectionRequest(result.requestId);
+    toast(`${activePublicProfile.displayName} already sent you a request`);
+    return;
+  }
   clearQuickConnectTarget();
-  toast(`Connection request sent to ${activePublicProfile.displayName}`);
+  toast(result.status === 'pending' ? 'Connection request is already awaiting acceptance' : `Connection request sent to ${activePublicProfile.displayName}`);
   closePublicProfile();
   showScreen('s-vault-list');
   await refreshConnectionRequests();
+}
+
+function roomForPrivateNumber(privateNumber) {
+  const normalized = normalizePrivateNumber(privateNumber);
+  if (!normalized) return null;
+  return [...rooms.values()].find(room => normalizePrivateNumber(room.peerPrivateNumber) === normalized) || null;
 }
 
 // VLX-01: reads the invite-link commitment out of the URL fragment —
