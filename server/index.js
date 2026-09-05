@@ -814,6 +814,20 @@ function accountByPrivateNumber(value) {
 function publicAccount(account) {
   return { privateNumber:account.privateNumber, displayName:account.displayName, address:`https://vaultlix.com/${account.privateNumber}` };
 }
+function connectionPairKey(request) {
+  const first = String(request?.senderAccountId || '');
+  const second = String(request?.recipientAccountId || '');
+  return first && second ? [first, second].sort().join(':') : '';
+}
+function compactConnectionRequests(requests, now = Date.now()) {
+  const live = (requests || []).filter(request =>
+    request.status === 'accepted' || (request.expiresAt > now && request.status !== 'rejected'));
+  const acceptedPairs = new Set(live.filter(request => request.status === 'accepted').map(connectionPairKey).filter(Boolean));
+  // Remove legacy pending duplicates once the same two identities already
+  // have an accepted relationship. This also cleans existing production
+  // data the next time either account refreshes its inbox.
+  return live.filter(request => request.status !== 'pending' || !acceptedPairs.has(connectionPairKey(request))).slice(-99);
+}
 function accountRetention(account, now = Date.now()) {
   const protection = account.numberProtection || 'free';
   const premiumUntil = Number(account.premiumUntil) || 0;
@@ -2519,9 +2533,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // pair before creating anything, regardless of who originally sent the
     // request; otherwise opening the same WhatsApp link later creates a
     // second request between people who already have a conversation.
-    recipient.account.connectionRequests = (recipient.account.connectionRequests || [])
-      .filter(r => r.status === 'accepted' || (r.expiresAt > now && r.status !== 'rejected'))
-      .slice(-99);
+    recipient.account.connectionRequests = compactConnectionRequests(recipient.account.connectionRequests, now);
     const samePair = r =>
       (r.senderAccountId === d.accountId && r.recipientAccountId === recipient.accountId) ||
       (r.recipientAccountId === d.accountId && r.senderAccountId === recipient.accountId);
@@ -2536,7 +2548,7 @@ async function api(path, method, d, p, res, ip, headers) {
     }
     const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
     recipient.account.connectionRequests.push(request);
-    sender.connectionRequests = (sender.connectionRequests || []).filter(r => r.status === 'accepted' || r.expiresAt > now).slice(-99);
+    sender.connectionRequests = compactConnectionRequests(sender.connectionRequests, now);
     sender.connectionRequests.push({ ...request, direction:'outgoing' });
     await Promise.all([persistAccount(d.accountId), persistAccount(recipient.accountId)]);
     publishInboxAccount(recipient.accountId, 'connection-request');
@@ -2583,7 +2595,9 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);
     const now = Date.now();
-    account.connectionRequests = (account.connectionRequests || []).filter(r => r.status === 'accepted' || r.expiresAt > now);
+    const previousRequestCount = (account.connectionRequests || []).length;
+    account.connectionRequests = compactConnectionRequests(account.connectionRequests, now);
+    if (account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
     return res200(res, { ok:true, requests:account.connectionRequests.map(({senderAccountId, recipientAccountId, ...safe}) => safe) });
   }
 

@@ -90,7 +90,8 @@ test('Quick Connect classifies both directions of an existing relationship witho
 test('accepted relationships survive request-expiry cleanup and the client opens a matching room', () => {
   const server = readFileSync(join(__dirname, 'index.js'), 'utf8');
   const client = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf8');
-  assert.match(server, /r\.status === 'accepted' \|\| \(r\.expiresAt > now/);
+  assert.match(server, /function compactConnectionRequests\(requests, now = Date\.now\(\)\)/);
+  assert.match(server, /acceptedPairs\.has\(connectionPairKey\(request\)\)/);
   assert.match(server, /status:'connected'/);
   assert.match(server, /status:needsResponse \? 'action_required' : 'pending'/);
   assert.match(client, /function roomForPrivateNumber\(privateNumber\)/);
