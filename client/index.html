@@ -1852,6 +1852,21 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .logo-rule{width:42px!important;height:4px!important;margin:0 0 16px!important;border-radius:5px;background:#C87588!important}
 #s-landing .logo-sub{margin:0 0 13px!important;font:700 10px/1.4 'Manrope',sans-serif!important;letter-spacing:.17em!important;text-transform:uppercase;color:#682C43!important}
 #s-landing .landing-title{font-family:'Manrope',sans-serif;font-size:clamp(35px,7vw,50px);font-weight:750;letter-spacing:-.048em;line-height:1.04;color:#271D25;margin:0 0 17px;max-width:530px}
+#s-landing .landing-title.landing-reveal{display:grid;min-height:2.08em;overflow:hidden}
+#s-landing .landing-reveal-copy{grid-area:1/1;align-self:center;display:block;opacity:0;transform:translateY(115%);filter:blur(9px);will-change:transform,opacity,filter}
+#s-landing .landing-reveal-final span{display:block}
+#s-landing .landing-reveal-run .landing-reveal-one{animation:landing-reveal-through 1.15s cubic-bezier(.22,1,.36,1) both}
+#s-landing .landing-reveal-run .landing-reveal-two{animation:landing-reveal-through 1.15s cubic-bezier(.22,1,.36,1) .92s both}
+#s-landing .landing-reveal-run .landing-reveal-final{animation:landing-reveal-finish 1.2s cubic-bezier(.22,1,.36,1) 1.84s both}
+@keyframes landing-reveal-through{
+  0%{opacity:0;transform:translateY(115%);filter:blur(9px)}
+  27%,65%{opacity:1;transform:translateY(0);filter:blur(0)}
+  100%{opacity:0;transform:translateY(-115%);filter:blur(9px)}
+}
+@keyframes landing-reveal-finish{
+  0%{opacity:0;transform:translateY(115%);filter:blur(9px)}
+  48%,100%{opacity:1;transform:translateY(0);filter:blur(0)}
+}
 #s-landing .tagline{font-family:'Manrope',sans-serif!important;font-size:16px!important;font-weight:450!important;font-style:normal!important;letter-spacing:-.01em!important;line-height:1.55!important;color:#6E6067!important;text-align:left!important;max-width:460px!important;margin:0!important}
 #s-landing .landing-hero-action{display:inline-flex;align-items:center;justify-content:center;gap:9px;margin-top:21px;padding:13px 18px;border:0;border-radius:999px;background:#682C43;color:#fff;font:750 12px/1 'Manrope',sans-serif;box-shadow:0 10px 24px rgba(104,44,67,.22);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
 #s-landing .landing-hero-action:hover{background:#542237;box-shadow:0 13px 28px rgba(104,44,67,.27);transform:translateY(-2px)}
@@ -1927,6 +1942,10 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   #s-landing .card-permanent{grid-column:auto;display:flex!important;min-height:112px}
   #s-landing .card-permanent .card-icon{margin-bottom:14px!important}
   #s-landing .card-permanent .card-arrow{align-self:flex-end;margin-top:auto}
+}
+@media(prefers-reduced-motion:reduce){
+  #s-landing .landing-reveal-one,#s-landing .landing-reveal-two{display:none}
+  #s-landing .landing-reveal-final{opacity:1;transform:none;filter:none;animation:none!important}
 }
 
 /* Desktop landing — a purpose-built wide-screen composition. */
@@ -2453,7 +2472,11 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <section class="landing-hero">
       <div class="logo-rule" id="logoRule"></div>
       <div class="logo-sub" id="logoSub">A private communication identity</div>
-      <h1 class="landing-title">Your private number.<br>No SIM required.</h1>
+      <h1 class="landing-title landing-reveal landing-reveal-run" aria-label="Your private number. No SIM required.">
+        <span class="landing-reveal-copy landing-reveal-one" aria-hidden="true">Your private number.</span>
+        <span class="landing-reveal-copy landing-reveal-two" aria-hidden="true">No SIM required.</span>
+        <span class="landing-reveal-copy landing-reveal-final" aria-hidden="true"><span>Your private number.</span><span>No SIM required.</span></span>
+      </h1>
       <p class="tagline" id="logoTag">Get your own Vaultlix Private Number and connect privately—without sharing your phone number.</p>
       <button class="landing-hero-action" type="button" onclick="openAccountPanel()">Get my Vaultlix number <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
       <div class="identity-proof" aria-label="Private identity benefits"><span>No SIM</span><span>No phone number</span><span>No email</span><span>No contact upload</span></div>
@@ -7049,6 +7072,12 @@ function showScreen(id) {
     // go back to either.
     const backBtn = document.getElementById('landing-back-btn');
     if (backBtn) backBtn.classList.toggle('show', rooms.size > 0);
+    const reveal = document.querySelector('#s-landing .landing-reveal');
+    if (reveal && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      reveal.classList.remove('landing-reveal-run');
+      void reveal.offsetWidth;
+      reveal.classList.add('landing-reveal-run');
+    }
   }
 }
 
