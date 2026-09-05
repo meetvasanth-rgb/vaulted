@@ -2340,6 +2340,25 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   #settings-profile-controls .account-secondary{font-size:15px}
   #settings-profile-controls .recovery-code{font-size:17px}
 }
+
+/* iOS inbox reading scale. Conversation names and previews are the primary
+   navigation content, so keep them comfortably legible without enlarging
+   Android layouts that already match their devices' display scaling. */
+@media(max-width:640px){
+  html.vaultlix-native-ios .vault-list-title{font-size:24px!important}
+  html.vaultlix-native-ios .vault-list-row{grid-template-columns:52px minmax(0,1fr) auto;column-gap:13px;padding:17px 16px}
+  html.vaultlix-native-ios .vault-list-avatar{width:52px;height:52px;font-size:20px}
+  html.vaultlix-native-ios .vault-list-row-name{font-size:18px;line-height:1.3}
+  html.vaultlix-native-ios .vault-list-row-preview{font-size:15px;line-height:1.4;margin-top:4px}
+  html.vaultlix-native-ios .vault-list-row-time{font-size:12.5px}
+  html.vaultlix-native-ios .vault-list-row-unread{min-width:22px;height:22px;font-size:11.5px}
+  html.vaultlix-native-ios .vault-list-request-name{font-size:18px}
+  html.vaultlix-native-ios .vault-list-request-number,
+  html.vaultlix-native-ios .vault-list-request-copy{font-size:14px;line-height:1.45}
+  html.vaultlix-native-ios .vault-list-request-actions button{min-height:42px;font-size:14px}
+  html.vaultlix-native-ios .vault-list-empty{font-size:16px;line-height:1.6}
+  html.vaultlix-native-ios .vault-list-empty strong{font-size:21px}
+}
 </style>
 <script type="application/ld+json">
 {
@@ -3628,6 +3647,9 @@ function syncAndroidSystemInsets(){
 }
 if(window.VaultlixAndroid||window.webkit?.messageHandlers?.vaultlixCall||window.Capacitor?.isNativePlatform?.()){
   document.documentElement.classList.add('vaultlix-native');
+}
+if(window.webkit?.messageHandlers?.vaultlixCall||window.Capacitor?.getPlatform?.()==='ios'){
+  document.documentElement.classList.add('vaultlix-native-ios');
 }
 
 function secureNativeStoreMessage(room, rec) {
