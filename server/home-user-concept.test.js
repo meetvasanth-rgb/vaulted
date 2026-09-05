@@ -21,6 +21,15 @@ test('home page footer exposes each destination once', () => {
   assert.equal((footer.match(/showScreen\('s-faq'\)/g) || []).length, 1);
 });
 
+test('home page explains privacy without infrastructure jargon', () => {
+  const marketing = client.match(/<div class="landing-marketing"[\s\S]*?<\/main>/)?.[0] || '';
+  assert.match(marketing, /Strong 256-bit encryption protects every message/);
+  assert.match(marketing, /Vaultlix cannot listen to or record them/);
+  for (const jargon of ['WebRTC', 'DTLS-SRTP', 'TURN service', 'ciphertext', 'Operational metadata', 'client-encrypted account bundle']) {
+    assert.equal(marketing.includes(jargon), false, `homepage jargon remains: ${jargon}`);
+  }
+});
+
 test('user-facing legacy vault labels are replaced with conversation language', () => {
   for (const legacy of [
     'Create a vault',

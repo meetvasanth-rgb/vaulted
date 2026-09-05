@@ -2412,10 +2412,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="landing-marketing" aria-label="About Vaultlix">
       <section class="marketing-section privacy-hook" id="privacy-difference">
         <div class="privacy-hook-copy">
-          <span class="marketing-eyebrow">DESIGNED TO LEAVE LESS BEHIND</span>
-          <h2 class="marketing-title">Private conversations should remain inaccessible after they are erased.</h2>
-          <p class="marketing-lede">With many messaging apps, deleted messages may remain recoverable from backups, stored copies, or device data.</p>
-          <p class="marketing-lede">Vaultlix minimizes retained message data and uses encryption and expiry controls so erased conversations are designed to remain inaccessible.</p>
+          <span class="marketing-eyebrow">PRIVACY MADE SIMPLE</span>
+          <h2 class="marketing-title">Your private conversations stay private—even from us.</h2>
+          <p class="marketing-lede">Only you and the person you connect with can read your messages or hear your calls.</p>
+          <p class="marketing-lede">When you erase a conversation, it is designed to stay inaccessible.</p>
         </div>
         <div class="privacy-compare" role="table" aria-label="Conventional messaging compared with Vaultlix">
           <div class="privacy-compare-row" role="row"><span role="columnheader">Feature</span><span role="columnheader">Conventional messaging</span><span role="columnheader">Vaultlix</span></div>
@@ -2423,32 +2423,32 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           <div class="privacy-compare-row" role="row"><span role="rowheader">Contact access</span><span role="cell">May request your address book</span><span role="cell">No contact upload required</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Private identity</span><span role="cell">Usually tied to a phone number or email</span><span role="cell">A permanent Vaultlix private number</span></div>
           <div class="privacy-compare-row" role="row"><span role="rowheader">Voice and video calls</span><span role="cell">Depends on the provider</span><span role="cell">Media is encrypted between participant devices</span></div>
-          <div class="privacy-compare-row" role="row"><span role="rowheader">Operational metadata</span><span role="cell">May be collected broadly</span><span role="cell">Minimized to what is required to operate the service</span></div>
-          <div class="privacy-compare-row" role="row"><span role="rowheader">Advertising identity</span><span role="cell">May connect activity to a wider ecosystem</span><span role="cell">No advertising identity required</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Activity data</span><span role="cell">May collect more than you expect</span><span role="cell">Keeps only what is needed to run Vaultlix</span></div>
+          <div class="privacy-compare-row" role="row"><span role="rowheader">Advertising</span><span role="cell">May use your activity for advertising</span><span role="cell">No advertising profile</span></div>
         </div>
       </section>
       <section class="marketing-section" id="how-it-works">
         <span class="marketing-eyebrow">HOW IT WORKS</span>
         <h2 class="marketing-title">From private number to private conversation.</h2>
-        <p class="marketing-lede">Vaultlix replaces invitation codes and manual conversation setup with a familiar, direct connection flow.</p>
+        <p class="marketing-lede">Create your number, share it with someone you trust, and choose whether to connect.</p>
         <div class="marketing-grid">
           <article class="marketing-card"><div class="marketing-number">01</div><h3>Create your identity</h3><p>Choose the username people will see. Vaultlix gives you a permanent private number.</p></article>
           <article class="marketing-card"><div class="marketing-number">02</div><h3>Exchange numbers</h3><p>Share only your Vaultlix private number. Your phone number, email, and contacts stay private.</p></article>
           <article class="marketing-card"><div class="marketing-number">03</div><h3>Connect by consent</h3><p>Enter the other person's number and send a request. A conversation appears after they accept.</p></article>
-          <article class="marketing-card"><div class="marketing-number">04</div><h3>Message or call</h3><p>Communicate inside an encrypted one-to-one space created automatically in the background.</p></article>
+          <article class="marketing-card"><div class="marketing-number">04</div><h3>Message or call</h3><p>Start a private one-to-one conversation as soon as you are connected.</p></article>
         </div>
       </section>
       <section class="marketing-section" id="privacy-architecture">
-        <span class="marketing-eyebrow">PRIVACY ARCHITECTURE</span>
-        <h2 class="marketing-title">Designed to protect content and minimise identity.</h2>
-        <p class="marketing-lede">Vaultlix separates the conversation from the identifiers that ordinary messengers often require. The security claims below describe the system precisely.</p>
+        <span class="marketing-eyebrow">HOW VAULTLIX PROTECTS YOU</span>
+        <h2 class="marketing-title">Strong privacy without the technical language.</h2>
+        <p class="marketing-lede">Your messages, calls, and identity are protected automatically while you use Vaultlix.</p>
         <div class="privacy-grid">
-          <article class="privacy-card"><strong>Encrypted messages</strong><span>Message content is encrypted between participants using AES-256-GCM. Vaultlix stores ciphertext, not readable message content.</span></article>
-          <article class="privacy-card"><strong>Encrypted calls</strong><span>WebRTC media is protected between participant devices with DTLS-SRTP. Cloudflare TURN can relay encrypted packets and connection metadata, but cannot decrypt the media.</span></article>
-          <article class="privacy-card"><strong>Identity-minimised access</strong><span>Your Vaultlix private number works without collecting a phone number, email address, contact list, or real name.</span></article>
-          <article class="privacy-card"><strong>Durable encrypted state</strong><span>Active-conversation state and access data are checkpointed to restricted persistent storage for resilience and backups. Encrypted content remains unreadable to the service.</span></article>
+          <article class="privacy-card"><strong>Private messages</strong><span>Strong 256-bit encryption protects every message. Only you and the person you are talking to can read it.</span></article>
+          <article class="privacy-card"><strong>Private calls</strong><span>Your voice and video calls are protected end to end. Vaultlix cannot listen to or record them.</span></article>
+          <article class="privacy-card"><strong>No personal details</strong><span>Use your Vaultlix Private Number without giving us your phone number, email, contacts, or real name.</span></article>
+          <article class="privacy-card"><strong>Protected account</strong><span>Your conversations stay encrypted if your account needs to be restored on another device.</span></article>
         </div>
-        <div class="marketing-note">Optional account sync stores a client-encrypted account bundle. Infrastructure may process operational data needed to deliver the service, while message content and call media remain protected by their respective encryption layers.</div>
+        <div class="marketing-note">Your password and recovery code belong to you. Vaultlix cannot use them to read your conversations.</div>
       </section>
       <section class="marketing-section" id="safety-controls">
         <span class="marketing-eyebrow">SAFETY CONTROLS</span>
@@ -2467,7 +2467,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           <details class="faq-item"><summary>What is Vaultlix?</summary><p>Vaultlix is a private one-to-one messenger. It does not require your phone number, email address, contact list, or real name.</p></details>
           <details class="faq-item"><summary>What identifies my account?</summary><p>A permanent, system-generated Vaultlix private number and the username you choose. The number is not a cellular number and cannot receive SMS or ordinary calls.</p></details>
           <details class="faq-item"><summary>How do I connect with someone?</summary><p>Exchange Vaultlix private numbers, enter their exact number, and send a connection request. Once accepted, Vaultlix creates the encrypted conversation automatically.</p></details>
-          <details class="faq-item"><summary>Is Vaultlix end-to-end encrypted?</summary><p>Yes. Messages are encrypted with keys held by the participants. Voice and video calls are encrypted between participant devices with DTLS-SRTP. A TURN service may relay encrypted call packets but cannot decrypt the call media.</p></details>
+          <details class="faq-item"><summary>Is Vaultlix end-to-end encrypted?</summary><p>Yes. Strong encryption protects your messages, voice calls, and video calls. Only the people in the conversation can read or hear them—not Vaultlix.</p></details>
           <details class="faq-item"><summary>Can people search for me?</summary><p>No. Vaultlix does not search contacts or suggest people. Someone needs your exact private number before they can send a connection request.</p></details>
           <details class="faq-item"><summary>Can more than two people join a conversation?</summary><p>No. Vaultlix is designed exclusively for private, one-to-one communication.</p></details>
         </div>
