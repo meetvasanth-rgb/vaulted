@@ -48,18 +48,13 @@ test('username changes propagate to accepted peers and live conversations', () =
   assert.match(client, /room\.peerName !== previousPeerName[\s\S]*await persistRoom\(room\)/);
 });
 
-test('accepted connections retain the peer Private Number inside conversation details', () => {
+test('accepted connections retain the peer Private Number for relationship matching', () => {
   assert.match(client, /function peerIdentityFromConnection\(request, state = loadAccountState\(\)\)/);
   assert.match(client, /senderNumber !== selfNumber/);
   assert.match(client, /recipientNumber !== selfNumber/);
   assert.match(client, /await reconcileConversationPeerIdentities\(result\.requests, state\)/);
-  assert.match(client, /function conversationPeerPrivateNumber\(room = getActiveRoom\(\)\)/);
-  assert.match(client, /privateNumber && privateNumber !== selfNumber/);
   assert.match(client, /peerPrivateNumber: room\.peerPrivateNumber \|\| null/);
   assert.match(client, /peerPrivateNumber:session\.peerPrivateNumber/);
-  assert.match(client, /id="conversation-profile-private-number"/);
-  assert.match(client, /Copy private number/);
-  assert.match(client, /Share private number/);
   assert.match(client, /Save both your private number and recovery code\./);
 });
 
@@ -68,6 +63,8 @@ test('the conversation gear is isolated from global settings', () => {
   assert.match(client, /settingsContextMode === 'chat' \? i18n\('conversation_settings'\)/);
   assert.match(client, /if \(settingsContextMode === 'chat'\) closeSettings\(\)/);
   assert.match(client, /settingsContextMode === 'chat' && category === 'chats'/);
+  assert.doesNotMatch(client, /id="settings-conversation-profile-row"/);
+  assert.doesNotMatch(client, />Profile \/ Details</);
 });
 
 test('new connection keeps its number form visible on Android', () => {

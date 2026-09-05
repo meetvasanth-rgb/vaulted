@@ -3213,19 +3213,6 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <span id="settings-room-section-name" style="text-transform:none;letter-spacing:0;font-weight:600;color:#9A8C7E;font-size:11px">—</span>
     </div>
 
-    <div class="settings-row" id="settings-conversation-profile-row" onclick="openConversationProfile()" style="display:none;cursor:pointer">
-      <div class="settings-row-icon" style="background:#F2E8EC;color:#682C43;">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-      </div>
-      <div class="settings-row-text">
-        <div class="settings-row-title" data-i18n="profile_details">Profile / Details</div>
-        <div class="settings-row-sub" id="settings-conversation-profile-sub" data-i18n="view_participant_private_number">View this participant’s Vaultlix private number</div>
-      </div>
-      <div class="settings-status settings-status-action" data-i18n="open">Open</div>
-    </div>
-
-    <div class="settings-divider" id="settings-conversation-profile-divider" style="display:none"></div>
-
     <div class="settings-row" onclick="closeSettings(); showRenameRoomPanel();" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F7F4F0;color:#9A8C7E;">
         <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
@@ -3448,20 +3435,6 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <label class="account-note" style="display:flex;gap:10px;align-items:flex-start"><input id="account-recovery-confirm" type="checkbox" onchange="document.getElementById('account-recovery-finish').disabled=!this.checked"/> <span>I saved these details outside this device. I understand that losing both this device and the recovery code permanently loses this Private Number.</span></label>
       <button class="account-secondary" id="account-recovery-finish" onclick="finishAccountCreation()" disabled>I saved both safely — continue</button>
     </div>
-  </div>
-</div>
-
-<div class="account-overlay" id="conversation-profile-overlay" onclick="if(event.target===this)closeConversationProfile()">
-  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="conversation-profile-title">
-    <div class="account-head"><div><div class="account-kicker" data-i18n="conversation">Conversation</div><div class="account-title" id="conversation-profile-title" data-i18n="profile_details">Profile / Details</div></div><button class="account-close" onclick="closeConversationProfile()" aria-label="Close">×</button></div>
-    <div class="account-status-card">
-      <div class="private-number-label" data-i18n="private_number">Vaultlix private number</div>
-      <div class="account-status-name" id="conversation-profile-private-number">—</div>
-      <div class="account-status-sub" data-i18n="peer_number_privacy">Visible only inside your connected conversation with this participant.</div>
-    </div>
-    <button class="account-primary" type="button" onclick="copyConversationPrivateNumber()" data-i18n="copy_private_number">Copy private number</button>
-    <button class="account-secondary" type="button" onclick="shareConversationPrivateNumber()" data-i18n="share_private_number">Share private number</button>
-    <button class="account-secondary" type="button" onclick="closeConversationProfile()" data-i18n="close">Close</button>
   </div>
 </div>
 
@@ -7299,7 +7272,6 @@ function openSettingsCategory(category) {
   document.getElementById('settings-participant-section').style.display = conversationSafetyVisible ? '' : 'none';
   document.getElementById('settings-general-safety-section').style.display = category === 'privacy' ? '' : 'none';
   document.getElementById('settings-room-section').style.display = category === 'chats' && room ? '' : 'none';
-  updateConversationProfileRow(room);
   document.getElementById('settings-chat-empty').style.display = category === 'chats' && !room ? '' : 'none';
   const callsSection = document.getElementById('settings-calls-section');
   callsSection.classList.toggle('active', category === 'calls');
@@ -7337,56 +7309,10 @@ function openSettings(mode = 'general', initialCategory = null) {
   // Naming the room directly in the "This room" section label is that link.
   const roomSectionName = document.getElementById('settings-room-section-name');
   if (roomSectionName) roomSectionName.textContent = room ? roomDisplayLabel(room) : '—';
-  updateConversationProfileRow(room);
   if (initialCategory) openSettingsCategory(initialCategory);
   else showSettingsMenu();
 }
 
-function conversationPeerPrivateNumber(room = getActiveRoom()) {
-  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
-  const selfNumber = normalizePrivateNumber(loadAccountState()?.privateNumber);
-  return privateNumber && privateNumber !== selfNumber ? privateNumber : null;
-}
-
-function updateConversationProfileRow(room = getActiveRoom()) {
-  const row = document.getElementById('settings-conversation-profile-row');
-  const divider = document.getElementById('settings-conversation-profile-divider');
-  const sub = document.getElementById('settings-conversation-profile-sub');
-  const privateNumber = conversationPeerPrivateNumber(room);
-  const visible = !!(room && privateNumber);
-  if (row) row.style.display = visible ? '' : 'none';
-  if (divider) divider.style.display = visible ? '' : 'none';
-  if (sub && visible) sub.textContent = `${room.peerName || 'Connected participant'} · ${formatPrivateNumber(privateNumber)}`;
-}
-
-function openConversationProfile() {
-  const room = getActiveRoom();
-  const privateNumber = conversationPeerPrivateNumber(room);
-  if (!room || !privateNumber) { toast('Private number is unavailable for this conversation'); return; }
-  document.getElementById('conversation-profile-title').textContent = room.peerName || 'Connected participant';
-  document.getElementById('conversation-profile-private-number').textContent = formatPrivateNumber(privateNumber);
-  closeSettings();
-  document.getElementById('conversation-profile-overlay').classList.add('open');
-}
-function closeConversationProfile() { document.getElementById('conversation-profile-overlay').classList.remove('open'); }
-async function copyConversationPrivateNumber() {
-  const room = getActiveRoom();
-  const privateNumber = conversationPeerPrivateNumber(room);
-  if (!privateNumber) return;
-  try { await navigator.clipboard.writeText(formatPrivateNumber(privateNumber)); toast('Private number copied'); }
-  catch (e) { toast('Press and hold the number to copy it'); }
-}
-async function shareConversationPrivateNumber() {
-  const room = getActiveRoom();
-  const privateNumber = conversationPeerPrivateNumber(room);
-  if (!privateNumber) return;
-  const text = `${room.peerName || 'Vaultlix participant'} — Vaultlix private number: ${formatPrivateNumber(privateNumber)}`;
-  if (navigator.share) {
-    try { await navigator.share({ title:'Vaultlix private number', text }); return; } catch (e) { if (e?.name === 'AbortError') return; }
-  }
-  try { await navigator.clipboard.writeText(text); toast('Private number copied to share'); }
-  catch (e) { toast('Sharing is unavailable on this device'); }
-}
 async function shareOwnPrivateNumber() {
   const state = loadAccountState();
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
