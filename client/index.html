@@ -2269,9 +2269,23 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 <style>
 .account-overlay{position:fixed;inset:0;z-index:12000;background:rgba(39,29,37,.48);backdrop-filter:blur(5px);display:none;align-items:flex-end;justify-content:center;padding:0}
 .account-overlay.open{display:flex}
-.account-card{width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
+.account-card{position:relative;width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
 .account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.password-policy{margin:-3px 0 13px;padding:11px 13px;border-radius:12px;background:#F7F0F3;color:#75656D;font:500 11px/1.5 Inter,sans-serif}.password-policy strong{color:#682C43}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
 .onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.private-number-card{margin:14px 0;padding:18px;border:1px solid #DFCDD4;border-radius:18px;background:linear-gradient(145deg,#F8F0F3,#fff);text-align:center}.private-number-label{font:700 11px Inter,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#936174}.private-number-value{margin:8px 0 5px;font:700 28px ui-monospace,SFMono-Regular,monospace;letter-spacing:.05em;color:#682C43}.private-number-caption{font:500 12px/1.5 Inter,sans-serif;color:#75656D}.private-number-refresh{margin-top:12px;border:1px solid #D7C6CD;border-radius:12px;background:#fff;color:#682C43;padding:10px 14px;font:700 12px Inter,sans-serif}.account-step{display:none}.account-step.active{display:block}
+.account-creation-transition{position:absolute;z-index:8;inset:0;min-height:100%;display:grid;place-items:center;overflow:hidden;padding:30px;background:radial-gradient(circle at 50% 38%,rgba(200,117,136,.21),transparent 34%),#271D25;color:#fff;text-align:center;border-radius:inherit}
+.account-creation-transition[hidden]{display:none}
+.account-creation-transition::before,.account-creation-transition::after{content:"";position:absolute;width:180px;height:180px;border:1px solid rgba(200,117,136,.18);border-radius:50%;animation:account-identity-pulse 2.4s ease-out infinite}
+.account-creation-transition::after{animation-delay:1.2s}
+.account-creation-inner{position:relative;z-index:1;width:100%;max-width:430px}
+.account-creation-mark{width:58px;height:58px;margin:0 auto 27px;display:grid;place-items:center;border-radius:19px;background:#682C43;box-shadow:0 14px 38px rgba(0,0,0,.22)}
+.account-creation-mark svg{width:27px;height:27px;fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.account-scramble-text{min-height:2.8em;display:grid;place-items:center;font:600 clamp(22px,6vw,29px)/1.25 Inter,sans-serif;letter-spacing:-.025em;color:#FFF7FA}
+.account-creation-caption{margin-top:13px;font:600 10px/1.4 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#D49AA8}
+.account-creation-progress{width:min(220px,70%);height:3px;margin:25px auto 0;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.12)}
+.account-creation-progress span{display:block;width:42%;height:100%;border-radius:inherit;background:#D98CA0;animation:account-identity-progress 1.35s ease-in-out infinite}
+@keyframes account-identity-progress{0%{transform:translateX(-120%)}100%{transform:translateX(340%)}}
+@keyframes account-identity-pulse{0%{opacity:.55;transform:scale(.4)}100%{opacity:0;transform:scale(1.45)}}
+@media(prefers-reduced-motion:reduce){.account-creation-transition::before,.account-creation-transition::after,.account-creation-progress span{animation:none}.account-creation-progress span{width:100%;opacity:.65}}
 /* Installed apps use a focused first-run journey instead of the public,
    scrollable marketing homepage. */
 #s-native-onboarding{overflow:hidden;background:radial-gradient(circle at 86% 10%,rgba(200,117,136,.22),transparent 30%),radial-gradient(circle at 5% 88%,rgba(113,148,124,.17),transparent 28%),#FBF7F8;color:#271D25}
@@ -3530,6 +3544,14 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <button class="account-primary" onclick="copyRecoveryCode()">Copy recovery details</button>
       <label class="account-note" style="display:flex;gap:10px;align-items:flex-start"><input id="account-recovery-confirm" type="checkbox" onchange="document.getElementById('account-recovery-finish').disabled=!this.checked"/> <span>I saved these details outside this device. I understand that losing both this device and the recovery code permanently loses this Private Number.</span></label>
       <button class="account-secondary" id="account-recovery-finish" onclick="finishAccountCreation()" disabled>I saved both safely — continue</button>
+    </div>
+    <div class="account-creation-transition" id="account-creation-transition" role="status" aria-live="polite" aria-label="Creating your private identity" hidden>
+      <div class="account-creation-inner">
+        <div class="account-creation-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg></div>
+        <div class="account-scramble-text" id="account-scramble-text" aria-hidden="true">Creating your private identity</div>
+        <div class="account-creation-caption">Private by design</div>
+        <div class="account-creation-progress" aria-hidden="true"><span></span></div>
+      </div>
     </div>
   </div>
 </div>
@@ -8037,6 +8059,49 @@ function setAccountBusy(form, busy) {
   if (!button.dataset.label) button.dataset.label = button.textContent;
   button.disabled = busy; button.textContent = busy ? (button.dataset.busyLabel || 'Protecting…') : button.dataset.label;
 }
+const IDENTITY_SCRAMBLE_TARGET = 'Creating your private identity';
+const IDENTITY_SCRAMBLE_SYMBOLS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+let identityScrambleTimer = null;
+let identityTransitionStartedAt = 0;
+function renderIdentityScramble(progress) {
+  const output = document.getElementById('account-scramble-text');
+  if (!output) return;
+  const locked = Math.floor(IDENTITY_SCRAMBLE_TARGET.length * progress);
+  output.textContent = [...IDENTITY_SCRAMBLE_TARGET].map((character, index) => {
+    if (character === ' ' || index < locked) return character;
+    return IDENTITY_SCRAMBLE_SYMBOLS[Math.floor(Math.random() * IDENTITY_SCRAMBLE_SYMBOLS.length)];
+  }).join('');
+}
+function startIdentityCreationTransition() {
+  const transition = document.getElementById('account-creation-transition');
+  if (!transition) return;
+  clearInterval(identityScrambleTimer);
+  identityTransitionStartedAt = Date.now();
+  transition.hidden = false;
+  const accountCard = transition.closest('.account-card');
+  if (accountCard) accountCard.scrollTop = 0;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    renderIdentityScramble(1);
+    return;
+  }
+  const cycleStartedAt = Date.now();
+  renderIdentityScramble(0);
+  identityScrambleTimer = setInterval(() => {
+    const elapsed = (Date.now() - cycleStartedAt) % 1700;
+    renderIdentityScramble(Math.min(1, elapsed / 1350));
+  }, 42);
+}
+async function stopIdentityCreationTransition() {
+  const minimumVisibleMs = 950;
+  const remaining = Math.max(0, minimumVisibleMs - (Date.now() - identityTransitionStartedAt));
+  if (remaining) await new Promise(resolve => setTimeout(resolve, remaining));
+  clearInterval(identityScrambleTimer);
+  identityScrambleTimer = null;
+  renderIdentityScramble(1);
+  await new Promise(resolve => setTimeout(resolve, 180));
+  const transition = document.getElementById('account-creation-transition');
+  if (transition) transition.hidden = true;
+}
 function formatRecoveryCode(rawBytes) {
   const compact = bytesToBase64UrlCompact(rawBytes);
   return 'VX-' + (compact.match(/.{1,6}/g) || [compact]).join('-');
@@ -8051,6 +8116,7 @@ async function createAnonymousAccount(event) {
   if (password.length < 8) { toast('Use a password of at least 8 characters'); return; }
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
   setAccountBusy(form, true);
+  startIdentityCreationTransition();
   try {
     const accountId = randomAccountId();
     const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
@@ -8119,7 +8185,7 @@ async function createAnonymousAccount(event) {
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
     document.getElementById('account-recovery-result').style.display = '';
   } catch (e) { console.error(e); toast('Could not create the protected ID'); }
-  finally { setAccountBusy(form, false); }
+  finally { await stopIdentityCreationTransition(); setAccountBusy(form, false); }
 }
 async function loginAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;

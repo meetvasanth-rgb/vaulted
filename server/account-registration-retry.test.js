@@ -18,3 +18,11 @@ test('account registration safely handles a lost first response', () => {
   assert.match(client, /attempt === 0 \? 200 : 600/);
   assert.match(client, /Registration encryption was not prepared/);
 });
+
+test('identity creation displays an accessible code-native text scramble transition', () => {
+  assert.match(client, /id="account-creation-transition"[^>]*aria-label="Creating your private identity"[^>]*hidden/);
+  assert.match(client, /IDENTITY_SCRAMBLE_TARGET = 'Creating your private identity'/);
+  assert.match(client, /startIdentityCreationTransition\(\)/);
+  assert.match(client, /await stopIdentityCreationTransition\(\)/);
+  assert.match(client, /prefers-reduced-motion: reduce/);
+});
