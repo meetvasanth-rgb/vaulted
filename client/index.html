@@ -2283,9 +2283,17 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
 .account-creation-caption{margin-top:13px;font:600 10px/1.4 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#D49AA8}
 .account-creation-progress{width:min(220px,70%);height:3px;margin:25px auto 0;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.12)}
 .account-creation-progress span{display:block;width:42%;height:100%;border-radius:inherit;background:#D98CA0;animation:account-identity-progress 1.35s ease-in-out infinite}
+.account-creation-success{position:relative;z-index:1;width:100%;max-width:440px}
+.account-creation-success[hidden],.account-creation-inner[hidden]{display:none}
+.account-dot-word{display:block;width:min(100%,380px);height:112px;margin:0 auto;transition:opacity .3s ease}
+.account-dot-word.is-complete{opacity:0}
+.account-dot-wordmark{margin-top:-70px;opacity:0;transform:scale(.94);filter:blur(7px);font:600 clamp(35px,10vw,48px)/1 Inter,sans-serif;letter-spacing:.08em;color:#FFF7FA;transition:opacity .45s ease,transform .45s cubic-bezier(.22,1,.36,1),filter .45s ease}
+.account-dot-wordmark.is-visible{opacity:1;transform:scale(1);filter:blur(0)}
+.account-dot-success-caption{margin-top:29px;font:600 11px/1.4 Inter,sans-serif;letter-spacing:.15em;text-transform:uppercase;color:#D49AA8;opacity:0;transform:translateY(8px);transition:opacity .4s ease .12s,transform .4s ease .12s}
+.account-dot-success-caption.is-visible{opacity:1;transform:translateY(0)}
 @keyframes account-identity-progress{0%{transform:translateX(-120%)}100%{transform:translateX(340%)}}
 @keyframes account-identity-pulse{0%{opacity:.55;transform:scale(.4)}100%{opacity:0;transform:scale(1.45)}}
-@media(prefers-reduced-motion:reduce){.account-creation-transition::before,.account-creation-transition::after,.account-creation-progress span{animation:none}.account-creation-progress span{width:100%;opacity:.65}}
+@media(prefers-reduced-motion:reduce){.account-creation-transition::before,.account-creation-transition::after,.account-creation-progress span{animation:none}.account-creation-progress span{width:100%;opacity:.65}.account-dot-word{display:none}.account-dot-wordmark,.account-dot-success-caption{opacity:1;transform:none;filter:none}}
 /* Installed apps use a focused first-run journey instead of the public,
    scrollable marketing homepage. */
 #s-native-onboarding{overflow:hidden;background:radial-gradient(circle at 86% 10%,rgba(200,117,136,.22),transparent 30%),radial-gradient(circle at 5% 88%,rgba(113,148,124,.17),transparent 28%),#FBF7F8;color:#271D25}
@@ -3546,11 +3554,16 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <button class="account-secondary" id="account-recovery-finish" onclick="finishAccountCreation()" disabled>I saved both safely — continue</button>
     </div>
     <div class="account-creation-transition" id="account-creation-transition" role="status" aria-live="polite" aria-label="Creating your private identity" hidden>
-      <div class="account-creation-inner">
+      <div class="account-creation-inner" id="account-creation-scramble-phase">
         <div class="account-creation-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg></div>
         <div class="account-scramble-text" id="account-scramble-text" aria-hidden="true">Creating your private identity</div>
         <div class="account-creation-caption">Private by design</div>
         <div class="account-creation-progress" aria-hidden="true"><span></span></div>
+      </div>
+      <div class="account-creation-success" id="account-creation-success-phase" aria-label="Vaultlix identity created" hidden>
+        <canvas class="account-dot-word" id="account-dot-word" aria-hidden="true"></canvas>
+        <div class="account-dot-wordmark" id="account-dot-wordmark" aria-hidden="true">Vaultlix</div>
+        <div class="account-dot-success-caption" id="account-dot-success-caption">Your private identity is ready</div>
       </div>
     </div>
   </div>
@@ -8077,6 +8090,14 @@ function startIdentityCreationTransition() {
   if (!transition) return;
   clearInterval(identityScrambleTimer);
   identityTransitionStartedAt = Date.now();
+  const scramblePhase = document.getElementById('account-creation-scramble-phase');
+  const successPhase = document.getElementById('account-creation-success-phase');
+  if (scramblePhase) scramblePhase.hidden = false;
+  if (successPhase) successPhase.hidden = true;
+  document.getElementById('account-dot-wordmark')?.classList.remove('is-visible');
+  document.getElementById('account-dot-success-caption')?.classList.remove('is-visible');
+  document.getElementById('account-dot-word')?.classList.remove('is-complete');
+  transition.setAttribute('aria-label', 'Creating your private identity');
   transition.hidden = false;
   const accountCard = transition.closest('.account-card');
   if (accountCard) accountCard.scrollTop = 0;
@@ -8091,7 +8112,63 @@ function startIdentityCreationTransition() {
     renderIdentityScramble(Math.min(1, elapsed / 1350));
   }, 42);
 }
-async function stopIdentityCreationTransition() {
+function runIdentityDotMorph() {
+  const canvas = document.getElementById('account-dot-word');
+  const wordmark = document.getElementById('account-dot-wordmark');
+  const caption = document.getElementById('account-dot-success-caption');
+  if (!canvas || !wordmark || !caption || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    wordmark?.classList.add('is-visible'); caption?.classList.add('is-visible');
+    return Promise.resolve();
+  }
+  const width = Math.max(280, Math.round(canvas.getBoundingClientRect().width || 360));
+  const height = 112;
+  const density = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = width * density; canvas.height = height * density;
+  const context = canvas.getContext('2d');
+  if (!context) { wordmark.classList.add('is-visible'); caption.classList.add('is-visible'); return Promise.resolve(); }
+  context.scale(density, density);
+  const stencil = document.createElement('canvas');
+  stencil.width = width; stencil.height = height;
+  const stencilContext = stencil.getContext('2d');
+  if (!stencilContext) { wordmark.classList.add('is-visible'); caption.classList.add('is-visible'); return Promise.resolve(); }
+  stencilContext.fillStyle = '#fff';
+  stencilContext.font = `600 ${Math.min(54, width / 6.8)}px Inter, sans-serif`;
+  stencilContext.textAlign = 'center'; stencilContext.textBaseline = 'middle';
+  stencilContext.fillText('Vaultlix', width / 2, height / 2);
+  const pixels = stencilContext.getImageData(0, 0, width, height).data;
+  const points = [];
+  for (let y = 3; y < height; y += 5) for (let x = 3; x < width; x += 5) {
+    if (pixels[(y * width + x) * 4 + 3] > 100) points.push({ x, y });
+  }
+  const particles = points.map((point, index) => {
+    const angle = (index / Math.max(1, points.length)) * Math.PI * 8 + Math.random();
+    const radius = 45 + Math.random() * width * .42;
+    return { ...point, fromX:width / 2 + Math.cos(angle) * radius, fromY:height / 2 + Math.sin(angle) * radius * .35, delay:Math.random() * 180 };
+  });
+  const startedAt = performance.now();
+  return new Promise(resolve => {
+    function frame(now) {
+      context.clearRect(0, 0, width, height);
+      particles.forEach((particle, index) => {
+        const progress = Math.max(0, Math.min(1, (now - startedAt - particle.delay) / 760));
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const x = particle.fromX + (particle.x - particle.fromX) * eased;
+        const y = particle.fromY + (particle.y - particle.fromY) * eased;
+        context.globalAlpha = Math.min(1, progress * 2.4);
+        context.fillStyle = index % 5 === 0 ? '#D98CA0' : '#FFF7FA';
+        context.beginPath(); context.arc(x, y, 1.45, 0, Math.PI * 2); context.fill();
+      });
+      if (now - startedAt < 1040) requestAnimationFrame(frame);
+      else {
+        canvas.classList.add('is-complete');
+        wordmark.classList.add('is-visible'); caption.classList.add('is-visible');
+        setTimeout(resolve, 700);
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+async function stopIdentityCreationTransition(created = false) {
   const minimumVisibleMs = 950;
   const remaining = Math.max(0, minimumVisibleMs - (Date.now() - identityTransitionStartedAt));
   if (remaining) await new Promise(resolve => setTimeout(resolve, remaining));
@@ -8099,6 +8176,14 @@ async function stopIdentityCreationTransition() {
   identityScrambleTimer = null;
   renderIdentityScramble(1);
   await new Promise(resolve => setTimeout(resolve, 180));
+  if (created) {
+    const scramblePhase = document.getElementById('account-creation-scramble-phase');
+    const successPhase = document.getElementById('account-creation-success-phase');
+    document.getElementById('account-creation-transition')?.setAttribute('aria-label', 'Vaultlix identity created');
+    if (scramblePhase) scramblePhase.hidden = true;
+    if (successPhase) successPhase.hidden = false;
+    await runIdentityDotMorph();
+  }
   const transition = document.getElementById('account-creation-transition');
   if (transition) transition.hidden = true;
 }
@@ -8108,6 +8193,7 @@ function formatRecoveryCode(rawBytes) {
 }
 async function createAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
+  let accountCreated = false;
   const privateNumber = normalizePrivateNumber(pendingPrivateNumber);
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   const password = document.getElementById('account-create-password').value;
@@ -8184,8 +8270,9 @@ async function createAnonymousAccount(event) {
     document.getElementById('account-recovery-result-number').textContent = formatPrivateNumber(privateNumber);
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
     document.getElementById('account-recovery-result').style.display = '';
+    accountCreated = true;
   } catch (e) { console.error(e); toast('Could not create the protected ID'); }
-  finally { await stopIdentityCreationTransition(); setAccountBusy(form, false); }
+  finally { await stopIdentityCreationTransition(accountCreated); setAccountBusy(form, false); }
 }
 async function loginAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;

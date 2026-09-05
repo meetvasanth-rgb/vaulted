@@ -23,6 +23,14 @@ test('identity creation displays an accessible code-native text scramble transit
   assert.match(client, /id="account-creation-transition"[^>]*aria-label="Creating your private identity"[^>]*hidden/);
   assert.match(client, /IDENTITY_SCRAMBLE_TARGET = 'Creating your private identity'/);
   assert.match(client, /startIdentityCreationTransition\(\)/);
-  assert.match(client, /await stopIdentityCreationTransition\(\)/);
+  assert.match(client, /await stopIdentityCreationTransition\(accountCreated\)/);
   assert.match(client, /prefers-reduced-motion: reduce/);
+});
+
+test('successful identity creation morphs dots into the Vaultlix wordmark', () => {
+  assert.match(client, /id="account-creation-success-phase"[^>]*aria-label="Vaultlix identity created"[^>]*hidden/);
+  assert.match(client, /id="account-dot-word"/);
+  assert.match(client, /stencilContext\.fillText\('Vaultlix'/);
+  assert.match(client, /await runIdentityDotMorph\(\)/);
+  assert.match(client, /stopIdentityCreationTransition\(accountCreated\)/);
 });
