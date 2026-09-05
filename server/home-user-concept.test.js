@@ -30,6 +30,23 @@ test('home page explains privacy without infrastructure jargon', () => {
   }
 });
 
+test('homepage motion demos are isolated from real conversations', () => {
+  const marketing = client.match(/<div class="landing-marketing"[\s\S]*?<\/main>/)?.[0] || '';
+  const chat = client.match(/<div id="s-chat"[\s\S]*?<div id="s-vault-list"/)?.[0] || '';
+  assert.match(marketing, /id="private-conversation-demo"/);
+  assert.match(marketing, /class="message-demo"/);
+  assert.match(marketing, /class="privacy-scroll-stage"/);
+  assert.match(client, /IntersectionObserver/);
+  assert.equal(chat.includes('message-demo'), false);
+  assert.equal(chat.includes('privacy-scroll-stage'), false);
+});
+
+test('settings headings share the submenu font family', () => {
+  assert.match(client, /\.settings-header-title\{font-family:'Inter',sans-serif/);
+  assert.match(client, /\.settings-about-name\{font-family:'Inter',sans-serif/);
+  assert.doesNotMatch(client, /\.settings-header-title\{font-family:'(?:Bodoni Moda|Cormorant Garamond)'/);
+});
+
 test('user-facing legacy vault labels are replaced with conversation language', () => {
   for (const legacy of [
     'Create a vault',

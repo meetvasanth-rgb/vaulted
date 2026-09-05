@@ -1321,7 +1321,7 @@ body.select-mode .chat-ftr{display:none}
 .settings-back{width:32px;height:32px;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#9A8C7E;border-radius:50%;transition:all .15s;padding:0;flex-shrink:0}
 .settings-back:hover{background:#F7F4F0;color:#4A3F35}
 .settings-back svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.settings-header-title{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:400;color:#1A1510;letter-spacing:.06em;flex:1}
+.settings-header-title{font-family:'Inter',sans-serif;font-size:22px;font-weight:700;color:#1A1510;letter-spacing:-.025em;flex:1}
 
 .settings-body{flex:1;padding:8px 0 40px;overflow-y:auto}
 .settings-section-label{font-family:'Inter',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#B0A498;padding:20px 20px 8px}
@@ -1364,7 +1364,7 @@ body.select-mode .chat-ftr{display:none}
 
 .settings-about-badge{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px 20px;margin:8px 20px;background:#F7F4F0;border-radius:8px;border:0.5px solid #E8E2DA}
 .settings-about-rule{width:30px;height:1px;background:#682C43}
-.settings-about-name{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:300;letter-spacing:.12em;color:#1A1510}
+.settings-about-name{font-family:'Inter',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em;color:#1A1510}
 .settings-menu{padding:10px 10px 28px}
 .settings-menu .settings-link-row{background:#fff;border:1px solid #EEE5E8;box-shadow:0 6px 18px rgba(70,38,49,.045);margin:8px 0;padding:15px 14px;border-radius:15px}
 .settings-menu .settings-row-icon{width:42px;height:42px;border-radius:13px}
@@ -2046,6 +2046,29 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-number{width:38px;height:38px;display:grid;place-items:center;margin-bottom:34px;border-radius:50%;background:#682C43;color:#fff;font:750 12px/1 'Manrope',sans-serif}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
 #s-landing .marketing-card p{margin:0;font:450 13px/1.6 'Manrope',sans-serif;color:#766970}
+#s-landing .motion-showcase{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:28px}
+#s-landing .motion-panel{position:relative;min-height:430px;overflow:hidden;padding:28px;border-radius:26px;background:#2F232B;color:#fff;box-shadow:0 18px 42px rgba(39,29,37,.14)}
+#s-landing .motion-panel-label{font:750 9px/1 'Manrope',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#DDA4B1}
+#s-landing .motion-panel h3{margin:10px 0 0;font:750 23px/1.18 'Manrope',sans-serif;letter-spacing:-.035em}
+#s-landing .message-demo{display:flex;flex-direction:column;justify-content:flex-end;gap:9px;min-height:292px;margin-top:21px;padding:20px 16px;border:1px solid rgba(255,255,255,.11);border-radius:22px;background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.025))}
+#s-landing .message-demo-head{display:flex;align-items:center;gap:9px;margin-bottom:auto;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,.08);font:650 11px/1 'Manrope',sans-serif;color:#D8CBD1}
+#s-landing .message-demo-head span{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:#682C43;color:#fff;font-size:10px}
+#s-landing .message-demo-bubble{max-width:84%;padding:10px 12px;border-radius:15px 15px 15px 4px;background:#fff;color:#34272F;font:600 11px/1.45 'Manrope',sans-serif;opacity:0;transform:translateY(18px) scale(.96);filter:blur(5px)}
+#s-landing .message-demo-bubble.me{align-self:flex-end;border-radius:15px 15px 4px 15px;background:#7A3650;color:#fff}
+#s-landing .homepage-motion-demo.is-playing .message-demo-bubble{animation:homepage-message-in .58s cubic-bezier(.22,1,.36,1) forwards}
+#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(2){animation-delay:.35s}
+#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(3){animation-delay:1.05s}
+#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(4){animation-delay:1.75s}
+#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(5){animation-delay:2.45s}
+#s-landing .privacy-scroll-stage{position:relative;display:grid;place-items:center;min-height:292px;margin-top:21px;overflow:hidden;border:1px solid rgba(255,255,255,.1);border-radius:22px;background:radial-gradient(circle at 50% 50%,rgba(200,117,136,.19),transparent 44%),#271D25;text-align:center}
+#s-landing .privacy-scroll-line{grid-area:1/1;padding:20px;font:700 clamp(24px,4vw,37px)/1.08 'Manrope',sans-serif;letter-spacing:-.045em;color:#FFF7FA;opacity:0;transform:translateY(100%);filter:blur(10px)}
+#s-landing .homepage-motion-demo.is-playing .privacy-scroll-one{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) forwards}
+#s-landing .homepage-motion-demo.is-playing .privacy-scroll-two{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) .85s forwards}
+#s-landing .homepage-motion-demo.is-playing .privacy-scroll-three{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) 1.7s forwards}
+#s-landing .homepage-motion-demo.is-playing .privacy-scroll-final{color:#E6A4B3;animation:privacy-scroll-finish 1.15s cubic-bezier(.22,1,.36,1) 2.55s forwards}
+@keyframes homepage-message-in{to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+@keyframes privacy-scroll-through{0%{opacity:0;transform:translateY(100%);filter:blur(10px)}30%,62%{opacity:1;transform:translateY(0);filter:blur(0)}100%{opacity:0;transform:translateY(-100%);filter:blur(10px)}}
+@keyframes privacy-scroll-finish{0%{opacity:0;transform:translateY(100%);filter:blur(10px)}48%,100%{opacity:1;transform:translateY(0);filter:blur(0)}}
 #s-landing .walkthrough-shell{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:30px;align-items:center;margin-top:26px;padding:30px;border-radius:28px;background:#2F232B;color:#fff;box-shadow:0 22px 50px rgba(39,29,37,.16)}
 #s-landing .walkthrough-preview{position:relative;display:grid;place-items:center;overflow:hidden;padding:22px;border:1px solid rgba(255,255,255,.13);border-radius:22px;background:radial-gradient(circle at 50% 15%,rgba(200,117,136,.34),transparent 38%),linear-gradient(145deg,#4A3040,#21181E)}
 #s-landing .walkthrough-video{display:block;width:min(100%,320px);aspect-ratio:9/16;object-fit:cover;border-radius:18px;background:#2F232B;box-shadow:0 20px 42px rgba(0,0,0,.28)}
@@ -2094,6 +2117,8 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .walkthrough-preview{padding:16px}
   #s-landing .safety-strip{grid-template-columns:1fr 1fr}
   #s-landing .marketing-cta{align-items:flex-start;flex-direction:column;padding:28px 24px}
+  #s-landing .motion-showcase{grid-template-columns:1fr}
+  #s-landing .motion-panel{min-height:400px;padding:22px}
 }
 @media(max-width:430px){
   #s-landing .marketing-title{font-size:32px}
@@ -2109,6 +2134,11 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .privacy-compare-row>span:nth-child(2)::before,#s-landing .privacy-compare-row>span:nth-child(3)::before{display:block;margin-bottom:5px;font-size:8px;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#9B7784}
   #s-landing .privacy-compare-row>span:nth-child(2)::before{content:'Conventional messaging'}
   #s-landing .privacy-compare-row>span:nth-child(3)::before{content:'Vaultlix'}
+}
+@media(prefers-reduced-motion:reduce){
+  #s-landing .message-demo-bubble{opacity:1;transform:none;filter:none;animation:none!important}
+  #s-landing .privacy-scroll-one,#s-landing .privacy-scroll-two,#s-landing .privacy-scroll-three{display:none}
+  #s-landing .privacy-scroll-final{opacity:1;transform:none;filter:none;animation:none!important}
 }
 @media(min-width:900px){
   #s-landing .landing-content{min-height:calc(100dvh - 80px)}
@@ -2362,7 +2392,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 }
 
 @media(max-width:640px){
-  .settings-header-title{font-family:'Bodoni Moda','Cormorant Garamond',serif;font-size:29px;font-weight:500;letter-spacing:.035em}
+  .settings-header-title{font-family:'Inter',sans-serif;font-size:28px;font-weight:700;letter-spacing:-.035em}
   .settings-section-label{font-size:12px;line-height:1.35;padding-top:22px}
   .settings-row,.settings-link-row{padding-top:15px;padding-bottom:15px;gap:13px}
   .settings-row-title{font-size:16px;line-height:1.35;font-weight:600}
@@ -2372,7 +2402,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   .settings-menu .settings-row-sub{font-size:14px;line-height:1.45;font-weight:500;color:#756970}
   .settings-empty-note{font-size:14px;line-height:1.6;font-weight:500}
   .settings-version{font-size:13px}
-  .settings-about-name{font-family:'Bodoni Moda','Cormorant Garamond',serif;font-size:18px;font-weight:500}
+  .settings-about-name{font-family:'Inter',sans-serif;font-size:18px;font-weight:700;letter-spacing:-.015em}
   #settings-profile-controls .account-field span{font-size:14px}
   #settings-profile-controls .account-field input{font-size:17px}
   #settings-profile-controls .account-copy{font-size:15px;line-height:1.6;font-weight:500;color:#655860}
@@ -2566,6 +2596,34 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           <article class="marketing-card"><div class="marketing-number">02</div><h3>Exchange numbers</h3><p>Share only your Vaultlix private number. Your phone number, email, and contacts stay private.</p></article>
           <article class="marketing-card"><div class="marketing-number">03</div><h3>Connect by consent</h3><p>Enter the other person's number and send a request. A conversation appears after they accept.</p></article>
           <article class="marketing-card"><div class="marketing-number">04</div><h3>Message or call</h3><p>Start a private one-to-one conversation as soon as you are connected.</p></article>
+        </div>
+      </section>
+      <section class="marketing-section homepage-motion-demo" id="private-conversation-demo" aria-labelledby="private-conversation-demo-title">
+        <span class="marketing-eyebrow">SEE VAULTLIX IN MOTION</span>
+        <h2 class="marketing-title" id="private-conversation-demo-title">A private connection, made simple.</h2>
+        <p class="marketing-lede">Share your Vaultlix number, approve the connection, and start talking—without exchanging personal contact details.</p>
+        <div class="motion-showcase">
+          <article class="motion-panel" aria-label="Example Vaultlix conversation">
+            <span class="motion-panel-label">PRIVATE CONVERSATION</span>
+            <h3>Connect without sharing your phone number.</h3>
+            <div class="message-demo" aria-hidden="true">
+              <div class="message-demo-head"><span>V</span> Vaultlix connection</div>
+              <div class="message-demo-bubble">Is this your Vaultlix number?</div>
+              <div class="message-demo-bubble me">Yes. I approved your request.</div>
+              <div class="message-demo-bubble">Perfect—no phone number shared.</div>
+              <div class="message-demo-bubble me">Now we can talk privately.</div>
+            </div>
+          </article>
+          <article class="motion-panel" aria-label="Vaultlix privacy message sequence">
+            <span class="motion-panel-label">PRIVATE BY DESIGN</span>
+            <h3>Only share what you choose.</h3>
+            <div class="privacy-scroll-stage" aria-label="No phone number. No email. No contacts. Private by design.">
+              <span class="privacy-scroll-line privacy-scroll-one" aria-hidden="true">No phone number.</span>
+              <span class="privacy-scroll-line privacy-scroll-two" aria-hidden="true">No email.</span>
+              <span class="privacy-scroll-line privacy-scroll-three" aria-hidden="true">No contacts.</span>
+              <span class="privacy-scroll-line privacy-scroll-final" aria-hidden="true">Private by design.</span>
+            </div>
+          </article>
         </div>
       </section>
       <section class="marketing-section" id="privacy-architecture">
@@ -12349,6 +12407,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!inboxSocket || inboxSocket.readyState !== WebSocket.OPEN) refreshConnectionRequests();
   }, 60000);
 });
+
+function initializeHomepageMotionDemo() {
+  const demo = document.getElementById('private-conversation-demo');
+  if (!demo) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
+    demo.classList.add('is-playing');
+    return;
+  }
+  const observer = new IntersectionObserver(entries => {
+    if (!entries.some(entry => entry.isIntersecting)) return;
+    demo.classList.add('is-playing');
+    observer.disconnect();
+  }, { threshold:.22 });
+  observer.observe(demo);
+}
+document.addEventListener('DOMContentLoaded', initializeHomepageMotionDemo, { once:true });
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
