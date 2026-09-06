@@ -15,6 +15,7 @@ test('account schema persists tier, founding status, and creation order', () => 
   assert.match(SCHEMA_SQL, /creation_order bigint NOT NULL DEFAULT nextval/);
   assert.match(server, /tier:account\.tier/);
   assert.match(server, /isFounding:!!account\.isFounding/);
+  assert.match(server, /revision: account\.revision, \.\.\.publicAccount\(account\)/);
 });
 
 test('profile discovery is device-scoped, capped at ten per hour, and backs off', () => {

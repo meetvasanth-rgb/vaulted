@@ -2470,7 +2470,7 @@ async function api(path, method, d, p, res, ip, headers) {
     account.updatedAt = Date.now();
     await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, revision: account.revision });
+    return res200(res, { ok: true, revision: account.revision, ...publicAccount(account) });
   }
 
   if (path === '/api/account/fetch' && method === 'POST') {
@@ -2478,7 +2478,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok: true, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
+    return res200(res, { ok: true, bundle: account.bundle, revision: account.revision, retention:accountRetention(account), ...publicAccount(account) });
   }
 
   // One authenticated foreground/reconnect catch-up replaces one request per

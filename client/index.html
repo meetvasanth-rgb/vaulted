@@ -8525,17 +8525,26 @@ async function syncAnonymousAccount(showFeedback) {
       const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
       if (latest.error) { if (status) status.textContent = latest.error; return; }
       const added = importAccountBundle(await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle), state.accountId);
-      state.revision = latest.revision; saveAccountState(state);
+      state.revision = latest.revision;
+      state.tier = latest.tier || state.tier || 'standard';
+      state.isFounding = !!latest.isFounding;
+      saveAccountState(state);
       const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
       if (retry.error) { if (status) status.textContent = retry.error; return; }
-      state.revision = retry.revision; saveAccountState(state);
+      state.revision = retry.revision;
+      state.tier = retry.tier || state.tier || 'standard';
+      state.isFounding = !!retry.isFounding;
+      saveAccountState(state);
       if (status) status.textContent = added ? `${added} conversation${added===1?'':'s'} received · reopen to view` : 'Encrypted sync complete';
       if (showFeedback) toast(added ? 'Conversations merged — reopen Vaultlix to view them' : 'Conversations synced securely');
       return;
     }
     if (result.error) { if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return; }
-    state.revision = result.revision; saveAccountState(state);
+    state.revision = result.revision;
+    state.tier = result.tier || state.tier || 'standard';
+    state.isFounding = !!result.isFounding;
+    saveAccountState(state);
     if (status) status.textContent = `Encrypted sync complete · ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
     if (showFeedback) toast('Conversations synced securely');
   } catch (e) { if (status) status.textContent = 'Sync paused — will retry'; if (showFeedback) toast('Could not sync right now'); }
