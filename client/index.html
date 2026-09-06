@@ -2225,6 +2225,38 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .msg-name{display:none!important}
 #s-chat .msg-time{font:550 9.5px/1 'Manrope',sans-serif!important;color:#8C7D84!important}
 #s-chat .typing-indicator{background:#F8F3F5!important;border:1px solid #E8DDE1!important;box-shadow:none!important}
+
+/* Original empty-conversation motion: two private identities establish a
+   protected line. It is intentionally code-native (SVG + transforms), so it
+   remains sharp on every screen density and adds no animation dependency to
+   the chat-loading path. */
+.private-line-welcome{width:min(330px,88vw);margin:auto auto 22px;align-self:center;text-align:center;color:#33262C;animation:private-line-arrive .65s cubic-bezier(.2,.8,.2,1) both}
+.private-line-scene{position:relative;width:100%;aspect-ratio:2/1;overflow:hidden;border-radius:28px;background:radial-gradient(circle at 50% 48%,rgba(107,31,58,.1),transparent 35%),linear-gradient(145deg,#FFF9FB,#F7EDF1);border:1px solid #EADCE1;box-shadow:0 20px 50px rgba(78,30,47,.1)}
+.private-line-scene svg{display:block;width:100%;height:100%;overflow:visible}
+.private-line-thread{fill:none;stroke:#6B1F3A;stroke-width:2;stroke-linecap:round;stroke-dasharray:285;stroke-dashoffset:285;animation:private-line-draw 4.8s cubic-bezier(.45,0,.2,1) infinite}
+.private-line-thread-glow{fill:none;stroke:rgba(186,93,125,.2);stroke-width:10;stroke-linecap:round;filter:url(#private-line-blur);opacity:0;animation:private-line-glow 4.8s ease infinite}
+.private-line-orbit{fill:none;stroke:rgba(107,31,58,.2);stroke-width:1;stroke-dasharray:3 7;transform-origin:center;animation:private-line-orbit 9s linear infinite}
+.private-line-node-halo{fill:rgba(107,31,58,.08);transform-box:fill-box;transform-origin:center;animation:private-line-breathe 3.1s ease-in-out infinite}
+.private-line-node-halo.right{animation-delay:-1.55s}
+.private-line-node{fill:#FFFDFE;stroke:#6B1F3A;stroke-width:1.5;filter:url(#private-line-shadow)}
+.private-line-node-mark{fill:none;stroke:#6B1F3A;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.private-line-core{fill:#6B1F3A;filter:url(#private-line-shadow);transform-box:fill-box;transform-origin:center;animation:private-line-core 4.8s cubic-bezier(.34,1.56,.64,1) infinite}
+.private-line-v{fill:#FFF9FB;font:400 28px 'Cormorant Garamond',serif;text-anchor:middle;dominant-baseline:middle}
+.private-line-particle{fill:#D88BA4;filter:url(#private-line-particle-glow);offset-path:path('M 69 83 C 112 28 207 28 251 83');offset-rotate:0deg;opacity:0;animation:private-line-travel 4.8s ease-in-out infinite}
+.private-line-particle.p2{animation-delay:.42s;fill:#6B1F3A}.private-line-particle.p3{animation-delay:.84s;fill:#F0B7C9}
+.private-line-spark{fill:#9A4563;transform-box:fill-box;transform-origin:center;opacity:0;animation:private-line-spark 4.8s ease infinite}
+.private-line-spark.s2{animation-delay:.18s}.private-line-spark.s3{animation-delay:.36s}.private-line-spark.s4{animation-delay:.54s}
+.private-line-welcome-title{margin-top:16px;font:700 17px/1.25 'Manrope','Inter',sans-serif;letter-spacing:-.02em}
+.private-line-welcome-copy{margin:5px auto 0;max-width:270px;font:500 12px/1.5 'Inter',sans-serif;color:#88747C}
+@keyframes private-line-arrive{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes private-line-draw{0%,10%{stroke-dashoffset:285;opacity:0}30%,76%{stroke-dashoffset:0;opacity:1}92%,100%{stroke-dashoffset:-285;opacity:0}}
+@keyframes private-line-glow{0%,18%,90%,100%{opacity:0}36%,72%{opacity:1}}
+@keyframes private-line-orbit{to{transform:rotate(360deg)}}
+@keyframes private-line-breathe{0%,100%{transform:scale(.92);opacity:.55}50%{transform:scale(1.12);opacity:1}}
+@keyframes private-line-core{0%,25%{transform:scale(.65);opacity:0}38%,76%{transform:scale(1);opacity:1}92%,100%{transform:scale(.72);opacity:0}}
+@keyframes private-line-travel{0%,22%{offset-distance:0%;opacity:0;transform:scale(.55)}32%{opacity:1}68%{opacity:1}79%,100%{offset-distance:100%;opacity:0;transform:scale(1)}}
+@keyframes private-line-spark{0%,32%,78%,100%{opacity:0;transform:scale(.2) rotate(0)}43%,65%{opacity:.8;transform:scale(1) rotate(90deg)}}
+@media(prefers-reduced-motion:reduce){.private-line-welcome{animation:none}.private-line-thread{animation:none;stroke-dashoffset:0}.private-line-thread-glow{animation:none;opacity:.6}.private-line-orbit,.private-line-node-halo,.private-line-core,.private-line-particle,.private-line-spark{animation:none}.private-line-core{opacity:1}.private-line-particle{display:none}}
 #s-chat .push-banner{margin:8px 14px 0;border-radius:12px!important;font-size:11px!important}
 #s-chat>div[style="position:relative"]{background:#fff;border-top:1px solid #EEE5E8;box-shadow:0 -8px 24px rgba(39,29,37,.045)}
 #s-chat .daily-nudge{margin:0!important;padding:11px 14px!important;border:0!important;border-left:4px solid #71947C!important;background:#EFF4F0!important;color:#4A6552!important;font:550 11px/1.35 'Manrope',sans-serif!important}
@@ -9871,6 +9903,33 @@ function updateTimerBar(room) {
   if (select.value !== value) select.value = value;
 }
 
+function privateLineWelcomeMarkup() {
+  return `<section class="private-line-welcome" id="private-line-welcome" aria-label="Your private line is open. Say hello when you are ready.">
+    <div class="private-line-scene" aria-hidden="true">
+      <svg viewBox="0 0 320 160" role="presentation">
+        <defs>
+          <filter id="private-line-blur" x="-20%" y="-80%" width="140%" height="260%"><feGaussianBlur stdDeviation="5"/></filter>
+          <filter id="private-line-shadow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#6B1F3A" flood-opacity=".18"/></filter>
+          <filter id="private-line-particle-glow" x="-300%" y="-300%" width="700%" height="700%"><feGaussianBlur stdDeviation="1.8" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <circle class="private-line-orbit" cx="160" cy="80" r="57"/>
+        <path class="private-line-thread-glow" d="M69 83C112 28 207 28 251 83"/>
+        <path class="private-line-thread" d="M69 83C112 28 207 28 251 83"/>
+        <circle class="private-line-particle p1" r="3"/><circle class="private-line-particle p2" r="2.4"/><circle class="private-line-particle p3" r="2"/>
+        <circle class="private-line-node-halo" cx="62" cy="88" r="32"/><circle class="private-line-node-halo right" cx="258" cy="88" r="32"/>
+        <circle class="private-line-node" cx="62" cy="88" r="22"/><circle class="private-line-node" cx="258" cy="88" r="22"/>
+        <path class="private-line-node-mark" d="M53 94c3-6 15-6 18 0M62 77a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/>
+        <path class="private-line-node-mark" d="M249 94c3-6 15-6 18 0M258 77a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/>
+        <circle class="private-line-core" cx="160" cy="62" r="22"/><text class="private-line-v" x="160" y="63">V</text>
+        <path class="private-line-spark s1" d="m119 48 2 4 4 2-4 2-2 4-2-4-4-2 4-2Z"/><path class="private-line-spark s2" d="m205 43 1.5 3 3 1.5-3 1.5-1.5 3-1.5-3-3-1.5 3-1.5Z"/>
+        <circle class="private-line-spark s3" cx="101" cy="105" r="2.5"/><circle class="private-line-spark s4" cx="220" cy="111" r="2"/>
+      </svg>
+    </div>
+    <div class="private-line-welcome-title">Your private line is open</div>
+    <div class="private-line-welcome-copy">Only you and this person can shape what happens here.</div>
+  </section>`;
+}
+
 async function changeRoomTimer(value) {
   const room = getActiveRoom();
   if (!room) return;
@@ -9898,7 +9957,8 @@ async function changeRoomTimer(value) {
 function renderChatBody(room) {
   const body = document.getElementById('chat-body');
   if (klipyGifObserver) klipyGifObserver.disconnect();
-  body.innerHTML = `<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
+  const hasConversationContent = room.messages.some(rec => !rec.deleted && !rec.verifyNudge && rec.kind !== 'sys');
+  body.innerHTML = `${hasConversationContent ? '' : privateLineWelcomeMarkup()}<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   for (const rec of room.messages) {
     if (rec.deleted || rec.verifyNudge) continue;
     renderMessageRecord(room, rec);
@@ -10490,6 +10550,8 @@ function renderMessageRecord(room, rec, animate) {
     body.scrollTop = body.scrollHeight;
     return div;
   }
+
+  document.getElementById('private-line-welcome')?.remove();
 
   // Native builds keep an encrypted offline copy. The serialized record is
   // handed straight to native code: it never enters localStorage/IndexedDB.
