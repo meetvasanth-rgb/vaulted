@@ -3,6 +3,7 @@ package com.vaultlix.app;
 import android.app.NotificationManager;
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -328,6 +329,7 @@ public class MainActivity extends BridgeActivity {
                     Intent sendIntent = new Intent(Intent.ACTION_SEND);
                     sendIntent.setType("image/png");
                     sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                    sendIntent.setClipData(ClipData.newRawUri("Vaultlix number card", uri));
                     sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(Intent.createChooser(sendIntent, "Share your Vaultlix number"));
                 } catch (Exception ignored) {}

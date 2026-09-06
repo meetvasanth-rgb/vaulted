@@ -35,4 +35,7 @@ test('native apps share the image through the system share sheet', () => {
   const ios = readFileSync(join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
   assert.match(android, /void shareImage\(String dataUrl\)[\s\S]*Intent\.ACTION_SEND/);
   assert.match(ios, /action == "shareImage"[\s\S]*UIActivityViewController/);
+  assert.match(android, /setClipData\(ClipData\.newRawUri/);
+  assert.match(client, /VaultlixAndroid\?\.shareText/);
+  assert.match(client, /Number card downloaded to your Downloads folder/);
 });

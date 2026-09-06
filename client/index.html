@@ -7636,6 +7636,11 @@ async function shareNumberCard() {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', .96));
   if (!blob) { toast('Could not prepare your number card'); return; }
   const file = new File([blob], 'vaultlix-private-number.png', { type:'image/png' });
+  const state = loadAccountState();
+  const publicUrl = state?.privateNumber ? `https://vaultlix.com/${state.privateNumber}` : 'https://vaultlix.com';
+  const fallbackText = state?.privateNumber
+    ? `Connect with ${state.displayName || 'me'} on Vaultlix: ${publicUrl}`
+    : 'Connect with me on Vaultlix: https://vaultlix.com';
   try {
     if (typeof window.VaultlixAndroid?.shareImage === 'function') {
       const reader = new FileReader();
@@ -7652,14 +7657,34 @@ async function shareNumberCard() {
       return;
     }
     if (navigator.canShare?.({ files:[file] })) {
-      await navigator.share({ title:'My Vaultlix Private Number', files:[file] });
+      try {
+        await navigator.share({ title:'My Vaultlix Private Number', files:[file] });
+        closeNumberCard();
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    // Older Android releases can still open the system share sheet through
+    // their existing text bridge when native image sharing is unavailable.
+    if (typeof window.VaultlixAndroid?.shareText === 'function') {
+      window.VaultlixAndroid.shareText(fallbackText);
       closeNumberCard();
       return;
+    }
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title:'My Vaultlix Private Number', text:fallbackText, url:publicUrl });
+        closeNumberCard();
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
     }
     const reader = new FileReader();
     reader.onload = () => downloadDataUri(reader.result, file.name);
     reader.readAsDataURL(blob);
-    toast('Number card saved');
+    toast('Number card downloaded to your Downloads folder');
     closeNumberCard();
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Sharing was not available');
