@@ -51,7 +51,8 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /resumeQuickConnectAfterAuthentication/);
   assert.match(client, /await requestPrivateVault\(\)/);
   assert.match(client, /Show my Quick Connect QR/);
-  assert.match(client, /ref=qr/);
+  assert.match(client, /new URLSearchParams\(location\.search\)\.get\('ref'\) === 'qr'/);
+  assert.match(client, /vaultlix:\/\/connect\/\$\{privateNumber\}/);
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);
 });
