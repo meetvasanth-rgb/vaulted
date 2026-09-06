@@ -10,6 +10,8 @@ test('an original private-line animation welcomes empty conversations', () => {
   assert.match(client, /Your private line is open/);
   assert.match(client, /private-line-thread/);
   assert.match(client, /private-line-particle/);
+  assert.match(client, /private-line-core-backdrop/);
+  assert.match(client, /private-line-core-backdrop\{fill:#6B1F3A;opacity:\.88/);
   assert.match(client, /hasConversationContent = room\.messages\.some/);
   assert.match(client, /document\.getElementById\('private-line-welcome'\)\?\.remove\(\)/);
 });

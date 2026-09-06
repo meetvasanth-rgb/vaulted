@@ -2240,6 +2240,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
 .private-line-node-halo.right{animation-delay:-1.55s}
 .private-line-node{fill:#FFFDFE;stroke:#6B1F3A;stroke-width:1.5;filter:url(#private-line-shadow)}
 .private-line-node-mark{fill:none;stroke:#6B1F3A;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.private-line-core-backdrop{fill:#6B1F3A;opacity:.88;filter:url(#private-line-shadow)}
 .private-line-core{fill:#6B1F3A;filter:url(#private-line-shadow);transform-box:fill-box;transform-origin:center;animation:private-line-core 4.8s cubic-bezier(.34,1.56,.64,1) infinite}
 .private-line-v{fill:#FFF9FB;font:400 28px 'Cormorant Garamond',serif;text-anchor:middle;dominant-baseline:middle}
 .private-line-particle{fill:#D88BA4;filter:url(#private-line-particle-glow);offset-path:path('M 69 83 C 112 28 207 28 251 83');offset-rotate:0deg;opacity:0;animation:private-line-travel 4.8s ease-in-out infinite}
@@ -9920,7 +9921,7 @@ function privateLineWelcomeMarkup() {
         <circle class="private-line-node" cx="62" cy="88" r="22"/><circle class="private-line-node" cx="258" cy="88" r="22"/>
         <path class="private-line-node-mark" d="M53 94c3-6 15-6 18 0M62 77a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/>
         <path class="private-line-node-mark" d="M249 94c3-6 15-6 18 0M258 77a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z"/>
-        <circle class="private-line-core" cx="160" cy="62" r="22"/><text class="private-line-v" x="160" y="63">V</text>
+        <circle class="private-line-core-backdrop" cx="160" cy="62" r="22"/><circle class="private-line-core" cx="160" cy="62" r="22"/><text class="private-line-v" x="160" y="63">V</text>
         <path class="private-line-spark s1" d="m119 48 2 4 4 2-4 2-2 4-2-4-4-2 4-2Z"/><path class="private-line-spark s2" d="m205 43 1.5 3 3 1.5-3 1.5-1.5 3-1.5-3-3-1.5 3-1.5Z"/>
         <circle class="private-line-spark s3" cx="101" cy="105" r="2.5"/><circle class="private-line-spark s4" cx="220" cy="111" r="2"/>
       </svg>
