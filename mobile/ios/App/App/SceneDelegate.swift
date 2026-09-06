@@ -50,6 +50,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         }), let url = activity.webpageURL, isVaultlixLink(url) {
             pendingUniversalLink = url
         }
+        if let customURL = connectionOptions.urlContexts.first?.url,
+           let translated = translatedVaultlixConnectURL(customURL) {
+            pendingUniversalLink = translated
+        }
     }
 
     private func emit(name: String, detail: [AnyHashable: Any]?) {
@@ -110,6 +114,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.prepare()
             feedback.impactOccurred()
+            return
+        }
+        if action == "shareImage",
+           let dataURL = body["dataUrl"] as? String,
+           dataURL.hasPrefix("data:image/png;base64,"),
+           dataURL.count <= 12_000_000,
+           let comma = dataURL.firstIndex(of: ","),
+           let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+           !data.isEmpty, data.count <= 8_000_000,
+           let controller = window?.rootViewController {
+            let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-private-number.png")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+                if let popover = sheet.popoverPresentationController {
+                    popover.sourceView = controller.view
+                    popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
+                }
+                controller.present(sheet, animated: true)
+            } catch {}
             return
         }
         if action == "emergencyReset" {
@@ -220,6 +244,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
+        if let url = URLContexts.first?.url,
+           let translated = translatedVaultlixConnectURL(url) {
+            pendingUniversalLink = translated
+            flushPendingUniversalLink()
+        }
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
@@ -237,6 +266,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
               url.host?.lowercased() == "vaultlix.com" else { return false }
         return url.path.range(of: "^/join/[A-Za-z0-9-]+/?$", options: .regularExpression) != nil
             || url.path.range(of: "^/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?$", options: .regularExpression) != nil
+    }
+
+    private func translatedVaultlixConnectURL(_ url: URL) -> URL? {
+        guard url.scheme?.lowercased() == "vaultlix",
+              url.host?.lowercased() == "connect",
+              url.path.range(of: "^/[2-9][0-9]{5,9}/?$", options: .regularExpression) != nil else { return nil }
+        return URL(string: "https://vaultlix.com\(url.path)?ref=qr")
     }
 
     private func flushPendingUniversalLink() {

@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -26,10 +27,13 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import com.getcapacitor.BridgeActivity;
+import androidx.core.content.FileProvider;
 
 import org.json.JSONObject;
 
 import java.lang.ref.WeakReference;
+import java.io.File;
+import java.io.FileOutputStream;
 
 public class MainActivity extends BridgeActivity {
     private static WeakReference<MainActivity> activeInstance = new WeakReference<>(null);
@@ -250,11 +254,14 @@ public class MainActivity extends BridgeActivity {
         }
 
         Uri uri = intent.getData();
-        if (uri == null
-                || !"https".equalsIgnoreCase(uri.getScheme())
+        if (uri == null) return;
+        if ("vaultlix".equalsIgnoreCase(uri.getScheme()) && "connect".equalsIgnoreCase(uri.getHost())
+                && uri.getPath() != null && uri.getPath().matches("/[2-9][0-9]{5,9}/?")) {
+            uri = Uri.parse("https://vaultlix.com" + uri.getPath() + "?ref=qr");
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme())
                 || !"vaultlix.com".equalsIgnoreCase(uri.getHost())
-                || uri.getPath() == null
-                || !isAllowedVaultlixPath(uri.getPath())) {
+                || uri.getPath() == null || !isAllowedVaultlixPath(uri.getPath())) {
             return;
         }
 
@@ -302,6 +309,28 @@ public class MainActivity extends BridgeActivity {
                 sendIntent.setType("text/plain");
                 sendIntent.putExtra(Intent.EXTRA_TEXT, text);
                 startActivity(Intent.createChooser(sendIntent, "Share Vaultlix invite"));
+            });
+        }
+
+        @JavascriptInterface
+        public void shareImage(String dataUrl) {
+            if (dataUrl == null || !dataUrl.startsWith("data:image/png;base64,") || dataUrl.length() > 12_000_000) return;
+            runOnUiThread(() -> {
+                try {
+                    int comma = dataUrl.indexOf(',');
+                    byte[] png = Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT);
+                    if (png.length == 0 || png.length > 8_000_000) return;
+                    File directory = new File(getCacheDir(), "shared");
+                    if (!directory.exists() && !directory.mkdirs()) return;
+                    File card = new File(directory, "vaultlix-private-number.png");
+                    try (FileOutputStream output = new FileOutputStream(card, false)) { output.write(png); }
+                    Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", card);
+                    Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                    sendIntent.setType("image/png");
+                    sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                    sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(sendIntent, "Share your Vaultlix number"));
+                } catch (Exception ignored) {}
             });
         }
 

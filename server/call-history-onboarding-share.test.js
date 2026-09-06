@@ -45,11 +45,11 @@ test('number generation exposes its remaining allowance and own profile can shar
   assert.match(client, /id="account-generation-counter"/);
   assert.match(client, /result\.generationsRemaining/);
   assert.match(client, /function shareOwnPrivateNumber\(\)/);
-  assert.match(client, /https:\/\/vaultlix\.com\/\$\{state\.privateNumber\}\?ref=share/);
-  assert.match(client, /navigator\.share/);
+  assert.match(client, /renderNumberCard\(state\)/);
+  assert.match(client, /shareNumberCard/);
 });
 
-test('Private Number invitations are app links with one URL and branded previews', () => {
+test('public invitations retain branded previews while number-card QR uses an app-only link', () => {
   const association = fs.readFileSync(path.join(root, 'client/.well-known/apple-app-site-association'), 'utf8');
   assert.match(association, /\/\?\?\?\?\?\?\?\?\?\?/);
   assert.match(association, /"appID": "3KLX2S84MV\.com\.vaultlix\.app"/);
@@ -57,8 +57,7 @@ test('Private Number invitations are app links with one URL and branded previews
   assert.match(client, /og:image:secure_url/);
   assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
   const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));
-  assert.doesNotMatch(shareBody, /const text = `[^`]*\$\{url\}/);
-  assert.match(shareBody, /VaultlixAndroid\?\.shareText/);
-  assert.match(shareBody, /shareText\(`\$\{text\}\\n\$\{url\}`\)/);
-  assert.match(shareBody, /navigator\.share\(\{ title:'Connect with me on Vaultlix', text, url \}\)/);
+  assert.match(shareBody, /vaultlix:\/\/connect\/\$\{privateNumber\}/);
+  assert.match(shareBody, /VaultlixAndroid\?\.shareImage/);
+  assert.match(shareBody, /navigator\.share\(\{ title:'My Vaultlix Private Number', files:\[file\] \}\)/);
 });
