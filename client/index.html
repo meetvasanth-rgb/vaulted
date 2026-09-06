@@ -3576,14 +3576,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
             <div class="private-number-label">Your Vaultlix Private Number</div>
             <div class="private-number-value" id="account-private-number-value">Generating…</div>
             <div class="private-number-caption">Share this number or its Vaultlix link so people can connect with you.</div>
-            <div class="private-number-caption" style="margin-top:12px"><strong>Early Tester Reward</strong><br/>Choose one Special Private Number complimentary. It remains yours permanently.</div>
             <div class="private-number-caption" id="account-generation-counter" style="margin-top:8px">20 number choices remaining this hour</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('standard')">Quick number</button>
-              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('zeros')">Four zeros</button>
-              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('sequence')">Number sequence</button>
-              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('repeated')">Repeated digits</button>
-              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('pairs')">Repeated pairs</button>
+            <div style="margin-top:12px">
+              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber('standard')">Generate another number</button>
             </div>
           </div>
           <button class="account-primary" type="button" onclick="showCreateSecurityStep()">Continue</button>
@@ -3953,11 +3948,22 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 
 function normalizePrivateNumber(value) {
   const privateNumber = String(value || '').replace(/\D/g, '');
-  return /^[2-9][0-9]{9}$/.test(privateNumber) ? privateNumber : '';
+  return /^[2-9][0-9]{5,9}$/.test(privateNumber) ? privateNumber : '';
 }
 function formatPrivateNumber(value) {
   const privateNumber = normalizePrivateNumber(value);
-  return privateNumber ? `${privateNumber.slice(0, 2)}-${privateNumber.slice(2, 6)}-${privateNumber.slice(6)}` : '';
+  if (!privateNumber) return '';
+  if (privateNumber.length <= 7) return `${privateNumber.slice(0, 2)}-${privateNumber.slice(2, 6)}${privateNumber.length > 6 ? `-${privateNumber.slice(6)}` : ''}`;
+  return `${privateNumber.slice(0, 2)}-${privateNumber.slice(2, 6)}-${privateNumber.slice(6)}`;
+}
+
+function privateLookupKey() {
+  const storageKey = 'vaultlix:private-lookup-key';
+  let value = localStorage.getItem(storageKey) || '';
+  if (/^[A-Za-z0-9_-]{20,128}$/.test(value)) return value;
+  value = bytesToBase64UrlCompact(crypto.getRandomValues(new Uint8Array(24)));
+  localStorage.setItem(storageKey, value);
+  return value;
 }
 function base64UrlToBytes(value) {
   const b64 = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
@@ -8127,7 +8133,6 @@ async function generatePrivateNumber(category = 'standard') {
       const remaining = Number(result.generationsRemaining);
       counter.textContent = `${remaining} number choice${remaining === 1 ? '' : 's'} remaining this hour`;
     }
-    if (result.earlyTester) toast('Early Tester Special Number reserved for 5 minutes');
   } catch (e) {
     output.textContent = 'Try again';
     toast('Could not generate a Private Number');
@@ -11507,7 +11512,9 @@ async function findPrivateNumber(event) {
 async function openPublicProfile(privateNumber) {
   activePublicProfile = null;
   try {
-    const response = await fetch(`/api/profile/${encodeURIComponent(privateNumber)}`, { headers:{ Accept:'application/json' } });
+    const response = await fetch(`/api/profile/${encodeURIComponent(privateNumber)}`, {
+      headers:{ Accept:'application/json', 'X-Vaultlix-Lookup-Key':privateLookupKey() },
+    });
     const result = await response.json();
     if (!response.ok || !result.profile) { toast(result.error || i18n('private_number_not_found')); history.replaceState(null, '', '/'); return; }
     activePublicProfile = result.profile;

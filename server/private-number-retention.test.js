@@ -24,9 +24,10 @@ test('Premium and special-number protection cannot be supplied by an untrusted r
   assert.match(server, /premiumUntil > now/);
 });
 
-test('reclaimed free numbers are quarantined and protected special numbers are retired', () => {
-  assert.match(server, /const RECLAIM_QUARANTINE_MS = 365 \* DAY_MS/);
-  assert.match(server, /status:permanent \? 'retired' : 'quarantined'/);
+test('every released Private Number is permanently retired and never recycled', () => {
+  assert.match(server, /status:'retired'/);
+  assert.match(server, /availableAfter:null/);
+  assert.doesNotMatch(server, /status:permanent \? 'retired' : 'quarantined'/);
   assert.match(server, /await postgresStore\.releasePrivateNumber/);
   assert.match(server, /Opening a notification alone does not reset inactivity/);
 });

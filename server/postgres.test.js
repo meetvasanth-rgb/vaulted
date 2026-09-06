@@ -71,13 +71,13 @@ test('production startup fails closed and account mutations await PostgreSQL', (
   assert.match(server, /await postgresStore\.deleteEncryptedMessage\(d\.code, msg\.id/);
 });
 
-test('Private Number release is transactional and records quarantine or retirement first', async () => {
+test('Private Number retirement is transactional and records its tombstone first', async () => {
   const calls = [];
   const client = { query:async (...args) => { calls.push(args); return { rows:[] }; }, release:() => calls.push(['RELEASE']) };
   const pool = { connect:async () => client };
   const store = new PostgresStore('', { pool });
   await store.releasePrivateNumber('a'.repeat(64), '2345678901', {
-    status:'quarantined', availableAfter:1234, reason:'inactivity', createdAt:100,
+    status:'retired', availableAfter:null, reason:'inactivity', createdAt:100,
   });
   assert.equal(calls[0][0], 'BEGIN');
   assert.match(calls[1][0], /INSERT INTO private_number_lifecycle/);

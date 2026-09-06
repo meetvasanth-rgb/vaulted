@@ -12,9 +12,11 @@ CREATE TABLE IF NOT EXISTS vaultlix_schema (
   applied_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE SEQUENCE IF NOT EXISTS account_creation_order_seq;
+
 CREATE TABLE IF NOT EXISTS accounts (
   account_id char(64) PRIMARY KEY,
-  private_number char(10) NOT NULL UNIQUE,
+  private_number varchar(10) NOT NULL UNIQUE,
   display_name varchar(40) NOT NULL,
   auth_verifier text NOT NULL,
   recovery_verifier text NOT NULL,
@@ -30,12 +32,15 @@ CREATE TABLE IF NOT EXISTS accounts (
   number_protection varchar(32) NOT NULL DEFAULT 'free',
   premium_until bigint,
   reclaim_warnings jsonb NOT NULL DEFAULT '[]'::jsonb,
+  tier varchar(16) NOT NULL DEFAULT 'standard' CHECK (tier IN ('standard', 'reserve', 'founding')),
+  is_founding boolean NOT NULL DEFAULT false,
+  creation_order bigint NOT NULL DEFAULT nextval('account_creation_order_seq'),
   created_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS private_number_lifecycle (
-  private_number char(10) PRIMARY KEY,
+  private_number varchar(10) PRIMARY KEY,
   status varchar(16) NOT NULL CHECK (status IN ('quarantined', 'retired')),
   available_after bigint,
   reason varchar(64) NOT NULL,
@@ -43,7 +48,7 @@ CREATE TABLE IF NOT EXISTS private_number_lifecycle (
 );
 
 CREATE TABLE IF NOT EXISTS private_number_reservations (
-  private_number char(10) PRIMARY KEY,
+  private_number varchar(10) PRIMARY KEY,
   token_hash char(64) NOT NULL UNIQUE,
   category varchar(32) NOT NULL,
   reserved_until bigint NOT NULL,
@@ -158,6 +163,33 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS number_category varchar(32) NOT NU
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS number_protection varchar(32) NOT NULL DEFAULT 'free';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS premium_until bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS reclaim_warnings jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE accounts ALTER COLUMN private_number TYPE varchar(10) USING trim(private_number);
+ALTER TABLE private_number_lifecycle ALTER COLUMN private_number TYPE varchar(10) USING trim(private_number);
+ALTER TABLE private_number_reservations ALTER COLUMN private_number TYPE varchar(10) USING trim(private_number);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tier varchar(16) NOT NULL DEFAULT 'standard';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_founding boolean NOT NULL DEFAULT false;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS creation_order bigint;
+ALTER TABLE accounts ALTER COLUMN creation_order SET DEFAULT nextval('account_creation_order_seq');
+WITH ordered AS (
+  SELECT account_id, row_number() OVER (ORDER BY created_at, account_id) AS ordinal
+  FROM accounts
+)
+UPDATE accounts SET creation_order=ordered.ordinal
+FROM ordered WHERE accounts.account_id=ordered.account_id AND accounts.creation_order IS NULL;
+SELECT setval(
+  'account_creation_order_seq',
+  GREATEST(COALESCE((SELECT max(creation_order) FROM accounts), 1), 1),
+  EXISTS (SELECT 1 FROM accounts)
+);
+ALTER TABLE accounts ALTER COLUMN creation_order SET NOT NULL;
+UPDATE accounts SET
+  is_founding=creation_order <= 10000,
+  tier=CASE
+    WHEN number_category <> 'standard' THEN 'reserve'
+    WHEN creation_order <= 10000 THEN 'founding'
+    ELSE 'standard'
+  END;
+UPDATE private_number_lifecycle SET status='retired', available_after=NULL WHERE status='quarantined';
 UPDATE accounts SET last_active_at=(extract(epoch from clock_timestamp()) * 1000)::bigint WHERE last_active_at IS NULL;
 ALTER TABLE accounts ALTER COLUMN last_active_at SET NOT NULL;
 
@@ -191,6 +223,8 @@ class PostgresStore {
       lastActiveAt:Number(row.last_active_at), numberCategory:row.number_category || 'standard',
       numberProtection:row.number_protection || 'free', premiumUntil:row.premium_until == null ? null : Number(row.premium_until),
       reclaimWarnings:row.reclaim_warnings || [],
+      tier:row.tier || 'standard', isFounding:!!row.is_founding,
+      creationOrder:Number(row.creation_order),
       createdAt:Number(row.created_at), updatedAt:Number(row.updated_at),
     }]);
   }
@@ -201,8 +235,9 @@ class PostgresStore {
       account_id, private_number, display_name, auth_verifier, recovery_verifier,
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
       connection_requests, push_destinations, last_active_at, number_category,
-      number_protection, premium_until, reclaim_warnings, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17::jsonb,$18,$19)
+      number_protection, premium_until, reclaim_warnings, tier, is_founding,
+      creation_order, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, display_name=EXCLUDED.display_name,
       auth_verifier=EXCLUDED.auth_verifier, recovery_verifier=EXCLUDED.recovery_verifier,
@@ -213,6 +248,8 @@ class PostgresStore {
       last_active_at=EXCLUDED.last_active_at, number_category=EXCLUDED.number_category,
       number_protection=EXCLUDED.number_protection, premium_until=EXCLUDED.premium_until,
       reclaim_warnings=EXCLUDED.reclaim_warnings,
+      tier=EXCLUDED.tier, is_founding=EXCLUDED.is_founding,
+      creation_order=EXCLUDED.creation_order,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.displayName, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -220,8 +257,15 @@ class PostgresStore {
       JSON.stringify(account.connectionRequests || []), JSON.stringify(account.pushDestinations || []),
       account.lastActiveAt || account.updatedAt || account.createdAt, account.numberCategory || 'standard',
       account.numberProtection || 'free', account.premiumUntil || null, JSON.stringify(account.reclaimWarnings || []),
+      account.tier || 'standard', !!account.isFounding, account.creationOrder,
       account.createdAt, account.updatedAt,
     ]);
+  }
+
+  async allocateAccountCreationOrder() {
+    if (!this.enabled) return null;
+    const { rows } = await this.pool.query("SELECT nextval('account_creation_order_seq') AS creation_order");
+    return Number(rows[0].creation_order);
   }
 
   async reservePrivateNumber(privateNumber, tokenHash, category, reservedUntil) {
@@ -230,8 +274,7 @@ class PostgresStore {
       private_number, token_hash, category, reserved_until, created_at
     ) SELECT $1,$2,$3,$4,$5
       WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE private_number=$1)
-        AND NOT EXISTS (SELECT 1 FROM private_number_lifecycle
-          WHERE private_number=$1 AND (status='retired' OR available_after > $5))
+        AND NOT EXISTS (SELECT 1 FROM private_number_lifecycle WHERE private_number=$1)
     ON CONFLICT (private_number) DO UPDATE SET
       token_hash=EXCLUDED.token_hash, category=EXCLUDED.category,
       reserved_until=EXCLUDED.reserved_until, created_at=EXCLUDED.created_at

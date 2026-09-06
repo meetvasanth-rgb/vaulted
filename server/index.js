@@ -9,6 +9,13 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const {
+  NUMBER_TIERS,
+  normalizePrivateNumber:normalizePrivateNumberPolicy,
+  generateStandardNumber,
+  assignAccountTier,
+  isNumberAvailable,
+} = require('./private-number-policy');
 
 const scryptAsync = promisify(crypto.scrypt);
 
@@ -39,6 +46,7 @@ const accounts = new Map();
 const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
 const privateNumberReservations = new Map();
 const privateNumberLifecycle = new Map();
+const profileLookupBuckets = new Map();
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
 let postgresEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -46,7 +54,6 @@ const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
-const RECLAIM_QUARANTINE_MS = 365 * DAY_MS;
 const NUMBER_RETENTION_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST_NUMBER_RETENTION_SWEEP_MS
   ? Number(process.env.TEST_NUMBER_RETENTION_SWEEP_MS)
   : 6 * 60 * 60 * 1000;
@@ -719,6 +726,24 @@ function rateLimited(key, maxCount, windowMs) {
   return bucket.count > maxCount;
 }
 
+function profileLookupRetryAfter(req, ip) {
+  const suppliedKey = String(req.headers['x-vaultlix-lookup-key'] || '');
+  const deviceKey = /^[A-Za-z0-9_-]{20,128}$/.test(suppliedKey) ? suppliedKey : `ip:${ip}`;
+  const key = crypto.createHash('sha256').update(deviceKey).digest('hex');
+  const now = Date.now();
+  let bucket = profileLookupBuckets.get(key);
+  if (!bucket || now - bucket.windowStart >= 60 * 60 * 1000) {
+    bucket = { count:0, windowStart:now, blockedUntil:0 };
+    profileLookupBuckets.set(key, bucket);
+  }
+  if (bucket.blockedUntil > now) return Math.ceil((bucket.blockedUntil - now) / 1000);
+  bucket.count++;
+  if (bucket.count <= 10) return 0;
+  const delaySeconds = Math.min(3600, 2 ** Math.min(bucket.count - 11, 12));
+  bucket.blockedUntil = now + delaySeconds * 1000;
+  return delaySeconds;
+}
+
 // Check an existing failure bucket without incrementing it. Admin auth uses
 // this before comparing credentials so a correct guess cannot bypass the
 // lockout after the failure budget has already been exhausted.
@@ -747,36 +772,17 @@ function validAccountId(value) { return typeof value === 'string' && /^[a-f0-9]{
 function validAccountSecret(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{40,96}$/.test(value); }
 function validEncryptedField(value, max) { return typeof value === 'string' && value.length >= 20 && value.length <= max; }
 function normalizePrivateNumber(value) {
-  const privateNumber = String(value || '').replace(/\D/g, '');
-  return /^[2-9][0-9]{9}$/.test(privateNumber) ? privateNumber : '';
+  return normalizePrivateNumberPolicy(value);
 }
 function generatePrivateNumberCandidate(category = 'standard') {
-  const digit = () => crypto.randomInt(0, 10);
-  const first = () => crypto.randomInt(2, 10);
-  if (category === 'zeros') return String(first()) + Array.from({ length:5 }, digit).join('') + '0000';
-  if (category === 'sequence') {
-    const runs = ['0123','1234','2345','3456','4567','5678','6789'];
-    return String(first()) + Array.from({ length:5 }, digit).join('') + runs[crypto.randomInt(0, runs.length)];
-  }
-  if (category === 'repeated') {
-    const repeated = String(crypto.randomInt(1, 10)).repeat(4);
-    return String(first()) + Array.from({ length:5 }, digit).join('') + repeated;
-  }
-  if (category === 'pairs') {
-    const pair = String(digit()) + String(digit());
-    return String(first()) + Array.from({ length:3 }, digit).join('') + pair.repeat(3);
-  }
-  const bytes = crypto.randomBytes(10);
-  let privateNumber = String(2 + (bytes[0] % 8));
-  for (let i = 1; i < bytes.length; i++) privateNumber += String(bytes[i] % 10);
-  return privateNumber;
+  if (category !== NUMBER_TIERS.STANDARD) throw new Error('Reserve allocation is not enabled');
+  return generateStandardNumber();
 }
 async function reservePrivateNumber(category = 'standard') {
+  if (category !== NUMBER_TIERS.STANDARD) throw new Error('Reserve allocation is not enabled');
   for (let attempt = 0; attempt < 100; attempt++) {
     const privateNumber = generatePrivateNumberCandidate(category);
-    if (privateNumbers.has(privateNumber)) continue;
-    const lifecycle = privateNumberLifecycle.get(privateNumber);
-    if (lifecycle && (lifecycle.status === 'retired' || lifecycle.availableAfter > Date.now())) continue;
+    if (!isNumberAvailable(privateNumber, { activeNumbers:privateNumbers, lifecycle:privateNumberLifecycle })) continue;
     const reservationToken = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
     const reservedUntil = Date.now() + PRIVATE_NUMBER_RESERVATION_TTL_MS;
@@ -814,7 +820,13 @@ function accountByPrivateNumber(value) {
   return accountId ? { accountId, account:accounts.get(accountId) } : null;
 }
 function publicAccount(account) {
-  return { privateNumber:account.privateNumber, displayName:account.displayName, address:`https://vaultlix.com/${account.privateNumber}` };
+  return {
+    privateNumber:account.privateNumber,
+    displayName:account.displayName,
+    address:`https://vaultlix.com/${account.privateNumber}`,
+    tier:account.tier || NUMBER_TIERS.STANDARD,
+    isFounding:!!account.isFounding,
+  };
 }
 function connectionPairKey(request) {
   const first = String(request?.senderAccountId || '');
@@ -891,11 +903,16 @@ async function persistAccount(accountId) {
   else saveAccounts();
 }
 
+function allocateLocalAccountCreationOrder() {
+  let highest = 0;
+  for (const account of accounts.values()) highest = Math.max(highest, Number(account.creationOrder) || 0);
+  return highest + 1;
+}
+
 async function releaseAccountNumber(accountId, account, reason) {
-  const permanent = account.numberProtection === 'purchased' || account.numberProtection === 'promotional';
   const lifecycle = {
-    status:permanent ? 'retired' : 'quarantined',
-    availableAfter:permanent ? null : Date.now() + RECLAIM_QUARANTINE_MS,
+    status:'retired',
+    availableAfter:null,
     reason,
     createdAt:Date.now(),
   };
@@ -2249,10 +2266,11 @@ async function api(path, method, d, p, res, ip, headers) {
     const generationKey = `private-number:${ip}`;
     if (rateLimited(generationKey, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
-    const allowedCategories = new Set(['standard', 'zeros', 'sequence', 'repeated', 'pairs']);
-    const category = allowedCategories.has(d.category) ? d.category : 'standard';
+    // Reserve allocation is deliberately absent from this public flow.
+    // Until the gated allocator ships, every self-serve request is Standard.
+    const category = NUMBER_TIERS.STANDARD;
     const remaining = Math.max(0, 20 - (rateLimitBuckets.get(generationKey)?.count || 0));
-    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:category !== 'standard', generationsRemaining:remaining });
+    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:false, generationsRemaining:remaining });
   }
 
   if (path === '/api/account/register' && method === 'POST') {
@@ -2296,10 +2314,19 @@ async function api(path, method, d, p, res, ip, headers) {
       return resErr(res, 'This Private Number reservation expired. Choose the number again.', 409);
     }
     const now = Date.now();
+    const [authVerifier, recoveryVerifier] = await Promise.all([
+      hashAccountSecret(d.authSecret),
+      hashAccountSecret(d.recoverySecret),
+    ]);
+    const creationOrder = postgresEnabled
+      ? await postgresStore.allocateAccountCreationOrder()
+      : allocateLocalAccountCreationOrder();
+    const reservationTier = reservedCategory === NUMBER_TIERS.STANDARD ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE;
+    const { tier, isFounding } = assignAccountTier({ creationOrder, reservationTier });
     const account = {
       version: 2, privateNumber, displayName,
-      authVerifier: await hashAccountSecret(d.authSecret),
-      recoveryVerifier: await hashAccountSecret(d.recoverySecret),
+      authVerifier,
+      recoveryVerifier,
       passwordWrap: d.passwordWrap,
       recoveryWrap: d.recoveryWrap,
       bundle: d.bundle,
@@ -2308,6 +2335,7 @@ async function api(path, method, d, p, res, ip, headers) {
       // Early-test special numbers are a product grant, not an untrusted
       // client claim. The category comes from the server-side reservation.
       numberProtection:reservedCategory === 'standard' ? 'free' : 'promotional',
+      tier, isFounding, creationOrder,
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
@@ -2520,9 +2548,15 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path.startsWith('/api/profile/') && method === 'GET') {
+    const retryAfter = profileLookupRetryAfter(req, ip);
+    if (retryAfter) {
+      res.setHeader('Retry-After', String(retryAfter));
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Too many lookups. Please wait before trying again.', 429);
+    }
     const found = accountByPrivateNumber(decodeURIComponent(path.slice('/api/profile/'.length)));
     if (!found) return resErr(res, 'Vaultlix Private Number not found.', 404);
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, profile:publicAccount(found.account) });
   }
 
@@ -4324,6 +4358,7 @@ function hydrateAccounts(entries, source) {
   if (!Array.isArray(entries)) throw new Error(`invalid ${source} account records`);
   accounts.clear();
   privateNumbers.clear();
+  let fallbackCreationOrder = 0;
   for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2 || !validAccountId(entry[0])) continue;
       const record = entry[1];
@@ -4332,7 +4367,17 @@ function hydrateAccounts(entries, source) {
           !validEncryptedField(record.bundle, 1024 * 1024)) continue;
       record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
       record.lastActiveAt = Number(record.lastActiveAt) || Date.now();
-      record.numberCategory = ['standard','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
+      record.numberCategory = ['standard','reserve','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
+      fallbackCreationOrder++;
+      record.creationOrder = Number(record.creationOrder) || fallbackCreationOrder;
+      const assignedTier = assignAccountTier({
+        creationOrder:record.creationOrder,
+        reservationTier:record.numberCategory === 'standard' ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE,
+      });
+      record.tier = [NUMBER_TIERS.STANDARD, NUMBER_TIERS.RESERVE, NUMBER_TIERS.FOUNDING].includes(record.tier)
+        ? record.tier
+        : assignedTier.tier;
+      record.isFounding = typeof record.isFounding === 'boolean' ? record.isFounding : assignedTier.isFounding;
       record.numberProtection = ['free','promotional','purchased'].includes(record.numberProtection) ? record.numberProtection : 'free';
       record.premiumUntil = Number(record.premiumUntil) || null;
       record.reclaimWarnings = Array.isArray(record.reclaimWarnings)

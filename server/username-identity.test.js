@@ -13,7 +13,7 @@ test('public Private Number is separate from the private random account id', () 
   assert.match(server, /const privateNumbers = new Map\(\)/);
   assert.match(server, /version: 2, privateNumber, displayName/);
   assert.match(server, /function generatePrivateNumberCandidate\(category = 'standard'\)/);
-  assert.match(server, /\^\[2-9\]\[0-9\]\{9\}\$/);
+  assert.match(server, /normalizePrivateNumberPolicy/);
 });
 
 test('Private Number profiles and authenticated connection requests are exposed', () => {
@@ -84,7 +84,7 @@ test('vault setup uses the permanent identity name', () => {
 test('registration uses a reserved system-generated ten-digit Private Number', () => {
   assert.match(server, /path === '\/api\/account\/private-number'/);
   assert.match(server, /await reservePrivateNumber\(category\)/);
-  assert.match(server, /privateNumbers\.has\(privateNumber\)/);
+  assert.match(server, /isNumberAvailable\(privateNumber/);
   assert.match(client, /id="account-private-number-value"/);
   assert.match(client, /function generatePrivateNumber\(category = 'standard'\)/);
   assert.match(client, /Generation limit reached\. Try again in about one hour\./);
