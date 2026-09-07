@@ -39,7 +39,10 @@
 <meta name="twitter:description" content="Create a Vaultlix private number and connect without sharing your phone number, email, or contacts.">
 <meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap"/>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"/>
+<noscript><link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/></noscript>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -55,15 +58,15 @@
    else — without this, Safari's own text-size heuristics can adjust
    rendered size independently of the CSS px value in some layouts. */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
-body{font-family:'Inter',sans-serif;background:#fff;color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:var(--cream);min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 /* Every screen already sets its own background (all white/gold themed now),
    so the document background is only ever visible in brief rendering gaps —
    e.g. the on-screen keyboard resizing the visual viewport faster than
    #s-chat's children can re-tile. It used to be black here, which showed up
    as a black strip above the keyboard on Android/Gboard in exactly that gap;
    white blends in instead. */
-button{cursor:pointer;font-family:'Inter',sans-serif;border:none;outline:none}
-input,textarea{font-family:'Inter',sans-serif;outline:none}
+button{cursor:pointer;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;border:none;outline:none}
+input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;outline:none}
 /* min-height:100dvh (not just 100vh) matters specifically on Android
    Chrome: 100vh there is sized against the viewport with the address bar
    hidden, but on first load the address bar is visible, so the actually
@@ -4516,7 +4519,10 @@ async function handleNativeCallAction(detail) {
 window.addEventListener('vaultlix:call-action', event => {
   handleNativeCallAction(event.detail || {});
 });
-window.addEventListener('load', () => {
+// Native bridges can accept tokens, call actions and universal links as soon
+// as the DOM exists. Waiting for web fonts and other load-event resources
+// made a cold native launch feel stalled even though the interface was ready.
+window.addEventListener('DOMContentLoaded', () => {
   try { window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'ready' }); } catch (e) {}
 });
 
@@ -10004,7 +10010,9 @@ function renderVaultList() {
   const orderedRooms = [...rooms.values()].sort((a, b) => vaultLastActivity(b) - vaultLastActivity(a));
   for (const room of orderedRooms) {
     const label = roomDisplayLabel(room);
-    const preview = room.restoreUnavailable
+    const preview = room.restorePending
+      ? { text:'Opening securely…', alert:false }
+      : room.restoreUnavailable
       ? { text:'Connection unavailable · tap to retry', alert:true }
       : vaultInboxPreview(room, previews);
     const activity = vaultLastActivity(room);
@@ -10023,7 +10031,10 @@ function renderVaultList() {
   scrollToFocusedConnectionRequest();
   body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => {
     const room = rooms.get(el.dataset.room);
-    if (room?.restoreUnavailable) {
+    if (room?.restorePending) {
+      toast('Opening this private conversation securely…');
+    }
+    else if (room?.restoreUnavailable) {
       toast('Retrying this preserved conversation…');
       location.reload();
     }
@@ -13068,7 +13079,7 @@ function hideRestoreSkeleton() {
   setTimeout(() => overlay.remove(), 190);
 }
 
-window.addEventListener('load', async () => {
+window.addEventListener('DOMContentLoaded', async () => {
   // Captured up front, before anything else touches the URL — read once
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
@@ -13109,7 +13120,24 @@ window.addEventListener('load', async () => {
         return session && (!session.ownerAccountId || session.ownerAccountId === startupAccount.accountId);
       })
     : [];
-  if (idx.length > 0) showRestoreSkeleton();
+  if (idx.length > 0) {
+    // Hydrate only non-secret inbox metadata synchronously and reveal it
+    // before the first network round trip. Key import, server rejoin and
+    // ciphertext history restoration continue below. A conversation cannot
+    // be opened until restorePending clears, so this faster first frame does
+    // not bypass authentication or key verification.
+    for (const code of idx) {
+      const session = loadRoomSession(code);
+      if (!session) continue;
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
+      room.nickname = session.nickname || null;
+      room.restorePending = true;
+      addRoomToState(room);
+    }
+    showScreen('s-vault-list');
+    hideRestoreSkeleton();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
   let restoredAny = false;
   // VLX-01: set if any restored room's key fails its commitment check below —
   // shown once, after the loop, rather than mid-loop where it would fight
@@ -13120,8 +13148,8 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
-    room.nickname = session.nickname || null;
+    const room = rooms.get(code);
+    if (!room) continue;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the
     // permanent-link suggestion looks for. Throttled to once per 4 hours so a burst
@@ -13184,6 +13212,7 @@ window.addEventListener('load', async () => {
         // encrypted local session visible and retryable; previously any
         // server rejection immediately erased it from the inbox while its
         // native call route could remain registered.
+        room.restorePending = false;
         room.restoreUnavailable = true;
         room.restoreError = result.error;
         addRoomToState(room);
@@ -13238,7 +13267,7 @@ window.addEventListener('load', async () => {
           // live, valid membership token), so release it before discarding,
           // not a third silent leak of the same bug.
           await leaveRoomBestEffort(room);
-          clearRoomStorage(room.code);
+          removeRoomFromState(room.code);
           keyMismatchAfterRestore = true;
           continue;
         }
@@ -13260,8 +13289,17 @@ window.addEventListener('load', async () => {
         room.pendingHistoryRestore = true;
       }
       addRoomToState(room);
+      room.restorePending = false;
       restoredAny = true;
-    } catch(e) { /* leave this room's storage in place for a later retry */ }
+      if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+    } catch(e) {
+      // Keep the locally known entry visible and retryable without holding
+      // the entire launch screen hostage to one unavailable conversation.
+      room.restorePending = false;
+      room.restoreUnavailable = true;
+      room.restoreError = e?.message || 'Could not restore conversation';
+      if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+    }
   }
 
   if (restoredAny) {

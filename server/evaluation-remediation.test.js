@@ -31,3 +31,15 @@ test('signed-out UI does not hydrate or render locally retained conversations', 
 test('App Lock describes its screen-lock boundary accurately', () => {
   assert.match(client, /App Lock protects the screen; it does not separately encrypt browser storage\./);
 });
+
+test('authenticated launch paints the local inbox before network restoration', () => {
+  assert.match(client, /rel="stylesheet" media="print" onload="this\.media='all'"/);
+  assert.match(client, /window\.addEventListener\('DOMContentLoaded', async \(\) => \{/);
+  assert.match(client, /window\.addEventListener\('DOMContentLoaded', \(\) => \{\s*try \{ window\.webkit\?\.messageHandlers\?\.vaultlixCall/);
+  const hydrateAt = client.indexOf('room.restorePending = true;');
+  const revealAt = client.indexOf("showScreen('s-vault-list');", hydrateAt);
+  const joinAt = client.indexOf("const result = await api('/api/join'", hydrateAt);
+  assert.ok(hydrateAt > -1 && revealAt > hydrateAt && joinAt > revealAt,
+    'local room metadata must be visible before the first server join');
+  assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*Opening this private conversation securely/);
+});
