@@ -23,6 +23,7 @@ self.addEventListener('push', (event) => {
   const body = data.body || 'New message';
   const tag = data.tag || 'vaultlix-message';
   const isCall = !!data.isCall;
+  const sessionReplaced = !!data.sessionReplaced;
 
   event.waitUntil((async () => {
     // iOS Safari REQUIRES every push event to result in a visible
@@ -105,8 +106,16 @@ self.addEventListener('push', (event) => {
         code: data.code || null,
         connectionRequest: !!data.connectionRequest,
         requestId: data.requestId || null,
+        sessionReplaced,
+        accountId: sessionReplaced ? (data.accountId || null) : null,
       },
     });
+
+    if (sessionReplaced) {
+      for (const client of clientsList) {
+        if ('postMessage' in client) client.postMessage({ type:'session-replaced', accountId:data.accountId || null });
+      }
+    }
 
     if (hasFocusedClient) {
       const shown = await self.registration.getNotifications({ tag });
@@ -157,6 +166,8 @@ self.addEventListener('notificationclick', (event) => {
   const code = (event.notification.data && event.notification.data.code) || null;
   const connectionRequest = !!(event.notification.data && event.notification.data.connectionRequest);
   const requestId = (event.notification.data && event.notification.data.requestId) || null;
+  const sessionReplaced = !!(event.notification.data && event.notification.data.sessionReplaced);
+  const accountId = (event.notification.data && event.notification.data.accountId) || null;
   event.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (clientsList.length > 0) {
@@ -170,7 +181,8 @@ self.addEventListener('notificationclick', (event) => {
       // if the room list hasn't finished restoring yet, it queues the
       // code and applies it once that finishes instead of dropping it.
       if ('postMessage' in c) {
-        if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
+        if (sessionReplaced) c.postMessage({ type:'session-replaced', accountId });
+        else if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
         else if (code) c.postMessage({ type: 'notification-click', code });
       }
       return;
@@ -180,6 +192,9 @@ self.addEventListener('notificationclick', (event) => {
     // The page reads this on boot, after its own room-restore sequence
     // finishes (see the `?room=` handling in index.html).
     if (self.clients.openWindow) {
+      if (sessionReplaced) {
+        return self.clients.openWindow(accountId ? `/?sessionReplaced=1&accountId=${encodeURIComponent(accountId)}` : '/?sessionReplaced=1');
+      }
       if (connectionRequest) {
         return self.clients.openWindow(requestId ? `/?connectionRequest=${encodeURIComponent(requestId)}` : '/?connectionRequest=pending');
       }

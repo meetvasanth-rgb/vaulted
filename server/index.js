@@ -430,6 +430,8 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     msgId: parsed.msgId || '',
     connectionRequest: !!parsed.connectionRequest,
     requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
+    sessionReplaced: !!parsed.sessionReplaced,
+    accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
   });
   return new Promise((resolve) => {
     let client;
@@ -496,6 +498,8 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         msgId: String(parsed.msgId || ''),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
+        sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
+        accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
       },
@@ -770,6 +774,10 @@ async function verifyAccountSecret(secret, verifier) {
 }
 function validAccountId(value) { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
 function validAccountSecret(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{40,96}$/.test(value); }
+function accountDeviceHash(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{20,128}$/.test(value)) return null;
+  return crypto.createHash('sha256').update(`vaultlix-device-v1\0${value}`).digest('hex');
+}
 function validEncryptedField(value, max) { return typeof value === 'string' && value.length >= 20 && value.length <= max; }
 function normalizePrivateNumber(value) {
   return normalizePrivateNumberPolicy(value);
@@ -870,12 +878,12 @@ function touchAccountActivity(accountId, account, { persist = false } = {}) {
     persistAccount(accountId).catch(error => console.warn('Account activity save failed:', error.message));
   }
 }
-function newAccountSession(account) {
+function newAccountSession(account, deviceHash = null) {
   const token = crypto.randomBytes(32).toString('base64url');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const now = Date.now();
   account.sessions = (account.sessions || []).filter(s => s.expiresAt > now).slice(-4);
-  account.sessions.push({ tokenHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
+  account.sessions.push({ tokenHash, deviceHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
   account.lastActiveAt = now;
   account.reclaimWarnings = [];
   return token;
@@ -2295,7 +2303,7 @@ async function api(path, method, d, p, res, ip, headers) {
       if (!(await verifyAccountSecret(d.authSecret, existing.authVerifier))) {
         return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
       }
-      const sessionToken = newAccountSession(existing);
+      const sessionToken = await replaceAccountLoginSession(d.accountId, existing, accountDeviceHash(d.deviceId));
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision, retention:accountRetention(existing) });
@@ -2339,7 +2347,7 @@ async function api(path, method, d, p, res, ip, headers) {
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
-    const sessionToken = newAccountSession(account);
+    const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
     accounts.set(d.accountId, account);
     privateNumbers.set(privateNumber, d.accountId);
     await persistAccount(d.accountId);
@@ -2361,10 +2369,35 @@ async function api(path, method, d, p, res, ip, headers) {
     const verifier = account ? account.authVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.authSecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
-    const sessionToken = newAccountSession(account);
+    const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
+  }
+
+  if (path === '/api/account/change-password' && method === 'POST') {
+    if (rateLimited(`account-password-change:${d.accountId || ip}`, 6, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many password changes — try again later.', 429);
+    }
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const currentPasswordValid = await verifyAccountSecret(d.currentAuthSecret, account.authVerifier);
+    if (!currentPasswordValid) return resErr(res, 'Current password is incorrect.', 403);
+    if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) {
+      return resErr(res, 'Invalid password update.', 400);
+    }
+    account.authVerifier = await hashAccountSecret(d.newAuthSecret);
+    account.passwordWrap = d.passwordWrap;
+    const sessionToken = await replaceAccountLoginSession(d.accountId, account, accountDeviceHash(d.deviceId), {
+      notificationTitle:'Vaultlix password changed',
+      notificationBody:'Your Vaultlix password was changed. This device has been signed out.',
+      notificationTag:'vaultlix-password-changed',
+    });
+    account.updatedAt = Date.now();
+    await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, accountId:d.accountId, sessionToken, revision:account.revision, ...publicAccount(account) });
   }
 
   if (path === '/api/account/recover' && method === 'POST') {
@@ -2377,8 +2410,11 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) return resErr(res, 'Invalid recovery update.', 400);
     account.authVerifier = await hashAccountSecret(d.newAuthSecret);
     account.passwordWrap = d.passwordWrap;
-    account.sessions = [];
-    const sessionToken = newAccountSession(account);
+    const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId), {
+      notificationTitle:'Vaultlix identity recovered',
+      notificationBody:'Your Vaultlix identity was recovered and its password was changed. This device has been signed out.',
+      notificationTag:'vaultlix-identity-recovered',
+    });
     account.updatedAt = Date.now();
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
@@ -2608,16 +2644,17 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);
     if (rateLimited(`account-native-push:${d.accountId}`, 20, 60 * 1000)) return resErr(res, 'Too many notification updates.', 429);
+    const deviceHash = accountDeviceHash(d.deviceId);
     let destination;
     if (d.platform === 'android') {
       const fcmToken = validateFcmToken(d.deviceToken);
       if (!fcmToken) return resErr(res, 'Invalid device token.', 400);
-      destination = { platform:'android', fcmToken, updatedAt:Date.now() };
+      destination = { platform:'android', fcmToken, deviceHash, updatedAt:Date.now() };
     } else if (d.platform === 'ios') {
       const apnsToken = validateApnsToken(d.deviceToken);
       if (!apnsToken) return resErr(res, 'Invalid device token.', 400);
       if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res, 'Invalid APNs environment.', 400);
-      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, updatedAt:Date.now() };
+      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, deviceHash, updatedAt:Date.now() };
     } else {
       return resErr(res, 'Invalid native platform.', 400);
     }
@@ -3804,6 +3841,76 @@ function publishInboxAccount(accountId, change, payload = null) {
   }
 }
 
+function closeReplacedAccountSockets(accountId, revokedTokenHashes) {
+  const sockets = inboxAccountSockets.get(accountId);
+  if (!sockets) return;
+  for (const ws of [...sockets]) {
+    if (!revokedTokenHashes.has(ws.sessionTokenHash)) continue;
+    try {
+      ws.send(JSON.stringify({ type:'account-update', change:'session-replaced', accountId }));
+      ws.close(4004, 'Signed in on another device');
+    } catch (e) {}
+  }
+}
+
+async function clearAccountRoomPushDestinations(accountId, account) {
+  const affected = new Map();
+  for (const request of account.connectionRequests || []) {
+    if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') continue;
+    const match = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i);
+    if (!match || affected.has(match[1].toLowerCase())) continue;
+    const roomCode = match[1].toLowerCase();
+    const room = rooms.get(roomCode);
+    if (!room) continue;
+    const slot = request.recipientAccountId === accountId ? 1 :
+      (request.senderAccountId === accountId ? 2 : null);
+    if (!slot) continue;
+    const memberEntry = [...room.members].find(([, member]) => member.slot === slot);
+    if (!memberEntry) continue;
+    const member = memberEntry[1];
+    member.pushSub = null;
+    member.fcmToken = null;
+    member.apnsToken = null;
+    member.apnsEnvironment = null;
+    member.voipToken = null;
+    member.voipEnvironment = null;
+    member.nativeRoomHandle = null;
+    affected.set(roomCode, memberEntry);
+  }
+  if (postgresEnabled) {
+    await Promise.all([...affected].map(([roomCode, [memberToken, member]]) =>
+      postgresStore.upsertConversationMember(roomCode, member.slot, memberToken, member)));
+  }
+}
+
+async function replaceAccountLoginSession(accountId, account, deviceHash, options = {}) {
+  const now = Date.now();
+  const activeSessions = (account.sessions || []).filter(session => session.expiresAt > now);
+  const revokedTokenHashes = new Set(activeSessions.map(session => session.tokenHash));
+  const differentDevice = activeSessions.some(session => !deviceHash || !session.deviceHash || session.deviceHash !== deviceHash);
+
+  if (differentDevice) {
+    const payload = JSON.stringify({
+      title:options.notificationTitle || 'Vaultlix signed out',
+      body:options.notificationBody || 'Your Vaultlix identity was signed in on another device. This device has been signed out.',
+      tag:options.notificationTag || 'vaultlix-session-replaced',
+      sessionReplaced:true,
+      accountId,
+    });
+    const previousDestinations = account.pushDestinations || [];
+    for (const destination of previousDestinations) {
+      if (deviceHash && destination.deviceHash === deviceHash) continue;
+      sendMemberPush(destination, payload, { urgency:'high', TTL:3600, label:'session replacement' });
+    }
+    account.pushDestinations = previousDestinations.filter(destination => deviceHash && destination.deviceHash === deviceHash);
+    await clearAccountRoomPushDestinations(accountId, account);
+  }
+
+  account.sessions = [];
+  closeReplacedAccountSockets(accountId, revokedTokenHashes);
+  return newAccountSession(account, deviceHash);
+}
+
 function hasLiveInboxSubscription(roomCode, token, exceptSocket = null) {
   const sockets = inboxSocketsByRoom.get(roomCode);
   if (!sockets) return false;
@@ -3892,6 +3999,7 @@ inboxWss.on('connection', (ws) => {
       clearTimeout(authTimer);
       ws.authenticated = true;
       ws.accountId = msg.accountId;
+      ws.sessionTokenHash = crypto.createHash('sha256').update(msg.sessionToken).digest('hex');
       let sockets = inboxAccountSockets.get(msg.accountId);
       if (!sockets) { sockets = new Set(); inboxAccountSockets.set(msg.accountId, sockets); }
       sockets.add(ws);
@@ -4365,7 +4473,10 @@ function hydrateAccounts(entries, source) {
       if (!record || record.version !== 2 || !normalizePrivateNumber(record.privateNumber) || !normalizeDisplayName(record.displayName) || !record.authVerifier || !record.recoveryVerifier ||
           !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
           !validEncryptedField(record.bundle, 1024 * 1024)) continue;
-      record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
+      record.sessions = (record.sessions || [])
+        .filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || ''))
+        .map(session => ({ ...session, deviceHash:/^[a-f0-9]{64}$/.test(session.deviceHash || '') ? session.deviceHash : null }))
+        .slice(-1);
       record.lastActiveAt = Number(record.lastActiveAt) || Date.now();
       record.numberCategory = ['standard','reserve','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
       fallbackCreationOrder++;
@@ -4386,12 +4497,14 @@ function hydrateAccounts(entries, source) {
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
-          return fcmToken ? [{ platform:'android', fcmToken, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+          const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
+          return fcmToken ? [{ platform:'android', fcmToken, deviceHash, updatedAt:Number(destination.updatedAt) || 0 }] : [];
         }
         if (destination?.platform === 'ios') {
           const apnsToken = validateApnsToken(destination.apnsToken);
           const apnsEnvironment = destination.apnsEnvironment === 'sandbox' ? 'sandbox' : 'production';
-          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+          const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
+          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, deviceHash, updatedAt:Number(destination.updatedAt) || 0 }] : [];
         }
         return [];
       }).slice(-10);

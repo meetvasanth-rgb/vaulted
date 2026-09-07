@@ -9,7 +9,7 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 test('account registration safely handles a lost first response', () => {
   assert.match(server, /existingNumberOwner === d\.accountId/);
   assert.match(server, /verifyAccountSecret\(d\.authSecret, existing\.authVerifier\)/);
-  assert.match(server, /newAccountSession\(existing\)/);
+  assert.match(server, /replaceAccountLoginSession\(d\.accountId, existing, accountDeviceHash\(d\.deviceId\)\)/);
   assert.match(client, /for \(let attempt = 0; attempt < 3; attempt\+\+\)/);
   assert.match(client, /attempt === 0 \? 500 : 1500/);
   assert.match(client, /Registration returned no response/);

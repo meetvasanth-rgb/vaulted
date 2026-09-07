@@ -3372,6 +3372,15 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <button class="account-primary" type="button" onclick="shareOwnPrivateNumber()">Share my Vaultlix Private Number</button>
       <button class="account-secondary" type="button" onclick="showOwnPrivateNumberQr()">Show my Quick Connect QR</button>
       <div class="settings-divider" style="margin:20px 0"></div>
+      <div class="account-copy"><strong>Change password</strong><br/>Choose a new password and sign out every other device.</div>
+      <form id="account-change-password-form" onsubmit="changeAccountPassword(event)">
+        <label class="account-field"><span>Current password</span><input id="account-current-password" type="password" autocomplete="current-password" required/></label>
+        <label class="account-field"><span>New password</span><input id="account-new-password" type="password" autocomplete="new-password" minlength="8" required/></label>
+        <label class="account-field"><span>Confirm new password</span><input id="account-confirm-new-password" type="password" autocomplete="new-password" minlength="8" required/></label>
+        <button class="account-secondary" type="submit" data-busy-label="Changing…">Change password</button>
+      </form>
+      <button class="account-secondary" type="button" onclick="openPasswordRecoveryFromSettings()">Use recovery code instead</button>
+      <div class="settings-divider" style="margin:20px 0"></div>
       <div class="account-copy"><strong>Password recovery code</strong><br/>An encrypted copy is kept on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
       <div class="account-note" id="account-recovery-backup-status"></div>
       <div id="account-saved-recovery" style="display:none">
@@ -3990,6 +3999,7 @@ let activeRoomCode = null;
 const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
 const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 const ACCOUNT_STATE_KEY = 'vaultlix_anonymous_account_v1';
+const ACCOUNT_DEVICE_KEY = 'vaultlix_device_installation_v1';
 const ACCOUNT_PBKDF2_ITERATIONS = 310000;
 let accountSyncTimer = null;
 // This used to be 5 minutes, which meant closing the app/tab for longer than
@@ -4018,6 +4028,13 @@ function privateLookupKey() {
   if (/^[A-Za-z0-9_-]{20,128}$/.test(value)) return value;
   value = bytesToBase64UrlCompact(crypto.getRandomValues(new Uint8Array(24)));
   localStorage.setItem(storageKey, value);
+  return value;
+}
+function accountDeviceId() {
+  let value = localStorage.getItem(ACCOUNT_DEVICE_KEY) || '';
+  if (/^[A-Za-z0-9_-]{20,128}$/.test(value)) return value;
+  value = bytesToBase64UrlCompact(crypto.getRandomValues(new Uint8Array(24)));
+  localStorage.setItem(ACCOUNT_DEVICE_KEY, value);
   return value;
 }
 function base64UrlToBytes(value) {
@@ -8060,6 +8077,64 @@ async function updateAccountUsername(event) {
     updateAccountSettingsStatus(); renderVaultList(); toast('Username updated');
   } finally { setAccountBusy(form, false); }
 }
+async function changeAccountPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const state = loadAccountState();
+  if (!state) return;
+  const currentPassword = document.getElementById('account-current-password').value;
+  const newPassword = document.getElementById('account-new-password').value;
+  const confirmation = document.getElementById('account-confirm-new-password').value;
+  if (newPassword.length < 8) { toast('Use a password of at least 8 characters'); return; }
+  if (newPassword !== confirmation) { toast('New passwords do not match'); return; }
+  if (newPassword === currentPassword) { toast('Choose a password you have not used here'); return; }
+  setAccountBusy(form, true);
+  try {
+    await syncAnonymousAccount(false);
+    const [currentMaterial, newMaterial] = await Promise.all([
+      derivePasswordMaterial(state.privateNumber, currentPassword),
+      derivePasswordMaterial(state.privateNumber, newPassword),
+    ]);
+    const passwordWrap = await aesEncryptJson(newMaterial.wrapKey, { masterKey:state.masterKey });
+    disconnectInbox();
+    const result = await api('/api/account/change-password', {
+      accountId:state.accountId,
+      sessionToken:state.sessionToken,
+      currentAuthSecret:currentMaterial.authSecret,
+      newAuthSecret:newMaterial.authSecret,
+      passwordWrap,
+      deviceId:accountDeviceId(),
+    });
+    if (result.error) {
+      connectInbox();
+      toast(result.error);
+      return;
+    }
+    state.sessionToken = result.sessionToken;
+    state.revision = result.revision;
+    saveAccountState(state);
+    form.reset();
+    connectInbox();
+    registerNativeTokenForAllRooms().catch(() => {});
+    toast('Password changed · other devices signed out');
+  } catch (error) {
+    connectInbox();
+    toast('Password could not be changed');
+  } finally { setAccountBusy(form, false); }
+}
+function openPasswordRecoveryFromSettings() {
+  const state = loadAccountState();
+  if (!state) return;
+  closeSettings();
+  document.getElementById('account-guest-view').style.display = '';
+  document.getElementById('account-signed-view').classList.remove('open');
+  document.getElementById('account-title').textContent = 'Recover your Vaultlix identity';
+  document.getElementById('account-overlay').classList.add('open');
+  showAccountTab('recover');
+  const number = document.getElementById('account-recover-private-number');
+  number.value = formatPrivateNumber(state.privateNumber);
+  document.getElementById('account-recovery-code').focus();
+}
 async function decryptSavedRecoveryCode(state = loadAccountState()) {
   if (!state?.recoveryCodeWrap) throw new Error('Recovery code is not saved on this device');
   const saved = await aesDecryptJson(base64UrlToBytes(state.masterKey), state.recoveryCodeWrap);
@@ -8465,6 +8540,7 @@ async function createAnonymousAccount(event) {
         const recovery = await recoveryMaterial(recoveryCode);
         payload = {
           accountId, privateNumber, displayName,
+          deviceId: accountDeviceId(),
           reservationToken: pendingPrivateNumberReservation,
           numberCategory: pendingPrivateNumberCategory,
           authSecret: passwordMaterial.authSecret,
@@ -8527,7 +8603,7 @@ async function loginAnonymousAccount(event) {
   setAccountBusy(form, true);
   try {
     const material = await derivePasswordMaterial(privateNumber, password);
-    const result = await api('/api/account/login', { privateNumber, authSecret:material.authSecret });
+    const result = await api('/api/account/login', { privateNumber, authSecret:material.authSecret, deviceId:accountDeviceId() });
     if (result.error) { status.textContent = result.error; status.hidden = false; toast(result.error); return; }
     const wrapped = await aesDecryptJson(material.wrapKey, result.passwordWrap);
     const masterKey = base64UrlToBytes(wrapped.masterKey);
@@ -8558,8 +8634,10 @@ async function recoverAnonymousAccount(event) {
     const masterKey = base64UrlToBytes(recovered.masterKey);
     const material = await derivePasswordMaterial(privateNumber, password);
     const passwordWrap = await aesEncryptJson(material.wrapKey, { masterKey:recovered.masterKey });
-    const result = await api('/api/account/recover', { privateNumber, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap });
-    if (result.error) { toast(result.error); return; }
+    const replacingSignedInAccount = loadAccountState()?.privateNumber === privateNumber;
+    if (replacingSignedInAccount) disconnectInbox();
+    const result = await api('/api/account/recover', { privateNumber, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap, deviceId:accountDeviceId() });
+    if (result.error) { if (replacingSignedInAccount) connectInbox(); toast(result.error); return; }
     importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
     saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode:code.trim() }), tier:result.tier || 'standard', isFounding:!!result.isFounding });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
@@ -8606,6 +8684,27 @@ async function syncAnonymousAccount(showFeedback) {
     if (status) status.textContent = `Encrypted sync complete · ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
     if (showFeedback) toast('Conversations synced securely');
   } catch (e) { if (status) status.textContent = 'Sync paused — will retry'; if (showFeedback) toast('Could not sync right now'); }
+}
+let accountReplacementActive = false;
+function clearReplacedAccountLocally(accountId, reload = true) {
+  const state = loadAccountState();
+  if (!state || (accountId && state.accountId !== accountId) || accountReplacementActive) return false;
+  accountReplacementActive = true;
+  clearTimeout(accountSyncTimer);
+  disconnectInbox();
+  const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)?.ownerAccountId === state.accountId);
+  for (const code of ownedCodes) {
+    if (rooms.has(code)) removeRoomFromState(code);
+    else {
+      secureNativeClearConversation(code);
+      clearRoomStorage(code);
+      idbRemoveSession(code).catch(() => {});
+    }
+  }
+  localStorage.removeItem(ACCOUNT_STATE_KEY);
+  if (!rooms.has(activeRoomCode)) saveActiveRoomCode(rooms.keys().next().value || null);
+  if (reload) location.replace(`${location.pathname}?sessionReplaced=1`);
+  return true;
 }
 async function signOutAnonymousAccount() {
   const state = loadAccountState(); if (!state) return;
@@ -9419,6 +9518,7 @@ async function registerNativeTokenForAccount() {
   await api('/api/account/native-push-subscribe', {
     accountId: account.accountId,
     sessionToken: account.sessionToken,
+    deviceId: accountDeviceId(),
     deviceToken: nativePushToken,
     platform,
     environment: nativeVoipRegistration?.environment || 'production',
@@ -9445,6 +9545,10 @@ async function ensureNativePushListeners() {
     toast('Vaultlix could not register notifications. Please try again.');
   });
   await plugin.addListener('pushNotificationReceived', event => {
+    if (event?.data?.sessionReplaced === true || event?.data?.sessionReplaced === 'true') {
+      clearReplacedAccountLocally(event.data.accountId || null);
+      return;
+    }
     if (event?.data?.connectionRequest === true || event?.data?.connectionRequest === 'true') {
       refreshConnectionRequests().catch(() => {});
       toast(event?.body || 'New Vaultlix connection request');
@@ -9452,6 +9556,10 @@ async function ensureNativePushListeners() {
   });
   await plugin.addListener('pushNotificationActionPerformed', event => {
     const notification = event?.notification || {};
+    if (notification?.data?.sessionReplaced === true || notification?.data?.sessionReplaced === 'true') {
+      clearReplacedAccountLocally(notification.data.accountId || null);
+      return;
+    }
     if (notification?.data?.connectionRequest === true || notification?.data?.connectionRequest === 'true') {
       openConnectionRequest(notification.data.requestId || null).catch(() => {});
       return;
@@ -9908,6 +10016,10 @@ function switchToRoomByCode(code) {
 let pendingNotificationRoomCode = null;
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'session-replaced') {
+      clearReplacedAccountLocally(event.data.accountId || null);
+      return;
+    }
     if (event.data && event.data.type === 'connection-request-click') {
       openConnectionRequest(event.data.requestId || null).catch(() => {});
       return;
@@ -11151,7 +11263,11 @@ async function syncInbox({ refreshAll = false } = {}) {
       conversations:credentials,
     });
   } catch (e) { return; }
-  if (!result || result.error) return;
+  if (!result) return;
+  if (result.error) {
+    if (result.status === 401) clearReplacedAccountLocally(account.accountId);
+    return;
+  }
   if (Number.isFinite(result.sequence)) inboxSequence = Math.max(inboxSequence, result.sequence);
   for (const update of result.updates || []) {
     const room = rooms.get(update.code);
@@ -11186,6 +11302,10 @@ function connectInbox() {
       return;
     }
     if (message.type === 'account-update') {
+      if (message.change === 'session-replaced') {
+        clearReplacedAccountLocally(message.accountId || account.accountId);
+        return;
+      }
       refreshConnectionRequests().catch(() => {});
       return;
     }
@@ -11201,8 +11321,12 @@ function connectInbox() {
     }
     if (message.type === 'room-update') doPoll(room);
   };
-  socket.onclose = () => {
+  socket.onclose = event => {
     if (inboxSocket === socket) inboxSocket = null;
+    if (event.code === 4001 || event.code === 4004) {
+      clearReplacedAccountLocally(account.accountId);
+      return;
+    }
     if (!loadAccountState()) return;
     const delay = Math.min(30000, 1000 * (2 ** Math.min(inboxReconnectAttempts++, 5)));
     inboxReconnectTimer = setTimeout(connectInbox, delay);
@@ -12840,6 +12964,11 @@ window.addEventListener('load', async () => {
   // sequence without exposing a vault above the device keyguard.
   const startupParams = new URLSearchParams(location.search);
   const startupConnectionRequestId = startupParams.get('connectionRequest');
+  const startupSessionWasReplaced = startupParams.get('sessionReplaced') === '1';
+  if (startupSessionWasReplaced) {
+    clearReplacedAccountLocally(startupParams.get('accountId') || null, false);
+    history.replaceState(null, '', location.pathname);
+  }
   if (startupParams.get('nativeCallMode') === 'locked') {
     document.body.classList.add('native-call-only');
   }
@@ -13082,6 +13211,7 @@ window.addEventListener('load', async () => {
     }
   }
   if (loadAccountState()) connectInbox();
+  if (startupSessionWasReplaced) toast('This device was signed out because your Vaultlix identity was used on another device.');
   // VLX-01: shown last, on top of whatever screen the logic above settled
   // on — a saved room whose key no longer matches its invite-link
   // commitment was already dropped from state and storage inside the loop
