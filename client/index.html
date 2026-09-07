@@ -4144,7 +4144,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerPrivateNumber, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
+function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -4191,7 +4191,7 @@ function makeRoom({ code, token, myName, peerPrivateNumber, deleteTimerSeconds, 
     // blob, see persistRoom). Takes priority over the peer's own chosen
     // display name when both exist; see roomDisplayLabel().
     nickname: null,
-    peerName: null,
+    peerName: typeof peerName === 'string' && peerName.trim() ? peerName.trim().slice(0, 32) : null,
     // Learned only from an accepted account-to-account connection and
     // included in the client-encrypted account bundle with this room.
     // Legacy invitation rooms intentionally leave it null.
@@ -4202,7 +4202,7 @@ function makeRoom({ code, token, myName, peerPrivateNumber, deleteTimerSeconds, 
     // the composer gates on this, not on peerOnline, so a momentary
     // heartbeat lapse (peer's phone screen locks, brief backgrounding)
     // doesn't lock you out of typing mid-conversation.
-    everOnline: false,
+    everOnline: !!everOnline,
     // Call state — see the CALL STATE section. 'idle' unless a call is
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null, callInviteId: null,
@@ -4557,6 +4557,14 @@ async function persistRoom(room) {
     localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
       code: room.code, token: room.token, name: room.myName,
       nickname: room.nickname,
+      // Keep the human identity and the fact that this room was genuinely
+      // connected alongside the encrypted room credentials. If the peer
+      // later leaves or erases their device, the server has no live peer
+      // record to return on our next launch. Without these fields an
+      // established conversation looked like a never-used invitation:
+      // the inbox fell back to its room code and reopened the share screen.
+      peerName: room.peerName || null,
+      everOnline: !!room.everOnline,
       peerPrivateNumber: room.peerPrivateNumber || null,
       persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
       reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
@@ -8232,11 +8240,17 @@ async function reconcileConversationPeerIdentities(requests, state) {
     if (!room) continue;
     const current = normalizePrivateNumber(room.peerPrivateNumber);
     const selfNumber = normalizePrivateNumber(state.privateNumber);
+    let changed = false;
     if (!current || current === selfNumber) {
       room.peerPrivateNumber = peer.privateNumber;
-      if (peer.displayName) room.peerName = peer.displayName;
-      await persistRoom(room);
+      changed = true;
     }
+    // Accepted account-to-account connections are established rooms even
+    // when the peer currently has no device membership. This also migrates
+    // room snapshots saved before peerName/everOnline were persisted.
+    if (peer.displayName && room.peerName !== peer.displayName) { room.peerName = peer.displayName; changed = true; }
+    if (!room.everOnline) { room.everOnline = true; changed = true; }
+    if (changed) await persistRoom(room);
   }
 }
 async function refreshConnectionRequests() {
@@ -11419,14 +11433,15 @@ async function doPoll(room) {
     }
 
     const wasOnline = room.peerOnline;
+    const wasEverOnline = room.everOnline;
     const previousPeerName = room.peerName;
     room.peerOnline = data.peerOnline;
     if (data.peerName) room.peerName = data.peerName;
-    if (room.peerName && room.peerName !== previousPeerName) {
+    if (data.peerOnline) room.everOnline = true;
+    if ((room.peerName && room.peerName !== previousPeerName) || room.everOnline !== wasEverOnline) {
       await persistRoom(room);
       renderVaultList();
     }
-    if (data.peerOnline) room.everOnline = true;
     if (room.code === activeRoomCode) {
       setStatus(data.peerOnline, data.peerName);
       updateHeaderRoomLabel(room); // picks up the peer's name the moment it's first known, unless a nickname overrides it
@@ -12007,6 +12022,10 @@ function startWaitingForPeer(room, { silent = false } = {}) {
       room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
       if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
       if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
+      // This is the transition from invitation to established
+      // conversation. Save it immediately so a later peer departure cannot
+      // turn the conversation back into a shareable waiting room.
+      await persistRoom(room);
       setActiveRoom(room.code);
       // Kick off polling/signaling right away, in parallel with the
       // ~2.85s V-entrance ceremony below, instead of waiting for it to
@@ -12164,6 +12183,9 @@ async function handleSetup({ silent = false } = {}) {
         room.lastKnownPeerPubKey = result.peerPubKey;
       }
       room.peerOnline = true; room.everOnline = true;
+      // The earlier save happened before everOnline became true. Persist
+      // the completed handshake state before this room can be restored.
+      await persistRoom(room);
 
       setActiveRoom(room.code);
       // Same reordering as the peer_joined branch above — start
@@ -12995,7 +13017,7 @@ window.addEventListener('load', async () => {
   for (const code of idx) {
     const session = loadRoomSession(code);
     if (!session) continue;
-    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerPrivateNumber:session.peerPrivateNumber, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
+    const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
     room.nickname = session.nickname || null;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the
