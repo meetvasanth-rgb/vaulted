@@ -90,7 +90,31 @@ test('a sign-in on another device immediately replaces the previous session', { 
   }));
   await ready;
 
-  const replacement = nextMessage(ws, message => message.type === 'account-update' && message.change === 'session-replaced');
+  let replacementSeenDuringRefresh = false;
+  ws.on('message', raw => {
+    try {
+      const message = JSON.parse(raw);
+      if (message.type === 'account-update' && message.change === 'session-replaced') replacementSeenDuringRefresh = true;
+    } catch (error) {}
+  });
+  const refreshedClose = new Promise(resolve => ws.once('close', (code, reason) => resolve({ code, reason:String(reason) })));
+  const refreshed = await post(base, '/api/account/login', {
+    privateNumber:'2345678901', authSecret, deviceId:'first-device-installation-token',
+  });
+  assert.equal(refreshed.status, 200);
+  assert.equal((await refreshedClose).code, 4003);
+  assert.equal(replacementSeenDuringRefresh, false);
+
+  const replacementWs = new WebSocket(`ws://127.0.0.1:${port}/ws/inbox`);
+  sockets.push(replacementWs);
+  await new Promise((resolve, reject) => replacementWs.once('open', resolve).once('error', reject));
+  const replacementReady = nextMessage(replacementWs, message => message.type === 'ready');
+  replacementWs.send(JSON.stringify({
+    type:'auth', accountId:refreshed.data.accountId, sessionToken:refreshed.data.sessionToken,
+  }));
+  await replacementReady;
+
+  const replacement = nextMessage(replacementWs, message => message.type === 'account-update' && message.change === 'session-replaced');
   const signedIn = await post(base, '/api/account/login', {
     privateNumber:'2345678901', authSecret, deviceId:'second-device-installation-token',
   });
@@ -141,4 +165,13 @@ test('session replacement is carried through native and web notification paths',
   assert.match(client, /id="account-change-password-form"/);
   assert.match(server, /\/api\/account\/change-password/);
   assert.match(worker, /type:'session-replaced'/);
+});
+
+test('ordinary authentication and restoration failures preserve local conversations', () => {
+  const client = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf8');
+  assert.match(client, /if \(result\.status === 401\) requestAccountReauthentication\(\)/);
+  assert.doesNotMatch(client, /event\.code === 4001 \|\| event\.code === 4004/);
+  assert.match(client, /if \(event\.code === 4001\) \{[\s\S]*requestAccountReauthentication\(\)/);
+  assert.match(client, /if \(result\.error\) \{[\s\S]*room\.restoreUnavailable = true;[\s\S]*addRoomToState\(room\);[\s\S]*restoredAny = true;[\s\S]*continue;/);
+  assert.match(client, /Connection unavailable · tap to retry/);
 });

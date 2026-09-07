@@ -3841,14 +3841,21 @@ function publishInboxAccount(accountId, change, payload = null) {
   }
 }
 
-function closeReplacedAccountSockets(accountId, revokedTokenHashes) {
+function closeReplacedAccountSockets(accountId, revokedTokenHashes, replacedByAnotherDevice) {
   const sockets = inboxAccountSockets.get(accountId);
   if (!sockets) return;
   for (const ws of [...sockets]) {
     if (!revokedTokenHashes.has(ws.sessionTokenHash)) continue;
     try {
-      ws.send(JSON.stringify({ type:'account-update', change:'session-replaced', accountId }));
-      ws.close(4004, 'Signed in on another device');
+      if (replacedByAnotherDevice) {
+        ws.send(JSON.stringify({ type:'account-update', change:'session-replaced', accountId }));
+        ws.close(4004, 'Signed in on another device');
+      } else {
+        // Refreshing credentials on this installation invalidates the old
+        // token, but is not a device replacement. A 4004 here made the old
+        // socket erase newly restored local state in a response/close race.
+        ws.close(4003, 'Session refreshed on this device');
+      }
     } catch (e) {}
   }
 }
@@ -3907,7 +3914,7 @@ async function replaceAccountLoginSession(accountId, account, deviceHash, option
   }
 
   account.sessions = [];
-  closeReplacedAccountSockets(accountId, revokedTokenHashes);
+  closeReplacedAccountSockets(accountId, revokedTokenHashes, differentDevice);
   return newAccountSession(account, deviceHash);
 }
 

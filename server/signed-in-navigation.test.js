@@ -14,6 +14,10 @@ test('signed-in identity panel exposes new connection directly', () => {
   assert.match(client, /id="account-signed-view"[\s\S]*openNewConnection\(\)[\s\S]*Sign out on this device/);
 });
 
+test('profile settings expose sign out on this device directly', () => {
+  assert.match(client, /id="settings-profile-controls"[\s\S]*id="settings-profile-signout"[\s\S]*onclick="signOutAnonymousAccount\(\)"[\s\S]*Sign out on this device/);
+});
+
 test('leaving a conversation requires explicit confirmation', () => {
   assert.match(client, /async function leaveActiveRoom\(\)[\s\S]*confirm\(LEAVE_VAULT_CONFIRMATIONS\[currentAppLanguage\(\)\][\s\S]*\/api\/leave/);
 });

@@ -3393,6 +3393,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <label class="account-field"><span>Enter your permanent recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
         <button class="account-secondary" type="submit" data-busy-label="Verifying…">Verify and save on this device</button>
       </form>
+      <div class="settings-divider" style="margin:20px 0"></div>
+      <div class="account-copy"><strong>Device access</strong><br/>Sign out securely and remove this identity’s conversations and keys from this device. Your Private Number and account remain available for your next sign-in.</div>
+      <button class="account-secondary" id="settings-profile-signout" type="button" onclick="signOutAnonymousAccount()">Sign out on this device</button>
     </div>
 
     <div id="settings-calls-section" class="settings-category-page">
@@ -8623,6 +8626,7 @@ async function loginAnonymousAccount(event) {
     const masterKey = base64UrlToBytes(wrapped.masterKey);
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
+    accountReauthenticationActive = false;
     saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Signed in'); setTimeout(() => location.reload(), 350);
@@ -8700,6 +8704,33 @@ async function syncAnonymousAccount(showFeedback) {
   } catch (e) { if (status) status.textContent = 'Sync paused — will retry'; if (showFeedback) toast('Could not sync right now'); }
 }
 let accountReplacementActive = false;
+let accountReauthenticationActive = false;
+function requestAccountReauthentication() {
+  if (accountReplacementActive || accountReauthenticationActive) return;
+  const state = loadAccountState();
+  if (!state) return;
+  accountReauthenticationActive = true;
+  clearTimeout(accountSyncTimer);
+  disconnectInbox();
+  // An expired or temporarily rejected account session is not proof that
+  // this installation was replaced. Preserve all local E2EE credentials
+  // and ask for authentication again instead of deleting conversations.
+  const guest = document.getElementById('account-guest-view');
+  if (guest) guest.style.display = '';
+  document.getElementById('account-signed-view')?.classList.remove('open');
+  const title = document.getElementById('account-title');
+  if (title) title.textContent = 'Sign in again';
+  document.getElementById('account-overlay')?.classList.add('open');
+  showAccountTab('login');
+  const number = document.getElementById('account-login-private-number');
+  if (number) number.value = formatPrivateNumber(state.privateNumber);
+  const status = document.getElementById('account-login-status');
+  if (status) {
+    status.textContent = 'Your conversations are preserved on this device. Sign in again to reconnect them.';
+    status.hidden = false;
+  }
+  toast('Session expired · conversations preserved');
+}
 function clearReplacedAccountLocally(accountId, reload = true) {
   const state = loadAccountState();
   if (!state || (accountId && state.accountId !== accountId) || accountReplacementActive) return false;
@@ -9955,7 +9986,9 @@ function renderVaultList() {
   const orderedRooms = [...rooms.values()].sort((a, b) => vaultLastActivity(b) - vaultLastActivity(a));
   for (const room of orderedRooms) {
     const label = roomDisplayLabel(room);
-    const preview = vaultInboxPreview(room, previews);
+    const preview = room.restoreUnavailable
+      ? { text:'Connection unavailable · tap to retry', alert:true }
+      : vaultInboxPreview(room, previews);
     const activity = vaultLastActivity(room);
     const avatarStyle = vaultAvatarPalette(room.peerPrivateNumber || room.code);
     html += `<div class="vault-list-row" data-room="${room.code}">
@@ -9972,7 +10005,11 @@ function renderVaultList() {
   scrollToFocusedConnectionRequest();
   body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => {
     const room = rooms.get(el.dataset.room);
-    if (room && !room.everOnline) resumeWaitingScreen(room);
+    if (room?.restoreUnavailable) {
+      toast('Retrying this preserved conversation…');
+      location.reload();
+    }
+    else if (room && !room.everOnline) resumeWaitingScreen(room);
     else { setActiveRoom(el.dataset.room); showScreen('s-chat'); }
   }; });
 }
@@ -11279,7 +11316,7 @@ async function syncInbox({ refreshAll = false } = {}) {
   } catch (e) { return; }
   if (!result) return;
   if (result.error) {
-    if (result.status === 401) clearReplacedAccountLocally(account.accountId);
+    if (result.status === 401) requestAccountReauthentication();
     return;
   }
   if (Number.isFinite(result.sequence)) inboxSequence = Math.max(inboxSequence, result.sequence);
@@ -11337,8 +11374,12 @@ function connectInbox() {
   };
   socket.onclose = event => {
     if (inboxSocket === socket) inboxSocket = null;
-    if (event.code === 4001 || event.code === 4004) {
+    if (event.code === 4004) {
       clearReplacedAccountLocally(account.accountId);
+      return;
+    }
+    if (event.code === 4001) {
+      requestAccountReauthentication();
       return;
     }
     if (!loadAccountState()) return;
@@ -13076,7 +13117,17 @@ window.addEventListener('load', async () => {
         await persistRoom(room);
       }
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
-      if (result.error) { clearRoomStorage(code); continue; }
+      if (result.error) {
+        // A failed reconnect is not an authoritative deletion. Keep the
+        // encrypted local session visible and retryable; previously any
+        // server rejection immediately erased it from the inbox while its
+        // native call route could remain registered.
+        room.restoreUnavailable = true;
+        room.restoreError = result.error;
+        addRoomToState(room);
+        restoredAny = true;
+        continue;
+      }
       // The server treats this as a genuine reconnect (same token already a
       // member) in the normal case, and result.token just echoes back
       // session.token unchanged. But if this device's own member record had
@@ -13206,6 +13257,7 @@ window.addEventListener('load', async () => {
     }
     hideRestoreSkeleton();
     for (const room of rooms.values()) {
+      if (room.restoreUnavailable) continue;
       if (room.everOnline) startRoomPolling(room);
       else startWaitingForPeer(room);
     }
