@@ -43,3 +43,18 @@ test('authenticated launch paints the local inbox before network restoration', (
     'local room metadata must be visible before the first server join');
   assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*Opening this private conversation securely/);
 });
+
+test('sign-out never erases conversation keys before a verified encrypted backup', () => {
+  assert.match(client, /if \(room\.everOnline && \(!keys\.pubJwk \|\| !keys\.privJwk\)\) return false/);
+  assert.match(client, /async function prepareAndConfirmAccountBackup\(state\)/);
+  assert.match(client, /if \(!await syncAnonymousAccount\(false\)\) return false/);
+  assert.match(client, /const fetched = await api\('\/api\/account\/fetch'/);
+  assert.match(client, /for \(const \[code, key\] of expectedKeys\) if \(remoteKeys\.get\(code\) !== key\) return false/);
+  assert.match(client, /if \(!backupConfirmed\) \{[\s\S]*Nothing was removed\.[\s\S]*return;/);
+
+  const signOutAt = client.indexOf('async function signOutAnonymousAccount()');
+  const confirmAt = client.indexOf('prepareAndConfirmAccountBackup(state)', signOutAt);
+  const removeAt = client.indexOf("localStorage.removeItem(ACCOUNT_STATE_KEY)", signOutAt);
+  assert.ok(signOutAt > -1 && confirmAt > signOutAt && removeAt > confirmAt,
+    'destructive local sign-out must follow remote backup confirmation');
+});

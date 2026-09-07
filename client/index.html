@@ -4567,6 +4567,12 @@ function loadActiveRoomCode() {
 async function persistRoom(room) {
   try {
     const keys = await exportKeyPairForStorage(room);
+    // A room that has already established E2EE must never be persisted
+    // without its keypair. Doing so would overwrite the last recoverable
+    // copy with metadata-only state and make a later account restore mint a
+    // different key. Callers that are about to erase local state (sign-out)
+    // use this boolean to stop rather than destroy the only good copy.
+    if (room.everOnline && (!keys.pubJwk || !keys.privJwk)) return false;
     localStorage.setItem(roomStorageKey(room.code), JSON.stringify({
       code: room.code, token: room.token, name: room.myName,
       nickname: room.nickname,
@@ -4598,7 +4604,11 @@ async function persistRoom(room) {
     idx.push(room.code);
     saveRoomsIndex(idx);
     scheduleAccountSync();
-  } catch(e) {}
+    return true;
+  } catch(e) {
+    console.error('E2E: could not persist conversation credentials', e);
+    return false;
+  }
 }
 // Lightweight update called every poll — deliberately skips the async JWK
 // key export (persistRoom does that once at connect time; re-deriving it
@@ -8674,7 +8684,7 @@ async function recoverAnonymousAccount(event) {
   finally { setAccountBusy(form, false); }
 }
 async function syncAnonymousAccount(showFeedback) {
-  const state = loadAccountState(); if (!state) return;
+  const state = loadAccountState(); if (!state) return false;
   if ((state.v || 1) < 2) {
     claimLocalVaultsForAccount(state.accountId);
     state.v = 2;
@@ -8687,7 +8697,7 @@ async function syncAnonymousAccount(showFeedback) {
     const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle });
     if (result.error && result.status === 409) {
       const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
-      if (latest.error) { if (status) status.textContent = latest.error; return; }
+      if (latest.error) { if (status) status.textContent = latest.error; return false; }
       const added = importAccountBundle(await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle), state.accountId);
       state.revision = latest.revision;
       state.tier = latest.tier || state.tier || 'standard';
@@ -8695,23 +8705,75 @@ async function syncAnonymousAccount(showFeedback) {
       saveAccountState(state);
       const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
-      if (retry.error) { if (status) status.textContent = retry.error; return; }
+      if (retry.error) { if (status) status.textContent = retry.error; return false; }
       state.revision = retry.revision;
       state.tier = retry.tier || state.tier || 'standard';
       state.isFounding = !!retry.isFounding;
       saveAccountState(state);
       if (status) status.textContent = added ? `${added} conversation${added===1?'':'s'} received · reopen to view` : 'Encrypted sync complete';
       if (showFeedback) toast(added ? 'Conversations merged — reopen Vaultlix to view them' : 'Conversations synced securely');
-      return;
+      return true;
     }
-    if (result.error) { if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return; }
+    if (result.error) { if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return false; }
     state.revision = result.revision;
     state.tier = result.tier || state.tier || 'standard';
     state.isFounding = !!result.isFounding;
     saveAccountState(state);
     if (status) status.textContent = `Encrypted sync complete · ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
     if (showFeedback) toast('Conversations synced securely');
-  } catch (e) { if (status) status.textContent = 'Sync paused — will retry'; if (showFeedback) toast('Could not sync right now'); }
+    return true;
+  } catch (e) {
+    console.error('E2E: encrypted account sync failed', e);
+    if (status) status.textContent = 'Sync paused — will retry';
+    if (showFeedback) toast('Could not sync right now');
+    return false;
+  }
+}
+
+function accountBundleKeyMap(bundle, accountId) {
+  const map = new Map();
+  for (const session of bundle?.sessions || []) {
+    if (!session || session.ownerAccountId !== accountId || !session.code || !session.token ||
+        !session.pubJwk?.x || !session.pubJwk?.y || !session.privJwk?.d) continue;
+    map.set(session.code, `${session.token}:${session.pubJwk.x}:${session.pubJwk.y}:${session.privJwk.d}`);
+  }
+  return map;
+}
+
+async function prepareAndConfirmAccountBackup(state) {
+  clearTimeout(accountSyncTimer);
+  claimLocalVaultsForAccount(state.accountId);
+
+  // Flush live in-memory keypairs first. Rooms still restoring have no
+  // imported in-memory key yet, so retain and validate their stored copy
+  // instead of overwriting it with an empty keypair.
+  for (const room of rooms.values()) {
+    if (room.ownerAccountId !== state.accountId || !room.myKeyPair) continue;
+    if (!await persistRoom(room)) return false;
+  }
+  clearTimeout(accountSyncTimer);
+
+  const expected = accountBundleSnapshot(state.accountId);
+  const expectedKeys = accountBundleKeyMap(expected, state.accountId);
+  const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)?.ownerAccountId === state.accountId);
+  if (expectedKeys.size !== ownedCodes.length || ownedCodes.some(code => !expectedKeys.has(code))) return false;
+
+  if (!await syncAnonymousAccount(false)) return false;
+
+  // Do not trust a merely successful upload response before destructive
+  // sign-out. Fetch and decrypt the server copy, then compare the room
+  // token and full ECDH key material for every local conversation.
+  const latestState = loadAccountState();
+  const fetched = await api('/api/account/fetch', {
+    accountId:latestState.accountId,
+    sessionToken:latestState.sessionToken,
+  });
+  if (fetched.error) return false;
+  const remote = await aesDecryptJson(base64UrlToBytes(latestState.masterKey), fetched.bundle);
+  const remoteKeys = accountBundleKeyMap(remote, latestState.accountId);
+  if (remoteKeys.size < expectedKeys.size) return false;
+  for (const [code, key] of expectedKeys) if (remoteKeys.get(code) !== key) return false;
+  return true;
 }
 let accountReplacementActive = false;
 let accountReauthenticationActive = false;
@@ -8768,10 +8830,14 @@ function clearReplacedAccountLocally(accountId, reload = true) {
 async function signOutAnonymousAccount() {
   const state = loadAccountState(); if (!state) return;
   if (!confirm('Sign out on this device? Conversations belonging to this identity will be removed from this device and restored after you sign in again.')) return;
-  // Back up legacy unowned conversations under the authenticated identity
-  // before erasing all decryptable local state from this installation.
-  claimLocalVaultsForAccount(state.accountId);
-  await syncAnonymousAccount(false);
+  let backupConfirmed = false;
+  try { backupConfirmed = await prepareAndConfirmAccountBackup(state); } catch (e) {
+    console.error('E2E: sign-out backup confirmation failed', e);
+  }
+  if (!backupConfirmed) {
+    toast('Sign out paused — your encrypted conversations could not be backed up. Nothing was removed.');
+    return;
+  }
   clearTimeout(accountSyncTimer);
   const localCodes = [...new Set([...loadRoomsIndex(), ...rooms.keys()])];
   await Promise.allSettled(localCodes.map(code => {
