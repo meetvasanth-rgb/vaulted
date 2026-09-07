@@ -2614,7 +2614,18 @@ async function api(path, method, d, p, res, ip, headers) {
       (r.recipientAccountId === d.accountId && r.senderAccountId === recipient.accountId);
     const acceptedRelationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'accepted');
     if (acceptedRelationship) {
-      return res200(res, { ok:true, requestId:acceptedRelationship.id, status:'connected' });
+      if (d.replaceExisting === true) {
+        // A verified key mismatch can leave the durable account relationship
+        // marked accepted even though the associated E2EE room is no longer
+        // usable. Replacement is never automatic: an authenticated member
+        // explicitly requests it, and the other person must consent again.
+        acceptedRelationship.status = 'replaced';
+        acceptedRelationship.respondedAt = now;
+        const senderMirror = (sender.connectionRequests || []).find(r => r.id === acceptedRelationship.id);
+        if (senderMirror) { senderMirror.status = 'replaced'; senderMirror.respondedAt = now; }
+      } else {
+        return res200(res, { ok:true, requestId:acceptedRelationship.id, status:'connected' });
+      }
     }
     const relationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'pending');
     if (relationship?.status === 'pending') {

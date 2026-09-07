@@ -85,6 +85,22 @@ test('Quick Connect classifies both directions of an existing relationship witho
   assert.equal(bobAgain.data.status, 'connected');
   assert.equal(aliceAgain.data.requestId, first.data.requestId);
   assert.equal(bobAgain.data.requestId, first.data.requestId);
+
+  const replacement = await post(base, '/api/connections/request', {
+    ...auth(alice), privateNumber:'3456789012', replaceExisting:true,
+  });
+  assert.equal(replacement.data.status, 'pending');
+  assert.notEqual(replacement.data.requestId, first.data.requestId);
+  const replacementRepeat = await post(base, '/api/connections/request', {
+    ...auth(alice), privateNumber:'3456789012',
+  });
+  assert.equal(replacementRepeat.data.status, 'pending');
+  assert.equal(replacementRepeat.data.requestId, replacement.data.requestId);
+  const replacementCrossed = await post(base, '/api/connections/request', {
+    ...auth(bob), privateNumber:'2345678901',
+  });
+  assert.equal(replacementCrossed.data.status, 'action_required');
+  assert.equal(replacementCrossed.data.requestId, replacement.data.requestId);
 });
 
 test('accepted relationships survive request-expiry cleanup and the client opens a matching room', () => {
@@ -97,4 +113,8 @@ test('accepted relationships survive request-expiry cleanup and the client opens
   assert.match(client, /function roomForPrivateNumber\(privateNumber\)/);
   assert.match(client, /Opened your existing private conversation/);
   assert.match(client, /result\.status === 'action_required'/);
+  assert.match(server, /d\.replaceExisting === true/);
+  assert.match(client, /Reconnect securely/);
+  assert.match(client, /replaceExisting:true/);
+  assert.match(client, /Secure reconnection required · tap to open/);
 });

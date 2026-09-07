@@ -489,6 +489,10 @@ body.select-mode .chat-ftr{display:none}
 .send-btn:hover{background:#542237;transform:scale(1.05)}
 .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .send-btn svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.secure-reconnect-banner{display:none;margin:10px 16px 0;padding:12px 14px;border:1px solid rgba(104,44,67,.24);border-radius:14px;background:#FAF3F5;color:#4A2835;align-items:center;gap:12px;font-size:13px;line-height:1.35}
+.secure-reconnect-banner.show{display:flex}
+.secure-reconnect-banner span{flex:1}
+.secure-reconnect-banner button{min-height:44px;border:0;border-radius:22px;padding:0 16px;background:#682C43;color:#fff;font:600 13px Inter,sans-serif;white-space:nowrap}
 .mic-btn{width:44px;height:44px;background:#682C43;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;border:none;box-shadow:0 2px 8px rgba(104,44,67,0.3)}
 .mic-btn:hover{background:#542237;transform:scale(1.05)}
 .mic-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
@@ -2945,6 +2949,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
   </div>
   <div class="push-banner" id="push-banner"></div>
+  <div class="secure-reconnect-banner" id="secure-reconnect-banner" role="status">
+    <span>This private line needs a new secure connection before messages can be sent.</span>
+    <button type="button" id="secure-reconnect-button" onclick="requestSecureReconnection()">Reconnect securely</button>
+  </div>
   <div class="chat-body" id="chat-body">
     <div class="typing-indicator" id="typing-indicator">
       <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
@@ -4154,7 +4162,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
+function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -4213,6 +4221,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber
     // heartbeat lapse (peer's phone screen locks, brief backgrounding)
     // doesn't lock you out of typing mid-conversation.
     everOnline: !!everOnline,
+    reconnectRequired: !!reconnectRequired,
     // Call state — see the CALL STATE section. 'idle' unless a call is
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null, callInviteId: null,
@@ -4584,6 +4593,7 @@ async function persistRoom(room) {
       // the inbox fell back to its room code and reopened the share screen.
       peerName: room.peerName || null,
       everOnline: !!room.everOnline,
+      reconnectRequired: !!room.reconnectRequired,
       peerPrivateNumber: room.peerPrivateNumber || null,
       persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
       reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
@@ -4997,7 +5007,11 @@ function triggerEncryptionPulse() {
 function updateE2EBar(room) {
   const bar = document.querySelector('.e2e-bar');
   if (!bar) return;
-  if (room && room.sharedKey) {
+  if (room?.reconnectRequired) {
+    bar.classList.add('pending');
+    bar.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></svg><span>Secure reconnection required</span>';
+    bar.title = 'The previous encrypted connection ended. Reconnect with this person before sending.';
+  } else if (room && room.sharedKey) {
     bar.classList.remove('pending');
     // "Verified" vs "Not verified" is NOT a warning distinction — both use
     // the same calm styling as each other (no red, no alarm icon). Most
@@ -7333,6 +7347,50 @@ function enableInput(on, focus) {
   if (attachBtn) attachBtn.disabled = !on;
   updateComposerButtons();
   if (on && focus) document.getElementById('msg-input').focus();
+}
+
+function updateSecureReconnectBanner(room) {
+  const banner = document.getElementById('secure-reconnect-banner');
+  if (!banner) return;
+  banner.classList.toggle('show', !!room?.reconnectRequired);
+  const button = document.getElementById('secure-reconnect-button');
+  if (button) button.disabled = false;
+}
+
+async function requestSecureReconnection() {
+  const room = rooms.get(activeRoomCode);
+  const state = loadAccountState();
+  const button = document.getElementById('secure-reconnect-button');
+  if (!room?.reconnectRequired || !state) return;
+  if (!room.peerPrivateNumber) {
+    toast('Use Find person and enter their Private Number to reconnect');
+    return;
+  }
+  if (button) { button.disabled = true; button.textContent = 'Sending…'; }
+  try {
+    const result = await api('/api/connections/request', {
+      accountId:state.accountId,
+      sessionToken:state.sessionToken,
+      privateNumber:room.peerPrivateNumber,
+      replaceExisting:true,
+    });
+    if (result.error) { toast(result.error); return; }
+    if (result.status === 'action_required') {
+      await openConnectionRequest(result.requestId);
+      toast('A secure reconnection request is waiting for you');
+      return;
+    }
+    if (result.status !== 'pending') { toast('Could not start secure reconnection'); return; }
+    await leaveRoomBestEffort(room);
+    removeRoomFromState(room.code);
+    activeRoomCode = null;
+    saveActiveRoomCode(null);
+    showScreen('s-vault-list');
+    await refreshConnectionRequests();
+    toast(`Secure reconnection request sent to ${room.peerName || 'your contact'}`);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Reconnect securely'; }
+  }
 }
 
 // Mic/send morph: WhatsApp-style — the composer shows a mic button when
@@ -10078,6 +10136,8 @@ function renderVaultList() {
     const label = roomDisplayLabel(room);
     const preview = room.restorePending
       ? { text:'Opening securely…', alert:false }
+      : room.reconnectRequired
+      ? { text:'Secure reconnection required · tap to open', alert:true }
       : room.restoreUnavailable
       ? { text:'Connection unavailable · tap to retry', alert:true }
       : vaultInboxPreview(room, previews);
@@ -10128,7 +10188,8 @@ function setActiveRoom(code) {
   updateHeaderRoomLabel(room);
   setStatus(room.peerOnline, room.peerName);
   renderChatBody(room);
-  enableInput(!!(room.everOnline && room.sharedKey), true);
+  enableInput(!!(room.everOnline && room.sharedKey && !room.reconnectRequired), true);
+  updateSecureReconnectBanner(room);
   updateE2EBar(room);
   renderRoomTabs();
   updateDocumentTitle();
@@ -11591,7 +11652,11 @@ async function doPoll(room) {
       // the rarer case it was left enabled/disabled some other way — this is
       // what actively re-disables the composer if a rederive above just
       // dropped room.sharedKey back to null, not just what re-enables it.
-      enableInput(!!(room.everOnline && room.sharedKey));
+      if (data.peerPubKey) room.reconnectRequired = false;
+      else if (room.everOnline) room.reconnectRequired = true;
+      enableInput(!!(room.everOnline && room.sharedKey && !room.reconnectRequired));
+      updateSecureReconnectBanner(room);
+      updateE2EBar(room);
     }
     if (!wasOnline && data.peerOnline && room.code === activeRoomCode) { playChime(); }
 
@@ -13195,7 +13260,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const code of idx) {
       const session = loadRoomSession(code);
       if (!session) continue;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
       room.nickname = session.nickname || null;
       room.restorePending = true;
       addRoomToState(room);
@@ -13339,6 +13404,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         room.lastKnownPeerPubKey = result.peerPubKey;
         room.everOnline = true; // peer's pubKey on file means they've been in this room before
+        room.reconnectRequired = false;
       }
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
       if (room.sharedKey) {
@@ -13353,6 +13419,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         // room being left permanently missing its history until a further
         // manual reload happens to land at a luckier moment.
         room.pendingHistoryRestore = true;
+        // An established room whose peer membership has disappeared is not
+        // merely offline: an offline member still has a stored public key.
+        // Surface a consent-based repair instead of a disabled composer.
+        if (room.everOnline) room.reconnectRequired = true;
       }
       addRoomToState(room);
       room.restorePending = false;
