@@ -730,8 +730,8 @@ function rateLimited(key, maxCount, windowMs) {
   return bucket.count > maxCount;
 }
 
-function profileLookupRetryAfter(req, ip) {
-  const suppliedKey = String(req.headers['x-vaultlix-lookup-key'] || '');
+function profileLookupRetryAfter(headers, ip) {
+  const suppliedKey = String((headers && headers['x-vaultlix-lookup-key']) || '');
   const deviceKey = /^[A-Za-z0-9_-]{20,128}$/.test(suppliedKey) ? suppliedKey : `ip:${ip}`;
   const key = crypto.createHash('sha256').update(deviceKey).digest('hex');
   const now = Date.now();
@@ -2584,7 +2584,7 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path.startsWith('/api/profile/') && method === 'GET') {
-    const retryAfter = profileLookupRetryAfter(req, ip);
+    const retryAfter = profileLookupRetryAfter(headers, ip);
     if (retryAfter) {
       res.setHeader('Retry-After', String(retryAfter));
       res.setHeader('Cache-Control', 'no-store');

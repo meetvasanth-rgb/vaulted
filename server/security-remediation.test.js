@@ -77,6 +77,12 @@ test('Tier 1 security remediations enforce limits and keep install scripts local
   });
 
   const base = `http://127.0.0.1:${appPort}`;
+  const missingProfile = await request(base, '/api/profile/2345678901', {
+    headers: { 'x-vaultlix-lookup-key': 'test-device-lookup-key-123456' },
+  });
+  assert.equal(missingProfile.response.status, 404, 'profile lookup must use the dispatched headers without throwing');
+  assert.match(missingProfile.data, /Private Number not found/);
+
   const created = JSON.parse((await request(base, '/api/create', { body: { name: 'Security test' } })).data);
   for (let i = 0; i < 6; i++) {
     const result = await request(base, '/api/turn-credentials', {
