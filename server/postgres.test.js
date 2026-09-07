@@ -61,6 +61,18 @@ test('account persistence uses parameterized upserts', async () => {
   assert.equal(calls[1][1][0], 'a'.repeat(64));
 });
 
+test('Private Number reservation pins PostgreSQL parameter types across identity tables', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => { calls.push(args); return { rows:[{ private_number:'2345678901' }] }; } };
+  const store = new PostgresStore('', { pool });
+  const reserved = await store.reservePrivateNumber('2345678901', 'a'.repeat(64), 'standard', 200);
+  assert.equal(reserved, true);
+  assert.match(calls[0][0], /\$1::varchar\(10\)/);
+  assert.match(calls[0][0], /\$2::char\(64\)/);
+  assert.match(calls[0][0], /\$4::bigint/);
+  assert.match(calls[0][0], /reserved_until < \$5::bigint/);
+});
+
 test('production startup fails closed and account mutations await PostgreSQL', () => {
   assert.match(server, /await postgresStore\.initialize\(\)/);
   assert.match(server, /hydrateAccounts\(await postgresStore\.loadAccounts\(\), 'PostgreSQL'\)/);

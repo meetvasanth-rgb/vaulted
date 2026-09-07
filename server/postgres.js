@@ -272,14 +272,14 @@ class PostgresStore {
     if (!this.enabled) return true;
     const { rows } = await this.pool.query(`INSERT INTO private_number_reservations (
       private_number, token_hash, category, reserved_until, created_at
-    ) SELECT $1,$2,$3,$4,$5
-      WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE private_number=$1)
-        AND NOT EXISTS (SELECT 1 FROM private_number_lifecycle WHERE private_number=$1)
+    ) SELECT $1::varchar(10),$2::char(64),$3::varchar(32),$4::bigint,$5::bigint
+      WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE private_number=$1::varchar(10))
+        AND NOT EXISTS (SELECT 1 FROM private_number_lifecycle WHERE private_number=$1::varchar(10))
     ON CONFLICT (private_number) DO UPDATE SET
       token_hash=EXCLUDED.token_hash, category=EXCLUDED.category,
       reserved_until=EXCLUDED.reserved_until, created_at=EXCLUDED.created_at
     WHERE private_number_reservations.assigned_account_id IS NULL
-      AND private_number_reservations.reserved_until < $5
+      AND private_number_reservations.reserved_until < $5::bigint
     RETURNING private_number`, [privateNumber, tokenHash, category, reservedUntil, Date.now()]);
     return rows.length === 1;
   }
