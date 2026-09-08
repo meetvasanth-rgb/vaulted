@@ -46,6 +46,27 @@ test('conversation writes hash bearer tokens and deletion is transactional', asy
   assert.equal(calls.at(-1)[0], 'RELEASE');
 });
 
+test('durable ciphertext history can rebuild a stale live-room checkpoint', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    return { rows:[{
+      conversation_id:'room-1', message_id:'message-1',
+      sender_token_hash:'a'.repeat(64), sequence:'7', ciphertext:'ciphertext',
+      created_at:'1234', expires_at:null, view_once:false,
+    }] };
+  } };
+  const store = new PostgresStore('', { pool });
+  const messages = await store.loadEncryptedMessages('room-1', 100, 999);
+  assert.deepEqual(messages, [{
+    id:'message-1', senderTokenHash:'a'.repeat(64), seq:7,
+    content:'ciphertext', ts:1234, expiresAt:null, viewOnce:false,
+  }]);
+  assert.match(calls[0][0], /ORDER BY sequence DESC[\s\S]*LIMIT \$3/);
+  assert.match(calls[0][0], /ORDER BY sequence ASC/);
+  assert.deepEqual(calls[0][1], ['room-1', 999, 100]);
+});
+
 test('account persistence uses parameterized upserts', async () => {
   const calls = [];
   const pool = { query:async (...args) => { calls.push(args); return { rows:[] }; } };
@@ -80,6 +101,7 @@ test('production startup fails closed and account mutations await PostgreSQL', (
   assert.match(server, /await persistAccount\(d\.accountId\)/);
   assert.match(server, /await releaseAccountNumber\(d\.accountId, account, 'account-deleted'\)/);
   assert.match(server, /await postgresStore\.appendEncryptedMessage\(d\.code, d\.token, message\)/);
+  assert.match(server, /if \(includeOwn\) await hydrateRoomMessagesFromPostgres\(roomCode, room\)/);
   assert.match(server, /await postgresStore\.deleteEncryptedMessage\(d\.code, msg\.id/);
 });
 

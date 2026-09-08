@@ -3805,10 +3805,6 @@ const VAULTLIX_TRANSLATIONS = {
     language:'Լեզու', language_subtitle:'Օգտագործել սարքի լեզուն կամ ընտրել այլ լեզու', app_language:'Հավելվածի լեզու', language_note:'Փոփոխությունն անմիջապես կկիրառվի։ Արաբերենն օգտագործում է աջից ձախ դասավորություն։', system_default:'Համակարգի լեզու', new_connection:'Նոր կապ', sign_in:'Մուտք գործել', create_account:'Ստեղծել հաշիվ', recover_account:'Վերականգնել հաշիվը', private_number:'Vaultlix անձնական համար', display_name:'Ցուցադրվող անուն', password:'Գաղտնաբառ', continue:'Շարունակել', cancel:'Չեղարկել', save:'Պահպանել', close:'Փակել', search:'Որոնել', home:'Գլխավոր', encrypted_conversation:'Գաղտնագրված զրույց', no_conversations:'Զրույցներ դեռ չկան', start_conversation:'Սկսեք ձեր առաջին անձնական զրույցը', start_conversation_help:'Սեղմեք «Նոր կապ» և մուտքագրեք մյուս անձի Vaultlix անձնական համարը։', message_placeholder:'Գրեք հաղորդագրություն…', create:'Ստեղծել', recover:'Վերականգնել', notifications_subtitle:'Հաղորդագրության ձայներ, զգուշացումներ և սարքի թույլտվություններ', chats_subtitle:'Զրույցի պիտակ, հաղորդագրությունների կառավարում և անվտանգություն', calls_subtitle:'Զանգերի գաղտնիություն, թույլտվություններ և ձայնի ուղղում', help_subtitle:'Vaultlix-ի օգտագործում, FAQ, քաղաքականություններ և տարբերակ', new_private_connection:'Նոր անձնական կապ', enter_their_private_number:'Մուտքագրեք նրա անձնական համարը', new_connection_instructions:'Մուտքագրեք ձեզ փոխանցված Vaultlix-ի ճշգրիտ 10-նիշ անձնական համարը։ Vaultlix-ը չի որոնում կոնտակտներ և մարդկանց չի առաջարկում։', find_person:'Գտնել անձին', invalid_private_number:'Մուտքագրեք Vaultlix-ի վավեր 10-նիշ անձնական համար', own_private_number:'Սա ձեր սեփական անձնական համարն է', private_number_not_found:'Vaultlix անձնական համարը չի գտնվել'
   }
 };
-// Clearer system-message copy. Keep this centralized so older stored
-// `Reconnected` records automatically receive the improved wording.
-VAULTLIX_TRANSLATIONS.en.reconnected = 'Connection restored';
-VAULTLIX_TRANSLATIONS.zh.reconnected = '连接已恢复';
 Object.assign(VAULTLIX_TRANSLATIONS.en, { new_connection:'Extend your line', new_private_connection:'Extend your line' });
 Object.assign(VAULTLIX_TRANSLATIONS.zh, { new_connection:'延伸你的专线', new_private_connection:'延伸你的专线' });
 Object.assign(VAULTLIX_TRANSLATIONS.ru, { new_connection:'Продлить вашу линию', new_private_connection:'Продлить вашу линию' });
@@ -10887,10 +10883,13 @@ function renderMessageRecord(room, rec, animate) {
   const typing = document.getElementById('typing-indicator');
 
   if (rec.kind === 'sys') {
-    if (rec.verifyNudge) return null;
+    // Reopening the app or signing back in does not mean either participant
+    // left the conversation. Older clients may still have this presentation-
+    // only record in memory, so suppress it as well as no longer creating it.
+    if (rec.verifyNudge || rec.content === 'Reconnected') return null;
     const div = document.createElement('div');
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
-    div.textContent = rec.content === 'Reconnected' ? i18n('reconnected') : rec.content;
+    div.textContent = rec.content;
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
     return div;
@@ -13439,12 +13438,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (restoredAny) {
-    for (const room of rooms.values()) {
-      // "Reconnected" only makes sense for a room that was actually
-      // connected before — a room saved right after creation, whose peer
-      // never joined, was never connected in the first place.
-      if (room.everOnline) room.messages.push({ id: 'sys-reconnect-' + room.code, kind: 'sys', content: 'Reconnected' });
-    }
     // A notification tap that had to open a fresh window (app wasn't
     // already running) carries its target room as a ?room= URL param — see
     // sw.js's notificationclick — since there was no live page yet to

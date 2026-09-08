@@ -295,6 +295,61 @@ function pushRoomMsg(room, msg) {
   if (totalByteSize < 0) totalByteSize = 0;
 }
 
+// PostgreSQL is the durable ciphertext history. The live room map is still
+// needed for bearer credentials and signaling, but its 15-second checkpoint
+// can legitimately lag behind an accepted message if the process is replaced
+// abruptly. A full client bootstrap therefore reconciles the room's message
+// window with PostgreSQL before returning history. This keeps decrypted
+// content on the device while ensuring an acknowledged message cannot vanish
+// merely because the in-memory checkpoint was older than the database commit.
+async function hydrateRoomMessagesFromPostgres(roomCode, room) {
+  if (!postgresEnabled) return;
+  const durableMessages = await postgresStore.loadEncryptedMessages(roomCode, 100);
+  const tokenByHash = new Map();
+  for (const token of room.members.keys()) {
+    tokenByHash.set(crypto.createHash('sha256').update(token).digest('hex'), token);
+  }
+
+  const existingById = new Map(room.msgs.map(message => [message.id, message]));
+  const restoredMessages = [];
+  for (const durable of durableMessages) {
+    const from = tokenByHash.get(durable.senderTokenHash);
+    if (!from) continue;
+    const existing = existingById.get(durable.id);
+    const sentAt = new Date(durable.ts);
+    restoredMessages.push({
+      seq:durable.seq,
+      id:durable.id,
+      type:'message',
+      from,
+      name:room.members.get(from)?.name || existing?.name || null,
+      content:durable.content,
+      viewOnce:durable.viewOnce,
+      time:existing?.time || `${sentAt.getHours().toString().padStart(2,'0')}:${sentAt.getMinutes().toString().padStart(2,'0')}`,
+      ts:durable.ts,
+      expiresAt:durable.expiresAt,
+      deliveredAt:existing?.deliveredAt || null,
+      readAt:existing?.readAt || null,
+      reactions:existing?.reactions || {},
+      reactionSeq:existing?.reactionSeq || 0,
+      readReported:existing?.readReported || false,
+    });
+  }
+
+  // System events are process-local presentation state and are not part of
+  // encrypted history. Preserve the genuine ones while replacing only the
+  // ciphertext records with PostgreSQL's authoritative, deletion-aware set.
+  const systemMessages = room.msgs.filter(message => message.type === 'system');
+  const oldBytes = room.byteSize || 0;
+  room.msgs = [...systemMessages, ...restoredMessages]
+    .sort((left, right) => (left.seq || 0) - (right.seq || 0))
+    .slice(-100);
+  room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
+  totalByteSize = Math.max(0, totalByteSize - oldBytes + room.byteSize);
+  const highestSequence = room.msgs.reduce((highest, message) => Math.max(highest, message.seq || 0), 0);
+  room.seq = Math.max(room.seq || 0, highestSequence);
+}
+
 // Shared by every place that nulls a message's content out from under it —
 // the disappearing-message sweep below, /api/delete-message, and
 // /api/view-once-opened — so room.byteSize AND totalByteSize stay in sync
@@ -3003,7 +3058,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // Call completion is observed independently by both native endpoints.
     // They deliberately submit the same stable call-event ID, so make the
     // encrypted message stream idempotent before allocating a new sequence.
-    const existingMessage = (room.messages || []).find(message => message.id === msgId);
+    const existingMessage = (room.msgs || []).find(message => message.id === msgId);
     if (existingMessage) return res200(res, { ok:true, id:msgId, seq:existingMessage.seq, duplicate:true });
     const seq = room.seq + 1;
     // viewOnce travels as a plain top-level field (client/index.html's
@@ -3376,6 +3431,11 @@ async function api(path, method, d, p, res, ip, headers) {
     const room = rooms.get(roomCode);
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in conversation.',403);
+
+    // A full bootstrap is explicitly asking for authoritative retained
+    // history. Reconcile it with the durable ciphertext store first instead
+    // of trusting a potentially older live-room checkpoint.
+    if (includeOwn) await hydrateRoomMessagesFromPostgres(roomCode, room);
 
     const m = room.members.get(token);
     m.lastSeen = Date.now();

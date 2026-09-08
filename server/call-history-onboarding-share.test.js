@@ -11,7 +11,7 @@ const callActivity = fs.readFileSync(path.join(root, 'mobile/android/app/src/mai
 const iosCallManager = fs.readFileSync(path.join(root, 'mobile/ios/App/App/AppDelegate.swift'), 'utf8');
 
 test('completed calls are synchronized idempotently without duplicate local replay', () => {
-  assert.match(server, /existingMessage = \(room\.messages \|\| \[\]\)\.find/);
+  assert.match(server, /existingMessage = \(room\.msgs \|\| \[\]\)\.find/);
   assert.match(server, /duplicate:true/);
   assert.match(client, /room\.seenMsgIds\?\.add\(rec\.id\)/);
 });

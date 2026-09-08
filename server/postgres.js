@@ -384,6 +384,28 @@ class PostgresStore {
     } finally { client.release(); }
   }
 
+  async loadEncryptedMessages(conversationId, limit = 100, now = Date.now()) {
+    if (!this.enabled) return [];
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
+    const { rows } = await this.pool.query(`SELECT * FROM (
+      SELECT conversation_id, message_id, sender_token_hash, sequence,
+        ciphertext, created_at, expires_at, view_once
+      FROM encrypted_messages
+      WHERE conversation_id=$1 AND (expires_at IS NULL OR expires_at > $2)
+      ORDER BY sequence DESC
+      LIMIT $3
+    ) AS recent_messages ORDER BY sequence ASC`, [conversationId, now, safeLimit]);
+    return rows.map(row => ({
+      id:row.message_id,
+      senderTokenHash:row.sender_token_hash,
+      seq:Number(row.sequence),
+      content:row.ciphertext,
+      ts:Number(row.created_at),
+      expiresAt:row.expires_at == null ? null : Number(row.expires_at),
+      viewOnce:!!row.view_once,
+    }));
+  }
+
   async deleteEncryptedMessage(conversationId, messageId, deletionSequence, deletedAt, expiresAt) {
     if (!this.enabled) return;
     const client = await this.pool.connect();

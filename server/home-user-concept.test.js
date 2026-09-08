@@ -78,7 +78,8 @@ test('one-to-one conversation polish uses safe areas and native visual language'
   assert.doesNotMatch(client, /bar\.innerHTML = '[^']*🔒/);
   assert.match(client, /#s-chat #timer-bar-select\{[^}]*appearance:none!important/);
   assert.match(client, /\.status-dot\.away\{background:#AAA2A6/);
-  assert.match(client, /reconnected = 'Connection restored'/);
+  assert.doesNotMatch(client, /Connection restored|sys-reconnect-/);
+  assert.match(client, /rec\.content === 'Reconnected'\) return null/);
   assert.match(client, /onclick="quickLockFromHeader\(\)"/);
   assert.match(client, /function quickLockFromHeader\(\)/);
 });
