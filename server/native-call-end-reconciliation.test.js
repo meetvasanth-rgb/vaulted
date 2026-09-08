@@ -41,7 +41,7 @@ test('Android call-end push preserves missed-call history until the encrypted in
 });
 
 test('opening a conversation clears its missed-call inbox alert', () => {
-  assert.match(client, /function setActiveRoom\(code\)[\s\S]*room\.unread = 0/);
+  assert.match(client, /function setActiveRoom\(code(?:, \{ deferMessages = false \} = \{\})?\)[\s\S]*room\.unread = 0/);
   assert.match(client, /missed_encrypted_call'\), alert: room\.unread > 0/);
   assert.match(client, /function renderChatBody\(room\)[\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*body\.scrollTop = body\.scrollHeight/);
 });

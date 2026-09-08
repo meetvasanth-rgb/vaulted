@@ -2346,7 +2346,6 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path === '/api/account/register' && method === 'POST') {
-    if (rateLimited(`account-register:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many registration attempts — try again later.', 429);
     const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
     if (!displayName || displayName.length > 32) {
@@ -2371,6 +2370,16 @@ async function api(path, method, d, p, res, ip, headers) {
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision, retention:accountRetention(existing) });
+    }
+    // Apply creation limits only after the authenticated idempotent path.
+    // Previously a lost response caused the same safe retry to consume the
+    // shared IP allowance again. Five attempts was also too small for homes,
+    // offices and tester labs where several phones share one public address.
+    // Keep both an IP ceiling and a per-proposed-account ceiling so raising
+    // the NAT-friendly allowance does not make this endpoint unbounded.
+    if (rateLimited(`account-register-ip:${ip}`, 30, 60 * 60 * 1000) ||
+        rateLimited(`account-register-id:${d.accountId}`, 6, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many registration attempts — try again later.', 429);
     }
     if (existing || existingNumberOwner) return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
     // Reservation tokens close the selection-to-registration race across

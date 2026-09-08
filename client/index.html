@@ -1034,6 +1034,7 @@ body.select-mode .chat-ftr{display:none}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
 #number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}
+.first-connection-icon{width:70px;height:70px;margin:2px 0 20px;display:grid;place-items:center;border-radius:23px;background:linear-gradient(145deg,#73314B,#512033);color:#fff;box-shadow:0 16px 34px rgba(104,44,67,.22)}.first-connection-icon svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.first-connection-privacy{display:flex;align-items:flex-start;gap:9px;margin:13px 0 2px;padding:12px 13px;border-radius:13px;background:#F7F1F3;color:#75656D;font:550 11.5px/1.45 Inter,sans-serif}.first-connection-privacy svg{width:16px;height:16px;flex:none;margin-top:1px;fill:none;stroke:#682C43;stroke-width:1.8}
 
 .connect-v-mark{font-family:'Cormorant Garamond',serif;font-size:72px;font-weight:300;color:#682C43;letter-spacing:.1em;line-height:1;transform:scale(0.6);opacity:0;transition:transform .5s cubic-bezier(0.34,1.56,0.64,1),opacity .5s cubic-bezier(0.34,1.56,0.64,1)}
 #connect-overlay.visible .connect-v-mark{transform:scale(1);opacity:1}
@@ -3726,6 +3727,20 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
 </div>
 
+<div class="account-overlay" id="first-connection-overlay" onclick="if(event.target===this)dismissFirstConnectionGuide()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="first-connection-title">
+    <div class="first-connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg></div>
+    <div class="account-kicker">Your first private line</div>
+    <div class="account-title" id="first-connection-title">Who is one person you’d like a private line with?</div>
+    <div class="account-copy">Send them a personal invitation now. They can open it, create their Private Number if needed, and connect with your approval.</div>
+    <label class="account-field"><span>Their first name <small style="font-weight:500;color:#93868D">(optional)</small></span><input id="first-connection-name" maxlength="32" autocomplete="off" placeholder="For example, Maya"/></label>
+    <button class="account-primary" type="button" onclick="shareFirstConnectionInvite()">Share invitation</button>
+    <button class="account-secondary" type="button" onclick="showFirstConnectionQr()">Let them scan my QR</button>
+    <button class="account-secondary" type="button" onclick="dismissFirstConnectionGuide()" style="border-color:transparent;background:transparent">I’ll invite someone later</button>
+    <div class="first-connection-privacy"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>The name stays on this device and is used only to personalize this invitation. Vaultlix never uploads your contacts.</span></div>
+  </div>
+</div>
+
 <div class="account-overlay" id="public-profile-overlay" onclick="if(event.target===this)closePublicProfile()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
     <div class="account-head"><div><div class="account-kicker">Quick Connect</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
@@ -3887,20 +3902,59 @@ if(window.webkit?.messageHandlers?.vaultlixCall||window.Capacitor?.getPlatform?.
   document.documentElement.classList.add('vaultlix-native-ios');
 }
 
+const secureNativeCachedRecords = new WeakSet();
+const secureNativeCacheQueue = [];
+const secureNativeCacheKeys = new Set();
+let secureNativeCacheScheduled = false;
+
 function secureNativeStoreMessage(room, rec) {
   if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked') return;
+  if (secureNativeCachedRecords.has(rec)) return;
   let plaintext;
   try { plaintext = JSON.stringify(rec); } catch (e) { return; }
   try {
     if (typeof window.VaultlixAndroid?.secureStoreMessage === 'function') {
-      window.VaultlixAndroid.secureStoreMessage(room.code, rec.id, plaintext, Date.now());
+      if (window.VaultlixAndroid.secureStoreMessage(room.code, rec.id, plaintext, Date.now()) === false) return;
     } else {
       window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
         action:'secureStoreMessage', conversationId:room.code, messageId:rec.id,
         plaintext, createdAt:Date.now(),
       });
     }
+    secureNativeCachedRecords.add(rec);
   } catch (e) { console.warn('Native encrypted cache write failed'); }
+}
+
+// Android's JavaScript bridge is synchronous. Creating a hardware-backed key
+// and writing SQLCipher for every historical message while a chat is opening
+// can therefore block the WebView for hundreds of milliseconds. Cache live
+// arrivals immediately, but feed restored history to native one record per
+// idle slice so opening and scrolling stay responsive.
+function scheduleSecureNativeHistoryCache(room, records) {
+  if (!isNativeApp() || !room?.code) return;
+  for (const rec of records) {
+    if (!rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || secureNativeCachedRecords.has(rec)) continue;
+    const key = `${room.code}:${rec.id}`;
+    if (secureNativeCacheKeys.has(key)) continue;
+    secureNativeCacheKeys.add(key);
+    secureNativeCacheQueue.push({ room, rec, key });
+  }
+  if (secureNativeCacheScheduled || !secureNativeCacheQueue.length) return;
+  secureNativeCacheScheduled = true;
+  const runOne = () => {
+    secureNativeCacheScheduled = false;
+    const item = secureNativeCacheQueue.shift();
+    if (!item) return;
+    secureNativeCacheKeys.delete(item.key);
+    if (!item.rec.deleted) secureNativeStoreMessage(item.room, item.rec);
+    if (secureNativeCacheQueue.length) {
+      secureNativeCacheScheduled = true;
+      if ('requestIdleCallback' in window) requestIdleCallback(runOne, { timeout:1000 });
+      else setTimeout(runOne, 32);
+    }
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(runOne, { timeout:1000 });
+  else setTimeout(runOne, 32);
 }
 function secureNativeDeleteMessage(conversationId, messageId) {
   if (!conversationId || !messageId) return;
@@ -4089,6 +4143,23 @@ async function derivePasswordMaterial(privateNumber, password) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations:ACCOUNT_PBKDF2_ITERATIONS }, base, 512));
   return { authSecret: bytesToBase64UrlCompact(bits.slice(0, 32)), wrapKey: bits.slice(32, 64) };
+}
+let accountCryptoWarmupPromise = null;
+function prewarmAccountCrypto() {
+  if (accountCryptoWarmupPromise) return accountCryptoWarmupPromise;
+  accountCryptoWarmupPromise = (async () => {
+    const seed = crypto.getRandomValues(new Uint8Array(32));
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const base = await crypto.subtle.importKey('raw', seed, 'PBKDF2', false, ['deriveBits']);
+    await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations:1 }, base, 256);
+    const aesKey = await crypto.subtle.importKey('raw', seed, { name:'AES-GCM' }, false, ['encrypt']);
+    await crypto.subtle.encrypt({ name:'AES-GCM', iv:crypto.getRandomValues(new Uint8Array(12)) }, aesKey, seed);
+    return true;
+  })().catch(error => {
+    accountCryptoWarmupPromise = null;
+    throw error;
+  });
+  return accountCryptoWarmupPromise;
 }
 function randomAccountId() { return Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join(''); }
 async function recoveryMaterial(code) {
@@ -7329,9 +7400,38 @@ async function api(path, data = null) {
     ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data) }
     : { method:'GET' };
   const res = await fetch(path, opts);
-  const body = await res.json();
+  // CDN/proxy errors can occasionally arrive as HTML instead of JSON. Treat
+  // those as a normal API error so callers can apply their retry policy rather
+  // than failing while parsing the response and losing the HTTP status.
+  const responseText = await res.text();
+  let body;
+  try {
+    body = responseText ? JSON.parse(responseText) : {};
+  } catch (error) {
+    body = {
+      error: res.ok ? 'Vaultlix returned an unreadable response' : 'Vaultlix is temporarily unavailable',
+      transient: res.status === 408 || res.status === 425 || res.status === 429 || res.status >= 500,
+    };
+  }
   if (!res.ok && body && typeof body === 'object') body.status = res.status;
   return body;
+}
+
+const REGISTRATION_DIAGNOSTIC_KEY = 'vaultlix.registration.diagnostics.v1';
+function recordRegistrationDiagnostic(event, details = {}) {
+  // Deliberately local and metadata-only: never persist the Private Number,
+  // password, recovery code, device ID, keys, or encrypted account payload.
+  try {
+    const previous = JSON.parse(localStorage.getItem(REGISTRATION_DIAGNOSTIC_KEY) || '[]');
+    const entries = Array.isArray(previous) ? previous.slice(-19) : [];
+    entries.push({ at:new Date().toISOString(), event, ...details });
+    localStorage.setItem(REGISTRATION_DIAGNOSTIC_KEY, JSON.stringify(entries));
+  } catch (error) {}
+}
+
+function isTransientRegistrationResponse(result) {
+  const status = Number(result?.status || 0);
+  return result?.transient === true || status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
 // ── SCREEN MANAGEMENT ───────────────────────────────────────────────────
@@ -8201,6 +8301,7 @@ function populateAccountProfileSettings(state = loadAccountState()) {
   refreshSavedRecoveryControls(state);
 }
 const NATIVE_ONBOARDING_KEY = 'vaultlix_native_onboarding_v1';
+const FIRST_CONNECTION_GUIDE_KEY = 'vaultlix_first_connection_guide_v1';
 let nativeOnboardingPage = 'welcome';
 function renderNativeOnboarding(page) {
   nativeOnboardingPage = page;
@@ -8271,7 +8372,50 @@ async function finishNativeOnboarding(enableNotifications) {
   document.getElementById('account-overlay').classList.remove('native-onboarding-account');
   showScreen('s-vault-list');
   connectInbox();
-  await resumeQuickConnectAfterAuthentication();
+  const resumedQuickConnect = await resumeQuickConnectAfterAuthentication();
+  if (!resumedQuickConnect) maybeOpenFirstConnectionGuide();
+}
+
+function maybeOpenFirstConnectionGuide() {
+  if (localStorage.getItem(FIRST_CONNECTION_GUIDE_KEY) !== 'pending' || !loadAccountState()) return false;
+  if (rooms.size > 0) {
+    localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'complete');
+    return false;
+  }
+  const input = document.getElementById('first-connection-name');
+  if (input) input.value = '';
+  document.getElementById('first-connection-overlay')?.classList.add('open');
+  setTimeout(() => input?.focus(), 120);
+  return true;
+}
+
+function dismissFirstConnectionGuide() {
+  localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'complete');
+  document.getElementById('first-connection-overlay')?.classList.remove('open');
+}
+
+async function shareFirstConnectionInvite() {
+  const state = loadAccountState();
+  if (!state?.privateNumber) return;
+  const friendName = String(document.getElementById('first-connection-name')?.value || '').trim().replace(/\s+/g, ' ').slice(0, 32);
+  const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
+  const text = `${greeting}I’d like a private line with you on Vaultlix. Connect with ${state.displayName}: https://vaultlix.com/${state.privateNumber}`;
+  try {
+    if (await openSystemShare(text)) {
+      dismissFirstConnectionGuide();
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    dismissFirstConnectionGuide();
+    toast('Invitation copied — send it in any messaging app');
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast('Could not open sharing. Please try again.');
+  }
+}
+
+function showFirstConnectionQr() {
+  dismissFirstConnectionGuide();
+  showOwnPrivateNumberQr();
 }
 function openAccountPanel() {
   closeSettings();
@@ -8637,6 +8781,9 @@ async function showCreateSecurityStep() {
   document.getElementById('account-create-summary').textContent = `${displayName} · ${formatPrivateNumber(pendingPrivateNumber)}`;
   setCreateStep(2);
   document.getElementById('account-create-password').focus();
+  // Wake Android's WebCrypto provider while the person is entering their
+  // password instead of making the first Create tap pay that startup race.
+  prewarmAccountCrypto().catch(() => {});
 }
 function setAccountBusy(form, busy) {
   const button = form.querySelector('button[type="submit"]');
@@ -8766,6 +8913,7 @@ function formatRecoveryCode(rawBytes) {
 async function createAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
   let accountCreated = false;
+  let registrationStage = 'validation';
   const privateNumber = normalizePrivateNumber(pendingPrivateNumber);
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   const password = document.getElementById('account-create-password').value;
@@ -8775,7 +8923,16 @@ async function createAnonymousAccount(event) {
   if (password !== document.getElementById('account-create-confirm').value) { toast('Passwords do not match'); return; }
   setAccountBusy(form, true);
   startIdentityCreationTransition();
+  recordRegistrationDiagnostic('started');
   try {
+    registrationStage = 'secure preparation';
+    try { await prewarmAccountCrypto(); } catch (error) {
+      // The full preparation loop below remains the source of truth. A failed
+      // warm-up is useful evidence, but must not turn into a user-visible
+      // failure if Android's provider becomes ready a moment later.
+      console.warn('[account-register]', { cryptoWarmupError:true });
+      recordRegistrationDiagnostic('crypto-warmup-retry');
+    }
     const accountId = randomAccountId();
     const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
     const recoveryCode = formatRecoveryCode(recoveryBytes);
@@ -8788,7 +8945,8 @@ async function createAnonymousAccount(event) {
     // request reached the server, so tapping the same button again worked.
     // Keep one account ID and one key set, and retry only the deterministic
     // encrypted envelopes. This cannot create a second identity.
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const cryptoRetryDelays = [250, 700, 1400, 2400];
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const passwordMaterial = await derivePasswordMaterial(privateNumber, password);
         const recovery = await recoveryMaterial(recoveryCode);
@@ -8806,14 +8964,19 @@ async function createAnonymousAccount(event) {
         break;
       } catch (error) {
         console.warn('[account-register]', { attempt:attempt + 1, cryptoPreparationError:true });
-        if (attempt === 2) throw error;
-        await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 200 : 600));
+        recordRegistrationDiagnostic('crypto-preparation-retry', { attempt:attempt + 1, errorName:error?.name || 'Error' });
+        if (attempt === 4) throw error;
+        accountCryptoWarmupPromise = null;
+        await new Promise(resolve => setTimeout(resolve, cryptoRetryDelays[attempt]));
+        try { await prewarmAccountCrypto(); } catch (warmupError) {}
       }
     }
     if (!payload) throw new Error('Registration encryption was not prepared');
+    registrationStage = 'registration';
     let result;
     const registrationStartedAt = Date.now();
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const registrationRetryDelays = [350, 900, 1800, 3200];
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
         result = await api('/api/account/register', payload);
         console.info('[account-register]', {
@@ -8821,30 +8984,54 @@ async function createAnonymousAccount(event) {
           elapsedMs: Date.now() - registrationStartedAt,
           status: result?.status || 200,
         });
-        if (!result?.status || result.status < 500 || attempt === 2) break;
+        recordRegistrationDiagnostic('response', {
+          attempt:attempt + 1,
+          elapsedMs:Date.now() - registrationStartedAt,
+          status:Number(result?.status || 200),
+          transient:isTransientRegistrationResponse(result),
+        });
+        if (!isTransientRegistrationResponse(result) || attempt === 4) break;
       } catch (error) {
         console.warn('[account-register]', {
           attempt: attempt + 1,
           elapsedMs: Date.now() - registrationStartedAt,
           networkError: true,
         });
-        if (attempt === 2) throw error;
+        recordRegistrationDiagnostic('network-retry', {
+          attempt:attempt + 1,
+          elapsedMs:Date.now() - registrationStartedAt,
+          errorName:error?.name || 'Error',
+        });
+        if (attempt === 4) throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 500 : 1500));
+      await new Promise(resolve => setTimeout(resolve, registrationRetryDelays[attempt]));
     }
     if (!result) throw new Error('Registration returned no response');
     if (result.error) { toast(result.error); return; }
+    registrationStage = 'local save';
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
     saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }), recoveryBackupConfirmedAt:0, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'pending');
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
     document.getElementById('account-recovery-result-number').textContent = formatPrivateNumber(privateNumber);
     document.getElementById('account-recovery-result-code').textContent = recoveryCode;
     document.getElementById('account-recovery-result').style.display = '';
     accountCreated = true;
-  } catch (e) { console.error(e); toast('Could not create the protected ID'); }
+    recordRegistrationDiagnostic('completed', { elapsedMs:Date.now() - registrationStartedAt });
+  } catch (e) {
+    console.error('[account-register-failed]', { stage:registrationStage, name:e?.name || 'Error', message:e?.message || 'Unknown failure' });
+    recordRegistrationDiagnostic('failed', { stage:registrationStage, errorName:e?.name || 'Error' });
+    if (registrationStage === 'secure preparation') {
+      toast('Secure setup did not finish. Vaultlix will retry when you tap Create again.');
+    } else if (registrationStage === 'registration') {
+      toast('Could not reach Vaultlix. Your chosen number is still reserved—tap Create again.');
+    } else {
+      toast('Your identity could not be saved on this device. Please try again.');
+    }
+  }
   finally { await stopIdentityCreationTransition(accountCreated); setAccountBusy(form, false); }
 }
 async function loginAnonymousAccount(event) {
@@ -9102,7 +9289,8 @@ async function finishAccountCreation() {
   showScreen('s-vault-list');
   connectInbox();
   toast('Your Vaultlix private number is ready');
-  await resumeQuickConnectAfterAuthentication();
+  const resumedQuickConnect = await resumeQuickConnectAfterAuthentication();
+  if (!resumedQuickConnect) maybeOpenFirstConnectionGuide();
 }
 function openAccountVaults() {
   closeAccountPanel();
@@ -10195,7 +10383,7 @@ function renderRoomTabs() {
         // but never actually joined by a peer (see resumeWaitingScreen) — route
         // back to its waiting screen instead of rendering it as if connected.
         if (room && !room.everOnline) resumeWaitingScreen(room);
-        else setActiveRoom(el.dataset.room);
+        else openConversationAfterPaint(el.dataset.room);
       }; });
       const addBtn = document.getElementById('room-tab-add');
       if (addBtn) addBtn.onclick = () => addRoomFlow();
@@ -10328,11 +10516,18 @@ function renderVaultList() {
       location.reload();
     }
     else if (room && !room.everOnline) resumeWaitingScreen(room);
-    else { setActiveRoom(el.dataset.room); showScreen('s-chat'); }
+    else openConversationAfterPaint(el.dataset.room);
   }; });
 }
 
-function setActiveRoom(code) {
+function prepareChatBodyForFirstPaint() {
+  const body = document.getElementById('chat-body');
+  if (!body) return;
+  if (klipyGifObserver) klipyGifObserver.disconnect();
+  body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+}
+
+function setActiveRoom(code, { deferMessages = false } = {}) {
   const room = rooms.get(code);
   if (!room) return;
   // Switching which room is on screen (room-tabs tap) doesn't always go
@@ -10350,7 +10545,8 @@ function setActiveRoom(code) {
   cancelReply();
   updateHeaderRoomLabel(room);
   setStatus(room.peerOnline, room.peerName);
-  renderChatBody(room);
+  if (deferMessages) prepareChatBodyForFirstPaint();
+  else renderChatBody(room);
   enableInput(!!(room.everOnline && room.sharedKey && !room.reconnectRequired), true);
   updateSecureReconnectBanner(room);
   updateE2EBar(room);
@@ -10359,6 +10555,21 @@ function setActiveRoom(code) {
   updateTimerBar(room);
   refreshCallButton();
   checkMilestone(room);
+}
+
+// Make navigation respond in the same frame as the tap. The full message DOM
+// is built only after the empty conversation shell has had a paint, which is
+// especially important for Android rooms containing animated GIF history.
+function openConversationAfterPaint(code) {
+  if (!code || !rooms.has(code)) return false;
+  setActiveRoom(code, { deferMessages:true });
+  showScreen('s-chat');
+  requestAnimationFrame(() => setTimeout(() => {
+    if (activeRoomCode !== code || !document.getElementById('s-chat')?.classList.contains('active')) return;
+    const room = rooms.get(code);
+    if (room) renderChatBody(room);
+  }, 0));
+  return true;
 }
 
 // Switches to a specific room by code, if it's actually loaded — used by
@@ -10370,9 +10581,7 @@ function switchToRoomByCode(code) {
   if (!code || !rooms.has(code)) return false;
   const room = rooms.get(code);
   if (!room.everOnline) { resumeWaitingScreen(room); return true; }
-  setActiveRoom(code);
-  showScreen('s-chat');
-  return true;
+  return openConversationAfterPaint(code);
 }
 
 // A tapped notification (message or call) carries which room it's about —
@@ -10443,6 +10652,7 @@ function renderChatBody(room) {
     if (rec.deleted || rec.verifyNudge) continue;
     renderMessageRecord(room, rec);
   }
+  scheduleSecureNativeHistoryCache(room, room.messages);
   body.scrollTop = body.scrollHeight;
   // Inbox navigation renders the conversation immediately before s-chat is
   // made visible. WebKit reports a zero/stale scroll height for that hidden
@@ -11045,7 +11255,9 @@ function renderMessageRecord(room, rec, animate) {
   // handed straight to native code: it never enters localStorage/IndexedDB.
   // Native generates a distinct hardware-backed key for this message, so
   // deletion can destroy that key before cleaning up the SQLCipher row.
-  secureNativeStoreMessage(room, rec);
+  // Live arrivals are cached immediately. Bulk history is queued by
+  // renderChatBody after first paint so opening a room never waits on disk.
+  if (animate) secureNativeStoreMessage(room, rec);
 
   const div = document.createElement('div');
   div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
@@ -12269,8 +12481,7 @@ async function requestPrivateVault() {
   if (existingRoom) {
     clearQuickConnectTarget();
     closePublicProfile();
-    setActiveRoom(existingRoom.code);
-    showScreen('s-chat');
+    openConversationAfterPaint(existingRoom.code);
     toast('Opened your existing private conversation');
     return;
   }

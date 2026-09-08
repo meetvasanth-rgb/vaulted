@@ -30,3 +30,16 @@ test('conversation opening defers offscreen KLIPY animation until after first pa
   assert.match(client, /new IntersectionObserver/);
   assert.match(client, /rootMargin:'320px 0px'/);
 });
+
+test('inbox navigation paints the chat shell before rendering GIF history', () => {
+  assert.match(client, /function openConversationAfterPaint\(code\)/);
+  assert.match(client, /setActiveRoom\(code, \{ deferMessages:true \}\);[\s\S]*showScreen\('s-chat'\);[\s\S]*requestAnimationFrame\(\(\) => setTimeout/);
+  assert.match(client, /else openConversationAfterPaint\(el\.dataset\.room\)/);
+});
+
+test('native history caching is sliced outside the foreground render path', () => {
+  assert.match(client, /function scheduleSecureNativeHistoryCache\(room, records\)/);
+  assert.match(client, /requestIdleCallback\(runOne, \{ timeout:1000 \}\)/);
+  assert.match(client, /if \(animate\) secureNativeStoreMessage\(room, rec\)/);
+  assert.match(client, /scheduleSecureNativeHistoryCache\(room, room\.messages\)/);
+});
