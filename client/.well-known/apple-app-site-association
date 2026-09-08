@@ -9,6 +9,22 @@
             "comment": "Open Vaultlix conversation invitations in the iOS app"
           },
           {
+            "/": "/??????",
+            "comment": "Open six-digit Vaultlix Private Number invitations in the iOS app"
+          },
+          {
+            "/": "/???????",
+            "comment": "Open seven-digit Vaultlix Private Number invitations in the iOS app"
+          },
+          {
+            "/": "/????????",
+            "comment": "Open eight-digit Vaultlix Private Number invitations in the iOS app"
+          },
+          {
+            "/": "/?????????",
+            "comment": "Open nine-digit Vaultlix Private Number invitations in the iOS app"
+          },
+          {
             "/": "/??????????",
             "comment": "Open ten-digit Vaultlix Private Number invitations in the iOS app"
           }
@@ -16,7 +32,7 @@
       },
       {
         "appID": "3KLX2S84MV.com.vaultlix.app",
-        "paths": ["/join/*", "/??????????"]
+        "paths": ["/join/*", "/??????", "/???????", "/????????", "/?????????", "/??????????"]
       }
     ]
   }

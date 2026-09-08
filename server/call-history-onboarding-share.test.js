@@ -51,9 +51,16 @@ test('number generation exposes its remaining allowance and own profile can shar
 
 test('public invitations retain branded previews while number-card QR uses an app-only link', () => {
   const association = fs.readFileSync(path.join(root, 'client/.well-known/apple-app-site-association'), 'utf8');
+  const associationJson = JSON.parse(association);
   assert.match(association, /\/\?\?\?\?\?\?\?\?\?\?/);
   assert.match(association, /"appID": "3KLX2S84MV\.com\.vaultlix\.app"/);
   assert.match(server, /apple-app-site-association'[\s\S]*Cache-Control'[\s\S]*no-cache, no-store/);
+  const associationText = JSON.stringify(associationJson);
+  for (let digits = 6; digits <= 10; digits++) {
+    assert.match(associationText, new RegExp(`/${'\\?'.repeat(digits)}`));
+  }
+  assert.match(client, /id="public-profile-open-app"/);
+  assert.match(client, /vaultlix:\/\/connect\/\$\{encodeURIComponent\(result\.profile\.privateNumber\)\}/);
   assert.match(client, /og:image:secure_url/);
   assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
   const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));

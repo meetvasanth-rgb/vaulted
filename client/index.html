@@ -3745,6 +3745,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
     <div class="account-head"><div><div class="account-kicker">Quick Connect</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
     <div class="account-copy" id="public-profile-private-number">—</div>
+    <a class="account-secondary" id="public-profile-open-app" href="#" hidden style="display:block;text-align:center;text-decoration:none">Open in Vaultlix app</a>
     <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Connect privately</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
   </div>
@@ -12446,6 +12447,12 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
     activePublicProfile = result.profile;
     document.getElementById('public-profile-name').textContent = result.profile.displayName;
     document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
+    const openApp = document.getElementById('public-profile-open-app');
+    if (openApp) {
+      openApp.href = `vaultlix://connect/${encodeURIComponent(result.profile.privateNumber)}`;
+      openApp.hidden = isNativeApp();
+      openApp.style.display = isNativeApp() ? 'none' : 'block';
+    }
     const signedIn = loadAccountState();
     const button = document.getElementById('public-profile-request');
     button.textContent = signedIn && roomForPrivateNumber(result.profile.privateNumber)
