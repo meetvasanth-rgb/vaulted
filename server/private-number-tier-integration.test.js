@@ -27,8 +27,8 @@ test('profile discovery is device-scoped, capped at ten per hour, and backs off'
   assert.doesNotMatch(server, /profileLookupBuckets\.set\([^\n]*privateNumber/);
 });
 
-test('self-serve generation is Standard-only and Reserve allocation is not exposed', () => {
-  assert.match(server, /const category = NUMBER_TIERS\.STANDARD/);
-  assert.match(server, /Reserve allocation is not enabled/);
-  assert.doesNotMatch(client, /generatePrivateNumber\('(zeros|sequence|repeated|pairs)'\)/);
+test('launch-period generation exposes server-gated Reserve choices', () => {
+  assert.match(server, /RESERVE_CATEGORIES\.includes\(requestedCategory\)/);
+  assert.match(server, /category !== NUMBER_TIERS\.STANDARD && !earlyTester/);
+  assert.match(client, /selectPrivateNumberCategory\('(zeros|sequence|repeated|pairs)'\)/);
 });

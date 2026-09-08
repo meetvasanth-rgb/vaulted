@@ -13,6 +13,8 @@ const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
   generateStandardNumber,
+  generateReserveNumber,
+  RESERVE_CATEGORIES,
   assignAccountTier,
   isNumberAvailable,
 } = require('./private-number-policy');
@@ -838,11 +840,12 @@ function normalizePrivateNumber(value) {
   return normalizePrivateNumberPolicy(value);
 }
 function generatePrivateNumberCandidate(category = 'standard') {
-  if (category !== NUMBER_TIERS.STANDARD) throw new Error('Reserve allocation is not enabled');
-  return generateStandardNumber();
+  return category === NUMBER_TIERS.STANDARD
+    ? generateStandardNumber()
+    : generateReserveNumber(category);
 }
 async function reservePrivateNumber(category = 'standard') {
-  if (category !== NUMBER_TIERS.STANDARD) throw new Error('Reserve allocation is not enabled');
+  if (category !== NUMBER_TIERS.STANDARD && !RESERVE_CATEGORIES.includes(category)) throw new Error('Invalid Private Number category');
   for (let attempt = 0; attempt < 100; attempt++) {
     const privateNumber = generatePrivateNumberCandidate(category);
     if (!isNumberAvailable(privateNumber, { activeNumbers:privateNumbers, lifecycle:privateNumberLifecycle })) continue;
@@ -2329,11 +2332,17 @@ async function api(path, method, d, p, res, ip, headers) {
     const generationKey = `private-number:${ip}`;
     if (rateLimited(generationKey, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
-    // Reserve allocation is deliberately absent from this public flow.
-    // Until the gated allocator ships, every self-serve request is Standard.
-    const category = NUMBER_TIERS.STANDARD;
+    // Reserve choices are a launch benefit for the first 10,000 identities.
+    // The server validates the category and assigns the tier; the client
+    // cannot promote an ordinary registration by altering its payload.
+    const requestedCategory = typeof d.category === 'string' ? d.category.toLowerCase() : NUMBER_TIERS.STANDARD;
+    const category = requestedCategory === NUMBER_TIERS.STANDARD || RESERVE_CATEGORIES.includes(requestedCategory)
+      ? requestedCategory
+      : NUMBER_TIERS.STANDARD;
+    const earlyTester = accounts.size < 10_000;
+    if (category !== NUMBER_TIERS.STANDARD && !earlyTester) return resErr(res, 'Reserve number selection is currently closed.', 403);
     const remaining = Math.max(0, 20 - (rateLimitBuckets.get(generationKey)?.count || 0));
-    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:false, generationsRemaining:remaining });
+    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester, generationsRemaining:remaining });
   }
 
   if (path === '/api/account/register' && method === 'POST') {

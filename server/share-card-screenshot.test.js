@@ -36,6 +36,10 @@ test('native apps share the image through the system share sheet', () => {
   assert.match(android, /void shareImage\(String dataUrl\)[\s\S]*Intent\.ACTION_SEND/);
   assert.match(ios, /action == "shareImage"[\s\S]*UIActivityViewController/);
   assert.match(android, /setClipData\(ClipData\.newRawUri/);
-  assert.match(client, /VaultlixAndroid\?\.shareText/);
-  assert.match(client, /Number card downloaded to your Downloads folder/);
+  assert.match(client, /numberCardAssetPromise = prepareNumberCardAsset\(canvas\)/);
+  assert.match(client, /VaultlixAndroid\.shareImage\(asset\.dataUrl\)/);
+  assert.match(client, /action:'shareImage', dataUrl:asset\.dataUrl/);
+  assert.match(client, /Card saved as an image/);
+  const shareFunction = client.match(/async function shareNumberCard\(\) \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.doesNotMatch(shareFunction, /shareText|https:\/\/vaultlix\.com|navigator\.share\([^)]*url:/);
 });
