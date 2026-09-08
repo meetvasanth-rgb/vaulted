@@ -47,6 +47,7 @@ public class MainActivity extends BridgeActivity {
     private SecureMessageStore secureMessageStore;
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
+    private volatile Uri preparedNumberCardUri;
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
@@ -314,18 +315,27 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void shareImage(String dataUrl) {
-            if (dataUrl == null || !dataUrl.startsWith("data:image/png;base64,") || dataUrl.length() > 12_000_000) return;
+        public boolean prepareShareImage(String dataUrl) {
+            if (dataUrl == null || !dataUrl.startsWith("data:image/png;base64,") || dataUrl.length() > 12_000_000) return false;
+            try {
+                int comma = dataUrl.indexOf(',');
+                byte[] png = Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT);
+                if (png.length == 0 || png.length > 8_000_000) return false;
+                File directory = new File(getCacheDir(), "shared");
+                if (!directory.exists() && !directory.mkdirs()) return false;
+                File card = new File(directory, "vaultlix-private-number.png");
+                try (FileOutputStream output = new FileOutputStream(card, false)) { output.write(png); }
+                preparedNumberCardUri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", card);
+                return true;
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface
+        public void sharePreparedImage() {
+            Uri uri = preparedNumberCardUri;
+            if (uri == null) return;
             runOnUiThread(() -> {
                 try {
-                    int comma = dataUrl.indexOf(',');
-                    byte[] png = Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT);
-                    if (png.length == 0 || png.length > 8_000_000) return;
-                    File directory = new File(getCacheDir(), "shared");
-                    if (!directory.exists() && !directory.mkdirs()) return;
-                    File card = new File(directory, "vaultlix-private-number.png");
-                    try (FileOutputStream output = new FileOutputStream(card, false)) { output.write(png); }
-                    Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", card);
                     Intent sendIntent = new Intent(Intent.ACTION_SEND);
                     sendIntent.setType("image/png");
                     sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
@@ -334,6 +344,11 @@ public class MainActivity extends BridgeActivity {
                     startActivity(Intent.createChooser(sendIntent, "Share your Vaultlix number"));
                 } catch (Exception ignored) {}
             });
+        }
+
+        @JavascriptInterface
+        public void shareImage(String dataUrl) {
+            if (prepareShareImage(dataUrl)) sharePreparedImage();
         }
 
         @JavascriptInterface

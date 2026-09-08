@@ -10,6 +10,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
     private var webReady = false
     private var pendingUniversalLink: URL?
     private var appSwitcherPrivacyCover: UIView?
+    private var preparedShareImageURL: URL?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -114,6 +115,32 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.prepare()
             feedback.impactOccurred()
+            return
+        }
+        if action == "prepareShareImage",
+           let dataURL = body["dataUrl"] as? String,
+           dataURL.hasPrefix("data:image/png;base64,"),
+           dataURL.count <= 12_000_000,
+           let comma = dataURL.firstIndex(of: ","),
+           let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+           !data.isEmpty, data.count <= 8_000_000 {
+            let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-private-number.png")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                preparedShareImageURL = fileURL
+                emit(name: "vaultlix:share-image-ready", detail: [:])
+            } catch {}
+            return
+        }
+        if action == "sharePreparedImage",
+           let fileURL = preparedShareImageURL,
+           let controller = window?.rootViewController {
+            let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = controller.view
+                popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
+            }
+            controller.present(sheet, animated: true)
             return
         }
         if action == "shareImage",

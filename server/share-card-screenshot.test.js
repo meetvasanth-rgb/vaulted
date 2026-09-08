@@ -30,16 +30,20 @@ test('number-card QR contains only the private app deep link', () => {
   assert.doesNotMatch(client, /console\.(?:info|log)\([^\n]*number-card/);
 });
 
-test('native apps share the image through the system share sheet', () => {
+test('native apps prepare the image before opening the system share sheet', () => {
   const android = readFileSync(join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
   const ios = readFileSync(join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
-  assert.match(android, /void shareImage\(String dataUrl\)[\s\S]*Intent\.ACTION_SEND/);
+  assert.match(android, /void sharePreparedImage\(\)[\s\S]*Intent\.ACTION_SEND/);
   assert.match(ios, /action == "shareImage"[\s\S]*UIActivityViewController/);
   assert.match(android, /setClipData\(ClipData\.newRawUri/);
+  assert.match(android, /boolean prepareShareImage\(String dataUrl\)/);
+  assert.match(android, /void sharePreparedImage\(\)/);
+  assert.match(ios, /action == "prepareShareImage"/);
+  assert.match(ios, /action == "sharePreparedImage"/);
   assert.match(client, /numberCardAssetPromise = prepareNumberCardAsset\(canvas\)/);
-  assert.match(client, /VaultlixAndroid\.shareImage\(asset\.dataUrl\)/);
-  assert.match(client, /action:'shareImage', dataUrl:asset\.dataUrl/);
-  assert.match(client, /Card saved as an image/);
+  assert.match(client, /prepareNativeNumberCard\(asset\.dataUrl\)/);
+  assert.match(client, /VaultlixAndroid\.sharePreparedImage\(\)/);
+  assert.doesNotMatch(client, /Card saved as an image|downloadDataUri\(asset\.dataUrl/);
   const shareFunction = client.match(/async function shareNumberCard\(\) \{[\s\S]*?\n\}/)?.[0] || '';
   assert.doesNotMatch(shareFunction, /shareText|https:\/\/vaultlix\.com|navigator\.share\([^)]*url:/);
 });
