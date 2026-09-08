@@ -85,6 +85,8 @@ test('Quick Connect classifies both directions of an existing relationship witho
   assert.equal(bobAgain.data.status, 'connected');
   assert.equal(aliceAgain.data.requestId, first.data.requestId);
   assert.equal(bobAgain.data.requestId, first.data.requestId);
+  assert.equal(aliceAgain.data.inviteUrl, 'https://vaultlix.com/join/quick-connect-test#k=AAAAAAAAAAAAAAAAAAAAAA');
+  assert.equal(bobAgain.data.inviteUrl, 'https://vaultlix.com/join/quick-connect-test#k=AAAAAAAAAAAAAAAAAAAAAA');
 
   const replacement = await post(base, '/api/connections/request', {
     ...auth(alice), privateNumber:'3456789012', replaceExisting:true,
@@ -117,4 +119,9 @@ test('accepted relationships survive request-expiry cleanup and the client opens
   assert.match(client, /Reconnect securely/);
   assert.match(client, /replaceExisting:true/);
   assert.match(client, /Secure reconnection required · tap to open/);
+  assert.match(client, /async function restoreConnectedConversationFromBackup\(connection, peerPrivateNumber\)/);
+  assert.match(client, /await restoreConnectedConversationFromBackup\(result, peerNumber\)/);
+  assert.match(client, /backedUpSession = \(bundle\.sessions \|\| \[\]\)\.find/);
+  assert.match(client, /Existing private conversation restored securely/);
+  assert.match(client, /replaceExisting:true/);
 });

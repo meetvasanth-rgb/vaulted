@@ -12495,11 +12495,33 @@ async function requestPrivateVault() {
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
+    const peerNumber = activePublicProfile.privateNumber;
+    const peerName = activePublicProfile.displayName;
     clearQuickConnectTarget();
     closePublicProfile();
+    if (await restoreConnectedConversationFromBackup(result, peerNumber)) return;
+
+    // The relationship still exists but this installation no longer holds
+    // its room token and E2EE keypair (for example, an older account backup
+    // was restored after a one-device session replacement). Never invent or
+    // silently substitute keys. Start the existing consent-based secure
+    // reconnection flow instead of trapping the user behind an "already
+    // connected" toast with no conversation to open.
+    const replacement = await api('/api/connections/request', {
+      accountId:state.accountId,
+      sessionToken:state.sessionToken,
+      privateNumber:peerNumber,
+      replaceExisting:true,
+    });
+    if (replacement.error) { toast(replacement.error); return; }
+    if (replacement.status === 'action_required') {
+      await openConnectionRequest(replacement.requestId);
+      toast('A secure reconnection request is waiting for you');
+      return;
+    }
     showScreen('s-vault-list');
     await refreshConnectionRequests();
-    toast('You are already connected — open the existing conversation');
+    toast(`Secure reconnection request sent to ${peerName || 'your contact'}`);
     return;
   }
   if (result.status === 'action_required') {
@@ -12515,6 +12537,43 @@ async function requestPrivateVault() {
   closePublicProfile();
   showScreen('s-vault-list');
   await refreshConnectionRequests();
+}
+
+async function restoreConnectedConversationFromBackup(connection, peerPrivateNumber) {
+  const state = loadAccountState();
+  if (!state?.masterKey || !connection?.inviteUrl) return false;
+  let inviteCode = null;
+  try {
+    inviteCode = new URL(connection.inviteUrl).pathname.split('/').filter(Boolean).pop()?.toLowerCase() || null;
+  } catch (error) {}
+  if (!inviteCode) return false;
+  try {
+    const latest = await api('/api/account/fetch', {
+      accountId:state.accountId,
+      sessionToken:state.sessionToken,
+    });
+    if (latest.error || !latest.bundle) return false;
+    const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
+    const backedUpSession = (bundle.sessions || []).find(session =>
+      session?.code?.toLowerCase() === inviteCode && session.token && session.pubJwk && session.privJwk);
+    if (!backedUpSession) return false;
+    importAccountBundle(bundle, state.accountId);
+    const restored = loadRoomSession(inviteCode);
+    if (!restored) return false;
+    if (!normalizePrivateNumber(restored.peerPrivateNumber) && normalizePrivateNumber(peerPrivateNumber)) {
+      restored.peerPrivateNumber = normalizePrivateNumber(peerPrivateNumber);
+      localStorage.setItem(roomStorageKey(inviteCode), JSON.stringify(restored));
+    }
+    state.revision = latest.revision || state.revision;
+    saveAccountState(state);
+    saveActiveRoomCode(inviteCode);
+    sessionStorage.setItem('vaultlix:restored-conversation-code', inviteCode);
+    location.reload();
+    return true;
+  } catch (error) {
+    console.warn('[connection-restore]', { backupRestoreFailed:true, errorName:error?.name || 'Error' });
+    return false;
+  }
 }
 
 function roomForPrivateNumber(privateNumber) {
@@ -13584,6 +13643,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   const startupParams = new URLSearchParams(location.search);
   const startupConnectionRequestId = startupParams.get('connectionRequest');
   const startupSessionWasReplaced = startupParams.get('sessionReplaced') === '1';
+  const restoredConversationCode = sessionStorage.getItem('vaultlix:restored-conversation-code');
+  if (restoredConversationCode) sessionStorage.removeItem('vaultlix:restored-conversation-code');
   if (startupSessionWasReplaced) {
     clearReplacedAccountLocally(startupParams.get('accountId') || null, false);
     history.replaceState(null, '', location.pathname);
@@ -13889,6 +13950,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     openPublicProfile(publicPrivateNumber);
   } else if (loadAccountState() && loadQuickConnectTarget()) {
     await resumeQuickConnectAfterAuthentication();
+  }
+  if (restoredConversationCode && rooms.has(restoredConversationCode)) {
+    openConversationAfterPaint(restoredConversationCode);
+    toast('Existing private conversation restored securely');
   }
 });
 

@@ -2697,7 +2697,16 @@ async function api(path, method, d, p, res, ip, headers) {
         const senderMirror = (sender.connectionRequests || []).find(r => r.id === acceptedRelationship.id);
         if (senderMirror) { senderMirror.status = 'replaced'; senderMirror.respondedAt = now; }
       } else {
-        return res200(res, { ok:true, requestId:acceptedRelationship.id, status:'connected' });
+        return res200(res, {
+          ok:true,
+          requestId:acceptedRelationship.id,
+          status:'connected',
+          // Both authenticated participants already received this invitation
+          // when the relationship was accepted. Returning it again lets a
+          // device locate the matching session inside its client-encrypted
+          // account backup without exposing room membership credentials.
+          inviteUrl:acceptedRelationship.inviteUrl || null,
+        });
       }
     }
     const relationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'pending');
