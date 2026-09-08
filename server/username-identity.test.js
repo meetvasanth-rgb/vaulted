@@ -67,6 +67,15 @@ test('the conversation gear is isolated from global settings', () => {
   assert.doesNotMatch(client, />Profile \/ Details</);
 });
 
+test('an accepted conversation exposes the peer Private Number directly', () => {
+  assert.match(client, /id="settings-peer-private-number"/);
+  assert.match(client, /function populateConversationPeerNumber\(room = getActiveRoom\(\)\)/);
+  assert.match(client, /normalizePrivateNumber\(room\?\.peerPrivateNumber\)/);
+  assert.match(client, /function copyActivePeerPrivateNumber\(\)/);
+  assert.match(client, /function shareActivePeerPrivateNumber\(\)/);
+  assert.match(client, /Visible only inside your connected conversation with this participant\./);
+});
+
 test('new connection keeps its number form visible on Android', () => {
   assert.match(client, /#new-connection-overlay \.account-form\{order:2\}/);
   assert.match(client, /#new-connection-overlay \.account-copy\{order:3/);

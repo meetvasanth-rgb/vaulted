@@ -3467,6 +3467,23 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <span id="settings-room-section-name" style="text-transform:none;letter-spacing:0;font-weight:600;color:#9A8C7E;font-size:11px">—</span>
     </div>
 
+    <div class="settings-row" id="settings-peer-number-row" style="cursor:default">
+      <div class="settings-row-icon" style="background:#F2E8EC;color:#682C43;">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title" id="settings-peer-number-name">Participant’s Private Number</div>
+        <div class="settings-row-sub" id="settings-peer-private-number">Unavailable</div>
+        <div class="settings-row-sub" data-i18n="peer_number_privacy">Visible only inside your connected conversation with this participant.</div>
+      </div>
+    </div>
+    <div id="settings-peer-number-actions" style="display:none;gap:8px;padding:0 20px 18px">
+      <button class="account-secondary" type="button" onclick="copyActivePeerPrivateNumber()" style="margin:0">Copy number</button>
+      <button class="account-secondary" type="button" onclick="shareActivePeerPrivateNumber()" style="margin:0">Share number</button>
+    </div>
+
+    <div class="settings-divider"></div>
+
     <div class="settings-row" onclick="closeSettings(); showRenameRoomPanel();" style="cursor:pointer">
       <div class="settings-row-icon" style="background:#F7F4F0;color:#9A8C7E;">
         <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
@@ -4347,6 +4364,18 @@ function isRoomVisible(room) {
 let nativeVoipRegistration = null;
 const pendingNativeCallActions = new Map();
 let pendingNativeUnscopedAction = null;
+const pendingNativeMissedCallActions = new Map();
+
+function replayPendingNativeMissedCalls(room) {
+  for (const [key, detail] of pendingNativeMissedCallActions) {
+    const matchesCode = typeof detail.code === 'string' && detail.code === room.code;
+    const matchesHandle = typeof detail.roomHandle === 'string'
+      && detail.roomHandle === room.nativeRoomHandle;
+    if (!matchesCode && !matchesHandle) continue;
+    pendingNativeMissedCallActions.delete(key);
+    queueMicrotask(() => handleNativeCallAction(detail));
+  }
+}
 
 async function registerNativeVoipForRoom(room) {
   if (!nativeVoipRegistration || !room || !room.code || !room.token) return;
@@ -4365,6 +4394,7 @@ function addRoomToState(room) {
   rooms.set(room.code, room);
   subscribeInboxRooms();
   registerNativeVoipForRoom(room);
+  replayPendingNativeMissedCalls(room);
 }
 
 function acceptNativeVoipRegistration(detail) {
@@ -4415,6 +4445,18 @@ async function handleNativeCallAction(detail) {
       ? Array.from(rooms.values()).find(candidate => candidate.nativeRoomHandle === nativeRoomHandle)
       : (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null));
   if (!room) {
+    if (detail.action === 'missed' && (nativeRoomCode || nativeRoomHandle)) {
+      const key = typeof detail.callId === 'string' && detail.callId
+        ? detail.callId
+        : `${nativeRoomCode}|${nativeRoomHandle}|${occurredAt}`;
+      pendingNativeMissedCallActions.set(key, detail);
+      // Bound this transient startup queue if an erased conversation can no
+      // longer match its old device-local room handle.
+      while (pendingNativeMissedCallActions.size > 32) {
+        pendingNativeMissedCallActions.delete(pendingNativeMissedCallActions.keys().next().value);
+      }
+      return;
+    }
     // A terminal action restored after a background/locked launch has no UI
     // state left to terminate. Do not retain it until a later invite and
     // accidentally apply an old hang-up to a new call.
@@ -7706,22 +7748,94 @@ function openSettings(mode = 'general', initialCategory = null) {
   // Naming the room directly in the "This room" section label is that link.
   const roomSectionName = document.getElementById('settings-room-section-name');
   if (roomSectionName) roomSectionName.textContent = room ? roomDisplayLabel(room) : '—';
+  populateConversationPeerNumber(room);
   if (initialCategory) openSettingsCategory(initialCategory);
   else showSettingsMenu();
+}
+
+function populateConversationPeerNumber(room = getActiveRoom()) {
+  const name = document.getElementById('settings-peer-number-name');
+  const number = document.getElementById('settings-peer-private-number');
+  const actions = document.getElementById('settings-peer-number-actions');
+  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  if (name) name.textContent = room?.peerName
+    ? `${room.peerName}’s Private Number`
+    : 'Participant’s Private Number';
+  if (number) number.textContent = privateNumber ? formatPrivateNumber(privateNumber) : 'Private Number unavailable';
+  if (actions) actions.style.display = privateNumber ? 'flex' : 'none';
+}
+
+async function copyActivePeerPrivateNumber() {
+  const room = getActiveRoom();
+  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  if (!privateNumber) { toast('Private Number unavailable'); return; }
+  try {
+    await navigator.clipboard.writeText(formatPrivateNumber(privateNumber));
+    toast('Private Number copied');
+  } catch (e) {
+    toast('Press and hold the number to copy it');
+  }
+}
+
+async function shareActivePeerPrivateNumber() {
+  const room = getActiveRoom();
+  const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
+  if (!privateNumber) { toast('Private Number unavailable'); return; }
+  const peerName = room.peerName || 'This contact';
+  const text = `${peerName} — Vaultlix Private Number: ${formatPrivateNumber(privateNumber)}`;
+  try {
+    if (await openSystemShare(text)) return;
+    await navigator.clipboard.writeText(text);
+    toast('Private Number copied');
+  } catch (e) {
+    if (e?.name !== 'AbortError') toast('Couldn’t open sharing');
+  }
 }
 
 async function shareOwnPrivateNumber() {
   const state = loadAccountState();
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
   await renderNumberCard(state);
+  resetNumberCardShareState();
   document.getElementById('number-card-overlay').classList.add('open');
 }
 
-function closeNumberCard() { document.getElementById('number-card-overlay')?.classList.remove('open'); }
+function closeNumberCard() {
+  resetNumberCardShareState();
+  document.getElementById('number-card-overlay')?.classList.remove('open');
+}
 let numberCardAssetPromise = null;
 let numberCardAssetKey = '';
 let numberCardNativePrepared = false;
+let numberCardShareInFlight = false;
+let numberCardShareTimer = null;
 window.addEventListener('vaultlix:share-image-ready', () => { numberCardNativePrepared = true; });
+window.addEventListener('vaultlix:share-image-presented', () => {
+  if (!numberCardShareInFlight) return;
+  resetNumberCardShareState();
+  document.getElementById('number-card-overlay')?.classList.remove('open');
+});
+window.addEventListener('vaultlix:share-image-failed', () => {
+  if (!numberCardShareInFlight) return;
+  resetNumberCardShareState();
+  toast('Could not open sharing. Please try again.');
+});
+
+function resetNumberCardShareState() {
+  numberCardShareInFlight = false;
+  if (numberCardShareTimer) clearTimeout(numberCardShareTimer);
+  numberCardShareTimer = null;
+  const button = document.querySelector('.number-card-share');
+  if (button) { button.disabled = false; button.textContent = 'Share card'; }
+}
+
+function beginNumberCardShare() {
+  if (numberCardShareInFlight) return false;
+  numberCardShareInFlight = true;
+  const button = document.querySelector('.number-card-share');
+  if (button) { button.disabled = true; button.textContent = 'Opening share options…'; }
+  return true;
+}
 
 function quickConnectQrMatrix(privateNumber) {
   const qr = qrcode(0, 'M');
@@ -7777,38 +7891,46 @@ function prepareNativeNumberCard(dataUrl) {
   try {
     if (typeof window.VaultlixAndroid?.prepareShareImage === 'function') {
       numberCardNativePrepared = window.VaultlixAndroid.prepareShareImage(dataUrl) !== false;
-      return;
+      return numberCardNativePrepared;
     }
     if (window.webkit?.messageHandlers?.vaultlixCall) {
       window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'prepareShareImage', dataUrl });
+      return null;
     }
-  } catch (error) { numberCardNativePrepared = false; }
+  } catch (error) { numberCardNativePrepared = false; return false; }
+  return false;
 }
 
 async function shareNumberCard() {
+  if (!beginNumberCardShare()) return;
   const canvas = document.getElementById('number-card-canvas');
   try {
     const asset = await (numberCardAssetPromise || (numberCardAssetPromise = prepareNumberCardAsset(canvas)));
     const file = new File([asset.blob], 'vaultlix-private-number.png', { type:'image/png' });
     if (typeof window.VaultlixAndroid?.sharePreparedImage === 'function') {
-      if (!numberCardNativePrepared) prepareNativeNumberCard(asset.dataUrl);
-      window.VaultlixAndroid.sharePreparedImage();
-      closeNumberCard();
-      return;
-    }
-    if (window.webkit?.messageHandlers?.vaultlixCall && numberCardNativePrepared) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'sharePreparedImage' });
-      closeNumberCard();
-      return;
-    }
-    if (typeof window.VaultlixAndroid?.shareImage === 'function') {
-      window.VaultlixAndroid.shareImage(asset.dataUrl);
-      closeNumberCard();
-      return;
+      const prepared = numberCardNativePrepared || prepareNativeNumberCard(asset.dataUrl) === true;
+      const opened = prepared && window.VaultlixAndroid.sharePreparedImage() === true;
+      if (opened) { closeNumberCard(); return; }
+      if (typeof window.VaultlixAndroid.shareImage === 'function'
+          && window.VaultlixAndroid.shareImage(asset.dataUrl) === true) {
+        closeNumberCard();
+        return;
+      }
+      throw new Error('Native Android sharing was unavailable');
     }
     if (window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'shareImage', dataUrl:asset.dataUrl });
-      closeNumberCard();
+      const message = numberCardNativePrepared
+        ? { action:'sharePreparedImage' }
+        : { action:'shareImage', dataUrl:asset.dataUrl };
+      window.webkit.messageHandlers.vaultlixCall.postMessage(message);
+      // Keep the card visible until iOS confirms that its share sheet was
+      // presented. Closing immediately made a failed share look like a redirect
+      // back to Profile.
+      numberCardShareTimer = setTimeout(() => {
+        if (!numberCardShareInFlight) return;
+        resetNumberCardShareState();
+        toast('Could not open sharing. Please try again.');
+      }, 6000);
       return;
     }
     if (navigator.canShare?.({ files:[file] })) {
@@ -7820,8 +7942,10 @@ async function shareNumberCard() {
         if (error?.name === 'AbortError') return;
       }
     }
+    resetNumberCardShareState();
     toast('Image sharing is unavailable. Update Vaultlix and try again.');
   } catch (error) {
+    resetNumberCardShareState();
     if (error?.name !== 'AbortError') toast('Sharing was not available');
   }
 }
@@ -10119,7 +10243,11 @@ function vaultInboxPreview(room, allowContent) {
   const messages = room.messages || [];
   const last = messages[messages.length - 1];
   const missed = [...messages].reverse().find(rec => rec?.kind === 'sys' && /^Missed call/.test(rec.content || ''));
-  if (missed && (!last || missed === last)) return { text: i18n('missed_encrypted_call'), alert: true };
+  // Keep the missed call as the latest-activity preview, but only style it
+  // as an unread alert until the conversation is actually opened.
+  if (missed && (!last || missed === last)) {
+    return { text: i18n('missed_encrypted_call'), alert: room.unread > 0 };
+  }
   if (!allowContent) {
     if (room.unread > 0) return { text: room.unread === 1 ? i18n('new_encrypted_message') : `${room.unread} ${i18n('new_encrypted_messages')}`, alert: false };
     if (!room.everOnline) return { text: i18n('waiting_for_other_person'), alert: false };
@@ -10316,6 +10444,13 @@ function renderChatBody(room) {
     renderMessageRecord(room, rec);
   }
   body.scrollTop = body.scrollHeight;
+  // Inbox navigation renders the conversation immediately before s-chat is
+  // made visible. WebKit reports a zero/stale scroll height for that hidden
+  // frame, leaving the newest row (notably a missed call) below the viewport.
+  // Re-apply after the screen transition has committed.
+  requestAnimationFrame(() => {
+    if (activeRoomCode === room.code) body.scrollTop = body.scrollHeight;
+  });
   scheduleDeferredKlipyGifs(body);
 }
 

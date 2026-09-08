@@ -58,6 +58,6 @@ test('public invitations retain branded previews while number-card QR uses an ap
   assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
   const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));
   assert.match(shareBody, /vaultlix:\/\/connect\/\$\{privateNumber\}/);
-  assert.match(shareBody, /VaultlixAndroid\?\.shareImage/);
+  assert.match(shareBody, /VaultlixAndroid\.shareImage/);
   assert.match(shareBody, /navigator\.share\(\{ title:'My Vaultlix Private Number', files:\[file\] \}\)/);
 });

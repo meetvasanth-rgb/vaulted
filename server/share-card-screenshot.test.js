@@ -33,17 +33,22 @@ test('number-card QR contains only the private app deep link', () => {
 test('native apps prepare the image before opening the system share sheet', () => {
   const android = readFileSync(join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
   const ios = readFileSync(join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
-  assert.match(android, /void sharePreparedImage\(\)[\s\S]*Intent\.ACTION_SEND/);
-  assert.match(ios, /action == "shareImage"[\s\S]*UIActivityViewController/);
+  assert.match(android, /boolean sharePreparedImage\(\)[\s\S]*Intent\.ACTION_SEND/);
+  assert.match(ios, /action == "shareImage"[\s\S]*presentShareImage\(fileURL\)/);
+  assert.match(ios, /func presentShareImage[\s\S]*UIActivityViewController/);
   assert.match(android, /setClipData\(ClipData\.newRawUri/);
   assert.match(android, /boolean prepareShareImage\(String dataUrl\)/);
-  assert.match(android, /void sharePreparedImage\(\)/);
+  assert.match(android, /boolean sharePreparedImage\(\)/);
+  assert.match(android, /boolean shareImage\(String dataUrl\)/);
   assert.match(ios, /action == "prepareShareImage"/);
   assert.match(ios, /action == "sharePreparedImage"/);
+  assert.match(ios, /vaultlix:share-image-presented/);
   assert.match(client, /numberCardAssetPromise = prepareNumberCardAsset\(canvas\)/);
   assert.match(client, /prepareNativeNumberCard\(asset\.dataUrl\)/);
   assert.match(client, /VaultlixAndroid\.sharePreparedImage\(\)/);
   assert.doesNotMatch(client, /Card saved as an image|downloadDataUri\(asset\.dataUrl/);
   const shareFunction = client.match(/async function shareNumberCard\(\) \{[\s\S]*?\n\}/)?.[0] || '';
   assert.doesNotMatch(shareFunction, /shareText|https:\/\/vaultlix\.com|navigator\.share\([^)]*url:/);
+  assert.match(shareFunction, /sharePreparedImage\(\) === true/);
+  assert.doesNotMatch(shareFunction, /postMessage\(\{ action:'sharePreparedImage' \}\);\s*closeNumberCard\(\)/);
 });

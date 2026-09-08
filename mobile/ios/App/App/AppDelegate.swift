@@ -185,12 +185,18 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
             guard let self,
-                  self.calls[callID] != nil,
+                  let payload = self.calls[callID],
                   !self.answeredCalls.contains(callID) else { return }
             self.provider.reportCall(with: callID, endedAt: Date(), reason: .unanswered)
             self.calls.removeValue(forKey: callID)
             NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
             self.nativeMediaCalls.remove(callID)
+            // This local CallKit timeout can win the race with the caller's
+            // remote hang-up push. Once calls[callID] is removed, that later
+            // push is intentionally ignored, so emit the missed event here
+            // while the opaque room handle is still available. The web layer
+            // encrypts and stores the resulting conversation history row.
+            self.postAction("missed", callID: callID, payload: payload)
         }
 
         // iOS requires every VoIP push to be reported to CallKit promptly.

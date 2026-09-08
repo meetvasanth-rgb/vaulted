@@ -84,6 +84,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
               window?.windowScene?.activationState == .foregroundActive else { return }
         for action in VaultlixCallManager.shared.consumePendingActions() {
             emit(name: "vaultlix:call-action", detail: action)
+            // A locked/background call can activate the scene before the
+            // encrypted room list is restored. Missed events are additive and
+            // carry a stable call ID, so replay only those across the short
+            // startup window. The web client deduplicates the history row.
+            if (action["action"] as? String) == "missed" {
+                for delay in [2.0, 5.0, 9.0] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                        guard let self,
+                              self.window?.windowScene?.activationState == .foregroundActive else { return }
+                        self.emit(name: "vaultlix:call-action", detail: action)
+                    }
+                }
+            }
         }
     }
 
@@ -93,6 +106,39 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             "speakerOn": VaultlixCallManager.shared.isSpeakerEnabled(),
             "success": success,
         ])
+    }
+
+    private func topViewController(from controller: UIViewController?) -> UIViewController? {
+        if let navigation = controller as? UINavigationController {
+            return topViewController(from: navigation.visibleViewController)
+        }
+        if let tabs = controller as? UITabBarController {
+            return topViewController(from: tabs.selectedViewController)
+        }
+        if let presented = controller?.presentedViewController {
+            return topViewController(from: presented)
+        }
+        return controller
+    }
+
+    private func presentShareImage(_ fileURL: URL) {
+        guard let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            emit(name: "vaultlix:share-image-failed", detail: [:])
+            return
+        }
+        if presenter is UIActivityViewController {
+            emit(name: "vaultlix:share-image-presented", detail: [:])
+            return
+        }
+        let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+        }
+        presenter.present(sheet, animated: true) { [weak self] in
+            self?.emit(name: "vaultlix:share-image-presented", detail: [:])
+        }
     }
 
     func userContentController(_ userContentController: WKUserContentController,
@@ -117,50 +163,48 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             feedback.impactOccurred()
             return
         }
-        if action == "prepareShareImage",
-           let dataURL = body["dataUrl"] as? String,
-           dataURL.hasPrefix("data:image/png;base64,"),
-           dataURL.count <= 12_000_000,
-           let comma = dataURL.firstIndex(of: ","),
-           let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
-           !data.isEmpty, data.count <= 8_000_000 {
+        if action == "prepareShareImage" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:image/png;base64,"),
+                  dataURL.count <= 12_000_000,
+                  let comma = dataURL.firstIndex(of: ","),
+                  let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+                  !data.isEmpty, data.count <= 8_000_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
             let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-private-number.png")
             do {
                 try data.write(to: fileURL, options: .atomic)
                 preparedShareImageURL = fileURL
                 emit(name: "vaultlix:share-image-ready", detail: [:])
-            } catch {}
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }
-        if action == "sharePreparedImage",
-           let fileURL = preparedShareImageURL,
-           let controller = window?.rootViewController {
-            let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-            if let popover = sheet.popoverPresentationController {
-                popover.sourceView = controller.view
-                popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
+        if action == "sharePreparedImage" {
+            guard let fileURL = preparedShareImageURL else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
             }
-            controller.present(sheet, animated: true)
+            presentShareImage(fileURL)
             return
         }
-        if action == "shareImage",
-           let dataURL = body["dataUrl"] as? String,
-           dataURL.hasPrefix("data:image/png;base64,"),
-           dataURL.count <= 12_000_000,
-           let comma = dataURL.firstIndex(of: ","),
-           let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
-           !data.isEmpty, data.count <= 8_000_000,
-           let controller = window?.rootViewController {
+        if action == "shareImage" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:image/png;base64,"),
+                  dataURL.count <= 12_000_000,
+                  let comma = dataURL.firstIndex(of: ","),
+                  let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+                  !data.isEmpty, data.count <= 8_000_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
             let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-private-number.png")
             do {
                 try data.write(to: fileURL, options: .atomic)
-                let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-                if let popover = sheet.popoverPresentationController {
-                    popover.sourceView = controller.view
-                    popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
-                }
-                controller.present(sheet, animated: true)
-            } catch {}
+                preparedShareImageURL = fileURL
+                presentShareImage(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }
         if action == "emergencyReset" {

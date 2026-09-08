@@ -241,7 +241,17 @@ public class MainActivity extends BridgeActivity {
         super.onWindowFocusChanged(hasFocus);
         String[] pendingEnd = hasFocus ? NativeCallActions.consumePendingWebViewCallEnd(this) : null;
         if (pendingEnd != null) {
-            clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);
+            if ("Missed call".equals(pendingEnd[1])) {
+                // Window focus arrives before the remote page has necessarily
+                // restored its encrypted rooms. A single delayed delivery
+                // avoids losing the history row without replaying it twice.
+                new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]),
+                        5_000
+                );
+            } else {
+                clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);
+            }
         }
     }
 
@@ -331,9 +341,9 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void sharePreparedImage() {
+        public boolean sharePreparedImage() {
             Uri uri = preparedNumberCardUri;
-            if (uri == null) return;
+            if (uri == null) return false;
             runOnUiThread(() -> {
                 try {
                     Intent sendIntent = new Intent(Intent.ACTION_SEND);
@@ -344,11 +354,12 @@ public class MainActivity extends BridgeActivity {
                     startActivity(Intent.createChooser(sendIntent, "Share your Vaultlix number"));
                 } catch (Exception ignored) {}
             });
+            return true;
         }
 
         @JavascriptInterface
-        public void shareImage(String dataUrl) {
-            if (prepareShareImage(dataUrl)) sharePreparedImage();
+        public boolean shareImage(String dataUrl) {
+            return prepareShareImage(dataUrl) && sharePreparedImage();
         }
 
         @JavascriptInterface

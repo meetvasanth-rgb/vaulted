@@ -4417,7 +4417,12 @@ wss.on('connection', (ws) => {
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
           markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId, now);
-          const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
+          // A caller's 30-second timeout can reach the server a few
+          // milliseconds after ringingUntil. The non-zero marker still means
+          // the callee never answered: both native and WebView answer paths
+          // clear it immediately. Classify from that state rather than the
+          // wall-clock edge so an unanswered call is never lost from history.
+          const wasStillRinging = Boolean(room2.ringingUntil);
           room2.ringingUntil = 0;
           room2.activeCall = false;
           const nativeCallId = room2.nativeCallId;
