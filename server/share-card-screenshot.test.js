@@ -20,7 +20,7 @@ test('share-card screenshot remains visually stable at 1080 by 1350', () => {
   assert.equal(BRAND, '#6B1F3A');
   assert.equal(
     crypto.createHash('sha256').update(svg).digest('hex'),
-    '7c089df542e81a70addb0c31929382501647e0bdf509dc6741b2e546e4daad4c',
+    'c049d3559615a995a02ad9638c08b25db3a9b09d8a1a54e8f748796e1202d278',
   );
 });
 
@@ -28,6 +28,16 @@ test('number-card QR contains only the private app deep link', () => {
   assert.match(client, /qr\.addData\(`vaultlix:\/\/connect\/\$\{privateNumber\}`\)/);
   assert.doesNotMatch(client, /quickConnectQrMatrix[\s\S]{0,500}https:\/\/vaultlix\.com/);
   assert.doesNotMatch(client, /console\.(?:info|log)\([^\n]*number-card/);
+});
+
+test('number card explains the scan and includes a readable connection fallback', () => {
+  const svg = createNumberCardSvg({
+    number:'2480599999', username:'Vasanthkumar', tier:'founding', qrMatrix:[[true]],
+  });
+  assert.match(svg, /Scan to request a private, encrypted chat with/);
+  assert.match(svg, /Vasanthkumar — no phone number needed/);
+  assert.match(svg, /vaultlix\.com\/24-8059-9999/);
+  assert.doesNotMatch(svg, /Scan to extend a private line/);
 });
 
 test('native apps prepare the image before opening the system share sheet', () => {

@@ -52,11 +52,11 @@
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7B2947"/><stop offset=".52" stop-color="${BRAND}"/><stop offset="1" stop-color="#3D1022"/></linearGradient>
     <radialGradient id="glow"><stop stop-color="#F6DCE5" stop-opacity=".22"/><stop offset="1" stop-color="#F6DCE5" stop-opacity="0"/></radialGradient>
     <filter id="emboss" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="2" flood-color="#260713" flood-opacity=".75"/><feDropShadow dx="0" dy="-2" stdDeviation="1" flood-color="#FFDCE8" flood-opacity=".45"/></filter>
-    <style>.brand{font:700 34px Inter,Arial,sans-serif;letter-spacing:12px;fill:#FFF5F8}.eyebrow{font:700 22px Inter,Arial,sans-serif;letter-spacing:7px;fill:#EDC5D2}.number{font:700 86px Inter,Arial,sans-serif;letter-spacing:5px;fill:#FFF7FA}.name{font:600 38px Inter,Arial,sans-serif;fill:#FFF7FA}.badge{font:700 20px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF7FA}.copy{font:500 24px Inter,Arial,sans-serif;fill:#F3DDE5}.small{font:500 19px Inter,Arial,sans-serif;letter-spacing:2px;fill:#E9C5D1}</style>
+    <style>.brand{font:700 34px Inter,Arial,sans-serif;letter-spacing:12px;fill:#FFF5F8}.eyebrow{font:700 22px Inter,Arial,sans-serif;letter-spacing:7px;fill:#EDC5D2}.number{font:700 86px Inter,Arial,sans-serif;letter-spacing:5px;fill:#FFF7FA}.name{font:600 38px Inter,Arial,sans-serif;fill:#FFF7FA}.badge{font:700 20px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF7FA}.copy{font:500 22px Inter,Arial,sans-serif;fill:#F3DDE5}.fallback{font:600 21px Inter,Arial,sans-serif;fill:#FFF7FA}.small{font:500 17px Inter,Arial,sans-serif;letter-spacing:2px;fill:#E9C5D1}</style>
   </defs>
   <rect width="1080" height="1350" fill="url(#bg)"/>
   <circle cx="540" cy="420" r="470" fill="url(#glow)"/>
-  <path d="M80 84h920M80 1266h920" stroke="#F6DCE5" stroke-opacity=".24"/>
+  <path d="M80 84h920M80 1320h920" stroke="#F6DCE5" stroke-opacity=".24"/>
   <g text-anchor="middle">
     <text x="540" y="150" class="brand">VAULTLIX</text>
     <text x="540" y="260" class="eyebrow">MY PRIVATE LINE</text>
@@ -66,8 +66,12 @@
   </g>
   <rect x="354" y="784" width="372" height="372" rx="42" fill="#FFF"/>
   <path d="${modules}" fill="#2D0C18"/>
-  <text x="540" y="1210" text-anchor="middle" class="copy">Scan to extend a private line</text>
-  <text x="540" y="1270" text-anchor="middle" class="small">NO SIM · NO PHONE NUMBER · YOUR CHOICE</text>
+  <text x="540" y="1188" text-anchor="middle" class="copy">
+    <tspan x="540">Scan to request a private, encrypted chat with</tspan>
+    <tspan x="540" dy="31">${safeUsername} — no phone number needed</tspan>
+  </text>
+  <text x="540" y="1257" text-anchor="middle" class="fallback">vaultlix.com/${safeNumber}</text>
+  <text x="540" y="1300" text-anchor="middle" class="small">NO SIM · NO PHONE NUMBER · YOUR CHOICE</text>
 </svg>`;
   }
 
