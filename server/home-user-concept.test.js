@@ -19,7 +19,8 @@ test('home page explains the Vaultlix-number user model without repetitive priva
 test('create and sign-in homepage actions open the correct account path directly', () => {
   assert.match(client, /class="landing-hero-action"[^>]*onclick="openCreateAccount\(\)"[^>]*>Create my number/);
   assert.match(client, /landing-hero-action-secondary"[^>]*onclick="openLoginOrInbox\(\)"[^>]*>Sign in/);
-  assert.match(client, /function openCreateAccount\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('register'\)/);
+  assert.match(client, /function openCreateAccount\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('create'\)/);
+  assert.match(client, /id="account-create-form"/);
   assert.match(client, /function openLoginOrInbox\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('login'\)/);
 });
 
