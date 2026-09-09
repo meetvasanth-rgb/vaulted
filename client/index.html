@@ -14041,6 +14041,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // arrives. This removes the notification -> native -> web triple-answer
   // sequence without exposing a vault above the device keyguard.
   const startupParams = new URLSearchParams(location.search);
+  const startupCreateNumber = startupParams.get('create') === '1';
   const startupConnectionRequestId = startupParams.get('connectionRequest');
   const startupSessionWasReplaced = startupParams.get('sessionReplaced') === '1';
   const restoredConversationCode = sessionStorage.getItem('vaultlix:restored-conversation-code');
@@ -14348,6 +14349,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   } else if (startupConnectionRequestId && loadAccountState()) {
     history.replaceState(null, '', '/');
     await openConnectionRequest(startupConnectionRequestId);
+  } else if (startupCreateNumber && !loadAccountState()) {
+    openCreateAccount();
   } else if (publicPrivateNumber) {
     openPublicProfile(publicPrivateNumber);
   } else if (loadQuickConnectTarget()) {

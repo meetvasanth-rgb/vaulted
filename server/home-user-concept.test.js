@@ -24,6 +24,11 @@ test('create and sign-in homepage actions open the correct account path directly
   assert.match(client, /function openLoginOrInbox\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('login'\)/);
 });
 
+test('shareable create-number link opens account creation directly', () => {
+  assert.match(client, /const startupCreateNumber = startupParams\.get\('create'\) === '1'/);
+  assert.match(client, /else if \(startupCreateNumber && !loadAccountState\(\)\) \{\s*openCreateAccount\(\);/);
+});
+
 test('home page leads with relatable private-number use cases', () => {
   assert.match(client, /id="everyday-privacy"/);
   assert.match(client, /Keep your personal number for the people who already have it\./);
