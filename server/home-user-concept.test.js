@@ -80,6 +80,13 @@ test('contact identity is visually stable and long names remain bounded', () => 
   assert.match(client, /maxlength="32"/);
 });
 
+test('every restored inbox conversation retains a visible activity date', () => {
+  assert.match(client, /inboxActivityAt: new Date\(inboxActivityAt \|\| lastMessageAt \|\| connectedSince \|\| Date\.now\(\)\)/);
+  assert.match(client, /inboxActivityAt:session\.inboxActivityAt \|\| session\.savedAt/);
+  assert.match(client, /const fallbackTime = new Date\(room\.inboxActivityAt \|\| 0\)/);
+  assert.match(client, /Math\.max\(messageTime, serverTime, connectedTime, fallbackTime, 0\)/);
+});
+
 test('one-to-one conversation polish uses safe areas and native visual language', () => {
   assert.match(client, /\.emergency-overlay\{[^}]*safe-area-inset-top/);
   assert.match(client, /vaultlix-native-android \.emergency-overlay/);

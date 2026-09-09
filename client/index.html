@@ -4358,7 +4358,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
+function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -4388,6 +4388,10 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber
     // and /api/poll, so it can never be the thing that corrupts a stored
     // keypair (see persistRoom's safe-write rules). Used for inbox ordering.
     lastMessageAt: lastMessageAt || 0,
+    // A local, non-content fallback for conversations that predate the
+    // server's lastMessageAt/connectedSince metadata. This prevents a valid
+    // restored conversation from being the only inbox row with no date.
+    inboxActivityAt: new Date(inboxActivityAt || lastMessageAt || connectedSince || Date.now()).getTime() || Date.now(),
     // How many distinct times this device has reopened THIS ordinary room
     // (never bumped once persistent is true — the suggestion only makes
     // sense before that). lastReconnectCountedAt throttles it so a burst of
@@ -4817,6 +4821,7 @@ async function persistRoom(room) {
       reconnectRequired: !!room.reconnectRequired,
       peerPrivateNumber: room.peerPrivateNumber || null,
       persistent: room.persistent, connectedSince: room.connectedSince, totalMessageCount: room.totalMessageCount,
+      inboxActivityAt: room.inboxActivityAt,
       reconnectCount: room.reconnectCount, lastReconnectCountedAt: room.lastReconnectCountedAt, dismissedPersistentSuggestion: room.dismissedPersistentSuggestion,
       deleteTimerSeconds: room.deleteTimerSeconds, codeLabelLen: room.codeLabelLen,
       expectedCreatorKeyCommitment: room.expectedCreatorKeyCommitment,
@@ -4858,6 +4863,7 @@ function persistRoomSeq(room) {
     existing.lastReceiptSeq = room.lastReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
     existing.lastDeletionSeq = room.lastDeletionSeq;
+    existing.inboxActivityAt = vaultLastActivity(room) || existing.inboxActivityAt || Date.now();
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
     scheduleAccountSync();
@@ -10648,7 +10654,8 @@ function vaultLastActivity(room) {
   const messageTime = Number(last?.time || 0);
   const serverTime = new Date(room.lastMessageAt || 0).getTime() || 0;
   const connectedTime = new Date(room.connectedSince || 0).getTime() || 0;
-  return Math.max(messageTime, serverTime, connectedTime, 0);
+  const fallbackTime = new Date(room.inboxActivityAt || 0).getTime() || 0;
+  return Math.max(messageTime, serverTime, connectedTime, fallbackTime, 0);
 }
 
 function formatVaultInboxTime(value) {
@@ -12606,6 +12613,11 @@ function loadQuickConnectTarget() {
   return normalizePrivateNumber(localStorage.getItem(QUICK_CONNECT_TARGET_KEY));
 }
 function clearQuickConnectTarget() { localStorage.removeItem(QUICK_CONNECT_TARGET_KEY); }
+async function restoreQuickConnectInvitationAfterReload() {
+  const target = loadQuickConnectTarget();
+  if (!target || loadAccountState()) return false;
+  return openPublicProfile(target);
+}
 async function resumeQuickConnectAfterAuthentication() {
   const target = loadQuickConnectTarget();
   if (!target || !loadAccountState()) return false;
@@ -12717,7 +12729,10 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
       openApp.style.display = isNativeApp() ? 'none' : 'block';
     }
     const button = document.getElementById('public-profile-request');
-    button.textContent = signedIn && roomForPrivateNumber(result.profile.privateNumber)
+    const isOwnProfile = signedIn && normalizePrivateNumber(signedIn.privateNumber) === normalizePrivateNumber(result.profile.privateNumber);
+    button.textContent = isOwnProfile
+      ? 'This is your Private Number'
+      : signedIn && roomForPrivateNumber(result.profile.privateNumber)
       ? 'Open conversation'
       : signedIn ? 'Connect privately' : 'Create my private line';
     const signIn = document.getElementById('public-profile-sign-in');
@@ -12755,6 +12770,8 @@ async function requestPrivateVault(authenticationMode = 'create') {
   }
   if (normalizePrivateNumber(state.privateNumber) === normalizePrivateNumber(activePublicProfile.privateNumber)) {
     clearQuickConnectTarget();
+    closePublicProfile();
+    showScreen('s-vault-list');
     toast('That is your own Private Number');
     return;
   }
@@ -13959,7 +13976,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const code of idx) {
       const session = loadRoomSession(code);
       if (!session) continue;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerPrivateNumber:session.peerPrivateNumber, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
       room.nickname = session.nickname || null;
       room.restorePending = true;
       addRoomToState(room);
@@ -14227,8 +14244,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     await openConnectionRequest(startupConnectionRequestId);
   } else if (publicPrivateNumber) {
     openPublicProfile(publicPrivateNumber);
-  } else if (loadAccountState() && loadQuickConnectTarget()) {
-    await resumeQuickConnectAfterAuthentication();
+  } else if (loadQuickConnectTarget()) {
+    if (loadAccountState()) await resumeQuickConnectAfterAuthentication();
+    else await restoreQuickConnectInvitationAfterReload();
   }
   if (restoredConversationCode && rooms.has(restoredConversationCode)) {
     openConversationAfterPaint(restoredConversationCode);

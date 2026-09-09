@@ -68,3 +68,15 @@ test('logged-out Quick Connect is invitation-aware and creation-first', () => {
   assert.doesNotMatch(client, /Sign in to connect['<]/);
   assert.doesNotMatch(client, /\/api\/connect\/guest-request/);
 });
+
+test('Quick Connect survives a logged-out reload and resumes after authentication', () => {
+  assert.match(client, /async function restoreQuickConnectInvitationAfterReload\(\)/);
+  assert.match(client, /const target = loadQuickConnectTarget\(\);[\s\S]*return openPublicProfile\(target\);/);
+  assert.match(client, /else if \(loadQuickConnectTarget\(\)\) \{[\s\S]*if \(loadAccountState\(\)\) await resumeQuickConnectAfterAuthentication\(\);[\s\S]*else await restoreQuickConnectInvitationAfterReload\(\);/);
+  assert.match(client, /async function finishAccountCreation[\s\S]*await resumeQuickConnectAfterAuthentication\(\)/);
+});
+
+test('opening your own Quick Connect invitation gives visible feedback', () => {
+  assert.match(client, /This is your Private Number/);
+  assert.match(client, /clearQuickConnectTarget\(\);[\s\S]*closePublicProfile\(\);[\s\S]*toast\('That is your own Private Number'\)/);
+});
