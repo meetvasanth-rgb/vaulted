@@ -52,9 +52,11 @@ test('formatted recovery codes preserve base64url dashes', () => {
     sourceFunction('recoveryCodeToBytes'),
     sourceFunction('bytesToBase64'),
     sourceFunction('formatRecoveryCode'),
-    'this.recoveryHelpers = { bytesToBase64UrlCompact, recoveryCodeToBytes, formatRecoveryCode };',
+    sourceFunction('normalizePrivateNumber'),
+    sourceFunction('recoveryDeepLink'),
+    'this.recoveryHelpers = { bytesToBase64UrlCompact, recoveryCodeToBytes, formatRecoveryCode, recoveryDeepLink };',
   ].join('\n'), context);
-  const { bytesToBase64UrlCompact, recoveryCodeToBytes, formatRecoveryCode } = context.recoveryHelpers;
+  const { bytesToBase64UrlCompact, recoveryCodeToBytes, formatRecoveryCode, recoveryDeepLink } = context.recoveryHelpers;
   let original;
   for (let seed = 0; seed < 256; seed++) {
     const candidate = Uint8Array.from({ length:32 }, (_, index) => (seed + index * 37) & 255);
@@ -65,6 +67,11 @@ test('formatted recovery codes preserve base64url dashes', () => {
   assert.equal(formatted.length, 53);
   assert.deepEqual(Array.from(recoveryCodeToBytes(formatted)), Array.from(original));
   assert.deepEqual(Array.from(recoveryCodeToBytes(bytesToBase64UrlCompact(original))), Array.from(original));
+  assert.equal(
+    recoveryDeepLink('9550249819', formatted),
+    `vaultlix://recover/9550249819#k=${bytesToBase64UrlCompact(original)}`,
+    'QR recovery link must preserve a dash that belongs to the secure code',
+  );
 });
 
 test('identity creation displays an accessible code-native text scramble transition', () => {

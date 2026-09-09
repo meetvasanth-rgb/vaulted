@@ -350,6 +350,14 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room) {
   totalByteSize = Math.max(0, totalByteSize - oldBytes + room.byteSize);
   const highestSequence = room.msgs.reduce((highest, message) => Math.max(highest, message.seq || 0), 0);
   room.seq = Math.max(room.seq || 0, highestSequence);
+  // PostgreSQL is authoritative after a restart. Without restoring this
+  // watermark, /api/poll returned 0 and every hydrated inbox row fell back
+  // to the same local session-save time instead of its actual last message.
+  const durableLastMessageAt = restoredMessages.reduce((latest, message) => {
+    const timestamp = new Date(message.ts || 0).getTime() || 0;
+    return Math.max(latest, timestamp);
+  }, 0);
+  room.lastMessageAt = Math.max(Number(room.lastMessageAt) || 0, durableLastMessageAt);
 }
 
 // Shared by every place that nulls a message's content out from under it —
@@ -3006,15 +3014,10 @@ async function api(path, method, d, p, res, ip, headers) {
       room.connectedSince = Date.now();
     }
 
-    // System message — tagged with `from` so the poll filter (which already
-    // excludes a caller's own messages) also excludes this one for the
-    // joiner themselves. Without it, system messages had no sender at all,
-    // so the "X joined" announcement got echoed back to X's own client too
-    // — confusing since the app had just told them "You're X" a moment
-    // earlier. The other member still gets it normally, which is the whole
-    // point of the message.
+    // Membership is connection state, not conversation content. Keep an id
+    // for the acceptance push, but do not place "joined" in either person's
+    // encrypted conversation timeline.
     const joinedEventId = uid();
-    pushRoomMsg(room, { seq: ++room.seq, id: joinedEventId, type:'system', content:`${name} joined`, ts: Date.now(), from: token });
     publishInboxRoom(roomCode, 'membership', { excludeToken:token });
 
     // The creator may have shared the invitation and moved on to another
@@ -3370,11 +3373,9 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   // POST /api/set-timer — change the disappearing-message duration for this
-  // room at any point in the conversation, not just at creation. Either
-  // member can change it; a system message announces the new setting to
-  // both, and the value itself rides the existing deleteTimer field already
-  // returned on every /api/poll response, so both clients pick it up within
-  // one poll cycle without any extra sync mechanism.
+  // room at any point in the conversation, not just at creation. The value
+  // rides the existing deleteTimer field returned on every /api/poll
+  // response; session-setting changes are intentionally not chat messages.
   if (path==='/api/set-timer' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
@@ -3393,13 +3394,6 @@ async function api(path, method, d, p, res, ip, headers) {
     // are ever in scope — never a stale timestamp from an earlier session.
     room.deleteTimerSetAt = Date.now();
     room.lastActivity = Date.now();
-    pushRoomMsg(room, {
-      seq: ++room.seq, id: uid(), type:'system',
-      content: room.deleteTimer
-        ? `${m.name} set disappearing messages to ${formatTimerLabel(room.deleteTimer)}`
-        : `${m.name} turned off disappearing messages`,
-      ts: Date.now(),
-    });
     publishInboxRoom(d.code, 'timer', { excludeToken:d.token });
     return res200(res, { ok: true, deleteTimer: room.deleteTimer });
   }
@@ -3424,7 +3418,6 @@ async function api(path, method, d, p, res, ip, headers) {
     room.byteSize = 0; // everything that byte total was tracking is gone with room.msgs
     room.clearedAt = Date.now();
     room.lastActivity = Date.now();
-    pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
     publishInboxRoom(d.code, 'clear', { excludeToken:d.token });
     return res200(res, { ok: true, clearedAt: room.clearedAt });
   }
@@ -3612,11 +3605,8 @@ async function api(path, method, d, p, res, ip, headers) {
 
   // POST /api/leave — previously had NO auth check at all: it read d.code,
   // deleted whatever member matched d.token (a no-op if that token wasn't
-  // actually a member), and pushed a system message using the caller's own
-  // unverified d.name — anyone who merely knew a vault code could forge a
-  // "${d.name} left" message into a room they were never part of, with no
-  // length cap on d.name, no cap on room.msgs growth (the 100-message trim
-  // only ever ran in /api/send), and no rate limit. Fixed with the same
+  // actually a member). Anyone who merely knew a vault code could therefore
+  // mutate membership without authentication. Fixed with the same
   // auth pattern as /api/clear-chat: confirm room, confirm actual
   // membership, and derive the display name from the AUTHENTICATED member
   // (m.name) — never from d.name — before touching anything.
@@ -3637,7 +3627,6 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room || !m) return res204(res);
     room.members.delete(d.token);
     room.lastActivity = Date.now();
-    pushRoomMsg(room, { seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
     publishInboxRoom(d.code, 'membership', { excludeToken:d.token });
     if (room.members.size===0) destroyRoom(d.code);
     return res204(res);

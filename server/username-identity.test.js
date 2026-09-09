@@ -24,7 +24,7 @@ test('Private Number profiles and authenticated connection requests are exposed'
   assert.match(client, /Accept connection/);
 });
 
-test('signed-in settings support username changes and encrypted device recovery-code storage', () => {
+test('signed-in settings support username changes and a protected recovery-code reveal', () => {
   assert.match(server, /path === '\/api\/account\/profile'/);
   assert.match(server, /account\.displayName = displayName/);
   assert.match(client, /id="account-profile-display-name"/);
@@ -34,8 +34,9 @@ test('signed-in settings support username changes and encrypted device recovery-
   assert.match(client, /profile:\['settings-account-row','settings-profile-controls'\]/);
   assert.match(client, /function populateAccountProfileSettings\(state = loadAccountState\(\)\)/);
   assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
-  assert.match(client, /saveRecoveryCodeOnDevice\(event\)/);
-  assert.match(client, /api\('\/api\/account\/recovery-bundle'/);
+  assert.match(client, /decryptSavedRecoveryCode/);
+  assert.match(client, /authorizeRecoveryCodeAccess/);
+  assert.doesNotMatch(client, /saveRecoveryCodeOnDevice\(event\)/);
   assert.doesNotMatch(server, /account\.recoveryCode\s*=/);
 });
 

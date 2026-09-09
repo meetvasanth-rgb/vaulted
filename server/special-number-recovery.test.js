@@ -26,5 +26,5 @@ test('strong recovery material remains encrypted locally while backup is deferre
   assert.match(client, /if \(raw\.length !== 32\) throw new Error\('Invalid recovery code'\)/);
   assert.match(client, /authorizeRecoveryCodeAccess/);
   assert.match(client, /finishAccountCreation\(false\)/);
-  assert.match(client, /I saved another copy/);
+  assert.match(client, /I’ve saved it/);
 });

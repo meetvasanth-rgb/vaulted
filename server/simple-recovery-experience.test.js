@@ -17,17 +17,19 @@ test('account creation enters the app without forcing recovery acknowledgement',
 test('number-backup reminder starts after four hours and repeats daily', () => {
   assert.match(client, /RECOVERY_FIRST_REMINDER_MS = 4 \* 60 \* 60 \* 1000/);
   assert.match(client, /RECOVERY_REPEAT_REMINDER_MS = 24 \* 60 \* 60 \* 1000/);
-  assert.match(client, /Keep your Vaultlix number safe/);
-  assert.match(client, /Protect my number/);
+  assert.match(client, /Save your recovery code/);
+  assert.match(client, /View recovery code/);
   assert.match(client, /Remind me tomorrow/);
   assert.match(client, /if \(!document\.hidden\) checkRecoveryReminder\(\)/);
 });
 
-test('settings use plain number-backup language and hide manual recovery entry', () => {
-  assert.match(client, /<strong>Number backup<\/strong>/);
-  assert.match(client, /<strong>Protected\.<\/strong>/);
-  assert.match(client, /<strong>Not protected yet\.<\/strong>/);
-  assert.match(client, /<details id="account-save-recovery-form-wrap"/);
+test('settings reduce recovery to the Private Number and recovery code', () => {
+  assert.match(client, /<strong>Recovery code<\/strong>/);
+  assert.match(client, /Private Number and recovery code are all you need/);
+  assert.match(client, /private email, WhatsApp note or password manager/);
+  assert.doesNotMatch(client, /Recover on a new phone|Copy another backup|account-save-recovery-form-wrap/);
+  assert.match(client, /Share recovery details/);
+  assert.match(client, /I’ve saved it/);
 });
 
 test('native wrappers authenticate before sensitive recovery details are revealed', () => {
@@ -42,9 +44,16 @@ test('native wrappers authenticate before sensitive recovery details are reveale
 
 test('recovery card uses a private deep link and opens the prepared recovery form', () => {
   assert.match(client, /vaultlix:\/\/recover\/\$\{privateNumber\}#k=\$\{compact\}/);
+  assert.match(client, /bytesToBase64UrlCompact\(recoveryCodeToBytes\(recoveryCode\)\)/);
   assert.match(client, /renderQrCanvas\(document\.getElementById\('recovery-backup-qr'\)/);
   assert.match(client, /function parseRecoveryLink/);
   assert.match(client, /openRecoveryFromLink\(startupRecovery\)/);
   assert.match(android, /"recover"\.equalsIgnoreCase\(uri\.getHost\(\)\)/);
   assert.match(ios, /url\.host\?\.lowercased\(\) == "recover"/);
+});
+
+test('recovery details use the instant system text share flow', () => {
+  assert.match(client, /Keep these Vaultlix recovery details private/);
+  assert.match(client, /if \(await openSystemShare\(text\)\) return/);
+  assert.doesNotMatch(client, /PRIVATE NUMBER BACKUP/);
 });

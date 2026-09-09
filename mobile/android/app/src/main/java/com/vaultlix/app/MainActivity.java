@@ -348,7 +348,7 @@ public class MainActivity extends BridgeActivity {
                     BiometricPrompt prompt = new BiometricPrompt.Builder(MainActivity.this)
                             .setTitle("Confirm it’s you")
                             .setSubtitle(reason == null || reason.trim().isEmpty()
-                                    ? "Open your Vaultlix number backup" : reason)
+                                    ? "Open your Vaultlix recovery code" : reason)
                             .setNegativeButton("Cancel", getMainExecutor(), (dialog, which) ->
                                     emitDeviceAuthentication(false, true))
                             .build();

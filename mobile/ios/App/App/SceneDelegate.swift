@@ -172,7 +172,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
                 return
             }
             let reason = (body["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let promptReason = (reason?.isEmpty == false ? reason : nil) ?? "Open your Vaultlix number backup"
+            let promptReason = (reason?.isEmpty == false ? reason : nil) ?? "Open your Vaultlix recovery code"
             context.evaluatePolicy(
                 .deviceOwnerAuthentication,
                 localizedReason: promptReason
