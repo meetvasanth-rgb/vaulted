@@ -3,6 +3,7 @@ import Capacitor
 import WebKit
 import AVFoundation
 import UserNotifications
+import LocalAuthentication
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler {
     var window: UIWindow?
@@ -161,6 +162,25 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.prepare()
             feedback.impactOccurred()
+            return
+        }
+        if action == "authenticateSensitiveAction" {
+            let context = LAContext()
+            var policyError: NSError?
+            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+                emit(name: "vaultlix:device-auth-result", detail: ["ok": false, "available": false])
+                return
+            }
+            let reason = (body["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let promptReason = (reason?.isEmpty == false ? reason : nil) ?? "Open your Vaultlix number backup"
+            context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: promptReason
+            ) { [weak self] success, _ in
+                DispatchQueue.main.async {
+                    self?.emit(name: "vaultlix:device-auth-result", detail: ["ok": success, "available": true])
+                }
+            }
             return
         }
         if action == "prepareShareImage" {
@@ -341,9 +361,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
 
     private func translatedVaultlixConnectURL(_ url: URL) -> URL? {
         guard url.scheme?.lowercased() == "vaultlix",
-              url.host?.lowercased() == "connect",
               url.path.range(of: "^/[2-9][0-9]{5,9}/?$", options: .regularExpression) != nil else { return nil }
-        return URL(string: "https://vaultlix.com\(url.path)?ref=qr")
+        if url.host?.lowercased() == "connect" {
+            return URL(string: "https://vaultlix.com\(url.path)?ref=qr")
+        }
+        if url.host?.lowercased() == "recover",
+           let fragment = url.fragment,
+           fragment.range(of: "^k=[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil {
+            let privateNumber = url.path.replacingOccurrences(of: "/", with: "")
+            return URL(string: "https://vaultlix.com/?recover=\(privateNumber)#\(fragment)")
+        }
+        return nil
     }
 
     private func flushPendingUniversalLink() {

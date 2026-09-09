@@ -19,10 +19,12 @@ test('early testers can select reserved patterns backed by expiring PostgreSQL r
   assert.match(server, /Reserve number selection is currently closed/);
 });
 
-test('recovery code remains encrypted locally and requires backup acknowledgement', () => {
+test('strong recovery material remains encrypted locally while backup is deferred', () => {
   assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
   assert.match(client, /recoveryBackupConfirmedAt:0/);
+  assert.match(client, /crypto\.getRandomValues\(new Uint8Array\(32\)\)/);
+  assert.match(client, /if \(raw\.length !== 32\) throw new Error\('Invalid recovery code'\)/);
   assert.match(client, /authorizeRecoveryCodeAccess/);
-  assert.match(client, /I saved these details outside this device/);
-  assert.match(client, /save the recovery code outside this device/);
+  assert.match(client, /finishAccountCreation\(false\)/);
+  assert.match(client, /I saved another copy/);
 });

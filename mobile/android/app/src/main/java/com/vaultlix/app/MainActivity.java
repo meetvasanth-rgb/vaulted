@@ -1,6 +1,7 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.hardware.biometrics.BiometricPrompt;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.ClipData;
@@ -14,6 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.CancellationSignal;
 import android.provider.Settings;
 import android.util.Base64;
 import android.view.Gravity;
@@ -116,6 +118,12 @@ public class MainActivity extends BridgeActivity {
         if (cover == null) return;
         ViewParent parent = cover.getParent();
         if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(cover);
+    }
+
+    private void emitDeviceAuthentication(boolean ok, boolean available) {
+        String script = "window.dispatchEvent(new CustomEvent('vaultlix:device-auth-result',{detail:{ok:"
+                + ok + ",available:" + available + "}}));";
+        getBridge().getWebView().evaluateJavascript(script, null);
     }
 
     @Override
@@ -270,6 +278,11 @@ public class MainActivity extends BridgeActivity {
         if ("vaultlix".equalsIgnoreCase(uri.getScheme()) && "connect".equalsIgnoreCase(uri.getHost())
                 && uri.getPath() != null && uri.getPath().matches("/[2-9][0-9]{5,9}/?")) {
             uri = Uri.parse("https://vaultlix.com" + uri.getPath() + "?ref=qr");
+        } else if ("vaultlix".equalsIgnoreCase(uri.getScheme()) && "recover".equalsIgnoreCase(uri.getHost())
+                && uri.getPath() != null && uri.getPath().matches("/[2-9][0-9]{5,9}/?")
+                && uri.getFragment() != null && uri.getFragment().matches("k=[A-Za-z0-9_-]{43}")) {
+            String privateNumber = uri.getPath().replace("/", "");
+            uri = Uri.parse("https://vaultlix.com/?recover=" + privateNumber + "#" + uri.getFragment());
         }
         if (!"https".equalsIgnoreCase(uri.getScheme())
                 || !"vaultlix.com".equalsIgnoreCase(uri.getHost())
@@ -321,6 +334,47 @@ public class MainActivity extends BridgeActivity {
                 sendIntent.setType("text/plain");
                 sendIntent.putExtra(Intent.EXTRA_TEXT, text);
                 startActivity(Intent.createChooser(sendIntent, "Share Vaultlix invite"));
+            });
+        }
+
+        @JavascriptInterface
+        public void authenticateSensitiveAction(String reason) {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                    emitDeviceAuthentication(false, false);
+                    return;
+                }
+                try {
+                    BiometricPrompt prompt = new BiometricPrompt.Builder(MainActivity.this)
+                            .setTitle("Confirm it’s you")
+                            .setSubtitle(reason == null || reason.trim().isEmpty()
+                                    ? "Open your Vaultlix number backup" : reason)
+                            .setNegativeButton("Cancel", getMainExecutor(), (dialog, which) ->
+                                    emitDeviceAuthentication(false, true))
+                            .build();
+                    prompt.authenticate(new CancellationSignal(), getMainExecutor(),
+                            new BiometricPrompt.AuthenticationCallback() {
+                                @Override
+                                public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                                    emitDeviceAuthentication(true, true);
+                                }
+
+                                @Override
+                                public void onAuthenticationError(int errorCode, CharSequence errString) {
+                                    boolean unavailable = errorCode == BiometricPrompt.BIOMETRIC_ERROR_HW_NOT_PRESENT
+                                            || errorCode == BiometricPrompt.BIOMETRIC_ERROR_NO_BIOMETRICS
+                                            || errorCode == BiometricPrompt.BIOMETRIC_ERROR_HW_UNAVAILABLE;
+                                    emitDeviceAuthentication(false, !unavailable);
+                                }
+
+                                @Override
+                                public void onAuthenticationFailed() {
+                                    // The platform keeps the prompt open so the user can try again.
+                                }
+                            });
+                } catch (RuntimeException unavailable) {
+                    emitDeviceAuthentication(false, false);
+                }
             });
         }
 

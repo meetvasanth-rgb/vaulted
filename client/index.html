@@ -2364,6 +2364,7 @@ html.vaultlix-native-android .emergency-sheet{
 .account-overlay.open{display:flex}
 .account-card{position:relative;width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
 .account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.password-policy{margin:-3px 0 13px;padding:11px 13px;border-radius:12px;background:#F7F0F3;color:#75656D;font:500 11px/1.5 Inter,sans-serif}.password-policy strong{color:#682C43}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-primary:disabled{opacity:.62;cursor:wait}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.account-error{margin-top:12px;padding:11px 12px;border:1px solid #E2B8C3;border-radius:12px;background:#FFF3F5;color:#8C2943;font:600 12px/1.45 Inter,sans-serif}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
+.recovery-reminder-card{padding-top:32px!important;text-align:left}.recovery-reminder-icon{width:58px;height:58px;display:grid;place-items:center;margin-bottom:22px;border-radius:19px;background:#F0F7F3;color:#557660}.recovery-reminder-icon svg{width:29px;height:29px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}#account-save-recovery-form-wrap{margin-top:14px;color:#682C43;font:650 13px/1.5 Inter,sans-serif}#account-save-recovery-form-wrap summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
 .onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.private-number-card{margin:14px 0;padding:18px;border:1px solid #DFCDD4;border-radius:18px;background:linear-gradient(145deg,#F8F0F3,#fff);text-align:center}.private-number-label{font:700 11px Inter,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#936174}.private-number-value{margin:8px 0 5px;font:700 28px ui-monospace,SFMono-Regular,monospace;letter-spacing:.05em;color:#682C43}.private-number-caption{font:500 12px/1.5 Inter,sans-serif;color:#75656D}.private-number-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:13px 0 2px}.private-number-option{min-height:48px;border:1px solid #DDCDD3;border-radius:12px;background:#fff;color:#5E4C54;padding:8px 7px;font:700 11px/1.25 Inter,sans-serif}.private-number-option.active{border-color:#682C43;background:#F2E6EA;color:#682C43;box-shadow:0 0 0 2px rgba(104,44,67,.08)}.private-number-option:first-child{grid-column:1/-1}.private-number-refresh{margin-top:12px;border:1px solid #D7C6CD;border-radius:12px;background:#fff;color:#682C43;padding:10px 14px;font:700 12px Inter,sans-serif}.account-step{display:none}.account-step.active{display:block}
 .account-creation-transition{position:absolute;z-index:8;inset:0;min-height:100%;display:grid;place-items:center;overflow:hidden;padding:30px;background:radial-gradient(circle at 50% 38%,rgba(200,117,136,.21),transparent 34%),#271D25;color:#fff;text-align:center;border-radius:inherit}
 .account-creation-transition[hidden]{display:none}
@@ -3393,18 +3394,22 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       </form>
       <button class="account-secondary" type="button" onclick="openPasswordRecoveryFromSettings()">Use recovery code instead</button>
       <div class="settings-divider" style="margin:20px 0"></div>
-      <div class="account-copy"><strong>Password recovery code</strong><br/>An encrypted copy is kept on this device so you can view or copy it here. Vaultlix never receives the readable code.</div>
+      <div class="account-copy"><strong>Number backup</strong><br/>Keep your Vaultlix Private Number available if you lose or change this phone. Your backup stays encrypted on this device. Vaultlix never receives the readable code.</div>
       <div class="account-note" id="account-recovery-backup-status"></div>
       <div id="account-saved-recovery" style="display:none">
         <div class="recovery-box"><div class="recovery-code" id="account-saved-recovery-code">••••••••••••••••</div></div>
-        <button class="account-secondary" type="button" onclick="revealSavedRecoveryCode()">Reveal recovery code</button>
-        <button class="account-secondary" type="button" onclick="copySavedRecoveryCode()">Copy recovery details</button>
-        <button class="account-secondary" id="account-confirm-recovery-backup" type="button" onclick="confirmRecoveryBackup()">I saved it outside this device</button>
+        <button class="account-primary" type="button" onclick="revealSavedRecoveryCode()">View my number backup</button>
+        <button class="account-secondary" type="button" onclick="copySavedRecoveryCode()">Copy another backup</button>
+        <button class="account-secondary" id="account-confirm-recovery-backup" type="button" onclick="confirmRecoveryBackup()">I saved another copy</button>
+        <button class="account-secondary" type="button" onclick="openPasswordRecoveryFromSettings()">Recover on a new phone</button>
       </div>
-      <form id="account-save-recovery-form" onsubmit="saveRecoveryCodeOnDevice(event)" style="display:none">
-        <label class="account-field"><span>Enter your permanent recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
-        <button class="account-secondary" type="submit" data-busy-label="Verifying…">Verify and save on this device</button>
-      </form>
+      <details id="account-save-recovery-form-wrap" style="display:none">
+        <summary>Already have a backup?</summary>
+        <form id="account-save-recovery-form" onsubmit="saveRecoveryCodeOnDevice(event)">
+          <label class="account-field"><span>Enter your recovery code</span><input id="account-save-recovery-code" autocomplete="off" autocapitalize="none" spellcheck="false" required/></label>
+          <button class="account-secondary" type="submit" data-busy-label="Verifying…">Save it on this device</button>
+        </form>
+      </details>
       <div class="settings-divider" style="margin:20px 0"></div>
       <div class="account-copy"><strong>Device access</strong><br/>Sign out securely and remove this identity’s conversations and keys from this device. Your Private Number and account remain available for your next sign-in.</div>
       <button class="account-secondary" id="settings-profile-signout" type="button" onclick="signOutAnonymousAccount()">Sign out on this device</button>
@@ -3738,6 +3743,29 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <button class="account-secondary" type="button" onclick="showFirstConnectionQr()">Let them scan my QR</button>
     <button class="account-secondary" type="button" onclick="dismissFirstConnectionGuide()" style="border-color:transparent;background:transparent">I’ll invite someone later</button>
     <div class="first-connection-privacy"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>The name stays on this device and is used only to personalize this invitation. Vaultlix never uploads your contacts.</span></div>
+  </div>
+</div>
+
+<div class="account-overlay" id="recovery-reminder-overlay">
+  <div class="account-card recovery-reminder-card" role="dialog" aria-modal="true" aria-labelledby="recovery-reminder-title">
+    <div class="recovery-reminder-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+    <div class="account-kicker">Number backup</div>
+    <div class="account-title" id="recovery-reminder-title">Keep your Vaultlix number safe</div>
+    <div class="account-copy">If you lose or change this phone, your number backup helps you get your Private Number back.</div>
+    <button class="account-primary" type="button" onclick="openNumberBackupFromReminder()">Protect my number</button>
+    <button class="account-secondary" type="button" onclick="snoozeRecoveryReminder()">Remind me tomorrow</button>
+  </div>
+</div>
+
+<div class="account-overlay" id="recovery-backup-overlay" onclick="if(event.target===this)closeRecoveryBackup()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="recovery-backup-title">
+    <div class="account-head"><div><div class="account-kicker">Number backup</div><div class="account-title" id="recovery-backup-title">Your recovery card</div></div><button class="account-close" type="button" onclick="closeRecoveryBackup()" aria-label="Close">×</button></div>
+    <div class="account-copy">Keep this somewhere only you can access. Scan it in Vaultlix on a new phone to recover your Private Number.</div>
+    <div style="display:flex;justify-content:center"><canvas id="recovery-backup-qr"></canvas></div>
+    <div class="recovery-box"><div class="private-number-label">Vaultlix Private Number</div><div class="recovery-code" id="recovery-backup-number">—</div></div>
+    <details><summary>Having trouble scanning?</summary><div class="recovery-code" id="recovery-backup-code" style="margin-top:12px">—</div></details>
+    <button class="account-primary" type="button" onclick="shareRecoveryBackup()">Save another copy</button>
+    <button class="account-secondary" type="button" onclick="confirmRecoveryBackup()">I saved another copy</button>
   </div>
 </div>
 
@@ -4137,6 +4165,28 @@ function base64UrlToBytes(value) {
   return out;
 }
 function bytesToBase64UrlCompact(bytes) { return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, ''); }
+function recoveryCodeToBytes(code) {
+  let compact = String(code || '').trim().replace(/^VX-/i, '');
+  // Recovery codes are displayed in six-character groups. A dash is also a
+  // valid base64url data character, so removing every dash corrupts roughly
+  // half of randomly generated codes. Strip only the separators at their
+  // fixed display positions and preserve any dash that belongs to the key.
+  if (compact.length === 50) {
+    let restored = '';
+    for (let index = 0; index < compact.length; index++) {
+      if ((index + 1) % 7 === 0) {
+        if (compact[index] !== '-') throw new Error('Invalid recovery code');
+        continue;
+      }
+      restored += compact[index];
+    }
+    compact = restored;
+  }
+  if (!/^[A-Za-z0-9_-]{43}$/.test(compact)) throw new Error('Invalid recovery code');
+  const raw = base64UrlToBytes(compact);
+  if (raw.length !== 32) throw new Error('Invalid recovery code');
+  return raw;
+}
 async function sha256Bytes(value) {
   const input = typeof value === 'string' ? new TextEncoder().encode(value) : value;
   return new Uint8Array(await crypto.subtle.digest('SHA-256', input));
@@ -4165,14 +4215,15 @@ function prewarmAccountCrypto() {
   return accountCryptoWarmupPromise;
 }
 function randomAccountId() { return Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join(''); }
-async function recoveryMaterial(code) {
-  const clean = String(code || '').trim().replace(/^VX-/i, '').replace(/-/g, '');
-  const raw = base64UrlToBytes(clean);
-  if (raw.length !== 32) throw new Error('Invalid recovery code');
+async function recoveryMaterialFromBytes(raw) {
+  if (!(raw instanceof Uint8Array) || raw.length !== 32) throw new Error('Invalid recovery code');
   return {
     authSecret: bytesToBase64UrlCompact(await sha256Bytes(new Uint8Array([...new TextEncoder().encode('auth\0'), ...raw]))),
     wrapKey: await sha256Bytes(new Uint8Array([...new TextEncoder().encode('wrap\0'), ...raw])),
   };
+}
+async function recoveryMaterial(code) {
+  return recoveryMaterialFromBytes(recoveryCodeToBytes(code));
 }
 async function aesEncryptJson(keyBytes, value) {
   const key = await crypto.subtle.importKey('raw', keyBytes, { name:'AES-GCM' }, false, ['encrypt']);
@@ -8305,6 +8356,9 @@ function populateAccountProfileSettings(state = loadAccountState()) {
 }
 const NATIVE_ONBOARDING_KEY = 'vaultlix_native_onboarding_v1';
 const FIRST_CONNECTION_GUIDE_KEY = 'vaultlix_first_connection_guide_v1';
+const RECOVERY_FIRST_REMINDER_MS = 4 * 60 * 60 * 1000;
+const RECOVERY_REPEAT_REMINDER_MS = 24 * 60 * 60 * 1000;
+let recoveryReminderTimer = null;
 let nativeOnboardingPage = 'welcome';
 function renderNativeOnboarding(page) {
   nativeOnboardingPage = page;
@@ -8441,19 +8495,62 @@ function refreshSavedRecoveryControls(state = loadAccountState()) {
   const hasSavedCode = !!state?.recoveryCodeWrap;
   const externallySaved = !!state?.recoveryBackupConfirmedAt;
   document.getElementById('account-saved-recovery').style.display = hasSavedCode ? '' : 'none';
-  document.getElementById('account-save-recovery-form').style.display = hasSavedCode ? 'none' : '';
+  document.getElementById('account-save-recovery-form-wrap').style.display = hasSavedCode ? 'none' : '';
   document.getElementById('account-saved-recovery-code').textContent = '••••••••••••••••';
   const status = document.getElementById('account-recovery-backup-status');
   if (status) status.innerHTML = externallySaved
-    ? '<strong>Recovery protected.</strong> You confirmed an external copy was saved.'
-    : '<strong>Action recommended.</strong> This encrypted device copy is lost if the app or phone is erased. Save another copy outside this device.';
+    ? '<strong>Protected.</strong> You saved another copy of your number backup.'
+    : '<strong>Not protected yet.</strong> Save another copy so you can recover this Private Number if this phone is lost or erased.';
   const confirmButton = document.getElementById('account-confirm-recovery-backup');
   if (confirmButton) confirmButton.style.display = externallySaved ? 'none' : '';
-  if (hasSavedCode && !externallySaved && (!state.recoveryReminderAt || Date.now() - state.recoveryReminderAt > 24 * 60 * 60 * 1000)) {
-    state.recoveryReminderAt = Date.now(); saveAccountState(state);
-    setTimeout(() => toast('Protect your Private Number: save the recovery code outside this device'), 250);
-  }
 }
+
+function scheduleRecoveryReminder(state = loadAccountState()) {
+  clearTimeout(recoveryReminderTimer);
+  recoveryReminderTimer = null;
+  if (!state?.recoveryCodeWrap || state.recoveryBackupConfirmedAt) return;
+  if (!state.recoveryReminderDueAt) {
+    state.recoveryReminderDueAt = (state.accountCreatedAt || Date.now()) + RECOVERY_FIRST_REMINDER_MS;
+    saveAccountState(state);
+  }
+  const delay = Math.max(0, Number(state.recoveryReminderDueAt) - Date.now());
+  recoveryReminderTimer = setTimeout(checkRecoveryReminder, Math.min(delay, 2147483647));
+}
+
+function checkRecoveryReminder() {
+  const state = loadAccountState();
+  if (!state?.recoveryCodeWrap || state.recoveryBackupConfirmedAt) return;
+  if (Date.now() < Number(state.recoveryReminderDueAt || 0)) { scheduleRecoveryReminder(state); return; }
+  if (document.hidden || document.querySelector('.call-overlay.open,.locked-call-overlay.open')) {
+    recoveryReminderTimer = setTimeout(checkRecoveryReminder, 60 * 1000);
+    return;
+  }
+  document.getElementById('recovery-reminder-overlay')?.classList.add('open');
+}
+
+function deferRecoveryReminder(delay = RECOVERY_REPEAT_REMINDER_MS) {
+  const state = loadAccountState();
+  if (!state || state.recoveryBackupConfirmedAt) return;
+  state.recoveryReminderAt = Date.now();
+  state.recoveryReminderDueAt = Date.now() + delay;
+  saveAccountState(state);
+  document.getElementById('recovery-reminder-overlay')?.classList.remove('open');
+  scheduleRecoveryReminder(state);
+}
+
+function snoozeRecoveryReminder() {
+  deferRecoveryReminder();
+  toast('We’ll remind you tomorrow');
+}
+
+function openNumberBackupFromReminder() {
+  deferRecoveryReminder();
+  openSettings('general', 'profile');
+  setTimeout(() => document.getElementById('account-recovery-backup-status')?.scrollIntoView({ behavior:'smooth', block:'center' }), 120);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) checkRecoveryReminder();
+});
 async function updateAccountUsername(event) {
   event.preventDefault(); const form = event.currentTarget; const state = loadAccountState();
   if (!state) return;
@@ -8533,6 +8630,8 @@ async function decryptSavedRecoveryCode(state = loadAccountState()) {
   return saved.recoveryCode;
 }
 async function authorizeRecoveryCodeAccess() {
+  const nativeAllowed = await requestNativeSensitiveAuthentication();
+  if (nativeAllowed !== null) return nativeAllowed;
   if (!appLockConfigured()) return confirm('Reveal sensitive recovery details on this screen?');
   const passcode = prompt('Enter your Vaultlix App Lock passcode to continue.');
   if (!passcode) return false;
@@ -8540,12 +8639,85 @@ async function authorizeRecoveryCodeAccess() {
   if (!allowed) toast('Incorrect Vaultlix passcode');
   return allowed;
 }
+
+function requestNativeSensitiveAuthentication() {
+  const android = window.VaultlixAndroid;
+  const ios = window.webkit?.messageHandlers?.vaultlixCall;
+  if (typeof android?.authenticateSensitiveAction !== 'function' && !ios) return Promise.resolve(null);
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window.removeEventListener('vaultlix:device-auth-result', onResult);
+      resolve(value === null ? null : !!value);
+    };
+    const onResult = event => finish(event.detail?.available === false ? null : event.detail?.ok === true);
+    const timer = setTimeout(() => finish(false), 45000);
+    window.addEventListener('vaultlix:device-auth-result', onResult, { once:true });
+    try {
+      if (typeof android?.authenticateSensitiveAction === 'function') android.authenticateSensitiveAction('Open your Vaultlix number backup');
+      else ios.postMessage({ action:'authenticateSensitiveAction', reason:'Open your Vaultlix number backup' });
+    } catch (error) { finish(null); }
+  });
+}
+let activeRecoveryBackupCode = '';
+function recoveryDeepLink(privateNumber, recoveryCode) {
+  const compact = String(recoveryCode || '').trim().replace(/^VX-/i, '').replace(/-/g, '');
+  if (!normalizePrivateNumber(privateNumber) || !/^[A-Za-z0-9_-]{43}$/.test(compact)) throw new Error('Invalid recovery backup');
+  return `vaultlix://recover/${privateNumber}#k=${compact}`;
+}
 async function revealSavedRecoveryCode() {
   try {
     if (!(await authorizeRecoveryCodeAccess())) return;
-    document.getElementById('account-saved-recovery-code').textContent = await decryptSavedRecoveryCode();
+    const state = loadAccountState();
+    activeRecoveryBackupCode = await decryptSavedRecoveryCode(state);
+    document.getElementById('recovery-backup-number').textContent = formatPrivateNumber(state.privateNumber);
+    document.getElementById('recovery-backup-code').textContent = activeRecoveryBackupCode;
+    renderQrCanvas(document.getElementById('recovery-backup-qr'), recoveryDeepLink(state.privateNumber, activeRecoveryBackupCode));
+    document.getElementById('recovery-backup-overlay').classList.add('open');
   }
   catch (e) { toast('Could not open the saved recovery code'); }
+}
+function closeRecoveryBackup() {
+  document.getElementById('recovery-backup-overlay')?.classList.remove('open');
+  document.getElementById('recovery-backup-code').textContent = '—';
+  activeRecoveryBackupCode = '';
+  const canvas = document.getElementById('recovery-backup-qr');
+  canvas?.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+}
+async function shareRecoveryBackup() {
+  const state = loadAccountState();
+  if (!state?.privateNumber || !activeRecoveryBackupCode) return;
+  const sourceQr = document.getElementById('recovery-backup-qr');
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080; canvas.height = 1350;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#682C43'; context.fillRect(0, 0, canvas.width, 250);
+  context.fillStyle = '#FFFFFF'; context.textAlign = 'center'; context.font = '700 54px Inter, sans-serif'; context.fillText('VAULTLIX', 540, 112);
+  context.font = '500 30px Inter, sans-serif'; context.fillText('PRIVATE NUMBER BACKUP', 540, 177);
+  context.fillStyle = '#271D25'; context.font = '700 58px ui-monospace, monospace'; context.fillText(formatPrivateNumber(state.privateNumber), 540, 355);
+  context.fillStyle = '#FFFFFF'; context.fillRect(240, 420, 600, 600);
+  context.drawImage(sourceQr, 290, 470, 500, 500);
+  context.fillStyle = '#756A72'; context.font = '500 25px Inter, sans-serif'; context.fillText('Keep this card private. It can recover your number.', 540, 1090);
+  context.fillStyle = '#682C43'; context.font = '700 25px ui-monospace, monospace';
+  const groups = activeRecoveryBackupCode.match(/.{1,30}/g) || [activeRecoveryBackupCode];
+  groups.forEach((line, index) => context.fillText(line, 540, 1170 + index * 42));
+  try {
+    const asset = await prepareNumberCardAsset(canvas);
+    if (typeof window.VaultlixAndroid?.shareImage === 'function' && window.VaultlixAndroid.shareImage(asset.dataUrl) === true) return;
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'shareImage', dataUrl:asset.dataUrl });
+      return;
+    }
+    const file = new File([asset.blob], 'vaultlix-number-backup.png', { type:'image/png' });
+    if (navigator.canShare?.({ files:[file] })) { await navigator.share({ title:'My Vaultlix number backup', files:[file] }); return; }
+    toast('Image sharing is unavailable on this device');
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast('Could not share the number backup');
+  }
 }
 async function copySavedRecoveryCode() {
   const state = loadAccountState();
@@ -8560,9 +8732,12 @@ function confirmRecoveryBackup() {
   const state = loadAccountState();
   if (!state?.recoveryCodeWrap) return;
   state.recoveryBackupConfirmedAt = Date.now();
+  state.recoveryReminderDueAt = 0;
   saveAccountState(state);
+  clearTimeout(recoveryReminderTimer);
   refreshSavedRecoveryControls(state);
-  toast('External recovery copy confirmed');
+  closeRecoveryBackup();
+  toast('Your Vaultlix number is protected');
 }
 async function saveRecoveryCodeOnDevice(event) {
   event.preventDefault(); const form = event.currentTarget; const state = loadAccountState();
@@ -8954,7 +9129,9 @@ async function createAnonymousAccount(event) {
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const passwordMaterial = await derivePasswordMaterial(privateNumber, password);
-        const recovery = await recoveryMaterial(recoveryCode);
+        // Use the generated bytes directly. Formatting is presentation only
+        // and must never be able to invalidate secure account creation.
+        const recovery = await recoveryMaterialFromBytes(recoveryBytes);
         payload = {
           accountId, privateNumber, displayName,
           deviceId: accountDeviceId(),
@@ -9017,13 +9194,11 @@ async function createAnonymousAccount(event) {
     // Creating an ID from guest mode intentionally adopts the vaults that
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
-    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }), recoveryBackupConfirmedAt:0, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    const accountCreatedAt = Date.now();
+    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }), recoveryBackupConfirmedAt:0, accountCreatedAt, recoveryReminderDueAt:accountCreatedAt + RECOVERY_FIRST_REMINDER_MS, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'pending');
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
-    document.getElementById('account-recovery-result-number').textContent = formatPrivateNumber(privateNumber);
-    document.getElementById('account-recovery-result-code').textContent = recoveryCode;
-    document.getElementById('account-recovery-result').style.display = '';
     accountCreated = true;
     recordRegistrationDiagnostic('completed', { elapsedMs:Date.now() - registrationStartedAt });
   } catch (e) {
@@ -9038,6 +9213,7 @@ async function createAnonymousAccount(event) {
     }
   }
   finally { await stopIdentityCreationTransition(accountCreated); setAccountBusy(form, false); }
+  if (accountCreated) await finishAccountCreation(false);
 }
 async function loginAnonymousAccount(event) {
   event.preventDefault(); const form = event.currentTarget;
@@ -9276,9 +9452,13 @@ async function copyRecoveryCode() {
   const text = `Vaultlix private number: ${privateNumber}\nRecovery code: ${recoveryCode}`;
   try { await navigator.clipboard.writeText(text); toast('Recovery details copied'); } catch(e) { toast('Press and hold the details to copy them'); }
 }
-async function finishAccountCreation() {
+async function finishAccountCreation(backupConfirmed = true) {
   const state = loadAccountState();
-  if (state) { state.recoveryBackupConfirmedAt = Date.now(); saveAccountState(state); }
+  if (state && backupConfirmed) {
+    state.recoveryBackupConfirmedAt = Date.now();
+    state.recoveryReminderDueAt = 0;
+    saveAccountState(state);
+  } else if (state) scheduleRecoveryReminder(state);
   document.getElementById('account-recovery-result').style.display='none';
   document.getElementById('account-signed-view').classList.add('open');
   const refreshedState=loadAccountState();
@@ -12346,6 +12526,26 @@ function parsePublicPrivateNumber() {
   const match = location.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
   return match ? match[1] : null;
 }
+function parseRecoveryLink(rawURL = location.href) {
+  try {
+    const url = new URL(rawURL);
+    const privateNumber = normalizePrivateNumber(url.searchParams.get('recover'));
+    const compact = new URLSearchParams(url.hash.replace(/^#/, '')).get('k') || '';
+    if (!privateNumber || !/^[A-Za-z0-9_-]{43}$/.test(compact)) return null;
+    return { privateNumber, recoveryCode:'VX-' + (compact.match(/.{1,6}/g) || [compact]).join('-') };
+  } catch (error) { return null; }
+}
+function openRecoveryFromLink(recovery) {
+  if (!recovery) return false;
+  openAccountPanel();
+  showAccountTab('recover');
+  document.getElementById('account-title').textContent = 'Recover your Vaultlix number';
+  document.getElementById('account-recover-private-number').value = formatPrivateNumber(recovery.privateNumber);
+  document.getElementById('account-recovery-code').value = recovery.recoveryCode;
+  document.getElementById('account-recover-password').focus();
+  history.replaceState(null, '', '/');
+  return true;
+}
 const QUICK_CONNECT_TARGET_KEY = 'vaultlix_quick_connect_target_v1';
 let quickConnectHandshakePending = new URLSearchParams(location.search).get('ref') === 'qr' || sessionStorage.getItem('vaultlix:qr-handshake') === '1';
 function rememberQuickConnectTarget(privateNumber) {
@@ -12656,6 +12856,8 @@ window.vaultlixOpenInviteURL = function(rawURL) {
   try {
     const url = new URL(rawURL);
     if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return;
+    const recovery = parseRecoveryLink(url.href);
+    if (recovery) { openRecoveryFromLink(recovery); return; }
     const match = url.pathname.match(/^\/join\/([a-z0-9-]+)\/?$/i);
     if (match) {
       pendingInviteKeyCommitment = parseKeyCommitmentFromHash(url.hash);
@@ -13659,6 +13861,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
   const publicPrivateNumber = parsePublicPrivateNumber();
+  const startupRecovery = parseRecoveryLink();
   // Android's native incoming-call surface has already collected the user's
   // Answer decision. Preserve it across WebView startup/room restoration and
   // consume it exactly once when the authenticated encrypted call-invite
@@ -13967,7 +14170,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // commitment was already dropped from state and storage inside the loop
   // above; this is purely the explanation.
   if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
-  if (startupConnectionRequestId && loadAccountState()) {
+  if (startupRecovery) {
+    openRecoveryFromLink(startupRecovery);
+  } else if (startupConnectionRequestId && loadAccountState()) {
     history.replaceState(null, '', '/');
     await openConnectionRequest(startupConnectionRequestId);
   } else if (publicPrivateNumber) {
@@ -13979,6 +14184,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     openConversationAfterPaint(restoredConversationCode);
     toast('Existing private conversation restored securely');
   }
+  scheduleRecoveryReminder();
 });
 
 // ── KLIPY GIFS ───────────────────────────────────────────────────────────
