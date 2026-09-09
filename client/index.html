@@ -3639,7 +3639,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
     <div class="account-head"><div><div class="account-kicker">Your private identity</div><div class="account-title" id="account-title">Create your Vaultlix private number</div></div><button class="account-close" onclick="closeAccountPanel()" aria-label="Close">×</button></div>
     <div id="account-guest-view">
-      <div class="account-copy">Choose the username people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.</div>
+      <div class="account-copy" id="account-guest-copy">Choose the username people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.</div>
       <div class="account-tabs">
         <button class="account-tab active" data-account-tab="create" data-i18n="create" onclick="showAccountTab('create')">Create</button>
         <button class="account-tab" data-account-tab="login" data-i18n="sign_in" onclick="showAccountTab('login')">Sign in</button>
@@ -3744,9 +3744,11 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div class="account-overlay" id="public-profile-overlay" onclick="if(event.target===this)closePublicProfile()">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="public-profile-name">
     <div class="account-head"><div><div class="account-kicker">Quick Connect</div><div class="account-title" id="public-profile-name">—</div></div><button class="account-close" onclick="closePublicProfile()" aria-label="Close">×</button></div>
+    <div class="account-copy" id="public-profile-invitation-copy" hidden></div>
     <div class="account-copy" id="public-profile-private-number">—</div>
     <a class="account-secondary" id="public-profile-open-app" href="#" hidden style="display:block;text-align:center;text-decoration:none">Open in Vaultlix app</a>
     <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Connect privately</button>
+    <button class="account-secondary" id="public-profile-sign-in" type="button" onclick="requestPrivateVault('login')" hidden>Already have a Vaultlix number? Sign in</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
   </div>
 </div>
@@ -8426,6 +8428,8 @@ function openAccountPanel() {
   document.getElementById('account-recovery-result').style.display = 'none';
   const accountTitle = document.getElementById('account-title');
   if (accountTitle) accountTitle.textContent = state ? 'Your Vaultlix private number' : 'Create your Vaultlix private number';
+  const guestCopy = document.getElementById('account-guest-copy');
+  if (guestCopy) guestCopy.textContent = 'Choose the username people see. Vaultlix will generate a permanent private number people can use to find you—without your phone number or email.';
   if (state) {
     document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
   }
@@ -12445,7 +12449,16 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
       return false;
     }
     activePublicProfile = result.profile;
-    document.getElementById('public-profile-name').textContent = result.profile.displayName;
+    const signedIn = loadAccountState();
+    const profileName = document.getElementById('public-profile-name');
+    const invitationCopy = document.getElementById('public-profile-invitation-copy');
+    profileName.textContent = signedIn
+      ? result.profile.displayName
+      : `${result.profile.displayName} invited you to extend a private line`;
+    invitationCopy.hidden = !!signedIn;
+    invitationCopy.textContent = signedIn
+      ? ''
+      : 'Create your Vaultlix Private Number to connect. No phone number, email or contacts required.';
     document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
     const openApp = document.getElementById('public-profile-open-app');
     if (openApp) {
@@ -12453,11 +12466,12 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
       openApp.hidden = isNativeApp();
       openApp.style.display = isNativeApp() ? 'none' : 'block';
     }
-    const signedIn = loadAccountState();
     const button = document.getElementById('public-profile-request');
     button.textContent = signedIn && roomForPrivateNumber(result.profile.privateNumber)
       ? 'Open conversation'
-      : signedIn ? 'Connect privately' : 'Sign in to connect';
+      : signedIn ? 'Connect privately' : 'Create my private line';
+    const signIn = document.getElementById('public-profile-sign-in');
+    if (signIn) signIn.hidden = !!signedIn;
     document.getElementById('public-profile-overlay').classList.add('open');
     return true;
   } catch (e) {
@@ -12467,16 +12481,26 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
   }
 }
 function closePublicProfile() { document.getElementById('public-profile-overlay').classList.remove('open'); history.replaceState(null, '', '/'); }
-async function requestPrivateVault() {
+function openQuickConnectAuthentication(mode = 'create') {
+  const authenticationMode = mode === 'login' ? 'login' : 'create';
+  const inviterName = activePublicProfile?.displayName || 'your contact';
+  closePublicProfile();
+  if (isNativeApp()) openNativeOnboardingAccount(authenticationMode);
+  else { openAccountPanel(); showAccountTab(authenticationMode); }
+  const title = document.getElementById('account-title');
+  if (title) title.textContent = authenticationMode === 'login'
+    ? `Sign in to connect with ${inviterName}`
+    : `Create your private line to connect with ${inviterName}`;
+  const copy = document.getElementById('account-guest-copy');
+  if (copy) copy.textContent = `Your invitation from ${inviterName} will be waiting after this step.`;
+}
+async function requestPrivateVault(authenticationMode = 'create') {
   const state = loadAccountState();
   if (!activePublicProfile) return;
   if (!state) {
     rememberQuickConnectTarget(activePublicProfile.privateNumber);
     if (quickConnectHandshakePending) sessionStorage.setItem('vaultlix:qr-handshake', '1');
-    closePublicProfile();
-    if (isNativeApp()) openNativeOnboardingAccount('login');
-    else openAccountPanel();
-    toast('Sign in or create your identity to continue this connection');
+    openQuickConnectAuthentication(authenticationMode);
     return;
   }
   if (normalizePrivateNumber(state.privateNumber) === normalizePrivateNumber(activePublicProfile.privateNumber)) {
@@ -12533,7 +12557,7 @@ async function requestPrivateVault() {
   }
   clearQuickConnectTarget();
   if (quickConnectHandshakePending && result.status !== 'pending') await triggerSecureHandshake();
-  toast(result.status === 'pending' ? 'Connection request is already awaiting acceptance' : `Connection request sent to ${activePublicProfile.displayName}`);
+  toast(`Request sent to ${activePublicProfile.displayName}. We’ll notify you when they accept.`);
   closePublicProfile();
   showScreen('s-vault-list');
   await refreshConnectionRequests();

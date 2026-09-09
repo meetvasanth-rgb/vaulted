@@ -56,3 +56,15 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);
 });
+
+test('logged-out Quick Connect is invitation-aware and creation-first', () => {
+  assert.match(client, /invited you to extend a private line/);
+  assert.match(client, /Create your Vaultlix Private Number to connect\. No phone number, email or contacts required\./);
+  assert.match(client, /Create my private line/);
+  assert.match(client, /Already have a Vaultlix number\? Sign in/);
+  assert.match(client, /openQuickConnectAuthentication\(authenticationMode\)/);
+  assert.match(client, /Your invitation from \$\{inviterName\} will be waiting after this step\./);
+  assert.match(client, /Request sent to \$\{activePublicProfile\.displayName\}\. We’ll notify you when they accept\./);
+  assert.doesNotMatch(client, /Sign in to connect['<]/);
+  assert.doesNotMatch(client, /\/api\/connect\/guest-request/);
+});
