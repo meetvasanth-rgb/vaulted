@@ -68,3 +68,12 @@ test('public invitations retain branded previews while number-card QR uses an ap
   assert.match(shareBody, /VaultlixAndroid\.shareImage/);
   assert.match(shareBody, /navigator\.share\(\{ title:'My Vaultlix Private Number', files:\[file\] \}\)/);
 });
+
+test('Android App Links authorize the certificate used by direct tester builds', () => {
+  const association = JSON.parse(fs.readFileSync(path.join(root, 'client/.well-known/assetlinks.json'), 'utf8'));
+  const vaultlixTarget = association.find((entry) => entry?.target?.package_name === 'com.vaultlix.app');
+  assert.ok(vaultlixTarget);
+  assert.ok(vaultlixTarget.target.sha256_cert_fingerprints.includes(
+    'DC:24:C4:65:C6:F8:53:F7:65:6C:7A:B8:41:70:7E:2C:4D:B3:A1:31:8F:A5:71:37:F3:3F:DD:6A:2C:DA:03:25'
+  ));
+});
