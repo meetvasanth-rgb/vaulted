@@ -5,15 +5,22 @@ const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('home page explains the private-number user model', () => {
-  assert.match(client, /aria-label="Your private number\. No SIM required\."/);
-  assert.match(client, /Get my Vaultlix number/);
-  assert.equal((client.match(/Dating someone new\? Selling something online\? Meeting a client\? Share your Vaultlix number—your personal number stays private\./g) || []).length, 2);
+test('home page explains the Vaultlix-number user model without repetitive privacy copy', () => {
+  assert.match(client, /aria-label="Your Vaultlix number\. No SIM required\."/);
+  assert.match(client, /Create my number/);
+  assert.equal((client.match(/Dating someone new, selling online or meeting a client\? Share Vaultlix and keep your personal number to yourself\./g) || []).length, 2);
   assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
   assert.match(client, /01 · Identify/);
   assert.match(client, /02 · Share/);
   assert.match(client, /03 · Decide/);
-  assert.match(client, /People must know the exact number and you decide whether to connect/);
+  assert.match(client, /People need your exact number, and you decide who connects/);
+});
+
+test('create and sign-in homepage actions open the correct account path directly', () => {
+  assert.match(client, /class="landing-hero-action"[^>]*onclick="openCreateAccount\(\)"[^>]*>Create my number/);
+  assert.match(client, /landing-hero-action-secondary"[^>]*onclick="openLoginOrInbox\(\)"[^>]*>Sign in/);
+  assert.match(client, /function openCreateAccount\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('register'\)/);
+  assert.match(client, /function openLoginOrInbox\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('login'\)/);
 });
 
 test('home page leads with relatable private-number use cases', () => {

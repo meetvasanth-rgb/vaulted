@@ -8,7 +8,7 @@ const install = fs.readFileSync(path.join(__dirname, '..', 'client', 'install.ht
 
 test('consumer-facing positioning presents Vaultlix as a private line', () => {
   assert.match(client, /prestigious secondary private number/);
-  assert.match(client, /Vaultlix is your private line/);
+  assert.match(client, /Vaultlix gives you a second number/);
   assert.match(client, /data-i18n="new_connection">Extend your line</);
   assert.match(install, /your private line with a secondary private number/);
   assert.doesNotMatch(`${client}\n${install}`, /encrypted messenger/i);
