@@ -165,6 +165,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             return
         }
         if action == "authenticateSensitiveAction" {
+            // Acknowledge support before LocalAuthentication presents its
+            // system sheet. The web UI uses this to distinguish a real
+            // in-progress Face ID/passcode check from an older app build
+            // that has the shared bridge but does not know this action.
+            emit(name: "vaultlix:device-auth-result", detail: ["pending": true, "available": true])
             let context = LAContext()
             var policyError: NSError?
             guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {

@@ -126,6 +126,11 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().evaluateJavascript(script, null);
     }
 
+    private void emitDeviceAuthenticationPending() {
+        String script = "window.dispatchEvent(new CustomEvent('vaultlix:device-auth-result',{detail:{pending:true,available:true}}));";
+        getBridge().getWebView().evaluateJavascript(script, null);
+    }
+
     @Override
     public void onDestroy() {
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
@@ -337,9 +342,10 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
-        @JavascriptInterface
-        public void authenticateSensitiveAction(String reason) {
-            runOnUiThread(() -> {
+    @JavascriptInterface
+    public void authenticateSensitiveAction(String reason) {
+        runOnUiThread(() -> {
+                emitDeviceAuthenticationPending();
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
                     emitDeviceAuthentication(false, false);
                     return;

@@ -8690,16 +8690,31 @@ function requestNativeSensitiveAuthentication() {
   if (typeof android?.authenticateSensitiveAction !== 'function' && !ios) return Promise.resolve(null);
   return new Promise(resolve => {
     let settled = false;
+    let nativeStarted = false;
     const finish = value => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(startTimer);
+      clearTimeout(resultTimer);
       window.removeEventListener('vaultlix:device-auth-result', onResult);
       resolve(value === null ? null : !!value);
     };
-    const onResult = event => finish(event.detail?.available === false ? null : event.detail?.ok === true);
-    const timer = setTimeout(() => finish(false), 45000);
-    window.addEventListener('vaultlix:device-auth-result', onResult, { once:true });
+    const onResult = event => {
+      if (event.detail?.pending === true) {
+        nativeStarted = true;
+        clearTimeout(startTimer);
+        return;
+      }
+      finish(event.detail?.available === false ? null : event.detail?.ok === true);
+    };
+    // The remote UI can update before an installed native wrapper does.
+    // Older iOS builds have the shared message channel but do not recognize
+    // authenticateSensitiveAction, so they never answer at all. Detect that
+    // quickly and use the existing App Lock/on-screen fallback rather than
+    // leaving the button apparently dead for 45 seconds.
+    const startTimer = setTimeout(() => { if (!nativeStarted) finish(null); }, 1200);
+    const resultTimer = setTimeout(() => finish(false), 45000);
+    window.addEventListener('vaultlix:device-auth-result', onResult);
     try {
       if (typeof android?.authenticateSensitiveAction === 'function') android.authenticateSensitiveAction('Open your Vaultlix recovery code');
       else ios.postMessage({ action:'authenticateSensitiveAction', reason:'Open your Vaultlix recovery code' });

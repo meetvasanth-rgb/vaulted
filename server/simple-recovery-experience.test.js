@@ -34,12 +34,16 @@ test('settings reduce recovery to the Private Number and recovery code', () => {
 
 test('native wrappers authenticate before sensitive recovery details are revealed', () => {
   assert.match(client, /await requestNativeSensitiveAuthentication\(\)/);
+  assert.match(client, /event\.detail\?\.pending === true/);
+  assert.match(client, /setTimeout\(\(\) => \{ if \(!nativeStarted\) finish\(null\); \}, 1200\)/);
   assert.match(android, /BiometricPrompt/);
   assert.match(android, /authenticateSensitiveAction/);
+  assert.match(android, /pending:true,available:true/);
   assert.match(androidManifest, /android\.permission\.USE_BIOMETRIC/);
   assert.match(ios, /import LocalAuthentication/);
   assert.match(ios, /deviceOwnerAuthentication/);
   assert.match(ios, /vaultlix:device-auth-result/);
+  assert.match(ios, /\["pending": true, "available": true\]/);
 });
 
 test('recovery card uses a private deep link and opens the prepared recovery form', () => {
