@@ -2086,7 +2086,7 @@ function serveStatic(req, res) {
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
-  if (pathname === '/api/account/register' || pathname === '/api/account/sync') return 1100 * 1024;
+  if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 
@@ -2479,6 +2479,36 @@ async function api(path, method, d, p, res, ip, headers) {
     await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, accountId:d.accountId, sessionToken, revision:account.revision, ...publicAccount(account) });
+  }
+
+  // A password sign-in can restore the master key without possessing an
+  // older locally saved recovery code. Let that authenticated device rotate
+  // to a fresh code and atomically place its locally encrypted copy inside
+  // the already master-key-encrypted account bundle. The server receives
+  // only verifiers and ciphertext; it never sees the readable code.
+  if (path === '/api/account/recovery-code' && method === 'POST') {
+    if (rateLimited(`account-recovery-code:${d.accountId || ip}`, 4, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many recovery-code changes — try again later.', 429);
+    }
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!validAccountSecret(d.recoverySecret) || !validEncryptedField(d.recoveryWrap, 4096) ||
+        !validEncryptedField(d.bundle, 1024 * 1024)) {
+      return resErr(res, 'Invalid recovery-code update.', 400);
+    }
+    if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Your encrypted account changed. Try again.', 409);
+    }
+    account.recoveryVerifier = await hashAccountSecret(d.recoverySecret);
+    account.recoveryWrap = d.recoveryWrap;
+    account.bundle = d.bundle;
+    account.revision++;
+    account.updatedAt = Date.now();
+    await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, revision:account.revision, ...publicAccount(account) });
   }
 
   if (path === '/api/account/recover' && method === 'POST') {

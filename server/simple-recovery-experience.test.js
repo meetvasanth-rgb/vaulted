@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const android = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
 const androidManifest = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'AndroidManifest.xml'), 'utf8');
 const ios = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
@@ -27,9 +28,21 @@ test('settings reduce recovery to the Private Number and recovery code', () => {
   assert.match(client, /<strong>Recovery code<\/strong>/);
   assert.match(client, /Private Number and recovery code are all you need/);
   assert.match(client, /private email, WhatsApp note or password manager/);
-  assert.doesNotMatch(client, /Recover on a new phone|Copy another backup|account-save-recovery-form-wrap/);
+  assert.doesNotMatch(client, /Recover on a new phone|Copy another backup|account-save-recovery-form-wrap|Use recovery code instead/);
   assert.match(client, /Share recovery details/);
+  assert.match(client, /Save recovery file/);
   assert.match(client, /I’ve saved it/);
+});
+
+test('recovery code follows an authorized account to future password sign-ins', () => {
+  assert.match(client, /function accountBundleSnapshot\([\s\S]*recoveryCodeWrap[\s\S]*return \{ v:1,[^\n]*recoveryCodeWrap \}/);
+  assert.match(client, /recoveryCodeWrap:typeof bundle\.recoveryCodeWrap === 'string'/);
+  assert.match(client, /async function createReplacementRecoveryCode/);
+  assert.match(client, /api\('\/api\/account\/recovery-code'/);
+  assert.match(server, /path === '\/api\/account\/recovery-code'/);
+  assert.match(server, /account\.recoveryVerifier = await hashAccountSecret\(d\.recoverySecret\)/);
+  assert.match(server, /account\.bundle = d\.bundle/);
+  assert.doesNotMatch(client, /Recovery code unavailable on this phone/);
 });
 
 test('native wrappers authenticate before sensitive recovery details are revealed', () => {

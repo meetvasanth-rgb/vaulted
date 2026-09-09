@@ -33,7 +33,7 @@ test('signed-in settings support username changes and a protected recovery-code 
   assert.doesNotMatch(client, /id="settings-account-row" onclick="openAccountPanel/);
   assert.match(client, /profile:\['settings-account-row','settings-profile-controls'\]/);
   assert.match(client, /function populateAccountProfileSettings\(state = loadAccountState\(\)\)/);
-  assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
+  assert.match(client, /recoveryCodeWrap = await aesEncryptJson\(masterKey, \{ recoveryCode \}\)/);
   assert.match(client, /decryptSavedRecoveryCode/);
   assert.match(client, /authorizeRecoveryCodeAccess/);
   assert.doesNotMatch(client, /saveRecoveryCodeOnDevice\(event\)/);

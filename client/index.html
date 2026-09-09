@@ -3442,14 +3442,12 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <label class="account-field"><span>Confirm new password</span><input id="account-confirm-new-password" type="password" autocomplete="new-password" minlength="8" required/></label>
         <button class="account-secondary" type="submit" data-busy-label="Changing…">Change password</button>
       </form>
-      <button class="account-secondary" type="button" onclick="openPasswordRecoveryFromSettings()">Use recovery code instead</button>
       <div class="settings-divider" style="margin:20px 0"></div>
       <div class="account-copy"><strong>Recovery code</strong><br/>Your Vaultlix Private Number and recovery code are all you need to regain access. Save them in a private email, WhatsApp note or password manager. Vaultlix never receives the readable code.</div>
       <div class="account-note" id="account-recovery-backup-status"></div>
       <div id="account-saved-recovery" style="display:none">
-        <button class="account-primary" type="button" onclick="revealSavedRecoveryCode()">View recovery code</button>
+        <button class="account-primary" id="account-view-recovery-code" type="button" onclick="revealSavedRecoveryCode()">View recovery code</button>
       </div>
-      <div class="account-note" id="account-recovery-unavailable" style="display:none">This phone cannot show the original recovery code. Use the private copy you saved when this number was created.</div>
       <div class="settings-divider" style="margin:20px 0"></div>
       <div class="account-copy"><strong>Device access</strong><br/>Sign out securely and remove this identity’s conversations and keys from this device. Your Private Number and account remain available for your next sign-in.</div>
       <button class="account-secondary" id="settings-profile-signout" type="button" onclick="signOutAnonymousAccount()">Sign out on this device</button>
@@ -3805,6 +3803,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="recovery-box"><div class="private-number-label">Vaultlix Private Number</div><div class="recovery-code" id="recovery-backup-number">—</div></div>
     <div class="recovery-box"><div class="private-number-label">Recovery code</div><div class="recovery-code" id="recovery-backup-code">—</div></div>
     <button class="account-primary" type="button" onclick="shareRecoveryBackup()">Share recovery details</button>
+    <button class="account-secondary" type="button" onclick="downloadRecoveryDetails()">Save recovery file</button>
     <button class="account-secondary" type="button" onclick="confirmRecoveryBackup()">I’ve saved it</button>
   </div>
 </div>
@@ -4307,7 +4306,7 @@ function claimLocalVaultsForAccount(accountId) {
     if (room) room.ownerAccountId = accountId;
   }
 }
-function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includeUnowned = false) {
+function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includeUnowned = false, recoveryCodeWrap = loadAccountState()?.recoveryCodeWrap || null) {
   const sessions = [];
   for (const code of loadRoomsIndex()) {
     try {
@@ -4318,7 +4317,7 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
     } catch(e) {}
   }
   const active = loadActiveRoomCode();
-  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions };
+  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, recoveryCodeWrap };
 }
 function importAccountBundle(bundle, accountId) {
   if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid conversation backup');
@@ -4340,6 +4339,11 @@ function importAccountBundle(bundle, accountId) {
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
   saveRoomsIndex(sessions.map(s => s.code));
   if (bundle.activeRoomCode && merged.has(bundle.activeRoomCode)) saveActiveRoomCode(bundle.activeRoomCode);
+  const state = loadAccountState();
+  if (state?.accountId === accountId && !state.recoveryCodeWrap && typeof bundle.recoveryCodeWrap === 'string') {
+    state.recoveryCodeWrap = bundle.recoveryCodeWrap;
+    saveAccountState(state);
+  }
   return added;
 }
 function scheduleAccountSync() {
@@ -8540,11 +8544,12 @@ function openAccountPanel() {
 function refreshSavedRecoveryControls(state = loadAccountState()) {
   const hasSavedCode = !!state?.recoveryCodeWrap;
   const externallySaved = !!state?.recoveryBackupConfirmedAt;
-  document.getElementById('account-saved-recovery').style.display = hasSavedCode ? '' : 'none';
-  document.getElementById('account-recovery-unavailable').style.display = hasSavedCode ? 'none' : '';
+  document.getElementById('account-saved-recovery').style.display = state ? '' : 'none';
+  const viewButton = document.getElementById('account-view-recovery-code');
+  if (viewButton) viewButton.textContent = hasSavedCode ? 'View recovery code' : 'Create recovery code';
   const status = document.getElementById('account-recovery-backup-status');
   if (status) status.innerHTML = !hasSavedCode
-    ? '<strong>Recovery code unavailable on this phone.</strong>'
+    ? '<strong>Ready to protect.</strong> Create a new recovery code and save a private copy.'
     : externallySaved
       ? '<strong>Saved.</strong> Your recovery reminder is off.'
       : '<strong>Not saved yet.</strong> Keep one private copy so this number can be recovered.';
@@ -8673,6 +8678,31 @@ async function decryptSavedRecoveryCode(state = loadAccountState()) {
   recoveryCodeToBytes(recoveryCode);
   return recoveryCode;
 }
+async function createReplacementRecoveryCode(state = loadAccountState()) {
+  if (!state?.accountId || !state?.sessionToken || !state?.masterKey) throw new Error('Account is unavailable');
+  const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
+  const recoveryCode = formatRecoveryCode(recoveryBytes);
+  const recovery = await recoveryMaterialFromBytes(recoveryBytes);
+  const masterKey = base64UrlToBytes(state.masterKey);
+  const recoveryCodeWrap = await aesEncryptJson(masterKey, { recoveryCode });
+  const encryptedBundle = await aesEncryptJson(masterKey, accountBundleSnapshot(state.accountId, false, recoveryCodeWrap));
+  const result = await api('/api/account/recovery-code', {
+    accountId:state.accountId,
+    sessionToken:state.sessionToken,
+    revision:state.revision,
+    recoverySecret:recovery.authSecret,
+    recoveryWrap:await aesEncryptJson(recovery.wrapKey, { masterKey:state.masterKey }),
+    bundle:encryptedBundle,
+  });
+  if (result.error) throw new Error(result.error);
+  state.recoveryCodeWrap = recoveryCodeWrap;
+  state.revision = result.revision;
+  state.recoveryBackupConfirmedAt = 0;
+  state.recoveryReminderDueAt = Date.now() + RECOVERY_REPEAT_REMINDER_MS;
+  saveAccountState(state);
+  refreshSavedRecoveryControls(state);
+  return recoveryCode;
+}
 async function authorizeRecoveryCodeAccess() {
   const nativeAllowed = await requestNativeSensitiveAuthentication();
   if (nativeAllowed !== null) return nativeAllowed;
@@ -8734,7 +8764,9 @@ async function revealSavedRecoveryCode() {
     if (!(await authorizeRecoveryCodeAccess())) return false;
     const state = loadAccountState();
     if (!normalizePrivateNumber(state?.privateNumber)) throw new Error('Private Number is unavailable');
-    activeRecoveryBackupCode = await decryptSavedRecoveryCode(state);
+    activeRecoveryBackupCode = state.recoveryCodeWrap
+      ? await decryptSavedRecoveryCode(state)
+      : await createReplacementRecoveryCode(state);
     document.getElementById('recovery-backup-number').textContent = formatPrivateNumber(state.privateNumber);
     document.getElementById('recovery-backup-code').textContent = activeRecoveryBackupCode;
     renderQrCanvas(document.getElementById('recovery-backup-qr'), recoveryDeepLink(state.privateNumber, activeRecoveryBackupCode));
@@ -8765,6 +8797,28 @@ async function shareRecoveryBackup() {
     toast('Recovery details copied');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Could not share recovery details');
+  }
+}
+function recoveryDetailsText(state = loadAccountState()) {
+  if (!state?.privateNumber || !activeRecoveryBackupCode) return '';
+  return `Keep these Vaultlix recovery details private.\n\nPrivate Number: ${formatPrivateNumber(state.privateNumber)}\nRecovery code: ${activeRecoveryBackupCode}\n\nYou need both to recover your Vaultlix account.`;
+}
+async function downloadRecoveryDetails() {
+  const text = recoveryDetailsText();
+  if (!text) return;
+  try {
+    const file = new File([text], 'vaultlix-recovery-code.txt', { type:'text/plain' });
+    if (navigator.canShare?.({ files:[file] })) {
+      await navigator.share({ title:'Vaultlix recovery code', files:[file] });
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = url; link.download = file.name; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Recovery file saved');
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast('Could not save recovery file');
   }
 }
 function confirmRecoveryBackup() {
@@ -9143,6 +9197,7 @@ async function createAnonymousAccount(event) {
     const masterKey = crypto.getRandomValues(new Uint8Array(32));
     const masterKeyEncoded = bytesToBase64UrlCompact(masterKey);
     let payload;
+    let recoveryCodeWrap;
     // A small number of Android WebViews transiently reject the first
     // PBKDF2/AES operation after a clean install while their crypto provider
     // is warming up. Previously that escaped to the outer catch before any
@@ -9156,6 +9211,7 @@ async function createAnonymousAccount(event) {
         // Use the generated bytes directly. Formatting is presentation only
         // and must never be able to invalidate secure account creation.
         const recovery = await recoveryMaterialFromBytes(recoveryBytes);
+        recoveryCodeWrap = await aesEncryptJson(masterKey, { recoveryCode });
         payload = {
           accountId, privateNumber, displayName,
           deviceId: accountDeviceId(),
@@ -9165,7 +9221,7 @@ async function createAnonymousAccount(event) {
           recoverySecret: recovery.authSecret,
           passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:masterKeyEncoded }),
           recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:masterKeyEncoded }),
-          bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true)),
+          bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true, recoveryCodeWrap)),
         };
         break;
       } catch (error) {
@@ -9219,7 +9275,7 @@ async function createAnonymousAccount(event) {
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
     const accountCreatedAt = Date.now();
-    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode }), recoveryBackupConfirmedAt:0, accountCreatedAt, recoveryReminderDueAt:accountCreatedAt + RECOVERY_FIRST_REMINDER_MS, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    saveAccountState({ v:4, privateNumber, displayName, accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap, recoveryBackupConfirmedAt:0, accountCreatedAt, recoveryReminderDueAt:accountCreatedAt + RECOVERY_FIRST_REMINDER_MS, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'pending');
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
@@ -9256,7 +9312,7 @@ async function loginAnonymousAccount(event) {
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
     accountReauthenticationActive = false;
-    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision, recoveryCodeWrap:typeof bundle.recoveryCodeWrap === 'string' ? bundle.recoveryCodeWrap : null, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Signed in'); setTimeout(() => location.reload(), 350);
   } catch (e) {
@@ -9285,8 +9341,11 @@ async function recoverAnonymousAccount(event) {
     if (replacingSignedInAccount) disconnectInbox();
     const result = await api('/api/account/recover', { privateNumber, recoverySecret:recovery.authSecret, newAuthSecret:material.authSecret, passwordWrap, deviceId:accountDeviceId() });
     if (result.error) { if (replacingSignedInAccount) connectInbox(); toast(result.error); return; }
-    importAccountBundle(await aesDecryptJson(masterKey, existing.bundle), result.accountId);
-    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap:await aesEncryptJson(masterKey, { recoveryCode:code.trim() }), tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    const recoveredBundle = await aesDecryptJson(masterKey, existing.bundle);
+    importAccountBundle(recoveredBundle, result.accountId);
+    const recoveryCodeWrap = await aesEncryptJson(masterKey, { recoveryCode:code.trim() });
+    saveAccountState({ v:4, privateNumber, displayName:result.displayName, accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    await syncAnonymousAccount(false);
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Password changed and conversations restored'); setTimeout(() => location.reload(), 350);
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }

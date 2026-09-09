@@ -20,7 +20,8 @@ test('early testers can select reserved patterns backed by expiring PostgreSQL r
 });
 
 test('strong recovery material remains encrypted locally while backup is deferred', () => {
-  assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
+  assert.match(client, /recoveryCodeWrap = await aesEncryptJson\(masterKey, \{ recoveryCode \}\)/);
+  assert.match(client, /accountBundleSnapshot\(accountId, true, recoveryCodeWrap\)/);
   assert.match(client, /recoveryBackupConfirmedAt:0/);
   assert.match(client, /crypto\.getRandomValues\(new Uint8Array\(32\)\)/);
   assert.match(client, /if \(raw\.length !== 32\) throw new Error\('Invalid recovery code'\)/);
