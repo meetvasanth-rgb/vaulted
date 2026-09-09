@@ -8,12 +8,22 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 test('home page explains the private-number user model', () => {
   assert.match(client, /aria-label="Your private number\. No SIM required\."/);
   assert.match(client, /Get my Vaultlix number/);
-  assert.equal((client.match(/Get your own Vaultlix Private Number and connect privately—without sharing your phone number\./g) || []).length, 2);
+  assert.equal((client.match(/Dating someone new\? Selling something online\? Meeting a client\? Share your Vaultlix number—your personal number stays private\./g) || []).length, 2);
   assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
   assert.match(client, /01 · Identify/);
-  assert.match(client, /02 · Approve/);
-  assert.match(client, /03 · Connect/);
+  assert.match(client, /02 · Share/);
+  assert.match(client, /03 · Decide/);
   assert.match(client, /People must know the exact number and you decide whether to connect/);
+});
+
+test('home page leads with relatable private-number use cases', () => {
+  assert.match(client, /id="everyday-privacy"/);
+  assert.match(client, /Keep your personal number for the people who already have it\./);
+  assert.match(client, /Dating someone new/);
+  assert.match(client, /Buying or selling/);
+  assert.match(client, /Meeting a client/);
+  assert.match(client, /No app installation required to open your invitation\. You decide whether to accept the connection\. When you’re finished, you can erase the conversation for both people\./);
+  assert.doesNotMatch(client, /Selling on Marketplace/);
 });
 
 test('home page footer does not repeat the FAQ section', () => {
