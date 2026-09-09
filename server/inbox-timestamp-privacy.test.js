@@ -44,3 +44,12 @@ test('decrypted history retains the server timestamp used by inbox ordering', ()
   assert.match(client, /ts:Number\(timestamp\) \|\| 0/);
   assert.match(client, /pendingDecrypt\.push\(\{ msgId: msg\.id, content: msg\.content, name: msg\.name, time: formatMsgTime\(msg\.ts\), ts:msg\.ts \}\)/);
 });
+
+test('Chrome renders exactly one canonical timestamp per message bubble', () => {
+  const normalize = functionSource(client, 'messageTimeLabel');
+  assert.match(normalize, /formatMsgTime\(Number\(rec\?\.ts\) \|\| 0\)/);
+  assert.match(normalize, /legacy\.match\(\/\(\?:\[01\]\\d\|2\[0-3\]\):\[0-5\]\\d\//);
+  const render = functionSource(client, 'renderMessageRecord');
+  assert.match(render, /<span class="msg-time">\$\{escHtml\(messageTimeLabel\(rec\)\)\}<\/span>/);
+  assert.equal((render.match(/class="msg-time"/g) || []).length, 1);
+});

@@ -37,6 +37,8 @@ final class NativeWebRTCCallEngine: NSObject {
     private var inviteID: String?
     private var inviteRetryGeneration = 0
     private var acceptRetryGeneration = 0
+    private var hangupRetryGeneration = 0
+    private var ending = false
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
 
     private func trace(_ message: String) {
@@ -148,8 +150,30 @@ final class NativeWebRTCCallEngine: NSObject {
     func end(callID: UUID, notifyPeer: Bool) {
         queue.async {
             guard self.callID == callID else { return }
-            if notifyPeer { self.sendSignalLocked(type: "call-hangup", payload: [:]) }
-            self.resetLocked()
+            guard notifyPeer else { self.resetLocked(); return }
+            guard !self.ending else { return }
+            self.ending = true
+            // Stop media immediately, while retaining only encrypted
+            // signaling long enough for the server to acknowledge hang-up.
+            self.peer?.close()
+            self.peer = nil
+            self.audioTrack?.isEnabled = false
+            self.audioTrack = nil
+            self.audioSource = nil
+            self.hangupRetryGeneration += 1
+            let generation = self.hangupRetryGeneration
+            func retry(_ remaining: Int) {
+                guard generation == self.hangupRetryGeneration, self.ending, self.room != nil else { return }
+                self.sendSignalLocked(type: "call-hangup", payload: [:])
+                guard remaining > 1 else {
+                    self.queue.asyncAfter(deadline: .now() + 0.5) {
+                        if generation == self.hangupRetryGeneration { self.resetLocked() }
+                    }
+                    return
+                }
+                self.queue.asyncAfter(deadline: .now() + 0.4) { retry(remaining - 1) }
+            }
+            retry(10)
         }
     }
 
@@ -231,6 +255,19 @@ final class NativeWebRTCCallEngine: NSObject {
             }
             return
         }
+        let wireInviteID = object["inviteId"] as? String
+        if type == "call-hangup-ack" {
+            if ending, wireInviteID == inviteID { resetLocked() }
+            return
+        }
+        if type == "call-terminal" {
+            guard wireInviteID == inviteID, let callID else { return }
+            DispatchQueue.main.async {
+                VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: "ended")
+            }
+            resetLocked()
+            return
+        }
         guard let envelope = object["envelope"] as? String else {
             trace("signal ignored-envelope")
             return
@@ -247,6 +284,7 @@ final class NativeWebRTCCallEngine: NSObject {
         switch type {
         case "call-invite":
             guard !outgoing else { return }
+            if let wireInviteID { inviteID = wireInviteID }
             sendSignalLocked(type: "call-ringing", payload: [:])
             if answered { sendSignalLocked(type: "call-accept", payload: [:]) }
         case "call-ringing":
@@ -539,6 +577,7 @@ final class NativeWebRTCCallEngine: NSObject {
         reconnectGeneration += 1
         acceptRetryGeneration += 1
         inviteRetryGeneration += 1
+        hangupRetryGeneration += 1
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
@@ -561,6 +600,7 @@ final class NativeWebRTCCallEngine: NSObject {
         turnAttempt = 0
         offerReceived = false
         outgoing = false
+        ending = false
         inviteID = nil
         outgoingCaller = "Someone"
     }

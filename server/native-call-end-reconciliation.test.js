@@ -9,6 +9,8 @@ const android = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 
 const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
 const androidMessaging = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
 const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
+const androidEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeWebRtcCallEngine.java'), 'utf8');
+const iosEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'NativeWebRTCCallEngine.swift'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 
 test('locked iOS terminal call actions cannot resurrect stale call UI', () => {
@@ -44,6 +46,22 @@ test('opening a conversation clears its missed-call inbox alert', () => {
   assert.match(client, /function setActiveRoom\(code(?:, \{ deferMessages = false \} = \{\})?\)[\s\S]*room\.unread = 0/);
   assert.match(client, /missed_encrypted_call'\), alert: room\.unread > 0/);
   assert.match(client, /function renderChatBody\(room\)[\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*body\.scrollTop = body\.scrollHeight/);
+});
+
+test('hang-up is acknowledged, retried and reconciled on both call engines', () => {
+  assert.match(server, /CALL_TERMINAL_TTL_MS = 2 \* 60 \* 1000/);
+  assert.match(server, /room2\.callTerminal = \{ inviteId:terminalInviteId, endedByToken:token, endedAt:now \}/);
+  assert.match(server, /type:'call-hangup-ack'/);
+  assert.match(server, /sendCallTerminalControl\(ws, activeCallTerminalFor\(room, token\)\)/);
+  assert.match(client, /function queueReliableCallHangup/);
+  assert.match(client, /retryPendingCallHangup\(room\)/);
+  assert.match(client, /msg\.type === 'call-terminal'[\s\S]*room\.callInviteId === msg\.inviteId/);
+  assert.match(iosEngine, /retry\(10\)/);
+  assert.match(iosEngine, /type == "call-hangup-ack"/);
+  assert.match(iosEngine, /case "call-invite":[\s\S]*inviteID = wireInviteID/);
+  assert.match(androidEngine, /retryHangupUntilAcknowledged\(generation, 10\)/);
+  assert.match(androidEngine, /"call-hangup-ack"\.equals\(type\)/);
+  assert.match(androidEngine, /case "call-invite":[\s\S]*inviteId = wireInviteId/);
 });
 
 test('native Android ending uses the Vaultlix sand treatment', () => {

@@ -4067,6 +4067,27 @@ const SIGNAL_TYPE_ALLOWLIST = new Set([
   'call-invite', 'call-ringing', 'call-accept', 'call-decline', 'call-busy',
   'call-hangup', 'offer', 'answer', 'ice-candidate', 'call-reaction',
 ]);
+const CALL_TERMINAL_TTL_MS = 2 * 60 * 1000;
+
+function activeCallTerminalFor(room, recipientToken, now = Date.now()) {
+  const terminal = room?.callTerminal;
+  if (!terminal || typeof terminal.inviteId !== 'string' ||
+      terminal.endedByToken === recipientToken || now - terminal.endedAt > CALL_TERMINAL_TTL_MS) {
+    if (terminal && now - (terminal.endedAt || 0) > CALL_TERMINAL_TTL_MS) room.callTerminal = null;
+    return null;
+  }
+  return terminal;
+}
+
+function sendCallTerminalControl(socket, terminal) {
+  if (!socket || socket.readyState !== socket.OPEN || !terminal) return false;
+  try {
+    socket.send(JSON.stringify({ type:'call-terminal', inviteId:terminal.inviteId, endedAt:terminal.endedAt }));
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 
 srv.on('upgrade', (req, socket, head) => {
   let u;
@@ -4231,6 +4252,11 @@ wss.on('connection', (ws) => {
     // forever. Browser clients safely ignore this envelope-free control
     // frame, while the iOS engine uses it to flush its bounded signal queue.
     try { ws.send(JSON.stringify({ type: 'ready' })); } catch (e) {}
+    // A hang-up is terminal state, not a disposable negotiation packet. If
+    // this member's socket was suspended at the instant the peer ended the
+    // call, replay the short-lived marker immediately after authentication.
+    // It contains only the random per-call ID; no room credential or media.
+    sendCallTerminalControl(ws, activeCallTerminalFor(room, token));
     // Pseudonymized room code only — no token material at all (even a
     // truncated bearer token is credential material and has no business in
     // a log line), enough to confirm connectivity during testing without
@@ -4340,6 +4366,7 @@ wss.on('connection', (ws) => {
             // zero. Treating it as new created a second CallKit call roughly
             // 10 seconds after the first was answered.
             : !(nativeCallInProgress || room2.activeCall || (room2.ringingUntil && room2.ringingUntil > now));
+          if (isNewInvitation) room2.callTerminal = null;
           // A new invitation supersedes any stale native ring retained for
           // this room. Close that old surface before issuing the new call ID
           // so OEM lock screens cannot leave both activities around.
@@ -4453,7 +4480,20 @@ wss.on('connection', (ws) => {
           // surfaced anything past that first notification — same as a phone
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
-          markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId, now);
+          const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
+          markInviteTerminated(room2, terminalInviteId, now);
+          if (terminalInviteId) {
+            room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now };
+            // Confirm server receipt so web and native senders can keep the
+            // signaling socket alive only until the terminal state is safe.
+            try { ws.send(JSON.stringify({ type:'call-hangup-ack', inviteId:terminalInviteId })); } catch (e) {}
+            // Deliver to both possible state owners. During native calls the
+            // foreground WebView and native engine may briefly coexist; both
+            // must stop rather than leaving a timer or CallKit surface alive.
+            for (const peerSocket of new Set([
+              signalingSockets.get(tok), nativeCallSignalingSockets.get(tok),
+            ])) sendCallTerminalControl(peerSocket, room2.callTerminal);
+          }
           // A caller's 30-second timeout can reach the server a few
           // milliseconds after ringingUntil. The non-zero marker still means
           // the callee never answered: both native and WebView answer paths

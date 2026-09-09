@@ -4419,6 +4419,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerPrivateNumber
     // Call state — see the CALL STATE section. 'idle' unless a call is
     // actively ringing/connected in this room.
     callState: 'idle', callPeerName: null, callStartedAt: null, callInviteId: null,
+    pendingCallHangup: null,
     callConnectedHapticFired: false,
     callTimerInterval: null, callTimeoutTimer: null, callRingInterval: null,
     // Diagnostic only (console.log, no UI) — see startCallStatsLogging.
@@ -5501,6 +5502,7 @@ function connectSignaling(room) {
     if (room.pendingCallAccept && room.callState === 'active' && !room.callAcceptConfirmed) {
       sendSignal(room, 'call-accept', {});
     }
+    retryPendingCallHangup(room);
   };
 
   ws.onmessage = async (ev) => {
@@ -5526,6 +5528,16 @@ function connectSignaling(room) {
         clearCallRingInterval(room);
         room.callAnswerAcknowledged = true;
         renderCallOverlay(room);
+      }
+      return;
+    }
+    if (msg && msg.type === 'call-hangup-ack') {
+      if (room.pendingCallHangup?.inviteId === msg.inviteId) clearPendingCallHangup(room);
+      return;
+    }
+    if (msg && msg.type === 'call-terminal') {
+      if (room.callState !== 'idle' && room.callInviteId && room.callInviteId === msg.inviteId) {
+        endCall(room, null, null, null, { silentPresentation:document.hidden });
       }
       return;
     }
@@ -5576,9 +5588,14 @@ function disconnectSignaling(room) {
 // false (and sends nothing) if there's no live connection or no E2E key yet
 // to encrypt with — callers should treat that as "calling unavailable right
 // now" rather than silently failing later.
-async function sendSignal(room, type, payload) {
+async function sendSignal(room, type, payload, inviteIdOverride) {
   if (!room.signalWs || room.signalWs.readyState !== WebSocket.OPEN) return false;
   if (!room.sharedKey) return false;
+  // Capture before encryption yields. endCall() clears room.callInviteId
+  // immediately, but the terminal frame still needs the original ID.
+  const inviteId = typeof inviteIdOverride === 'string'
+    ? inviteIdOverride
+    : (typeof room.callInviteId === 'string' ? room.callInviteId : undefined);
   let envelope;
   // encryptMsg (via encryptSignalPayload) now throws instead of silently
   // returning plaintext — the !room.sharedKey check above already covers the
@@ -5599,9 +5616,40 @@ async function sendSignal(room, type, payload) {
   // only uses it to distinguish retries of one invitation from a genuinely
   // new call, so stale room-level ringing state cannot suppress Android's
   // native wake-up notification.
-  const inviteId = typeof room.callInviteId === 'string' ? room.callInviteId : undefined;
   room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, envelope }));
   return true;
+}
+
+function clearPendingCallHangup(room) {
+  if (!room?.pendingCallHangup) return;
+  clearTimeout(room.pendingCallHangup.timer);
+  room.pendingCallHangup = null;
+}
+
+async function retryPendingCallHangup(room) {
+  const pending = room?.pendingCallHangup;
+  if (!pending || typeof pending.inviteId !== 'string') return;
+  clearTimeout(pending.timer);
+  pending.attempts = (pending.attempts || 0) + 1;
+  await sendSignal(room, 'call-hangup', {}, pending.inviteId);
+  if (room.pendingCallHangup !== pending) return;
+  // Once the socket accepts it the server replies with call-hangup-ack.
+  // Retry across short network stalls; after the burst, ws.onopen performs
+  // another attempt whenever signaling reconnects.
+  if (pending.attempts < 12) {
+    pending.timer = setTimeout(() => retryPendingCallHangup(room), 750);
+  }
+}
+
+function queueReliableCallHangup(room) {
+  if (!room) return;
+  const inviteId = room.callInviteId || room.pendingCallHangup?.inviteId;
+  if (!inviteId) { sendSignal(room, 'call-hangup', {}); return; }
+  if (room.pendingCallHangup?.inviteId !== inviteId) {
+    clearPendingCallHangup(room);
+    room.pendingCallHangup = { inviteId, attempts:0, timer:null };
+  }
+  retryPendingCallHangup(room);
 }
 
 async function handleSignalMessage(room, type, payload, inviteId) {
@@ -5687,16 +5735,16 @@ async function handleSignalMessage(room, type, payload, inviteId) {
     // in acceptCall(), before this message was even sent.)
     const pc = await setupPeerConnection(room);
     if (!pc || room.callState !== 'active') {
-      if (room.callState === 'active') { sendSignal(room, 'call-hangup', {}); endCall(room, 'Couldn’t access your microphone.'); }
+      if (room.callState === 'active') { queueReliableCallHangup(room); endCall(room, 'Couldn’t access your microphone.'); }
       return;
     }
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const sent = await sendSignal(room, 'offer', { sdp: offer.sdp, type: offer.type });
-      if (!sent) { sendSignal(room, 'call-hangup', {}); endCall(room, 'Could not start the call.'); return; }
+      if (!sent) { queueReliableCallHangup(room); endCall(room, 'Could not start the call.'); return; }
     } catch (e) {
-      sendSignal(room, 'call-hangup', {});
+      queueReliableCallHangup(room);
       endCall(room, 'Could not start the call.');
     }
   } else if (type === 'call-decline') {
@@ -5743,7 +5791,7 @@ async function handleSignalMessage(room, type, payload, inviteId) {
       room.callNegotiated = true; // caller's initial offer/answer exchange is done
       await flushPendingIceCandidates(room);
     } catch (e) {
-      sendSignal(room, 'call-hangup', {});
+      queueReliableCallHangup(room);
       endCall(room, 'Could not connect the call.');
     }
   } else if (type === 'ice-candidate') {
@@ -5903,7 +5951,7 @@ async function startCall() {
     if (room.callState === 'outgoing') sendSignal(room, 'call-invite', { from: room.myName });
   }, 3000);
   room.callTimeoutTimer = setTimeout(() => {
-    if (room.callState === 'outgoing') { sendSignal(room, 'call-hangup', {}); endCall(room, 'No answer.', 'Call not answered'); }
+    if (room.callState === 'outgoing') { queueReliableCallHangup(room); endCall(room, 'No answer.', 'Call not answered'); }
   }, CALL_RING_TIMEOUT_MS);
 }
 
@@ -6021,7 +6069,7 @@ async function acceptCall(fromNativeCallKit = false) {
   // an "active" call that never gets the SDP it needed to actually connect.
   const pc = await setupPeerConnection(room);
   if (!pc || room.callState !== 'active') {
-    if (room.callState === 'active') { sendSignal(room, 'call-hangup', {}); endCall(room, 'Couldn’t access your microphone.'); }
+    if (room.callState === 'active') { queueReliableCallHangup(room); endCall(room, 'Couldn’t access your microphone.'); }
     return;
   }
   if (room.pendingOffer) {
@@ -6041,7 +6089,7 @@ function declineCall() {
 function hangupCall() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState === 'idle') return;
-  sendSignal(room, 'call-hangup', {});
+  queueReliableCallHangup(room);
   // Canceling my own outgoing call before it's answered is worth a record
   // too — ending an already-active call is the normal/expected way calls
   // finish, so that case gets no sys message (nothing "missed" about it).
@@ -7070,10 +7118,10 @@ async function processOffer(room, payload) {
     const answer = await room.pc.createAnswer();
     await room.pc.setLocalDescription(answer);
     const sent = await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
-    if (!sent) { sendSignal(room, 'call-hangup', {}); endCall(room, 'Could not connect the call.'); return; }
+    if (!sent) { queueReliableCallHangup(room); endCall(room, 'Could not connect the call.'); return; }
     room.callNegotiated = true; // callee's initial offer/answer exchange is done
   } catch (e) {
-    sendSignal(room, 'call-hangup', {});
+    queueReliableCallHangup(room);
     endCall(room, 'Could not connect the call.');
   }
 }
@@ -8191,7 +8239,7 @@ async function isBlockedVaultCode(code) { return loadBlockedVaults().includes(aw
 
 async function finishBlockingRoom(room, message) {
   if (!room) return;
-  if (room.callState && room.callState !== 'idle') { try { sendSignal(room, 'call-hangup', {}); } catch (e) {} endCall(room); }
+  if (room.callState && room.callState !== 'idle') { queueReliableCallHangup(room); endCall(room); }
   try { await rememberBlockedVault(room.code); } catch (e) { console.warn('Could not persist blocked vault fingerprint:', e.message); }
   try { await api('/api/push-unsubscribe', { code:room.code, token:room.token }); } catch (e) {}
   try { await api('/api/leave', { code:room.code, token:room.token }); } catch (e) {}
@@ -10993,6 +11041,18 @@ function formatMsgTime(ts) {
   return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
 }
 
+function messageTimeLabel(rec) {
+  // Chrome can restore older cached records whose display label was already
+  // decorated, producing e.g. "18:09 18:09" when it is rendered again.
+  // Epoch time is canonical; for legacy records retain only the first valid
+  // clock label so every bubble owns exactly one timestamp.
+  const canonical = formatMsgTime(Number(rec?.ts) || 0);
+  if (canonical) return canonical;
+  const legacy = String(rec?.time || '').trim();
+  const clock = legacy.match(/(?:[01]\d|2[0-3]):[0-5]\d/);
+  return clock ? clock[0] : legacy.slice(0, 16);
+}
+
 // A message whose entire visible text is one emoji renders large with no
 // bubble background, matching WhatsApp/iMessage convention.
 function isSingleEmoji(str) {
@@ -11622,7 +11682,7 @@ function renderMessageRecord(room, rec, animate) {
     <div class="msg-name">${escHtml(rec.name)}</div>
     ${contentHtml}
     <div class="msg-meta">
-      <span class="msg-time">${rec.time}</span>
+      <span class="msg-time">${escHtml(messageTimeLabel(rec))}</span>
       ${receiptHtml}
     </div>
     ${progressHtml}
