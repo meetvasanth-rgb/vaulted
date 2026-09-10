@@ -704,7 +704,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
+    static var allowsDocumentRotation = false
     var window: UIWindow?
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        Self.allowsDocumentRotation ? [.portrait, .landscapeLeft, .landscapeRight] : .portrait
+    }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         VaultlixCallManager.shared.start()

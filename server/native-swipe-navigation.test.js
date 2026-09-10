@@ -12,7 +12,7 @@ test('native horizontal swipes provide back and app-home navigation', () => {
   assert.match(client, /if \(dx > 0\) navigateBackFromNativeSwipe\(\)/);
   assert.match(client, /else navigateHomeFromNativeSwipe\(\)/);
   assert.match(client, /case 's-chat': openVaultInbox\(\)/);
-  assert.match(client, /loadAccountState\(\) \|\| rooms\.size > 0\) openVaultInbox\(\)/);
+  assert.match(client, /window\.VaultlixAndroid\.goToDeviceHome\(\)/);
 });
 
 test('native swipes do not take over calls, overlays, or interactive content', () => {

@@ -4,6 +4,7 @@ import android.app.NotificationManager;
 import android.hardware.biometrics.BiometricPrompt;
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.pm.ActivityInfo;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
@@ -36,9 +37,12 @@ import org.json.JSONObject;
 
 import java.lang.ref.WeakReference;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.OutputStream;
 
 public class MainActivity extends BridgeActivity {
+    private static final int SAVE_MEDIA_REQUEST = 4107;
     private static WeakReference<MainActivity> activeInstance = new WeakReference<>(null);
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -50,6 +54,7 @@ public class MainActivity extends BridgeActivity {
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
     private volatile Uri preparedNumberCardUri;
+    private volatile File pendingSaveMediaFile;
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
@@ -148,6 +153,32 @@ public class MainActivity extends BridgeActivity {
         if (activeInstance.get() == this) activeInstance.clear();
         if (nativeCallEngine != null) nativeCallEngine.removeListener(nativeCallListener);
         super.onDestroy();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != SAVE_MEDIA_REQUEST) return;
+        File source = pendingSaveMediaFile;
+        pendingSaveMediaFile = null;
+        if (source == null) return;
+        try {
+            Uri destination = resultCode == RESULT_OK && data != null ? data.getData() : null;
+            if (destination != null) {
+                try (FileInputStream input = new FileInputStream(source);
+                     OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
+                    if (output == null) throw new IllegalStateException("No document output stream");
+                    byte[] buffer = new byte[16 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            // The chosen document is a copy; decrypted temporary material
+            // must not remain in the app cache after the picker closes.
+            source.delete();
+        }
     }
 
     @SuppressWarnings("deprecation")
@@ -460,6 +491,89 @@ public class MainActivity extends BridgeActivity {
                 });
                 return true;
             } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface
+        public boolean saveMedia(String dataUrl, String requestedName) {
+            if (dataUrl == null || dataUrl.length() > 16_000_000) return false;
+            int marker = dataUrl.indexOf(";base64,");
+            if (!dataUrl.startsWith("data:") || marker < 6) return false;
+            String mime = dataUrl.substring(5, marker);
+            if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
+            try {
+                byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
+                if (bytes.length == 0 || bytes.length > 10_500_000) return false;
+                String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
+                if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
+                File directory = new File(getCacheDir(), "saved-media");
+                if (!directory.exists() && !directory.mkdirs()) return false;
+                File source = new File(directory, System.currentTimeMillis() + "-" + safeName);
+                try (FileOutputStream output = new FileOutputStream(source, false)) { output.write(bytes); }
+                pendingSaveMediaFile = source;
+                String finalName = safeName;
+                String finalMime = mime;
+                runOnUiThread(() -> {
+                    try {
+                        Intent saveIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                        saveIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                        saveIntent.setType(finalMime);
+                        saveIntent.putExtra(Intent.EXTRA_TITLE, finalName);
+                        startActivityForResult(saveIntent, SAVE_MEDIA_REQUEST);
+                    } catch (Exception ignored) {
+                        if (pendingSaveMediaFile == source) pendingSaveMediaFile = null;
+                        source.delete();
+                    }
+                });
+                return true;
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface
+        public boolean openMedia(String dataUrl, String requestedName) {
+            if (dataUrl == null || dataUrl.length() > 16_000_000) return false;
+            int marker = dataUrl.indexOf(";base64,");
+            if (!dataUrl.startsWith("data:") || marker < 6) return false;
+            String mime = dataUrl.substring(5, marker);
+            if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
+            try {
+                byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
+                if (bytes.length == 0 || bytes.length > 10_500_000) return false;
+                String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
+                if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
+                File directory = new File(getCacheDir(), "open-media");
+                if (!directory.exists() && !directory.mkdirs()) return false;
+                File source = new File(directory, System.currentTimeMillis() + "-" + safeName);
+                try (FileOutputStream output = new FileOutputStream(source, false)) { output.write(bytes); }
+                Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", source);
+                String finalMime = mime;
+                runOnUiThread(() -> {
+                    try {
+                        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+                        openIntent.setDataAndType(uri, finalMime);
+                        openIntent.setClipData(ClipData.newRawUri("Vaultlix attachment", uri));
+                        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(openIntent, "Open PDF with"));
+                    } catch (Exception ignored) {}
+                });
+                return true;
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface
+        public void setDocumentPreviewOpen(boolean open) {
+            runOnUiThread(() -> setRequestedOrientation(open
+                    ? ActivityInfo.SCREEN_ORIENTATION_SENSOR
+                    : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+        }
+
+        @JavascriptInterface
+        public void goToDeviceHome() {
+            runOnUiThread(() -> {
+                Intent home = new Intent(Intent.ACTION_MAIN);
+                home.addCategory(Intent.CATEGORY_HOME);
+                home.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(home);
+            });
         }
 
         @JavascriptInterface

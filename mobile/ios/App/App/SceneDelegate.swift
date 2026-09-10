@@ -5,13 +5,16 @@ import AVFoundation
 import UserNotifications
 import LocalAuthentication
 
-class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler {
+class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate {
     var window: UIWindow?
     private var observers: [NSObjectProtocol] = []
     private var webReady = false
     private var pendingUniversalLink: URL?
     private var appSwitcherPrivacyCover: UIView?
     private var preparedShareImageURL: URL?
+    private var pendingDocumentExportURL: URL?
+    private var pendingOpenFileURL: URL?
+    private var documentInteractionController: UIDocumentInteractionController?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -142,6 +145,73 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         }
     }
 
+    private func presentSaveFile(_ fileURL: URL) {
+        guard let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            try? FileManager.default.removeItem(at: fileURL)
+            emit(name: "vaultlix:share-image-failed", detail: [:])
+            return
+        }
+        let picker = UIDocumentPickerViewController(forExporting: [fileURL], asCopy: true)
+        picker.delegate = self
+        pendingDocumentExportURL = fileURL
+        presenter.present(picker, animated: true)
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        clearPendingDocumentExport()
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        clearPendingDocumentExport()
+    }
+
+    private func clearPendingDocumentExport() {
+        guard let fileURL = pendingDocumentExportURL else { return }
+        pendingDocumentExportURL = nil
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    private func presentOpenFile(_ fileURL: URL) {
+        guard let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            try? FileManager.default.removeItem(at: fileURL)
+            emit(name: "vaultlix:share-image-failed", detail: [:])
+            return
+        }
+        let controller = UIDocumentInteractionController(url: fileURL)
+        controller.delegate = self
+        documentInteractionController = controller
+        pendingOpenFileURL = fileURL
+        if !controller.presentOpenInMenu(from: presenter.view.bounds, in: presenter.view, animated: true) {
+            clearPendingOpenFile()
+        }
+    }
+
+    func documentInteractionControllerDidDismissOpenInMenu(_ controller: UIDocumentInteractionController) {
+        clearPendingOpenFile()
+    }
+
+    private func clearPendingOpenFile() {
+        if let fileURL = pendingOpenFileURL { try? FileManager.default.removeItem(at: fileURL) }
+        pendingOpenFileURL = nil
+        documentInteractionController = nil
+    }
+
+    private func setDocumentPreviewOpen(_ open: Bool) {
+        AppDelegate.allowsDocumentRotation = open
+        guard let windowScene = window?.windowScene else { return }
+        if #available(iOS 16.0, *) {
+            window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            let orientations: UIInterfaceOrientationMask = open
+                ? [.portrait, .landscapeLeft, .landscapeRight]
+                : .portrait
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientations))
+        } else {
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+    }
+
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         guard message.name == "vaultlixCall",
@@ -162,6 +232,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             let feedback = UIImpactFeedbackGenerator(style: .medium)
             feedback.prepare()
             feedback.impactOccurred()
+            return
+        }
+        if action == "setDocumentPreviewOpen" {
+            setDocumentPreviewOpen(body["open"] as? Bool ?? false)
             return
         }
         if action == "authenticateSensitiveAction" {
@@ -252,6 +326,52 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             do {
                 try data.write(to: fileURL, options: .atomic)
                 presentShareImage(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
+        if action == "saveMedia" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:"),
+                  dataURL.count <= 16_000_000,
+                  let marker = dataURL.range(of: ";base64,"),
+                  marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
+                  let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !data.isEmpty, data.count <= 10_500_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let requested = (body["filename"] as? String) ?? "vaultlix-file"
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+            let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+            let filename = safeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "vaultlix-file" : safeName
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-save-\(UUID().uuidString)-\(filename)")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                presentSaveFile(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
+        if action == "openMedia" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:"),
+                  dataURL.count <= 16_000_000,
+                  let marker = dataURL.range(of: ";base64,"),
+                  marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
+                  let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !data.isEmpty, data.count <= 10_500_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let requested = (body["filename"] as? String) ?? "vaultlix-file"
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+            let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+            let filename = safeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "vaultlix-file" : safeName
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-open-\(UUID().uuidString)-\(filename)")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                presentOpenFile(fileURL)
             } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }
