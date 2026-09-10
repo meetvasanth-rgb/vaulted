@@ -10716,6 +10716,30 @@ async function registerServiceWorker() {
   catch (e) { console.warn('SW registration failed:', e.message); return null; }
 }
 
+function renderOfflineState() {
+  const offline = navigator.onLine === false;
+  document.body.classList.toggle('vaultlix-offline', offline);
+  let banner = document.getElementById('vaultlix-offline-banner');
+  if (offline && !banner) {
+    banner = document.createElement('div');
+    banner.id = 'vaultlix-offline-banner';
+    banner.setAttribute('role', 'status');
+    banner.textContent = 'You’re offline. Vaultlix will reconnect automatically.';
+    banner.style.cssText = 'position:fixed;z-index:1200;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 24px));padding:10px 14px;border-radius:13px;background:#29101b;color:#fff;text-align:center;font:650 12px/1.4 Manrope,Inter,sans-serif;box-shadow:0 8px 28px rgba(26,9,16,.24)';
+    document.body.appendChild(banner);
+  }
+  if (!offline) banner?.remove();
+}
+
+window.addEventListener('online', () => {
+  renderOfflineState();
+  if (loadAccountState()) connectInbox();
+  for (const room of rooms.values()) {
+    if (room.everOnline) doPoll(room);
+  }
+});
+window.addEventListener('offline', renderOfflineState);
+
 function hidePushBanner() {
   document.getElementById('push-banner')?.classList.remove('show');
 }
@@ -14475,6 +14499,11 @@ function hideRestoreSkeleton() {
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
+  // Register on every launch, not only when browser notifications are
+  // enabled. The worker caches UI assets only, allowing a previously opened
+  // Vaultlix app to show its local inbox in airplane mode.
+  registerServiceWorker().catch(() => {});
+  renderOfflineState();
   // Captured up front, before anything else touches the URL — read once
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();

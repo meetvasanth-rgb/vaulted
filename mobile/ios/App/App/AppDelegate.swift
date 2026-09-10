@@ -26,6 +26,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var outgoingCalls: Set<UUID> = []
     private var outgoingWebAudioSessionActive = false
     private var callKitAudioSessionActive = false
+    private var appKeyboardLockedForCall = false
     private var ringbackCallID: UUID?
     private var ringbackEngine: AVAudioEngine?
     private var ringbackPlayer: AVAudioPlayerNode?
@@ -49,8 +50,11 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// temporarily; WebKit can restore the DOM-focused textarea during the
     /// scene transition. Blur and briefly lock the composer in the DOM first,
     /// then clear every native responder before reporting the call.
-    private func dismissAppKeyboard() {
-        let script = """
+    private func setAppKeyboardLockedForCall(_ locked: Bool) {
+        appKeyboardLockedForCall = locked
+        let script: String
+        if locked {
+            script = """
         (() => {
           const active = document.activeElement;
           if (active && typeof active.blur === 'function') active.blur();
@@ -59,16 +63,21 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             input.blur();
             input.readOnly = true;
             input.dataset.vaultlixCallKeyboardGuard = '1';
-            window.setTimeout(() => {
-              if (input.dataset.vaultlixCallKeyboardGuard === '1') {
-                delete input.dataset.vaultlixCallKeyboardGuard;
-                input.readOnly = false;
-              }
-            }, 1500);
           }
           return active ? active.id || active.tagName : 'none';
         })();
         """
+        } else {
+            script = """
+        (() => {
+          const input = document.getElementById('msg-input');
+          if (input && input.dataset.vaultlixCallKeyboardGuard === '1') {
+            delete input.dataset.vaultlixCallKeyboardGuard;
+            input.readOnly = false;
+          }
+        })();
+        """
+        }
         var webViewCount = 0
         var nativeDismissed = false
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
@@ -89,7 +98,32 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             from: nil,
             for: nil
         )
-        print("VXCALL keyboard dismiss webViews=\(webViewCount) native=\(nativeDismissed)")
+        print("VXCALL keyboard lock=\(locked) webViews=\(webViewCount) native=\(nativeDismissed)")
+    }
+
+    private func dismissAppKeyboard() {
+        setAppKeyboardLockedForCall(true)
+    }
+
+    private func releaseAppKeyboardIfIdle() {
+        guard calls.isEmpty, appKeyboardLockedForCall else { return }
+        setAppKeyboardLockedForCall(false)
+    }
+
+    /// CallKit can return Vaultlix to the foreground after Answer and WebKit
+    /// may restore the field that was focused before the incoming call. Keep
+    /// the composer guarded for the complete call, and reassert the native
+    /// dismissal whenever the scene or audio session becomes active.
+    func enforceCallKeyboardGuard() {
+        guard !calls.isEmpty else {
+            releaseAppKeyboardIfIdle()
+            return
+        }
+        dismissAppKeyboard()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, !self.calls.isEmpty else { return }
+            self.dismissAppKeyboard()
+        }
     }
 
     func start() {
@@ -243,7 +277,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // A terminal action supersedes every earlier presentation action for
         // the same call; the encrypted call-history message remains canonical.
         let terminalActions: Set<String> = [
-            "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeBusy", "nativeFailed",
+            "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeCancelled", "nativeBusy", "nativeFailed",
         ]
         if terminalActions.contains(action) {
             pendingActions.removeAll { ($0["callId"] as? String) == callID.uuidString }
@@ -251,6 +285,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         pendingActions.append(detail)
         NotificationCenter.default.post(name: .vaultlixCallAction, object: nil,
                                         userInfo: detail)
+        if terminalActions.contains(action) { releaseAppKeyboardIfIdle() }
     }
 
     func consumePendingActions() -> [[String: Any]] {
@@ -262,6 +297,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         print("VXCALL manager answer requested")
         guard let payload = calls[action.callUUID] else { action.fail(); return }
+        enforceCallKeyboardGuard()
         do {
             // CallKit owns activation/deactivation, but the application must
             // still describe the session it needs. Without playAndRecord +
@@ -338,6 +374,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
         NativeWebRTCCallEngine.shared.reset()
+        releaseAppKeyboardIfIdle()
     }
 
     func endCallFromWeb(roomCode: String, outcome: String = "ended") {
@@ -364,6 +401,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
         outgoingWebAudioSessionActive = false
+        releaseAppKeyboardIfIdle()
     }
 
     func answerCallFromWeb(roomCode: String) {
@@ -499,6 +537,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("VXCALL manager didActivate")
+        enforceCallKeyboardGuard()
         callKitAudioSessionActive = true
         NativeWebRTCCallEngine.shared.callKitDidActivate(audioSession)
         // CallKit owns the VoIP audio session. Starting a player before this

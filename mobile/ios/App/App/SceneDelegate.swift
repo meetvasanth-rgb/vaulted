@@ -456,6 +456,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         hideAppSwitcherPrivacyCover()
+        VaultlixCallManager.shared.enforceCallKeyboardGuard()
         if webReady,
            let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {

@@ -4,6 +4,7 @@
   "webDir": "www",
   "server": {
     "url": "https://vaultlix.com",
+    "errorPath": "offline.html",
     "cleartext": false,
     "androidScheme": "https"
   },

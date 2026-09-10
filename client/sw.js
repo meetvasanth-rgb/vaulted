@@ -1,14 +1,76 @@
-// Vaultlix service worker — exists solely to receive Web Push events and show
-// a notification. It does NOT cache app files (this app has no offline mode;
-// every session needs a live connection to relay E2E-encrypted messages), so
-// there's no fetch handler here beyond letting requests pass straight through.
+// Vaultlix service worker — receives Web Push and keeps only the static app
+// shell available for an offline launch. API responses, ciphertext, account
+// data, messages and keys are deliberately never written to this cache.
+
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v1';
+const APP_SHELL_FILES = [
+  '/',
+  '/index.html',
+  '/number-card.js',
+  '/manifest.json',
+  '/favicon.ico',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-1024.png',
+  '/icons/icon-master.svg',
+  '/icons/favicon-32.png',
+];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(APP_SHELL_CACHE);
+    // One missing decorative asset must not prevent the navigation shell
+    // from installing. Each same-origin file is therefore cached separately.
+    await Promise.allSettled(APP_SHELL_FILES.map(path => cache.add(path)));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names
+      .filter(name => name.startsWith('vaultlix-app-shell-') && name !== APP_SHELL_CACHE)
+      .map(name => caches.delete(name)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // Network and encrypted-data routes must never enter the app-shell cache.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/')) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const cache = await caches.open(APP_SHELL_CACHE);
+          await cache.put('/index.html', response.clone());
+        }
+        return response;
+      } catch (error) {
+        const cache = await caches.open(APP_SHELL_CACHE);
+        return (await cache.match('/index.html')) || (await cache.match('/')) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  if (APP_SHELL_FILES.includes(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(APP_SHELL_CACHE);
+      const cached = await cache.match(request, { ignoreSearch:true });
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok) await cache.put(url.pathname, response.clone());
+      return response;
+    })());
+  }
 });
 
 // The server never sees plaintext (that's the whole point of E2E encryption),
