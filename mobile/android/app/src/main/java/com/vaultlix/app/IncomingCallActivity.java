@@ -9,9 +9,15 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -46,6 +52,9 @@ public class IncomingCallActivity extends Activity {
     private boolean answerInProgress;
     private boolean nativePrepared;
     private String caller;
+    private final Handler ringtoneHandler = new Handler(Looper.getMainLooper());
+    private final Runnable ringtoneTimeout = this::stopIncomingRingtone;
+    private Ringtone incomingRingtone;
     private static WeakReference<IncomingCallActivity> activeActivity = new WeakReference<>(null);
 
     @Override
@@ -68,6 +77,7 @@ public class IncomingCallActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        stopIncomingRingtone();
         if (activeActivity.get() == this) activeActivity.clear();
         super.onDestroy();
     }
@@ -104,8 +114,12 @@ public class IncomingCallActivity extends Activity {
         }
         showIncomingCall(caller);
         // The full-screen call surface now owns presentation. Remove the
-        // duplicate heads-up notification so Android never shows two call UIs.
+        // duplicate heads-up notification so Android never shows two call UIs,
+        // then keep ringing from the visible activity. Pixel devices delay
+        // notification audio until after this cancellation, otherwise leaving
+        // the full-screen incoming call completely silent.
         cancelNotification();
+        startIncomingRingtone();
         if (intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)) answerCall();
     }
 
@@ -147,7 +161,7 @@ public class IncomingCallActivity extends Activity {
         root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
 
         TextView name = text(displayName, displayName.length() > 22 ? 28 : 32, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
@@ -202,6 +216,7 @@ public class IncomingCallActivity extends Activity {
             return;
         }
         answerInProgress = true;
+        stopIncomingRingtone();
         NativeCallActions.markAnswerStarted(this, callId);
         NativeCallActions.answer(this, callId);
         cancelNotification();
@@ -250,6 +265,7 @@ public class IncomingCallActivity extends Activity {
     }
 
     private void declineCall() {
+        stopIncomingRingtone();
         cancelNotification();
         NativeCallActions.decline(this, callId, null);
         finish();
@@ -263,6 +279,30 @@ public class IncomingCallActivity extends Activity {
         if (notificationId == Integer.MIN_VALUE) return;
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) manager.cancel(notificationId);
+    }
+
+    private void startIncomingRingtone() {
+        stopIncomingRingtone();
+        AudioManager manager = getSystemService(AudioManager.class);
+        if (manager != null && manager.getRingerMode() != AudioManager.RINGER_MODE_NORMAL) return;
+        Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), sound);
+        if (ringtone == null) return;
+        ringtone.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
+        ringtone.setLooping(true);
+        incomingRingtone = ringtone;
+        ringtone.play();
+        ringtoneHandler.postDelayed(ringtoneTimeout, 60_000);
+    }
+
+    private void stopIncomingRingtone() {
+        ringtoneHandler.removeCallbacks(ringtoneTimeout);
+        Ringtone ringtone = incomingRingtone;
+        incomingRingtone = null;
+        if (ringtone != null && ringtone.isPlaying()) ringtone.stop();
     }
 
     private TextView text(String value, int sizeSp, int color) {

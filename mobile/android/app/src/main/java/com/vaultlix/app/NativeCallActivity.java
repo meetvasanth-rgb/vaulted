@@ -149,7 +149,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
 
         TextView name = label(caller, caller.length() > 22 ? 27 : 31, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
