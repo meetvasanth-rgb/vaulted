@@ -10495,6 +10495,11 @@ let nativePushListenersReady = false;
 
 function nativePlatform() {
   try {
+    // The Android Java bridge is available as soon as the app WebView is
+    // created, including before Capacitor has finished exposing plugins.
+    // Use it as the primary Android signal so native-only interactions such
+    // as swipe navigation are not silently disabled during bridge startup.
+    if (window.VaultlixAndroid) return 'android';
     // Plugin presence is the most reliable signal for this remote-URL
     // Capacitor wrapper. Depending only on isNativePlatform() meant native
     // startup could briefly be classified as ordinary Safari while the
@@ -11270,12 +11275,10 @@ function openMainHome() {
   triggerLandingAnim();
 }
 
-// Native edge-swipe navigation. Keep this app-scoped rather than changing
-// browser/PWA gestures: iOS and Android users expect an edge swipe to move
-// through an installed app, while a browser owns those gestures itself.
-// Starting within 28px of an edge also avoids stealing horizontal movement
-// from message actions, carousels and ordinary vertical scrolling.
-const NATIVE_SWIPE_EDGE_PX = 28;
+// Native swipe navigation. Keep this app-scoped rather than changing
+// browser/PWA gestures. Android reserves the extreme screen edges for its
+// own system navigation, so listen across non-interactive app space instead
+// of requiring the gesture to begin where the WebView may never receive it.
 const NATIVE_SWIPE_DISTANCE_PX = 72;
 const NATIVE_SWIPE_MAX_MS = 700;
 let nativeSwipeNavigation = null;
@@ -11320,11 +11323,7 @@ document.addEventListener('touchstart', event => {
   nativeSwipeNavigation = null;
   if (!isNativeApp() || event.touches.length !== 1 || nativeSwipeNavigationBlocked(event.target)) return;
   const touch = event.touches[0];
-  const fromLeft = touch.clientX <= NATIVE_SWIPE_EDGE_PX;
-  const fromRight = touch.clientX >= window.innerWidth - NATIVE_SWIPE_EDGE_PX;
-  if (!fromLeft && !fromRight) return;
   nativeSwipeNavigation = {
-    edge: fromLeft ? 'left' : 'right',
     x: touch.clientX,
     y: touch.clientY,
     startedAt: Date.now(),
@@ -11347,8 +11346,8 @@ document.addEventListener('touchend', event => {
   const dx = touch.clientX - swipe.x;
   const dy = touch.clientY - swipe.y;
   if (Math.abs(dx) < NATIVE_SWIPE_DISTANCE_PX || Math.abs(dx) < Math.abs(dy) * 1.25) return;
-  if (swipe.edge === 'left' && dx > 0) navigateBackFromNativeSwipe();
-  else if (swipe.edge === 'right' && dx < 0) navigateHomeFromNativeSwipe();
+  if (dx > 0) navigateBackFromNativeSwipe();
+  else navigateHomeFromNativeSwipe();
 }, { passive:true });
 
 document.addEventListener('touchcancel', () => { nativeSwipeNavigation = null; }, { passive:true });
