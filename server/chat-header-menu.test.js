@@ -22,10 +22,12 @@ test('conversation header uses a back control and removes the repeated subtitle'
   assert.doesNotMatch(chatHeader, />Private conversation<\/span>/);
 });
 
-test('conversation header shows live online or offline presence', () => {
+test('conversation header shows presence only while the peer is online', () => {
+  assert.match(chatHeader, /class="chat-hdr-presence" id="chat-presence" hidden/);
   assert.match(chatHeader, /id="status-dot"/);
-  assert.match(chatHeader, /id="chat-presence-label">Offline<\/span>/);
-  assert.match(client, /if \(label\) label\.textContent = online \? 'Online' : 'Offline'/);
+  assert.match(chatHeader, /id="chat-presence-label">Online<\/span>/);
+  assert.match(client, /if \(presence\) presence\.hidden = !online/);
+  assert.doesNotMatch(chatHeader, />Offline<\/span>/);
 });
 
 test('conversation actions live in one accessible menu', () => {
@@ -40,13 +42,15 @@ test('conversation actions live in one accessible menu', () => {
   assert.doesNotMatch(chatHeader, /class="destroy-btn"/);
 });
 
-test('expanded conversation actions participate in layout instead of covering messages', () => {
-  assert.match(client, /#s-chat \.conversation-menu\{position:relative;/);
-  assert.doesNotMatch(client, /#s-chat \.conversation-menu\{position:absolute;/);
+test('expanded conversation actions overlay messages without changing conversation layout', () => {
+  assert.match(client, /#s-chat\{position:relative;/);
+  assert.match(client, /#s-chat \.chat-hdr\{\s*position:relative;z-index:41;/);
+  assert.match(client, /#s-chat \.conversation-menu\{position:absolute;z-index:40;top:calc\(72px \+ env\(safe-area-inset-top\)\);left:12px;right:12px;/);
+  assert.doesNotMatch(client, /#s-chat \.conversation-menu\{position:relative;/);
   assert.ok(
     chatHeader.indexOf('</div>\n  <div class="conversation-menu"') >
       chatHeader.indexOf('class="chat-hdr-actions"'),
-    'the menu should be a sibling after the header, not an overlay inside it'
+    'the overlaid menu should remain a sibling immediately after the header'
   );
 });
 

@@ -2190,8 +2190,9 @@ html.vaultlix-native .landing-marketing{display:none!important}
 }
 
 /* ── VAULT CONVERSATION — CALM, PRIVATE, PURPOSEFUL ──────────────── */
-#s-chat{background:#fff!important;font-family:'Manrope',sans-serif!important}
+#s-chat{position:relative;background:#fff!important;font-family:'Manrope',sans-serif!important}
 #s-chat .chat-hdr{
+  position:relative;z-index:41;
   min-height:calc(72px + env(safe-area-inset-top));height:auto!important;
   padding:calc(10px + env(safe-area-inset-top)) 14px 10px!important;
   background:rgba(255,255,255,.97)!important;border:0!important;
@@ -2217,13 +2218,14 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .chat-hdr-meta{min-width:0;display:flex;flex-direction:column;gap:3px}
 #s-chat .chat-hdr-room{max-width:230px!important;font:750 17px/1.1 'Manrope',sans-serif!important;letter-spacing:-.02em!important;color:#271D25!important}
 #s-chat .chat-hdr-presence{display:flex;align-items:center;gap:6px;font:650 11px/1.15 'Manrope',sans-serif;color:#83757C;letter-spacing:.01em}
+#s-chat .chat-hdr-presence[hidden]{display:none!important}
 #s-chat .status-dot{width:9px;height:9px;flex:none;background:#469263;box-shadow:0 0 0 3px rgba(70,146,99,.17)}
 #s-chat .status-dot.away{background:#AAA2A6;box-shadow:0 0 0 2px rgba(122,112,117,.14)}
 #s-chat .chat-hdr-actions{position:relative;margin-left:auto;gap:0!important}
 #s-chat .conversation-menu-btn{width:42px;height:42px;padding:0;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s}
 #s-chat .conversation-menu-btn:hover,#s-chat .conversation-menu-btn[aria-expanded="true"]{background:#EEDFE4;border-color:#DABFC8}
 #s-chat .conversation-menu-btn svg{width:21px;height:21px;fill:currentColor}
-#s-chat .conversation-menu{position:relative;z-index:1;width:auto;flex:none;margin:8px 12px 0;display:none;padding:8px;border:1px solid #E6D9DE;border-radius:17px;background:#fff;box-shadow:0 10px 28px rgba(45,25,35,.13)}
+#s-chat .conversation-menu{position:absolute;z-index:40;top:calc(72px + env(safe-area-inset-top));left:12px;right:12px;width:auto;margin:8px 0 0;display:none;padding:8px;border:1px solid #E6D9DE;border-radius:17px;background:#fff;box-shadow:0 10px 28px rgba(45,25,35,.13)}
 #s-chat .conversation-menu.open{display:grid;gap:3px;animation:vaultNoticeIn .16s ease-out}
 #s-chat .conversation-menu-item{width:100%;min-height:54px;padding:7px 9px;border:0;border-radius:12px;background:transparent;color:#30242A;display:grid;grid-template-columns:39px minmax(0,1fr);align-items:center;gap:10px;text-align:left;cursor:pointer;font:700 13px/1.25 'Manrope',sans-serif}
 #s-chat .conversation-menu-item:hover,#s-chat .conversation-menu-item:focus-visible{background:#F8F2F4;outline:none}
@@ -2966,7 +2968,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       </button>
       <div class="chat-hdr-meta">
         <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
-        <div class="chat-hdr-presence"><span class="status-dot away" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Offline</span></div>
+        <div class="chat-hdr-presence" id="chat-presence" hidden><span class="status-dot" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Online</span></div>
       </div>
     </div>
     <!-- One compact menu keeps conversation actions together and gives the
@@ -7794,13 +7796,15 @@ const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment cou
 const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
 
 function setStatus(online, name) {
+  const presence = document.getElementById('chat-presence');
   const dot = document.getElementById('status-dot');
   const label = document.getElementById('chat-presence-label');
-  if (dot) {
-    dot.className = online ? 'status-dot' : 'status-dot away';
-    dot.title = online ? 'Online' : 'Offline';
+  if (presence) presence.hidden = !online;
+  if (dot && online) {
+    dot.className = 'status-dot';
+    dot.title = 'Online';
   }
-  if (label) label.textContent = online ? 'Online' : 'Offline';
+  if (label && online) label.textContent = 'Online';
 }
 
 function showTypingIndicator(show) {
