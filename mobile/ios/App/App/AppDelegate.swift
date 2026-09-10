@@ -234,6 +234,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // to the already-provisioned WebView lets the foreground UI select
         // the right vault without exposing or reconstructing the vault code.
         if let roomHandle = payload["roomHandle"] as? String { detail["roomHandle"] = roomHandle }
+        if let inviteID = payload["inviteId"] as? String { detail["inviteId"] = inviteID }
         if let caller = payload["caller"] as? String { detail["caller"] = String(caller.prefix(80)) }
         // When iOS keeps the WebView suspended behind the lock screen, it can
         // queue connected/audio events and the later terminal event together.
@@ -377,7 +378,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
-    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String) -> Bool {
+    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String, inviteID: String) -> Bool {
         dismissAppKeyboard()
         let callID = UUID()
         let payload: [String: Any] = [
@@ -385,11 +386,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             "roomHandle": roomHandle,
             "code": code,
             "caller": String(peer.prefix(80)),
+            "inviteId": inviteID,
         ]
         guard NativeWebRTCCallEngine.shared.prepareOutgoing(
             callID: callID,
             roomHandle: roomHandle,
-            caller: caller
+            caller: caller,
+            inviteID: inviteID
         ) else { return false }
         calls[callID] = payload
         nativeMediaCalls.insert(callID)

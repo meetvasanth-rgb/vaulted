@@ -232,6 +232,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }
+        if action == "shareMedia" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:"),
+                  dataURL.count <= 16_000_000,
+                  let marker = dataURL.range(of: ";base64,"),
+                  marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
+                  let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !data.isEmpty, data.count <= 10_500_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let requested = (body["filename"] as? String) ?? "vaultlix-file"
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+            let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+            let filename = safeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "vaultlix-file" : safeName
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-\(UUID().uuidString)-\(filename)")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                presentShareImage(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
         if action == "emergencyReset" {
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
@@ -271,7 +294,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
            let code = body["code"] as? String,
            let caller = body["caller"] as? String,
            let peer = body["peer"] as? String,
+           let inviteID = body["inviteId"] as? String,
            roomHandle.range(of: "^[A-Za-z0-9_-]{16,64}$", options: .regularExpression) != nil,
+           inviteID.range(of: "^[A-Za-z0-9-]{16,64}$", options: .regularExpression) != nil,
            code.count <= 128 {
             // A JavaScript blur is not sufficient on every iOS release: the
             // system InputUI process can remain attached while CallKit takes
@@ -282,7 +307,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             (window?.rootViewController as? CAPBridgeViewController)?.webView?.endEditing(true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
                 let success = VaultlixCallManager.shared.startOutgoingCall(
-                    roomHandle: roomHandle, code: code, caller: caller, peer: peer
+                    roomHandle: roomHandle, code: code, caller: caller, peer: peer, inviteID: inviteID
                 )
                 if !success {
                     self?.emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code])

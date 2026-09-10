@@ -72,8 +72,10 @@ test('native Android ending uses the Vaultlix sand treatment', () => {
 });
 
 test('locked Android incoming call uses the polished Vaultlix call surface', () => {
-  assert.match(androidIncoming, /verticalGradient\(INK_SOFT, INK\)/);
-  assert.match(androidIncoming, /native_private_identity_protected/);
+  assert.match(androidIncoming, /brandRule\.setBackgroundColor\(BURGUNDY\)/);
+  assert.match(androidIncoming, /brand\.setTypeface\(getResources\(\)\.getFont\(R\.font\.cormorant_garamond\)\)/);
+  assert.match(androidIncoming, /native_incoming_encrypted_call/);
+  assert.doesNotMatch(androidIncoming, /native_private_identity_protected/);
   assert.match(androidIncoming, /callAction\(R\.drawable\.ic_call_end, R\.string\.native_answer, ANSWER, true\)/);
   assert.match(androidIncoming, /ring\.animate\(\)\.scaleX\(1\.08f\)/);
 });

@@ -139,11 +139,11 @@ final class NativeWebRtcCallEngine {
         return true;
     }
 
-    boolean prepareOutgoing(String handle, String caller) {
+    boolean prepareOutgoing(String handle, String caller, String requestedInviteId) {
         NativeCallRoomStore.Room saved = roomStore.byHandle(handle);
         if (saved == null) return false;
         executor.execute(() -> {
-            prepare(saved, true, caller);
+            prepare(saved, true, caller, requestedInviteId);
             sendInvite();
             scheduleInviteRetry(generation, 9);
         });
@@ -202,12 +202,17 @@ final class NativeWebRtcCallEngine {
     }
 
     private void prepare(NativeCallRoomStore.Room saved, boolean isOutgoing, String caller) {
+        prepare(saved, isOutgoing, caller, "");
+    }
+
+    private void prepare(NativeCallRoomStore.Room saved, boolean isOutgoing, String caller, String requestedInviteId) {
         reset(null);
         room = saved;
         preparingRoomCode = "";
         currentRoomCode = saved.code;
         outgoing = isOutgoing;
-        inviteId = isOutgoing ? UUID.randomUUID().toString() : "";
+        inviteId = isOutgoing && requestedInviteId != null && requestedInviteId.matches("^[A-Za-z0-9-]{16,64}$")
+                ? requestedInviteId : (isOutgoing ? UUID.randomUUID().toString() : "");
         callerName = caller == null ? "Someone" : caller;
         int run = generation;
         connectSocket(run);

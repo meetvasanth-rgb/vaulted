@@ -54,6 +54,11 @@ public class MainActivity extends BridgeActivity {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
         @Override public void onEnded(String reason) {
+            // NativeCallActivity owns the authoritative duration/outcome and
+            // forwards exactly one history row when it closes. Mirroring the
+            // engine's same callback through the hidden main WebView created
+            // a second row, often one second apart from the first.
+            if (NativeCallActivity.isRunning()) return;
             if ("declined".equals(reason)) emitNativeCallAction("nativeDeclined");
             else if ("cancelled".equals(reason)) emitNativeCallAction("nativeCancelled");
             else if ("unanswered".equals(reason)) emitNativeCallAction("missed");
@@ -428,6 +433,36 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean shareMedia(String dataUrl, String requestedName) {
+            if (dataUrl == null || dataUrl.length() > 16_000_000) return false;
+            int marker = dataUrl.indexOf(";base64,");
+            if (!dataUrl.startsWith("data:") || marker < 6) return false;
+            String mime = dataUrl.substring(5, marker);
+            if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
+            try {
+                byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
+                if (bytes.length == 0 || bytes.length > 10_500_000) return false;
+                String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
+                if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
+                File directory = new File(getCacheDir(), "shared-media");
+                if (!directory.exists() && !directory.mkdirs()) return false;
+                File outputFile = new File(directory, System.currentTimeMillis() + "-" + safeName);
+                try (FileOutputStream output = new FileOutputStream(outputFile, false)) { output.write(bytes); }
+                Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", outputFile);
+                String finalMime = mime;
+                runOnUiThread(() -> {
+                    Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                    sendIntent.setType(finalMime);
+                    sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                    sendIntent.setClipData(ClipData.newRawUri("Vaultlix attachment", uri));
+                    sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(sendIntent, "Save or share"));
+                });
+                return true;
+            } catch (Exception ignored) { return false; }
+        }
+
+        @JavascriptInterface
         public void clearCallNotifications() {
             runOnUiThread(() -> VaultlixMessagingService.clearActiveCallNotifications(MainActivity.this));
         }
@@ -518,10 +553,10 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public boolean startOutgoingCall(String roomHandle, String caller, String peer) {
+        public boolean startOutgoingCall(String roomHandle, String caller, String peer, String inviteId) {
             configureCallAudioRoute();
             NativeCallRoomStore.Room saved = nativeCallRoomStore.byHandle(roomHandle);
-            if (saved == null || !nativeCallEngine.prepareOutgoing(roomHandle, caller)) return false;
+            if (saved == null || !nativeCallEngine.prepareOutgoing(roomHandle, caller, inviteId)) return false;
             runOnUiThread(() -> {
                 View focused = getCurrentFocus();
                 InputMethodManager keyboard = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);

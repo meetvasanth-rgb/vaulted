@@ -69,7 +69,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 750\)/);
   assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 1800\)/);
   assert.match(nativeActivity, /onConnected\(\)[\s\S]*clearIncomingCallBanner\(\)/);
-  assert.match(nativeActivity, /brand\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
+  assert.match(nativeActivity, /brand\.setTypeface\(identityTypeface\(\)\)/);
+  assert.match(nativeActivity, /brandRule\.setBackgroundColor\(CONTROL_ACTIVE\)/);
+  assert.match(nativeActivity, /native_end_to_end_encrypted_call/);
   assert.match(nativeActivity, /name\.setTypeface\(Typeface\.create\("sans-serif", Typeface\.NORMAL\)\)/);
   assert.match(nativeActivity, /name\.setMaxLines\(2\)/);
   assert.match(nativeActivity, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);

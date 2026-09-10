@@ -80,7 +80,7 @@ final class NativeWebRTCCallEngine: NSObject {
     }
 
     @discardableResult
-    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String) -> Bool {
+    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String, inviteID: String) -> Bool {
         guard let stored = NativeCallRoomStore.shared.room(handle: roomHandle) else {
             trace("prepare-outgoing missing-room")
             return false
@@ -91,7 +91,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.room = stored
             self.callID = callID
             self.outgoing = true
-            self.inviteID = UUID().uuidString
+            self.inviteID = inviteID
             self.outgoingCaller = String(caller.prefix(80))
             self.connectSignalingLocked()
         }

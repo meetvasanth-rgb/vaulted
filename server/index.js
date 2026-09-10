@@ -493,6 +493,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     callOutcome: parsed.callOutcome || '',
     caller: parsed.caller || '',
     callId: parsed.callId || '',
+    inviteId: parsed.inviteId || '',
     msgId: parsed.msgId || '',
     connectionRequest: !!parsed.connectionRequest,
     requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
@@ -562,6 +563,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         callOutcome: String(parsed.callOutcome || ''),
         caller: String(parsed.caller || ''),
         callId: String(parsed.callId || ''),
+        inviteId: String(parsed.inviteId || ''),
         msgId: String(parsed.msgId || ''),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
@@ -2343,7 +2345,7 @@ async function api(path, method, d, p, res, ip, headers) {
       if (caller?.fcmToken) {
         sendFcmNotification(caller, JSON.stringify({
           isCallEnd:true, missedCall:false, callOutcome:'declined',
-          callId:nativeCallId || '', code:matchedRoomCode,
+          callId:nativeCallId || '', inviteId:terminalInviteId || '', code:matchedRoomCode,
         }), 30).catch(() => {});
       }
       break;
@@ -4442,6 +4444,7 @@ wss.on('connection', (ws) => {
               isCall: true,
               caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId,
+              inviteId: inviteId || '',
               code: roomCode,
             });
             if (peerMember.voipToken) {
@@ -4452,6 +4455,7 @@ wss.on('connection', (ws) => {
                 aps: { 'content-available': 1 },
                 action: 'incoming',
                 callId: nativeCallId,
+                inviteId: inviteId || '',
                 caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
                 hasVideo: false,
                 // Opaque random handle generated and stored only on the
@@ -4513,7 +4517,7 @@ wss.on('connection', (ws) => {
           if (msg2.type === 'call-decline' && peerMember.fcmToken) {
             sendFcmNotification(peerMember, JSON.stringify({
               isCallEnd:true, missedCall:false, callOutcome:'declined',
-              callId:nativeCallId || '', code:roomCode,
+              callId:nativeCallId || '', inviteId:terminalInviteId || '', code:roomCode,
             }), 30).catch(() => {});
           }
         } else if (msg2.type === 'call-hangup') {
@@ -4567,6 +4571,7 @@ wss.on('connection', (ws) => {
               missedCall: isMissedCall,
               callOutcome,
               callId: nativeCallId || '',
+              inviteId: terminalInviteId || '',
               code: roomCode,
             }), 30).catch(() => {});
           }
@@ -4580,6 +4585,7 @@ wss.on('connection', (ws) => {
               missedCall: true,
               caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId || '',
+              inviteId: terminalInviteId || '',
               code: roomCode,
             });
             sendMemberPush(peerMember, missedPayload, { urgency: 'high', TTL: 3600, label: 'missed call' });

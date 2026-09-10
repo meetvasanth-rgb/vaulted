@@ -129,24 +129,18 @@ public class IncomingCallActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(30), dp(30), dp(30), dp(30));
-        root.setBackground(verticalGradient(INK_SOFT, INK));
+        root.setPadding(dp(30), dp(72), dp(30), dp(30));
+        root.setBackgroundColor(INK);
 
-        LinearLayout brandRow = new LinearLayout(this);
-        brandRow.setGravity(Gravity.CENTER);
-        ImageView brandLock = new ImageView(this);
-        brandLock.setImageResource(R.drawable.ic_call_lock);
-        brandLock.setImageTintList(ColorStateList.valueOf(ROSE));
-        brandLock.setPadding(dp(7), dp(7), dp(7), dp(7));
-        brandLock.setBackground(circle(Color.argb(42, 255, 255, 255)));
-        brandRow.addView(brandLock, new LinearLayout.LayoutParams(dp(32), dp(32)));
-        TextView brand = text("VAULTLIX", 13, IVORY);
-        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        brand.setLetterSpacing(0.24f);
+        View brandRule = new View(this);
+        brandRule.setBackgroundColor(BURGUNDY);
+        root.addView(brandRule, new LinearLayout.LayoutParams(dp(50), dp(1)));
+        TextView brand = text("Vaultlix", 20, IVORY);
+        brand.setTypeface(getResources().getFont(R.font.cormorant_garamond));
+        brand.setLetterSpacing(0.12f);
         LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(-2, -2);
-        brandParams.setMargins(dp(10), 0, 0, 0);
-        brandRow.addView(brand, brandParams);
-        root.addView(brandRow, new LinearLayout.LayoutParams(-1, dp(40)));
+        brandParams.setMargins(0, dp(14), 0, 0);
+        root.addView(brand, brandParams);
 
         root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .75f));
 
@@ -168,23 +162,11 @@ public class IncomingCallActivity extends Activity {
         nameParams.setMargins(0, dp(28), 0, dp(9));
         root.addView(name, nameParams);
 
-        TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 17, ROSE);
-        subtitle.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 11, IVORY);
+        subtitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        subtitle.setAllCaps(true);
+        subtitle.setLetterSpacing(.12f);
         root.addView(subtitle);
-
-        LinearLayout privacy = new LinearLayout(this);
-        privacy.setGravity(Gravity.CENTER);
-        ImageView privacyLock = new ImageView(this);
-        privacyLock.setImageResource(R.drawable.ic_call_lock);
-        privacyLock.setImageTintList(ColorStateList.valueOf(Color.rgb(202, 190, 197)));
-        privacy.addView(privacyLock, new LinearLayout.LayoutParams(dp(14), dp(14)));
-        TextView privacyText = text(getString(R.string.native_private_identity_protected), 12, Color.rgb(202, 190, 197));
-        LinearLayout.LayoutParams privacyTextParams = new LinearLayout.LayoutParams(-2, -2);
-        privacyTextParams.setMargins(dp(7), 0, 0, 0);
-        privacy.addView(privacyText, privacyTextParams);
-        LinearLayout.LayoutParams privacyParams = new LinearLayout.LayoutParams(-2, dp(34));
-        privacyParams.setMargins(0, dp(18), 0, 0);
-        root.addView(privacy, privacyParams);
 
         root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1f));
 

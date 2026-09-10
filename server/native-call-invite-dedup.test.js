@@ -15,10 +15,11 @@ test('accepted legacy native invite retries cannot create a second incoming call
 
 test('Android and iOS native call retries carry one stable invitation ID', () => {
   const android = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeWebRtcCallEngine.java');
-  assert.match(android, /inviteId = isOutgoing \? UUID\.randomUUID\(\)\.toString\(\) : ""/);
+  assert.match(android, /prepare\(saved, true, caller, requestedInviteId\)/);
+  assert.match(android, /inviteId = isOutgoing && requestedInviteId/);
   assert.match(android, /wire\.put\("inviteId", inviteId\)/);
 
   const ios = read('mobile/ios/App/App/NativeWebRTCCallEngine.swift');
-  assert.match(ios, /self\.inviteID = UUID\(\)\.uuidString/);
+  assert.match(ios, /self\.inviteID = inviteID/);
   assert.match(ios, /wire\["inviteId"\] = inviteID/);
 });

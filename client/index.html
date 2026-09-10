@@ -4746,7 +4746,12 @@ async function handleNativeCallAction(detail) {
   } else if (detail.action === 'nativeFailed' && room.callState !== 'idle') {
     endCall(room, 'Could not start the call.');
   } else if (detail.action === 'missed') {
-    const eventId = typeof detail.callId === 'string' ? `native-missed-${detail.callId}` : null;
+    // The signaling invitation ID is shared by both participants. CallKit's
+    // call ID names only this device's native surface, so it cannot safely
+    // identify the shared history row.
+    const eventId = typeof detail.inviteId === 'string' && detail.inviteId
+      ? `call-event-${detail.inviteId}`
+      : (typeof detail.callId === 'string' ? `native-missed-${detail.callId}` : null);
     if (eventId && room.messages.some(record => record.id === eventId)) return;
     if (room.callState !== 'idle') endCall(room, 'Missed call.', 'Missed call');
     else {
@@ -5922,7 +5927,7 @@ async function startCall() {
     disconnectSignaling(room);
     try {
       if (!androidNativeBridge.startOutgoingCall(
-        room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call'
+        room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call', room.callInviteId
       )) {
         throw new Error('native call session unavailable');
       }
@@ -5947,7 +5952,7 @@ async function startCall() {
     try {
       iosBridge.postMessage({
         action: 'startOutgoing', roomHandle: room.nativeRoomHandle, code: room.code,
-        caller: room.myName || 'Someone', peer: room.callPeerName,
+        caller: room.myName || 'Someone', peer: room.callPeerName, inviteId: room.callInviteId,
       });
     } catch (e) {
       endCall(room, 'Calling isn’t available right now.');
@@ -10851,17 +10856,34 @@ function isVisibleConversationRecord(rec) {
 
 const CALL_HISTORY_DEDUPE_WINDOW_MS = 12000;
 
+function callHistoryFamily(rec) {
+  if (!rec || rec.kind !== 'sys') return '';
+  const text = String(rec.content || '').replace(/\s+/g, ' ').trim();
+  if (/^Encrypted call\b/i.test(text)) return 'connected';
+  if (/^(?:Missed(?: encrypted)? call|No answer|Call not answered)\b/i.test(text)) return 'unanswered';
+  if (/^(?:Call declined|Declined call)\b/i.test(text)) return 'declined';
+  if (/^(?:Caller cancelled|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(text)) return 'cancelled';
+  return '';
+}
+
+function isSameCallHistoryRecord(existing, candidate) {
+  if (!existing || !candidate || existing === candidate ||
+      existing.kind !== 'sys' || candidate.kind !== 'sys') return false;
+  const existingId = String(existing.id || '');
+  const candidateId = String(candidate.id || '');
+  if (existingId && candidateId && existingId === candidateId) return true;
+  const existingFamily = callHistoryFamily(existing);
+  const candidateFamily = callHistoryFamily(candidate);
+  if (!existingFamily || existingFamily !== candidateFamily) return false;
+  const existingTime = Number(existing.ts || 0);
+  const candidateTime = Number(candidate.ts || 0);
+  return existingTime > 0 && candidateTime > 0 &&
+    Math.abs(existingTime - candidateTime) <= CALL_HISTORY_DEDUPE_WINDOW_MS;
+}
+
 function isDuplicateCallHistoryRecord(room, candidate) {
   if (!candidate || candidate.kind !== 'sys' || !isVisibleConversationRecord(candidate)) return false;
-  const candidateTime = Number(candidate.ts || 0);
-  const candidateText = String(candidate.content || '').replace(/\s+/g, ' ').trim();
-  return (room?.messages || []).some(existing => {
-    if (!existing || existing === candidate || existing.kind !== 'sys') return false;
-    if (String(existing.content || '').replace(/\s+/g, ' ').trim() !== candidateText) return false;
-    const existingTime = Number(existing.ts || 0);
-    return candidateTime > 0 && existingTime > 0 &&
-      Math.abs(candidateTime - existingTime) <= CALL_HISTORY_DEDUPE_WINDOW_MS;
-  });
+  return (room?.messages || []).some(existing => isSameCallHistoryRecord(existing, candidate));
 }
 
 function uniqueVisibleConversationRecords(records) {
@@ -10869,14 +10891,7 @@ function uniqueVisibleConversationRecords(records) {
   for (const rec of records || []) {
     if (!isVisibleConversationRecord(rec)) continue;
     if (rec.kind === 'sys') {
-      const recTime = Number(rec.ts || 0);
-      const duplicate = visible.some(existing => {
-        const existingTime = Number(existing.ts || 0);
-        return existing.kind === 'sys' &&
-          recTime > 0 && existingTime > 0 &&
-          String(existing.content || '').replace(/\s+/g, ' ').trim() === String(rec.content || '').replace(/\s+/g, ' ').trim() &&
-          Math.abs(existingTime - recTime) <= CALL_HISTORY_DEDUPE_WINDOW_MS;
-      });
+      const duplicate = visible.some(existing => isSameCallHistoryRecord(existing, rec));
       if (duplicate) continue;
     }
     visible.push(rec);
@@ -11227,6 +11242,7 @@ const MSG_ACTION_ICONS = {
   react: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   save: '<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/>',
+  forward: '<path d="M14 5l7 7-7 7v-4H9a6 6 0 0 0-6 4c0-7 4-11 11-11V5z"/>',
   select: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
   delete: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
 };
@@ -11239,12 +11255,14 @@ function msgActionBtn(action, label) {
 // its filename as text, which wasn't the useful action there.
 function buildMsgActionsHtml(msgId, kind) {
   const isMedia = kind === 'file' || kind === 'album' || kind === 'voice';
+  const canForward = kind === 'file' || kind === 'album';
   const thirdAction = isMedia ? msgActionBtn('save', 'Save') : msgActionBtn('copy', 'Copy');
   return `
     <div class="msg-actions" id="actions-${msgId}">
       ${msgActionBtn('reply', 'Reply')}
       ${msgActionBtn('react', 'React')}
       ${thirdAction}
+      ${canForward ? msgActionBtn('forward', 'Forward') : ''}
       ${msgActionBtn('select', 'Select')}
       ${msgActionBtn('delete', 'Delete')}
     </div>
@@ -11451,6 +11469,14 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
       }
     };
   }
+  const forwardBtn = actions.querySelector('[data-action="forward"]');
+  if (forwardBtn) {
+    forwardBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeAllMsgActions();
+      showForwardAttachmentPicker(rec);
+    };
+  }
 }
 
 document.addEventListener('click', (e) => {
@@ -11459,6 +11485,67 @@ document.addEventListener('click', (e) => {
     closeAllMsgActions();
   }
 });
+
+// Forwarding never sends plaintext to a new server endpoint. The already
+// decrypted attachment stays on this device, is encrypted again with the
+// selected conversation's own key, and then uses the ordinary /api/send
+// path. View-once media is deliberately excluded: forwarding it would
+// defeat the sender's one-view choice.
+function showForwardAttachmentPicker(rec) {
+  if (!rec || !['file', 'album'].includes(rec.kind)) return;
+  if (rec.viewOnce) { toast('View-once photos cannot be forwarded'); return; }
+  const targets = [...rooms.values()].filter(room =>
+    room.code !== activeRoomCode && room.everOnline && room.sharedKey && !room.reconnectRequired
+  );
+  if (!targets.length) { toast('No other connected conversations'); return; }
+
+  document.getElementById('forward-attachment-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'forward-attachment-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,.66);display:flex;align-items:flex-end;justify-content:center;z-index:10020;padding:0;';
+  const rows = targets.map(room => {
+    const label = roomDisplayLabel(room);
+    const avatarStyle = vaultAvatarPalette(room.peerPrivateNumber || room.code);
+    return `<button type="button" data-forward-room="${escHtml(room.code)}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;border-bottom:1px solid #EEE7E9;background:#fff;text-align:left;font:600 15px Inter,sans-serif;color:#211A1E;cursor:pointer"><span style="width:42px;height:42px;border-radius:50%;display:grid;place-items:center;flex:none;${avatarStyle}">${escHtml(label.trim().charAt(0).toUpperCase() || 'V')}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</span></button>`;
+  }).join('');
+  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward attachment" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">Forward to</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div>${rows}</section>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('[data-forward-close]').onclick = close;
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelectorAll('[data-forward-room]').forEach(button => {
+    button.onclick = async () => {
+      const target = rooms.get(button.dataset.forwardRoom);
+      if (!target) return;
+      button.disabled = true;
+      const sent = await forwardAttachmentToRoom(target, rec);
+      if (sent) close();
+      else button.disabled = false;
+    };
+  });
+}
+
+async function forwardAttachmentToRoom(target, rec) {
+  try {
+    if (rec.kind === 'album') {
+      const items = rec.images.map(img => ({
+        file: { name: img.fileName || 'vaultlix-image.jpg', type: img.mime || 'image/jpeg' },
+        base64: img.base64,
+        mime: img.mime || 'image/jpeg',
+      }));
+      if (!await sendAlbumMessage(target, items, false)) return false;
+    } else {
+      const file = { name: rec.fileName || 'vaultlix-file', type: rec.mime || 'application/octet-stream' };
+      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime)) return false;
+    }
+    renderRoomTabs();
+    toast(`Forwarded to ${roomDisplayLabel(target)}`);
+    return true;
+  } catch (error) {
+    toast('Could not forward attachment');
+    return false;
+  }
+}
 
 // Small confirm step, same visual pattern as the view-once send picker.
 // "Delete for everyone" only shows if it's a fair offer — on a single
@@ -12685,7 +12772,7 @@ async function sendMsg() {
     encrypted = await encryptTextMsg(room, msgData);
   } catch (e) {
     toast("Couldn't encrypt — message not sent");
-    return;
+    return false;
   }
 
   input.value = '';
@@ -14711,6 +14798,7 @@ async function handleFileSelect(event) {
 // file.size, since compression means those two routinely no longer match.
 async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride) {
   const now = new Date();
+  const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const mime = mimeOverride || file.type;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
@@ -14730,7 +14818,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
     toast("Couldn't encrypt — message not sent");
-    return;
+    return false;
   }
 
   // Same fix as text messages: generate the real id up front and send it to
@@ -14743,12 +14831,14 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // disappearing timer would never start — it just sat on screen forever.
   const msgId = newMsgId();
   const rec = {
-    id: msgId, kind: 'file', isMe: true, name: room.myName, time,
+    id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
     fileName: file.name, mime, base64, isImage, viewOnce: !!viewOnce, viewed: false,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
-  renderMessageRecord(room, rec, true);
+  room.lastMessageAt = sentAt;
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+  else secureNativeStoreMessage(room, rec);
 
   try {
     // viewOnce also rides along as a plain top-level field, alongside (not
@@ -14757,9 +14847,12 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     // view-once photo apart from an ordinary one without this. Needed so
     // /api/view-once-opened can verify the message is actually view-once
     // server-side, instead of trusting whatever the caller claims.
-    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
+    const result = await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
+    if (result?.error) throw new Error(result.error);
+    return true;
   } catch(e) {
     toast('Failed to send file');
+    return false;
   }
 }
 
@@ -14772,6 +14865,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // once there's more than one.
 async function sendAlbumMessage(room, items, viewOnce) {
   const now = new Date();
+  const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
 
   // Same deliberate duplication as sendFileMessage above — viewOnce here is
@@ -14792,12 +14886,12 @@ async function sendAlbumMessage(room, items, viewOnce) {
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
     toast("Couldn't encrypt — message not sent");
-    return;
+    return false;
   }
 
   const msgId = newMsgId();
   const rec = {
-    id: msgId, kind: 'album', isMe: true, name: room.myName, time, viewOnce: !!viewOnce,
+    id: msgId, kind: 'album', isMe: true, name: room.myName, time, ts: sentAt, viewOnce: !!viewOnce,
     images: items.map(({ file, base64, mime }, i) => ({
       id: 'ai' + i + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       fileName: file.name, mime, base64, viewOnce: !!viewOnce, viewed: false,
@@ -14805,15 +14899,20 @@ async function sendAlbumMessage(room, items, viewOnce) {
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
-  renderMessageRecord(room, rec, true);
+  room.lastMessageAt = sentAt;
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+  else secureNativeStoreMessage(room, rec);
 
   try {
     // Same plain top-level viewOnce field as sendFileMessage above, for the
     // same reason — the server needs it to verify /api/view-once-opened
     // requests without being able to see inside the encrypted payload.
-    await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
+    const result = await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
+    if (result?.error) throw new Error(result.error);
+    return true;
   } catch (e) {
     toast('Failed to send photos');
+    return false;
   }
 }
 
@@ -15184,6 +15283,18 @@ function downloadDataUri(dataUri, filename) {
     // value can never carry a quote or other HTML-breaking character, even
     // though nothing here renders it as HTML today.
     if (!isPlausibleMimeShape(mime) || !isValidMediaBase64(base64)) { toast('Could not save file'); return; }
+    // Installed apps need a native hand-off. WKWebView and Android WebView
+    // do not reliably honor an anchor's download attribute (some versions
+    // simply navigate back to the profile or do nothing). Their system
+    // sheet provides Save Image / Save to Files as well as ordinary share
+    // destinations and keeps the decrypted bytes on-device.
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'shareMedia', dataUrl:dataUri, filename:filename || 'vaultlix-file' });
+      return;
+    }
+    if (typeof window.VaultlixAndroid?.shareMedia === 'function') {
+      if (window.VaultlixAndroid.shareMedia(dataUri, filename || 'vaultlix-file')) return;
+    }
     const byteChars = atob(base64);
     const bytes = new Uint8Array(byteChars.length);
     for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);

@@ -19,18 +19,20 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.Space;
 import android.widget.TextView;
 
 import java.util.Random;
 
 /** Keyguard-safe, audio-only presentation for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
+    private static volatile boolean running;
+
+    static boolean isRunning() { return running; }
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
     static final String EXTRA_OUTGOING = "outgoing";
@@ -46,6 +48,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private final Handler handler = new Handler(Looper.getMainLooper());
     private NativeWebRtcCallEngine engine;
     private TextView status;
+    private TextView security;
+    private TextView timer;
+    private TextView tagline;
     private TextView muteLabel;
     private TextView routeLabel;
     private ImageButton muteButton;
@@ -75,15 +80,16 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     };
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            if (connectedAt == 0 || status == null) return;
+            if (connectedAt == 0 || timer == null) return;
             long seconds = Math.max(0, (System.currentTimeMillis() - connectedAt) / 1000);
-            status.setText(String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60));
+            timer.setText(String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60));
             handler.postDelayed(this, 1000);
         }
     };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        running = true;
         setShowWhenLocked(true);
         setTurnScreenOn(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -124,61 +130,62 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         callRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(28), dp(28), dp(28), dp(28));
+        // Mirror the iOS/Web call surface's 84pt top rhythm. The old Android
+        // lock+wordmark row hugged the status bar and looked detached from
+        // the rest of the call identity.
+        root.setPadding(dp(28), dp(72), dp(28), dp(28));
         root.setBackgroundColor(Color.TRANSPARENT);
 
-        LinearLayout brandRow = new LinearLayout(this);
-        brandRow.setGravity(Gravity.CENTER_VERTICAL);
-        ImageView lock = new ImageView(this);
-        lock.setImageResource(R.drawable.ic_call_lock);
-        lock.setImageTintList(ColorStateList.valueOf(IVORY));
-        lock.setPadding(dp(9), dp(9), dp(9), dp(9));
-        lock.setBackground(circle(CONTROL));
-        brandRow.addView(lock, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        View brandRule = new View(this);
+        brandRule.setBackgroundColor(CONTROL_ACTIVE);
+        root.addView(brandRule, new LinearLayout.LayoutParams(dp(50), dp(1)));
         TextView brand = label("Vaultlix", 20, IVORY);
-        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        brand.setLetterSpacing(-0.02f);
+        brand.setTypeface(identityTypeface());
+        brand.setLetterSpacing(.12f);
         LinearLayout.LayoutParams brandText = new LinearLayout.LayoutParams(-2, -2);
-        brandText.setMargins(dp(11), 0, 0, 0);
-        brandRow.addView(brand, brandText);
-        root.addView(brandRow, new LinearLayout.LayoutParams(-2, dp(42)));
+        brandText.setMargins(0, dp(14), 0, 0);
+        root.addView(brand, brandText);
 
-        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1.05f));
-        TextView avatar = label(initialFor(caller), 39, IVORY);
-        avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        avatar.setBackground(circle(CONTROL_ACTIVE));
-        root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.VERTICAL);
+        identity.setGravity(Gravity.CENTER);
+        root.addView(identity, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        View callDot = new View(this);
+        GradientDrawable dot = circle(outgoing ? Color.TRANSPARENT : CONTROL_ACTIVE);
+        if (outgoing) { dot.setStroke(dp(2), CONTROL_ACTIVE); }
+        callDot.setBackground(dot);
+        identity.addView(callDot, new LinearLayout.LayoutParams(dp(13), dp(13)));
 
         TextView name = label(caller, caller.length() > 22 ? 27 : 31, Color.WHITE);
         name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
-        nameParams.setMargins(0, dp(25), 0, dp(8));
-        root.addView(name, nameParams);
+        nameParams.setMargins(0, dp(25), 0, dp(10));
+        identity.addView(name, nameParams);
 
-        status = label(statusText(engine.currentState()), 18, IVORY);
-        root.addView(status);
+        status = callCaption(statusText(engine.currentState()), IVORY);
+        identity.addView(status);
+        security = callCaption(getString(R.string.native_end_to_end_encrypted), Color.WHITE);
+        LinearLayout.LayoutParams securityParams = new LinearLayout.LayoutParams(-2, -2);
+        securityParams.setMargins(0, dp(9), 0, 0);
+        identity.addView(security, securityParams);
+        timer = label("00:00", 34, Color.WHITE);
+        timer.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        timer.setLetterSpacing(.06f);
+        timer.setVisibility(View.GONE);
+        LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(-2, -2);
+        timerParams.setMargins(0, dp(8), 0, 0);
+        identity.addView(timer, timerParams);
+        tagline = label(getString(R.string.native_call_vanished), 13, MUTED_TEXT);
+        tagline.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        tagline.setLetterSpacing(.10f);
+        tagline.setVisibility(View.GONE);
+        LinearLayout.LayoutParams taglineParams = new LinearLayout.LayoutParams(-2, -2);
+        taglineParams.setMargins(0, dp(12), 0, 0);
+        identity.addView(tagline, taglineParams);
 
-        LinearLayout privacyPill = new LinearLayout(this);
-        privacyPill.setGravity(Gravity.CENTER);
-        privacyPill.setPadding(dp(14), dp(8), dp(14), dp(8));
-        privacyPill.setBackground(roundRect(Color.rgb(48, 64, 57), 99));
-        ImageView privacyLock = new ImageView(this);
-        privacyLock.setImageResource(R.drawable.ic_call_lock);
-        privacyLock.setImageTintList(ColorStateList.valueOf(Color.rgb(165, 214, 181)));
-        privacyPill.addView(privacyLock, new LinearLayout.LayoutParams(dp(15), dp(15)));
-        TextView secure = label(getString(R.string.native_encrypted_relayed), 12, Color.rgb(202, 218, 207));
-        LinearLayout.LayoutParams secureParams = new LinearLayout.LayoutParams(-2, -2);
-        // Keep the lock visually attached to the privacy copy across OEM
-        // font metrics and display scaling (notably OnePlus/ColorOS).
-        secureParams.setMargins(dp(4), 0, 0, 0);
-        privacyPill.addView(secure, secureParams);
-        LinearLayout.LayoutParams pillParams = new LinearLayout.LayoutParams(-2, -2);
-        pillParams.setMargins(0, dp(20), 0, 0);
-        root.addView(privacyPill, pillParams);
-
-        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .9f));
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);
         actions.setBaselineAligned(false);
@@ -247,7 +254,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             if (connectedAt == 0 && status != null) status.setText(statusText(value));
         });
     }
-    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
+    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return;
+        connectedAt=System.currentTimeMillis();
+        status.setText(getString(R.string.native_end_to_end_encrypted_call));
+        security.setVisibility(View.GONE);
+        timer.setVisibility(View.VISIBLE);
+        tagline.setVisibility(View.VISIBLE);
+        getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+        tick.run();
+    }); }
     @Override public void onEnded(String reason) { runOnUiThread(() -> {
         if (connectedAt == 0) {
             if ("declined".equals(reason)) pendingHistory = outgoing ? "Call declined" : "Declined call";
@@ -377,6 +392,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     @Override protected void onDestroy() {
+        running = false;
         handler.removeCallbacks(tick);
         stopRingback();
         if (ringbackTrack != null) { ringbackTrack.release(); ringbackTrack = null; }
@@ -401,6 +417,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     @SuppressWarnings("deprecation") private void restoreAudio() { if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
     private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);return v; }
+    private TextView callCaption(String value, int color){ TextView v=label(value,11,color);v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));v.setAllCaps(true);v.setLetterSpacing(.12f);return v; }
     private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(4),0,dp(4),0);return p; }
     private GradientDrawable circle(int color){ GradientDrawable d=new GradientDrawable();d.setShape(GradientDrawable.OVAL);d.setColor(color);return d; }
     private GradientDrawable roundRect(int color,int radius){ GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d; }
