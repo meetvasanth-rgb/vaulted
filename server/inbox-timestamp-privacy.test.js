@@ -22,7 +22,7 @@ test('inbox activity never parses a formatted clock label as a number', () => {
   const activity = functionSource(client, 'vaultLastActivity');
   assert.doesNotMatch(activity, /Number\(last\?\.time/);
   assert.match(activity, /new Date\(last\?\.ts \|\| 0\)\.getTime\(\) \|\| 0/);
-  assert.match(activity, /filter\(isVisibleConversationRecord\)/);
+  assert.match(activity, /uniqueVisibleConversationRecords\(room\.messages\)/);
   assert.match(server, /room\.lastMessageAt = Math\.max\(Number\(room\.lastMessageAt\) \|\| 0, durableLastMessageAt\)/);
 });
 
@@ -32,7 +32,8 @@ test('only encrypted call history is rendered as a conversation system chip', ()
   assert.match(visibility, /Missed/);
   assert.match(visibility, /Cancel/);
   assert.match(functionSource(client, 'renderMessageRecord'), /if \(!isVisibleConversationRecord\(rec\)\) return null/);
-  assert.match(functionSource(client, 'vaultInboxPreview'), /filter\(isVisibleConversationRecord\)/);
+  assert.match(functionSource(client, 'vaultInboxPreview'), /uniqueVisibleConversationRecords\(room\.messages\)/);
+  assert.match(functionSource(client, 'uniqueVisibleConversationRecords'), /isVisibleConversationRecord\(rec\)/);
 
   assert.doesNotMatch(server, /type:'system', content:`\$\{name\} joined`/);
   assert.doesNotMatch(server, /type:'system', content:`\$\{m\.name\} left`/);

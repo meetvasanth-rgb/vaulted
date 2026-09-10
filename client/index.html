@@ -2214,16 +2214,16 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .chat-hdr-identity{gap:11px!important;overflow:visible!important}
 #s-chat .chat-hdr-logo{width:42px;height:42px;padding:0;border:0;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important;cursor:pointer}
 #s-chat .chat-hdr-logo svg{width:21px;height:21px;stroke:#fff}
-#s-chat .chat-hdr-meta{min-width:0;display:flex;flex-direction:column;gap:4px}
+#s-chat .chat-hdr-meta{min-width:0;display:flex;flex-direction:column;gap:3px}
 #s-chat .chat-hdr-room{max-width:230px!important;font:750 17px/1.1 'Manrope',sans-serif!important;letter-spacing:-.02em!important;color:#271D25!important}
-#s-chat .chat-hdr-presence{display:flex;align-items:center;gap:7px;font:600 10px/1 'Manrope',sans-serif;color:#83757C;letter-spacing:.03em}
+#s-chat .chat-hdr-presence{display:flex;align-items:center;gap:6px;font:650 11px/1.15 'Manrope',sans-serif;color:#83757C;letter-spacing:.01em}
 #s-chat .status-dot{width:9px;height:9px;flex:none;background:#469263;box-shadow:0 0 0 3px rgba(70,146,99,.17)}
 #s-chat .status-dot.away{background:#AAA2A6;box-shadow:0 0 0 2px rgba(122,112,117,.14)}
 #s-chat .chat-hdr-actions{position:relative;margin-left:auto;gap:0!important}
 #s-chat .conversation-menu-btn{width:42px;height:42px;padding:0;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s}
 #s-chat .conversation-menu-btn:hover,#s-chat .conversation-menu-btn[aria-expanded="true"]{background:#EEDFE4;border-color:#DABFC8}
 #s-chat .conversation-menu-btn svg{width:21px;height:21px;fill:currentColor}
-#s-chat .conversation-menu{position:absolute;z-index:40;top:48px;right:0;width:min(282px,calc(100vw - 28px));display:none;padding:8px;border:1px solid #E6D9DE;border-radius:17px;background:#fff;box-shadow:0 18px 48px rgba(45,25,35,.18)}
+#s-chat .conversation-menu{position:relative;z-index:1;width:auto;flex:none;margin:8px 12px 0;display:none;padding:8px;border:1px solid #E6D9DE;border-radius:17px;background:#fff;box-shadow:0 10px 28px rgba(45,25,35,.13)}
 #s-chat .conversation-menu.open{display:grid;gap:3px;animation:vaultNoticeIn .16s ease-out}
 #s-chat .conversation-menu-item{width:100%;min-height:54px;padding:7px 9px;border:0;border-radius:12px;background:transparent;color:#30242A;display:grid;grid-template-columns:39px minmax(0,1fr);align-items:center;gap:10px;text-align:left;cursor:pointer;font:700 13px/1.25 'Manrope',sans-serif}
 #s-chat .conversation-menu-item:hover,#s-chat .conversation-menu-item:focus-visible{background:#F8F2F4;outline:none}
@@ -2966,6 +2966,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       </button>
       <div class="chat-hdr-meta">
         <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
+        <div class="chat-hdr-presence"><span class="status-dot away" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Offline</span></div>
       </div>
     </div>
     <!-- One compact menu keeps conversation actions together and gives the
@@ -2974,13 +2975,13 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <button class="conversation-menu-btn" id="conversation-menu-btn" type="button" onclick="toggleConversationMenu(event)" title="Conversation menu" aria-label="Open conversation menu" aria-expanded="false" aria-controls="conversation-menu">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
       </button>
-      <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" onclick="event.stopPropagation()">
-        <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span>Conversation settings</span></button>
-        <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span>Clear chat</span></button>
-        <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span>Leave conversation</span></button>
-        <button class="conversation-menu-item destructive" type="button" role="menuitem" onclick="deleteConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></span><span>Delete conversation</span></button>
-      </div>
     </div>
+  </div>
+  <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" onclick="event.stopPropagation()">
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span>Conversation settings</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span>Clear chat</span></button>
+    <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span>Leave conversation</span></button>
+    <button class="conversation-menu-item destructive" type="button" role="menuitem" onclick="deleteConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></span><span>Delete conversation</span></button>
   </div>
   <button class="cross-vault-banner" id="cross-vault-banner" type="button" onclick="openCrossVaultMessage()" aria-live="polite">
     <span class="cross-vault-banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="4"/><path d="m8 20 3-3"/></svg></span>
@@ -6142,6 +6143,7 @@ function addCallSysMsg(room, text, eventId = null) {
   const stamped = `${text} · ${formatMsgTime(Date.now())}`;
   const rec = { id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), kind: 'sys', content: stamped, ts:Date.now() };
   if (room.messages.some(existing => existing.id === rec.id)) return;
+  if (isDuplicateCallHistoryRecord(room, rec)) return;
   room.seenMsgIds?.add(rec.id);
   room.messages.push(rec);
   if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
@@ -7792,14 +7794,13 @@ const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment cou
 const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
 
 function setStatus(online, name) {
-  // The header dropped its separate "Connected"/"Waiting for X…" text label
-  // in favor of just the dot (see the header simplification) — the same
-  // wording now lives in the dot's title tooltip instead, so a long-press/
-  // hover still surfaces it without permanently taking up header width.
   const dot = document.getElementById('status-dot');
-  if (!dot) return;
-  dot.className = online ? 'status-dot' : 'status-dot away';
-  dot.title = online ? 'Connected' : (name ? `Waiting for ${name}…` : 'Waiting…');
+  const label = document.getElementById('chat-presence-label');
+  if (dot) {
+    dot.className = online ? 'status-dot' : 'status-dot away';
+    dot.title = online ? 'Online' : 'Offline';
+  }
+  if (label) label.textContent = online ? 'Online' : 'Offline';
 }
 
 function showTypingIndicator(show) {
@@ -10795,8 +10796,43 @@ function isVisibleConversationRecord(rec) {
   return /^(?:Encrypted call|Missed(?: encrypted)? call|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
 }
 
+const CALL_HISTORY_DEDUPE_WINDOW_MS = 12000;
+
+function isDuplicateCallHistoryRecord(room, candidate) {
+  if (!candidate || candidate.kind !== 'sys' || !isVisibleConversationRecord(candidate)) return false;
+  const candidateTime = Number(candidate.ts || 0);
+  const candidateText = String(candidate.content || '').replace(/\s+/g, ' ').trim();
+  return (room?.messages || []).some(existing => {
+    if (!existing || existing === candidate || existing.kind !== 'sys') return false;
+    if (String(existing.content || '').replace(/\s+/g, ' ').trim() !== candidateText) return false;
+    const existingTime = Number(existing.ts || 0);
+    return candidateTime > 0 && existingTime > 0 &&
+      Math.abs(candidateTime - existingTime) <= CALL_HISTORY_DEDUPE_WINDOW_MS;
+  });
+}
+
+function uniqueVisibleConversationRecords(records) {
+  const visible = [];
+  for (const rec of records || []) {
+    if (!isVisibleConversationRecord(rec)) continue;
+    if (rec.kind === 'sys') {
+      const recTime = Number(rec.ts || 0);
+      const duplicate = visible.some(existing => {
+        const existingTime = Number(existing.ts || 0);
+        return existing.kind === 'sys' &&
+          recTime > 0 && existingTime > 0 &&
+          String(existing.content || '').replace(/\s+/g, ' ').trim() === String(rec.content || '').replace(/\s+/g, ' ').trim() &&
+          Math.abs(existingTime - recTime) <= CALL_HISTORY_DEDUPE_WINDOW_MS;
+      });
+      if (duplicate) continue;
+    }
+    visible.push(rec);
+  }
+  return visible;
+}
+
 function vaultLastActivity(room) {
-  const visibleMessages = (room.messages || []).filter(isVisibleConversationRecord);
+  const visibleMessages = uniqueVisibleConversationRecords(room.messages);
   const last = visibleMessages[visibleMessages.length - 1];
   // `rec.time` is display text such as "18:09". Passing that to Number()
   // produced NaN, which poisoned Math.max() and made the inbox timestamp
@@ -10820,7 +10856,7 @@ function formatVaultInboxTime(value) {
 }
 
 function vaultInboxPreview(room, allowContent) {
-  const messages = (room.messages || []).filter(isVisibleConversationRecord);
+  const messages = uniqueVisibleConversationRecords(room.messages);
   const last = messages[messages.length - 1];
   const missed = [...messages].reverse().find(rec => rec?.kind === 'sys' && /^Missed call/.test(rec.content || ''));
   // Keep the missed call as the latest-activity preview, but only style it
@@ -11040,7 +11076,7 @@ function renderChatBody(room) {
   const body = document.getElementById('chat-body');
   if (klipyGifObserver) klipyGifObserver.disconnect();
   body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
-  for (const rec of room.messages) {
+  for (const rec of uniqueVisibleConversationRecords(room.messages)) {
     if (rec.deleted || rec.verifyNudge) continue;
     renderMessageRecord(room, rec);
   }
@@ -12069,7 +12105,8 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       return { ...base, kind: 'gif', klipyId: String(parsed.id || ''), title: String(parsed.title || 'GIF').slice(0, 200), url: parsed.url };
     }
     if (parsed.type === 'call-event' && typeof parsed.text === 'string') {
-      return { ...base, kind: 'sys', content: parsed.text.slice(0, 240) };
+      const callRecord = { ...base, kind: 'sys', content: parsed.text.slice(0, 240) };
+      return isDuplicateCallHistoryRecord(room, callRecord) ? null : callRecord;
     }
     if (parsed.text && parsed.reply) {
       return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };

@@ -19,8 +19,13 @@ test('conversation header uses a back control and removes the repeated subtitle'
   assert.match(chatHeader, /title="Back to conversations"/);
   assert.match(chatHeader, /<path d="m15 18-6-6 6-6"\/>/);
   assert.doesNotMatch(chatHeader, />Home<\/span>/);
-  assert.doesNotMatch(chatHeader, /chat-hdr-presence/);
   assert.doesNotMatch(chatHeader, />Private conversation<\/span>/);
+});
+
+test('conversation header shows live online or offline presence', () => {
+  assert.match(chatHeader, /id="status-dot"/);
+  assert.match(chatHeader, /id="chat-presence-label">Offline<\/span>/);
+  assert.match(client, /if \(label\) label\.textContent = online \? 'Online' : 'Offline'/);
 });
 
 test('conversation actions live in one accessible menu', () => {
@@ -35,6 +40,16 @@ test('conversation actions live in one accessible menu', () => {
   assert.doesNotMatch(chatHeader, /class="destroy-btn"/);
 });
 
+test('expanded conversation actions participate in layout instead of covering messages', () => {
+  assert.match(client, /#s-chat \.conversation-menu\{position:relative;/);
+  assert.doesNotMatch(client, /#s-chat \.conversation-menu\{position:absolute;/);
+  assert.ok(
+    chatHeader.indexOf('</div>\n  <div class="conversation-menu"') >
+      chatHeader.indexOf('class="chat-hdr-actions"'),
+    'the menu should be a sibling after the header, not an overlay inside it'
+  );
+});
+
 test('clear chat is available from the header menu only', () => {
   assert.match(client, /function clearConversationFromMenu\(\)/);
   assert.match(client, /function clearConversationFromMenu\(\) \{[\s\S]*?handleClearChat\(\);[\s\S]*?\}/);
@@ -47,4 +62,12 @@ test('conversation menu closes on navigation, outside tap and Escape', () => {
   assert.match(client, /if \(!e\.target\.closest\('\.chat-hdr-actions'\)\) closeConversationMenu\(\)/);
   assert.match(client, /if \(e\.key !== 'Escape'\) return;[\s\S]*?closeConversationMenu\(\)/);
   assert.match(client, /function openVaultInbox\(\) \{\s*closeConversationMenu\(\);/);
+});
+
+test('duplicate encrypted call records are coalesced by content and event time', () => {
+  assert.match(client, /const CALL_HISTORY_DEDUPE_WINDOW_MS = 12000/);
+  assert.match(client, /function isDuplicateCallHistoryRecord\(room, candidate\)/);
+  assert.match(client, /return isDuplicateCallHistoryRecord\(room, callRecord\) \? null : callRecord/);
+  assert.match(client, /for \(const rec of uniqueVisibleConversationRecords\(room\.messages\)\)/);
+  assert.match(client, /const visibleMessages = uniqueVisibleConversationRecords\(room\.messages\)/);
 });
