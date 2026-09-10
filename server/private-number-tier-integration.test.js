@@ -27,8 +27,23 @@ test('profile discovery is device-scoped, capped at ten per hour, and backs off'
   assert.doesNotMatch(server, /profileLookupBuckets\.set\([^\n]*privateNumber/);
 });
 
-test('launch-period generation exposes server-gated Reserve choices', () => {
-  assert.match(server, /RESERVE_CATEGORIES\.includes\(requestedCategory\)/);
-  assert.match(server, /category !== NUMBER_TIERS\.STANDARD && !earlyTester/);
-  assert.match(client, /selectPrivateNumberCategory\('(zeros|sequence|repeated|pairs)'\)/);
+test('creation offers one optional five-digit suffix without legacy choice clutter', () => {
+  assert.match(server, /normalizePreferredSuffix\(d\.preferredSuffix\)/);
+  assert.match(server, /reservePrivateNumber\(category, preferredSuffix\)/);
+  assert.match(client, /id="account-private-number-preference"/);
+  assert.match(client, /generatePrivateNumber\('preferred', suffix\)/);
+  assert.doesNotMatch(client, /selectPrivateNumberCategory\(/);
+  assert.doesNotMatch(client, />Four zeros</);
+  assert.doesNotMatch(client, />Repeated digits</);
+});
+
+test('personalized ten-digit numbers remain Standard-tier identities', () => {
+  assert.match(server, /reservedCategory === NUMBER_TIERS\.STANDARD \|\| reservedCategory === 'preferred'/);
+  assert.match(server, /numberProtection:reservedCategory === 'standard' \|\| reservedCategory === 'preferred' \? 'free'/);
+});
+
+test('Vaultlix member badge appears in the own profile and peer chat header', () => {
+  assert.match(client, /id="account-profile-name"[^]*?class="vaultlix-identity-badge"/);
+  assert.match(client, /id="hdr-code"[^]*?class="vaultlix-identity-badge"/);
+  assert.match(client, /aria-label="Vaultlix member"/);
 });

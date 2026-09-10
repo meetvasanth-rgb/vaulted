@@ -12,7 +12,9 @@ const { PostgresStore } = require('./postgres');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
+  normalizePreferredSuffix,
   generateStandardNumber,
+  generatePreferredNumber,
   generateReserveNumber,
   RESERVE_CATEGORIES,
   assignAccountTier,
@@ -852,15 +854,14 @@ function validEncryptedField(value, max) { return typeof value === 'string' && v
 function normalizePrivateNumber(value) {
   return normalizePrivateNumberPolicy(value);
 }
-function generatePrivateNumberCandidate(category = 'standard') {
-  return category === NUMBER_TIERS.STANDARD
-    ? generateStandardNumber()
-    : generateReserveNumber(category);
+function generatePrivateNumberCandidate(category = 'standard', preferredSuffix = '') {
+  if (category === 'preferred') return generatePreferredNumber(preferredSuffix);
+  return category === NUMBER_TIERS.STANDARD ? generateStandardNumber() : generateReserveNumber(category);
 }
-async function reservePrivateNumber(category = 'standard') {
-  if (category !== NUMBER_TIERS.STANDARD && !RESERVE_CATEGORIES.includes(category)) throw new Error('Invalid Private Number category');
+async function reservePrivateNumber(category = 'standard', preferredSuffix = '') {
+  if (category !== NUMBER_TIERS.STANDARD && category !== 'preferred' && !RESERVE_CATEGORIES.includes(category)) throw new Error('Invalid Private Number category');
   for (let attempt = 0; attempt < 100; attempt++) {
-    const privateNumber = generatePrivateNumberCandidate(category);
+    const privateNumber = generatePrivateNumberCandidate(category, preferredSuffix);
     if (!isNumberAvailable(privateNumber, { activeNumbers:privateNumbers, lifecycle:privateNumberLifecycle })) continue;
     const reservationToken = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
@@ -2038,8 +2039,18 @@ function serveStatic(req, res) {
   if (url === '/install') url = '/install.html';
   if (url === '/admin') url = '/admin.html';
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
-  fs.readFile(path.join(__dirname,'../client',url), (err,data) => {
+  // PDF.js is loaded lazily only when somebody selects a PDF. Keeping the
+  // two pinned, audited files behind same-origin URLs avoids a third-party
+  // CDN seeing when a user previews a document and keeps the normal app
+  // launch free of the renderer's download cost.
+  const vendorFile = url === '/vendor/pdf.min.mjs'
+    ? path.join(__dirname, '../node_modules/pdfjs-dist/build/pdf.min.mjs')
+    : (url === '/vendor/pdf.worker.min.mjs'
+        ? path.join(__dirname, '../node_modules/pdfjs-dist/build/pdf.worker.min.mjs')
+        : null);
+  fs.readFile(vendorFile || path.join(__dirname,'../client',url), (err,data) => {
     if (err) {
+      if (vendorFile) { res.writeHead(404); res.end(); return; }
       fs.readFile(path.join(__dirname,'../client/index.html'), (e,d) => {
         if (e) { res.writeHead(404); res.end(); return; }
         sendHtmlShell(req, res, d);
@@ -2049,7 +2060,7 @@ function serveStatic(req, res) {
       sendHtmlShell(req, res, data);
       return;
     }
-    const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4'};
+    const t={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4'};
     // Explicit Content-Length (rather than letting Node fall back to
     // chunked transfer-encoding on HTTP/1.1) matters specifically for
     // og:image — link-preview crawlers (WhatsApp's included) are known to
@@ -2362,17 +2373,24 @@ async function api(path, method, d, p, res, ip, headers) {
     const generationKey = `private-number:${ip}`;
     if (rateLimited(generationKey, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
-    // Reserve choices are a launch benefit for the first 10,000 identities.
-    // The server validates the category and assigns the tier; the client
-    // cannot promote an ordinary registration by altering its payload.
+    // A five-digit preference still creates a normal 10-digit identity.
+    // The server validates and supplies the random prefix; the client cannot
+    // manufacture a full number or promote itself into another tier.
+    const preferredSuffix = normalizePreferredSuffix(d.preferredSuffix);
+    if (d.preferredSuffix && !preferredSuffix) return resErr(res, 'Enter exactly five digits.', 400);
     const requestedCategory = typeof d.category === 'string' ? d.category.toLowerCase() : NUMBER_TIERS.STANDARD;
-    const category = requestedCategory === NUMBER_TIERS.STANDARD || RESERVE_CATEGORIES.includes(requestedCategory)
-      ? requestedCategory
-      : NUMBER_TIERS.STANDARD;
+    const category = preferredSuffix
+      ? 'preferred'
+      : (requestedCategory === NUMBER_TIERS.STANDARD || RESERVE_CATEGORIES.includes(requestedCategory)
+          ? requestedCategory
+          : NUMBER_TIERS.STANDARD);
     const earlyTester = accounts.size < 10_000;
-    if (category !== NUMBER_TIERS.STANDARD && !earlyTester) return resErr(res, 'Reserve number selection is currently closed.', 403);
+    // Keep accepting the earlier launch-build categories during rollout,
+    // while the new five-digit preference remains a normal 10-digit number
+    // and is available to every creator.
+    if (category !== NUMBER_TIERS.STANDARD && category !== 'preferred' && !earlyTester) return resErr(res, 'Reserve number selection is currently closed.', 403);
     const remaining = Math.max(0, 20 - (rateLimitBuckets.get(generationKey)?.count || 0));
-    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester, generationsRemaining:remaining });
+    return res200(res, { ok:true, ...(await reservePrivateNumber(category, preferredSuffix)), earlyTester, generationsRemaining:remaining });
   }
 
   if (path === '/api/account/register' && method === 'POST') {
@@ -2432,7 +2450,9 @@ async function api(path, method, d, p, res, ip, headers) {
     const creationOrder = postgresEnabled
       ? await postgresStore.allocateAccountCreationOrder()
       : allocateLocalAccountCreationOrder();
-    const reservationTier = reservedCategory === NUMBER_TIERS.STANDARD ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE;
+    const reservationTier = reservedCategory === NUMBER_TIERS.STANDARD || reservedCategory === 'preferred'
+      ? NUMBER_TIERS.STANDARD
+      : NUMBER_TIERS.RESERVE;
     const { tier, isFounding } = assignAccountTier({ creationOrder, reservationTier });
     const account = {
       version: 2, privateNumber, displayName,
@@ -2445,7 +2465,7 @@ async function api(path, method, d, p, res, ip, headers) {
       numberCategory:reservedCategory,
       // Early-test special numbers are a product grant, not an untrusted
       // client claim. The category comes from the server-side reservation.
-      numberProtection:reservedCategory === 'standard' ? 'free' : 'promotional',
+      numberProtection:reservedCategory === 'standard' || reservedCategory === 'preferred' ? 'free' : 'promotional',
       tier, isFounding, creationOrder,
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
@@ -4704,12 +4724,12 @@ function hydrateAccounts(entries, source) {
         .map(session => ({ ...session, deviceHash:/^[a-f0-9]{64}$/.test(session.deviceHash || '') ? session.deviceHash : null }))
         .slice(-1);
       record.lastActiveAt = Number(record.lastActiveAt) || Date.now();
-      record.numberCategory = ['standard','reserve','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
+      record.numberCategory = ['standard','preferred','reserve','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
       fallbackCreationOrder++;
       record.creationOrder = Number(record.creationOrder) || fallbackCreationOrder;
       const assignedTier = assignAccountTier({
         creationOrder:record.creationOrder,
-        reservationTier:record.numberCategory === 'standard' ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE,
+        reservationTier:['standard','preferred'].includes(record.numberCategory) ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE,
       });
       record.tier = [NUMBER_TIERS.STANDARD, NUMBER_TIERS.RESERVE, NUMBER_TIERS.FOUNDING].includes(record.tier)
         ? record.tier

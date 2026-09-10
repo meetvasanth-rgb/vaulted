@@ -21,6 +21,25 @@ function generateStandardNumber(randomBytes = crypto.randomBytes) {
   return number;
 }
 
+function normalizePreferredSuffix(value) {
+  const suffix = String(value || '').trim();
+  return /^[0-9]{5}$/.test(suffix) ? suffix : '';
+}
+
+// A preference changes only the final five digits. The server still creates
+// the leading five digits with cryptographically secure randomness, so the
+// result remains a full, non-enumerable 10-digit Vaultlix number. Existing
+// allocation/lifecycle checks remain responsible for uniqueness and for
+// ensuring a deleted number can never return.
+function generatePreferredNumber(preferredSuffix, randomBytes = crypto.randomBytes) {
+  const suffix = normalizePreferredSuffix(preferredSuffix);
+  if (!suffix) throw new Error('Preferred digits must contain exactly five numbers');
+  const bytes = randomBytes(5);
+  let prefix = String(2 + (bytes[0] % 8));
+  for (let index = 1; index < bytes.length; index++) prefix += String(bytes[index] % 10);
+  return prefix + suffix;
+}
+
 const RESERVE_CATEGORIES = Object.freeze(['reserve', 'zeros', 'sequence', 'repeated', 'pairs']);
 
 function generateReserveNumber(category, randomBytes = crypto.randomBytes) {
@@ -72,7 +91,9 @@ module.exports = {
   NUMBER_TIERS,
   FOUNDING_ACCOUNT_LIMIT,
   normalizePrivateNumber,
+  normalizePreferredSuffix,
   generateStandardNumber,
+  generatePreferredNumber,
   generateReserveNumber,
   RESERVE_CATEGORIES,
   assignAccountTier,

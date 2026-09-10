@@ -18,7 +18,7 @@ test('free Private Numbers use a two-year inactivity clock with staged warnings'
 
 test('Premium and special-number protection cannot be supplied by an untrusted registration client', () => {
   assert.match(server, /const reservedCategory = d\.reservationToken[\s\S]*verifyPrivateNumberReservation/);
-  assert.match(server, /numberProtection:reservedCategory === 'standard' \? 'free' : 'promotional'/);
+  assert.match(server, /numberProtection:reservedCategory === 'standard' \|\| reservedCategory === 'preferred' \? 'free' : 'promotional'/);
   assert.doesNotMatch(server, /numberProtection:d\.numberProtection|premiumUntil:d\.premiumUntil/);
   assert.match(server, /protection === 'purchased' \|\| protection === 'promotional'/);
   assert.match(server, /premiumUntil > now/);

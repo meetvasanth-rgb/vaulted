@@ -7,6 +7,7 @@ const {
   normalizePrivateNumber,
   assignAccountTier,
   allocateUniqueStandardNumber,
+  generatePreferredNumber,
   generateReserveNumber,
   isNumberAvailable,
 } = require('./private-number-policy');
@@ -46,6 +47,16 @@ test('Reserve categories create six-digit and recognizable patterned numbers', (
   assert.match(generateReserveNumber('sequence', deterministic), /^[2-9][0-9]{5}(?:0123|1234|2345|3456|4567|5678|6789)$/);
   assert.match(generateReserveNumber('repeated', deterministic), /^[2-9][0-9]{5}([0-9])\1{3}$/);
   assert.match(generateReserveNumber('pairs', deterministic), /^([2-9])\1([0-9])\2([0-9])\3([0-9])\4([0-9])\5$/);
+});
+
+test('five chosen digits become the suffix of a full random 10-digit number', () => {
+  const deterministic = () => Buffer.from([7, 1, 2, 3, 4]);
+  const number = generatePreferredNumber('55555', deterministic);
+  assert.equal(number.length, 10);
+  assert.match(number, /^[2-9][0-9]{4}55555$/);
+  assert.equal(number.slice(-5), '55555');
+  assert.throws(() => generatePreferredNumber('5555', deterministic), /exactly five/);
+  assert.throws(() => generatePreferredNumber('55-555', deterministic), /exactly five/);
 });
 
 test('deleted numbers never return to the allocation pool', () => {

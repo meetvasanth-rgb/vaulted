@@ -7,16 +7,17 @@ const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const postgres = fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('early testers can select reserved patterns backed by expiring PostgreSQL reservations', () => {
+test('five-digit preferences use expiring PostgreSQL reservations without number-style clutter', () => {
   assert.match(postgres, /CREATE TABLE IF NOT EXISTS private_number_reservations/);
   assert.match(postgres, /reserved_until bigint NOT NULL/);
   assert.match(server, /PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 \* 60 \* 1000/);
   assert.match(server, /verifyPrivateNumberReservation\(privateNumber, d\.reservationToken\)/);
   assert.match(client, /reservationToken: pendingPrivateNumberReservation/);
-  assert.match(client, /Short &middot; 6 digits/);
-  assert.match(client, /Four zeros|Number sequence|Repeated digits|Repeated pairs/);
-  assert.match(server, /accounts\.size < 10_000/);
-  assert.match(server, /Reserve number selection is currently closed/);
+  assert.match(client, /id="account-private-number-preference"/);
+  assert.match(client, /Optional: choose the final five digits/);
+  assert.doesNotMatch(client, /Short &middot; 6 digits/);
+  assert.doesNotMatch(client, /Four zeros|Number sequence|Repeated digits|Repeated pairs/);
+  assert.match(server, /normalizePreferredSuffix\(d\.preferredSuffix\)/);
 });
 
 test('strong recovery material remains encrypted locally while backup is deferred', () => {

@@ -825,6 +825,14 @@ body.select-mode .chat-ftr{display:none}
 .klipy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;overflow:auto;margin-top:12px;min-height:0}.klipy-result{border:0;padding:0;background:#F3EEE6;border-radius:10px;overflow:hidden;cursor:pointer;min-height:110px}.klipy-result img{display:block;width:100%;height:150px;object-fit:cover}.klipy-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 2px 2px;color:#786D73;font-size:11px}.klipy-more{border:1px solid #DCCFD4;background:#fff;border-radius:10px;padding:7px 12px;color:#682C43;cursor:pointer}.klipy-status{text-align:center;color:#8A7F72;padding:30px 8px;grid-column:1/-1}
 .msg-file { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; text-decoration:none; color:#4A3F35; font-size:12px; cursor:pointer; }
 .msg-file svg { width:16px; height:16px; fill:none; stroke:#9A8C7E; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+.msg-pdf-card{width:min(270px,72vw);overflow:hidden;background:#F8F5F3;border:.5px solid #DED6D2;border-radius:12px;margin-top:4px;cursor:pointer;color:#281F23}
+.msg-pdf-preview{height:150px;background:linear-gradient(145deg,#F4EFEC,#E9E0E2);display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:.5px solid #DED6D2}
+.msg-pdf-preview img{display:block;width:100%;height:100%;object-fit:cover;object-position:top center}
+.msg-pdf-placeholder{display:flex;flex-direction:column;align-items:center;gap:7px;color:#7A304C;font:700 13px/1 Inter,sans-serif;letter-spacing:.08em}
+.msg-pdf-placeholder svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.msg-pdf-info{display:flex;align-items:center;gap:10px;padding:10px 12px;text-align:left}
+.msg-pdf-icon{width:34px;height:34px;border-radius:8px;background:#762B47;color:#fff;display:grid;place-items:center;flex:none;font:800 9px/1 Inter,sans-serif;letter-spacing:.04em}
+.msg-pdf-copy{min-width:0;display:flex;flex-direction:column;gap:4px}.msg-pdf-name{font:600 12px/1.25 Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msg-pdf-meta{font:500 10px/1.2 Inter,sans-serif;color:#8A7F84}
 .msg-media-blocked { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; color:#8A7F72; font-size:12px; }
 .msg-blocked { display:flex; align-items:center; gap:8px; background:#FDF0EE; border:0.5px solid #F1C4BC; border-radius:6px; padding:8px 12px; margin-top:4px; color:#C87588; font-size:12px; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
@@ -2403,7 +2411,7 @@ html.vaultlix-native-android .emergency-sheet{
 .account-card{position:relative;width:min(100%,520px);max-height:92vh;overflow:auto;background:#FBF7F8;border-radius:26px 26px 0 0;padding:25px 22px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -20px 70px rgba(39,29,37,.2)}
 .account-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}.account-kicker{font:700 11px/1.2 Inter,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C87588}.account-title{font:600 28px/1.1 Inter,sans-serif;color:#271D25;margin-top:7px}.account-copy{font:400 14px/1.55 Inter,sans-serif;color:#756A72;margin:8px 0 20px}.account-close{border:0;background:#F2E8EC;color:#682C43;width:38px;height:38px;border-radius:13px;font-size:22px}.account-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:#F2E8EC;padding:5px;border-radius:14px;margin-bottom:18px}.account-tab{border:0;border-radius:10px;padding:10px 5px;background:transparent;color:#806F78;font:600 12px Inter,sans-serif}.account-tab.active{background:#fff;color:#682C43;box-shadow:0 3px 12px rgba(104,44,67,.09)}.account-form{display:none}.account-form.active{display:block}.account-field{display:block;margin:13px 0}.account-field span{display:block;font:600 12px Inter,sans-serif;color:#4B3D46;margin:0 0 7px}.account-field input{width:100%;box-sizing:border-box;border:1px solid #E2D4DA;border-radius:13px;padding:14px;background:#fff;color:#271D25;font:500 16px Inter,sans-serif;outline:none}.account-field input:focus{border-color:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.13)}.password-policy{margin:-3px 0 13px;padding:11px 13px;border-radius:12px;background:#F7F0F3;color:#75656D;font:500 11px/1.5 Inter,sans-serif}.password-policy strong{color:#682C43}.account-primary{width:100%;border:0;border-radius:14px;padding:14px;background:#682C43;color:#fff;font:700 14px Inter,sans-serif;margin-top:8px}.account-primary:disabled{opacity:.62;cursor:wait}.account-note{font:400 11px/1.5 Inter,sans-serif;color:#94868E;margin-top:12px}.account-error{margin-top:12px;padding:11px 12px;border:1px solid #E2B8C3;border-radius:12px;background:#FFF3F5;color:#8C2943;font:600 12px/1.45 Inter,sans-serif}.recovery-box{background:#F2E8EC;border:1px solid #DFC9D1;border-radius:16px;padding:17px;margin:15px 0}.recovery-code{font:700 16px/1.55 ui-monospace,SFMono-Regular,monospace;color:#682C43;word-break:break-all;letter-spacing:.04em}.account-signed{display:none}.account-signed.open{display:block}.account-status-card{background:#F2E8EC;border-radius:16px;padding:17px;margin:12px 0 18px}.account-status-name{font:700 16px Inter,sans-serif;color:#271D25}.account-status-sub{font:400 12px/1.5 Inter,sans-serif;color:#756A72;margin-top:5px}.account-secondary{width:100%;border:1px solid #D8C5CD;border-radius:14px;padding:13px;background:#fff;color:#682C43;font:700 14px Inter,sans-serif;margin-top:8px}
 .recovery-reminder-card{padding-top:32px!important;text-align:left}.recovery-reminder-icon{width:58px;height:58px;display:grid;place-items:center;margin-bottom:22px;border-radius:19px;background:#F0F7F3;color:#557660}.recovery-reminder-icon svg{width:29px;height:29px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.private-number-card{margin:14px 0;padding:18px;border:1px solid #DFCDD4;border-radius:18px;background:linear-gradient(145deg,#F8F0F3,#fff);text-align:center}.private-number-label{font:700 11px Inter,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#936174}.private-number-value{margin:8px 0 5px;font:700 28px ui-monospace,SFMono-Regular,monospace;letter-spacing:.05em;color:#682C43}.private-number-caption{font:500 12px/1.5 Inter,sans-serif;color:#75656D}.private-number-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:13px 0 2px}.private-number-option{min-height:48px;border:1px solid #DDCDD3;border-radius:12px;background:#fff;color:#5E4C54;padding:8px 7px;font:700 11px/1.25 Inter,sans-serif}.private-number-option.active{border-color:#682C43;background:#F2E6EA;color:#682C43;box-shadow:0 0 0 2px rgba(104,44,67,.08)}.private-number-option:first-child{grid-column:1/-1}.private-number-refresh{margin-top:12px;border:1px solid #D7C6CD;border-radius:12px;background:#fff;color:#682C43;padding:10px 14px;font:700 12px Inter,sans-serif}.account-step{display:none}.account-step.active{display:block}
+.onboarding-progress{display:flex;align-items:center;gap:7px;margin:0 0 15px}.onboarding-progress span{height:5px;flex:1;border-radius:99px;background:#E7DCE0}.onboarding-progress span.active{background:#682C43}.private-number-card{margin:14px 0;padding:18px;border:1px solid #DFCDD4;border-radius:18px;background:linear-gradient(145deg,#F8F0F3,#fff);text-align:center}.private-number-label{font:700 11px Inter,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#936174}.private-number-value{margin:8px 0 5px;font:700 28px ui-monospace,SFMono-Regular,monospace;letter-spacing:.05em;color:#682C43}.private-number-caption{font:500 12px/1.5 Inter,sans-serif;color:#75656D}.private-number-preference{display:flex;gap:8px;align-items:center;margin:14px 0 3px}.private-number-preference input{min-width:0;flex:1;border:1px solid #DDCDD3;border-radius:12px;background:#fff;color:#281F23;padding:11px 12px;text-align:center;letter-spacing:.18em;font:700 16px ui-monospace,SFMono-Regular,monospace;outline:none}.private-number-preference input:focus{border-color:#682C43;box-shadow:0 0 0 3px rgba(104,44,67,.1)}.private-number-preference button{min-height:43px;border:0;border-radius:12px;background:#682C43;color:#fff;padding:9px 13px;font:700 12px Inter,sans-serif}.private-number-refresh{margin-top:12px;border:1px solid #D7C6CD;border-radius:12px;background:#fff;color:#682C43;padding:10px 14px;font:700 12px Inter,sans-serif}.vaultlix-identity-line{display:flex;align-items:center;gap:7px;min-width:0}.vaultlix-identity-badge{width:19px;height:19px;flex:0 0 19px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:linear-gradient(145deg,#8A3655,#5A1F36);color:#fff;box-shadow:0 2px 7px rgba(104,44,67,.22);font:800 10px/1 Inter,sans-serif;transform:rotate(45deg)}.vaultlix-identity-badge>span{transform:rotate(-45deg)}.profile-identity-summary{margin:0 0 15px;padding:12px 13px;border-radius:13px;background:#F7F0F3;color:#281F23;font:700 15px Inter,sans-serif}.account-step{display:none}.account-step.active{display:block}
 .account-creation-transition{position:absolute;z-index:8;inset:0;min-height:100%;display:grid;place-items:center;overflow:hidden;padding:30px;background:radial-gradient(circle at 50% 38%,rgba(200,117,136,.21),transparent 34%),#271D25;color:#fff;text-align:center;border-radius:inherit}
 .account-creation-transition[hidden]{display:none}
 .account-creation-transition::before,.account-creation-transition::after{content:"";position:absolute;width:180px;height:180px;border:1px solid rgba(200,117,136,.18);border-radius:50%;animation:account-identity-pulse 2.4s ease-out infinite}
@@ -2967,7 +2975,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <div class="chat-hdr-meta">
-        <div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div>
+        <div class="vaultlix-identity-line"><div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div><span class="vaultlix-identity-badge" aria-label="Vaultlix member" title="Vaultlix member"><span>V</span></span></div>
         <div class="chat-hdr-presence" id="chat-presence" hidden><span class="status-dot" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Online</span></div>
       </div>
     </div>
@@ -3449,6 +3457,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     </div>
 
     <div id="settings-profile-controls" style="padding:0 20px 24px">
+      <div class="profile-identity-summary vaultlix-identity-line"><span id="account-profile-name">—</span><span class="vaultlix-identity-badge" aria-label="Vaultlix member" title="Vaultlix member"><span>V</span></span></div>
       <form id="account-profile-form" onsubmit="updateAccountUsername(event)">
         <label class="account-field"><span>Username</span><input id="account-profile-display-name" autocomplete="nickname" minlength="2" maxlength="32" required/></label>
         <button class="account-secondary" type="submit" data-busy-label="Saving…">Save username</button>
@@ -3705,17 +3714,14 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
             <div class="private-number-label">Your Vaultlix Private Number</div>
             <div class="private-number-value" id="account-private-number-value">Generating…</div>
             <div class="private-number-caption">Share this number or its Vaultlix link so people can connect with you.</div>
-            <div class="private-number-options" id="private-number-options" aria-label="Choose a number style">
-              <button class="private-number-option active" type="button" data-number-category="standard" onclick="selectPrivateNumberCategory('standard')">Standard &middot; 10 digits</button>
-              <button class="private-number-option" type="button" data-number-category="reserve" onclick="selectPrivateNumberCategory('reserve')">Short &middot; 6 digits</button>
-              <button class="private-number-option" type="button" data-number-category="zeros" onclick="selectPrivateNumberCategory('zeros')">Four zeros</button>
-              <button class="private-number-option" type="button" data-number-category="sequence" onclick="selectPrivateNumberCategory('sequence')">Number sequence</button>
-              <button class="private-number-option" type="button" data-number-category="repeated" onclick="selectPrivateNumberCategory('repeated')">Repeated digits</button>
-              <button class="private-number-option" type="button" data-number-category="pairs" onclick="selectPrivateNumberCategory('pairs')">Repeated pairs</button>
+            <div class="private-number-preference">
+              <input id="account-private-number-preference" type="text" inputmode="numeric" autocomplete="off" maxlength="5" pattern="[0-9]{5}" placeholder="Your 5 digits" aria-label="Choose the final five digits" oninput="normalizePreferredNumberInput(this)"/>
+              <button type="button" onclick="generatePreferredPrivateNumber()">Use digits</button>
             </div>
+            <div class="private-number-caption">Optional: choose the final five digits. Vaultlix securely creates the rest.</div>
             <div class="private-number-caption" id="account-generation-counter" style="margin-top:8px">20 number choices remaining this hour</div>
             <div style="margin-top:12px">
-              <button class="private-number-refresh" type="button" onclick="generatePrivateNumber(selectedPrivateNumberCategory)">Generate another number</button>
+              <button class="private-number-refresh" type="button" onclick="generateRandomPrivateNumber()">Generate another random number</button>
             </div>
           </div>
           <button class="account-primary" type="button" onclick="showCreateSecurityStep()">Continue</button>
@@ -3748,7 +3754,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       </form>
     </div>
     <div class="account-signed" id="account-signed-view">
-      <div class="account-status-card"><div class="account-status-name" id="account-signed-name">—</div><div class="account-status-sub">Your private identity</div></div>
+      <div class="account-status-card"><div class="account-status-name vaultlix-identity-line"><span id="account-signed-name">—</span><span class="vaultlix-identity-badge" aria-label="Vaultlix member" title="Vaultlix member"><span>V</span></span></div><div class="account-status-sub">Your private identity</div></div>
       <div id="account-sync-status" hidden></div>
       <div class="account-copy" id="connection-request-list">Checking connection requests…</div>
       <button class="account-primary" type="button" onclick="closeAccountPanel();openNewConnection()">Extend your line</button>
@@ -7836,6 +7842,10 @@ function safeFileDataUri(mime, base64) {
   if (!isPlausibleMimeShape(mime) || !isValidMediaBase64(base64)) return null;
   return `data:${mime};base64,${base64}`;
 }
+function isPdfAttachment(mime, filename = '') {
+  return String(mime || '').split(';')[0].trim().toLowerCase() === 'application/pdf'
+    || /\.pdf$/i.test(String(filename || ''));
+}
 // Shown in place of an <img> whenever safeImageDataUri rejects the payload
 // — deliberately plain, no broken-image icon, no attacker-controlled text.
 const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment couldn't be displayed</div>`;
@@ -8562,6 +8572,8 @@ function populateAccountProfileSettings(state = loadAccountState()) {
   if (!state) return;
   const displayName = document.getElementById('account-profile-display-name');
   if (displayName) displayName.value = state.displayName;
+  const profileName = document.getElementById('account-profile-name');
+  if (profileName) profileName.textContent = state.displayName;
   refreshSavedRecoveryControls(state);
 }
 const NATIVE_ONBOARDING_KEY = 'vaultlix_native_onboarding_v1';
@@ -8770,6 +8782,8 @@ async function updateAccountUsername(event) {
     if (result.error) { toast(result.error); return; }
     state.displayName = result.displayName; saveAccountState(state);
     document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
+    const profileName = document.getElementById('account-profile-name');
+    if (profileName) profileName.textContent = state.displayName;
     updateAccountSettingsStatus(); renderVaultList(); toast('Username updated');
   } finally { setAccountBusy(form, false); }
 }
@@ -9132,11 +9146,18 @@ function showAccountTab(name) {
 let pendingPrivateNumber = '';
 let pendingPrivateNumberReservation = '';
 let pendingPrivateNumberCategory = 'standard';
-let selectedPrivateNumberCategory = 'standard';
-function selectPrivateNumberCategory(category) {
-  selectedPrivateNumberCategory = category;
-  document.querySelectorAll('[data-number-category]').forEach(button => button.classList.toggle('active', button.dataset.numberCategory === category));
-  generatePrivateNumber(category);
+function normalizePreferredNumberInput(input) {
+  input.value = input.value.replace(/\D/g, '').slice(0, 5);
+}
+function generateRandomPrivateNumber() {
+  const input = document.getElementById('account-private-number-preference');
+  if (input) input.value = '';
+  return generatePrivateNumber();
+}
+function generatePreferredPrivateNumber() {
+  const suffix = document.getElementById('account-private-number-preference')?.value || '';
+  if (!/^[0-9]{5}$/.test(suffix)) { toast('Enter exactly five digits'); return; }
+  return generatePrivateNumber('preferred', suffix);
 }
 function numberRevealHaptic() {
   try {
@@ -9166,14 +9187,14 @@ function revealPrivateNumber(output, privateNumber) {
     }, 48);
   });
 }
-async function generatePrivateNumber(category = 'standard') {
+async function generatePrivateNumber(category = 'standard', preferredSuffix = '') {
   const output = document.getElementById('account-private-number-value');
   if (!output) return;
   output.textContent = 'Generating…';
   pendingPrivateNumber = '';
   pendingPrivateNumberReservation = '';
   try {
-    const result = await api('/api/account/private-number', { category });
+    const result = await api('/api/account/private-number', { category, ...(preferredSuffix ? { preferredSuffix } : {}) });
     if (result.status === 429) {
       output.textContent = 'Limit reached';
       toast('Generation limit reached. Try again in about one hour.');
@@ -9203,7 +9224,14 @@ function showCreateIdentityStep() { setCreateStep(1); }
 async function showCreateSecurityStep() {
   const displayName = document.getElementById('account-create-display-name').value.trim().replace(/\s+/g, ' ');
   if (displayName.length < 2 || displayName.length > 32) { toast('Enter a username between 2 and 32 characters'); return; }
-  if (!pendingPrivateNumber) { await generatePrivateNumber(); if (!pendingPrivateNumber) return; }
+  const preferredSuffix = document.getElementById('account-private-number-preference')?.value || '';
+  if (preferredSuffix && !/^[0-9]{5}$/.test(preferredSuffix)) { toast('Enter exactly five digits, or leave the field empty'); return; }
+  if (preferredSuffix && (pendingPrivateNumberCategory !== 'preferred' || !pendingPrivateNumber.endsWith(preferredSuffix))) {
+    await generatePrivateNumber('preferred', preferredSuffix);
+  } else if (!pendingPrivateNumber) {
+    await generatePrivateNumber();
+  }
+  if (!pendingPrivateNumber) return;
   document.getElementById('account-create-summary').textContent = `${displayName} · ${formatPrivateNumber(pendingPrivateNumber)}`;
   setCreateStep(2);
   document.getElementById('account-create-password').focus();
@@ -11536,7 +11564,7 @@ async function forwardAttachmentToRoom(target, rec) {
       if (!await sendAlbumMessage(target, items, false)) return false;
     } else {
       const file = { name: rec.fileName || 'vaultlix-file', type: rec.mime || 'application/octet-stream' };
-      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime)) return false;
+      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime, rec.pdfPreview, rec.pageCount)) return false;
     }
     renderRoomTabs();
     toast(`Forwarded to ${roomDisplayLabel(target)}`);
@@ -11863,6 +11891,18 @@ function renderMessageRecord(room, rec, animate) {
       mediaHtml = safeSrc
         ? `${badge}<img class="msg-image" src="${safeSrc}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
         : `${badge}${MEDIA_BLOCKED_HTML}`;
+    } else if (isPdfAttachment(rec.mime, rec.fileName)) {
+      const thumbnail = safeImageDataUri('image/jpeg', rec.pdfPreview);
+      const preview = thumbnail
+        ? `<img src="${thumbnail}" alt="First page of ${escHtml(rec.fileName)}" draggable="false"/>`
+        : `<span class="msg-pdf-placeholder"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF</span>`;
+      const pages = Number(rec.pageCount) || 0;
+      const pageLabel = pages > 0 ? `${pages} page${pages === 1 ? '' : 's'} · ` : '';
+      const size = Math.ceil(String(rec.base64 || '').length * 3 / 4);
+      mediaHtml = `<div class="msg-pdf-card" onclick="handleFileTap('${rec.id}')" oncontextmenu="return false">
+        <div class="msg-pdf-preview">${preview}</div>
+        <div class="msg-pdf-info"><span class="msg-pdf-icon">PDF</span><span class="msg-pdf-copy"><span class="msg-pdf-name">${escHtml(rec.fileName)}</span><span class="msg-pdf-meta">${pageLabel}${formatFileSize(size)} · PDF</span></span></div>
+      </div>`;
     } else {
       // Was an <a href="data:..." download>, which some mobile browsers
       // (Chrome on Android in particular) silently refuse to trigger for a
@@ -12227,7 +12267,8 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     const parsed = JSON.parse(decrypted);
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, viewOnce: !!parsed.viewOnce, viewed: false };
+      const pdfPreview = safeImageDataUri('image/jpeg', parsed.pdfPreview) ? parsed.pdfPreview : null;
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, pdfPreview, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false };
     }
     // Several photos picked together arrive as ONE message with an
     // images[] array (see sendAlbumMessage) rather than one message per
@@ -14773,14 +14814,17 @@ async function handleFileSelect(event) {
       images.push({ file, base64, mime });
     } else {
       const base64 = await fileToBase64(file);
-      others.push({ file, base64 });
+      const pdfPreview = isPdfAttachment(file.type, file.name)
+        ? await createPdfFirstPagePreview(base64)
+        : null;
+      others.push({ file, base64, pdfPreview });
     }
   }
 
   // Non-image files send immediately, one after another — view-once isn't a
   // meaningful concept for a PDF or a zip, so no picker needed for these.
-  for (const { file, base64 } of others) {
-    await sendFileMessage(room, file, base64, false, false);
+  for (const { file, base64, pdfPreview } of others) {
+    await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount);
   }
 
   // Photos get the view-once choice, asked once for the whole batch (not
@@ -14796,7 +14840,7 @@ async function handleFileSelect(event) {
 // its real post-compression type instead of the original file's — and size
 // is always derived from the base64 actually being sent rather than
 // file.size, since compression means those two routinely no longer match.
-async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride) {
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
@@ -14812,7 +14856,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // request actually targets a view-once message. Dropping the plaintext
   // copy because "it's already in here" reintroduces the bug that check was
   // added to fix — any member could delete any message for everyone.
-  const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, viewOnce: !!viewOnce });
+  const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview, pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce });
   let encryptedPayload;
   try {
     encryptedPayload = await encryptMsg(room, payload);
@@ -14832,7 +14876,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const msgId = newMsgId();
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
-    fileName: file.name, mime, base64, isImage, viewOnce: !!viewOnce, viewed: false,
+    fileName: file.name, mime, base64, isImage, pdfPreview, pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, viewed: false,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec);
@@ -15197,6 +15241,55 @@ function showSendImageOptions(room, items) {
   overlay.querySelector('#send-img-normal').onclick = () => sendAll(false);
   overlay.querySelector('#send-img-cancel').onclick = close;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+}
+
+let pdfRendererPromise = null;
+function loadPdfRenderer() {
+  if (!pdfRendererPromise) {
+    pdfRendererPromise = import('/vendor/pdf.min.mjs').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+      return pdfjs;
+    }).catch(error => {
+      pdfRendererPromise = null;
+      throw error;
+    });
+  }
+  return pdfRendererPromise;
+}
+
+async function createPdfFirstPagePreview(base64) {
+  if (!isValidMediaBase64(base64)) return null;
+  let documentTask = null;
+  let pdf = null;
+  try {
+    const renderer = await loadPdfRenderer();
+    const raw = atob(base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    // PDF content never leaves this device. isEvalSupported:false also
+    // prevents embedded PDF JavaScript from being evaluated by the renderer.
+    documentTask = renderer.getDocument({ data:bytes, isEvalSupported:false });
+    pdf = await documentTask.promise;
+    const page = await pdf.getPage(1);
+    const original = page.getViewport({ scale:1 });
+    const viewport = page.getViewport({ scale:Math.min(1.5, 540 / Math.max(1, original.width)) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
+    const context = canvas.getContext('2d', { alpha:false });
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext:context, viewport }).promise;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+    page.cleanup();
+    return { base64:dataUrl.split(',')[1], pageCount:pdf.numPages };
+  } catch (error) {
+    console.warn('PDF preview could not be created');
+    return null;
+  } finally {
+    try { await pdf?.destroy(); } catch (e) {}
+    try { documentTask?.destroy(); } catch (e) {}
+  }
 }
 
 function fileToBase64(file) {
