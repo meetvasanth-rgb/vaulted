@@ -10719,16 +10719,10 @@ async function registerServiceWorker() {
 function renderOfflineState() {
   const offline = navigator.onLine === false;
   document.body.classList.toggle('vaultlix-offline', offline);
-  let banner = document.getElementById('vaultlix-offline-banner');
-  if (offline && !banner) {
-    banner = document.createElement('div');
-    banner.id = 'vaultlix-offline-banner';
-    banner.setAttribute('role', 'status');
-    banner.textContent = 'You’re offline. Vaultlix will reconnect automatically.';
-    banner.style.cssText = 'position:fixed;z-index:1200;top:calc(8px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 24px));padding:10px 14px;border-radius:13px;background:#29101b;color:#fff;text-align:center;font:650 12px/1.4 Manrope,Inter,sans-serif;box-shadow:0 8px 28px rgba(26,9,16,.24)';
-    document.body.appendChild(banner);
-  }
-  if (!offline) banner?.remove();
+  // Offline startup remains fully functional, but connection state should
+  // not cover the app with a persistent technical banner. Remove an older
+  // banner too, in case this page was restored from a cached WebView.
+  document.getElementById('vaultlix-offline-banner')?.remove();
 }
 
 window.addEventListener('online', () => {
@@ -11275,6 +11269,89 @@ function openMainHome() {
   showScreen('s-landing');
   triggerLandingAnim();
 }
+
+// Native edge-swipe navigation. Keep this app-scoped rather than changing
+// browser/PWA gestures: iOS and Android users expect an edge swipe to move
+// through an installed app, while a browser owns those gestures itself.
+// Starting within 28px of an edge also avoids stealing horizontal movement
+// from message actions, carousels and ordinary vertical scrolling.
+const NATIVE_SWIPE_EDGE_PX = 28;
+const NATIVE_SWIPE_DISTANCE_PX = 72;
+const NATIVE_SWIPE_MAX_MS = 700;
+let nativeSwipeNavigation = null;
+
+function activeScreenId() {
+  return document.querySelector('.screen.active')?.id || null;
+}
+
+function nativeSwipeNavigationBlocked(target) {
+  if (quickLockActive || [...rooms.values()].some(room => room.callState && room.callState !== 'idle')) return true;
+  if (settingsOpen || document.querySelector(
+    '#conversation-menu.open, #qr-overlay, #connect-overlay, #call-overlay, ' +
+    '.app-lock-overlay.open, .account-overlay.open, .safety-overlay.open, ' +
+    '.emergency-overlay.open, .milestone-overlay.open, .number-card-overlay.open, ' +
+    '.pdf-preview-overlay.open'
+  )) return true;
+  return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile');
+}
+
+function navigateBackFromNativeSwipe() {
+  closeConversationMenu();
+  switch (activeScreenId()) {
+    case 's-chat': openVaultInbox(); break;
+    case 's-waiting': backToVaults(); break;
+    case 's-setup':
+    case 's-privacy':
+    case 's-terms':
+    case 's-faq': goBack(); break;
+    case 's-closed': startFresh(); break;
+    case 's-landing': if (rooms.size > 0) openVaultInbox(); break;
+  }
+}
+
+function navigateHomeFromNativeSwipe() {
+  closeConversationMenu();
+  closeSettings();
+  if (loadAccountState() || rooms.size > 0) openVaultInbox();
+  else openMainHome();
+}
+
+document.addEventListener('touchstart', event => {
+  nativeSwipeNavigation = null;
+  if (!isNativeApp() || event.touches.length !== 1 || nativeSwipeNavigationBlocked(event.target)) return;
+  const touch = event.touches[0];
+  const fromLeft = touch.clientX <= NATIVE_SWIPE_EDGE_PX;
+  const fromRight = touch.clientX >= window.innerWidth - NATIVE_SWIPE_EDGE_PX;
+  if (!fromLeft && !fromRight) return;
+  nativeSwipeNavigation = {
+    edge: fromLeft ? 'left' : 'right',
+    x: touch.clientX,
+    y: touch.clientY,
+    startedAt: Date.now(),
+  };
+}, { passive:true });
+
+document.addEventListener('touchmove', event => {
+  if (!nativeSwipeNavigation || event.touches.length !== 1) return;
+  const touch = event.touches[0];
+  const dx = touch.clientX - nativeSwipeNavigation.x;
+  const dy = touch.clientY - nativeSwipeNavigation.y;
+  if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) event.preventDefault();
+}, { passive:false });
+
+document.addEventListener('touchend', event => {
+  const swipe = nativeSwipeNavigation;
+  nativeSwipeNavigation = null;
+  if (!swipe || event.changedTouches.length !== 1 || Date.now() - swipe.startedAt > NATIVE_SWIPE_MAX_MS) return;
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - swipe.x;
+  const dy = touch.clientY - swipe.y;
+  if (Math.abs(dx) < NATIVE_SWIPE_DISTANCE_PX || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+  if (swipe.edge === 'left' && dx > 0) navigateBackFromNativeSwipe();
+  else if (swipe.edge === 'right' && dx < 0) navigateHomeFromNativeSwipe();
+}, { passive:true });
+
+document.addEventListener('touchcancel', () => { nativeSwipeNavigation = null; }, { passive:true });
 
 function switchToNextRoomOrLanding() {
   if (rooms.size > 0) {

@@ -24,7 +24,8 @@ test('service worker caches only static app-shell routes for offline navigation'
   assert.match(worker, /url\.pathname\.startsWith\('\/api\/'\)/);
   assert.doesNotMatch(worker, /cache\.put\([^\n]*(?:api|message|cipher|account|key)/i);
   assert.match(client, /registerServiceWorker\(\)\.catch/);
-  assert.match(client, /You’re offline\. Vaultlix will reconnect automatically\./);
+  assert.match(client, /function renderOfflineState\(\)/);
+  assert.doesNotMatch(client, /You’re offline\. Vaultlix will reconnect automatically\./);
 });
 
 test('incoming CallKit flow holds the keyboard guard until the call is over', () => {
