@@ -4748,7 +4748,8 @@ async function handleNativeCallAction(detail) {
     if (eventId && room.messages.some(record => record.id === eventId)) return;
     if (room.callState !== 'idle') endCall(room, 'Missed call.', 'Missed call');
     else {
-      addCallSysMsg(room, 'Missed call', eventId);
+      const callEvent = unansweredCallEvent('receiver');
+      addCallSysMsg(room, callEvent.receiverText, eventId, callEvent);
       if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
     }
   }
@@ -5274,16 +5275,17 @@ async function flushPendingDecrypt(room) {
   const queued = room.pendingDecrypt;
   room.pendingDecrypt = [];
   for (const item of queued) {
-    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts);
+    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts, item.from);
     if (!rec || rec.pending) continue; // still not ready (shouldn't happen), or genuinely empty
+    const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
     room.messages.push(rec);
     if (isRoomVisible(room)) {
       renderMessageRecord(room, rec, true);
       if (rec.kind === 'text' && rec.jumbo) triggerEmojiEffect(rec.content);
-    } else {
+    } else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') {
       room.unread++;
     }
-    notifyMsg(room);
+    if (!isPerspectiveCallEvent) notifyMsg(room);
     room.readConfirmIds.push(item.msgId);
   }
   if (isRoomVisible(room)) { renderRoomTabs(); updateDocumentTitle(); }
@@ -5917,7 +5919,7 @@ async function startCall() {
     hideCallOverlay();
     refreshCallButton();
     room.callTimeoutTimer = setTimeout(() => {
-      if (room.callState === 'outgoing') endCall(room, 'No answer.', 'Call not answered');
+      if (room.callState === 'outgoing') endCall(room, 'No answer.', 'No answer');
     }, CALL_RING_TIMEOUT_MS);
     return;
   }
@@ -5940,7 +5942,7 @@ async function startCall() {
     renderCallOverlay(room);
     refreshCallButton();
     room.callTimeoutTimer = setTimeout(() => {
-      if (room.callState === 'outgoing') endCall(room, 'No answer.', 'Call not answered');
+      if (room.callState === 'outgoing') endCall(room, 'No answer.', 'No answer');
     }, CALL_RING_TIMEOUT_MS);
     return;
   }
@@ -5960,7 +5962,7 @@ async function startCall() {
     if (room.callState === 'outgoing') sendSignal(room, 'call-invite', { from: room.myName });
   }, 3000);
   room.callTimeoutTimer = setTimeout(() => {
-    if (room.callState === 'outgoing') { queueReliableCallHangup(room); endCall(room, 'No answer.', 'Call not answered'); }
+    if (room.callState === 'outgoing') { queueReliableCallHangup(room); endCall(room, 'No answer.', 'No answer'); }
   }, CALL_RING_TIMEOUT_MS);
 }
 
@@ -6126,7 +6128,9 @@ function clearCallAcceptRetry(room) {
 // while the service still cannot learn that a call occurred or read it.
 async function persistCallSysMsg(room, rec) {
   try {
-    const encrypted = await encryptTextMsg(room, JSON.stringify({ type:'call-event', text:rec.content }));
+    const payload = { type:'call-event', text:rec.content };
+    if (rec.callEvent) payload.callEvent = rec.callEvent;
+    const encrypted = await encryptTextMsg(room, JSON.stringify(payload));
     // Call history is synchronized through the encrypted message stream so
     // both devices retain the same chat timeline, but it is not a new chat
     // message. Suppress the ordinary "New message" push or both endpoints
@@ -6137,19 +6141,32 @@ async function persistCallSysMsg(room, rec) {
   }
 }
 
-function addCallSysMsg(room, text, eventId = null) {
+function unansweredCallEvent(authorRole) {
+  return {
+    outcome:'unanswered',
+    authorRole:authorRole === 'initiator' ? 'initiator' : 'receiver',
+    initiatorText:'No answer',
+    receiverText:'Missed encrypted call',
+  };
+}
+
+function addCallSysMsg(room, text, eventId = null, callEvent = null) {
   // Stamped with a clock time, same as the roadmap's original "Missed call
   // · 11:42" design — a bare "Missed call" a scrollback-length later gives
   // no sense of when, and the toast that announced it in the moment is long
   // gone by then.
   const stamped = `${text} · ${formatMsgTime(Date.now())}`;
-  const rec = { id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)), kind: 'sys', content: stamped, ts:Date.now() };
+  const rec = {
+    id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
+    kind:'sys', content:stamped, ts:Date.now(), callEvent,
+    callEventViewerRole:callEvent?.authorRole || null,
+  };
   if (room.messages.some(existing => existing.id === rec.id)) return;
   if (isDuplicateCallHistoryRecord(room, rec)) return;
   room.seenMsgIds?.add(rec.id);
   room.messages.push(rec);
   if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
-  else if (/^Missed call/.test(text)) room.unread++;
+  else if (/^Missed(?: encrypted)? call/.test(text)) room.unread++;
   renderRoomTabs();
   persistCallSysMsg(room, rec);
 }
@@ -6177,6 +6194,11 @@ function checkStaleIncomingCalls() {
 
 async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (!room) return;
+  const callRole = room.callState === 'outgoing' ? 'initiator' :
+    (room.callState === 'incoming' ? 'receiver' : null);
+  const callEvent = /^(?:Missed call|No answer|Call not answered)$/i.test(String(sysMsgText || '')) && callRole
+    ? unansweredCallEvent(callRole)
+    : null;
   const wasNativeCall = room.nativeCallActive;
   const callHistoryEventId = room.callInviteId ? `call-event-${room.callInviteId}` : null;
   room.lastCallHistoryEventId = callHistoryEventId;
@@ -6223,7 +6245,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // presenting a several-minutes-late call-ending screen over a new message.
   if (options.silentPresentation) {
     hideCallOverlay();
-    if (sysMsgText) addCallSysMsg(room, sysMsgText, callHistoryEventId);
+    if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
     notifyLockedCallEnded();
     return;
   }
@@ -6259,7 +6281,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
     if (toastMsg) toast(toastMsg, toastVariant);
   } else {
     hideCallOverlay();
-    if (sysMsgText) addCallSysMsg(room, sysMsgText, callHistoryEventId);
+    if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
     if (toastMsg) toast(toastMsg, toastVariant);
   }
   notifyLockedCallEnded();
@@ -10797,7 +10819,7 @@ function isVisibleConversationRecord(rec) {
   // Membership/session lifecycle events (joined, left, reconnected, timer
   // changes, and clear notices) are transport state and must not become
   // messages visible to either participant.
-  return /^(?:Encrypted call|Missed(?: encrypted)? call|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
+  return /^(?:Encrypted call|Missed(?: encrypted)? call|No answer|Call declined|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
 }
 
 const CALL_HISTORY_DEDUPE_WINDOW_MS = 12000;
@@ -10862,7 +10884,7 @@ function formatVaultInboxTime(value) {
 function vaultInboxPreview(room, allowContent) {
   const messages = uniqueVisibleConversationRecords(room.messages);
   const last = messages[messages.length - 1];
-  const missed = [...messages].reverse().find(rec => rec?.kind === 'sys' && /^Missed call/.test(rec.content || ''));
+  const missed = [...messages].reverse().find(rec => rec?.kind === 'sys' && /^Missed(?: encrypted)? call/.test(rec.content || ''));
   // Keep the missed call as the latest-activity preview, but only style it
   // as an unread alert until the conversation is actually opened.
   if (missed && (!last || missed === last)) {
@@ -10878,7 +10900,7 @@ function vaultInboxPreview(room, allowContent) {
   if (last.kind === 'image') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('photo')}`, alert: false };
   if (last.kind === 'voice') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('voice_message')}`, alert: false };
   if (last.kind === 'file') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('attachment')}`, alert: false };
-  return { text: String(last.content || i18n('encrypted_conversation')).replace(/\s+/g, ' ').slice(0, 72), alert: /^Missed call/.test(last.content || '') };
+  return { text: String(last.content || i18n('encrypted_conversation')).replace(/\s+/g, ' ').slice(0, 72), alert: /^Missed(?: encrypted)? call/.test(last.content || '') };
 }
 
 function vaultAvatarPalette(seed) {
@@ -12060,7 +12082,16 @@ function showTimerField(show) {
 }
 
 // ── DECRYPT + CLASSIFY AN INCOMING MESSAGE INTO A RECORD ────────────────
-async function processIncomingContent(room, content, name, time, msgId, timestamp = 0) {
+function callEventForViewer(callEvent, fromMe) {
+  if (!callEvent || callEvent.outcome !== 'unanswered') return null;
+  const authorRole = callEvent.authorRole === 'initiator' ? 'initiator' : 'receiver';
+  const viewerRole = fromMe ? authorRole : (authorRole === 'initiator' ? 'receiver' : 'initiator');
+  const text = viewerRole === 'initiator' ? callEvent.initiatorText : callEvent.receiverText;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  return { viewerRole, text:text.trim().slice(0, 120) };
+}
+
+async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null) {
   if (!content) return null;
   let decrypted;
   try {
@@ -12109,7 +12140,14 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       return { ...base, kind: 'gif', klipyId: String(parsed.id || ''), title: String(parsed.title || 'GIF').slice(0, 200), url: parsed.url };
     }
     if (parsed.type === 'call-event' && typeof parsed.text === 'string') {
-      const callRecord = { ...base, kind: 'sys', content: parsed.text.slice(0, 240) };
+      const perspective = callEventForViewer(parsed.callEvent, fromToken === room.token);
+      const callRecord = {
+        ...base,
+        kind:'sys',
+        content:perspective ? `${perspective.text} · ${time}` : parsed.text.slice(0, 240),
+        callEvent:parsed.callEvent || null,
+        callEventViewerRole:perspective?.viewerRole || null,
+      };
       return isDuplicateCallHistoryRecord(room, callRecord) ? null : callRecord;
     }
     if (parsed.text && parsed.reply) {
@@ -12145,7 +12183,7 @@ async function restoreRoomHistory(room) {
 
         let rec = null;
         if (msg.type === 'message') {
-          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts);
+          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from);
           if (rec && rec.pending) {
             // Shouldn't happen here — this function is only ever called once
             // room.sharedKey is already confirmed set (see its call sites) —
@@ -12528,7 +12566,7 @@ async function doPoll(room) {
         if (room.seenMsgIds.size > 500) { const first = room.seenMsgIds.values().next().value; room.seenMsgIds.delete(first); }
 
         if (msg.type === 'message') {
-          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts);
+          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from);
           if (rec && rec.pending) {
             // No shared key yet to decrypt this with (the rederive block
             // above either hasn't run for this peer yet or just failed) —
@@ -12536,8 +12574,9 @@ async function doPoll(room) {
             // redeliver it. Hold onto the raw envelope and replay it via
             // flushPendingDecrypt() the moment deriveSharedKey succeeds,
             // instead of silently dropping it.
-            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts });
+            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from });
           } else if (rec) {
+            const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
             room.messages.push(rec);
             if (isRoomVisible(room)) {
               renderMessageRecord(room, rec, true);
@@ -12547,8 +12586,8 @@ async function doPoll(room) {
               // need to also queue a full-screen effect for later.
               if (rec.kind === 'text' && rec.jumbo) triggerEmojiEffect(rec.content);
             }
-            else room.unread++;
-            notifyMsg(room);
+            else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') room.unread++;
+            if (!isPerspectiveCallEvent) notifyMsg(room);
             // Note: the disappearing-message timer does NOT start here. It
             // used to fire the instant a message was delivered via poll,
             // regardless of whether anyone had actually looked at it — on

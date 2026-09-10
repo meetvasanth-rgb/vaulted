@@ -23,7 +23,7 @@ test('locked iOS terminal call actions cannot resurrect stale call UI', () => {
 test('iOS unanswered CallKit timeout records a missed call before native state disappears', () => {
   assert.match(ios, /let payload = self\.calls\[callID\][\s\S]*reason: \.unanswered/);
   assert.match(ios, /reason: \.unanswered[\s\S]*self\.postAction\("missed", callID: callID, payload: payload\)/);
-  assert.match(client, /detail\.action === 'missed'[\s\S]*addCallSysMsg\(room, 'Missed call', eventId\)/);
+  assert.match(client, /detail\.action === 'missed'[\s\S]*const callEvent = unansweredCallEvent\('receiver'\)[\s\S]*addCallSysMsg\(room, callEvent\.receiverText, eventId, callEvent\)/);
 });
 
 test('missed calls survive the iOS foreground and encrypted-room restoration race', () => {

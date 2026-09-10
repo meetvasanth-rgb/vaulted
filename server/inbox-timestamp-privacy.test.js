@@ -41,9 +41,9 @@ test('only encrypted call history is rendered as a conversation system chip', ()
 });
 
 test('decrypted history retains the server timestamp used by inbox ordering', () => {
-  assert.match(client, /processIncomingContent\(room, msg\.content, msg\.name, formatMsgTime\(msg\.ts\), msg\.id, msg\.ts\)/);
+  assert.match(client, /processIncomingContent\(room, msg\.content, msg\.name, formatMsgTime\(msg\.ts\), msg\.id, msg\.ts, msg\.from\)/);
   assert.match(client, /ts:Number\(timestamp\) \|\| 0/);
-  assert.match(client, /pendingDecrypt\.push\(\{ msgId: msg\.id, content: msg\.content, name: msg\.name, time: formatMsgTime\(msg\.ts\), ts:msg\.ts \}\)/);
+  assert.match(client, /pendingDecrypt\.push\(\{ msgId: msg\.id, content: msg\.content, name: msg\.name, time: formatMsgTime\(msg\.ts\), ts:msg\.ts, from:msg\.from \}\)/);
 });
 
 test('Chrome renders exactly one canonical timestamp per message bubble', () => {
