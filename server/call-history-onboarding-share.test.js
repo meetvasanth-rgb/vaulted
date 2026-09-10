@@ -49,7 +49,7 @@ test('number generation exposes its remaining allowance and own profile can shar
   assert.match(client, /shareNumberCard/);
 });
 
-test('public invitations retain branded previews while number-card QR uses an app-only link', () => {
+test('public invitations retain branded previews while number-card QR uses the verified app-link route', () => {
   const association = fs.readFileSync(path.join(root, 'client/.well-known/apple-app-site-association'), 'utf8');
   const associationJson = JSON.parse(association);
   assert.match(association, /\/\?\?\?\?\?\?\?\?\?\?/);
@@ -64,9 +64,17 @@ test('public invitations retain branded previews while number-card QR uses an ap
   assert.match(client, /og:image:secure_url/);
   assert.match(client, /og:image:alt[^>]+Vaultlix private messaging logo/);
   const shareBody = client.slice(client.indexOf('async function shareOwnPrivateNumber'), client.indexOf('async function blockedVaultFingerprint'));
-  assert.match(shareBody, /vaultlix:\/\/connect\/\$\{privateNumber\}/);
+  assert.match(shareBody, /https:\/\/vaultlix\.com\/\$\{privateNumber\}\?ref=qr/);
+  assert.match(client, /intent:\/\/connect\/\$\{privateNumber\}#Intent;scheme=vaultlix;package=com\.vaultlix\.app/);
   assert.match(shareBody, /VaultlixAndroid\.shareImage/);
   assert.match(shareBody, /navigator\.share\(\{ title:'My Vaultlix Private Number', files:\[file\] \}\)/);
+});
+
+test('number-card preparation starts quietly before the first Android share tap', () => {
+  assert.match(client, /function scheduleNumberCardPrewarm/);
+  assert.match(client, /requestIdleCallback\(work, \{ timeout:1200 \}\)/);
+  assert.match(client, /if \(state\) scheduleNumberCardPrewarm\(state\)/);
+  assert.match(client, /overlay\?\.classList\.add\('open'\)[\s\S]*await renderNumberCard\(state\)/);
 });
 
 test('Android App Links authorize the certificate used by direct tester builds', () => {

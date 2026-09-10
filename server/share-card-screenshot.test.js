@@ -24,9 +24,9 @@ test('share-card screenshot remains visually stable at 1080 by 1350', () => {
   );
 });
 
-test('number-card QR contains only the private app deep link', () => {
-  assert.match(client, /qr\.addData\(`vaultlix:\/\/connect\/\$\{privateNumber\}`\)/);
-  assert.doesNotMatch(client, /quickConnectQrMatrix[\s\S]{0,500}https:\/\/vaultlix\.com/);
+test('number-card QR uses the cross-platform verified app-link route', () => {
+  assert.match(client, /qr\.addData\(quickConnectQrUrl\(privateNumber\)\)/);
+  assert.match(client, /quickConnectQrMatrix[\s\S]{0,500}quickConnectQrUrl\(privateNumber\)/);
   assert.doesNotMatch(client, /console\.(?:info|log)\([^\n]*number-card/);
 });
 

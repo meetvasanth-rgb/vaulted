@@ -1042,6 +1042,8 @@ body.select-mode .chat-ftr{display:none}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
 #number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}
+.number-card-modal.preparing #number-card-canvas{opacity:.5}.number-card-progress{display:none;text-align:center;color:#F8EDF1;font:650 12px/1.4 Inter,sans-serif;padding:10px 0 0}.number-card-modal.preparing .number-card-progress{display:block}
+.pdf-preview-overlay{position:fixed;inset:0;z-index:950;display:none;flex-direction:column;background:#F4EFF1;color:#281F23;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}.pdf-preview-overlay.open{display:flex}.pdf-preview-head{height:62px;flex:0 0 62px;display:flex;align-items:center;gap:12px;padding:9px 14px;background:#fff;border-bottom:1px solid #E4D9DE}.pdf-preview-close{width:42px;height:42px;border-radius:13px;background:#F4E9ED;color:#682C43;font-size:25px}.pdf-preview-title{min-width:0;flex:1}.pdf-preview-name{font:700 15px/1.25 Manrope,Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pdf-preview-meta{margin-top:3px;color:#83757C;font:550 11px Inter,sans-serif}.pdf-preview-stage{min-height:0;flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:18px}.pdf-preview-paper{position:relative;width:min(720px,100%);min-height:240px;display:grid;place-items:center;background:#fff;border-radius:10px;box-shadow:0 8px 30px rgba(62,33,45,.14);overflow:hidden}.pdf-preview-paper canvas{display:block;width:100%;height:auto}.pdf-preview-placeholder{width:100%;height:auto;display:block}.pdf-preview-loading{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.84);color:#755D68;font:650 13px Inter,sans-serif}.pdf-preview-controls{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:14px;padding:10px 14px;background:#fff;border-top:1px solid #E4D9DE}.pdf-preview-controls button{width:42px;height:38px;border-radius:12px;background:#F4E9ED;color:#682C43;font-size:19px}.pdf-preview-controls button:disabled{opacity:.35}.pdf-preview-page{min-width:76px;text-align:center;font:650 12px Inter,sans-serif;color:#6E5B64}.pdf-preview-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px 12px;background:#fff}.pdf-preview-actions button{min-height:44px;border-radius:13px;font:700 13px Inter,sans-serif}.pdf-preview-dismiss{background:#F4E9ED;color:#682C43}.pdf-preview-share{background:#682C43;color:#fff}
 .first-connection-icon{width:70px;height:70px;margin:2px 0 20px;display:grid;place-items:center;border-radius:23px;background:linear-gradient(145deg,#73314B,#512033);color:#fff;box-shadow:0 16px 34px rgba(104,44,67,.22)}.first-connection-icon svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.first-connection-privacy{display:flex;align-items:flex-start;gap:9px;margin:13px 0 2px;padding:12px 13px;border-radius:13px;background:#F7F1F3;color:#75656D;font:550 11.5px/1.45 Inter,sans-serif}.first-connection-privacy svg{width:16px;height:16px;flex:none;margin-top:1px;fill:none;stroke:#682C43;stroke-width:1.8}
 
 .connect-v-mark{font-family:'Cormorant Garamond',serif;font-size:72px;font-weight:300;color:#682C43;letter-spacing:.1em;line-height:1;transform:scale(0.6);opacity:0;transition:transform .5s cubic-bezier(0.34,1.56,0.64,1),opacity .5s cubic-bezier(0.34,1.56,0.64,1)}
@@ -3864,11 +3866,22 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div class="number-card-overlay" id="number-card-overlay" onclick="if(event.target===this)closeNumberCard()">
   <div class="number-card-modal" role="dialog" aria-modal="true" aria-label="Share your Vaultlix Private Number card">
     <canvas id="number-card-canvas" width="1080" height="1350"></canvas>
+    <div class="number-card-progress" role="status">Preparing your number card…</div>
     <div class="number-card-actions">
       <button class="number-card-close" type="button" onclick="closeNumberCard()">Not now</button>
       <button class="number-card-share" type="button" onclick="shareNumberCard()">Share card</button>
     </div>
   </div>
+</div>
+
+<div class="pdf-preview-overlay" id="pdf-preview-overlay" role="dialog" aria-modal="true" aria-labelledby="pdf-preview-name">
+  <div class="pdf-preview-head">
+    <button class="pdf-preview-close" type="button" onclick="closePdfPreview()" aria-label="Close PDF preview">×</button>
+    <div class="pdf-preview-title"><div class="pdf-preview-name" id="pdf-preview-name">PDF</div><div class="pdf-preview-meta" id="pdf-preview-meta">Encrypted document</div></div>
+  </div>
+  <div class="pdf-preview-stage"><div class="pdf-preview-paper"><img class="pdf-preview-placeholder" id="pdf-preview-placeholder" alt="PDF first-page preview"/><canvas id="pdf-preview-canvas"></canvas><div class="pdf-preview-loading" id="pdf-preview-loading">Opening preview…</div></div></div>
+  <div class="pdf-preview-controls"><button id="pdf-preview-previous" type="button" onclick="changePdfPreviewPage(-1)" aria-label="Previous page">‹</button><div class="pdf-preview-page" id="pdf-preview-page">Page 1</div><button id="pdf-preview-next" type="button" onclick="changePdfPreviewPage(1)" aria-label="Next page">›</button></div>
+  <div class="pdf-preview-actions"><button class="pdf-preview-dismiss" type="button" onclick="closePdfPreview()">Close</button><button class="pdf-preview-share" type="button" onclick="shareOpenPdf()">Share PDF</button></div>
 </div>
 
 <!-- Vendored, unmodified except for minification: qrcode-generator v2.0.4
@@ -8163,13 +8176,26 @@ async function shareActivePeerPrivateNumber() {
 async function shareOwnPrivateNumber() {
   const state = loadAccountState();
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
-  await renderNumberCard(state);
   resetNumberCardShareState();
-  document.getElementById('number-card-overlay').classList.add('open');
+  const overlay = document.getElementById('number-card-overlay');
+  const modal = overlay?.querySelector('.number-card-modal');
+  overlay?.classList.add('open');
+  modal?.classList.add('preparing');
+  const shareButton = document.querySelector('.number-card-share');
+  if (shareButton) { shareButton.disabled = true; shareButton.textContent = 'Preparing…'; }
+  try {
+    await renderNumberCard(state);
+    modal?.classList.remove('preparing');
+    if (shareButton) { shareButton.disabled = false; shareButton.textContent = 'Share card'; }
+  } catch (error) {
+    closeNumberCard();
+    toast('Could not prepare your number card');
+  }
 }
 
 function closeNumberCard() {
   resetNumberCardShareState();
+  document.querySelector('.number-card-modal')?.classList.remove('preparing');
   document.getElementById('number-card-overlay')?.classList.remove('open');
 }
 let numberCardAssetPromise = null;
@@ -8207,10 +8233,28 @@ function beginNumberCardShare() {
 
 function quickConnectQrMatrix(privateNumber) {
   const qr = qrcode(0, 'M');
-  qr.addData(`vaultlix://connect/${privateNumber}`);
+  qr.addData(quickConnectQrUrl(privateNumber));
   qr.make();
   return Array.from({ length:qr.getModuleCount() }, (_, row) =>
     Array.from({ length:qr.getModuleCount() }, (_, column) => qr.isDark(row, column)));
+}
+
+function quickConnectQrUrl(privateNumber) {
+  return `https://vaultlix.com/${privateNumber}?ref=qr`;
+}
+
+let numberCardPrewarmScheduled = false;
+function scheduleNumberCardPrewarm(state = loadAccountState()) {
+  if (!state?.privateNumber || numberCardPrewarmScheduled) return;
+  const assetKey = `${state.privateNumber}|${state.displayName || ''}|${state.tier || ''}|${state.isFounding ? 1 : 0}`;
+  if (numberCardAssetKey === assetKey && numberCardAssetPromise) return;
+  numberCardPrewarmScheduled = true;
+  const work = () => {
+    numberCardPrewarmScheduled = false;
+    renderNumberCard(state).catch(() => {});
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(work, { timeout:1200 });
+  else setTimeout(work, 250);
 }
 
 async function renderNumberCard(state = loadAccountState()) {
@@ -8240,6 +8284,7 @@ async function renderNumberCard(state = loadAccountState()) {
     numberCardAssetPromise.then(asset => {
       if (numberCardAssetKey === assetKey) prepareNativeNumberCard(asset.dataUrl);
     }).catch(() => {});
+    return numberCardAssetPromise;
   } finally { URL.revokeObjectURL(objectUrl); }
 }
 
@@ -8322,7 +8367,7 @@ async function showOwnPrivateNumberQr() {
   const state = loadAccountState();
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
   closeQrPanel();
-  const link = `vaultlix://connect/${state.privateNumber}`;
+  const link = quickConnectQrUrl(state.privateNumber);
   const overlay = document.createElement('div');
   overlay.id = 'qr-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
@@ -8565,6 +8610,7 @@ function updateAccountSettingsStatus() {
     landingButton.setAttribute('aria-label', state ? `Open account for ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix');
     landingButton.title = state ? `Signed in with ${formatPrivateNumber(state.privateNumber)}` : 'Sign in to Vaultlix';
   }
+  if (state) scheduleNumberCardPrewarm(state);
 }
 function populateAccountProfileSettings(state = loadAccountState()) {
   const controls = document.getElementById('settings-profile-controls');
@@ -12100,11 +12146,114 @@ function findMessageRec(msgId) {
   return null;
 }
 
+let activePdfPreview = null;
+let pdfPreviewGeneration = 0;
+
+async function openPdfPreview(rec) {
+  closePdfPreview();
+  const overlay = document.getElementById('pdf-preview-overlay');
+  const canvas = document.getElementById('pdf-preview-canvas');
+  const placeholder = document.getElementById('pdf-preview-placeholder');
+  const loading = document.getElementById('pdf-preview-loading');
+  const token = ++pdfPreviewGeneration;
+  const thumbnail = safeImageDataUri('image/jpeg', rec.pdfPreview);
+  document.getElementById('pdf-preview-name').textContent = rec.fileName || 'PDF';
+  document.getElementById('pdf-preview-meta').textContent = `${formatFileSize(Math.ceil(String(rec.base64 || '').length * 3 / 4))} · Encrypted PDF`;
+  placeholder.style.display = thumbnail ? 'block' : 'none';
+  if (thumbnail) placeholder.src = thumbnail; else placeholder.removeAttribute('src');
+  canvas.style.display = 'none';
+  loading.style.display = 'grid';
+  loading.textContent = 'Opening preview…';
+  overlay.classList.add('open');
+  activePdfPreview = { rec, pdf:null, page:1, pageCount:Number(rec.pageCount) || 1, token };
+  updatePdfPreviewControls();
+  try {
+    // Let the viewer paint before decoding a large PDF on slower Android
+    // devices, so the tap always gets immediate visual feedback.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const renderer = await loadPdfRenderer();
+    const raw = atob(rec.base64);
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index++) bytes[index] = raw.charCodeAt(index);
+    const task = renderer.getDocument({ data:bytes, isEvalSupported:false });
+    const pdf = await task.promise;
+    if (!activePdfPreview || activePdfPreview.token !== token) { await pdf.destroy(); return; }
+    activePdfPreview.pdf = pdf;
+    activePdfPreview.pageCount = pdf.numPages;
+    await renderPdfPreviewPage(1);
+  } catch (error) {
+    if (!activePdfPreview || activePdfPreview.token !== token) return;
+    loading.textContent = thumbnail ? 'Full preview unavailable' : 'Preview unavailable';
+    loading.style.background = thumbnail ? 'transparent' : 'rgba(255,255,255,.94)';
+  }
+}
+
+async function renderPdfPreviewPage(pageNumber) {
+  const state = activePdfPreview;
+  if (!state?.pdf) return;
+  const page = Math.max(1, Math.min(state.pageCount, pageNumber));
+  const renderToken = ++pdfPreviewGeneration;
+  state.token = renderToken;
+  state.page = page;
+  const loading = document.getElementById('pdf-preview-loading');
+  loading.style.background = 'rgba(255,255,255,.84)';
+  loading.style.display = 'grid';
+  loading.textContent = `Opening page ${page}…`;
+  updatePdfPreviewControls();
+  try {
+    const pdfPage = await state.pdf.getPage(page);
+    const original = pdfPage.getViewport({ scale:1 });
+    const cssWidth = Math.min(720, Math.max(280, document.documentElement.clientWidth - 36));
+    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    const viewport = pdfPage.getViewport({ scale:(cssWidth / Math.max(1, original.width)) * pixelRatio });
+    const canvas = document.getElementById('pdf-preview-canvas');
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
+    await pdfPage.render({ canvasContext:canvas.getContext('2d', { alpha:false }), viewport }).promise;
+    pdfPage.cleanup();
+    if (!activePdfPreview || activePdfPreview !== state || state.token !== renderToken) return;
+    canvas.style.display = 'block';
+    document.getElementById('pdf-preview-placeholder').style.display = 'none';
+    loading.style.display = 'none';
+  } catch (error) {
+    if (activePdfPreview === state) loading.textContent = 'Could not open this page';
+  }
+}
+
+function updatePdfPreviewControls() {
+  const state = activePdfPreview;
+  const page = state?.page || 1;
+  const pages = state?.pageCount || 1;
+  document.getElementById('pdf-preview-page').textContent = `Page ${page} of ${pages}`;
+  document.getElementById('pdf-preview-previous').disabled = !state?.pdf || page <= 1;
+  document.getElementById('pdf-preview-next').disabled = !state?.pdf || page >= pages;
+}
+
+function changePdfPreviewPage(direction) {
+  if (!activePdfPreview?.pdf) return;
+  renderPdfPreviewPage(activePdfPreview.page + direction);
+}
+
+function shareOpenPdf() {
+  const rec = activePdfPreview?.rec;
+  if (!rec) return;
+  downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
+}
+
+function closePdfPreview() {
+  pdfPreviewGeneration++;
+  const current = activePdfPreview;
+  activePdfPreview = null;
+  document.getElementById('pdf-preview-overlay')?.classList.remove('open');
+  if (current?.pdf) current.pdf.destroy().catch(() => {});
+}
+
 function handleFileTap(msgId) {
   if (wasJustLongPressed()) return;
   if (selectMode) { toggleMessageSelection(msgId); return; }
   const rec = findMessageRec(msgId);
   if (!rec) return;
+  if (isPdfAttachment(rec.mime, rec.fileName)) { openPdfPreview(rec); return; }
   downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
 }
 
@@ -12971,6 +13120,18 @@ function parseJoinLinkCode() {
 function parsePublicPrivateNumber() {
   const match = location.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
   return match ? match[1] : null;
+}
+function attemptAndroidQrAppHandoff(privateNumber) {
+  const params = new URLSearchParams(location.search);
+  if (!privateNumber || params.get('ref') !== 'qr' || params.get('appAttempted') === '1' || isNativeApp() || !/android/i.test(navigator.userAgent)) return;
+  // Android camera apps consistently recognize the HTTPS QR. Normally the
+  // verified App Link opens Vaultlix before a browser appears; this explicit
+  // package-targeted handoff covers devices whose domain preference was reset
+  // or whose scanner deliberately opened Chrome. If Vaultlix is not installed,
+  // Chrome returns to the same invitation page without retrying the handoff.
+  const fallback = `https://vaultlix.com/${privateNumber}?ref=qr&appAttempted=1`;
+  const intent = `intent://connect/${privateNumber}#Intent;scheme=vaultlix;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+  setTimeout(() => { location.href = intent; }, 120);
 }
 function parseRecoveryLink(rawURL = location.href) {
   try {
@@ -14636,7 +14797,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   } else if (startupCreateNumber && !loadAccountState()) {
     openCreateAccount();
   } else if (publicPrivateNumber) {
-    openPublicProfile(publicPrivateNumber);
+    await openPublicProfile(publicPrivateNumber);
+    attemptAndroidQrAppHandoff(publicPrivateNumber);
   } else if (loadQuickConnectTarget()) {
     if (loadAccountState()) await resumeQuickConnectAfterAuthentication();
     else await restoreQuickConnectInvitationAfterReload();

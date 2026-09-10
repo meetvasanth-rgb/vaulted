@@ -22,3 +22,10 @@ test('the pinned PDF renderer and worker are served from Vaultlix itself', () =>
   assert.match(server, /pdfjs-dist\/build\/pdf\.worker\.min\.mjs/);
   assert.match(server, /'\.mjs':'text\/javascript'/);
 });
+
+test('tapping a PDF opens the in-app viewer before sharing', () => {
+  assert.match(client, /id="pdf-preview-overlay"/);
+  assert.match(client, /if \(isPdfAttachment\(rec\.mime, rec\.fileName\)\) \{ openPdfPreview\(rec\); return; \}/);
+  assert.match(client, /function changePdfPreviewPage\(direction\)/);
+  assert.match(client, /function shareOpenPdf\(\)/);
+});
