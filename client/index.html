@@ -4615,7 +4615,7 @@ acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
-  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeBusy','nativeFailed']);
+  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeCancelled','nativeBusy','nativeFailed']);
   const occurredAt = Number(detail.occurredAt || 0);
   const staleTerminalAction = terminalNativeActions.has(detail.action) && occurredAt > 0 && Date.now() - occurredAt > 5000;
   const nativeRoomCode = typeof detail.code === 'string' ? detail.code : '';
@@ -4739,6 +4739,8 @@ async function handleNativeCallAction(detail) {
       { silentPresentation:staleTerminalAction });
   } else if (detail.action === 'nativeDeclined' && room.callState !== 'idle') {
     endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
+  } else if (detail.action === 'nativeCancelled' && room.callState !== 'idle') {
+    endCall(room, null, room.callState === 'incoming' ? 'Caller cancelled' : 'Cancelled call');
   } else if (detail.action === 'nativeBusy' && room.callState !== 'idle') {
     endCall(room, room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.', null, 'busy');
   } else if (detail.action === 'nativeFailed' && room.callState !== 'idle') {
@@ -5548,7 +5550,12 @@ function connectSignaling(room) {
     }
     if (msg && msg.type === 'call-terminal') {
       if (room.callState !== 'idle' && room.callInviteId && room.callInviteId === msg.inviteId) {
-        endCall(room, null, null, null, { silentPresentation:document.hidden });
+        const isIncoming = room.callState === 'incoming';
+        const history = msg.callOutcome === 'declined'
+          ? (isIncoming ? 'Declined call' : 'Call declined')
+          : (msg.callOutcome === 'cancelled' && isIncoming ? 'Caller cancelled'
+            : (msg.callOutcome === 'unanswered' && isIncoming ? 'Missed call' : null));
+        endCall(room, null, history, null, { silentPresentation:document.hidden });
       }
       return;
     }
@@ -5627,7 +5634,10 @@ async function sendSignal(room, type, payload, inviteIdOverride) {
   // only uses it to distinguish retries of one invitation from a genuinely
   // new call, so stale room-level ringing state cannot suppress Android's
   // native wake-up notification.
-  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, envelope }));
+  const terminalReason = type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(payload?.reason)
+    ? payload.reason
+    : undefined;
+  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, terminalReason, envelope }));
   return true;
 }
 
@@ -5642,7 +5652,7 @@ async function retryPendingCallHangup(room) {
   if (!pending || typeof pending.inviteId !== 'string') return;
   clearTimeout(pending.timer);
   pending.attempts = (pending.attempts || 0) + 1;
-  await sendSignal(room, 'call-hangup', {}, pending.inviteId);
+  await sendSignal(room, 'call-hangup', pending.reason ? { reason:pending.reason } : {}, pending.inviteId);
   if (room.pendingCallHangup !== pending) return;
   // Once the socket accepts it the server replies with call-hangup-ack.
   // Retry across short network stalls; after the burst, ws.onopen performs
@@ -5652,13 +5662,15 @@ async function retryPendingCallHangup(room) {
   }
 }
 
-function queueReliableCallHangup(room) {
+function queueReliableCallHangup(room, reason = null) {
   if (!room) return;
   const inviteId = room.callInviteId || room.pendingCallHangup?.inviteId;
-  if (!inviteId) { sendSignal(room, 'call-hangup', {}); return; }
+  if (!inviteId) { sendSignal(room, 'call-hangup', reason ? { reason } : {}); return; }
   if (room.pendingCallHangup?.inviteId !== inviteId) {
     clearPendingCallHangup(room);
-    room.pendingCallHangup = { inviteId, attempts:0, timer:null };
+    room.pendingCallHangup = { inviteId, reason, attempts:0, timer:null };
+  } else if (reason) {
+    room.pendingCallHangup.reason = reason;
   }
   retryPendingCallHangup(room);
 }
@@ -5772,7 +5784,10 @@ async function handleSignalMessage(room, type, payload, inviteId) {
     // (active) call is ending, endCall() detects that itself and plays the
     // vanish moment instead of a toast — nothing to pass for that case.
     const wasIncoming = room.callState === 'incoming';
-    endCall(room, wasIncoming ? 'Missed call.' : null, wasIncoming ? 'Missed call' : null);
+    const wasCancelled = wasIncoming && payload?.reason === 'cancelled';
+    endCall(room,
+      wasCancelled ? null : (wasIncoming ? 'Missed call.' : null),
+      wasCancelled ? 'Caller cancelled' : (wasIncoming ? 'Missed call' : null));
   } else if (type === 'offer') {
     // Only the answerer (callee) should ever receive an offer. Normally
     // room.pc already exists by the time this arrives — acceptCall() sets
@@ -5962,7 +5977,7 @@ async function startCall() {
     if (room.callState === 'outgoing') sendSignal(room, 'call-invite', { from: room.myName });
   }, 3000);
   room.callTimeoutTimer = setTimeout(() => {
-    if (room.callState === 'outgoing') { queueReliableCallHangup(room); endCall(room, 'No answer.', 'No answer'); }
+    if (room.callState === 'outgoing') { queueReliableCallHangup(room, 'unanswered'); endCall(room, 'No answer.', 'No answer'); }
   }, CALL_RING_TIMEOUT_MS);
 }
 
@@ -6100,12 +6115,12 @@ function declineCall() {
 function hangupCall() {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState === 'idle') return;
-  queueReliableCallHangup(room);
+  const wasOutgoing = room.callState === 'outgoing';
+  queueReliableCallHangup(room, wasOutgoing ? 'cancelled' : 'ended');
   // Canceling my own outgoing call before it's answered is worth a record
   // too — ending an already-active call is the normal/expected way calls
   // finish, so that case gets no sys message (nothing "missed" about it).
-  const wasOutgoing = room.callState === 'outgoing';
-  endCall(room, null, wasOutgoing ? 'Call canceled' : null);
+  endCall(room, null, wasOutgoing ? 'Cancelled call' : null);
 }
 
 function clearCallTimeout(room) {
@@ -6142,12 +6157,20 @@ async function persistCallSysMsg(room, rec) {
 }
 
 function unansweredCallEvent(authorRole) {
-  return {
-    outcome:'unanswered',
+  return callOutcomeEvent('unanswered', authorRole);
+}
+
+function callOutcomeEvent(outcome, authorRole) {
+  const labels = {
+    unanswered: { initiatorText:'No answer', receiverText:'Missed encrypted call' },
+    declined: { initiatorText:'Call declined', receiverText:'Declined call' },
+    cancelled: { initiatorText:'Cancelled call', receiverText:'Caller cancelled' },
+  }[outcome];
+  return labels ? {
+    outcome,
     authorRole:authorRole === 'initiator' ? 'initiator' : 'receiver',
-    initiatorText:'No answer',
-    receiverText:'Missed encrypted call',
-  };
+    ...labels,
+  } : null;
 }
 
 function addCallSysMsg(room, text, eventId = null, callEvent = null) {
@@ -6196,18 +6219,22 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (!room) return;
   const callRole = room.callState === 'outgoing' ? 'initiator' :
     (room.callState === 'incoming' ? 'receiver' : null);
-  const callEvent = /^(?:Missed call|No answer|Call not answered)$/i.test(String(sysMsgText || '')) && callRole
-    ? unansweredCallEvent(callRole)
-    : null;
+  const historyText = String(sysMsgText || '');
+  const outcome = /^(?:Missed call|Missed encrypted call|No answer|Call not answered)$/i.test(historyText)
+    ? 'unanswered'
+    : (/^(?:Call declined|Declined call)$/i.test(historyText)
+      ? 'declined'
+      : (/^(?:Call canceled|Cancelled call|Caller cancelled)$/i.test(historyText) ? 'cancelled' : null));
+  const callEvent = outcome && callRole ? callOutcomeEvent(outcome, callRole) : null;
   const wasNativeCall = room.nativeCallActive;
   const callHistoryEventId = room.callInviteId ? `call-event-${room.callInviteId}` : null;
   room.lastCallHistoryEventId = callHistoryEventId;
   clearAndroidCallNotifications();
   try {
-    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code });
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'end', code: room.code, reason:outcome || 'ended' });
   } catch (e) {}
   if (room.nativeCallActive) {
-    try { window.VaultlixAndroid?.endNativeCall?.(); } catch (e) {}
+    try { window.VaultlixAndroid?.endNativeCall?.(outcome || 'ended'); } catch (e) {}
   }
   // Capture before the state reset below — this is the only point that
   // still knows whether a real, connected call is what's ending here (as
@@ -10819,7 +10846,7 @@ function isVisibleConversationRecord(rec) {
   // Membership/session lifecycle events (joined, left, reconnected, timer
   // changes, and clear notices) are transport state and must not become
   // messages visible to either participant.
-  return /^(?:Encrypted call|Missed(?: encrypted)? call|No answer|Call declined|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
+  return /^(?:Encrypted call|Missed(?: encrypted)? call|No answer|Call declined|Declined call|Caller cancelled|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
 }
 
 const CALL_HISTORY_DEDUPE_WINDOW_MS = 12000;
@@ -12083,7 +12110,7 @@ function showTimerField(show) {
 
 // ── DECRYPT + CLASSIFY AN INCOMING MESSAGE INTO A RECORD ────────────────
 function callEventForViewer(callEvent, fromMe) {
-  if (!callEvent || callEvent.outcome !== 'unanswered') return null;
+  if (!callEvent || !['unanswered','declined','cancelled'].includes(callEvent.outcome)) return null;
   const authorRole = callEvent.authorRole === 'initiator' ? 'initiator' : 'receiver';
   const viewerRole = fromMe ? authorRole : (authorRole === 'initiator' ? 'receiver' : 'initiator');
   const text = viewerRole === 'initiator' ? callEvent.initiatorText : callEvent.receiverText;

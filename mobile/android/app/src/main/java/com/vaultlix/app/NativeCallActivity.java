@@ -58,6 +58,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private String roomCode;
     private boolean finishingCall;
     private boolean outgoing;
+    private String pendingHistory = "";
     private AudioTrack ringbackTrack;
     private final Runnable ringback = new Runnable() {
         @Override public void run() {
@@ -190,7 +191,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         routeLabel = (TextView) routeControl.getChildAt(1);
         routeButton.setOnClickListener(v -> toggleSpeaker());
         LinearLayout endControl = control(R.drawable.ic_call_end, R.string.native_end, END, true);
-        ((ImageButton) endControl.getChildAt(0)).setOnClickListener(v -> { engine.end(true); finishCall(); });
+        ((ImageButton) endControl.getChildAt(0)).setOnClickListener(v -> {
+            if (outgoing && connectedAt == 0) pendingHistory = "Cancelled call";
+            engine.end(true);
+            finishCall();
+        });
         actions.addView(muteControl, controlParams());
         actions.addView(routeControl, controlParams());
         actions.addView(endControl, controlParams());
@@ -243,14 +248,21 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         });
     }
     @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
-    @Override public void onEnded(String reason) { runOnUiThread(this::finishCall); }
+    @Override public void onEnded(String reason) { runOnUiThread(() -> {
+        if (connectedAt == 0) {
+            if ("declined".equals(reason)) pendingHistory = outgoing ? "Call declined" : "Declined call";
+            else if ("cancelled".equals(reason)) pendingHistory = outgoing ? "Cancelled call" : "Caller cancelled";
+            else if ("unanswered".equals(reason)) pendingHistory = outgoing ? "No answer" : "Missed encrypted call";
+        }
+        finishCall();
+    }); }
 
     private void finishCall() {
         if (finishingCall) return;
         finishingCall = true;
         stopRingback();
         handler.removeCallbacks(tick);
-        String history = connectedAt == 0 ? "" : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
+        String history = connectedAt == 0 ? pendingHistory : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
         MainActivity.notifyDedicatedCallEnded(roomCode, history);
         showCallEndedMoment();
     }

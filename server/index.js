@@ -490,6 +490,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     isCall: !!parsed.isCall,
     isCallEnd: !!parsed.isCallEnd,
     missedCall: !!parsed.missedCall,
+    callOutcome: parsed.callOutcome || '',
     caller: parsed.caller || '',
     callId: parsed.callId || '',
     msgId: parsed.msgId || '',
@@ -558,6 +559,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         isCall: parsed.isCall ? 'true' : 'false',
         isCallEnd: parsed.isCallEnd ? 'true' : 'false',
         missedCall: parsed.missedCall ? 'true' : 'false',
+        callOutcome: String(parsed.callOutcome || ''),
         caller: String(parsed.caller || ''),
         callId: String(parsed.callId || ''),
         msgId: String(parsed.msgId || ''),
@@ -682,7 +684,7 @@ function sendVoipPush(member, payload) {
 // Remote hang-up is deliberately a normal background APNs notification,
 // never a PushKit notification. Apple requires every VoIP push to report a
 // new incoming CallKit call and terminates apps that use it for call cleanup.
-function sendNativeCallEnd(member, callId) {
+function sendNativeCallEnd(member, callId, callOutcome = 'ended') {
   if (!APNS_CONFIGURED || !member || !member.apnsToken || !callId) return Promise.resolve(false);
   const host = member.apnsEnvironment === 'sandbox'
     ? 'https://api.sandbox.push.apple.com'
@@ -690,7 +692,8 @@ function sendNativeCallEnd(member, callId) {
   // This is an ordinary background APNs notification, so use the action
   // consumed by UIApplication's remote-notification callback. Current iOS
   // builds accept both spellings to remain compatible during rolling deploys.
-  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId });
+  const safeOutcome = ['cancelled','unanswered','declined','ended'].includes(callOutcome) ? callOutcome : 'ended';
+  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId, callOutcome:safeOutcome });
   return new Promise(resolve => {
     let client;
     try { client = http2.connect(host); } catch (e) { resolve(false); return; }
@@ -2293,15 +2296,24 @@ async function api(path, method, d, p, res, ip, headers) {
     }
 
     let matchedRoom = null;
-    for (const room of rooms.values()) {
-      if (room.nativeCallId === callId) { matchedRoom = room; break; }
+    let matchedRoomCode = '';
+    for (const [candidateCode, room] of rooms) {
+      if (room.nativeCallId === callId) { matchedRoom = room; matchedRoomCode = candidateCode; break; }
     }
     // Deliberately return the same result for an expired/already-declined ID:
     // native retries stay idempotent and this is not a call-ID oracle.
     if (!matchedRoom) return res200(res, { ok: true });
 
     const calleeToken = matchedRoom.nativeCalleeToken;
-    markInviteTerminated(matchedRoom, matchedRoom.nativeInviteId);
+    const terminalInviteId = matchedRoom.nativeInviteId;
+    const nativeCallId = matchedRoom.nativeCallId;
+    const now = Date.now();
+    markInviteTerminated(matchedRoom, terminalInviteId, now);
+    if (terminalInviteId) {
+      matchedRoom.callTerminal = {
+        inviteId:terminalInviteId, endedByToken:calleeToken, endedAt:now, callOutcome:'declined',
+      };
+    }
     matchedRoom.ringingUntil = 0;
     matchedRoom.activeCall = false;
     matchedRoom.nativeCallId = null;
@@ -2324,7 +2336,15 @@ async function api(path, method, d, p, res, ip, headers) {
       for (const callerSocket of callerSockets) {
         if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
           try { callerSocket.send(JSON.stringify({ type: 'native-call-declined' })); } catch (e) {}
+          sendCallTerminalControl(callerSocket, matchedRoom.callTerminal);
         }
+      }
+      const caller = matchedRoom.members.get(memberToken);
+      if (caller?.fcmToken) {
+        sendFcmNotification(caller, JSON.stringify({
+          isCallEnd:true, missedCall:false, callOutcome:'declined',
+          callId:nativeCallId || '', code:matchedRoomCode,
+        }), 30).catch(() => {});
       }
       break;
     }
@@ -4082,7 +4102,10 @@ function activeCallTerminalFor(room, recipientToken, now = Date.now()) {
 function sendCallTerminalControl(socket, terminal) {
   if (!socket || socket.readyState !== socket.OPEN || !terminal) return false;
   try {
-    socket.send(JSON.stringify({ type:'call-terminal', inviteId:terminal.inviteId, endedAt:terminal.endedAt }));
+    socket.send(JSON.stringify({
+      type:'call-terminal', inviteId:terminal.inviteId,
+      endedAt:terminal.endedAt, callOutcome:terminal.callOutcome || 'ended',
+    }));
     return true;
   } catch (error) {
     return false;
@@ -4334,7 +4357,13 @@ wss.on('connection', (ws) => {
           // "the peer's session actually restarted" apart from "this looks
           // like a replay" in its own sequence-number check — meaningless to
           // this server, just forwarded along with everything else opaque.
-          peerWs.send(JSON.stringify({ type: msg2.type, from: token, sessionId: msg2.sessionId, inviteId: msg2.inviteId, envelope: msg2.envelope }));
+          peerWs.send(JSON.stringify({
+            type:msg2.type, from:token, sessionId:msg2.sessionId,
+            inviteId:msg2.inviteId,
+            terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
+              ? msg2.terminalReason : undefined,
+            envelope:msg2.envelope,
+          }));
           // No success log here on purpose — this fires on every single
           // signaling message (every ICE candidate included), which was
           // flooding Railway's logs. The dropped-peer case below is the one
@@ -4465,11 +4494,28 @@ wss.on('connection', (ws) => {
           room2.ringingUntil = 0;
           room2.activeCall = true;
         } else if (msg2.type === 'call-decline' || msg2.type === 'call-busy') {
-          markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId);
+          const now = Date.now();
+          const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
+          const callOutcome = msg2.type === 'call-decline' ? 'declined' : 'ended';
+          markInviteTerminated(room2, terminalInviteId, now);
+          if (terminalInviteId) {
+            room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome };
+            try { ws.send(JSON.stringify({ type:'call-hangup-ack', inviteId:terminalInviteId })); } catch (e) {}
+            for (const peerSocket of new Set([
+              signalingSockets.get(tok), nativeCallSignalingSockets.get(tok),
+            ])) sendCallTerminalControl(peerSocket, room2.callTerminal);
+          }
+          const nativeCallId = room2.nativeCallId;
           room2.ringingUntil = 0;
           room2.activeCall = false;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
+          if (msg2.type === 'call-decline' && peerMember.fcmToken) {
+            sendFcmNotification(peerMember, JSON.stringify({
+              isCallEnd:true, missedCall:false, callOutcome:'declined',
+              callId:nativeCallId || '', code:roomCode,
+            }), 30).catch(() => {});
+          }
         } else if (msg2.type === 'call-hangup') {
           // A hangup landing while the ring window is still open means
           // nobody ever answered — the caller gave up (their own 30s ring
@@ -4480,10 +4526,13 @@ wss.on('connection', (ws) => {
           // surfaced anything past that first notification — same as a phone
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
+          const callOutcome = ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
+            ? msg2.terminalReason
+            : (room2.ringingUntil ? 'unanswered' : 'ended');
           const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
           markInviteTerminated(room2, terminalInviteId, now);
           if (terminalInviteId) {
-            room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now };
+            room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome };
             // Confirm server receipt so web and native senders can keep the
             // signaling socket alive only until the terminal state is safe.
             try { ws.send(JSON.stringify({ type:'call-hangup-ack', inviteId:terminalInviteId })); } catch (e) {}
@@ -4500,13 +4549,14 @@ wss.on('connection', (ws) => {
           // clear it immediately. Classify from that state rather than the
           // wall-clock edge so an unanswered call is never lost from history.
           const wasStillRinging = Boolean(room2.ringingUntil);
+          const isMissedCall = wasStillRinging && callOutcome === 'unanswered';
           room2.ringingUntil = 0;
           room2.activeCall = false;
           const nativeCallId = room2.nativeCallId;
           const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
-          if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId).catch(() => {});
+          if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId, callOutcome).catch(() => {});
           // Android's full-screen incoming-call surface is native too. Its
           // WebSocket may be frozen while the keyguard is up, so send a
           // data-only FCM terminal event keyed to this call. This closes the
@@ -4514,12 +4564,13 @@ wss.on('connection', (ws) => {
           if (peerMember.fcmToken) {
             sendFcmNotification(peerMember, JSON.stringify({
               isCallEnd: true,
-              missedCall: !!wasStillRinging,
+              missedCall: isMissedCall,
+              callOutcome,
               callId: nativeCallId || '',
               code: roomCode,
             }), 30).catch(() => {});
           }
-          if (wasStillRinging && hasPushDestination(peerMember)) {
+          if (isMissedCall && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
               title: 'Vaultlix',

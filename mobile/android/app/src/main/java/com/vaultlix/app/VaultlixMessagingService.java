@@ -31,13 +31,17 @@ public class VaultlixMessagingService extends MessagingService {
         if ("true".equalsIgnoreCase(data.get("isCallEnd"))) {
             NativeWebRtcCallEngine engine = NativeWebRtcCallEngine.get(this);
             if (!engine.shouldHandleRemoteEnd(safe(data.get("code")))) return;
-            if ("true".equalsIgnoreCase(data.get("missedCall"))) {
+            String callOutcome = safe(data.get("callOutcome"));
+            if ("true".equalsIgnoreCase(data.get("missedCall")) ||
+                    "cancelled".equals(callOutcome) || "declined".equals(callOutcome)) {
                 // The WebView is commonly frozen or not yet restored when a
                 // lock-screen ring expires. Persist the conversation-history
                 // marker before closing native UI; MainActivity consumes it
                 // only after its window and encrypted room list are usable.
                 NativeCallActions.markPendingWebViewCallEnd(
-                        this, safe(data.get("code")), "Missed call"
+                        this, safe(data.get("code")),
+                        "cancelled".equals(callOutcome) ? "Caller cancelled" :
+                                ("declined".equals(callOutcome) ? "Call declined" : "Missed call")
                 );
             }
             engine.end(false);

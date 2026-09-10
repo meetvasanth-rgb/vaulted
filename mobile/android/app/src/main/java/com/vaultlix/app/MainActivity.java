@@ -53,7 +53,12 @@ public class MainActivity extends BridgeActivity {
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
-        @Override public void onEnded(String reason) { emitNativeCallAction("ended"); }
+        @Override public void onEnded(String reason) {
+            if ("declined".equals(reason)) emitNativeCallAction("nativeDeclined");
+            else if ("cancelled".equals(reason)) emitNativeCallAction("nativeCancelled");
+            else if ("unanswered".equals(reason)) emitNativeCallAction("missed");
+            else emitNativeCallAction("ended");
+        }
     };
     private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
     private final Runnable enforceConnectedAudioRoute = () -> {
@@ -254,7 +259,7 @@ public class MainActivity extends BridgeActivity {
         super.onWindowFocusChanged(hasFocus);
         String[] pendingEnd = hasFocus ? NativeCallActions.consumePendingWebViewCallEnd(this) : null;
         if (pendingEnd != null) {
-            if ("Missed call".equals(pendingEnd[1])) {
+            if (pendingEnd[1] != null && !pendingEnd[1].isEmpty()) {
                 // Window focus arrives before the remote page has necessarily
                 // restored its encrypted rooms. A single delayed delivery
                 // avoids losing the history row without replaying it twice.
@@ -554,7 +559,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void endNativeCall() { nativeCallEngine.end(true); }
+        public void endNativeCall(String outcome) { nativeCallEngine.end(true, outcome); }
 
         @JavascriptInterface
         public void setNativeMuted(boolean muted) { nativeCallEngine.setMuted(muted); }

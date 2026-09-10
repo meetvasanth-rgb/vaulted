@@ -15,7 +15,7 @@ test('Android native calls use encrypted signaling and forced TURN', () => {
   assert.match(engine, /call-accept/);
   assert.match(engine, /scheduleTurnRetry/);
   assert.match(engine, /send hangup room=/);
-  assert.match(engine, /retryHangupUntilAcknowledged\(generation, 10\)/);
+  assert.match(engine, /retryHangupUntilAcknowledged\(generation, 10, callOutcome\)/);
   assert.match(engine, /"call-hangup-ack"\.equals\(type\)/);
 });
 

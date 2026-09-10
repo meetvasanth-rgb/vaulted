@@ -145,7 +145,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // end push already in flight during a rolling server deploy cannot
         // strand a CXCall on the device.
         if action == "end" || action == "endCall" {
-            endCall(callID: callID)
+            endCall(callID: callID, outcome: data["callOutcome"] as? String)
             completion()
             return
         }
@@ -317,10 +317,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         stopRingback(callID: action.callUUID)
         let payload = calls.removeValue(forKey: action.callUUID) ?? [:]
+        let wasAnswered = answeredCalls.contains(action.callUUID)
+        let wasOutgoing = outgoingCalls.contains(action.callUUID)
+        let outcome = wasAnswered ? "ended" : (wasOutgoing ? "cancelled" : "declined")
         answeredCalls.remove(action.callUUID)
         connectedCalls.remove(action.callUUID)
         outgoingCalls.remove(action.callUUID)
-        NativeWebRTCCallEngine.shared.end(callID: action.callUUID, notifyPeer: true)
+        NativeWebRTCCallEngine.shared.end(callID: action.callUUID, notifyPeer: true, outcome: outcome)
         nativeMediaCalls.remove(action.callUUID)
         postAction("declineOrEnd", callID: action.callUUID, payload: payload)
         action.fulfill()
@@ -336,10 +339,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         NativeWebRTCCallEngine.shared.reset()
     }
 
-    func endCallFromWeb(roomCode: String) {
+    func endCallFromWeb(roomCode: String, outcome: String = "ended") {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first else { return }
         stopRingback(callID: match.key)
-        NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true)
+        NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true, outcome: outcome)
         provider.reportCall(with: match.key, endedAt: Date(), reason: .remoteEnded)
         calls.removeValue(forKey: match.key)
         answeredCalls.remove(match.key)
@@ -421,7 +424,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         provider.reportCall(with: callID, updated: update)
     }
 
-    func endCall(callID: UUID) {
+    func endCall(callID: UUID, outcome: String? = nil) {
         guard let payload = calls[callID] else { return }
         stopRingback(callID: callID)
         let wasAnswered = answeredCalls.contains(callID)
@@ -435,7 +438,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // CallKit and native WebRTC are only two of the three call-state
         // owners. Tell the embedded web UI as well, otherwise its call screen
         // and duration timer remain live after the remote peer has hung up.
-        postAction(wasAnswered ? "ended" : "missed", callID: callID, payload: payload)
+        let action = outcome == "cancelled" ? "nativeCancelled" :
+            (outcome == "unanswered" ? "missed" :
+                (outcome == "declined" ? "nativeDeclined" : (wasAnswered ? "ended" : "missed")))
+        postAction(action, callID: callID, payload: payload)
     }
 
     /// Called only after libwebrtc reports an established ICE path. The web
@@ -686,7 +692,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if (action == "end" || action == "endCall"),
            let rawCallID = userInfo["callId"] as? String,
            let callID = UUID(uuidString: rawCallID) {
-            VaultlixCallManager.shared.endCall(callID: callID)
+            VaultlixCallManager.shared.endCall(callID: callID, outcome: userInfo["callOutcome"] as? String)
             completionHandler(.newData)
             return
         }

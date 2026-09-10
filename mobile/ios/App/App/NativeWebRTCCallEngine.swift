@@ -147,11 +147,13 @@ final class NativeWebRTCCallEngine: NSObject {
         }
     }
 
-    func end(callID: UUID, notifyPeer: Bool) {
+    func end(callID: UUID, notifyPeer: Bool, outcome requestedOutcome: String? = nil) {
         queue.async {
             guard self.callID == callID else { return }
             guard notifyPeer else { self.resetLocked(); return }
             guard !self.ending else { return }
+            let fallback = self.answered ? "ended" : (self.outgoing ? "cancelled" : "declined")
+            let callOutcome = self.normalizedOutcome(requestedOutcome, fallback: fallback)
             self.ending = true
             // Stop media immediately, while retaining only encrypted
             // signaling long enough for the server to acknowledge hang-up.
@@ -164,7 +166,10 @@ final class NativeWebRTCCallEngine: NSObject {
             let generation = self.hangupRetryGeneration
             func retry(_ remaining: Int) {
                 guard generation == self.hangupRetryGeneration, self.ending, self.room != nil else { return }
-                self.sendSignalLocked(type: "call-hangup", payload: [:])
+                self.sendSignalLocked(
+                    type: callOutcome == "declined" ? "call-decline" : "call-hangup",
+                    payload: ["reason": callOutcome]
+                )
                 guard remaining > 1 else {
                     self.queue.asyncAfter(deadline: .now() + 0.5) {
                         if generation == self.hangupRetryGeneration { self.resetLocked() }
@@ -262,8 +267,12 @@ final class NativeWebRTCCallEngine: NSObject {
         }
         if type == "call-terminal" {
             guard wireInviteID == inviteID, let callID else { return }
+            let outcome = normalizedOutcome(object["callOutcome"] as? String, fallback: "ended")
             DispatchQueue.main.async {
-                VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: "ended")
+                let action = outcome == "cancelled" ? "nativeCancelled" :
+                    (outcome == "unanswered" ? "missed" :
+                        (outcome == "declined" ? "nativeDeclined" : "ended"))
+                VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: action)
             }
             resetLocked()
             return
@@ -316,11 +325,12 @@ final class NativeWebRTCCallEngine: NSObject {
             // together instead of leaving a live system call behind.
             if let callID {
                 DispatchQueue.main.async {
-                    VaultlixCallManager.shared.nativeCallDidEnd(
-                        callID: callID,
-                        action: type == "call-decline" ? "nativeDeclined" :
-                            (type == "call-busy" ? "nativeBusy" : "ended")
-                    )
+                    let outcome = self.normalizedOutcome(payload["reason"] as? String, fallback: "ended")
+                    let action = type == "call-decline" ? "nativeDeclined" :
+                        (type == "call-busy" ? "nativeBusy" :
+                            (outcome == "cancelled" ? "nativeCancelled" :
+                                (outcome == "unanswered" ? "missed" : "ended")))
+                    VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: action)
                 }
             }
             resetLocked()
@@ -474,6 +484,9 @@ final class NativeWebRTCCallEngine: NSObject {
         trace("signal sending type=\(type)")
         var wire: [String: Any] = ["type": type, "sessionId": sessionID, "envelope": envelope]
         if let inviteID { wire["inviteId"] = inviteID }
+        if type == "call-hangup" {
+            wire["terminalReason"] = normalizedOutcome(payload["reason"] as? String, fallback: "ended")
+        }
         sendRawLocked(wire)
     }
 
@@ -603,6 +616,11 @@ final class NativeWebRTCCallEngine: NSObject {
         ending = false
         inviteID = nil
         outgoingCaller = "Someone"
+    }
+
+    private func normalizedOutcome(_ value: String?, fallback: String) -> String {
+        guard let value, ["cancelled", "unanswered", "declined", "ended"].contains(value) else { return fallback }
+        return value
     }
 }
 

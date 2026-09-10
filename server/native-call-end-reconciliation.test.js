@@ -37,7 +37,7 @@ test('missed calls survive the iOS foreground and encrypted-room restoration rac
 
 test('Android call-end push preserves missed-call history until the encrypted inbox is ready', () => {
   assert.match(androidMessaging, /isCallEnd[\s\S]*missedCall[\s\S]*markPendingWebViewCallEnd[\s\S]*"Missed call"/);
-  assert.match(androidMain, /"Missed call"\.equals\(pendingEnd\[1\]\)[\s\S]*postDelayed[\s\S]*5_000/);
+  assert.match(androidMain, /pendingEnd\[1\] != null && !pendingEnd\[1\]\.isEmpty\(\)[\s\S]*postDelayed[\s\S]*5_000/);
   assert.match(androidMain, /clearUnderlyingCallState\(pendingEnd\[0\], pendingEnd\[1\]\)/);
   assert.match(server, /const wasStillRinging = Boolean\(room2\.ringingUntil\)/);
 });
@@ -50,7 +50,7 @@ test('opening a conversation clears its missed-call inbox alert', () => {
 
 test('hang-up is acknowledged, retried and reconciled on both call engines', () => {
   assert.match(server, /CALL_TERMINAL_TTL_MS = 2 \* 60 \* 1000/);
-  assert.match(server, /room2\.callTerminal = \{ inviteId:terminalInviteId, endedByToken:token, endedAt:now \}/);
+  assert.match(server, /room2\.callTerminal = \{ inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome \}/);
   assert.match(server, /type:'call-hangup-ack'/);
   assert.match(server, /sendCallTerminalControl\(ws, activeCallTerminalFor\(room, token\)\)/);
   assert.match(client, /function queueReliableCallHangup/);
@@ -59,7 +59,7 @@ test('hang-up is acknowledged, retried and reconciled on both call engines', () 
   assert.match(iosEngine, /retry\(10\)/);
   assert.match(iosEngine, /type == "call-hangup-ack"/);
   assert.match(iosEngine, /case "call-invite":[\s\S]*inviteID = wireInviteID/);
-  assert.match(androidEngine, /retryHangupUntilAcknowledged\(generation, 10\)/);
+  assert.match(androidEngine, /retryHangupUntilAcknowledged\(generation, 10, callOutcome\)/);
   assert.match(androidEngine, /"call-hangup-ack"\.equals\(type\)/);
   assert.match(androidEngine, /case "call-invite":[\s\S]*inviteId = wireInviteId/);
 });

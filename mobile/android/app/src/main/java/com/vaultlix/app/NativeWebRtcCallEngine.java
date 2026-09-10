@@ -164,10 +164,14 @@ final class NativeWebRtcCallEngine {
 
     void setMuted(boolean muted) { executor.execute(() -> { if (audioTrack != null) audioTrack.setEnabled(!muted); }); }
 
-    void end(boolean notifyPeer) {
+    void end(boolean notifyPeer) { end(notifyPeer, null); }
+
+    void end(boolean notifyPeer, String requestedOutcome) {
         executor.execute(() -> {
             if (!notifyPeer) { reset("ended"); return; }
             if (ending || room == null) return;
+            final String callOutcome = normalizeOutcome(requestedOutcome,
+                    answered ? "ended" : (outgoing ? "cancelled" : "declined"));
             ending = true;
             // End microphone/media immediately but retain the authenticated
             // signal path until the server confirms terminal-state receipt.
@@ -175,21 +179,25 @@ final class NativeWebRtcCallEngine {
             if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
             if (audioSource != null) { audioSource.dispose(); audioSource = null; }
             pendingIce.clear();
-            retryHangupUntilAcknowledged(generation, 10);
+            retryHangupUntilAcknowledged(generation, 10, callOutcome);
         });
     }
 
-    private void retryHangupUntilAcknowledged(int run, int remaining) {
+    private void retryHangupUntilAcknowledged(int run, int remaining, String callOutcome) {
         if (run != generation || !ending || room == null) return;
         Log.i(TAG, "send hangup room=" + currentRoomCode + " remaining=" + remaining);
-        sendSignal("call-hangup", new JSONObject());
+        try {
+            sendSignal("declined".equals(callOutcome) ? "call-decline" : "call-hangup",
+                    new JSONObject().put("reason", callOutcome));
+        }
+        catch (Exception ignored) {}
         if (remaining <= 1) {
             scheduler.schedule(() -> executor.execute(() -> {
                 if (run == generation && ending) reset("ended");
             }), 500, TimeUnit.MILLISECONDS);
             return;
         }
-        scheduler.schedule(() -> executor.execute(() -> retryHangupUntilAcknowledged(run, remaining - 1)),
+        scheduler.schedule(() -> executor.execute(() -> retryHangupUntilAcknowledged(run, remaining - 1, callOutcome)),
                 400, TimeUnit.MILLISECONDS);
     }
 
@@ -247,7 +255,9 @@ final class NativeWebRtcCallEngine {
                 return;
             }
             if ("call-terminal".equals(type)) {
-                if (!wireInviteId.isEmpty() && wireInviteId.equals(inviteId)) reset("call-hangup");
+                if (!wireInviteId.isEmpty() && wireInviteId.equals(inviteId)) {
+                    reset(normalizeOutcome(wire.optString("callOutcome"), "ended"));
+                }
                 return;
             }
             String remoteSession = wire.optString("sessionId");
@@ -277,7 +287,11 @@ final class NativeWebRtcCallEngine {
                     break;
                 case "answer": if (outgoing) processAnswer(payload); break;
                 case "ice-candidate": addRemoteCandidate(payload.optJSONObject("candidate")); break;
-                case "call-hangup": case "call-decline": case "call-busy": reset(type); break;
+                case "call-hangup":
+                    reset(normalizeOutcome(payload.optString("reason"), "ended"));
+                    break;
+                case "call-decline": reset("declined"); break;
+                case "call-busy": reset("busy"); break;
                 default: break;
             }
         } catch (Exception error) { Log.w(TAG, "signal parse failed", error); }
@@ -391,6 +405,10 @@ final class NativeWebRtcCallEngine {
         try {
             JSONObject wire = new JSONObject().put("type", type).put("sessionId", sessionId).put("envelope", encrypt(payload));
             if (!inviteId.isEmpty()) wire.put("inviteId", inviteId);
+            if ("call-hangup".equals(type)) {
+                String outcome = normalizeOutcome(payload.optString("reason"), "ended");
+                wire.put("terminalReason", outcome);
+            }
             if (!signalingReady || socket == null) { if (queuedSignals.size() < 128) queuedSignals.add(wire); return; }
             socket.send(wire.toString());
         } catch (Exception error) { Log.w(TAG, "signal encryption failed", error); }
@@ -458,6 +476,11 @@ final class NativeWebRtcCallEngine {
         currentRoomCode = "";
         preparingRoomCode = "";
         currentState = "idle";
+    }
+
+    private static String normalizeOutcome(String value, String fallback) {
+        return "cancelled".equals(value) || "unanswered".equals(value) || "declined".equals(value) || "ended".equals(value)
+                ? value : fallback;
     }
 
     private final class PeerObserver implements PeerConnection.Observer {

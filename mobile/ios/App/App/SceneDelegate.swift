@@ -328,7 +328,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         guard action == "end",
               let code = body["code"] as? String,
               code.count <= 128 else { return }
-        VaultlixCallManager.shared.endCallFromWeb(roomCode: code)
+        VaultlixCallManager.shared.endCallFromWeb(
+            roomCode: code,
+            outcome: body["reason"] as? String ?? "ended"
+        )
         VaultlixCallManager.shared.releaseOutgoingWebAudio()
     }
 

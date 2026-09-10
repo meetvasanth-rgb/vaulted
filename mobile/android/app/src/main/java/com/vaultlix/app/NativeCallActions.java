@@ -50,7 +50,7 @@ final class NativeCallActions {
     }
 
     private static void decline(Context context, String callId, Runnable completion, boolean markPendingEnd) {
-        if (markPendingEnd) markPendingWebViewCallEnd(context);
+        if (markPendingEnd) markPendingWebViewCallEnd(context, "", "Declined call");
         String normalizedCallId = normalize(callId);
         if (normalizedCallId.isEmpty()) {
             if (completion != null) completion.run();
