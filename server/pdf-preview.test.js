@@ -41,6 +41,7 @@ test('PDF preview offers compact share and real platform download actions', () =
   assert.match(ios, /if action == "saveMedia"/);
   assert.match(ios, /UIDocumentPickerViewController\(forExporting:/);
   assert.match(client, /onclick="openPdfInAnotherApp\(\)" aria-label="Open PDF with another app"/);
+  assert.doesNotMatch(client, /Update Vaultlix to (?:download this PDF|choose a PDF app)/);
   assert.match(android, /Intent\.ACTION_VIEW/);
   assert.match(ios, /UIDocumentInteractionController\(url: fileURL\)/);
 });
@@ -51,4 +52,13 @@ test('document rotation is enabled only while the PDF preview is open', () => {
   assert.match(android, /SCREEN_ORIENTATION_SENSOR/);
   assert.match(android, /SCREEN_ORIENTATION_PORTRAIT/);
   assert.match(ios, /setDocumentPreviewOpen\(_ open: Bool\)/);
+});
+
+test('PDF preview supports document-only pinch zoom and panning', () => {
+  assert.match(client, /function applyPdfPreviewZoom\(zoom\)/);
+  assert.match(client, /pdfTouchDistance\(event\.touches\)/);
+  assert.match(client, /Math\.max\(1, Math\.min\(4,/);
+  assert.match(client, /pdfPreviewStage\.scrollLeft =/);
+  assert.match(client, /pdfPreviewStage\.scrollTop =/);
+  assert.match(client, /touchmove'[\s\S]*passive:false/);
 });
