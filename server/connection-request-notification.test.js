@@ -39,10 +39,10 @@ test('sent connection requests remain visible while awaiting acceptance', () => 
   assert.match(server, /direction:request\.senderAccountId === d\.accountId \? 'outgoing' : 'incoming'/);
 });
 
-test('iOS and Android call data rain use the same density and travel speed', () => {
+test('iOS call data rain keeps the shared pattern at half the Android speed', () => {
   assert.doesNotMatch(client, /ios-call-data-rain/);
-  assert.doesNotMatch(client, /iosRain/);
-  assert.match(client, /const duration = 11 \+ \(index % 6\) \* 1\.7/);
+  assert.match(client, /const iosRain = document\.documentElement\.classList\.contains\('vaultlix-native-ios'\)/);
+  assert.match(client, /const duration = \(11 \+ \(index % 6\) \* 1\.7\) \* \(iosRain \? 2 : 1\)/);
   assert.match(client, /overlay\.querySelector\('\.call-data-rain'\)\?\.remove\(\)/);
 });
 

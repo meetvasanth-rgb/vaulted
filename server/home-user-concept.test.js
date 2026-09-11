@@ -66,13 +66,17 @@ test('homepage motion demos are isolated from real conversations', () => {
 
 test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /id="vaultlix-motion-story"/);
+  assert.match(client, /id="vaultlix-motion-story-scroll"/);
   assert.match(client, /id="vaultlix-motion-deck"/);
   assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
-  assert.match(client, /@keyframes vault-card-rise-front/);
+  assert.match(client, /const updateDeckFromScroll = \(\) =>/);
+  assert.match(client, /landing\.addEventListener\('scroll', scheduleDeckUpdate/);
+  assert.match(client, /window\.addEventListener\('scroll', scheduleDeckUpdate/);
+  assert.match(client, /progress - index \* \.29/);
   assert.match(client, /classList\.add\('motion-enhanced'\)/);
   assert.match(client, /const sectionObserver = new IntersectionObserver/);
   assert.match(client, /matchMedia\('\(hover:hover\) and \(pointer:fine\)'\)/);
-  assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1;animation:none!important/);
+  assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1!important;animation:none!important/);
   assert.match(client, /Your line, waiting for you/);
 });
 
