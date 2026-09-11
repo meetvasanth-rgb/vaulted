@@ -2101,7 +2101,12 @@ function serveStatic(req, res) {
 // rejected; 20MB (unchanged from the previous single blanket cap) keeps
 // that same ~1.2MB+ of headroom without moving the actual ceiling.
 //
-// Every other endpoint here only ever carries a few hundred bytes of JSON —
+// Profile updates are the other bounded exception: the client converts a
+// selected photo to a small JPEG data URI before upload. Its validator caps
+// decoded image data at 128 KiB, so 192 KiB leaves room for base64 expansion,
+// authentication fields and JSON without granting a general large-body cap.
+//
+// Every remaining endpoint here only ever carries a few hundred bytes of JSON —
 // a code, a token, a name, a msgId, at most a PushSubscription. Measured a
 // realistic PushSubscription body (real FCM endpoint shape, real-length
 // p256dh/auth keys) at ~455 bytes, and a padded worst-case within
@@ -2112,9 +2117,11 @@ function serveStatic(req, res) {
 // don't stop a flood of requests to a small endpoint from each individually
 // buffering up to that ceiling before any handler or auth check ever runs.
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
+const BODY_LIMIT_PROFILE = 192 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
   if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
+  if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 

@@ -3569,7 +3569,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
             <button class="profile-photo-action remove" id="account-profile-photo-remove" type="button" onclick="removeProfileImage()" hidden>Remove</button>
           </div>
         </div>
-        <input id="account-profile-photo-input" type="file" accept="image/jpeg,image/png,image/webp" hidden onchange="handleProfileImageSelection(event)"/>
+        <input id="account-profile-photo-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleProfileImageSelection(event)"/>
       </div>
       <div class="profile-identity-summary vaultlix-identity-line"><span id="account-profile-name">—</span><span class="vaultlix-identity-badge" aria-label="Vaultlix member" title="Vaultlix member"><span>V</span></span></div>
       <form id="account-profile-form" onsubmit="updateAccountUsername(event)">
@@ -8772,7 +8772,9 @@ function chooseProfileImage() {
 }
 
 async function compressProfileImage(file) {
-  if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('Choose a JPEG, PNG or WebP image');
+  const imageName = String(file?.name || '');
+  const supportedPhoto = !!file && (/^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|heic|heif)$/i.test(imageName));
+  if (!supportedPhoto) throw new Error('Choose a photo from this device');
   if (file.size > 12 * 1024 * 1024) throw new Error('Choose an image smaller than 12 MB');
   const sourceUrl = URL.createObjectURL(file);
   try {
