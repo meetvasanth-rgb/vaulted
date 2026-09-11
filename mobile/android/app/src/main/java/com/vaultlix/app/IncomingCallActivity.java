@@ -20,6 +20,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -80,6 +81,21 @@ public class IncomingCallActivity extends Activity {
         stopIncomingRingtone();
         if (activeActivity.get() == this) activeActivity.clear();
         super.onDestroy();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                && event.getRepeatCount() == 0
+                && incomingRingtone != null
+                && incomingRingtone.isPlaying()) {
+            // Match the platform phone-call convention: volume-down silences
+            // this incoming ring only. The call remains pending and the user
+            // can still answer or decline it from the visible call surface.
+            stopIncomingRingtone();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     public static void finishActiveCall() {

@@ -56,6 +56,8 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\);[\s\S]*startIncomingRingtone\(\)/);
   assert.match(incoming, /RingtoneManager\.getDefaultUri\(RingtoneManager\.TYPE_RINGTONE\)/);
   assert.match(incoming, /ringtone\.setLooping\(true\)/);
+  assert.match(incoming, /keyCode == KeyEvent\.KEYCODE_VOLUME_DOWN[\s\S]*stopIncomingRingtone\(\);[\s\S]*return true;/);
+  assert.match(incoming, /volume-down silences[\s\S]*call remains pending/);
   assert.match(incoming, /stopIncomingRingtone\(\);[\s\S]*NativeCallActions\.markAnswerStarted/);
   assert.match(incoming, /private void declineCall\(\) \{[\s\S]*stopIncomingRingtone\(\)/);
   assert.match(incoming, /protected void onDestroy\(\) \{[\s\S]*stopIncomingRingtone\(\)/);
