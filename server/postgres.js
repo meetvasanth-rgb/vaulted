@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   tier varchar(16) NOT NULL DEFAULT 'standard' CHECK (tier IN ('standard', 'reserve', 'founding')),
   is_founding boolean NOT NULL DEFAULT false,
   creation_order bigint NOT NULL DEFAULT nextval('account_creation_order_seq'),
+  daily_look_generated_at bigint,
+  daily_look_claimed_at bigint,
   created_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
@@ -173,6 +175,8 @@ ALTER TABLE private_number_reservations ALTER COLUMN private_number TYPE varchar
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS tier varchar(16) NOT NULL DEFAULT 'standard';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_founding boolean NOT NULL DEFAULT false;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS creation_order bigint;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_generated_at bigint;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_claimed_at bigint;
 ALTER TABLE accounts ALTER COLUMN creation_order SET DEFAULT nextval('account_creation_order_seq');
 WITH ordered AS (
   SELECT account_id, row_number() OVER (ORDER BY created_at, account_id) AS ordinal
@@ -229,6 +233,7 @@ class PostgresStore {
       reclaimWarnings:row.reclaim_warnings || [],
       tier:row.tier || 'standard', isFounding:!!row.is_founding,
       creationOrder:Number(row.creation_order),
+      dailyLookGeneratedAt:row.daily_look_generated_at == null ? null : Number(row.daily_look_generated_at),
       createdAt:Number(row.created_at), updatedAt:Number(row.updated_at),
     }]);
   }
@@ -240,8 +245,8 @@ class PostgresStore {
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
       connection_requests, push_destinations, last_active_at, number_category,
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
-      creation_order, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23)
+      creation_order, daily_look_generated_at, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23,$24)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, display_name=EXCLUDED.display_name,
       profile_image=EXCLUDED.profile_image,
@@ -255,6 +260,7 @@ class PostgresStore {
       reclaim_warnings=EXCLUDED.reclaim_warnings,
       tier=EXCLUDED.tier, is_founding=EXCLUDED.is_founding,
       creation_order=EXCLUDED.creation_order,
+      daily_look_generated_at=EXCLUDED.daily_look_generated_at,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -263,8 +269,29 @@ class PostgresStore {
       account.lastActiveAt || account.updatedAt || account.createdAt, account.numberCategory || 'standard',
       account.numberProtection || 'free', account.premiumUntil || null, JSON.stringify(account.reclaimWarnings || []),
       account.tier || 'standard', !!account.isFounding, account.creationOrder,
-      account.createdAt, account.updatedAt,
+      account.dailyLookGeneratedAt || null, account.createdAt, account.updatedAt,
     ]);
+  }
+
+  async claimDailyLook(accountId, now, eligibleBefore, staleClaimBefore) {
+    if (!this.enabled) return true;
+    const { rows } = await this.pool.query(`UPDATE accounts SET daily_look_claimed_at=$2
+      WHERE account_id=$1
+        AND (daily_look_generated_at IS NULL OR daily_look_generated_at <= $3)
+        AND (daily_look_claimed_at IS NULL OR daily_look_claimed_at <= $4)
+      RETURNING account_id`, [accountId, now, eligibleBefore, staleClaimBefore]);
+    return rows.length === 1;
+  }
+
+  async completeDailyLook(accountId, now) {
+    if (!this.enabled) return;
+    await this.pool.query(`UPDATE accounts SET daily_look_generated_at=$2,
+      daily_look_claimed_at=NULL WHERE account_id=$1`, [accountId, now]);
+  }
+
+  async releaseDailyLookClaim(accountId) {
+    if (!this.enabled) return;
+    await this.pool.query('UPDATE accounts SET daily_look_claimed_at=NULL WHERE account_id=$1', [accountId]);
   }
 
   async allocateAccountCreationOrder() {

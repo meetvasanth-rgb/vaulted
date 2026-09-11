@@ -26,6 +26,7 @@ const scryptAsync = promisify(crypto.scrypt);
 const PORT = process.env.PORT || 3000;
 const PROCESS_STARTED_AT = Date.now();
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API || '';
 if (ADMIN_KEY && ADMIN_KEY.length < 32) console.warn('ADMIN_KEY is shorter than 32 characters — replace it with a stronger key.');
 // Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
@@ -57,6 +58,22 @@ const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
+const dailyLookClaims = new Set();
+const DAILY_LOOK_STYLES = Object.freeze([
+  {
+    id:'retro-80s', name:'1980s Film', note:'Warm film, lived-in colour and genuine grain',
+    prompt:'Transform this portrait into an authentic late-1980s personal film photograph. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Use believable period wardrobe, warm indoor light, subtle analog grain, slight lens softness and naturally imperfect colour. Keep it tasteful and photorealistic. No text, logos, dates, watermarks or extra people.',
+  },
+  {
+    id:'editorial-glow', name:'Editorial Glow', note:'Polished light with a natural, modern finish',
+    prompt:'Transform this portrait into a refined contemporary editorial photograph. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Use flattering soft directional light, an elegant understated background, natural skin texture and premium magazine colour grading. Keep it photorealistic. No text, logos, watermarks or extra people.',
+  },
+  {
+    id:'neon-night', name:'Neon Night', note:'Cinematic colour without losing the real you',
+    prompt:'Transform this portrait into a cinematic night portrait with restrained burgundy, blue and amber practical lighting. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Keep skin natural, the background believable and the result photorealistic, sophisticated and suitable as a profile photo. No text, logos, watermarks or extra people.',
+  },
+]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
 const NUMBER_RETENTION_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST_NUMBER_RETENTION_SWEEP_MS
   ? Number(process.env.TEST_NUMBER_RETENTION_SWEEP_MS)
@@ -818,6 +835,76 @@ function profileLookupRetryAfter(headers, ip) {
   const delaySeconds = Math.min(3600, 2 ** Math.min(bucket.count - 11, 12));
   bucket.blockedUntil = now + delaySeconds * 1000;
   return delaySeconds;
+}
+
+function publicDailyLookStyles(now = Date.now()) {
+  const featuredIndex = Math.floor(now / (7 * DAY_MS)) % DAILY_LOOK_STYLES.length;
+  return DAILY_LOOK_STYLES.map((style, index) => ({
+    id:style.id, name:style.name, note:style.note, featured:index === featuredIndex,
+  }));
+}
+
+function parseDailyLookImage(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match) return null;
+  let bytes;
+  try { bytes = Buffer.from(match[2], 'base64'); } catch (error) { return null; }
+  if (!bytes.length || bytes.length > 160 * 1024) return null;
+  return { bytes, mime:`image/${match[1]}`, extension:match[1] === 'jpeg' ? 'jpg' : match[1] };
+}
+
+async function openAiJson(url, options, timeoutMs = 90000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(url, { ...options, signal:controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+
+async function moderateDailyLookImage(imageDataUri, apiKey) {
+  const response = await openAiJson('https://api.openai.com/v1/moderations', {
+    method:'POST',
+    headers:{ Authorization:`Bearer ${apiKey}`, 'Content-Type':'application/json' },
+    body:JSON.stringify({
+      model:'omni-moderation-latest',
+      input:[{ type:'image_url', image_url:{ url:imageDataUri } }],
+    }),
+  }, 30000);
+  if (!response.ok) throw new Error(`moderation-${response.status}`);
+  const result = await response.json();
+  return result.results?.some(item => item.flagged === true) === true;
+}
+
+async function createDailyLook(image, style, apiKey) {
+  const form = new FormData();
+  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2');
+  form.append('prompt', style.prompt);
+  form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
+  form.append('size', '1024x1024');
+  form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'low');
+  form.append('output_format', 'jpeg');
+  const response = await openAiJson('https://api.openai.com/v1/images/edits', {
+    method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,
+  });
+  if (!response.ok) throw new Error(`image-${response.status}`);
+  const result = await response.json();
+  const base64 = result.data?.[0]?.b64_json;
+  if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
+  return `data:image/jpeg;base64,${base64}`;
+}
+
+async function claimDailyLook(accountId, account, now) {
+  if (postgresEnabled) {
+    return postgresStore.claimDailyLook(accountId, now, now - DAY_MS, now - DAILY_LOOK_CLAIM_TIMEOUT_MS);
+  }
+  if (dailyLookClaims.has(accountId) || Number(account.dailyLookGeneratedAt) > now - DAY_MS) return false;
+  dailyLookClaims.add(accountId);
+  return true;
+}
+
+async function releaseDailyLookClaim(accountId) {
+  if (postgresEnabled) await postgresStore.releaseDailyLookClaim(accountId);
+  else dailyLookClaims.delete(accountId);
 }
 
 // Check an existing failure bucket without incrementing it. Admin auth uses
@@ -2118,10 +2205,12 @@ function serveStatic(req, res) {
 // buffering up to that ceiling before any handler or auth check ever runs.
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_PROFILE = 192 * 1024;
+const BODY_LIMIT_DAILY_LOOK = 224 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
   if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
+  if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 
@@ -2487,6 +2576,7 @@ async function api(path, method, d, p, res, ip, headers) {
       numberProtection:reservedCategory === 'standard' || reservedCategory === 'preferred' ? 'free' : 'promotional',
       tier, isFounding, creationOrder,
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
+      dailyLookGeneratedAt:null,
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
@@ -2674,6 +2764,70 @@ async function api(path, method, d, p, res, ip, headers) {
     }
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, displayName, profileImage });
+  }
+
+  if (path === '/api/account/daily-look/status' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const generatedAt = Number(account.dailyLookGeneratedAt) || 0;
+    const nextAt = generatedAt ? generatedAt + DAY_MS : 0;
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, {
+      ok:true,
+      available:!nextAt || nextAt <= Date.now(),
+      nextAt,
+      configured:!!OPENAI_API_KEY,
+      styles:publicDailyLookStyles(),
+    });
+  }
+
+  if (path === '/api/account/daily-look' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (rateLimited(`daily-look-account:${d.accountId}`, 5, 60 * 60 * 1000) ||
+        rateLimited(`daily-look-ip:${ip}`, 20, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many image attempts — try again later.', 429);
+    }
+    const apiKey = OPENAI_API_KEY;
+    if (!apiKey) return resErr(res, 'Daily Look is temporarily unavailable.', 503);
+    const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId);
+    const image = parseDailyLookImage(d.image);
+    if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
+    const now = Date.now();
+    const generatedAt = Number(account.dailyLookGeneratedAt) || 0;
+    if (generatedAt && generatedAt + DAY_MS > now) {
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Your next Daily Look will be available tomorrow.', 429);
+    }
+    if (!(await claimDailyLook(d.accountId, account, now))) {
+      return resErr(res, 'A Daily Look is already being created, or today’s look is complete.', 429);
+    }
+    try {
+      if (await moderateDailyLookImage(d.image, apiKey)) {
+        await releaseDailyLookClaim(d.accountId);
+        return resErr(res, 'This photo cannot be used for Daily Look. Choose another.', 400);
+      }
+      const generatedImage = await createDailyLook(image, style, apiKey);
+      const completedAt = Date.now();
+      account.dailyLookGeneratedAt = completedAt;
+      account.updatedAt = completedAt;
+      if (postgresEnabled) await postgresStore.completeDailyLook(d.accountId, completedAt);
+      else {
+        dailyLookClaims.delete(d.accountId);
+        await persistAccount(d.accountId);
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      return res200(res, {
+        ok:true, generatedImage, generatedAt:completedAt, nextAt:completedAt + DAY_MS,
+        style:{ id:style.id, name:style.name },
+      });
+    } catch (error) {
+      await releaseDailyLookClaim(d.accountId).catch(() => {});
+      console.warn(`Daily Look provider request failed (${String(error?.message || 'unknown').slice(0, 32)}).`);
+      return resErr(res, 'Daily Look could not be created. Your daily creation is still available.', 502);
+    }
   }
 
   if (path === '/api/account/sync' && method === 'POST') {
@@ -4812,6 +4966,7 @@ function hydrateAccounts(entries, source) {
       record.reclaimWarnings = Array.isArray(record.reclaimWarnings)
         ? record.reclaimWarnings.filter(id => RECLAIM_WARNING_WINDOWS.some(item => item.id === id))
         : [];
+      record.dailyLookGeneratedAt = Number(record.dailyLookGeneratedAt) || null;
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);

@@ -13,6 +13,17 @@ Two people. One conversation. Disappears when you leave.
 - Single HTML file frontend — no React, no build step
 - Zero database — active encrypted room state is checkpointed to the attached persistent volume
 
+## Daily Look configuration
+
+Daily Look uses an authenticated server endpoint; the provider key must never be placed in the client or mobile apps. Configure these Railway variables:
+
+- `OPENAI_API_KEY` — recommended variable name for the provider key
+- `OPENAI_API` — accepted as a backwards-compatible Railway alias
+- `OPENAI_IMAGE_MODEL` — optional model override (defaults to `gpt-image-2`)
+- `OPENAI_IMAGE_QUALITY` — optional quality override (defaults to `low`)
+
+Vaultlix permits one successful creation per account every 24 hours. Failed or refused requests do not consume the allowance.
+
 ---
 
 ## Deploy to Railway (5 steps)
