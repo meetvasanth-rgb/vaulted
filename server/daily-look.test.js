@@ -61,6 +61,10 @@ test('1980s Portrait performs a full period reconstruction in profile-ready fram
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
   assert.match(server, /head-and-shoulders or chest-up portrait/);
   assert.match(server, /Do not make the person full-length/);
+  assert.match(server, /Preserve bright eyes, healthy youthful skin/);
+  assert.match(server, /Film ageing belongs on the physical print/);
+  assert.match(server, /one large soft warm key light about 45 degrees/);
+  assert.match(server, /Avoid orange colour casts, muddy skin, harsh flash hotspots/);
   assert.match(server, /size:'1024x1024'/);
   assert.match(server, /form\.append\('size', style\.size \|\| '1024x1024'\)/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
@@ -79,11 +83,11 @@ test('1980s Portrait randomly rotates through ten distinct period scenes', () =>
   const sceneBlock = server.match(/const RETRO_80S_SCENES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
   assert.equal((sceneBlock.match(/^  '/gm) || []).length, 10);
   assert.match(sceneBlock, /family living room/);
-  assert.match(sceneBlock, /Indian veranda/);
-  assert.match(sceneBlock, /photo-studio portrait/);
-  assert.match(sceneBlock, /wedding hall/);
+  assert.match(sceneBlock, /sports-car poster/);
+  assert.match(sceneBlock, /South Indian cinema posters/);
+  assert.match(sceneBlock, /silver boombox/);
   assert.match(sceneBlock, /home office/);
-  assert.match(sceneBlock, /traditional courtyard home/);
+  assert.match(sceneBlock, /traditional South Indian courtyard room/);
   assert.match(server, /RETRO_80S_SCENES\[crypto\.randomInt\(RETRO_80S_SCENES\.length\)\]/);
   assert.match(server, /Period scene direction for this generation/);
 });

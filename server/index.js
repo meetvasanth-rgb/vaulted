@@ -62,16 +62,16 @@ const DAILY_LOOK_DAILY_LIMIT = 5;
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
 const RETRO_80S_SCENES = Object.freeze([
-  'A formal portrait in a wood-panelled family living room with floral curtains, a brass table lamp, framed landscape art, a bookcase and lace-covered period furniture. Use warm tungsten light with restrained direct flash.',
-  'A relaxed portrait on a shaded 1980s Indian veranda with cane furniture, patterned cement tiles, potted palms and a softly sunlit garden beyond. Use slightly faded daylight colour film.',
-  'A classic neighbourhood photo-studio portrait with a hand-painted muted brown-and-olive scenic backdrop, a simple upholstered posing chair and carefully aimed soft studio lamps. Preserve the charming artificiality of a real 1980s studio set.',
-  'A celebratory portrait in an elegant 1980s wedding hall with deep velvet curtains, brass kuthuvilakku lamps, restrained flower garlands and a warm cream wall. Keep the scene formal, uncluttered and photographed with on-camera flash.',
-  'An intimate home portrait beside a teak radiogram cabinet, cassette deck, stacked records, family books and a small vase of flowers. Use amber evening light and the candid polish of a treasured family photograph.',
-  'A poised portrait in a prosperous 1980s home office with a teak desk, rotary telephone, fountain pen, paper diary, venetian blinds and a framed calendar kept too soft to read. Use balanced window light and gentle flash.',
-  'A colourful outdoor portrait in a manicured South Indian garden with hibiscus, crotons, a low compound wall and the softly blurred shape of a period Ambassador car in the distance. Use late-afternoon Kodacolor warmth.',
-  'A breezy portrait on a broad seaside promenade at golden hour with a period railing, softly dressed pedestrians far in the background and subtle salt haze. Make it feel like a carefully composed 1985 holiday photograph, not a modern fashion shoot.',
-  'A refined portrait in a 1980s hotel lounge with rosewood furniture, geometric carpet, smoked glass, a shaded floor lamp and burgundy upholstery. Use rich but naturally aged consumer-film colour.',
-  'A luminous portrait in a traditional courtyard home with Athangudi-style patterned tiles, carved wooden doors, brass vessels and soft daylight falling from the open courtyard. Keep the styling authentically mid-1980s and photographically imperfect.',
+  'A warm wood-panelled 1980s family living room, visibly framed behind the shoulders: floral curtains, a cream-shaded table lamp, framed landscape art, teak shelving, books and lace antimacassars on patterned upholstery.',
+  'A youthful music-lover bedroom with a large period sports-car poster, palm-sunset wall print, teak cassette shelves, a silver radio-cassette deck, vinyl records and one small brass horse ornament.',
+  'A lively 1980s film-fan room with several softly focused South Indian cinema posters, a large silver boombox, neatly stacked cassette tapes, paperbacks, a red anglepoise desk lamp and a dark teak shelf.',
+  'A feminine 1980s bedroom-studio with period fashion posters, a silver cassette player, colourful tape cases, a softly glowing desk lamp, wood shelving and rich burgundy-and-teal accents.',
+  'An intimate teak study with a radiogram cabinet, twin-speaker cassette deck, stacked records, family books, fountain pens, a paper diary and a small brass vase of flowers.',
+  'A prosperous 1980s home office with a teak desk, rotary telephone, globe, fountain pen, paper diary, venetian blinds, a shaded brass lamp and a framed calendar kept too soft to read.',
+  'A formal family sitting room with rosewood cabinetry, floral drapes, framed landscape paintings, a brass Nataraja, ceramic ornaments, a bookcase and period patterned furniture.',
+  'A refined 1980s hotel lounge with burgundy upholstery, geometric carpet, smoked glass, rosewood furniture, a cream floor lamp, indoor palms and a softly blurred cassette cabinet.',
+  'A traditional South Indian courtyard room with patterned Athangudi-style tiles, carved wooden doors, brass vessels, cane furniture, family photographs and a radio on a teak side table.',
+  'A relaxed 1980s reading corner with a cane-backed chair, leafy houseplant, warm window light, a low teak shelf of books and cassette tapes, a compact stereo and a faded travel poster.',
 ]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
@@ -79,13 +79,17 @@ const DAILY_LOOK_STYLES = Object.freeze([
     size:'1024x1024',
     prompt:`Recreate the entire source photograph as a convincing mid-1980s South Indian formal home-studio portrait. This must be a complete period transformation of the wardrobe, hair, accessories, room, furniture, lighting and photographic medium — not a colour grade, lighting filter or modern portrait with added grain.
 
-Identity is the highest priority. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, age, expression, gaze, body proportions and pose. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person.
+Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person. Film ageing belongs on the physical print, edges and background — never as ageing on the person's face.
 
 Use authentic, tasteful 1980s formal styling appropriate to the subject's presentation. If the source subject wears a sari, restyle it as a rich jewel-toned silk sari with a broad woven gold border, a structured short-sleeve period blouse, layered gold jewellery, bangles and jhumka earrings, plus voluminous side-swept or softly waved 1980s hair. Otherwise use equally authentic mid-1980s South Indian formal clothing, grooming and accessories without changing the subject's gender presentation.
 
-Replace every visibly modern background element according to the period scene direction supplied below. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Do not add a prominent second person.
+Replace every visibly modern background element according to the period scene direction supplied below. The 1980s room must be clearly visible and information-rich behind the subject, with several recognisable period objects rather than a plain, blurred or generic studio background. Keep those objects believable in scale and placement. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Do not add a prominent second person.
 
-Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait. The face must occupy roughly 45–60% of the frame, with the eyes near the upper third and enough shoulders and period room detail to tell the story. Do not make the person full-length, three-quarter-length, distant or surrounded by oversized empty background. Use warm tungsten light and gentle direct flash, photographed on consumer 35mm colour film and printed in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
+Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait. The face must occupy roughly 45–60% of the frame, with the eyes near the upper third and enough shoulders and period room detail to tell the story. Do not make the person full-length, three-quarter-length, distant or surrounded by oversized empty background.
+
+Light the face beautifully and consistently: use one large soft warm key light about 45 degrees from the face, gentle frontal fill, soft natural catchlights and a subtle warm practical lamp in the room. Expose for the face with clean, luminous, true-to-source skin tone. Keep highlights controlled and shadows open. Avoid orange colour casts, muddy skin, harsh flash hotspots, deep eye shadows, blown highlights, grey skin or uneven mixed lighting.
+
+Photograph the scene on consumer 35mm colour film and print it in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Keep grain and print damage restrained across the face. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
   },
   {
     id:'anime-portrait', name:'Anime Portrait', note:'Hand-drawn character energy, recognisably you',
