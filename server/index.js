@@ -58,12 +58,24 @@ const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const configuredDailyLookCooldownHours = Number(process.env.DAILY_LOOK_COOLDOWN_HOURS || 0);
+const configuredDailyLookCooldownHours = Number(process.env.DAILY_LOOK_COOLDOWN_HOURS || 24);
 const DAILY_LOOK_COOLDOWN_MS = Number.isFinite(configuredDailyLookCooldownHours)
   ? Math.max(0, Math.min(24, configuredDailyLookCooldownHours)) * 60 * 60 * 1000
   : 0;
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
+const RETRO_80S_SCENES = Object.freeze([
+  'A formal portrait in a wood-panelled family living room with floral curtains, a brass table lamp, framed landscape art, a bookcase and lace-covered period furniture. Use warm tungsten light with restrained direct flash.',
+  'A relaxed portrait on a shaded 1980s Indian veranda with cane furniture, patterned cement tiles, potted palms and a softly sunlit garden beyond. Use slightly faded daylight colour film.',
+  'A classic neighbourhood photo-studio portrait with a hand-painted muted brown-and-olive scenic backdrop, a simple upholstered posing chair and carefully aimed soft studio lamps. Preserve the charming artificiality of a real 1980s studio set.',
+  'A celebratory portrait in an elegant 1980s wedding hall with deep velvet curtains, brass kuthuvilakku lamps, restrained flower garlands and a warm cream wall. Keep the scene formal, uncluttered and photographed with on-camera flash.',
+  'An intimate home portrait beside a teak radiogram cabinet, cassette deck, stacked records, family books and a small vase of flowers. Use amber evening light and the candid polish of a treasured family photograph.',
+  'A poised portrait in a prosperous 1980s home office with a teak desk, rotary telephone, fountain pen, paper diary, venetian blinds and a framed calendar kept too soft to read. Use balanced window light and gentle flash.',
+  'A colourful outdoor portrait in a manicured South Indian garden with hibiscus, crotons, a low compound wall and the softly blurred shape of a period Ambassador car in the distance. Use late-afternoon Kodacolor warmth.',
+  'A breezy portrait on a broad seaside promenade at golden hour with a period railing, softly dressed pedestrians far in the background and subtle salt haze. Make it feel like a carefully composed 1985 holiday photograph, not a modern fashion shoot.',
+  'A refined portrait in a 1980s hotel lounge with rosewood furniture, geometric carpet, smoked glass, a shaded floor lamp and burgundy upholstery. Use rich but naturally aged consumer-film colour.',
+  'A luminous portrait in a traditional courtyard home with Athangudi-style patterned tiles, carved wooden doors, brass vessels and soft daylight falling from the open courtyard. Keep the styling authentically mid-1980s and photographically imperfect.',
+]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     id:'retro-80s', name:'1980s Portrait', note:'A complete period portrait, not just a colour filter',
@@ -73,7 +85,7 @@ Identity is the highest priority. Preserve the subject's unmistakable identity: 
 
 Use authentic, tasteful 1980s formal styling appropriate to the subject's presentation. If the source subject wears a sari, restyle it as a rich jewel-toned silk sari with a broad woven gold border, a structured short-sleeve period blouse, layered gold jewellery, bangles and jhumka earrings, plus voluminous side-swept or softly waved 1980s hair. Otherwise use equally authentic mid-1980s South Indian formal clothing, grooming and accessories without changing the subject's gender presentation.
 
-Replace every visibly modern background element with a warm 1980s Indian living-room portrait setting: dark wood panelling or cabinetry, floral curtains, framed landscape art, brass decor, a table lamp, books and period furniture with lace or floral upholstery. Remove modern architecture, LEDs, phones, contemporary furniture and contemporary fashion. Do not add other people.
+Replace every visibly modern background element according to the period scene direction supplied below. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Do not add a prominent second person.
 
 Compose a vertical three-quarter-length or full-length portrait with warm tungsten light and gentle direct flash, photographed on consumer 35mm colour film and printed in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
   },
@@ -890,7 +902,10 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
 async function createDailyLook(image, style, apiKey) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
-  form.append('prompt', style.prompt);
+  const scene = style.id === 'retro-80s'
+    ? RETRO_80S_SCENES[crypto.randomInt(RETRO_80S_SCENES.length)]
+    : '';
+  form.append('prompt', scene ? `${style.prompt}\n\nPeriod scene direction for this generation: ${scene}` : style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', '1024x1536');
   form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'medium');

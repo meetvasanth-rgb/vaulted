@@ -17,8 +17,8 @@ test('Daily Look keeps provider credentials on the server and requires an authen
   assert.match(server, /https:\/\/api\.openai\.com\/v1\/moderations/);
 });
 
-test('Daily Look testing removes the daily slab while preserving the cross-replica in-flight lock', () => {
-  assert.match(server, /process\.env\.DAILY_LOOK_COOLDOWN_HOURS \|\| 0/);
+test('Daily Look cooldown is configurable while preserving the cross-replica in-flight lock', () => {
+  assert.match(server, /process\.env\.DAILY_LOOK_COOLDOWN_HOURS \|\| 24/);
   assert.match(server, /DAILY_LOOK_COOLDOWN_MS === 0/);
   assert.match(server, /claimDailyLook\(d\.accountId, account, now\)/);
   assert.match(server, /catch \(error\) \{[\s\S]{0,120}releaseDailyLookClaim/);
@@ -59,4 +59,35 @@ test('1980s Portrait performs a full period reconstruction in portrait format', 
   assert.match(server, /form\.append\('size', '1024x1536'\)/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:2\/3/);
+});
+
+test('1980s Portrait randomly rotates through ten distinct period scenes', () => {
+  const sceneBlock = server.match(/const RETRO_80S_SCENES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+  assert.equal((sceneBlock.match(/^  '/gm) || []).length, 10);
+  assert.match(sceneBlock, /family living room/);
+  assert.match(sceneBlock, /Indian veranda/);
+  assert.match(sceneBlock, /photo-studio portrait/);
+  assert.match(sceneBlock, /wedding hall/);
+  assert.match(sceneBlock, /home office/);
+  assert.match(sceneBlock, /traditional courtyard home/);
+  assert.match(server, /RETRO_80S_SCENES\[crypto\.randomInt\(RETRO_80S_SCENES\.length\)\]/);
+  assert.match(server, /Period scene direction for this generation/);
+});
+
+test('Android Daily Look offers a dedicated camera capture path', () => {
+  assert.match(client, /id="daily-look-camera-input"[^>]*accept="image\/\*"[^>]*capture="environment"/);
+  assert.match(client, /id="daily-look-camera-button"[^>]*onclick="chooseDailyLookCamera\(\)"/);
+  assert.match(client, /\.vaultlix-native-android \.daily-look-camera-button\{display:block\}/);
+  assert.match(client, /function chooseDailyLookCamera\(\)/);
+});
+
+test('the latest generated Daily Look remains downloadable after profile use and reopening', () => {
+  assert.match(client, /const DAILY_LOOK_RESULT_DB = 'vaultlix-daily-look'/);
+  assert.match(client, /indexedDB\.open\(DAILY_LOOK_RESULT_DB, 1\)/);
+  assert.match(client, /saveDailyLookResult\(savedLook\.accountId, savedLook\.image/);
+  assert.match(client, /loadDailyLookResult\(state\.accountId\)/);
+  assert.match(client, /Your last Daily Look is saved on this device and ready to download/);
+  assert.match(client, /onclick="downloadDailyLook\(\)"/);
+  assert.match(client, /onclick="beginAnotherDailyLook\(\)"/);
+  assert.match(client, /indexedDB\.deleteDatabase\(DAILY_LOOK_RESULT_DB\)/);
 });
