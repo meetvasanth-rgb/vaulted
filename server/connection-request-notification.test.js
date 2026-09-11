@@ -46,6 +46,12 @@ test('iOS call data rain is slower, larger, and organically randomized', () => {
   assert.match(client, /const duration = iosRain \? baseDuration \* 4 \* \(\.9 \+ Math\.random\(\) \* \.2\) : baseDuration/);
   assert.match(client, /const groupGap = bit === nextGroupBreak \? 5 \+ Math\.random\(\) \* 12 : Math\.random\(\) \* 2\.5/);
   assert.match(client, /const left = 2 \+ index \* 5\.6 \+ \(iosRain \? \(Math\.random\(\) \* 3\.6 - 1\.8\) : 0\)/);
+  assert.match(client, /function ensureStableCallDataRain\(overlay\)/);
+  assert.match(client, /overlay\.querySelector\(':scope > \.call-data-rain'\)/);
+  assert.match(client, /const stableIosRain = document\.documentElement\.classList\.contains\('vaultlix-native-ios'\)/);
+  assert.match(client, /callSurface\.innerHTML =/);
+  assert.match(client, /\$\{stableIosRain \? '' : callDataRainHtml\(\)\}/);
+  assert.doesNotMatch(client, /overlay\.innerHTML = `\s*\$\{callDataRainHtml\(\)\}/);
   assert.match(client, /overlay\.querySelector\('\.call-data-rain'\)\?\.remove\(\)/);
 });
 

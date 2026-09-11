@@ -1084,7 +1084,8 @@ body.select-mode .chat-ftr{display:none}
 .call-overlay.visible{opacity:1}
 .call-data-rain{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;opacity:.72}
 .call-overlay.has-video .call-data-rain{display:none}
-.call-overlay>.call-hdr-block,.call-overlay>.call-identity,.call-overlay>.call-actions,.call-overlay>.call-reaction-picker{position:relative;z-index:1}
+.call-ui{display:contents}
+.call-overlay>.call-hdr-block,.call-overlay>.call-identity,.call-overlay>.call-actions,.call-overlay>.call-reaction-picker,.call-overlay>.call-ui>.call-hdr-block,.call-overlay>.call-ui>.call-identity,.call-overlay>.call-ui>.call-actions,.call-overlay>.call-ui>.call-reaction-picker{position:relative;z-index:1}
 .call-data-column{position:absolute;top:-55%;display:flex;flex-direction:column;gap:7px;color:rgba(250,246,247,.34);font:500 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-shadow:0 0 7px rgba(250,246,247,.18);animation:call-data-fall linear infinite;will-change:transform}
 .call-data-column.rose{color:rgba(229,137,160,.52);text-shadow:0 0 9px rgba(229,137,160,.28)}
 html.vaultlix-native-ios .call-data-column{font-size:11px}
@@ -6709,6 +6710,15 @@ function callDataRainHtml() {
   return `<div class="call-data-rain" aria-hidden="true">${columns}</div>`;
 }
 
+function ensureStableCallDataRain(overlay) {
+  // renderCallOverlay refreshes status/actions several times while WebRTC is
+  // negotiating. Keep the matrix outside that refreshed subtree so its
+  // randomized columns and CSS animation timelines never restart or jump.
+  if (!overlay.querySelector(':scope > .call-data-rain')) {
+    overlay.insertAdjacentHTML('afterbegin', callDataRainHtml());
+  }
+}
+
 // Shared drag-to-trigger gesture for the accept/decline/cancel buttons —
 // direction 'up' (accept) tracks upward drag distance, 'down' (decline/
 // cancel) tracks downward. Falls back to a plain click/tap on desktop or
@@ -6775,6 +6785,17 @@ function renderCallOverlay(room) {
     overlay.className = 'call-overlay';
     document.body.appendChild(overlay);
   }
+  const stableIosRain = document.documentElement.classList.contains('vaultlix-native-ios');
+  let callSurface = overlay;
+  if (stableIosRain) {
+    ensureStableCallDataRain(overlay);
+    callSurface = overlay.querySelector(':scope > .call-ui');
+    if (!callSurface) {
+      callSurface = document.createElement('div');
+      callSurface.className = 'call-ui';
+      overlay.appendChild(callSurface);
+    }
+  }
   const name = escHtml(room.callPeerName || room.peerName || 'them');
 
   if (room.callState === 'outgoing') {
@@ -6785,8 +6806,8 @@ function renderCallOverlay(room) {
           </button>
           <div class="call-btn-label">${room.speakerOn ? 'Speaker' : 'Phone'}</div>
         </div>` : '';
-    overlay.innerHTML = `
-      ${callDataRainHtml()}
+    callSurface.innerHTML = `
+      ${stableIosRain ? '' : callDataRainHtml()}
       ${callHeaderBlock()}
       <div class="call-identity">
         <div class="call-hollow-dot"></div>
@@ -6803,8 +6824,8 @@ function renderCallOverlay(room) {
       </div>`;
     wireCallSwipeButton('call-cancel-btn', 'down', hangupCall);
   } else if (room.callState === 'incoming') {
-    overlay.innerHTML = `
-      ${callDataRainHtml()}
+    callSurface.innerHTML = `
+      ${stableIosRain ? '' : callDataRainHtml()}
       ${callHeaderBlock()}
       <div class="call-identity">
         <div class="ring-container">
@@ -6886,8 +6907,8 @@ function renderCallOverlay(room) {
         <div class="call-status call-security">End-to-end encrypted call</div>
         <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>
         <div class="call-tagline">This call never existed.</div>`;
-    overlay.innerHTML = `
-      ${videoMode ? '' : callDataRainHtml()}
+    callSurface.innerHTML = `
+      ${stableIosRain || videoMode ? '' : callDataRainHtml()}
       ${videoMode ? '' : callHeaderBlock()}
       <div class="call-identity${videoMode ? ' video-top' : ''}">${identityHtml}
       </div>
