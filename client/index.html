@@ -1882,21 +1882,15 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .logo-rule{width:42px!important;height:4px!important;margin:0 0 16px!important;border-radius:5px;background:#C87588!important}
 #s-landing .logo-sub{margin:0 0 13px!important;font:700 10px/1.4 'Manrope',sans-serif!important;letter-spacing:.17em!important;text-transform:uppercase;color:#682C43!important}
 #s-landing .landing-title{font-family:'Manrope',sans-serif;font-size:clamp(35px,7vw,50px);font-weight:750;letter-spacing:-.048em;line-height:1.04;color:#271D25;margin:0 0 17px;max-width:530px}
-#s-landing .landing-title.landing-reveal{display:grid;min-height:2.08em;overflow:hidden}
-#s-landing .landing-reveal-copy{grid-area:1/1;align-self:center;display:block;opacity:0;transform:translateY(115%);filter:blur(9px);will-change:transform,opacity,filter}
-#s-landing .landing-reveal-final span{display:block}
-#s-landing .landing-reveal-run .landing-reveal-one{animation:landing-reveal-through 1.15s cubic-bezier(.22,1,.36,1) both}
-#s-landing .landing-reveal-run .landing-reveal-two{animation:landing-reveal-through 1.15s cubic-bezier(.22,1,.36,1) .92s both}
-#s-landing .landing-reveal-run .landing-reveal-final{animation:landing-reveal-finish 1.2s cubic-bezier(.22,1,.36,1) 1.84s both}
-@keyframes landing-reveal-through{
-  0%{opacity:0;transform:translateY(115%);filter:blur(9px)}
-  27%,65%{opacity:1;transform:translateY(0);filter:blur(0)}
-  100%{opacity:0;transform:translateY(-115%);filter:blur(9px)}
-}
-@keyframes landing-reveal-finish{
-  0%{opacity:0;transform:translateY(115%);filter:blur(9px)}
-  48%,100%{opacity:1;transform:translateY(0);filter:blur(0)}
-}
+#s-landing .landing-title.landing-reveal{display:block;min-height:2.08em;overflow:visible}
+#s-landing .landing-reveal-line{display:flex;flex-wrap:wrap;gap:.22em;overflow:hidden;padding:.05em 0}
+#s-landing .landing-reveal-word{display:inline-block;opacity:0;transform:translateY(105%) rotate(2deg);filter:blur(7px);will-change:transform,opacity,filter}
+#s-landing .landing-reveal-run .landing-reveal-word{animation:landing-word-build .82s cubic-bezier(.16,1,.3,1) forwards;animation-delay:calc(var(--word-index) * .14s)}
+#s-landing .landing-reveal-accent{position:relative;width:max-content;max-width:100%;color:#682C43}
+#s-landing .landing-reveal-accent::after{content:'';position:absolute;left:0;right:0;bottom:.02em;height:.11em;border-radius:99px;background:#C87588;transform:scaleX(0);transform-origin:left}
+#s-landing .landing-reveal-run .landing-reveal-accent::after{animation:landing-accent-wipe .7s cubic-bezier(.16,1,.3,1) 1.02s forwards}
+@keyframes landing-word-build{to{opacity:1;transform:translateY(0) rotate(0);filter:blur(0)}}
+@keyframes landing-accent-wipe{to{transform:scaleX(1)}}
 #s-landing .tagline{font-family:'Manrope',sans-serif!important;font-size:16px!important;font-weight:450!important;font-style:normal!important;letter-spacing:-.01em!important;line-height:1.55!important;color:#6E6067!important;text-align:left!important;max-width:460px!important;margin:0!important}
 #s-landing .landing-hero-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:21px}
 #s-landing .landing-hero-action{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 18px;border:1px solid #682C43;border-radius:999px;background:#682C43;color:#fff;font:750 12px/1 'Manrope',sans-serif;box-shadow:0 10px 24px rgba(104,44,67,.22);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
@@ -1990,8 +1984,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
   #s-landing .card-permanent .card-arrow{align-self:flex-end;margin-top:auto}
 }
 @media(prefers-reduced-motion:reduce){
-  #s-landing .landing-reveal-one,#s-landing .landing-reveal-two{display:none}
-  #s-landing .landing-reveal-final{opacity:1;transform:none;filter:none;animation:none!important}
+  #s-landing .landing-reveal-word{opacity:1;transform:none;filter:none;animation:none!important}
+  #s-landing .landing-reveal-accent::after{transform:scaleX(1);animation:none!important}
 }
 
 /* Desktop landing — a purpose-built wide-screen composition. */
@@ -2108,8 +2102,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
 #s-landing .marketing-card p{margin:0;font:450 13px/1.6 'Manrope',sans-serif;color:#766970}
 #s-landing .motion-showcase{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:28px}
-#s-landing .motion-story-scroll{position:relative;margin-top:30px}
-#s-landing .motion-story{position:relative;display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:560px;margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
+#s-landing .motion-story-scroll{position:relative;min-height:calc(100dvh + 2200px);margin-top:30px}
+#s-landing .motion-story{position:sticky;top:clamp(12px,4vh,36px);display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:min(680px,calc(100dvh - 48px));margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
 #s-landing .motion-story::before{content:'';position:absolute;z-index:-1;width:430px;height:430px;right:-150px;top:-170px;border-radius:50%;border:1px solid rgba(255,255,255,.11);box-shadow:0 0 0 62px rgba(255,255,255,.025),0 0 0 124px rgba(255,255,255,.018)}
 #s-landing .motion-story-copy{align-self:center}
 #s-landing .motion-story-copy .motion-panel-label{color:#E6A4B3}
@@ -2713,9 +2707,8 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="logo-rule" id="logoRule"></div>
       <div class="logo-sub" id="logoSub">A second number for everyday life</div>
       <h1 class="landing-title landing-reveal landing-reveal-run" aria-label="Your Vaultlix number. No SIM required.">
-        <span class="landing-reveal-copy landing-reveal-one" aria-hidden="true">Your Vaultlix number.</span>
-        <span class="landing-reveal-copy landing-reveal-two" aria-hidden="true">No SIM required.</span>
-        <span class="landing-reveal-copy landing-reveal-final" aria-hidden="true"><span>Your Vaultlix number.</span><span>No SIM required.</span></span>
+        <span class="landing-reveal-line" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:0">Your</span><span class="landing-reveal-word" style="--word-index:1">Vaultlix</span><span class="landing-reveal-word" style="--word-index:2">number.</span></span>
+        <span class="landing-reveal-line landing-reveal-accent" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:3">No</span><span class="landing-reveal-word" style="--word-index:4">SIM</span><span class="landing-reveal-word" style="--word-index:5">required.</span></span>
       </h1>
       <p class="tagline" id="logoTag">Dating someone new, selling online or meeting a client? Share Vaultlix and keep your personal number to yourself.</p>
       <div class="landing-hero-actions">
@@ -2827,7 +2820,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <h2 class="marketing-title" id="private-conversation-demo-title">A connection, made simple.</h2>
         <p class="marketing-lede">Share your Vaultlix number, approve the connection, and start talking—without exchanging personal contact details.</p>
         <div class="motion-story-scroll" id="vaultlix-motion-story-scroll">
-        <div class="motion-story motion-reveal" id="vaultlix-motion-story">
+        <div class="motion-story" id="vaultlix-motion-story">
           <div class="motion-story-copy">
             <span class="motion-panel-label">THREE MOMENTS. ONE LINE.</span>
             <h3>Reachable when you want. Separate when you don’t.</h3>
@@ -2836,10 +2829,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           </div>
           <div class="motion-deck" id="vaultlix-motion-deck" aria-label="How a Vaultlix connection unfolds">
             <article class="motion-deck-card">
-              <div class="motion-deck-top"><span class="motion-deck-kicker">Finish cleanly</span><span class="motion-deck-step">03</span></div>
-              <h4>Erase it for both people.</h4>
-              <p>When the conversation is over, close the line with a deliberate action.</p>
-              <div class="motion-deck-visual"><span class="motion-deck-avatar">V</span><span class="motion-deck-line"><strong>Conversation erased</strong><span>Nothing left to read</span></span><span class="motion-deck-action">Done</span></div>
+              <div class="motion-deck-top"><span class="motion-deck-kicker">Share less</span><span class="motion-deck-step">01</span></div>
+              <h4>Give them Vaultlix.</h4>
+              <p>Stay reachable without handing out your personal number, email, or contacts.</p>
+              <div class="motion-deck-visual"><span class="motion-deck-avatar">V</span><span class="motion-deck-line"><strong>Your Vaultlix number</strong><span>No SIM · No contact upload</span></span><span class="motion-deck-action">Ready</span></div>
             </article>
             <article class="motion-deck-card">
               <div class="motion-deck-top"><span class="motion-deck-kicker">Choose access</span><span class="motion-deck-step">02</span></div>
@@ -2848,10 +2841,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
               <div class="motion-deck-visual"><span class="motion-deck-avatar">M</span><span class="motion-deck-line"><strong>New line request</strong><span>Waiting for your approval</span></span><span class="motion-deck-action">Review</span></div>
             </article>
             <article class="motion-deck-card">
-              <div class="motion-deck-top"><span class="motion-deck-kicker">Share less</span><span class="motion-deck-step">01</span></div>
-              <h4>Give them Vaultlix.</h4>
-              <p>Stay reachable without handing out your personal number, email, or contacts.</p>
-              <div class="motion-deck-visual"><span class="motion-deck-avatar">V</span><span class="motion-deck-line"><strong>Your Vaultlix number</strong><span>No SIM · No contact upload</span></span><span class="motion-deck-action">Ready</span></div>
+              <div class="motion-deck-top"><span class="motion-deck-kicker">Finish cleanly</span><span class="motion-deck-step">03</span></div>
+              <h4>Erase it for both people.</h4>
+              <p>When the conversation is over, close the line with a deliberate action.</p>
+              <div class="motion-deck-visual"><span class="motion-deck-avatar">V</span><span class="motion-deck-line"><strong>Conversation erased</strong><span>Nothing left to read</span></span><span class="motion-deck-action">Done</span></div>
             </article>
           </div>
         </div>
@@ -15221,13 +15214,14 @@ function initializeHomepageMotionDemo() {
       deckFrame = null;
       const rect = deckTrack.getBoundingClientRect();
       const viewport = Math.max(1, window.innerHeight);
-      // The deck animates while its own box travels through the viewport.
-      // No oversized sticky track is needed, so the next section follows
-      // immediately after the card instead of appearing after a blank tail.
-      const travel = Math.max(1, viewport * .72);
-      const progress = Math.max(0, Math.min(1, (viewport * .86 - rect.top) / travel));
+      // Keep the story panel occupied and visible while each substantial
+      // upward scroll advances one card. The long track is never perceived
+      // as blank space because the panel remains sticky until card 03 lands.
+      const cardStride = Math.max(440, Math.min(780, viewport * .95));
+      const cardTravel = cardStride * .55;
+      const distance = viewport * .1 - rect.top;
       cards.forEach((card, index) => {
-        const local = Math.max(0, Math.min(1, (progress - index * .29) / .3));
+        const local = Math.max(0, Math.min(1, (distance - index * cardStride) / cardTravel));
         const eased = 1 - Math.pow(1 - local, 3);
         const final = finalStates[index];
         card.style.setProperty('--card-x', `${(final.x * eased).toFixed(2)}px`);
