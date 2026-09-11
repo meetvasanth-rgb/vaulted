@@ -61,27 +61,28 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOOK_DAILY_LIMIT = 5;
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
-const RETRO_80S_SCENES = Object.freeze([
-  'A warm wood-panelled 1980s family living room, visibly framed behind the shoulders: floral curtains, a cream-shaded table lamp, framed landscape art, teak shelving, books and lace antimacassars on patterned upholstery.',
-  'A youthful music-lover bedroom with a large period sports-car poster, palm-sunset wall print, teak cassette shelves, a silver radio-cassette deck, vinyl records and one small brass horse ornament.',
-  'A lively 1980s film-fan room with several softly focused South Indian cinema posters, a large silver boombox, neatly stacked cassette tapes, paperbacks, a red anglepoise desk lamp and a dark teak shelf.',
-  'A feminine 1980s bedroom-studio with period fashion posters, a silver cassette player, colourful tape cases, a softly glowing desk lamp, wood shelving and rich burgundy-and-teal accents.',
-  'An intimate teak study with a radiogram cabinet, twin-speaker cassette deck, stacked records, family books, fountain pens, a paper diary and a small brass vase of flowers.',
-  'A prosperous 1980s home office with a teak desk, rotary telephone, globe, fountain pen, paper diary, venetian blinds, a shaded brass lamp and a framed calendar kept too soft to read.',
-  'A formal family sitting room with rosewood cabinetry, floral drapes, framed landscape paintings, a brass Nataraja, ceramic ornaments, a bookcase and period patterned furniture.',
-  'A refined 1980s hotel lounge with burgundy upholstery, geometric carpet, smoked glass, rosewood furniture, a cream floor lamp, indoor palms and a softly blurred cassette cabinet.',
-  'A traditional South Indian courtyard room with patterned Athangudi-style tiles, carved wooden doors, brass vessels, cane furniture, family photographs and a radio on a teak side table.',
-  'A relaxed 1980s reading corner with a cane-backed chair, leafy houseplant, warm window light, a low teak shelf of books and cassette tapes, a compact stereo and a faded travel poster.',
+const RETRO_80S_LOOKS = Object.freeze([
+  'Classic heroine publicity portrait: rich silk sari, structured period blouse, restrained gold jewellery, voluminous side-swept hair and elegant studio makeup. Place the subject in a wood-panelled sitting room with floral curtains, a cream-shaded brass lamp, framed landscape art and teak shelving. Use soft warm studio light and a poised, youthful expression.',
+  'Classic hero publicity portrait: open-neck or neatly tucked period shirt, vintage watch, carefully side-parted hair and facial hair only when consistent with the source identity. Use a music-lover room with a sports-car poster, palm-sunset print, silver cassette deck, tape shelves and a brass horse ornament. Light with warm key light and soft confident shadows.',
+  'Disco-era star portrait: colourful sequinned or satin period outfit, feathered hair and tasteful era makeup suited to the subject. Build a real 1980s stage with mirrored panels, coloured bulbs, light haze and burgundy, blue and amber reflections. Keep the face naturally lit and recognisable rather than overwhelmed by coloured light.',
+  'Indian film-magazine publicity portrait: glamorous star styling, sculpted period hair and a vivid painted studio backdrop in saffron, teal and burgundy. Compose it like a vintage cover photograph with bold negative-space geometry and aged paper texture, but include no masthead, headlines, celebrity names or other readable text.',
+  'Wedding-album portrait: authentic period wedding or formal clothing appropriate to the subject, traditional jewellery, jasmine or restrained floral details and a simple painted studio backdrop with velvet curtains and brass kuthuvilakku lamps. Use softened direct flash, gentle focus and faded album-print colour.',
+  'Family-album portrait: simple cotton, sari, kurta or collared-shirt styling appropriate to the subject, relaxed youthful posture and a modest home interior with patterned upholstery, lace antimacassars, family photographs, books and a radio. Use warm window light, quiet colour and natural candid character.',
+  'Candid 35mm-camera portrait: keep the source expression and make the moment feel unposed. Use a cane-backed chair beside a leafy plant, a compact stereo, cassette tapes, paperbacks and a faded travel poster. Use natural window light, gentle contrast, soft highlights and authentic consumer-film imperfection.',
+  'Bouffant heroine-inspired portrait when appropriate to the subject: printed cotton or silk sari, large yet believable bouffant or softly waved hair, minimal gold jewellery and refined period makeup. Use a warm hand-painted studio backdrop, teak side table and shaded lamp with soft cinematic key light.',
+  'Kurta-and-flares hero-inspired portrait when appropriate to the subject: patterned kurta or wide-collared shirt, suggestion of high-waisted flared styling within the chest-up crop, side-parted hair and vintage watch. Use a teak home office with rotary phone, globe, venetian blinds and a softly blurred calendar.',
+  'Solo hand-painted cinema-poster portrait: preserve the one source subject and render the surrounding scene with richly painted 1980s Indian poster energy, dramatic clouds, saturated sunset colour and expressive light. Keep the face photorealistic and youthful, add no second star, and include no title, names or readable typography.',
+  'Cinematic film-reel still: style the subject in understated period clothing and place them in an atmospheric 1980s film-fan room with softly focused cinema posters, a large silver boombox, stacked cassettes, dark teak shelves and a red desk lamp. Use amber practical light, soft focus, restrained vignette and subtle frame-edge scratches.',
 ]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     id:'retro-80s', name:'1980s Portrait', note:'A complete period portrait, not just a colour filter',
     size:'1024x1024',
-    prompt:`Recreate the entire source photograph as a convincing mid-1980s South Indian formal home-studio portrait. This must be a complete period transformation of the wardrobe, hair, accessories, room, furniture, lighting and photographic medium — not a colour grade, lighting filter or modern portrait with added grain.
+    prompt:`Recreate the entire source photograph as a convincing Bollywood-inspired portrait made in India in the mid-1980s. This must be a complete period transformation of the wardrobe, hair, accessories, setting, furniture, lighting and photographic medium — not a colour grade, lighting filter or modern portrait with added grain.
 
 Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person. Film ageing belongs on the physical print, edges and background — never as ageing on the person's face.
 
-Use authentic, tasteful 1980s formal styling appropriate to the subject's presentation. If the source subject wears a sari, restyle it as a rich jewel-toned silk sari with a broad woven gold border, a structured short-sleeve period blouse, layered gold jewellery, bangles and jhumka earrings, plus voluminous side-swept or softly waved 1980s hair. Otherwise use equally authentic mid-1980s South Indian formal clothing, grooming and accessories without changing the subject's gender presentation.
+Follow the randomly selected look direction below for wardrobe, hair, setting and mood. Adapt it respectfully to the subject's existing gender presentation and visible cultural cues. Never add a moustache, change hair length, change religious or cultural markers, or force gendered clothing when it would conflict with the source person. Keep all styling tasteful and recognisably mid-1980s Indian.
 
 Replace every visibly modern background element according to the period scene direction supplied below. The 1980s room must be clearly visible and information-rich behind the subject, with several recognisable period objects rather than a plain, blurred or generic studio background. Keep those objects believable in scale and placement. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Do not add a prominent second person.
 
@@ -920,9 +921,9 @@ async function createDailyLook(image, style, apiKey) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
   const scene = style.id === 'retro-80s'
-    ? RETRO_80S_SCENES[crypto.randomInt(RETRO_80S_SCENES.length)]
+    ? RETRO_80S_LOOKS[crypto.randomInt(RETRO_80S_LOOKS.length)]
     : '';
-  form.append('prompt', scene ? `${style.prompt}\n\nPeriod scene direction for this generation: ${scene}` : style.prompt);
+  form.append('prompt', scene ? `${style.prompt}\n\nSelected 1980s Bollywood look direction for this generation: ${scene}` : style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');
   form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'medium');

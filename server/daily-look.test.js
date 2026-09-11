@@ -56,7 +56,7 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
 test('1980s Portrait performs a full period reconstruction in profile-ready framing', () => {
   assert.match(server, /complete period transformation/);
   assert.match(server, /not a colour grade, lighting filter/);
-  assert.match(server, /South Indian formal home-studio portrait/);
+  assert.match(server, /Bollywood-inspired portrait made in India in the mid-1980s/);
   assert.match(server, /DD MM '85/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
   assert.match(server, /head-and-shoulders or chest-up portrait/);
@@ -79,17 +79,22 @@ test('Daily Look replaces Editorial Glow with an identity-preserving anime portr
   assert.doesNotMatch(server, /id:'editorial-glow'/);
 });
 
-test('1980s Portrait randomly rotates through ten distinct period scenes', () => {
-  const sceneBlock = server.match(/const RETRO_80S_SCENES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
-  assert.equal((sceneBlock.match(/^  '/gm) || []).length, 10);
-  assert.match(sceneBlock, /family living room/);
-  assert.match(sceneBlock, /sports-car poster/);
-  assert.match(sceneBlock, /South Indian cinema posters/);
-  assert.match(sceneBlock, /silver boombox/);
-  assert.match(sceneBlock, /home office/);
-  assert.match(sceneBlock, /traditional South Indian courtyard room/);
-  assert.match(server, /RETRO_80S_SCENES\[crypto\.randomInt\(RETRO_80S_SCENES\.length\)\]/);
-  assert.match(server, /Period scene direction for this generation/);
+test('1980s Portrait randomly rotates through eleven distinct Bollywood looks', () => {
+  const lookBlock = server.match(/const RETRO_80S_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+  assert.equal((lookBlock.match(/^  '/gm) || []).length, 11);
+  assert.match(lookBlock, /Classic heroine publicity portrait/);
+  assert.match(lookBlock, /Classic hero publicity portrait/);
+  assert.match(lookBlock, /Disco-era star portrait/);
+  assert.match(lookBlock, /film-magazine publicity portrait/);
+  assert.match(lookBlock, /Wedding-album portrait/);
+  assert.match(lookBlock, /Family-album portrait/);
+  assert.match(lookBlock, /Candid 35mm-camera portrait/);
+  assert.match(lookBlock, /Bouffant heroine-inspired portrait/);
+  assert.match(lookBlock, /Kurta-and-flares hero-inspired portrait/);
+  assert.match(lookBlock, /Solo hand-painted cinema-poster portrait/);
+  assert.match(lookBlock, /Cinematic film-reel still/);
+  assert.match(server, /RETRO_80S_LOOKS\[crypto\.randomInt\(RETRO_80S_LOOKS\.length\)\]/);
+  assert.match(server, /Selected 1980s Bollywood look direction for this generation/);
 });
 
 test('Android Daily Look offers a dedicated camera capture path', () => {
