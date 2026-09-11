@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   creation_order bigint NOT NULL DEFAULT nextval('account_creation_order_seq'),
   daily_look_generated_at bigint,
   daily_look_claimed_at bigint,
+  daily_look_window_started_at bigint,
+  daily_look_generation_count integer NOT NULL DEFAULT 0,
   created_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
@@ -177,6 +179,8 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_founding boolean NOT NULL DEFAU
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS creation_order bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_generated_at bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_claimed_at bigint;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_window_started_at bigint;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_generation_count integer NOT NULL DEFAULT 0;
 ALTER TABLE accounts ALTER COLUMN creation_order SET DEFAULT nextval('account_creation_order_seq');
 WITH ordered AS (
   SELECT account_id, row_number() OVER (ORDER BY created_at, account_id) AS ordinal
@@ -234,6 +238,8 @@ class PostgresStore {
       tier:row.tier || 'standard', isFounding:!!row.is_founding,
       creationOrder:Number(row.creation_order),
       dailyLookGeneratedAt:row.daily_look_generated_at == null ? null : Number(row.daily_look_generated_at),
+      dailyLookWindowStartedAt:row.daily_look_window_started_at == null ? null : Number(row.daily_look_window_started_at),
+      dailyLookGenerationCount:Math.max(0, Number(row.daily_look_generation_count) || 0),
       createdAt:Number(row.created_at), updatedAt:Number(row.updated_at),
     }]);
   }
@@ -245,8 +251,9 @@ class PostgresStore {
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
       connection_requests, push_destinations, last_active_at, number_category,
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
-      creation_order, daily_look_generated_at, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23,$24)
+      creation_order, daily_look_generated_at, daily_look_window_started_at,
+      daily_look_generation_count, created_at, updated_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23,$24,$25,$26)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, display_name=EXCLUDED.display_name,
       profile_image=EXCLUDED.profile_image,
@@ -261,6 +268,8 @@ class PostgresStore {
       tier=EXCLUDED.tier, is_founding=EXCLUDED.is_founding,
       creation_order=EXCLUDED.creation_order,
       daily_look_generated_at=EXCLUDED.daily_look_generated_at,
+      daily_look_window_started_at=EXCLUDED.daily_look_window_started_at,
+      daily_look_generation_count=EXCLUDED.daily_look_generation_count,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -269,24 +278,33 @@ class PostgresStore {
       account.lastActiveAt || account.updatedAt || account.createdAt, account.numberCategory || 'standard',
       account.numberProtection || 'free', account.premiumUntil || null, JSON.stringify(account.reclaimWarnings || []),
       account.tier || 'standard', !!account.isFounding, account.creationOrder,
-      account.dailyLookGeneratedAt || null, account.createdAt, account.updatedAt,
+      account.dailyLookGeneratedAt || null, account.dailyLookWindowStartedAt || null,
+      Math.max(0, Number(account.dailyLookGenerationCount) || 0), account.createdAt, account.updatedAt,
     ]);
   }
 
-  async claimDailyLook(accountId, now, eligibleBefore, staleClaimBefore) {
+  async claimDailyLook(accountId, now, windowBefore, staleClaimBefore, dailyLimit) {
     if (!this.enabled) return true;
     const { rows } = await this.pool.query(`UPDATE accounts SET daily_look_claimed_at=$2
       WHERE account_id=$1
-        AND (daily_look_generated_at IS NULL OR daily_look_generated_at <= $3)
         AND (daily_look_claimed_at IS NULL OR daily_look_claimed_at <= $4)
-      RETURNING account_id`, [accountId, now, eligibleBefore, staleClaimBefore]);
+        AND (daily_look_window_started_at IS NULL OR daily_look_window_started_at <= $3
+          OR daily_look_generation_count < $5)
+      RETURNING account_id`, [accountId, now, windowBefore, staleClaimBefore, dailyLimit]);
     return rows.length === 1;
   }
 
   async completeDailyLook(accountId, now) {
     if (!this.enabled) return;
     await this.pool.query(`UPDATE accounts SET daily_look_generated_at=$2,
-      daily_look_claimed_at=NULL WHERE account_id=$1`, [accountId, now]);
+      daily_look_claimed_at=NULL,
+      daily_look_window_started_at=CASE
+        WHEN daily_look_window_started_at IS NULL OR daily_look_window_started_at <= $3 THEN $2
+        ELSE daily_look_window_started_at END,
+      daily_look_generation_count=CASE
+        WHEN daily_look_window_started_at IS NULL OR daily_look_window_started_at <= $3 THEN 1
+        ELSE daily_look_generation_count + 1 END
+      WHERE account_id=$1`, [accountId, now, now - 24 * 60 * 60 * 1000]);
   }
 
   async releaseDailyLookClaim(accountId) {

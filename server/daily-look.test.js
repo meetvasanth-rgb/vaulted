@@ -17,15 +17,18 @@ test('Daily Look keeps provider credentials on the server and requires an authen
   assert.match(server, /https:\/\/api\.openai\.com\/v1\/moderations/);
 });
 
-test('Daily Look cooldown is configurable while preserving the cross-replica in-flight lock', () => {
-  assert.match(server, /process\.env\.DAILY_LOOK_COOLDOWN_HOURS \|\| 24/);
-  assert.match(server, /DAILY_LOOK_COOLDOWN_MS === 0/);
+test('Daily Look allows five successful creations per rolling day while preserving the cross-replica lock', () => {
+  assert.match(server, /const DAILY_LOOK_DAILY_LIMIT = 5/);
+  assert.match(server, /dailyLookUsage\(account/);
   assert.match(server, /claimDailyLook\(d\.accountId, account, now\)/);
   assert.match(server, /catch \(error\) \{[\s\S]{0,120}releaseDailyLookClaim/);
   assert.match(postgres, /daily_look_generated_at bigint/);
   assert.match(postgres, /daily_look_claimed_at bigint/);
+  assert.match(postgres, /daily_look_window_started_at bigint/);
+  assert.match(postgres, /daily_look_generation_count integer NOT NULL DEFAULT 0/);
   assert.match(postgres, /UPDATE accounts SET daily_look_claimed_at=\$2[\s\S]*RETURNING account_id/);
-  assert.match(postgres, /completeDailyLook[\s\S]*daily_look_generated_at=\$2/);
+  assert.match(postgres, /completeDailyLook[\s\S]*daily_look_generation_count=CASE/);
+  assert.match(client, /up to \$\{result\.limit \|\| 5\} creations daily/);
 });
 
 test('Daily Look sends only an explicitly selected, reduced image and never stores the original', () => {
@@ -50,15 +53,26 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
-test('1980s Portrait performs a full period reconstruction in portrait format', () => {
+test('1980s Portrait performs a full period reconstruction in profile-ready framing', () => {
   assert.match(server, /complete period transformation/);
   assert.match(server, /not a colour grade, lighting filter/);
   assert.match(server, /South Indian formal home-studio portrait/);
   assert.match(server, /DD MM '85/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
-  assert.match(server, /form\.append\('size', '1024x1536'\)/);
+  assert.match(server, /head-and-shoulders or chest-up portrait/);
+  assert.match(server, /Do not make the person full-length/);
+  assert.match(server, /size:'1024x1024'/);
+  assert.match(server, /form\.append\('size', style\.size \|\| '1024x1024'\)/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
-  assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:2\/3/);
+  assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:1/);
+});
+
+test('Daily Look replaces Editorial Glow with an identity-preserving anime portrait', () => {
+  assert.match(server, /id:'anime-portrait', name:'Anime Portrait'/);
+  assert.match(server, /premium hand-drawn cinematic anime portrait/);
+  assert.match(server, /Do not replace them with a generic character/);
+  assert.match(server, /likeness stronger than the stylisation/);
+  assert.doesNotMatch(server, /id:'editorial-glow'/);
 });
 
 test('1980s Portrait randomly rotates through ten distinct period scenes', () => {

@@ -58,10 +58,7 @@ const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const configuredDailyLookCooldownHours = Number(process.env.DAILY_LOOK_COOLDOWN_HOURS || 24);
-const DAILY_LOOK_COOLDOWN_MS = Number.isFinite(configuredDailyLookCooldownHours)
-  ? Math.max(0, Math.min(24, configuredDailyLookCooldownHours)) * 60 * 60 * 1000
-  : 0;
+const DAILY_LOOK_DAILY_LIMIT = 5;
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
 const RETRO_80S_SCENES = Object.freeze([
@@ -79,6 +76,7 @@ const RETRO_80S_SCENES = Object.freeze([
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     id:'retro-80s', name:'1980s Portrait', note:'A complete period portrait, not just a colour filter',
+    size:'1024x1024',
     prompt:`Recreate the entire source photograph as a convincing mid-1980s South Indian formal home-studio portrait. This must be a complete period transformation of the wardrobe, hair, accessories, room, furniture, lighting and photographic medium — not a colour grade, lighting filter or modern portrait with added grain.
 
 Identity is the highest priority. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, age, expression, gaze, body proportions and pose. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person.
@@ -87,14 +85,18 @@ Use authentic, tasteful 1980s formal styling appropriate to the subject's presen
 
 Replace every visibly modern background element according to the period scene direction supplied below. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Do not add a prominent second person.
 
-Compose a vertical three-quarter-length or full-length portrait with warm tungsten light and gentle direct flash, photographed on consumer 35mm colour film and printed in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
+Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait. The face must occupy roughly 45–60% of the frame, with the eyes near the upper third and enough shoulders and period room detail to tell the story. Do not make the person full-length, three-quarter-length, distant or surrounded by oversized empty background. Use warm tungsten light and gentle direct flash, photographed on consumer 35mm colour film and printed in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
   },
   {
-    id:'editorial-glow', name:'Editorial Glow', note:'Polished light with a natural, modern finish',
-    prompt:'Transform this portrait into a refined contemporary editorial photograph. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Use flattering soft directional light, an elegant understated background, natural skin texture and premium magazine colour grading. Keep it photorealistic. No text, logos, watermarks or extra people.',
+    id:'anime-portrait', name:'Anime Portrait', note:'Hand-drawn character energy, recognisably you',
+    size:'1024x1024',
+    prompt:`Transform the source into a premium hand-drawn cinematic anime portrait while keeping the person immediately recognisable. Preserve the subject's exact identity, facial geometry, skin tone, apparent age, hairstyle, facial hair, glasses, distinctive features, expression and gaze. Do not replace them with a generic character, change ethnicity, beautify, de-age or exaggerate the eyes.
+
+Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait with the face occupying roughly 45–60% of the frame and the eyes near the upper third. Use confident clean line work, detailed layered hair, restrained expressive eyes, natural skin colour, painterly cel shading and a subtle atmospheric interpretation of the source environment. Keep anatomy faithful and the likeness stronger than the stylisation. No text, logos, watermarks or extra people.`,
   },
   {
     id:'neon-night', name:'Neon Night', note:'Cinematic colour without losing the real you',
+    size:'1024x1024',
     prompt:'Transform this portrait into a cinematic night portrait with restrained burgundy, blue and amber practical lighting. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Keep skin natural, the background believable and the result photorealistic, sophisticated and suitable as a profile photo. No text, logos, watermarks or extra people.',
   },
 ]);
@@ -868,6 +870,17 @@ function publicDailyLookStyles(now = Date.now()) {
   }));
 }
 
+function dailyLookUsage(account, now = Date.now()) {
+  const windowStartedAt = Number(account?.dailyLookWindowStartedAt) || 0;
+  const inCurrentWindow = windowStartedAt > now - DAY_MS;
+  const count = inCurrentWindow ? Math.max(0, Number(account?.dailyLookGenerationCount) || 0) : 0;
+  return {
+    count,
+    remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - count),
+    nextAt:count >= DAILY_LOOK_DAILY_LIMIT ? windowStartedAt + DAY_MS : 0,
+  };
+}
+
 function parseDailyLookImage(value) {
   if (typeof value !== 'string') return null;
   const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
@@ -907,7 +920,7 @@ async function createDailyLook(image, style, apiKey) {
     : '';
   form.append('prompt', scene ? `${style.prompt}\n\nPeriod scene direction for this generation: ${scene}` : style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
-  form.append('size', '1024x1536');
+  form.append('size', style.size || '1024x1024');
   form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'medium');
   form.append('output_format', 'jpeg');
   const response = await openAiJson('https://api.openai.com/v1/images/edits', {
@@ -922,9 +935,9 @@ async function createDailyLook(image, style, apiKey) {
 
 async function claimDailyLook(accountId, account, now) {
   if (postgresEnabled) {
-    return postgresStore.claimDailyLook(accountId, now, now - DAILY_LOOK_COOLDOWN_MS, now - DAILY_LOOK_CLAIM_TIMEOUT_MS);
+    return postgresStore.claimDailyLook(accountId, now, now - DAY_MS, now - DAILY_LOOK_CLAIM_TIMEOUT_MS, DAILY_LOOK_DAILY_LIMIT);
   }
-  if (dailyLookClaims.has(accountId) || (DAILY_LOOK_COOLDOWN_MS > 0 && Number(account.dailyLookGeneratedAt) > now - DAILY_LOOK_COOLDOWN_MS)) return false;
+  if (dailyLookClaims.has(accountId) || dailyLookUsage(account, now).remaining <= 0) return false;
   dailyLookClaims.add(accountId);
   return true;
 }
@@ -1010,14 +1023,14 @@ function normalizeDisplayName(value) {
 }
 function normalizeProfileImage(value) {
   if (value == null || value === '') return null;
-  if (typeof value !== 'string' || value.length > 180 * 1024) return undefined;
+  if (typeof value !== 'string' || value.length > 342 * 1024) return undefined;
   const match = value.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
   if (!match) return undefined;
   // Base64 expands bytes by roughly 4/3. Keep the decoded profile image
-  // below 128 KiB so a profile can never amplify account/database payloads.
+  // below 256 KiB so a profile can never amplify account/database payloads.
   const padding = (match[2].match(/=*$/) || [''])[0].length;
   const decodedBytes = Math.floor(match[2].length * 3 / 4) - padding;
-  return decodedBytes > 0 && decodedBytes <= 128 * 1024 ? value : undefined;
+  return decodedBytes > 0 && decodedBytes <= 256 * 1024 ? value : undefined;
 }
 function accountByPrivateNumber(value) {
   const privateNumber = normalizePrivateNumber(value);
@@ -2231,7 +2244,7 @@ function serveStatic(req, res) {
 // don't stop a flood of requests to a small endpoint from each individually
 // buffering up to that ceiling before any handler or auth check ever runs.
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
-const BODY_LIMIT_PROFILE = 192 * 1024;
+const BODY_LIMIT_PROFILE = 384 * 1024;
 const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
@@ -2603,7 +2616,7 @@ async function api(path, method, d, p, res, ip, headers) {
       numberProtection:reservedCategory === 'standard' || reservedCategory === 'preferred' ? 'free' : 'promotional',
       tier, isFounding, creationOrder,
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
-      dailyLookGeneratedAt:null,
+      dailyLookGeneratedAt:null, dailyLookWindowStartedAt:null, dailyLookGenerationCount:0,
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
@@ -2734,7 +2747,7 @@ async function api(path, method, d, p, res, ip, headers) {
     let profileImage = normalizeProfileImage(account.profileImage) || null;
     if (d.profileImageAction === 'replace') {
       const replacement = normalizeProfileImage(d.profileImage);
-      if (replacement === undefined || replacement === null) return resErr(res, 'Choose a valid profile image under 128 KB.', 400);
+      if (replacement === undefined || replacement === null) return resErr(res, 'Choose a valid profile image under 256 KB.', 400);
       profileImage = replacement;
     } else if (d.profileImageAction === 'remove') {
       profileImage = null;
@@ -2797,14 +2810,15 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    const generatedAt = Number(account.dailyLookGeneratedAt) || 0;
-    const nextAt = generatedAt && DAILY_LOOK_COOLDOWN_MS > 0 ? generatedAt + DAILY_LOOK_COOLDOWN_MS : 0;
+    const usage = dailyLookUsage(account);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, {
       ok:true,
-      available:!nextAt || nextAt <= Date.now(),
-      nextAt,
-      testing:DAILY_LOOK_COOLDOWN_MS === 0,
+      available:usage.remaining > 0,
+      nextAt:usage.nextAt,
+      testing:true,
+      limit:DAILY_LOOK_DAILY_LIMIT,
+      remaining:usage.remaining,
       configured:!!OPENAI_API_KEY,
       styles:publicDailyLookStyles(),
     });
@@ -2824,13 +2838,13 @@ async function api(path, method, d, p, res, ip, headers) {
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
     const now = Date.now();
-    const generatedAt = Number(account.dailyLookGeneratedAt) || 0;
-    if (DAILY_LOOK_COOLDOWN_MS > 0 && generatedAt && generatedAt + DAILY_LOOK_COOLDOWN_MS > now) {
+    const usage = dailyLookUsage(account, now);
+    if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
-      return resErr(res, 'Your next Daily Look will be available tomorrow.', 429);
+      return resErr(res, 'You have created five Daily Looks. Your next one will be available tomorrow.', 429);
     }
     if (!(await claimDailyLook(d.accountId, account, now))) {
-      return resErr(res, 'A Daily Look is already being created, or today’s look is complete.', 429);
+      return resErr(res, 'A Daily Look is already being created, or today’s five looks are complete.', 429);
     }
     try {
       if (await moderateDailyLookImage(d.image, apiKey)) {
@@ -2839,6 +2853,9 @@ async function api(path, method, d, p, res, ip, headers) {
       }
       const generatedImage = await createDailyLook(image, style, apiKey);
       const completedAt = Date.now();
+      const completedUsage = dailyLookUsage(account, completedAt);
+      if (!completedUsage.count) account.dailyLookWindowStartedAt = completedAt;
+      account.dailyLookGenerationCount = completedUsage.count + 1;
       account.dailyLookGeneratedAt = completedAt;
       account.updatedAt = completedAt;
       if (postgresEnabled) await postgresStore.completeDailyLook(d.accountId, completedAt);
@@ -2849,7 +2866,10 @@ async function api(path, method, d, p, res, ip, headers) {
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, {
         ok:true, generatedImage, generatedAt:completedAt,
-        nextAt:DAILY_LOOK_COOLDOWN_MS > 0 ? completedAt + DAILY_LOOK_COOLDOWN_MS : 0,
+        nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
+          ? account.dailyLookWindowStartedAt + DAY_MS : 0,
+        limit:DAILY_LOOK_DAILY_LIMIT,
+        remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - account.dailyLookGenerationCount),
         style:{ id:style.id, name:style.name },
       });
     } catch (error) {
@@ -4996,6 +5016,8 @@ function hydrateAccounts(entries, source) {
         ? record.reclaimWarnings.filter(id => RECLAIM_WARNING_WINDOWS.some(item => item.id === id))
         : [];
       record.dailyLookGeneratedAt = Number(record.dailyLookGeneratedAt) || null;
+      record.dailyLookWindowStartedAt = Number(record.dailyLookWindowStartedAt) || null;
+      record.dailyLookGenerationCount = Math.max(0, Number(record.dailyLookGenerationCount) || 0);
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);

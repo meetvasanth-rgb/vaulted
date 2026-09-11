@@ -11,8 +11,8 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 
 test('profile images are authenticated, bounded and persisted', () => {
   assert.match(server, /function normalizeProfileImage\(value\)/);
-  assert.match(server, /decodedBytes > 0 && decodedBytes <= 128 \* 1024/);
-  assert.match(server, /const BODY_LIMIT_PROFILE = 192 \* 1024/);
+  assert.match(server, /decodedBytes > 0 && decodedBytes <= 256 \* 1024/);
+  assert.match(server, /const BODY_LIMIT_PROFILE = 384 \* 1024/);
   assert.match(server, /pathname === '\/api\/account\/profile'\) return BODY_LIMIT_PROFILE/);
   assert.match(server, /path === '\/api\/account\/profile'[\s\S]*authenticateAccountSession/);
   assert.match(server, /d\.profileImageAction === 'replace'/);
@@ -39,7 +39,8 @@ test('profile image controls support add, replace and remove', () => {
   assert.match(client, /function chooseProfileImage\(\)/);
   assert.match(client, /async function compressProfileImage\(file\)/);
   assert.match(client, /jpe\?g\|png\|webp\|heic\|heif/);
-  assert.match(client, /canvas\.width = 320; canvas\.height = 320/);
+  assert.match(client, /canvas\.width = 512; canvas\.height = 512/);
+  assert.match(client, /result\.length <= 341 \* 1024/);
   assert.match(client, /saveProfileImageUpdate\('replace', image\)/);
   assert.match(client, /saveProfileImageUpdate\('remove'\)/);
   assert.match(client, /id="public-profile-photo"/);
