@@ -69,16 +69,16 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /id="vaultlix-motion-story-scroll"/);
   assert.match(client, /id="vaultlix-motion-deck"/);
   assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
-  assert.match(client, /const updateDeckFromScroll = \(\) =>/);
-  assert.match(client, /\.motion-story-scroll\{position:relative;min-height:calc\(100dvh \+ 2200px\);margin-top:30px\}/);
-  assert.match(client, /\.motion-story\{position:sticky;top:clamp\(12px,4vh,36px\);display:grid/);
-  assert.match(client, /min-height:min\(680px,calc\(100dvh - 48px\)\)/);
+  assert.match(client, /const updateDeckTarget = \(\) =>/);
+  assert.match(client, /\.motion-story-scroll\{position:relative;margin-top:30px\}/);
+  assert.match(client, /\.motion-story\{position:relative;display:grid/);
+  assert.doesNotMatch(client, /\.motion-story-scroll\{[^}]*min-height:calc\(100dvh \+ 2200px\)/);
   assert.match(client, /class="motion-story" id="vaultlix-motion-story"/);
-  assert.match(client, /const cardStride = Math\.max\(440, Math\.min\(780, viewport \* \.95\)\)/);
-  assert.match(client, /const distance = viewport \* \.1 - rect\.top/);
+  assert.match(client, /renderedProgress \+= Math\.sign\(difference\)/);
+  assert.match(client, /const maximumStep = elapsed \/ 1800/);
+  assert.match(client, /progress - index \* \.3/);
   assert.match(client, /landing\.addEventListener\('scroll', scheduleDeckUpdate/);
   assert.match(client, /window\.addEventListener\('scroll', scheduleDeckUpdate/);
-  assert.match(client, /distance - index \* cardStride/);
   assert.match(client, /classList\.add\('motion-enhanced'\)/);
   assert.match(client, /const sectionObserver = new IntersectionObserver/);
   assert.match(client, /matchMedia\('\(hover:hover\) and \(pointer:fine\)'\)/);
@@ -86,6 +86,9 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /Your line, waiting for you/);
   assert.match(client, /@keyframes landing-word-build/);
   assert.match(client, /landing-reveal-accent::after/);
+  assert.match(client, /id="vaultlix-motion-showcase"/);
+  assert.match(client, /showcaseObserver\.observe\(showcase\)/);
+  assert.match(client, /\.motion-showcase\.is-playing \.message-demo-bubble/);
 });
 
 test('settings headings share the submenu font family', () => {

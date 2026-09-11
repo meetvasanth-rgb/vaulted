@@ -2102,8 +2102,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
 #s-landing .marketing-card p{margin:0;font:450 13px/1.6 'Manrope',sans-serif;color:#766970}
 #s-landing .motion-showcase{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:28px}
-#s-landing .motion-story-scroll{position:relative;min-height:calc(100dvh + 2200px);margin-top:30px}
-#s-landing .motion-story{position:sticky;top:clamp(12px,4vh,36px);display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:min(680px,calc(100dvh - 48px));margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
+#s-landing .motion-story-scroll{position:relative;margin-top:30px}
+#s-landing .motion-story{position:relative;display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:560px;margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
 #s-landing .motion-story::before{content:'';position:absolute;z-index:-1;width:430px;height:430px;right:-150px;top:-170px;border-radius:50%;border:1px solid rgba(255,255,255,.11);box-shadow:0 0 0 62px rgba(255,255,255,.025),0 0 0 124px rgba(255,255,255,.018)}
 #s-landing .motion-story-copy{align-self:center}
 #s-landing .motion-story-copy .motion-panel-label{color:#E6A4B3}
@@ -2149,17 +2149,17 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .message-demo-head span{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:#682C43;color:#fff;font-size:10px}
 #s-landing .message-demo-bubble{max-width:84%;padding:10px 12px;border-radius:15px 15px 15px 4px;background:#fff;color:#34272F;font:600 11px/1.45 'Manrope',sans-serif;opacity:0;transform:translateY(18px) scale(.96);filter:blur(5px)}
 #s-landing .message-demo-bubble.me{align-self:flex-end;border-radius:15px 15px 4px 15px;background:#7A3650;color:#fff}
-#s-landing .homepage-motion-demo.is-playing .message-demo-bubble{animation:homepage-message-in .58s cubic-bezier(.22,1,.36,1) forwards}
-#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(2){animation-delay:.35s}
-#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(3){animation-delay:1.05s}
-#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(4){animation-delay:1.75s}
-#s-landing .homepage-motion-demo.is-playing .message-demo-bubble:nth-of-type(5){animation-delay:2.45s}
+#s-landing .motion-showcase.is-playing .message-demo-bubble{animation:homepage-message-in .58s cubic-bezier(.22,1,.36,1) forwards}
+#s-landing .motion-showcase.is-playing .message-demo-bubble:nth-of-type(2){animation-delay:.18s}
+#s-landing .motion-showcase.is-playing .message-demo-bubble:nth-of-type(3){animation-delay:.72s}
+#s-landing .motion-showcase.is-playing .message-demo-bubble:nth-of-type(4){animation-delay:1.26s}
+#s-landing .motion-showcase.is-playing .message-demo-bubble:nth-of-type(5){animation-delay:1.8s}
 #s-landing .privacy-scroll-stage{position:relative;display:grid;place-items:center;min-height:292px;margin-top:21px;overflow:hidden;border:1px solid rgba(255,255,255,.1);border-radius:22px;background:radial-gradient(circle at 50% 50%,rgba(200,117,136,.19),transparent 44%),#271D25;text-align:center}
 #s-landing .privacy-scroll-line{grid-area:1/1;padding:20px;font:700 clamp(24px,4vw,37px)/1.08 'Manrope',sans-serif;letter-spacing:-.045em;color:#FFF7FA;opacity:0;transform:translateY(100%);filter:blur(10px)}
-#s-landing .homepage-motion-demo.is-playing .privacy-scroll-one{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) forwards}
-#s-landing .homepage-motion-demo.is-playing .privacy-scroll-two{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) .85s forwards}
-#s-landing .homepage-motion-demo.is-playing .privacy-scroll-three{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) 1.7s forwards}
-#s-landing .homepage-motion-demo.is-playing .privacy-scroll-final{color:#E6A4B3;animation:privacy-scroll-finish 1.15s cubic-bezier(.22,1,.36,1) 2.55s forwards}
+#s-landing .motion-showcase.is-playing .privacy-scroll-one{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) forwards}
+#s-landing .motion-showcase.is-playing .privacy-scroll-two{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) .85s forwards}
+#s-landing .motion-showcase.is-playing .privacy-scroll-three{animation:privacy-scroll-through 1.25s cubic-bezier(.22,1,.36,1) 1.7s forwards}
+#s-landing .motion-showcase.is-playing .privacy-scroll-final{color:#E6A4B3;animation:privacy-scroll-finish 1.15s cubic-bezier(.22,1,.36,1) 2.55s forwards}
 @keyframes homepage-message-in{to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
 @keyframes privacy-scroll-through{0%{opacity:0;transform:translateY(100%);filter:blur(10px)}30%,62%{opacity:1;transform:translateY(0);filter:blur(0)}100%{opacity:0;transform:translateY(-100%);filter:blur(10px)}}
 @keyframes privacy-scroll-finish{0%{opacity:0;transform:translateY(100%);filter:blur(10px)}48%,100%{opacity:1;transform:translateY(0);filter:blur(0)}}
@@ -2849,7 +2849,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
           </div>
         </div>
         </div>
-        <div class="motion-showcase">
+        <div class="motion-showcase" id="vaultlix-motion-showcase">
           <article class="motion-panel" aria-label="Example Vaultlix conversation">
             <span class="motion-panel-label">ONE-TO-ONE CONVERSATION</span>
             <h3>Connect without sharing your phone number.</h3>
@@ -15172,23 +15172,24 @@ function initializeHomepageMotionDemo() {
   const demo = document.getElementById('private-conversation-demo');
   const deckTrack = document.getElementById('vaultlix-motion-story-scroll');
   const deck = document.getElementById('vaultlix-motion-deck');
+  const showcase = document.getElementById('vaultlix-motion-showcase');
   if (!landing || !demo) return;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const marketingSections = landing.querySelectorAll('.marketing-section');
   landing.classList.add('motion-enhanced');
 
   if (reducedMotion || !('IntersectionObserver' in window)) {
-    demo.classList.add('is-playing');
+    showcase?.classList.add('is-playing');
     marketingSections.forEach(section => section.classList.add('is-visible'));
     return;
   }
 
-  const demoObserver = new IntersectionObserver(entries => {
+  const showcaseObserver = new IntersectionObserver(entries => {
     if (!entries.some(entry => entry.isIntersecting)) return;
-    demo.classList.add('is-playing');
-    demoObserver.disconnect();
-  }, { threshold:.22 });
-  demoObserver.observe(demo);
+    showcase.classList.add('is-playing');
+    showcaseObserver.disconnect();
+  }, { threshold:.2, rootMargin:'0px 0px -6% 0px' });
+  if (showcase) showcaseObserver.observe(showcase);
 
   const sectionObserver = new IntersectionObserver(entries => {
     entries.forEach(entry => {
@@ -15199,9 +15200,10 @@ function initializeHomepageMotionDemo() {
   }, { threshold:.1, rootMargin:'0px 0px -8% 0px' });
   marketingSections.forEach(section => sectionObserver.observe(section));
 
-  // Pace the deck with the visitor's scroll instead of finishing it on a
-  // timer as soon as the section intersects. Each card owns a distinct part
-  // of the track, so it rises and settles before the next card arrives.
+  // Scroll chooses the destination, while renderedProgress catches up at a
+  // controlled speed. A large scrollbar or trackpad jump therefore still
+  // presents cards 01, 02 and 03 separately instead of revealing all three
+  // in one frame. The panel keeps its natural height, so no spacer follows it.
   if (deckTrack && deck) {
     const cards = [...deck.querySelectorAll('.motion-deck-card')];
     const finalStates = [
@@ -15210,18 +15212,12 @@ function initializeHomepageMotionDemo() {
       { x:0, y:0, z:0, rotate:0, scale:1, opacity:1 },
     ];
     let deckFrame = null;
-    const updateDeckFromScroll = () => {
-      deckFrame = null;
-      const rect = deckTrack.getBoundingClientRect();
-      const viewport = Math.max(1, window.innerHeight);
-      // Keep the story panel occupied and visible while each substantial
-      // upward scroll advances one card. The long track is never perceived
-      // as blank space because the panel remains sticky until card 03 lands.
-      const cardStride = Math.max(440, Math.min(780, viewport * .95));
-      const cardTravel = cardStride * .55;
-      const distance = viewport * .1 - rect.top;
+    let previousFrameTime = 0;
+    let targetProgress = 0;
+    let renderedProgress = 0;
+    const renderDeck = progress => {
       cards.forEach((card, index) => {
-        const local = Math.max(0, Math.min(1, (distance - index * cardStride) / cardTravel));
+        const local = Math.max(0, Math.min(1, (progress - index * .3) / .24));
         const eased = 1 - Math.pow(1 - local, 3);
         const final = finalStates[index];
         card.style.setProperty('--card-x', `${(final.x * eased).toFixed(2)}px`);
@@ -15232,8 +15228,25 @@ function initializeHomepageMotionDemo() {
         card.style.setProperty('--card-opacity', `${(final.opacity * eased).toFixed(3)}`);
       });
     };
+    const animateDeck = time => {
+      const elapsed = previousFrameTime ? Math.min(50, time - previousFrameTime) : 16;
+      previousFrameTime = time;
+      const difference = targetProgress - renderedProgress;
+      const maximumStep = elapsed / 1800;
+      renderedProgress += Math.sign(difference) * Math.min(Math.abs(difference), maximumStep);
+      renderDeck(renderedProgress);
+      if (Math.abs(targetProgress - renderedProgress) > .001) deckFrame = requestAnimationFrame(animateDeck);
+      else { renderedProgress = targetProgress; deckFrame = null; previousFrameTime = 0; }
+    };
+    const updateDeckTarget = () => {
+      const rect = deckTrack.getBoundingClientRect();
+      const viewport = Math.max(1, window.innerHeight);
+      const travel = Math.max(420, viewport * .72);
+      targetProgress = Math.max(0, Math.min(1, (viewport * .82 - rect.top) / travel));
+      if (!deckFrame) deckFrame = requestAnimationFrame(animateDeck);
+    };
     const scheduleDeckUpdate = () => {
-      if (!deckFrame) deckFrame = requestAnimationFrame(updateDeckFromScroll);
+      updateDeckTarget();
     };
     landing.addEventListener('scroll', scheduleDeckUpdate, { passive:true });
     window.addEventListener('scroll', scheduleDeckUpdate, { passive:true });
