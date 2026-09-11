@@ -2106,8 +2106,8 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
 #s-landing .marketing-card p{margin:0;font:450 13px/1.6 'Manrope',sans-serif;color:#766970}
 #s-landing .motion-showcase{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:28px}
-#s-landing .motion-story-scroll{position:relative;min-height:190vh;margin-top:30px}
-#s-landing .motion-story{position:sticky;top:clamp(18px,7vh,68px);display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:560px;margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
+#s-landing .motion-story-scroll{position:relative;margin-top:30px}
+#s-landing .motion-story{position:relative;display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:560px;margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
 #s-landing .motion-story::before{content:'';position:absolute;z-index:-1;width:430px;height:430px;right:-150px;top:-170px;border-radius:50%;border:1px solid rgba(255,255,255,.11);box-shadow:0 0 0 62px rgba(255,255,255,.025),0 0 0 124px rgba(255,255,255,.018)}
 #s-landing .motion-story-copy{align-self:center}
 #s-landing .motion-story-copy .motion-panel-label{color:#E6A4B3}
@@ -2216,7 +2216,6 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .safety-strip{grid-template-columns:1fr 1fr}
   #s-landing .marketing-cta{align-items:flex-start;flex-direction:column;padding:28px 24px}
   #s-landing .motion-showcase{grid-template-columns:1fr}
-  #s-landing .motion-story-scroll{min-height:225vh}
   #s-landing .motion-story{grid-template-columns:1fr;min-height:760px;padding:30px 22px;gap:18px}
   #s-landing .motion-story-copy h3{font-size:36px}
   #s-landing .motion-deck{min-height:460px}
@@ -14929,8 +14928,11 @@ function initializeHomepageMotionDemo() {
       deckFrame = null;
       const rect = deckTrack.getBoundingClientRect();
       const viewport = Math.max(1, window.innerHeight);
-      const travel = Math.max(viewport * .9, rect.height - viewport * .3);
-      const progress = Math.max(0, Math.min(1, (viewport * .78 - rect.top) / travel));
+      // The deck animates while its own box travels through the viewport.
+      // No oversized sticky track is needed, so the next section follows
+      // immediately after the card instead of appearing after a blank tail.
+      const travel = Math.max(1, viewport * .72);
+      const progress = Math.max(0, Math.min(1, (viewport * .86 - rect.top) / travel));
       cards.forEach((card, index) => {
         const local = Math.max(0, Math.min(1, (progress - index * .29) / .3));
         const eased = 1 - Math.pow(1 - local, 3);

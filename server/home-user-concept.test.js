@@ -70,6 +70,10 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /id="vaultlix-motion-deck"/);
   assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
   assert.match(client, /const updateDeckFromScroll = \(\) =>/);
+  assert.match(client, /\.motion-story-scroll\{position:relative;margin-top:30px\}/);
+  assert.match(client, /\.motion-story\{position:relative;display:grid/);
+  assert.doesNotMatch(client, /\.motion-story-scroll\{[^}]*min-height:(?:190|225)vh/);
+  assert.match(client, /const travel = Math\.max\(1, viewport \* \.72\)/);
   assert.match(client, /landing\.addEventListener\('scroll', scheduleDeckUpdate/);
   assert.match(client, /window\.addEventListener\('scroll', scheduleDeckUpdate/);
   assert.match(client, /progress - index \* \.29/);
