@@ -66,9 +66,9 @@ const RETRO_80S_LOOKS = Object.freeze([
   'Classic hero publicity portrait: open-neck or neatly tucked period shirt, vintage watch, carefully side-parted hair and facial hair only when consistent with the source identity. Use a music-lover room with a sports-car poster, palm-sunset print, silver cassette deck, tape shelves and a brass horse ornament. Light with warm key light and soft confident shadows.',
   'Disco-era star portrait: colourful sequinned or satin period outfit, feathered hair and tasteful era makeup suited to the subject. Build a real 1980s stage with mirrored panels, coloured bulbs, light haze and burgundy, blue and amber reflections. Keep the face naturally lit and recognisable rather than overwhelmed by coloured light.',
   'Indian film-magazine publicity portrait: glamorous star styling, sculpted period hair and a vivid painted studio backdrop in saffron, teal and burgundy. Compose it like a vintage cover photograph with bold negative-space geometry and aged paper texture, but include no masthead, headlines, celebrity names or other readable text.',
-  'Wedding-album portrait: authentic period wedding or formal clothing appropriate to the subject, traditional jewellery, jasmine or restrained floral details and a simple painted studio backdrop with velvet curtains and brass kuthuvilakku lamps. Use softened direct flash, gentle focus and faded album-print colour.',
-  'Family-album portrait: simple cotton, sari, kurta or collared-shirt styling appropriate to the subject, relaxed youthful posture and a modest home interior with patterned upholstery, lace antimacassars, family photographs, books and a radio. Use warm window light, quiet colour and natural candid character.',
-  'Candid 35mm-camera portrait: keep the source expression and make the moment feel unposed. Use a cane-backed chair beside a leafy plant, a compact stereo, cassette tapes, paperbacks and a faded travel poster. Use natural window light, gentle contrast, soft highlights and authentic consumer-film imperfection.',
+  'Bollywood-star wedding-album portrait: transform the subject into the unmistakable lead of a lavish 1980s Indian film wedding sequence, with authentic period wedding or formal clothing, traditional jewellery, jasmine or restrained floral details, velvet curtains, brass kuthuvilakku lamps and a richly painted studio palace backdrop. Use softened direct flash, gentle focus and faded album-print colour while keeping the composition glamorous and cinematic rather than an ordinary family photograph.',
+  'Bollywood star-at-home publicity portrait: simple but carefully styled cotton, sari, kurta or wide-collared shirt appropriate to the subject, relaxed youthful star presence, and a production-designed home interior with patterned upholstery, lace antimacassars, film-star publicity photographs, books, a valve radio and warm practical lamps. It must feel like a candid photograph of a 1980s screen icon, not a generic family snapshot.',
+  'Candid 35mm film-star portrait: keep the source expression and make the moment feel like an unposed behind-the-scenes photograph of a Bollywood lead between takes. Use a cane-backed director chair, leafy plant, compact stereo, cassette tapes, paperbacks, a faded cinema poster and a glimpse of studio equipment. Use natural window light, gentle contrast, soft highlights and authentic consumer-film imperfection.',
   'Bouffant heroine-inspired portrait when appropriate to the subject: printed cotton or silk sari, large yet believable bouffant or softly waved hair, minimal gold jewellery and refined period makeup. Use a warm hand-painted studio backdrop, teak side table and shaded lamp with soft cinematic key light.',
   'Kurta-and-flares hero-inspired portrait when appropriate to the subject: patterned kurta or wide-collared shirt, suggestion of high-waisted flared styling within the chest-up crop, side-parted hair and vintage watch. Use a teak home office with rotary phone, globe, venetian blinds and a softly blurred calendar.',
   'Solo hand-painted cinema-poster portrait: preserve the one source subject and render the surrounding scene with richly painted 1980s Indian poster energy, dramatic clouds, saturated sunset colour and expressive light. Keep the face photorealistic and youthful, add no second star, and include no title, names or readable typography.',
@@ -82,15 +82,15 @@ const DAILY_LOOK_STYLES = Object.freeze([
 
 Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person. Film ageing belongs on the physical print, edges and background — never as ageing on the person's face.
 
-Follow the randomly selected look direction below for wardrobe, hair, setting and mood. Adapt it respectfully to the subject's existing gender presentation and visible cultural cues. Never add a moustache, change hair length, change religious or cultural markers, or force gendered clothing when it would conflict with the source person. Keep all styling tasteful and recognisably mid-1980s Indian.
+The selected look direction below is mandatory and must be the dominant visual concept. Rebuild the scene, clothing, grooming, props, lighting and photographic treatment to make that exact Bollywood direction obvious at first glance. Do not fall back to a generic old family photograph, an ordinary home portrait or merely a sepia filter. Adapt the direction respectfully to the subject's existing gender presentation and visible cultural cues. Never add a moustache, change hair length, change religious or cultural markers, or force gendered clothing when it would conflict with the source person. Keep all styling tasteful and recognisably mid-1980s Indian cinema.
 
-Replace every visibly modern background element according to the period scene direction supplied below. The 1980s room must be clearly visible and information-rich behind the subject, with several recognisable period objects rather than a plain, blurred or generic studio background. Keep those objects believable in scale and placement. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Do not add a prominent second person.
+Replace every visibly modern background element according to the selected look direction supplied below. The setting must be clearly visible and information-rich behind the subject, with several recognisable cinematic and period objects rather than a plain, blurred or generic home background. Keep those objects believable in scale and placement. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Preserve every clearly visible person from the source and do not invent additional people.
 
 Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait. The face must occupy roughly 45–60% of the frame, with the eyes near the upper third and enough shoulders and period room detail to tell the story. Do not make the person full-length, three-quarter-length, distant or surrounded by oversized empty background.
 
 Light the face beautifully and consistently: use one large soft warm key light about 45 degrees from the face, gentle frontal fill, soft natural catchlights and a subtle warm practical lamp in the room. Expose for the face with clean, luminous, true-to-source skin tone. Keep highlights controlled and shadows open. Avoid orange colour casts, muddy skin, harsh flash hotspots, deep eye shadows, blown highlights, grey skin or uneven mixed lighting.
 
-Photograph the scene on consumer 35mm colour film and print it in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Keep grain and print damage restrained across the face. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
+Photograph the scene on 35mm colour film and print it in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Keep grain and print damage restrained across the face. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like an authentic 1980s Bollywood publicity photograph, film still or star portrait matching the selected direction—not an AI effect and not a generic family portrait.`,
   },
   {
     id:'anime-portrait', name:'Anime Portrait', note:'Hand-drawn character energy, recognisably you',
@@ -917,11 +917,17 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
   return result.results?.some(item => item.flagged === true) === true;
 }
 
-async function createDailyLook(image, style, apiKey) {
+function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
+  const day = Math.floor(now / DAY_MS);
+  const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
+  return (seed + Math.max(0, Number(generationCount) || 0)) % RETRO_80S_LOOKS.length;
+}
+
+async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
   const scene = style.id === 'retro-80s'
-    ? RETRO_80S_LOOKS[crypto.randomInt(RETRO_80S_LOOKS.length)]
+    ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
     : '';
   form.append('prompt', scene ? `${style.prompt}\n\nSelected 1980s Bollywood look direction for this generation: ${scene}` : style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
@@ -2856,7 +2862,8 @@ async function api(path, method, d, p, res, ip, headers) {
         await releaseDailyLookClaim(d.accountId);
         return resErr(res, 'This photo cannot be used for Daily Look. Choose another.', 400);
       }
-      const generatedImage = await createDailyLook(image, style, apiKey);
+      const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
+      const generatedImage = await createDailyLook(image, style, apiKey, variantIndex);
       const completedAt = Date.now();
       const completedUsage = dailyLookUsage(account, completedAt);
       if (!completedUsage.count) account.dailyLookWindowStartedAt = completedAt;
