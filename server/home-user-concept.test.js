@@ -64,6 +64,18 @@ test('homepage motion demos are isolated from real conversations', () => {
   assert.equal(chat.includes('privacy-scroll-stage'), false);
 });
 
+test('homepage motion system is layered, responsive and accessible', () => {
+  assert.match(client, /id="vaultlix-motion-story"/);
+  assert.match(client, /id="vaultlix-motion-deck"/);
+  assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
+  assert.match(client, /@keyframes vault-card-rise-front/);
+  assert.match(client, /classList\.add\('motion-enhanced'\)/);
+  assert.match(client, /const sectionObserver = new IntersectionObserver/);
+  assert.match(client, /matchMedia\('\(hover:hover\) and \(pointer:fine\)'\)/);
+  assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1;animation:none!important/);
+  assert.match(client, /Your line, waiting for you/);
+});
+
 test('settings headings share the submenu font family', () => {
   assert.match(client, /\.settings-header-title\{font-family:'Inter',sans-serif/);
   assert.match(client, /\.settings-about-name\{font-family:'Inter',sans-serif/);
