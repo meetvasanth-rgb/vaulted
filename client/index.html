@@ -1085,7 +1085,6 @@ body.select-mode .chat-ftr{display:none}
 .call-overlay.has-video .call-data-rain{display:none}
 .call-overlay>.call-hdr-block,.call-overlay>.call-identity,.call-overlay>.call-actions,.call-overlay>.call-reaction-picker{position:relative;z-index:1}
 .call-data-column{position:absolute;top:-55%;display:flex;flex-direction:column;gap:7px;color:rgba(250,246,247,.34);font:500 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;text-shadow:0 0 7px rgba(250,246,247,.18);animation:call-data-fall linear infinite;will-change:transform}
-.call-data-rain.ios-call-data-rain .call-data-column{font-size:20px;gap:10px}
 .call-data-column.rose{color:rgba(229,137,160,.52);text-shadow:0 0 9px rgba(229,137,160,.28)}
 @keyframes call-data-fall{from{transform:translateY(-12vh)}to{transform:translateY(170vh)}}
 /* Lets the full-bleed #call-remote-video (sitting just behind, at a lower
@@ -6559,20 +6558,20 @@ function callHeaderBlock() {
 }
 
 function callDataRainHtml() {
-  const iosRain = isNativeIosApp();
   const columns = Array.from({ length: 18 }, (_, index) => {
     let bits = '';
     for (let bit = 0; bit < 13 + (index % 8); bit++) {
       bits += `<span>${((index * 7 + bit * 5) % 11) < 5 ? '0' : '1'}</span>`;
     }
     const left = 2 + index * 5.6;
-    // iOS uses larger, slower digits for legibility on its full-screen call
-    // presentation: twice the duration means exactly half the fall speed.
-    const duration = (11 + (index % 6) * 1.7) * (iosRain ? 2 : 1);
+    // Keep the exact same density and travel speed on iOS and Android. The
+    // previous iOS-only enlargement/slowdown exposed the short bit pattern
+    // and made the field look repetitive rather than ambient.
+    const duration = 11 + (index % 6) * 1.7;
     const delay = -((index * 2.3) % duration);
     return `<span class="call-data-column${index % 3 === 0 ? ' rose' : ''}" style="left:${left}%;animation-duration:${duration}s;animation-delay:${delay}s">${bits}</span>`;
   }).join('');
-  return `<div class="call-data-rain${iosRain ? ' ios-call-data-rain' : ''}" aria-hidden="true">${columns}</div>`;
+  return `<div class="call-data-rain" aria-hidden="true">${columns}</div>`;
 }
 
 // Shared drag-to-trigger gesture for the accept/decline/cancel buttons —
@@ -14490,6 +14489,12 @@ function wrapSandChars(text) {
 async function dissolveCallScreen(room, duration, eventId = null) {
   const overlay = document.getElementById('call-overlay');
   if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId); return; }
+
+  // The moving matrix belongs only to a live call. Stop and remove it at
+  // the first frame of hang-up so it cannot continue behind the slower
+  // "This call never existed" closing ceremony (especially on iOS, where
+  // WebKit can resume a previously scheduled CSS animation a frame late).
+  overlay.querySelector('.call-data-rain')?.remove();
 
   const floatOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-float-fade'); };
   const fadeOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-dissolve-hide'); };

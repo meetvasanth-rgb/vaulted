@@ -32,10 +32,11 @@ test('sent connection requests remain visible while awaiting acceptance', () => 
   assert.match(client, /Connection request sent · awaiting acceptance/);
 });
 
-test('iOS call data rain is larger and runs at half speed', () => {
-  assert.match(client, /ios-call-data-rain/);
-  assert.match(client, /ios-call-data-rain \.call-data-column\{font-size:20px/);
-  assert.match(client, /\* \(iosRain \? 2 : 1\)/);
+test('iOS and Android call data rain use the same density and travel speed', () => {
+  assert.doesNotMatch(client, /ios-call-data-rain/);
+  assert.doesNotMatch(client, /iosRain/);
+  assert.match(client, /const duration = 11 \+ \(index % 6\) \* 1\.7/);
+  assert.match(client, /overlay\.querySelector\('\.call-data-rain'\)\?\.remove\(\)/);
 });
 
 test('connection UI uses conversation language and one encryption label', () => {
