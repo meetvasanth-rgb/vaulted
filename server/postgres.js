@@ -3,9 +3,11 @@
 const { Pool } = require('pg');
 const crypto = require('crypto');
 
-// PostgreSQL contains ciphertext, hashes, delivery state and deletion
-// tombstones only. Message plaintext and conversation keys never enter this
-// process, so moving persistence out of one Node heap does not weaken E2E.
+// PostgreSQL contains ciphertext, hashes, delivery state, deletion
+// tombstones, and the intentionally public identity fields (display name and
+// optional profile image). Message plaintext and conversation keys never
+// enter this process, so moving persistence out of one Node heap does not
+// weaken E2E.
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS vaultlix_schema (
   version integer PRIMARY KEY,
@@ -18,6 +20,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   account_id char(64) PRIMARY KEY,
   private_number varchar(10) NOT NULL UNIQUE,
   display_name varchar(40) NOT NULL,
+  profile_image text,
   auth_verifier text NOT NULL,
   recovery_verifier text NOT NULL,
   password_wrap text NOT NULL,
@@ -158,6 +161,7 @@ CREATE TABLE IF NOT EXISTS device_sync_cursors (
 );
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS push_destinations jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_image text;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_active_at bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS number_category varchar(32) NOT NULL DEFAULT 'standard';
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS number_protection varchar(32) NOT NULL DEFAULT 'free';
@@ -214,7 +218,7 @@ class PostgresStore {
     if (!this.enabled) return [];
     const { rows } = await this.pool.query('SELECT * FROM accounts ORDER BY created_at');
     return rows.map(row => [row.account_id, {
-      version:2, privateNumber:row.private_number, displayName:row.display_name,
+      version:2, privateNumber:row.private_number, displayName:row.display_name, profileImage:row.profile_image || null,
       authVerifier:row.auth_verifier, recoveryVerifier:row.recovery_verifier,
       passwordWrap:row.password_wrap, recoveryWrap:row.recovery_wrap,
       bundle:row.encrypted_bundle, revision:Number(row.revision),
@@ -232,14 +236,15 @@ class PostgresStore {
   async saveAccount(accountId, account) {
     if (!this.enabled) return;
     await this.pool.query(`INSERT INTO accounts (
-      account_id, private_number, display_name, auth_verifier, recovery_verifier,
+      account_id, private_number, display_name, profile_image, auth_verifier, recovery_verifier,
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
       connection_requests, push_destinations, last_active_at, number_category,
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
       creation_order, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,$13,$14,$15,$16,$17::jsonb,$18,$19,$20,$21,$22)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, display_name=EXCLUDED.display_name,
+      profile_image=EXCLUDED.profile_image,
       auth_verifier=EXCLUDED.auth_verifier, recovery_verifier=EXCLUDED.recovery_verifier,
       password_wrap=EXCLUDED.password_wrap, recovery_wrap=EXCLUDED.recovery_wrap,
       encrypted_bundle=EXCLUDED.encrypted_bundle, revision=EXCLUDED.revision,
@@ -251,7 +256,7 @@ class PostgresStore {
       tier=EXCLUDED.tier, is_founding=EXCLUDED.is_founding,
       creation_order=EXCLUDED.creation_order,
       updated_at=EXCLUDED.updated_at`, [
-      accountId, account.privateNumber, account.displayName, account.authVerifier,
+      accountId, account.privateNumber, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
       account.bundle, account.revision, JSON.stringify(account.sessions || []),
       JSON.stringify(account.connectionRequests || []), JSON.stringify(account.pushDestinations || []),

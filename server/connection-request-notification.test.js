@@ -30,6 +30,13 @@ test('sent connection requests remain visible while awaiting acceptance', () => 
   assert.match(client, /pendingOutgoingConnections/);
   assert.match(client, /direction === 'outgoing' && r\.status === 'pending'/);
   assert.match(client, /Connection request sent · awaiting acceptance/);
+  assert.match(client, /if \(result\.status === 'pending'\) \{[\s\S]*pendingOutgoingConnections = pendingOutgoingConnections[\s\S]*direction:'outgoing'[\s\S]*showScreen\('s-vault-list'\)/);
+  assert.match(server, /const senderMirror = \(sender\.connectionRequests \|\| \[\]\)\.find\(r => r\.id === relationship\.id\)/);
+  assert.match(server, /sender\.connectionRequests\.push\(\{[\s\S]*\.\.\.relationship,[\s\S]*direction:senderDirection/);
+  assert.match(server, /await persistAccount\(d\.accountId\)/);
+  assert.match(server, /Heal pending request mirrors left one-sided/);
+  assert.match(server, /request\.senderAccountId !== d\.accountId && request\.recipientAccountId !== d\.accountId/);
+  assert.match(server, /direction:request\.senderAccountId === d\.accountId \? 'outgoing' : 'incoming'/);
 });
 
 test('iOS and Android call data rain use the same density and travel speed', () => {
@@ -66,7 +73,7 @@ test('logged-out Quick Connect is invitation-aware and creation-first', () => {
   assert.match(client, /Already have a Vaultlix number\? Sign in/);
   assert.match(client, /openQuickConnectAuthentication\(authenticationMode\)/);
   assert.match(client, /Your invitation from \$\{inviterName\} will be waiting after this step\./);
-  assert.match(client, /Request sent to \$\{activePublicProfile\.displayName\}\. We’ll notify you when they accept\./);
+  assert.match(client, /Request sent to \$\{requestedProfile\.displayName\}\. We’ll notify you when they accept\./);
   assert.doesNotMatch(client, /Sign in to connect['<]/);
   assert.doesNotMatch(client, /\/api\/connect\/guest-request/);
 });

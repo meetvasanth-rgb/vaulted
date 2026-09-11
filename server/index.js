@@ -894,6 +894,17 @@ function normalizeDisplayName(value) {
   // hydration. New registrations and edits enforce the tighter UI limit.
   return displayName.length >= 2 && displayName.length <= 40 && !/[<>\u0000-\u001f]/.test(displayName) ? displayName : '';
 }
+function normalizeProfileImage(value) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || value.length > 180 * 1024) return undefined;
+  const match = value.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return undefined;
+  // Base64 expands bytes by roughly 4/3. Keep the decoded profile image
+  // below 128 KiB so a profile can never amplify account/database payloads.
+  const padding = (match[2].match(/=*$/) || [''])[0].length;
+  const decodedBytes = Math.floor(match[2].length * 3 / 4) - padding;
+  return decodedBytes > 0 && decodedBytes <= 128 * 1024 ? value : undefined;
+}
 function accountByPrivateNumber(value) {
   const privateNumber = normalizePrivateNumber(value);
   const accountId = privateNumber ? privateNumbers.get(privateNumber) : null;
@@ -903,6 +914,7 @@ function publicAccount(account) {
   return {
     privateNumber:account.privateNumber,
     displayName:account.displayName,
+    profileImage:normalizeProfileImage(account.profileImage) || null,
     address:`https://vaultlix.com/${account.privateNumber}`,
     tier:account.tier || NUMBER_TIERS.STANDARD,
     isFounding:!!account.isFounding,
@@ -2455,7 +2467,7 @@ async function api(path, method, d, p, res, ip, headers) {
       : NUMBER_TIERS.RESERVE;
     const { tier, isFounding } = assignAccountTier({ creationOrder, reservationTier });
     const account = {
-      version: 2, privateNumber, displayName,
+      version: 2, privateNumber, displayName, profileImage:null,
       authVerifier,
       recoveryVerifier,
       passwordWrap: d.passwordWrap,
@@ -2595,7 +2607,18 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     const displayName = normalizeDisplayName(d.displayName);
     if (!displayName || displayName.length > 32) return resErr(res, 'Enter a username between 2 and 32 characters.', 400);
+    let profileImage = normalizeProfileImage(account.profileImage) || null;
+    if (d.profileImageAction === 'replace') {
+      const replacement = normalizeProfileImage(d.profileImage);
+      if (replacement === undefined || replacement === null) return resErr(res, 'Choose a valid profile image under 128 KB.', 400);
+      profileImage = replacement;
+    } else if (d.profileImageAction === 'remove') {
+      profileImage = null;
+    } else if (d.profileImageAction != null) {
+      return resErr(res, 'Invalid profile image update.', 400);
+    }
     account.displayName = displayName;
+    account.profileImage = profileImage;
     account.updatedAt = Date.now();
 
     // Connection requests are durable identity links, but historically they
@@ -2616,6 +2639,7 @@ async function api(path, method, d, p, res, ip, headers) {
           request.recipientDisplayName = displayName;
           changed = true;
         }
+        if (request.senderAccountId === d.accountId || request.recipientAccountId === d.accountId) affectedAccountIds.add(accountId);
         if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') continue;
         const match = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i);
         if (!match) continue;
@@ -2642,7 +2666,7 @@ async function api(path, method, d, p, res, ip, headers) {
       if (accountId !== d.accountId) publishInboxAccount(accountId, 'peer-profile');
     }
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, displayName });
+    return res200(res, { ok:true, displayName, profileImage });
   }
 
   if (path === '/api/account/sync' && method === 'POST') {
@@ -2792,6 +2816,24 @@ async function api(path, method, d, p, res, ip, headers) {
     const relationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'pending');
     if (relationship?.status === 'pending') {
       const needsResponse = relationship.senderAccountId === recipient.accountId;
+      // Older deployments could leave only one side of a pending request
+      // after an interrupted persistence cycle. Returning "pending" without
+      // repairing the caller's mirror made the request reach the recipient
+      // while remaining invisible in the sender's inbox. Rebuild the missing
+      // authenticated copy idempotently before responding.
+      const senderMirror = (sender.connectionRequests || []).find(r => r.id === relationship.id);
+      const senderDirection = needsResponse ? 'incoming' : 'outgoing';
+      if (!senderMirror) {
+        sender.connectionRequests = compactConnectionRequests(sender.connectionRequests, now);
+        sender.connectionRequests.push({
+          ...relationship,
+          direction:senderDirection,
+        });
+        await persistAccount(d.accountId);
+      } else if (senderMirror.direction !== senderDirection) {
+        senderMirror.direction = senderDirection;
+        await persistAccount(d.accountId);
+      }
       return res200(res, { ok:true, requestId:relationship.id, status:needsResponse ? 'action_required' : 'pending' });
     }
     const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
@@ -2844,10 +2886,33 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);
     const now = Date.now();
+    // Heal pending request mirrors left one-sided by an interrupted write in
+    // an older deployment. This is deliberately done on the authenticated
+    // inbox read as well as on a repeated send, so the intended recipient can
+    // recover the request without asking its sender to submit it again.
+    const knownRequestIds = new Set((account.connectionRequests || []).map(request => request.id));
+    let recoveredRequest = false;
+    for (const [peerAccountId, peerAccount] of accounts) {
+      if (peerAccountId === d.accountId) continue;
+      for (const request of peerAccount.connectionRequests || []) {
+        if (request.status !== 'pending' || knownRequestIds.has(request.id)) continue;
+        if (request.senderAccountId !== d.accountId && request.recipientAccountId !== d.accountId) continue;
+        account.connectionRequests.push({
+          ...request,
+          direction:request.senderAccountId === d.accountId ? 'outgoing' : 'incoming',
+        });
+        knownRequestIds.add(request.id);
+        recoveredRequest = true;
+      }
+    }
     const previousRequestCount = (account.connectionRequests || []).length;
     account.connectionRequests = compactConnectionRequests(account.connectionRequests, now);
-    if (account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
-    return res200(res, { ok:true, requests:account.connectionRequests.map(({senderAccountId, recipientAccountId, ...safe}) => safe) });
+    if (recoveredRequest || account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
+    return res200(res, { ok:true, requests:account.connectionRequests.map(({senderAccountId, recipientAccountId, ...safe}) => ({
+      ...safe,
+      senderProfileImage:normalizeProfileImage(accounts.get(senderAccountId)?.profileImage) || null,
+      recipientProfileImage:normalizeProfileImage(accounts.get(recipientAccountId)?.profileImage) || null,
+    })) });
   }
 
   if (path === '/api/connections/respond' && method === 'POST') {
