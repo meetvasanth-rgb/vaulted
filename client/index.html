@@ -3950,7 +3950,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
 <div class="account-overlay" id="daily-look-overlay" onclick="if(event.target===this)closeDailyLook()">
   <div class="account-card daily-look-card" role="dialog" aria-modal="true" aria-labelledby="daily-look-title">
-    <div class="account-head"><div><div class="account-kicker">One creation every 24 hours</div><div class="account-title" id="daily-look-title">Vaultlix Daily Look</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
+    <div class="account-head"><div><div class="account-kicker">Testing mode · create and compare</div><div class="account-title" id="daily-look-title">Vaultlix Daily Look</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
     <div class="daily-look-hero"><strong>A fresh look. Still unmistakably you.</strong><span>Choose a changing Vaultlix style, then keep the result or make it your profile image.</span></div>
     <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
     <div class="daily-look-styles" id="daily-look-styles" aria-label="Choose a Daily Look style"></div>
@@ -8856,6 +8856,33 @@ async function compressProfileImage(file) {
   } finally { URL.revokeObjectURL(sourceUrl); }
 }
 
+async function prepareDailyLookImage(file) {
+  const imageName = String(file?.name || '');
+  const supportedPhoto = !!file && (/^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|heic|heif)$/i.test(imageName));
+  if (!supportedPhoto) throw new Error('Choose a photo from this device');
+  if (file.size > 12 * 1024 * 1024) throw new Error('Choose an image smaller than 12 MB');
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('Could not read this image')); image.src = sourceUrl; });
+    const longestEdge = Math.max(image.naturalWidth, image.naturalHeight);
+    if (!longestEdge) throw new Error('Could not read this image');
+    const scale = Math.min(1, 1600 / longestEdge);
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const context = canvas.getContext('2d', { alpha:false });
+    context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    for (const quality of [.9, .84, .76, .68, .6]) {
+      const result = canvas.toDataURL('image/jpeg', quality);
+      if (result.length <= 1200 * 1024) return result;
+    }
+    throw new Error('This image could not be prepared safely');
+  } finally { URL.revokeObjectURL(sourceUrl); }
+}
+
 async function saveProfileImageUpdate(profileImageAction, profileImage = null) {
   const state = loadAccountState();
   if (!state) return false;
@@ -8959,7 +8986,7 @@ async function openDailyLook() {
     const next = new Date(result.nextAt);
     if (status) status.textContent = `Your next look is available ${next.toLocaleDateString([], { weekday:'short' })} at ${next.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}.`;
     if (generate) generate.disabled = true;
-  } else if (status) status.textContent = 'Today’s creation is ready.';
+  } else if (status) status.textContent = result.testing ? 'Testing mode is active. Create and compare as many looks as needed.' : 'Today’s creation is ready.';
 }
 
 function chooseDailyLookPhoto() {
@@ -8974,7 +9001,7 @@ async function handleDailyLookPhoto(event) {
   const status = document.getElementById('daily-look-status');
   if (button) { button.disabled = true; button.textContent = 'Preparing photo…'; }
   try {
-    dailyLookSourceImage = await compressProfileImage(file);
+    dailyLookSourceImage = await prepareDailyLookImage(file);
     const preview = document.getElementById('daily-look-preview');
     if (preview) { const image = document.createElement('img'); image.src = dailyLookSourceImage; image.alt = 'Selected Daily Look photo'; preview.replaceChildren(image); }
     if (status) status.textContent = 'Photo ready. Choose a style and create your look.';

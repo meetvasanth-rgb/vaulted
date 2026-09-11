@@ -21,8 +21,9 @@ Daily Look uses an authenticated server endpoint; the provider key must never be
 - `OPENAI_API` — accepted as a backwards-compatible Railway alias
 - `OPENAI_IMAGE_MODEL` — optional model override (defaults to `gpt-image-2.5-sunburst` for precise portrait editing)
 - `OPENAI_IMAGE_QUALITY` — optional quality override (defaults to `medium`)
+- `DAILY_LOOK_COOLDOWN_HOURS` — optional creation cooldown from `0` to `24`; defaults to `0` while Daily Look is being tested
 
-Vaultlix permits one successful creation per account every 24 hours. Failed or refused requests do not consume the allowance.
+Daily Look currently permits repeated creations for testing while still allowing only one generation to run at a time per account. Set `DAILY_LOOK_COOLDOWN_HOURS=24` to restore the intended daily allowance. Failed or refused requests never start a cooldown.
 
 ---
 

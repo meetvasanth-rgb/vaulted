@@ -17,8 +17,9 @@ test('Daily Look keeps provider credentials on the server and requires an authen
   assert.match(server, /https:\/\/api\.openai\.com\/v1\/moderations/);
 });
 
-test('Daily Look allows one successful creation per 24 hours across Railway replicas', () => {
-  assert.match(server, /const DAY_MS = 24 \* 60 \* 60 \* 1000/);
+test('Daily Look testing removes the daily slab while preserving the cross-replica in-flight lock', () => {
+  assert.match(server, /process\.env\.DAILY_LOOK_COOLDOWN_HOURS \|\| 0/);
+  assert.match(server, /DAILY_LOOK_COOLDOWN_MS === 0/);
   assert.match(server, /claimDailyLook\(d\.accountId, account, now\)/);
   assert.match(server, /catch \(error\) \{[\s\S]{0,120}releaseDailyLookClaim/);
   assert.match(postgres, /daily_look_generated_at bigint/);
@@ -29,7 +30,10 @@ test('Daily Look allows one successful creation per 24 hours across Railway repl
 
 test('Daily Look sends only an explicitly selected, reduced image and never stores the original', () => {
   assert.match(client, /id="daily-look-consent" type="checkbox"/);
-  assert.match(client, /dailyLookSourceImage = await compressProfileImage\(file\)/);
+  assert.match(client, /dailyLookSourceImage = await prepareDailyLookImage\(file\)/);
+  assert.match(client, /1600 \/ longestEdge/);
+  assert.match(client, /result\.length <= 1200 \* 1024/);
+  assert.match(server, /bytes\.length > 900 \* 1024/);
   assert.match(client, /I agree to send this selected photo to OpenAI/);
   assert.match(server, /parseDailyLookImage\(d\.image\)/);
   assert.doesNotMatch(postgres, /daily_look_(?:source|input|original|image)\b/);

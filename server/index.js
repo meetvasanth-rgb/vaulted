@@ -58,6 +58,10 @@ const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const configuredDailyLookCooldownHours = Number(process.env.DAILY_LOOK_COOLDOWN_HOURS || 0);
+const DAILY_LOOK_COOLDOWN_MS = Number.isFinite(configuredDailyLookCooldownHours)
+  ? Math.max(0, Math.min(24, configuredDailyLookCooldownHours)) * 60 * 60 * 1000
+  : 0;
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
 const DAILY_LOOK_STYLES = Object.freeze([
@@ -858,7 +862,7 @@ function parseDailyLookImage(value) {
   if (!match) return null;
   let bytes;
   try { bytes = Buffer.from(match[2], 'base64'); } catch (error) { return null; }
-  if (!bytes.length || bytes.length > 160 * 1024) return null;
+  if (!bytes.length || bytes.length > 900 * 1024) return null;
   return { bytes, mime:`image/${match[1]}`, extension:match[1] === 'jpeg' ? 'jpg' : match[1] };
 }
 
@@ -903,9 +907,9 @@ async function createDailyLook(image, style, apiKey) {
 
 async function claimDailyLook(accountId, account, now) {
   if (postgresEnabled) {
-    return postgresStore.claimDailyLook(accountId, now, now - DAY_MS, now - DAILY_LOOK_CLAIM_TIMEOUT_MS);
+    return postgresStore.claimDailyLook(accountId, now, now - DAILY_LOOK_COOLDOWN_MS, now - DAILY_LOOK_CLAIM_TIMEOUT_MS);
   }
-  if (dailyLookClaims.has(accountId) || Number(account.dailyLookGeneratedAt) > now - DAY_MS) return false;
+  if (dailyLookClaims.has(accountId) || (DAILY_LOOK_COOLDOWN_MS > 0 && Number(account.dailyLookGeneratedAt) > now - DAILY_LOOK_COOLDOWN_MS)) return false;
   dailyLookClaims.add(accountId);
   return true;
 }
@@ -2213,7 +2217,7 @@ function serveStatic(req, res) {
 // buffering up to that ceiling before any handler or auth check ever runs.
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_PROFILE = 192 * 1024;
-const BODY_LIMIT_DAILY_LOOK = 224 * 1024;
+const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
   if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
@@ -2779,12 +2783,13 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     const generatedAt = Number(account.dailyLookGeneratedAt) || 0;
-    const nextAt = generatedAt ? generatedAt + DAY_MS : 0;
+    const nextAt = generatedAt && DAILY_LOOK_COOLDOWN_MS > 0 ? generatedAt + DAILY_LOOK_COOLDOWN_MS : 0;
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, {
       ok:true,
       available:!nextAt || nextAt <= Date.now(),
       nextAt,
+      testing:DAILY_LOOK_COOLDOWN_MS === 0,
       configured:!!OPENAI_API_KEY,
       styles:publicDailyLookStyles(),
     });
@@ -2805,7 +2810,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
     const now = Date.now();
     const generatedAt = Number(account.dailyLookGeneratedAt) || 0;
-    if (generatedAt && generatedAt + DAY_MS > now) {
+    if (DAILY_LOOK_COOLDOWN_MS > 0 && generatedAt && generatedAt + DAILY_LOOK_COOLDOWN_MS > now) {
       res.setHeader('Cache-Control', 'no-store');
       return resErr(res, 'Your next Daily Look will be available tomorrow.', 429);
     }
@@ -2828,7 +2833,8 @@ async function api(path, method, d, p, res, ip, headers) {
       }
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, {
-        ok:true, generatedImage, generatedAt:completedAt, nextAt:completedAt + DAY_MS,
+        ok:true, generatedImage, generatedAt:completedAt,
+        nextAt:DAILY_LOOK_COOLDOWN_MS > 0 ? completedAt + DAILY_LOOK_COOLDOWN_MS : 0,
         style:{ id:style.id, name:style.name },
       });
     } catch (error) {
