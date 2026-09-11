@@ -37,7 +37,7 @@ test('Daily Look sends only an explicitly selected, reduced image and never stor
 });
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
-  assert.match(server, /id:'retro-80s', name:'1980s Film'/);
+  assert.match(server, /id:'retro-80s', name:'1980s Portrait'/);
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
   assert.match(client, /Create today’s look/);
   assert.match(client, /function useDailyLookAsProfile\(\)/);
@@ -46,3 +46,13 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
+test('1980s Portrait performs a full period reconstruction in portrait format', () => {
+  assert.match(server, /complete period transformation/);
+  assert.match(server, /not a colour grade, lighting filter/);
+  assert.match(server, /South Indian formal home-studio portrait/);
+  assert.match(server, /DD MM '85/);
+  assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
+  assert.match(server, /form\.append\('size', '1024x1536'\)/);
+  assert.match(server, /process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
+  assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:2\/3/);
+});

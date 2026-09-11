@@ -62,8 +62,16 @@ const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
 const DAILY_LOOK_STYLES = Object.freeze([
   {
-    id:'retro-80s', name:'1980s Film', note:'Warm film, lived-in colour and genuine grain',
-    prompt:'Transform this portrait into an authentic late-1980s personal film photograph. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Use believable period wardrobe, warm indoor light, subtle analog grain, slight lens softness and naturally imperfect colour. Keep it tasteful and photorealistic. No text, logos, dates, watermarks or extra people.',
+    id:'retro-80s', name:'1980s Portrait', note:'A complete period portrait, not just a colour filter',
+    prompt:`Recreate the entire source photograph as a convincing mid-1980s South Indian formal home-studio portrait. This must be a complete period transformation of the wardrobe, hair, accessories, room, furniture, lighting and photographic medium — not a colour grade, lighting filter or modern portrait with added grain.
+
+Identity is the highest priority. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, age, expression, gaze, body proportions and pose. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person.
+
+Use authentic, tasteful 1980s formal styling appropriate to the subject's presentation. If the source subject wears a sari, restyle it as a rich jewel-toned silk sari with a broad woven gold border, a structured short-sleeve period blouse, layered gold jewellery, bangles and jhumka earrings, plus voluminous side-swept or softly waved 1980s hair. Otherwise use equally authentic mid-1980s South Indian formal clothing, grooming and accessories without changing the subject's gender presentation.
+
+Replace every visibly modern background element with a warm 1980s Indian living-room portrait setting: dark wood panelling or cabinetry, floral curtains, framed landscape art, brass decor, a table lamp, books and period furniture with lace or floral upholstery. Remove modern architecture, LEDs, phones, contemporary furniture and contemporary fashion. Do not add other people.
+
+Compose a vertical three-quarter-length or full-length portrait with warm tungsten light and gentle direct flash, photographed on consumer 35mm colour film and printed in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like a genuine family portrait physically printed in 1985, not an AI effect.`,
   },
   {
     id:'editorial-glow', name:'Editorial Glow', note:'Polished light with a natural, modern finish',
@@ -877,11 +885,11 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
 
 async function createDailyLook(image, style, apiKey) {
   const form = new FormData();
-  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2');
+  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
   form.append('prompt', style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
-  form.append('size', '1024x1024');
-  form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'low');
+  form.append('size', '1024x1536');
+  form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'medium');
   form.append('output_format', 'jpeg');
   const response = await openAiJson('https://api.openai.com/v1/images/edits', {
     method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,

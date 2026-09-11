@@ -19,8 +19,8 @@ Daily Look uses an authenticated server endpoint; the provider key must never be
 
 - `OPENAI_API_KEY` — recommended variable name for the provider key
 - `OPENAI_API` — accepted as a backwards-compatible Railway alias
-- `OPENAI_IMAGE_MODEL` — optional model override (defaults to `gpt-image-2`)
-- `OPENAI_IMAGE_QUALITY` — optional quality override (defaults to `low`)
+- `OPENAI_IMAGE_MODEL` — optional model override (defaults to `gpt-image-2.5-sunburst` for precise portrait editing)
+- `OPENAI_IMAGE_QUALITY` — optional quality override (defaults to `medium`)
 
 Vaultlix permits one successful creation per account every 24 hours. Failed or refused requests do not consume the allowance.
 
