@@ -2289,6 +2289,11 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .chat-hdr-identity{gap:11px!important;overflow:visible!important}
 #s-chat .chat-hdr-logo{width:42px;height:42px;padding:0;border:0;border-radius:14px!important;background:#682C43!important;color:#fff!important;box-shadow:0 8px 20px rgba(104,44,67,.18)!important;cursor:pointer}
 #s-chat .chat-hdr-logo svg{width:21px;height:21px;stroke:#fff}
+#s-chat .chat-peer-avatar{--avatar-bg:#F1E4E9;--avatar-fg:#682C43;position:relative;width:42px;height:42px;flex:0 0 42px;padding:0;border:1px solid rgba(104,44,67,.12);border-radius:14px;background:var(--avatar-bg);color:var(--avatar-fg);display:grid;place-items:center;overflow:hidden;box-shadow:0 8px 20px rgba(104,44,67,.13);font:800 16px/1 'Manrope',sans-serif;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+#s-chat .chat-peer-avatar:hover{box-shadow:0 10px 24px rgba(104,44,67,.19)}
+#s-chat .chat-peer-avatar:active{transform:scale(.95)}
+#s-chat .chat-peer-avatar:focus-visible{outline:3px solid rgba(104,44,67,.22);outline-offset:2px}
+#s-chat .chat-peer-avatar img{width:100%;height:100%;display:block;object-fit:cover}
 #s-chat .chat-hdr-meta{min-width:0;display:flex;flex-direction:column;gap:3px}
 #s-chat .chat-hdr-room{max-width:230px!important;font:750 17px/1.1 'Manrope',sans-serif!important;letter-spacing:-.02em!important;color:#271D25!important}
 #s-chat .chat-hdr-presence{display:flex;align-items:center;gap:6px;font:650 11px/1.15 'Manrope',sans-serif;color:#83757C;letter-spacing:.01em}
@@ -2399,6 +2404,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-chat .chat-home-btn{width:42px;height:42px;border-radius:12px}
   #s-chat .chat-home-btn svg{width:20px;height:20px}
   #s-chat .chat-hdr-logo{width:40px;height:40px;border-radius:13px!important}
+  #s-chat .chat-peer-avatar{width:40px;height:40px;flex-basis:40px;border-radius:13px}
   #s-chat .chat-hdr-room{max-width:190px!important;font-size:16px!important}
   #s-chat .conversation-menu-btn{width:40px;height:40px;border-radius:12px}
   #s-chat .settings-btn,#s-chat .leave-btn,#s-chat .destroy-btn{width:38px!important;height:38px!important;border-radius:12px!important}
@@ -2411,6 +2417,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
 }
 @media(max-width:360px){
   #s-chat .chat-hdr-logo{display:none!important}
+  #s-chat .chat-peer-avatar{display:grid!important;width:38px;height:38px;flex-basis:38px}
   #s-chat .chat-hdr-room{max-width:185px!important}
   #s-chat .e2e-bar{font-size:10px!important}
 }
@@ -3067,15 +3074,13 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
       <span class="chat-vault-unread" id="chat-vault-unread" aria-hidden="true"></span>
     </button>
-    <!-- Identity zone: logo, room name, connection status — all one glance,
+    <!-- Identity zone: peer photo, room name, connection status — all one glance,
          no separate badges competing for attention. The permanent-room 🔗
          indicator and the 🔒 E2E badge that used to live in this row are
          gone; that info now lives in Settings > This room and on the
          tappable e2e-bar below, respectively — never duplicated here. -->
     <div class="chat-hdr-identity">
-      <button class="chat-hdr-logo" type="button" onclick="quickLockFromHeader()" title="Quick Lock" aria-label="Quick Lock Vaultlix">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      </button>
+      <button class="chat-peer-avatar" id="chat-peer-avatar" type="button" onclick="openPeerProfileImage()" title="View profile image" aria-label="View peer profile image">V</button>
       <div class="chat-hdr-meta">
         <div class="vaultlix-identity-line"><div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div><span class="vaultlix-identity-badge" aria-label="Vaultlix member" title="Vaultlix member"><span>V</span></span></div>
         <div class="chat-hdr-presence" id="chat-presence" hidden><span class="status-dot" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Online</span></div>
@@ -3091,6 +3096,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
   <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" onclick="event.stopPropagation()">
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span>Conversation settings</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="quickLockFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Quick Lock</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span>Clear chat</span></button>
     <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span>Leave conversation</span></button>
     <button class="conversation-menu-item destructive" type="button" role="menuitem" onclick="deleteConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></span><span>Delete conversation</span></button>
@@ -9331,7 +9337,11 @@ async function reconcileConversationPeerIdentities(requests, state) {
     // when the peer currently has no device membership. This also migrates
     // room snapshots saved before peerName/everOnline were persisted.
     if (peer.displayName && room.peerName !== peer.displayName) { room.peerName = peer.displayName; changed = true; }
-    if (room.peerProfileImage !== peer.profileImage) { room.peerProfileImage = peer.profileImage; changed = true; }
+    if (room.peerProfileImage !== peer.profileImage) {
+      room.peerProfileImage = peer.profileImage;
+      changed = true;
+      if (room.code === activeRoomCode) renderChatPeerAvatar(room);
+    }
     if (!room.everOnline) { room.everOnline = true; changed = true; }
     if (changed) await persistRoom(room);
   }
@@ -10321,6 +10331,11 @@ function quickLockFromHeader() {
   activateAppLock(false);
 }
 
+function quickLockFromConversationMenu() {
+  closeConversationMenu();
+  quickLockFromHeader();
+}
+
 async function unlockAppLock(event) {
   event?.preventDefault();
   clearTimeout(appLockAutoUnlockTimer);
@@ -11107,10 +11122,40 @@ function roomDisplayLabel(room) {
 function updateHeaderRoomLabel(room) {
   const el = document.getElementById('hdr-code');
   if (el) el.textContent = roomDisplayLabel(room);
+  renderChatPeerAvatar(room);
   // The permanent-room 🔗 indicator that used to live next to this label
   // was dropped from the header (see the header simplification) — that
   // status is already shown in Settings > This room > Permanent Room via
   // updateAnonLinkSection(), so there's nothing to keep in sync here.
+}
+
+function renderChatPeerAvatar(room) {
+  const button = document.getElementById('chat-peer-avatar');
+  if (!button || !room) return;
+  const label = roomDisplayLabel(room) || 'Vaultlix user';
+  const image = safeProfileImageUri(room.peerProfileImage);
+  button.replaceChildren();
+  button.setAttribute('aria-label', image ? `View ${label}'s profile image` : `${label} has no profile image`);
+  button.title = image ? 'View profile image' : 'No profile image';
+  button.style.cssText = vaultAvatarPalette(room.peerPrivateNumber || room.code);
+  if (image) {
+    const img = document.createElement('img');
+    img.src = image;
+    img.alt = `${label} profile image`;
+    button.appendChild(img);
+  } else {
+    button.textContent = label.trim().charAt(0).toUpperCase() || 'V';
+  }
+}
+
+function openPeerProfileImage() {
+  const room = rooms.get(activeRoomCode);
+  const image = safeProfileImageUri(room?.peerProfileImage);
+  if (!image) {
+    toast("This person hasn't added a profile image");
+    return;
+  }
+  viewImage(image, { hideDownload:true });
 }
 
 function renderRoomTabs() {

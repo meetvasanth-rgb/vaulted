@@ -126,8 +126,9 @@ test('one-to-one conversation polish uses safe areas and native visual language'
   assert.match(client, /\.status-dot\.away\{background:#AAA2A6/);
   assert.doesNotMatch(client, /Connection restored|sys-reconnect-/);
   assert.match(client, /if \(!isVisibleConversationRecord\(rec\)\) return null/);
-  assert.match(client, /onclick="quickLockFromHeader\(\)"/);
+  assert.match(client, /id="chat-peer-avatar"[^>]*onclick="openPeerProfileImage\(\)"/);
   assert.match(client, /function quickLockFromHeader\(\)/);
+  assert.match(client, /onclick="quickLockFromConversationMenu\(\)"/);
 });
 
 test('user-facing legacy vault labels are replaced with conversation language', () => {

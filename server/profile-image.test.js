@@ -29,6 +29,9 @@ test('profile images propagate through existing consent connections', () => {
   assert.match(client, /function peerIdentityFromConnection[\s\S]*senderProfileImage/);
   assert.match(client, /peerProfileImage: room\.peerProfileImage \|\| null/);
   assert.match(client, /class="profile-image-avatar"/);
+  assert.match(client, /id="chat-peer-avatar"[^>]*onclick="openPeerProfileImage\(\)"/);
+  assert.match(client, /function renderChatPeerAvatar\(room\)/);
+  assert.match(client, /viewImage\(image, \{ hideDownload:true \}\)/);
 });
 
 test('profile image controls support add, replace and remove', () => {
