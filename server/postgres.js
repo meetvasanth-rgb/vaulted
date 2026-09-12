@@ -290,7 +290,7 @@ class PostgresStore {
         AND (daily_look_claimed_at IS NULL OR daily_look_claimed_at <= $4)
         AND (daily_look_window_started_at IS NULL OR daily_look_window_started_at <> $3
           OR daily_look_generation_count < $5)
-      RETURNING account_id`, [accountId, now, windowBefore, staleClaimBefore, dailyLimit]);
+      RETURNING account_id`, [accountId, now, dayStartedAt, staleClaimBefore, dailyLimit]);
     return rows.length === 1;
   }
 

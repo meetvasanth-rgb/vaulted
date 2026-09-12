@@ -21,7 +21,7 @@ Daily Look uses an authenticated server endpoint; the provider key must never be
 - `OPENAI_API` — accepted as a backwards-compatible Railway alias
 - `OPENAI_IMAGE_MODEL` — optional model override (defaults to `gpt-image-2.5-sunburst` for precise portrait editing)
 - `OPENAI_IMAGE_QUALITY` — optional quality override (defaults to `medium`)
-Daily Look currently permits five successful creations per account in a rolling 24-hour testing window and allows only one generation to run at a time per account. Failed or refused requests do not consume an attempt.
+Daily Look currently permits five successful creations per account per calendar day, resetting at 12:00 AM India Standard Time, and allows only one generation to run at a time per account. Failed or refused requests do not consume an attempt.
 
 ---
 

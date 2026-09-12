@@ -82,6 +82,19 @@ test('account persistence uses parameterized upserts', async () => {
   assert.equal(calls[1][1][0], 'a'.repeat(64));
 });
 
+test('Daily Look claim uses the current midnight-reset window in PostgreSQL', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    return { rows:[{ account_id:'a'.repeat(64) }] };
+  } };
+  const store = new PostgresStore('', { pool });
+  const claimed = await store.claimDailyLook('a'.repeat(64), 2000, 1000, 1500, 5);
+  assert.equal(claimed, true);
+  assert.match(calls[0][0], /daily_look_window_started_at <> \$3/);
+  assert.deepEqual(calls[0][1], ['a'.repeat(64), 2000, 1000, 1500, 5]);
+});
+
 test('Private Number reservation pins PostgreSQL parameter types across identity tables', async () => {
   const calls = [];
   const pool = { query:async (...args) => { calls.push(args); return { rows:[{ private_number:'2345678901' }] }; } };
