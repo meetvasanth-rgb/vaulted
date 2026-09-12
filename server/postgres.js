@@ -283,28 +283,28 @@ class PostgresStore {
     ]);
   }
 
-  async claimDailyLook(accountId, now, windowBefore, staleClaimBefore, dailyLimit) {
+  async claimDailyLook(accountId, now, dayStartedAt, staleClaimBefore, dailyLimit) {
     if (!this.enabled) return true;
     const { rows } = await this.pool.query(`UPDATE accounts SET daily_look_claimed_at=$2
       WHERE account_id=$1
         AND (daily_look_claimed_at IS NULL OR daily_look_claimed_at <= $4)
-        AND (daily_look_window_started_at IS NULL OR daily_look_window_started_at <= $3
+        AND (daily_look_window_started_at IS NULL OR daily_look_window_started_at <> $3
           OR daily_look_generation_count < $5)
       RETURNING account_id`, [accountId, now, windowBefore, staleClaimBefore, dailyLimit]);
     return rows.length === 1;
   }
 
-  async completeDailyLook(accountId, now) {
+  async completeDailyLook(accountId, now, dayStartedAt) {
     if (!this.enabled) return;
     await this.pool.query(`UPDATE accounts SET daily_look_generated_at=$2,
       daily_look_claimed_at=NULL,
       daily_look_window_started_at=CASE
-        WHEN daily_look_window_started_at IS NULL OR daily_look_window_started_at <= $3 THEN $2
+        WHEN daily_look_window_started_at IS NULL OR daily_look_window_started_at <> $3 THEN $3
         ELSE daily_look_window_started_at END,
       daily_look_generation_count=CASE
-        WHEN daily_look_window_started_at IS NULL OR daily_look_window_started_at <= $3 THEN 1
+        WHEN daily_look_window_started_at IS NULL OR daily_look_window_started_at <> $3 THEN 1
         ELSE daily_look_generation_count + 1 END
-      WHERE account_id=$1`, [accountId, now, now - 24 * 60 * 60 * 1000]);
+      WHERE account_id=$1`, [accountId, now, dayStartedAt]);
   }
 
   async releaseDailyLookClaim(accountId) {

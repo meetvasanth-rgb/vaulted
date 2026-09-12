@@ -59,6 +59,13 @@ const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOOK_DAILY_LIMIT = 5;
+// Daily Look is currently launched for the India test cohort. Keep the
+// midnight boundary configurable for a later regional rollout while making
+// today's product promise an exact 12:00 AM IST reset on every replica.
+const DAILY_LOOK_RESET_OFFSET_MINUTES = (() => {
+  const configured = Number(process.env.DAILY_LOOK_RESET_OFFSET_MINUTES);
+  return Number.isFinite(configured) && configured >= -720 && configured <= 840 ? configured : 330;
+})();
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
 const RETRO_80S_LOOKS = Object.freeze([
@@ -875,14 +882,21 @@ function publicDailyLookStyles(now = Date.now()) {
   }));
 }
 
+function dailyLookDayWindow(now = Date.now()) {
+  const offsetMs = DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000;
+  const startedAt = Math.floor((now + offsetMs) / DAY_MS) * DAY_MS - offsetMs;
+  return { startedAt, nextAt:startedAt + DAY_MS };
+}
+
 function dailyLookUsage(account, now = Date.now()) {
+  const dayWindow = dailyLookDayWindow(now);
   const windowStartedAt = Number(account?.dailyLookWindowStartedAt) || 0;
-  const inCurrentWindow = windowStartedAt > now - DAY_MS;
+  const inCurrentWindow = windowStartedAt === dayWindow.startedAt;
   const count = inCurrentWindow ? Math.max(0, Number(account?.dailyLookGenerationCount) || 0) : 0;
   return {
     count,
     remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - count),
-    nextAt:count >= DAILY_LOOK_DAILY_LIMIT ? windowStartedAt + DAY_MS : 0,
+    nextAt:count >= DAILY_LOOK_DAILY_LIMIT ? dayWindow.nextAt : 0,
   };
 }
 
@@ -918,7 +932,7 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
 }
 
 function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
-  const day = Math.floor(now / DAY_MS);
+  const day = Math.floor((now + DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000) / DAY_MS);
   const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
   return (seed + Math.max(0, Number(generationCount) || 0)) % RETRO_80S_LOOKS.length;
 }
@@ -946,7 +960,7 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
 
 async function claimDailyLook(accountId, account, now) {
   if (postgresEnabled) {
-    return postgresStore.claimDailyLook(accountId, now, now - DAY_MS, now - DAILY_LOOK_CLAIM_TIMEOUT_MS, DAILY_LOOK_DAILY_LIMIT);
+    return postgresStore.claimDailyLook(accountId, now, dailyLookDayWindow(now).startedAt, now - DAILY_LOOK_CLAIM_TIMEOUT_MS, DAILY_LOOK_DAILY_LIMIT);
   }
   if (dailyLookClaims.has(accountId) || dailyLookUsage(account, now).remaining <= 0) return false;
   dailyLookClaims.add(accountId);
@@ -2839,7 +2853,8 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    if (rateLimited(`daily-look-account:${d.accountId}`, 5, 60 * 60 * 1000) ||
+    const requestDayStartedAt = dailyLookDayWindow().startedAt;
+    if (rateLimited(`daily-look-account:${d.accountId}:${requestDayStartedAt}`, 10, 60 * 60 * 1000) ||
         rateLimited(`daily-look-ip:${ip}`, 20, 60 * 60 * 1000)) {
       return resErr(res, 'Too many image attempts — try again later.', 429);
     }
@@ -2865,12 +2880,13 @@ async function api(path, method, d, p, res, ip, headers) {
       const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
       const generatedImage = await createDailyLook(image, style, apiKey, variantIndex);
       const completedAt = Date.now();
+      const completedDay = dailyLookDayWindow(completedAt);
       const completedUsage = dailyLookUsage(account, completedAt);
-      if (!completedUsage.count) account.dailyLookWindowStartedAt = completedAt;
+      if (!completedUsage.count) account.dailyLookWindowStartedAt = completedDay.startedAt;
       account.dailyLookGenerationCount = completedUsage.count + 1;
       account.dailyLookGeneratedAt = completedAt;
       account.updatedAt = completedAt;
-      if (postgresEnabled) await postgresStore.completeDailyLook(d.accountId, completedAt);
+      if (postgresEnabled) await postgresStore.completeDailyLook(d.accountId, completedAt, completedDay.startedAt);
       else {
         dailyLookClaims.delete(d.accountId);
         await persistAccount(d.accountId);
@@ -2879,7 +2895,7 @@ async function api(path, method, d, p, res, ip, headers) {
       return res200(res, {
         ok:true, generatedImage, generatedAt:completedAt,
         nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
-          ? account.dailyLookWindowStartedAt + DAY_MS : 0,
+          ? completedDay.nextAt : 0,
         limit:DAILY_LOOK_DAILY_LIMIT,
         remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - account.dailyLookGenerationCount),
         style:{ id:style.id, name:style.name },

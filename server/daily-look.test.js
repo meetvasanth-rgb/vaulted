@@ -17,8 +17,14 @@ test('Daily Look keeps provider credentials on the server and requires an authen
   assert.match(server, /https:\/\/api\.openai\.com\/v1\/moderations/);
 });
 
-test('Daily Look allows five successful creations per rolling day while preserving the cross-replica lock', () => {
+test('Daily Look allows five successful creations and resets at midnight IST across replicas', () => {
   assert.match(server, /const DAILY_LOOK_DAILY_LIMIT = 5/);
+  assert.match(server, /DAILY_LOOK_RESET_OFFSET_MINUTES/);
+  assert.match(server, /configured >= -720 && configured <= 840 \? configured : 330/);
+  assert.match(server, /function dailyLookDayWindow\(now = Date\.now\(\)\)/);
+  assert.match(server, /Math\.floor\(\(now \+ offsetMs\) \/ DAY_MS\) \* DAY_MS - offsetMs/);
+  assert.match(server, /windowStartedAt === dayWindow\.startedAt/);
+  assert.match(server, /dayWindow\.nextAt/);
   assert.match(server, /dailyLookUsage\(account/);
   assert.match(server, /claimDailyLook\(d\.accountId, account, now\)/);
   assert.match(server, /catch \(error\) \{[\s\S]{0,120}releaseDailyLookClaim/);
@@ -27,6 +33,7 @@ test('Daily Look allows five successful creations per rolling day while preservi
   assert.match(postgres, /daily_look_window_started_at bigint/);
   assert.match(postgres, /daily_look_generation_count integer NOT NULL DEFAULT 0/);
   assert.match(postgres, /UPDATE accounts SET daily_look_claimed_at=\$2[\s\S]*RETURNING account_id/);
+  assert.match(postgres, /daily_look_window_started_at <> \$3/);
   assert.match(postgres, /completeDailyLook[\s\S]*daily_look_generation_count=CASE/);
   assert.match(client, /up to \$\{result\.limit \|\| 5\} creations daily/);
 });
