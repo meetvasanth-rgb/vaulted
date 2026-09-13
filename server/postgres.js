@@ -550,7 +550,7 @@ class PostgresStore {
     if (!this.enabled) return [];
     const { rows } = await this.pool.query(`DELETE FROM conversations
       WHERE persistent=false AND status='active' AND
-        (($1-last_activity) > CASE WHEN is_named THEN $2 ELSE $3 END)
+        (($1::bigint-last_activity) > CASE WHEN is_named THEN $2::bigint ELSE $3::bigint END)
       RETURNING conversation_id`, [now, namedTtl, ordinaryTtl]);
     return rows.map(row => row.conversation_id);
   }

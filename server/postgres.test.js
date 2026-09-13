@@ -129,6 +129,20 @@ test('Private Number reservation pins PostgreSQL parameter types across identity
   assert.match(calls[0][0], /reserved_until < \$5::bigint/);
 });
 
+test('conversation expiry sweep pins timestamp and TTL parameters to bigint', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    return { rows:[{ conversation_id:'expired-room' }] };
+  } };
+  const store = new PostgresStore('', { pool });
+  const expired = await store.sweepExpiredConversations(3000, 2000, 1000);
+  assert.deepEqual(expired, ['expired-room']);
+  assert.match(calls[0][0], /\$1::bigint-last_activity/);
+  assert.match(calls[0][0], /THEN \$2::bigint ELSE \$3::bigint/);
+  assert.deepEqual(calls[0][1], [3000, 2000, 1000]);
+});
+
 test('production startup fails closed and account mutations await PostgreSQL', () => {
   assert.match(server, /await postgresStore\.initialize\(\)/);
   assert.match(server, /hydrateAccounts\(await postgresStore\.loadAccounts\(\), 'PostgreSQL'\)/);
