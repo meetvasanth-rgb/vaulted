@@ -70,13 +70,17 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /id="vaultlix-motion-deck"/);
   assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
   assert.match(client, /\.motion-story-scroll\{position:relative;margin-top:30px\}/);
-  assert.match(client, /\.motion-deck-card\{position:sticky;top:18px/);
+  assert.match(client, /\.motion-deck-card\{--stack-scale:1;--stack-lift:0px;--stack-dim:0;position:sticky;top:18px/);
   assert.match(client, /class="motion-story" id="vaultlix-motion-story"/);
   assert.match(client, /classList\.add\('motion-enhanced'\)/);
   assert.match(client, /const sectionObserver = new IntersectionObserver/);
   assert.doesNotMatch(client, /renderDeck = progress/);
   assert.doesNotMatch(client, /deckTrack\.offsetHeight - deckStory\.offsetHeight/);
   assert.doesNotMatch(client, /scheduleDeckUpdate/);
+  assert.match(client, /const updateCardStack = \(\) =>/);
+  assert.match(client, /next\.getBoundingClientRect\(\)\.top/);
+  assert.match(client, /--stack-scale/);
+  assert.match(client, /--stack-dim/);
   assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1!important;animation:none!important/);
   assert.match(client, /Your line, waiting for you/);
   assert.match(client, /@keyframes landing-word-build/);

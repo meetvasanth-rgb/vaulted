@@ -2110,9 +2110,10 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .motion-story-copy p{max-width:650px;margin:0;font:450 14px/1.7 'Manrope',sans-serif;color:#766970}
 #s-landing .motion-story-status{display:flex;align-items:center;gap:8px;margin-top:20px;font:700 10px/1 'Manrope',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#682C43}
 #s-landing .motion-story-status::before{content:'';width:8px;height:8px;border-radius:50%;background:#73B18A;box-shadow:0 0 0 5px rgba(115,177,138,.12);animation:identity-state-breathe 2.4s ease-in-out infinite}
-#s-landing .motion-deck{display:grid;gap:clamp(44px,9vh,96px)}
-#s-landing .motion-deck-card{position:sticky;top:18px;display:flex;flex-direction:column;width:100%;min-height:min(78dvh,720px);padding:clamp(30px,5vw,64px);overflow:hidden;border:1px solid #E1D4D9;border-radius:32px;background:#FFF9FB;color:#34272F;box-shadow:0 28px 70px rgba(55,30,41,.14);transform-origin:50% 100%;isolation:isolate}
+#s-landing .motion-deck{display:grid;gap:clamp(110px,24vh,240px)}
+#s-landing .motion-deck-card{--stack-scale:1;--stack-lift:0px;--stack-dim:0;position:sticky;top:18px;display:flex;flex-direction:column;width:100%;min-height:calc(100dvh - 36px);padding:clamp(30px,5vw,64px);overflow:hidden;border:1px solid #E1D4D9;border-radius:32px;background:#FFF9FB;color:#34272F;box-shadow:0 28px 70px rgba(55,30,41,.14);transform:translate3d(0,var(--stack-lift),0) scale(var(--stack-scale));transform-origin:50% 8%;will-change:transform;isolation:isolate}
 #s-landing .motion-deck-card::before{content:'';position:absolute;z-index:-1;width:520px;height:520px;right:-170px;top:-210px;border-radius:50%;border:1px solid rgba(104,44,67,.12);box-shadow:0 0 0 72px rgba(104,44,67,.025),0 0 0 144px rgba(104,44,67,.018)}
+#s-landing .motion-deck-card::after{content:'';position:absolute;z-index:5;inset:0;border-radius:inherit;background:#271D25;opacity:var(--stack-dim);pointer-events:none}
 #s-landing .motion-deck-card:nth-child(1){z-index:1;background:linear-gradient(145deg,#F3E8EC,#FFF9FB)}
 #s-landing .motion-deck-card:nth-child(2){z-index:2;background:linear-gradient(145deg,#EAF1EC,#FFFDFB)}
 #s-landing .motion-deck-card:nth-child(3){z-index:3;background:linear-gradient(145deg,#EFE8ED,#FFF9FB)}
@@ -2215,7 +2216,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .motion-story-scroll{min-height:0}
   #s-landing .motion-story{min-height:0}
   #s-landing .motion-story-copy h3{font-size:36px}
-  #s-landing .motion-deck{gap:52px}
+  #s-landing .motion-deck{gap:22vh}
   #s-landing .motion-deck-card{top:12px;min-height:calc(100dvh - 24px);padding:28px 22px;border-radius:27px}
   #s-landing .motion-deck-card h4{margin:54px 0 14px;font-size:42px}
   #s-landing .motion-panel{min-height:400px;padding:22px}
@@ -15170,6 +15171,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeHomepageMotionDemo() {
   const landing = document.getElementById('s-landing');
   const demo = document.getElementById('private-conversation-demo');
+  const deck = document.getElementById('vaultlix-motion-deck');
   const showcase = document.getElementById('vaultlix-motion-showcase');
   if (!landing || !demo) return;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -15202,9 +15204,44 @@ function initializeHomepageMotionDemo() {
   }, { threshold:.1, rootMargin:'0px 0px -8% 0px' });
   marketingSections.forEach(section => sectionObserver.observe(section));
 
-  // The three large cards use native sticky positioning. Each card advances
-  // with an actual scroll gesture, without a synthetic spacer, timer, or
-  // viewport-distance calculation that can leave an empty section.
+  // Layout remains a native sticky stack: if this enhancement is unavailable,
+  // each full-screen card still rises over the previous one without a spacer.
+  // While the next card travels upward, gently recede the card underneath it.
+  if (deck) {
+    const cards = [...deck.querySelectorAll('.motion-deck-card')];
+    let stackFrame = null;
+    const updateCardStack = () => {
+      const viewportHeight = Math.min(window.innerHeight, landing.clientHeight || window.innerHeight);
+      cards.forEach((card, index) => {
+        const next = cards[index + 1];
+        if (!next) {
+          card.style.setProperty('--stack-scale', '1');
+          card.style.setProperty('--stack-lift', '0px');
+          card.style.setProperty('--stack-dim', '0');
+          return;
+        }
+        const stickyTop = Number.parseFloat(getComputedStyle(card).top) || 0;
+        const start = viewportHeight * .9;
+        const finish = stickyTop + 48;
+        const progress = Math.max(0, Math.min(1, (start - next.getBoundingClientRect().top) / Math.max(1, start - finish)));
+        const eased = 1 - Math.pow(1 - progress, 3);
+        card.style.setProperty('--stack-scale', `${(1 - eased * .055).toFixed(4)}`);
+        card.style.setProperty('--stack-lift', `${(-eased * 18).toFixed(2)}px`);
+        card.style.setProperty('--stack-dim', `${(eased * .09).toFixed(3)}`);
+      });
+    };
+    const scheduleCardStack = () => {
+      if (stackFrame) return;
+      stackFrame = requestAnimationFrame(() => {
+        stackFrame = null;
+        updateCardStack();
+      });
+    };
+    landing.addEventListener('scroll', scheduleCardStack, { passive:true });
+    window.addEventListener('scroll', scheduleCardStack, { passive:true });
+    window.addEventListener('resize', scheduleCardStack, { passive:true });
+    scheduleCardStack();
+  }
 }
 document.addEventListener('DOMContentLoaded', initializeHomepageMotionDemo, { once:true });
 
