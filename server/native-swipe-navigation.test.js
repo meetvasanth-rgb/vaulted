@@ -18,6 +18,8 @@ test('native horizontal swipes provide back and app-home navigation', () => {
 test('native swipes do not take over calls, overlays, or interactive content', () => {
   assert.match(client, /room\.callState && room\.callState !== 'idle'/);
   assert.match(client, /#conversation-menu\.open/);
+  assert.match(client, /\.pdf-preview-overlay\.open, \.image-viewer-overlay/);
+  assert.match(client, /overlay\.className = 'image-viewer-overlay'/);
   assert.match(client, /input, textarea, select, button, a/);
   assert.match(client, /Math\.abs\(dx\) < Math\.abs\(dy\) \* 1\.25/);
 });
