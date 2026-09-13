@@ -18,6 +18,8 @@ test('v2 schema stores only ciphertext and supports deletion synchronization', (
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS private_number_lifecycle/);
   assert.match(SCHEMA_SQL, /last_active_at bigint/);
   assert.match(SCHEMA_SQL, /number_protection varchar/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash/);
   assert.doesNotMatch(SCHEMA_SQL, /message_plaintext|plaintext_message|decrypted_content/);
 });
 
@@ -34,16 +36,36 @@ test('conversation writes hash bearer tokens and deletion is transactional', asy
   assert.match(calls[2][0], /DELETE FROM conversation_members/);
   await store.appendEncryptedMessage('room-1', 'bearer-secret', { id:'message-1', seq:1, content:'ciphertext', ts:2 });
   assert.match(calls.at(-5)[0], /BEGIN/);
-  assert.match(calls.at(-4)[0], /INSERT INTO encrypted_messages/);
-  assert.match(calls.at(-3)[0], /UPDATE conversations/);
+  assert.match(calls.at(-4)[0], /UPDATE conversations[\s\S]*next_message_sequence/);
+  assert.match(calls.at(-3)[0], /INSERT INTO encrypted_messages/);
   assert.equal(calls.at(-2)[0], 'COMMIT');
   assert.equal(calls.at(-1)[0], 'RELEASE');
   await store.deleteEncryptedMessage('room-1', 'message-1', 3, 10, 1000);
-  assert.equal(calls.at(-5)[0], 'BEGIN');
+  assert.equal(calls.at(-6)[0], 'BEGIN');
+  assert.match(calls.at(-5)[0], /UPDATE conversations[\s\S]*next_deletion_sequence/);
   assert.match(calls.at(-4)[0], /DELETE FROM encrypted_messages/);
   assert.match(calls.at(-3)[0], /INSERT INTO deletion_tombstones/);
   assert.equal(calls.at(-2)[0], 'COMMIT');
   assert.equal(calls.at(-1)[0], 'RELEASE');
+});
+
+test('conversation mutations reuse the advisory-lock transaction client', async () => {
+  const calls = [];
+  const transactionClient = { query:async (...args) => {
+    calls.push(args);
+    return { rows:/UPDATE conversations/.test(args[0]) ? [{ sequence:'12' }] : [] };
+  } };
+  const store = new PostgresStore('', { pool:{ query:transactionClient.query } });
+  const sequence = await store.appendEncryptedMessage(
+    'room-1', 'bearer-secret',
+    { id:'message-1', seq:1, content:'ciphertext', ts:2 },
+    transactionClient,
+  );
+  assert.equal(sequence, 12);
+  assert.equal(calls.length, 2);
+  assert.match(calls[0][0], /next_message_sequence/);
+  assert.match(calls[1][0], /INSERT INTO encrypted_messages/);
+  assert.ok(!calls.some(call => call[0] === 'BEGIN' || call[0] === 'COMMIT'));
 });
 
 test('durable ciphertext history can rebuild a stale live-room checkpoint', async () => {
@@ -113,9 +135,12 @@ test('production startup fails closed and account mutations await PostgreSQL', (
   assert.match(server, /bootstrap\(\)\.catch\(err => \{[\s\S]*process\.exit\(1\)/);
   assert.match(server, /await persistAccount\(d\.accountId\)/);
   assert.match(server, /await releaseAccountNumber\(d\.accountId, account, 'account-deleted'\)/);
-  assert.match(server, /await postgresStore\.appendEncryptedMessage\(d\.code, d\.token, message\)/);
-  assert.match(server, /if \(includeOwn\) await hydrateRoomMessagesFromPostgres\(roomCode, room\)/);
+  assert.match(server, /await postgresStore\.appendEncryptedMessage\(d\.code, d\.token, message, room\.dbClient \|\| null\)/);
+  assert.match(server, /if \(includeOwn\) await hydrateRoomMessagesFromPostgres\(roomCode, room, room\.dbClient \|\| null\)/);
   assert.match(server, /await postgresStore\.deleteEncryptedMessage\(d\.code, msg\.id/);
+  assert.match(server, /await postgresStore\.withConversationLock\(roomCode/);
+  assert.match(server, /evictConversationCache\(event\.roomCode\)/);
+  assert.match(server, /databaseWasEmpty/);
 });
 
 test('Private Number retirement is transactional and records its tombstone first', async () => {

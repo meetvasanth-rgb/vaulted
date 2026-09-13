@@ -53,3 +53,26 @@ test('without Redis configured the coordinator is a no-op', async () => {
   assert.equal(await coordinator.start(() => {}), false);
   assert.equal(await coordinator.publish('signal', {}), false);
 });
+
+test('Redis owns inbox sequences, rate counters, and expiring call state', async () => {
+  const calls = [];
+  const multi = {
+    set(...args) { calls.push(['set', ...args]); return this; },
+    exec:async () => { calls.push(['exec']); return []; },
+  };
+  const coordinator = new RealtimeCoordinator({ url:'redis://test', instanceId:'instance-a' });
+  coordinator.ready = true;
+  coordinator.publisher = {
+    eval:async (...args) => { calls.push(['eval', ...args]); return 3; },
+    incr:async key => { calls.push(['incr', key]); return 8; },
+    get:async key => { calls.push(['get', key]); return key.includes(':call:') ? null : '7'; },
+    set:async (...args) => { calls.push(['lock-set', ...args]); return 'OK'; },
+    del:async (...args) => { calls.push(['del', ...args]); return 1; },
+    multi:() => multi,
+  };
+  assert.equal(await coordinator.rateLimited('create:ip', 2, 1000), true);
+  assert.equal(await coordinator.nextInboxSequence('account'), 8);
+  assert.equal(await coordinator.currentInboxSequence('account'), 7);
+  assert.equal(await coordinator.setCallState('conversation', { callId:'call-1', status:'ringing' }, 120), true);
+  assert.ok(calls.some(call => call[0] === 'set' && call.at(-1)?.EX === 120));
+});

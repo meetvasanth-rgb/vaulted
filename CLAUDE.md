@@ -1,6 +1,6 @@
 # Vaultlix (vaultlix.com)
 
-Anonymous, end-to-end encrypted 1:1 messenger PWA. Node.js HTTP-polling/WebSocket
+Private-number, end-to-end encrypted 1:1 messenger PWA. Node.js HTTP/WebSocket
 server + a single-file vanilla JS SPA client. Deployed on Railway, auto-deploys on
 push to the GitHub repo `meetvasanth-rgb/vaulted`.
 
@@ -16,13 +16,14 @@ push to the GitHub repo `meetvasanth-rgb/vaulted`.
   path falls through to serving `index.html` — this is why routes like
   `/join/<code>` need zero backend routing of their own).
 
-No test suite. No package manager beyond `ws` as the one server dependency.
-Verification is manual (see "Verification ritual" below) — there is no CI.
+The Node test suite lives in `server/*.test.js`; run it before deployment.
 
 ## Architecture essentials
 
-- **Rooms, not accounts.** Everything is a 2-member room identified by a code.
-  No login, no persistent identity beyond what's stored in the room.
+- **Private-number accounts and inbox conversations.** People sign in to a
+  durable private-number identity. Each conversation remains a two-member,
+  bearer-token-authorized channel; `room` is retained in parts of the server as
+  a legacy internal variable name, not the current product model.
 - **Two room types**: "Temporary chat room" (24h TTL, auto-expires) and
   "Permanent chat room" (`room.persistent = true`, never auto-expires, only
   removable via explicit revoke or Close & erase). The UI merged "named room"
@@ -39,9 +40,12 @@ Verification is manual (see "Verification ritual" below) — there is no CI.
   (`rooms` Map, `code -> Room` object, capped at `MAX_ROOMS`). `activeRoomCode`
   tracks which one is currently on screen. Most render/update functions take a
   `room` argument rather than operating on implicit global state.
-- **Server keeps rooms in memory** (a `Map`), with periodic snapshotting to
-  disk so a restart doesn't wipe active rooms. Message history per room is
-  capped (see `room.msgs`, trimmed to the last ~100).
+- **PostgreSQL is authoritative** for conversation metadata, hashed membership,
+  encrypted history, receipts, reactions and deletion tombstones. Replicas load
+  conversations on demand into a bounded in-process cache. Redis owns ephemeral
+  call state, presence, WebSocket routing, inbox sequences, rate limits and
+  cross-replica invalidation. `rooms-snapshot.json` is rollback-only when
+  PostgreSQL is configured; it is authoritative only in local fallback mode.
 
 ## The one rule that matters most: localStorage writes
 
@@ -88,7 +92,7 @@ touching the room's blob at all — see `vaultlix_nudge_dismissed` and
 4. Targeted `grep -n`/`grep -c` sanity checks that new function/id names are
    actually wired up where expected, and that nothing referencing a removed
    element/function was left behind.
-5. For anything touching server logic, localStorage semantics, or timing/
+5. Run `npm test`. For anything touching server logic, localStorage semantics, or timing/
    ordering (e.g. the key-mismatch bug class above), write a small isolated
    Node.js script that simulates the logic in question and asserts on it,
    rather than trusting a read-through alone.

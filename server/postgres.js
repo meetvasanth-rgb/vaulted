@@ -181,6 +181,15 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_generated_at bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_claimed_at bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_window_started_at bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_generation_count integer NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status varchar(16) NOT NULL DEFAULT 'active';
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_named boolean NOT NULL DEFAULT false;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_activity bigint NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS connected_since bigint;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS total_message_count bigint NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS delete_timer_set_at bigint NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS cleared_at bigint NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash text;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS state_version bigint NOT NULL DEFAULT 1;
 ALTER TABLE accounts ALTER COLUMN creation_order SET DEFAULT nextval('account_creation_order_seq');
 WITH ordered AS (
   SELECT account_id, row_number() OVER (ORDER BY created_at, account_id) AS ordinal
@@ -205,8 +214,15 @@ UPDATE private_number_lifecycle SET status='retired', available_after=NULL WHERE
 UPDATE accounts SET last_active_at=(extract(epoch from clock_timestamp()) * 1000)::bigint WHERE last_active_at IS NULL;
 ALTER TABLE accounts ALTER COLUMN last_active_at SET NOT NULL;
 
-INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3), (4) ON CONFLICT DO NOTHING;
+INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3), (4), (5) ON CONFLICT DO NOTHING;
 `;
+
+function tokenHash(token) {
+  const value = String(token || '');
+  return /^[a-f0-9]{64}$/.test(value)
+    ? value
+    : crypto.createHash('sha256').update(value).digest('hex');
+}
 
 class PostgresStore {
   constructor(url, options = {}) {
@@ -376,21 +392,206 @@ class PostgresStore {
     }
   }
 
-  async createConversation(record) {
-    if (!this.enabled) return;
-    await this.pool.query(`INSERT INTO conversations (
+  async createConversation(record, client = this.pool) {
+    if (!this.enabled) return true;
+    const { rows } = await client.query(`INSERT INTO conversations (
       conversation_id, persistent, delete_timer, created_at, updated_at, last_message_at
     ) VALUES ($1,$2,$3,$4,$4,$5)
-    ON CONFLICT (conversation_id) DO NOTHING`, [
+    ON CONFLICT (conversation_id) DO NOTHING
+    RETURNING conversation_id`, [
       record.id, !!record.persistent, record.deleteTimer || 0,
       record.createdAt, record.lastMessageAt || 0,
     ]);
+    return rows.length === 1;
   }
 
-  async upsertConversationMember(conversationId, slot, token, member) {
+  async conversationExists(conversationId) {
+    if (!this.enabled) return false;
+    const { rows } = await this.pool.query(`SELECT 1 FROM conversations
+      WHERE conversation_id=$1 AND status='active'`, [conversationId]);
+    return rows.length === 1;
+  }
+
+  async countActiveConversations(client = this.pool) {
+    if (!this.enabled) return 0;
+    const { rows } = await client.query(`SELECT count(*)::bigint AS count
+      FROM conversations WHERE status='active'`);
+    return Number(rows[0]?.count || 0);
+  }
+
+  async conversationStats(activeCutoff) {
+    if (!this.enabled) return null;
+    const { rows } = await this.pool.query(`SELECT
+      count(*)::bigint AS active_conversations,
+      count(*) FILTER (WHERE persistent)::bigint AS permanent_conversations,
+      count(*) FILTER (WHERE NOT persistent)::bigint AS temporary_conversations,
+      count(*) FILTER (WHERE EXISTS (
+        SELECT 1 FROM conversation_members m WHERE m.conversation_id=c.conversation_id
+      ))::bigint AS occupied_conversations,
+      COALESCE((SELECT count(*) FROM encrypted_messages),0)::bigint AS stored_messages,
+      COALESCE((SELECT count(*) FROM conversation_members WHERE last_seen >= $1),0)::bigint AS active_members
+      FROM conversations c WHERE status='active'`, [activeCutoff]);
+    const row = rows[0] || {};
+    return {
+      activeConversations:Number(row.active_conversations || 0),
+      permanentConversations:Number(row.permanent_conversations || 0),
+      temporaryConversations:Number(row.temporary_conversations || 0),
+      occupiedConversations:Number(row.occupied_conversations || 0),
+      storedMessages:Number(row.stored_messages || 0),
+      activeMembers:Number(row.active_members || 0),
+    };
+  }
+
+  async withConversationLock(conversationId, operation) {
+    if (!this.enabled) return operation(null);
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // A transaction-scoped advisory lock serializes every mutation for one
+      // conversation across all web replicas without retaining credentials
+      // or relying on sticky sessions.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [conversationId]);
+      const result = await operation(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async withOptionalTransaction(client, operation) {
+    if (client) return operation(client);
+    const ownedClient = await this.pool.connect();
+    try {
+      await ownedClient.query('BEGIN');
+      const result = await operation(ownedClient);
+      await ownedClient.query('COMMIT');
+      return result;
+    } catch (error) {
+      await ownedClient.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      ownedClient.release();
+    }
+  }
+
+  async loadConversation(conversationId, client = this.pool) {
+    if (!this.enabled) return null;
+    const { rows } = await client.query(`SELECT * FROM conversations
+      WHERE conversation_id=$1 AND status='active'`, [conversationId]);
+    if (!rows.length) return null;
+    const row = rows[0];
+    const memberResult = await client.query(`SELECT * FROM conversation_members
+      WHERE conversation_id=$1 ORDER BY member_slot`, [conversationId]);
+    return {
+      id:conversationId,
+      persistent:!!row.persistent,
+      isNamed:!!row.is_named,
+      createdAt:Number(row.created_at),
+      lastActivity:Number(row.last_activity || row.updated_at),
+      connectedSince:row.connected_since == null ? null : Number(row.connected_since),
+      totalMessageCount:Number(row.total_message_count || 0),
+      lastMessageAt:Number(row.last_message_at || 0),
+      deleteTimer:Number(row.delete_timer || 0),
+      deleteTimerSetAt:Number(row.delete_timer_set_at || row.created_at),
+      clearedAt:Number(row.cleared_at || 0),
+      passwordHash:row.password_hash || null,
+      seq:Math.max(0, Number(row.next_message_sequence || 1) - 1),
+      reactionSeq:Math.max(0, Number(row.next_reaction_sequence || 1) - 1),
+      deletionSeq:Math.max(0, Number(row.next_deletion_sequence || 1) - 1),
+      stateVersion:Number(row.state_version || 1),
+      members:memberResult.rows.map(member => {
+        const push = member.push_state || {};
+        return [member.token_hash, {
+          slot:Number(member.member_slot), name:member.encrypted_name || null,
+          pubKey:member.public_key || null, lastSeen:Number(member.last_seen || 0),
+          pushSub:push.pushSub || null, fcmToken:push.fcmToken || null,
+          apnsToken:push.apnsToken || null, apnsEnvironment:push.apnsEnvironment || null,
+          voipToken:push.voipToken || null, voipEnvironment:push.voipEnvironment || null,
+          nativeRoomHandle:push.nativeRoomHandle || null,
+        }];
+      }),
+    };
+  }
+
+  async saveConversation(conversationId, room, client = this.pool) {
     if (!this.enabled) return;
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    await this.pool.query(`INSERT INTO conversation_members (
+    const now = Date.now();
+    await client.query(`UPDATE conversations SET
+      persistent=$2, is_named=$3, delete_timer=$4, last_activity=$5,
+      connected_since=$6, total_message_count=$7,
+      last_message_at=GREATEST(last_message_at,$8), delete_timer_set_at=$9,
+      cleared_at=$10, password_hash=$11, updated_at=$12,
+      next_message_sequence=GREATEST(next_message_sequence,$13),
+      next_reaction_sequence=GREATEST(next_reaction_sequence,$14),
+      next_deletion_sequence=GREATEST(next_deletion_sequence,$15),
+      state_version=state_version+1
+      WHERE conversation_id=$1 AND status='active'`, [
+      conversationId, !!room.persistent, !!room.isNamed, room.deleteTimer || 0,
+      room.lastActivity || now, room.connectedSince || null,
+      room.totalMessageCount || 0, room.lastMessageAt || 0,
+      room.deleteTimerSetAt || 0, room.clearedAt || 0,
+      room.passwordHash || null, now, (room.seq || 0) + 1,
+      (room.reactionSeq || 0) + 1, (room.deletionSeq || 0) + 1,
+    ]);
+    for (const [memberToken, member] of room.members || []) {
+      await this.upsertConversationMember(conversationId, member.slot, memberToken, member, client);
+    }
+  }
+
+  async deleteConversation(conversationId, client = this.pool) {
+    if (this.enabled) await client.query('DELETE FROM conversations WHERE conversation_id=$1', [conversationId]);
+  }
+
+  async sweepExpiredConversations(now, namedTtl, ordinaryTtl) {
+    if (!this.enabled) return [];
+    const { rows } = await this.pool.query(`DELETE FROM conversations
+      WHERE persistent=false AND status='active' AND
+        (($1-last_activity) > CASE WHEN is_named THEN $2 ELSE $3 END)
+      RETURNING conversation_id`, [now, namedTtl, ordinaryTtl]);
+    return rows.map(row => row.conversation_id);
+  }
+
+  async expireDisappearingMessages(now, tombstoneTtl, limit = 500) {
+    if (!this.enabled) return [];
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(`SELECT m.conversation_id,m.message_id
+        FROM encrypted_messages m
+        JOIN conversations c ON c.conversation_id=m.conversation_id
+        JOIN message_receipts r ON r.conversation_id=m.conversation_id AND r.message_id=m.message_id
+        WHERE c.status='active' AND c.delete_timer>0
+          AND m.created_at>=c.delete_timer_set_at
+          AND r.read_at IS NOT NULL AND r.read_at + (c.delete_timer::bigint * 1000) <= $1
+        ORDER BY r.read_at LIMIT $2 FOR UPDATE OF m SKIP LOCKED`, [now, limit]);
+      const affected = new Set();
+      for (const row of rows) {
+        const allocated = await client.query(`UPDATE conversations SET
+          next_deletion_sequence=next_deletion_sequence+1, updated_at=$2
+          WHERE conversation_id=$1 RETURNING next_deletion_sequence-1 AS sequence`,
+        [row.conversation_id, now]);
+        const sequence = Number(allocated.rows[0]?.sequence || 0);
+        await client.query('DELETE FROM encrypted_messages WHERE conversation_id=$1 AND message_id=$2', [row.conversation_id, row.message_id]);
+        await client.query(`INSERT INTO deletion_tombstones
+          (conversation_id,message_id,deletion_sequence,deleted_at,expires_at)
+          VALUES ($1,$2,$3,$4,$5) ON CONFLICT (conversation_id,message_id) DO NOTHING`,
+        [row.conversation_id, row.message_id, sequence, now, now + tombstoneTtl]);
+        affected.add(row.conversation_id);
+      }
+      await client.query('COMMIT');
+      return [...affected];
+    } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+    finally { client.release(); }
+  }
+
+  async upsertConversationMember(conversationId, slot, token, member, client = this.pool) {
+    if (!this.enabled) return;
+    const memberTokenHash = tokenHash(token);
+    await client.query(`INSERT INTO conversation_members (
       conversation_id, member_slot, token_hash, encrypted_name, public_key,
       push_state, last_seen
     ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
@@ -398,46 +599,51 @@ class PostgresStore {
       token_hash=EXCLUDED.token_hash, encrypted_name=EXCLUDED.encrypted_name,
       public_key=EXCLUDED.public_key, push_state=EXCLUDED.push_state,
       last_seen=EXCLUDED.last_seen`, [
-      conversationId, slot, tokenHash, member.name || null, member.pubKey || null,
-      JSON.stringify({ pushSub:member.pushSub || null, apnsToken:member.apnsToken || null, fcmToken:member.fcmToken || null }),
+      conversationId, slot, memberTokenHash, member.name || null, member.pubKey || null,
+      JSON.stringify({
+        pushSub:member.pushSub || null, apnsToken:member.apnsToken || null,
+        apnsEnvironment:member.apnsEnvironment || null, fcmToken:member.fcmToken || null,
+        voipToken:member.voipToken || null, voipEnvironment:member.voipEnvironment || null,
+        nativeRoomHandle:member.nativeRoomHandle || null,
+      }),
       member.lastSeen || 0,
     ]);
   }
 
-  async deleteConversationMember(conversationId, slot) {
+  async deleteConversationMember(conversationId, slot, client = this.pool) {
     if (!this.enabled) return;
-    await this.pool.query('DELETE FROM conversation_members WHERE conversation_id=$1 AND member_slot=$2', [conversationId, slot]);
+    await client.query('DELETE FROM conversation_members WHERE conversation_id=$1 AND member_slot=$2', [conversationId, slot]);
   }
 
-  async appendEncryptedMessage(conversationId, token, message) {
+  async appendEncryptedMessage(conversationId, token, message, transactionClient = null) {
     if (!this.enabled) return;
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    const senderTokenHash = tokenHash(token);
+    return this.withOptionalTransaction(transactionClient, async client => {
+      const allocated = await client.query(`UPDATE conversations SET
+        next_message_sequence=next_message_sequence+1,
+        updated_at=GREATEST(updated_at,$2), last_message_at=GREATEST(last_message_at,$2)
+        WHERE conversation_id=$1 AND status='active'
+        RETURNING next_message_sequence-1 AS sequence`, [conversationId, message.ts]);
+      // Test doubles and rolling-schema migrations may not return the new
+      // allocation row yet; retain the supplied sequence only for that
+      // compatibility case. Production PostgreSQL always returns it.
+      const sequence = allocated.rows.length ? Number(allocated.rows[0].sequence) : Number(message.seq);
       await client.query(`INSERT INTO encrypted_messages (
         conversation_id, message_id, sender_token_hash, sequence, ciphertext,
         created_at, expires_at, view_once
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       ON CONFLICT (conversation_id, message_id) DO NOTHING`, [
-        conversationId, message.id, tokenHash, message.seq, message.content,
+        conversationId, message.id, senderTokenHash, sequence, message.content,
         message.ts, message.expiresAt || null, !!message.viewOnce,
       ]);
-      await client.query(`UPDATE conversations SET
-        updated_at=$2, last_message_at=GREATEST(last_message_at,$2),
-        next_message_sequence=GREATEST(next_message_sequence,$3)
-        WHERE conversation_id=$1`, [conversationId, message.ts, message.seq + 1]);
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+      return sequence;
+    });
   }
 
-  async loadEncryptedMessages(conversationId, limit = 100, now = Date.now()) {
+  async loadEncryptedMessages(conversationId, limit = 100, now = Date.now(), client = this.pool) {
     if (!this.enabled) return [];
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
-    const { rows } = await this.pool.query(`SELECT * FROM (
+    const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
         ciphertext, created_at, expires_at, view_once
       FROM encrypted_messages
@@ -445,7 +651,23 @@ class PostgresStore {
       ORDER BY sequence DESC
       LIMIT $3
     ) AS recent_messages ORDER BY sequence ASC`, [conversationId, now, safeLimit]);
-    return rows.map(row => ({
+    const messageIds = rows.map(row => row.message_id);
+    const receipts = messageIds.length ? await client.query(`SELECT * FROM message_receipts
+      WHERE conversation_id=$1 AND message_id=ANY($2::text[])`, [conversationId, messageIds]) : { rows:[] };
+    const reactions = messageIds.length ? await client.query(`SELECT * FROM message_reactions
+      WHERE conversation_id=$1 AND message_id=ANY($2::text[])`, [conversationId, messageIds]) : { rows:[] };
+    const receiptByMessage = new Map(receipts.rows
+      .filter(receipt => receipt.receipt_sequence !== undefined)
+      .map(receipt => [receipt.message_id, receipt]));
+    const reactionsByMessage = new Map();
+    for (const reaction of reactions.rows.filter(item => item.reaction_sequence !== undefined)) {
+      if (!reactionsByMessage.has(reaction.message_id)) reactionsByMessage.set(reaction.message_id, {});
+      if (reaction.encrypted_reaction) reactionsByMessage.get(reaction.message_id)[reaction.reactor_token_hash] = reaction.encrypted_reaction;
+    }
+    return rows.map(row => {
+      const receipt = receiptByMessage.get(row.message_id);
+      const messageReactions = reactionsByMessage.get(row.message_id) || {};
+      const value = {
       id:row.message_id,
       senderTokenHash:row.sender_token_hash,
       seq:Number(row.sequence),
@@ -453,14 +675,100 @@ class PostgresStore {
       ts:Number(row.created_at),
       expiresAt:row.expires_at == null ? null : Number(row.expires_at),
       viewOnce:!!row.view_once,
-    }));
+      };
+      if (receipt) {
+        value.deliveredAt = receipt.delivered_at == null ? null : Number(receipt.delivered_at);
+        value.readAt = receipt.read_at == null ? null : Number(receipt.read_at);
+        value.receiptSequence = Number(receipt.receipt_sequence || 0);
+      }
+      if (Object.keys(messageReactions).length) {
+        value.reactions = messageReactions;
+        value.reactionSequence = Math.max(0, ...reactions.rows.filter(item => item.message_id === row.message_id).map(item => Number(item.reaction_sequence) || 0));
+      }
+      return value;
+    });
   }
 
-  async deleteEncryptedMessage(conversationId, messageId, deletionSequence, deletedAt, expiresAt) {
+  async markMessagesDelivered(conversationId, messageIds, at, transactionClient = null) {
+    if (!this.enabled || !messageIds.length) return 0;
+    return this.withOptionalTransaction(transactionClient, async client => {
+      const sequence = await client.query(`UPDATE conversations
+        SET next_receipt_sequence=next_receipt_sequence+1, updated_at=$2
+        WHERE conversation_id=$1 RETURNING next_receipt_sequence-1 AS sequence`, [conversationId, at]);
+      const receiptSequence = Number(sequence.rows[0]?.sequence || 0);
+      await client.query(`INSERT INTO message_receipts
+        (conversation_id,message_id,delivered_at,read_at,receipt_sequence)
+        SELECT $1, message_id, $3, NULL, $4 FROM encrypted_messages
+        WHERE conversation_id=$1 AND message_id=ANY($2::text[])
+        ON CONFLICT (conversation_id,message_id) DO UPDATE SET
+          delivered_at=COALESCE(message_receipts.delivered_at,EXCLUDED.delivered_at),
+          receipt_sequence=GREATEST(message_receipts.receipt_sequence,EXCLUDED.receipt_sequence)`,
+      [conversationId, messageIds, at, receiptSequence]);
+      return receiptSequence;
+    });
+  }
+
+  async markMessagesRead(conversationId, messageIds, at, transactionClient = null) {
+    if (!this.enabled || !messageIds.length) return 0;
+    return this.withOptionalTransaction(transactionClient, async client => {
+      const sequence = await client.query(`UPDATE conversations
+        SET next_receipt_sequence=next_receipt_sequence+1, updated_at=$2
+        WHERE conversation_id=$1 RETURNING next_receipt_sequence-1 AS sequence`, [conversationId, at]);
+      const receiptSequence = Number(sequence.rows[0]?.sequence || 0);
+      await client.query(`INSERT INTO message_receipts
+        (conversation_id,message_id,delivered_at,read_at,receipt_sequence)
+        SELECT $1, message_id, $3, $3, $4 FROM encrypted_messages
+        WHERE conversation_id=$1 AND message_id=ANY($2::text[])
+        ON CONFLICT (conversation_id,message_id) DO UPDATE SET
+          delivered_at=COALESCE(message_receipts.delivered_at,EXCLUDED.delivered_at),
+          read_at=COALESCE(message_receipts.read_at,EXCLUDED.read_at),
+          receipt_sequence=GREATEST(message_receipts.receipt_sequence,EXCLUDED.receipt_sequence)`,
+      [conversationId, messageIds, at, receiptSequence]);
+      return receiptSequence;
+    });
+  }
+
+  async setMessageReaction(conversationId, messageId, token, reaction, at, transactionClient = null) {
+    if (!this.enabled) return 0;
+    return this.withOptionalTransaction(transactionClient, async client => {
+      const sequence = await client.query(`UPDATE conversations
+        SET next_reaction_sequence=next_reaction_sequence+1, updated_at=$2
+        WHERE conversation_id=$1 RETURNING next_reaction_sequence-1 AS sequence`, [conversationId, at]);
+      const reactionSequence = Number(sequence.rows[0]?.sequence || 0);
+      const reactorTokenHash = tokenHash(token);
+      if (reaction) {
+        await client.query(`INSERT INTO message_reactions
+          (conversation_id,message_id,reactor_token_hash,encrypted_reaction,reaction_sequence,updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6)
+          ON CONFLICT (conversation_id,message_id,reactor_token_hash) DO UPDATE SET
+            encrypted_reaction=EXCLUDED.encrypted_reaction,
+            reaction_sequence=EXCLUDED.reaction_sequence, updated_at=EXCLUDED.updated_at`,
+        [conversationId, messageId, reactorTokenHash, reaction, reactionSequence, at]);
+      } else {
+        await client.query(`DELETE FROM message_reactions
+          WHERE conversation_id=$1 AND message_id=$2 AND reactor_token_hash=$3`,
+        [conversationId, messageId, reactorTokenHash]);
+      }
+      return reactionSequence;
+    });
+  }
+
+  async clearConversationMessages(conversationId, clearedAt, transactionClient = null) {
     if (!this.enabled) return;
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
+    return this.withOptionalTransaction(transactionClient, async client => {
+      await client.query('UPDATE conversations SET cleared_at=$2, updated_at=$2 WHERE conversation_id=$1', [conversationId, clearedAt]);
+      await client.query('DELETE FROM encrypted_messages WHERE conversation_id=$1', [conversationId]);
+    });
+  }
+
+  async deleteEncryptedMessage(conversationId, messageId, deletionSequence, deletedAt, expiresAt, transactionClient = null) {
+    if (!this.enabled) return;
+    return this.withOptionalTransaction(transactionClient, async client => {
+      const allocated = await client.query(`UPDATE conversations SET
+        next_deletion_sequence=next_deletion_sequence+1, updated_at=$2
+        WHERE conversation_id=$1 AND status='active'
+        RETURNING next_deletion_sequence-1 AS sequence`, [conversationId, deletedAt]);
+      const sequence = allocated.rows.length ? Number(allocated.rows[0].sequence) : Number(deletionSequence);
       await client.query('DELETE FROM encrypted_messages WHERE conversation_id=$1 AND message_id=$2', [conversationId, messageId]);
       await client.query(`INSERT INTO deletion_tombstones (
         conversation_id, message_id, deletion_sequence, deleted_at, expires_at
@@ -468,12 +776,20 @@ class PostgresStore {
       ON CONFLICT (conversation_id,message_id) DO UPDATE SET
         deletion_sequence=GREATEST(deletion_tombstones.deletion_sequence,EXCLUDED.deletion_sequence),
         deleted_at=EXCLUDED.deleted_at, expires_at=EXCLUDED.expires_at`,
-      [conversationId, messageId, deletionSequence, deletedAt, expiresAt]);
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally { client.release(); }
+      [conversationId, messageId, sequence, deletedAt, expiresAt]);
+      return sequence;
+    });
+  }
+
+  async loadDeletionTombstones(conversationId, now = Date.now(), client = this.pool) {
+    if (!this.enabled) return [];
+    const { rows } = await client.query(`SELECT message_id,deletion_sequence,deleted_at
+      FROM deletion_tombstones WHERE conversation_id=$1 AND expires_at>$2
+      ORDER BY deletion_sequence`, [conversationId, now]);
+    return rows.map(row => ({
+      id:row.message_id, type:'message', content:null, deleted:true,
+      deletionSeq:Number(row.deletion_sequence), ts:Number(row.deleted_at),
+    }));
   }
 
   async close() { if (this.pool?.end) await this.pool.end(); }

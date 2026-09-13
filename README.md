@@ -1,17 +1,17 @@
-# Vaulted — Anonymous Private Messenger
+# Vaultlix — Private Number Messenger
 
-Two people. One conversation. Disappears when you leave.
+One private number. One private inbox. No SIM required.
 
 ## What this is
-- Anonymous text chat — no phone number or email required; guest access plus optional encrypted anonymous-ID sync
-- Secret room codes — share a 3-word code, connect instantly
-- PostgreSQL-backed identities and encrypted conversation history, plus an atomic active-room checkpoint
-- Auto-erases — room closes when either person leaves
+- Private-number identities without exposing a phone number or email
+- One-to-one encrypted inbox conversations with messaging and calls
+- PostgreSQL-backed identity, membership, metadata and encrypted history
+- Redis-backed presence, call state, routing, counters and cache invalidation
 
 ## Tech
 - Node.js HTTP/WebSocket server (`ws`)
 - PostgreSQL for durable identity and encrypted conversation state
-- Optional Redis coordination for multi-replica WebSocket delivery, calls and presence
+- Redis coordination for multi-replica WebSocket delivery, calls, presence and counters
 - Single HTML file frontend — no React, no build step
 - Native Capacitor shells for iOS and Android
 
@@ -19,8 +19,8 @@ Two people. One conversation. Disappears when you leave.
 
 Set `REDIS_URL` to a private Redis connection URL before running more than one
 application replica. Redis carries only short-lived coordination events and
-one-way hashes of account/member routing credentials; call SDP, ICE and call
-state remain opaque client-encrypted envelopes. If `REDIS_URL` is absent,
+one-way hashes of account/member routing credentials; call SDP and ICE remain
+opaque client-encrypted envelopes. If `REDIS_URL` is absent,
 Vaultlix deliberately retains its current single-replica behaviour.
 
 Signal-socket and presence leases expire automatically after 60 seconds and
