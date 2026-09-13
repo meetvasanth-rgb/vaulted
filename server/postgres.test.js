@@ -15,6 +15,8 @@ test('v2 schema stores only ciphertext and supports deletion synchronization', (
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS account_inbox_counters/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS message_receipts/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS message_reactions/);
+  assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS encrypted_attachments/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS attachment_id uuid/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS private_number_lifecycle/);
   assert.match(SCHEMA_SQL, /last_active_at bigint/);
   assert.match(SCHEMA_SQL, /number_protection varchar/);
@@ -141,6 +143,23 @@ test('conversation expiry sweep pins timestamp and TTL parameters to bigint', as
   assert.match(calls[0][0], /\$1::bigint-last_activity/);
   assert.match(calls[0][0], /THEN \$2::bigint ELSE \$3::bigint/);
   assert.deepEqual(calls[0][1], [3000, 2000, 1000]);
+});
+
+test('attachment metadata is claimed in the same transaction as its encrypted message', async () => {
+  const calls = [];
+  const transactionClient = { query:async (...args) => {
+    calls.push(args);
+    if (/RETURNING next_message_sequence/.test(args[0])) return { rows:[{ sequence:'4' }], rowCount:1 };
+    return { rows:[], rowCount:1 };
+  } };
+  const store = new PostgresStore('', { pool:{ query:transactionClient.query } });
+  await store.appendEncryptedMessage('room-1', 'bearer-secret', {
+    id:'message-1', seq:1, content:'obj:v1:attachment-id', ts:2,
+    attachmentId:'1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e',
+  }, transactionClient);
+  assert.match(calls[1][0], /UPDATE encrypted_attachments SET[\s\S]*status='attached'/);
+  assert.match(calls[2][0], /attachment_id/);
+  assert.equal(calls[2][1].at(-1), '1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e');
 });
 
 test('production startup fails closed and account mutations await PostgreSQL', () => {

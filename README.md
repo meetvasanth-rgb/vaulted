@@ -5,12 +5,14 @@ One private number. One private inbox. No SIM required.
 ## What this is
 - Private-number identities without exposing a phone number or email
 - One-to-one encrypted inbox conversations with messaging and calls
-- PostgreSQL-backed identity, membership, metadata and encrypted history
+- PostgreSQL-backed identity, membership, message metadata and encrypted text history
+- Private S3-compatible object storage for device-encrypted image/file payloads
 - Redis-backed presence, call state, routing, counters and cache invalidation
 
 ## Tech
 - Node.js HTTP/WebSocket server (`ws`)
-- PostgreSQL for durable identity and encrypted conversation state
+- PostgreSQL for durable identity and encrypted conversation metadata
+- Railway Bucket/S3-compatible storage for opaque encrypted attachments
 - Redis coordination for multi-replica WebSocket delivery, calls, presence and counters
 - Single HTML file frontend — no React, no build step
 - Native Capacitor shells for iOS and Android
@@ -26,6 +28,26 @@ Vaultlix deliberately retains its current single-replica behaviour.
 Signal-socket and presence leases expire automatically after 60 seconds and
 are refreshed by the existing 25-second WebSocket heartbeat. The admin health
 response reports either `Redis connected` or `Single-replica mode`.
+
+## Encrypted attachment storage
+
+Create a private Railway Bucket and inject its S3-compatible credentials into
+the web service. The server accepts either Railway's automatic `AWS_*` names
+or the equivalent `OBJECT_STORAGE_*` names:
+
+- `AWS_ENDPOINT_URL` / `OBJECT_STORAGE_ENDPOINT`
+- `AWS_S3_BUCKET_NAME` / `OBJECT_STORAGE_BUCKET`
+- `AWS_ACCESS_KEY_ID` / `OBJECT_STORAGE_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_ACCESS_KEY`
+- `AWS_DEFAULT_REGION` / `OBJECT_STORAGE_REGION` (defaults to `auto`)
+- `AWS_S3_URL_STYLE` / `OBJECT_STORAGE_URL_STYLE` (`virtual` or `path`)
+- `OBJECT_STORAGE_CORS_ORIGINS` (comma-separated app origins, for example
+  `https://vaultlix.com,https://www.vaultlix.com,https://valuted.in`)
+
+When configured, image/file ciphertext uploads directly from the device using
+a ten-minute signed URL. PostgreSQL stores only the opaque object reference,
+size, ownership hash and delivery lifecycle metadata. Existing large inline
+ciphertext is externalized in bounded background batches without decryption.
 
 ## Daily Look configuration
 

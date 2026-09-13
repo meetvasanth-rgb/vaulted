@@ -105,6 +105,23 @@ CREATE TABLE IF NOT EXISTS encrypted_messages (
 CREATE INDEX IF NOT EXISTS encrypted_messages_sync_idx
   ON encrypted_messages(conversation_id, sequence);
 
+CREATE TABLE IF NOT EXISTS encrypted_attachments (
+  attachment_id uuid PRIMARY KEY,
+  conversation_id text NOT NULL,
+  expected_message_id text NOT NULL,
+  uploader_token_hash char(64) NOT NULL,
+  object_key text NOT NULL UNIQUE,
+  ciphertext_size bigint NOT NULL CHECK (ciphertext_size > 0),
+  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'attached')),
+  created_at bigint NOT NULL,
+  expires_at bigint NOT NULL,
+  attached_at bigint
+);
+CREATE INDEX IF NOT EXISTS encrypted_attachments_conversation_idx
+  ON encrypted_attachments(conversation_id, attachment_id);
+CREATE INDEX IF NOT EXISTS encrypted_attachments_cleanup_idx
+  ON encrypted_attachments(status, expires_at);
+
 CREATE TABLE IF NOT EXISTS inbox_events (
   account_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
   sequence bigint NOT NULL,
@@ -190,6 +207,7 @@ ALTER TABLE conversations ADD COLUMN IF NOT EXISTS delete_timer_set_at bigint NO
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS cleared_at bigint NOT NULL DEFAULT 0;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash text;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS state_version bigint NOT NULL DEFAULT 1;
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS attachment_id uuid;
 ALTER TABLE accounts ALTER COLUMN creation_order SET DEFAULT nextval('account_creation_order_seq');
 WITH ordered AS (
   SELECT account_id, row_number() OVER (ORDER BY created_at, account_id) AS ordinal
@@ -214,7 +232,7 @@ UPDATE private_number_lifecycle SET status='retired', available_after=NULL WHERE
 UPDATE accounts SET last_active_at=(extract(epoch from clock_timestamp()) * 1000)::bigint WHERE last_active_at IS NULL;
 ALTER TABLE accounts ALTER COLUMN last_active_at SET NOT NULL;
 
-INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3), (4), (5) ON CONFLICT DO NOTHING;
+INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3), (4), (5), (6) ON CONFLICT DO NOTHING;
 `;
 
 function tokenHash(token) {
@@ -615,6 +633,101 @@ class PostgresStore {
     await client.query('DELETE FROM conversation_members WHERE conversation_id=$1 AND member_slot=$2', [conversationId, slot]);
   }
 
+  async createPendingAttachment(conversationId, token, attachment, client = this.pool) {
+    if (!this.enabled) return false;
+    const result = await client.query(`INSERT INTO encrypted_attachments (
+      attachment_id, conversation_id, expected_message_id, uploader_token_hash,
+      object_key, ciphertext_size, status, created_at, expires_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,'pending',$7,$8)
+    ON CONFLICT (attachment_id) DO NOTHING`, [
+      attachment.id, conversationId, attachment.messageId, tokenHash(token),
+      attachment.objectKey, attachment.size, attachment.createdAt, attachment.expiresAt,
+    ]);
+    return result.rowCount === undefined ? true : result.rowCount === 1;
+  }
+
+  async pendingAttachment(conversationId, token, attachmentId, now = Date.now(), client = this.pool) {
+    if (!this.enabled) return null;
+    const { rows } = await client.query(`SELECT attachment_id,conversation_id,expected_message_id,
+      object_key,ciphertext_size,status,expires_at
+      FROM encrypted_attachments
+      WHERE attachment_id=$1 AND conversation_id=$2 AND uploader_token_hash=$3
+        AND status='pending' AND expires_at>$4`, [attachmentId, conversationId, tokenHash(token), now]);
+    if (!rows.length) return null;
+    const row = rows[0];
+    return {
+      id:row.attachment_id, conversationId:row.conversation_id,
+      messageId:row.expected_message_id, objectKey:row.object_key,
+      size:Number(row.ciphertext_size), status:row.status, expiresAt:Number(row.expires_at),
+    };
+  }
+
+  async attachmentForMessage(conversationId, attachmentId, client = this.pool) {
+    if (!this.enabled) return null;
+    const { rows } = await client.query(`SELECT a.attachment_id,a.object_key,a.ciphertext_size
+      FROM encrypted_attachments a
+      JOIN encrypted_messages m ON m.conversation_id=a.conversation_id
+        AND m.attachment_id=a.attachment_id
+      WHERE a.attachment_id=$1 AND a.conversation_id=$2 AND a.status='attached'`,
+    [attachmentId, conversationId]);
+    if (!rows.length) return null;
+    return { id:rows[0].attachment_id, objectKey:rows[0].object_key, size:Number(rows[0].ciphertext_size) };
+  }
+
+  async listInlinePayloadCandidates(limit = 25, minimumBytes = 32768, client = this.pool) {
+    if (!this.enabled) return [];
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 25));
+    const { rows } = await client.query(`SELECT conversation_id,message_id,ciphertext
+      FROM encrypted_messages
+      WHERE attachment_id IS NULL AND ciphertext NOT LIKE 'obj:v1:%'
+        AND octet_length(ciphertext)>=$1
+      ORDER BY created_at LIMIT $2`, [minimumBytes, safeLimit]);
+    return rows.map(row => ({ conversationId:row.conversation_id, messageId:row.message_id, ciphertext:row.ciphertext }));
+  }
+
+  async externalizeMessagePayload(candidate, attachment, client = this.pool) {
+    if (!this.enabled) return false;
+    return this.withOptionalTransaction(client === this.pool ? null : client, async transaction => {
+      await transaction.query(`INSERT INTO encrypted_attachments (
+        attachment_id,conversation_id,expected_message_id,uploader_token_hash,
+        object_key,ciphertext_size,status,created_at,expires_at,attached_at
+      ) SELECT $1,$2,$3,sender_token_hash,$4,$5,'attached',$6,$7,$6
+        FROM encrypted_messages
+        WHERE conversation_id=$2 AND message_id=$3 AND attachment_id IS NULL`, [
+        attachment.id, candidate.conversationId, candidate.messageId, attachment.objectKey,
+        attachment.size, attachment.createdAt, attachment.expiresAt,
+      ]);
+      const updated = await transaction.query(`UPDATE encrypted_messages
+        SET ciphertext=$4,attachment_id=$3
+        WHERE conversation_id=$1 AND message_id=$2 AND attachment_id IS NULL`, [
+        candidate.conversationId, candidate.messageId, attachment.id, `obj:v1:${attachment.id}`,
+      ]);
+      if (updated.rowCount === 0) {
+        await transaction.query('DELETE FROM encrypted_attachments WHERE attachment_id=$1', [attachment.id]);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  async listAttachmentGarbage(now = Date.now(), limit = 100, client = this.pool) {
+    if (!this.enabled) return [];
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+    const { rows } = await client.query(`SELECT a.attachment_id,a.object_key
+      FROM encrypted_attachments a
+      LEFT JOIN encrypted_messages m ON m.conversation_id=a.conversation_id
+        AND m.attachment_id=a.attachment_id
+      LEFT JOIN conversations c ON c.conversation_id=a.conversation_id
+      WHERE (a.status='pending' AND a.expires_at<=$1)
+        OR (a.status='attached' AND (m.message_id IS NULL OR c.conversation_id IS NULL))
+      ORDER BY a.created_at LIMIT $2`, [now, safeLimit]);
+    return rows.map(row => ({ id:row.attachment_id, objectKey:row.object_key }));
+  }
+
+  async deleteAttachmentRecord(attachmentId, client = this.pool) {
+    if (this.enabled) await client.query('DELETE FROM encrypted_attachments WHERE attachment_id=$1', [attachmentId]);
+  }
+
   async appendEncryptedMessage(conversationId, token, message, transactionClient = null) {
     if (!this.enabled) return;
     const senderTokenHash = tokenHash(token);
@@ -628,13 +741,23 @@ class PostgresStore {
       // allocation row yet; retain the supplied sequence only for that
       // compatibility case. Production PostgreSQL always returns it.
       const sequence = allocated.rows.length ? Number(allocated.rows[0].sequence) : Number(message.seq);
+      if (message.attachmentId) {
+        const claimed = await client.query(`UPDATE encrypted_attachments SET
+          status='attached',attached_at=$4,expires_at=$5
+          WHERE attachment_id=$1 AND conversation_id=$2 AND expected_message_id=$3
+            AND uploader_token_hash=$6 AND status='pending' AND expires_at>$4`, [
+          message.attachmentId, conversationId, message.id, message.ts,
+          message.expiresAt || Number.MAX_SAFE_INTEGER, senderTokenHash,
+        ]);
+        if (claimed.rowCount !== undefined && claimed.rowCount !== 1) throw new Error('Attachment claim is invalid or expired.');
+      }
       await client.query(`INSERT INTO encrypted_messages (
         conversation_id, message_id, sender_token_hash, sequence, ciphertext,
-        created_at, expires_at, view_once
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        created_at, expires_at, view_once, attachment_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       ON CONFLICT (conversation_id, message_id) DO NOTHING`, [
         conversationId, message.id, senderTokenHash, sequence, message.content,
-        message.ts, message.expiresAt || null, !!message.viewOnce,
+        message.ts, message.expiresAt || null, !!message.viewOnce, message.attachmentId || null,
       ]);
       return sequence;
     });
@@ -645,7 +768,7 @@ class PostgresStore {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
     const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
-        ciphertext, created_at, expires_at, view_once
+        ciphertext, created_at, expires_at, view_once, attachment_id
       FROM encrypted_messages
       WHERE conversation_id=$1 AND (expires_at IS NULL OR expires_at > $2)
       ORDER BY sequence DESC
@@ -676,6 +799,7 @@ class PostgresStore {
       expiresAt:row.expires_at == null ? null : Number(row.expires_at),
       viewOnce:!!row.view_once,
       };
+      if (row.attachment_id) value.attachmentId = row.attachment_id;
       if (receipt) {
         value.deliveredAt = receipt.delivered_at == null ? null : Number(receipt.delivered_at);
         value.readAt = receipt.read_at == null ? null : Number(receipt.read_at);

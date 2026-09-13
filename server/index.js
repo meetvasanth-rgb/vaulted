@@ -10,6 +10,7 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
+const { EncryptedObjectStorage } = require('./object-storage');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
@@ -95,12 +96,22 @@ const privateNumberLifecycle = new Map();
 const profileLookupBuckets = new Map();
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
 const realtimeCoordinator = new RealtimeCoordinator({ url:process.env.REDIS_URL || '' });
+const objectStorage = new EncryptedObjectStorage();
 let postgresEnabled = false;
+let objectStorageEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOOK_DAILY_LIMIT = 5;
+const ATTACHMENT_UPLOAD_TTL_MS = 15 * 60 * 1000;
+const ATTACHMENT_GARBAGE_SWEEP_MS = 10 * 60 * 1000;
+// Older builds did not tag attachment ciphertext separately. Migrating any
+// retained envelope above 8KB captures even aggressively compressed images
+// and tiny documents without ever attempting to inspect/decrypt content.
+// An unusually long text message may also be externalized, which is safe:
+// it remains the same opaque ciphertext and follows the identical fetch path.
+const INLINE_ATTACHMENT_MIGRATION_MIN_BYTES = 8 * 1024;
 // Daily Look is currently launched for the India test cohort. Keep the
 // midnight boundary configurable for a later regional rollout while making
 // today's product promise an exact 12:00 AM IST reset on every replica.
@@ -2269,6 +2280,57 @@ function res204(res) {
   res.end();
 }
 
+function validAttachmentId(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function attachmentObjectKey(conversationId, attachmentId) {
+  const conversationRoute = crypto.createHash('sha256').update(String(conversationId)).digest('hex').slice(0, 32);
+  return `encrypted-attachments/v1/${conversationRoute}/${attachmentId}`;
+}
+
+async function sweepAttachmentGarbage() {
+  if (!objectStorageEnabled || !postgresEnabled) return;
+  const garbage = await postgresStore.listAttachmentGarbage(Date.now(), 100);
+  for (const attachment of garbage) {
+    try {
+      await objectStorage.delete(attachment.objectKey);
+      await postgresStore.deleteAttachmentRecord(attachment.id);
+    } catch (error) {
+      console.error('Encrypted attachment cleanup failed:', error.message);
+    }
+  }
+}
+
+async function migrateInlineAttachmentPayloads() {
+  if (!objectStorageEnabled || !postgresEnabled) return;
+  let migrated = 0;
+  for (;;) {
+    const candidates = await postgresStore.listInlinePayloadCandidates(25, INLINE_ATTACHMENT_MIGRATION_MIN_BYTES);
+    if (!candidates.length) break;
+    let progressed = false;
+    for (const candidate of candidates) {
+      const id = crypto.randomUUID();
+      const objectKey = attachmentObjectKey(candidate.conversationId, id);
+      const ciphertext = Buffer.from(candidate.ciphertext, 'utf8');
+      try {
+        await objectStorage.put(objectKey, ciphertext);
+        const changed = await postgresStore.externalizeMessagePayload(candidate, {
+          id, objectKey, size:ciphertext.length, createdAt:Date.now(), expiresAt:Number.MAX_SAFE_INTEGER,
+        });
+        if (!changed) await objectStorage.delete(objectKey).catch(() => {});
+        else { migrated++; progressed = true; }
+      } catch (error) {
+        await objectStorage.delete(objectKey).catch(() => {});
+        console.error('Encrypted attachment migration paused:', error.message);
+        return;
+      }
+    }
+    if (!progressed || candidates.length < 25) break;
+  }
+  if (migrated) console.log(`Externalized ${migrated} existing encrypted attachment payload(s) to object storage.`);
+}
+
 function computeETag(buf) {
   return '"' + crypto.createHash('sha1').update(buf).digest('hex') + '"';
 }
@@ -3645,6 +3707,59 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
+  // POST /api/attachment/prepare — authorize an opaque, client-encrypted
+  // attachment and return a short-lived direct-to-bucket upload URL. The
+  // plaintext file, name and MIME type never enter this process; the bucket
+  // receives only the same E2E ciphertext envelope peers already exchange.
+  if (path==='/api/attachment/prepare' && method==='POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    const messageId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
+    const size = Number(d.size);
+    if (!messageId || !Number.isSafeInteger(size) || size < 1 || size > MAX_MESSAGE_CONTENT_BYTES) {
+      return resErr(res,'Invalid encrypted attachment.',400);
+    }
+    if (await rateLimited(`attachment:${d.token}`, 20, 10 * 1000)) return resErr(res,'Uploading too fast — slow down a moment.',429);
+    const attachmentId = crypto.randomUUID();
+    const objectKey = attachmentObjectKey(d.code, attachmentId);
+    const createdAt = Date.now();
+    const created = await postgresStore.createPendingAttachment(d.code, d.token, {
+      id:attachmentId, messageId, objectKey, size,
+      createdAt, expiresAt:createdAt + ATTACHMENT_UPLOAD_TTL_MS,
+    });
+    if (!created) return resErr(res,'Could not prepare encrypted attachment.',409);
+    try {
+      const uploadUrl = await objectStorage.createUploadUrl(objectKey);
+      return res200(res, { attachmentId, uploadUrl, contentType:'application/octet-stream' });
+    } catch (error) {
+      await postgresStore.deleteAttachmentRecord(attachmentId).catch(() => {});
+      console.error('Encrypted attachment upload signing failed:', error.message);
+      return resErr(res,'Could not prepare encrypted attachment.',503);
+    }
+  }
+
+  // POST /api/attachment/download — membership is rechecked every time;
+  // the returned bucket URL is private, narrowly scoped to one object and
+  // expires after ten minutes.
+  if (path==='/api/attachment/download' && method==='POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (!validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
+    const attachment = await postgresStore.attachmentForMessage(d.code, d.attachmentId);
+    if (!attachment) return resErr(res,'Encrypted attachment not found.',404);
+    try {
+      const downloadUrl = await objectStorage.createDownloadUrl(attachment.objectKey);
+      return res200(res, { downloadUrl, size:attachment.size });
+    } catch (error) {
+      console.error('Encrypted attachment download signing failed:', error.message);
+      return resErr(res,'Could not open encrypted attachment.',503);
+    }
+  }
+
   // POST /api/send
   if (path==='/api/send' && method==='POST') {
     const room = rooms.get(d.code);
@@ -3664,7 +3779,9 @@ async function api(path, method, d, p, res, ip, headers) {
     // derivation above for how that number was actually measured, not
     // guessed). This is the per-message half of the fix; the cumulative
     // per-room byte budget below is the other half.
-    if (typeof d.content !== 'string' || d.content.length > MAX_MESSAGE_CONTENT_BYTES) {
+    if (d.attachmentId != null && !validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
+    const attachmentId = validAttachmentId(d.attachmentId) ? d.attachmentId : null;
+    if ((!attachmentId && typeof d.content !== 'string') || (typeof d.content === 'string' && d.content.length > MAX_MESSAGE_CONTENT_BYTES)) {
       return resErr(res, 'Message too large.', 413);
     }
     const m = room.members.get(d.token);
@@ -3682,6 +3799,19 @@ async function api(path, method, d, p, res, ip, headers) {
     // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
+    let messageContent = d.content;
+    if (attachmentId) {
+      if (!objectStorageEnabled || !postgresEnabled || !clientMsgId) return resErr(res,'Encrypted attachment storage is unavailable.',503);
+      const pending = await postgresStore.pendingAttachment(d.code, d.token, attachmentId);
+      if (!pending || pending.messageId !== msgId) return resErr(res,'Encrypted attachment is invalid or expired.',409);
+      try {
+        const uploadedSize = await objectStorage.sizeOf(pending.objectKey);
+        if (uploadedSize !== pending.size) return resErr(res,'Encrypted attachment upload is incomplete.',409);
+      } catch (error) {
+        return resErr(res,'Encrypted attachment upload is incomplete.',409);
+      }
+      messageContent = `obj:v1:${attachmentId}`;
+    }
     // Call completion is observed independently by both native endpoints.
     // They deliberately submit the same stable call-event ID, so make the
     // encrypted message stream idempotent before allocating a new sequence.
@@ -3697,7 +3827,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
     if (postgresEnabled) {
       seq = await postgresStore.appendEncryptedMessage(d.code, d.token, message, room.dbClient || null);
       message.seq = seq;
@@ -4454,6 +4584,7 @@ async function api(path, method, d, p, res, ip, headers) {
       system: {
         healthStatus,
         durableStorage: postgresEnabled ? 'PostgreSQL connected' : 'Unavailable',
+        attachmentStorage: objectStorageEnabled ? 'Object storage connected' : 'Unavailable',
         realtimeCoordination: realtimeCoordinator.ready ? 'Redis connected' : 'Single-replica mode',
         realtimeInstance: realtimeCoordinator.instanceId.slice(0, 8),
         uptimeSeconds: Math.floor((now - PROCESS_STARTED_AT) / 1000),
@@ -5727,6 +5858,7 @@ async function shutdown(signal) {
   }
   if (!postgresEnabled) saveSnapshot();
   try { await realtimeCoordinator.close(); } catch (e) { console.error('Redis realtime shutdown failed:', e.message); }
+  try { objectStorage.close(); } catch (e) {}
   try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
   // Belt-and-suspenders: if something (a lingering keep-alive connection,
@@ -5758,6 +5890,13 @@ async function bootstrap() {
     console.log(`Redis realtime coordination ready (instance ${realtimeCoordinator.instanceId.slice(0, 8)}).`);
   } else {
     console.warn('REDIS_URL is not set — calls, presence and WebSockets are limited to this single application replica.');
+  }
+  if (objectStorage.enabled) {
+    await objectStorage.initialize();
+    objectStorageEnabled = true;
+    console.log('Encrypted attachment object storage ready.');
+  } else {
+    console.warn('Object storage is not configured — new image and file attachments cannot be externalized.');
   }
   // Run once at boot as well as on the six-hour timer. Deploys and restarts
   // must not postpone a due warning or reclamation indefinitely.
@@ -5801,6 +5940,14 @@ async function bootstrap() {
     roomCheckpointTimer.unref();
   }
   srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));
+  if (objectStorageEnabled && postgresEnabled) {
+    setImmediate(() => migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message)));
+    const attachmentGarbageTimer = setInterval(() => {
+      sweepAttachmentGarbage().catch(error => console.error('Encrypted attachment cleanup failed:', error.message));
+      migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message));
+    }, ATTACHMENT_GARBAGE_SWEEP_MS);
+    attachmentGarbageTimer.unref();
+  }
 }
 
 bootstrap().catch(err => {

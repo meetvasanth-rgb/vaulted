@@ -3271,7 +3271,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="legal-section">
       <h3>How messages work</h3>
       <p>All messages are end-to-end encrypted using AES-256-GCM with keys generated in your browser. The server never sees your message content — only encrypted ciphertext that it cannot read.</p>
-      <p>Encrypted conversation ciphertext, participant access data, chosen display names, notification routing details and access tokens are periodically written to restricted persistent storage. This lets conversations survive service failures and planned deployments. Infrastructure backups may retain an encrypted copy until the backup expires or is deleted; Vaultlix still cannot decrypt message ciphertext. Account records—including opaque encrypted account bundles and authentication verifiers—persist so a user can restore access after reinstalling.</p>
+      <p>Encrypted conversation ciphertext, participant access data, chosen display names, notification routing details and access tokens are written to restricted persistent storage. Encrypted image and file payloads are kept in private object storage; the conversation database retains only opaque storage references and delivery metadata. This lets conversations survive service failures and planned deployments. Infrastructure backups may retain an encrypted copy until the backup expires or is deleted; Vaultlix still cannot decrypt message or attachment ciphertext. Account records—including opaque encrypted account bundles and authentication verifiers—persist so a user can restore access after reinstalling.</p>
     </div>
 
     <div class="legal-section">
@@ -3282,7 +3282,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>File attachments</h3>
-      <p>Files are encrypted on your device before upload, transmitted as encrypted data, and delivered to the recipient. They follow the same conversation retention controls described above.</p>
+      <p>Files are encrypted on your device before upload to private object storage and can only be decrypted by participants in that conversation. Access links are short-lived and require current conversation membership. Files follow the same conversation retention controls described above.</p>
     </div>
 
     <div class="legal-section">
@@ -4162,7 +4162,7 @@ const secureNativeCacheKeys = new Set();
 let secureNativeCacheScheduled = false;
 
 function secureNativeStoreMessage(room, rec) {
-  if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked') return;
+  if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') return;
   if (secureNativeCachedRecords.has(rec)) return;
   let plaintext;
   try { plaintext = JSON.stringify(rec); } catch (e) { return; }
@@ -4187,7 +4187,7 @@ function secureNativeStoreMessage(room, rec) {
 function scheduleSecureNativeHistoryCache(room, records) {
   if (!isNativeApp() || !room?.code) return;
   for (const rec of records) {
-    if (!rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || secureNativeCachedRecords.has(rec)) continue;
+    if (!rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable' || secureNativeCachedRecords.has(rec)) continue;
     const key = `${room.code}:${rec.id}`;
     if (secureNativeCacheKeys.has(key)) continue;
     secureNativeCacheKeys.add(key);
@@ -7842,6 +7842,47 @@ async function api(path, data = null) {
   return body;
 }
 
+const ENCRYPTED_ATTACHMENT_PREFIX = 'obj:v1:';
+const MAX_ENCRYPTED_ATTACHMENT_BYTES = 19 * 1024 * 1024;
+
+async function uploadEncryptedAttachment(room, msgId, ciphertext) {
+  const size = new Blob([ciphertext]).size;
+  if (size < 1 || size > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_SIZE');
+  const prepared = await api('/api/attachment/prepare', {
+    code:room.code, token:room.token, msgId, size,
+  });
+  if (!prepared?.attachmentId || !prepared?.uploadUrl) throw new Error(prepared?.error || 'ATTACHMENT_PREPARE');
+  const uploadUrl = new URL(prepared.uploadUrl, location.href);
+  if (uploadUrl.protocol !== 'https:' && uploadUrl.hostname !== 'localhost' && uploadUrl.hostname !== '127.0.0.1') {
+    throw new Error('ATTACHMENT_URL');
+  }
+  const response = await fetch(uploadUrl.href, {
+    method:'PUT',
+    headers:{ 'Content-Type':prepared.contentType || 'application/octet-stream' },
+    body:ciphertext,
+  });
+  if (!response.ok) throw new Error('ATTACHMENT_UPLOAD');
+  return prepared.attachmentId;
+}
+
+async function resolveEncryptedAttachment(room, content) {
+  if (typeof content !== 'string' || !content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX)) return content;
+  const attachmentId = content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length);
+  const prepared = await api('/api/attachment/download', {
+    code:room.code, token:room.token, attachmentId,
+  });
+  if (!prepared?.downloadUrl) throw new Error(prepared?.error || 'ATTACHMENT_DOWNLOAD');
+  const downloadUrl = new URL(prepared.downloadUrl, location.href);
+  if (downloadUrl.protocol !== 'https:' && downloadUrl.hostname !== 'localhost' && downloadUrl.hostname !== '127.0.0.1') {
+    throw new Error('ATTACHMENT_URL');
+  }
+  const response = await fetch(downloadUrl.href, { cache:'no-store' });
+  if (!response.ok) throw new Error('ATTACHMENT_DOWNLOAD');
+  const ciphertext = await response.text();
+  if (!ciphertext || new Blob([ciphertext]).size > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
+  return ciphertext;
+}
+
 const REGISTRATION_DIAGNOSTIC_KEY = 'vaultlix.registration.diagnostics.v1';
 function recordRegistrationDiagnostic(event, details = {}) {
   // Deliberately local and metadata-only: never persist the Private Number,
@@ -8061,6 +8102,7 @@ const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment cou
 // payload in the first place (see processIncomingContent), so there is
 // nothing here that could ever leak it even by accident.
 const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
+const ATTACHMENT_UNAVAILABLE_HTML = `<div class="msg-blocked">Attachment unavailable — tap the conversation again to retry</div>`;
 
 function setStatus(online, name) {
   const presence = document.getElementById('chat-presence');
@@ -12651,6 +12693,8 @@ function renderMessageRecord(room, rec, animate) {
     contentHtml = gifUrl
       ? `<div class="msg-media-wrap"><img class="msg-gif" data-klipy-src="${escHtml(gifUrl)}" alt="${escHtml(rec.title || 'GIF')}" loading="lazy" decoding="async" fetchpriority="low" draggable="false" oncontextmenu="return false"/></div>`
       : MEDIA_BLOCKED_HTML;
+  } else if (rec.kind === 'attachment-unavailable') {
+    contentHtml = ATTACHMENT_UNAVAILABLE_HTML;
   } else if (rec.kind === 'blocked') {
     // decryptMsg's E2E_DOWNGRADE case — see DOWNGRADE_BLOCKED_HTML above.
     // rec deliberately has no .content field for this kind, so there is
@@ -12688,7 +12732,7 @@ function renderMessageRecord(room, rec, animate) {
     ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
 
-  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked') ? '' : rec.content)), rec.isMe, rec);
+  wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') ? '' : rec.content)), rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
   if (animate && rec.kind === 'gif') {
@@ -13208,6 +13252,13 @@ function callEventForViewer(callEvent, fromMe) {
 
 async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null) {
   if (!content) return null;
+  const base = { id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
+  try {
+    content = await resolveEncryptedAttachment(room, content);
+  } catch (error) {
+    console.warn('E2E: encrypted attachment could not be loaded', msgId);
+    return { ...base, kind:'attachment-unavailable' };
+  }
   let decrypted;
   try {
     decrypted = await decryptMsg(room, content);
@@ -13221,8 +13272,6 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     return { id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, kind: 'blocked', receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
   }
   if (!decrypted) return null;
-
-  const base = { id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
 
   try {
     const parsed = JSON.parse(decrypted);
@@ -15887,6 +15936,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const mime = mimeOverride || file.type;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
+  const msgId = newMsgId();
 
   // viewOnce here (inside the encrypted payload) is for THIS client's own
   // use after decrypting — the plaintext viewOnce sent alongside content in
@@ -15905,6 +15955,13 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     toast("Couldn't encrypt — message not sent");
     return false;
   }
+  let attachmentId;
+  try {
+    attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
+  } catch (error) {
+    toast('Could not securely upload file');
+    return false;
+  }
 
   // Same fix as text messages: generate the real id up front and send it to
   // the server instead of a temp-id-then-rename. File sends previously kept
@@ -15914,7 +15971,6 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // matching record (still tagged with the temp id), and silently dropped
   // it. The server never re-sends a receipt once reported, so that message's
   // disappearing timer would never start — it just sat on screen forever.
-  const msgId = newMsgId();
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
     fileName: file.name, mime, base64, isImage, pdfPreview, pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, viewed: false,
@@ -15932,7 +15988,10 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     // view-once photo apart from an ordinary one without this. Needed so
     // /api/view-once-opened can verify the message is actually view-once
     // server-side, instead of trusting whatever the caller claims.
-    const result = await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
+    const result = await api('/api/send', {
+      code:room.code, token:room.token, content:`${ENCRYPTED_ATTACHMENT_PREFIX}${attachmentId}`,
+      attachmentId, msgId, viewOnce:!!viewOnce,
+    });
     if (result?.error) throw new Error(result.error);
     return true;
   } catch(e) {
@@ -15952,6 +16011,7 @@ async function sendAlbumMessage(room, items, viewOnce) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  const msgId = newMsgId();
 
   // Same deliberate duplication as sendFileMessage above — viewOnce here is
   // for this client's own post-decrypt use; the plaintext copy sent
@@ -15973,8 +16033,14 @@ async function sendAlbumMessage(room, items, viewOnce) {
     toast("Couldn't encrypt — message not sent");
     return false;
   }
+  let attachmentId;
+  try {
+    attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
+  } catch (error) {
+    toast('Could not securely upload photos');
+    return false;
+  }
 
-  const msgId = newMsgId();
   const rec = {
     id: msgId, kind: 'album', isMe: true, name: room.myName, time, ts: sentAt, viewOnce: !!viewOnce,
     images: items.map(({ file, base64, mime }, i) => ({
@@ -15992,7 +16058,10 @@ async function sendAlbumMessage(room, items, viewOnce) {
     // Same plain top-level viewOnce field as sendFileMessage above, for the
     // same reason — the server needs it to verify /api/view-once-opened
     // requests without being able to see inside the encrypted payload.
-    const result = await api('/api/send', { code: room.code, token: room.token, content: encryptedPayload, msgId, viewOnce: !!viewOnce });
+    const result = await api('/api/send', {
+      code:room.code, token:room.token, content:`${ENCRYPTED_ATTACHMENT_PREFIX}${attachmentId}`,
+      attachmentId, msgId, viewOnce:!!viewOnce,
+    });
     if (result?.error) throw new Error(result.error);
     return true;
   } catch (e) {
