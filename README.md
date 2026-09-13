@@ -5,13 +5,27 @@ Two people. One conversation. Disappears when you leave.
 ## What this is
 - Anonymous text chat — no phone number or email required; guest access plus optional encrypted anonymous-ID sync
 - Secret room codes — share a 3-word code, connect instantly
-- Server memory with an atomic encrypted-room checkpoint on persistent storage for crash and backup recovery
+- PostgreSQL-backed identities and encrypted conversation history, plus an atomic active-room checkpoint
 - Auto-erases — room closes when either person leaves
 
 ## Tech
-- Node.js WebSocket server (ws library)
+- Node.js HTTP/WebSocket server (`ws`)
+- PostgreSQL for durable identity and encrypted conversation state
+- Optional Redis coordination for multi-replica WebSocket delivery, calls and presence
 - Single HTML file frontend — no React, no build step
-- Zero database — active encrypted room state is checkpointed to the attached persistent volume
+- Native Capacitor shells for iOS and Android
+
+## Realtime scaling configuration
+
+Set `REDIS_URL` to a private Redis connection URL before running more than one
+application replica. Redis carries only short-lived coordination events and
+one-way hashes of account/member routing credentials; call SDP, ICE and call
+state remain opaque client-encrypted envelopes. If `REDIS_URL` is absent,
+Vaultlix deliberately retains its current single-replica behaviour.
+
+Signal-socket and presence leases expire automatically after 60 seconds and
+are refreshed by the existing 25-second WebSocket heartbeat. The admin health
+response reports either `Redis connected` or `Single-replica mode`.
 
 ## Daily Look configuration
 

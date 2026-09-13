@@ -9,6 +9,7 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
@@ -53,6 +54,7 @@ const privateNumberReservations = new Map();
 const privateNumberLifecycle = new Map();
 const profileLookupBuckets = new Map();
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
+const realtimeCoordinator = new RealtimeCoordinator({ url:process.env.REDIS_URL || '' });
 let postgresEnabled = false;
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -2456,15 +2458,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const calleeToken = matchedRoom.nativeCalleeToken;
     for (const [memberToken] of matchedRoom.members) {
       if (memberToken === calleeToken) continue;
-      const callerSockets = new Set([
-        nativeCallSignalingSockets.get(memberToken),
-        signalingSockets.get(memberToken),
-      ]);
-      for (const callerSocket of callerSockets) {
-        if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
-          try { callerSocket.send(JSON.stringify({ type: 'native-call-answering' })); } catch (e) {}
-        }
-      }
+      await deliverSignalToToken(memberToken, { type:'native-call-answering' }, { allOwners:true });
       break;
     }
     return res200(res, { ok: true });
@@ -2515,15 +2509,13 @@ async function api(path, method, d, p, res, ip, headers) {
       // Deliver to both owners when both exist. A stale native incoming-call
       // socket must not prevent the foreground WebView that placed this
       // outgoing call from receiving the terminal state.
-      const callerSockets = new Set([
-        nativeCallSignalingSockets.get(memberToken),
-        signalingSockets.get(memberToken),
-      ]);
-      for (const callerSocket of callerSockets) {
-        if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
-          try { callerSocket.send(JSON.stringify({ type: 'native-call-declined' })); } catch (e) {}
-          sendCallTerminalControl(callerSocket, matchedRoom.callTerminal);
-        }
+      await deliverSignalToToken(memberToken, { type:'native-call-declined' }, { allOwners:true });
+      if (matchedRoom.callTerminal) {
+        await deliverSignalToToken(memberToken, {
+          type:'call-terminal', inviteId:matchedRoom.callTerminal.inviteId,
+          endedAt:matchedRoom.callTerminal.endedAt,
+          callOutcome:matchedRoom.callTerminal.callOutcome || 'ended',
+        }, { allOwners:true });
       }
       const caller = matchedRoom.members.get(memberToken);
       if (caller?.fcmToken) {
@@ -4195,6 +4187,8 @@ async function api(path, method, d, p, res, ip, headers) {
       system: {
         healthStatus,
         durableStorage: postgresEnabled ? 'PostgreSQL connected' : 'Unavailable',
+        realtimeCoordination: realtimeCoordinator.ready ? 'Redis connected' : 'Single-replica mode',
+        realtimeInstance: realtimeCoordinator.instanceId.slice(0, 8),
         uptimeSeconds: Math.floor((now - PROCESS_STARTED_AT) / 1000),
         nodeVersion: process.version,
         rssBytes: memory.rss,
@@ -4256,6 +4250,9 @@ const signalingSockets = new Map();
 // that participant; the web socket remains available for outgoing web calls.
 const nativeCallSignalingSockets = new Map();
 const inboxAccountSockets = new Map();
+const inboxAccountSocketsByRoute = new Map();
+const signalingSocketsByRoute = new Map();
+const nativeCallSignalingSocketsByRoute = new Map();
 // Direct fan-out index: room code -> sockets currently subscribed to it.
 // Without this, every message/receipt/typing event scanned every online
 // account socket just to find the two participants, making event delivery
@@ -4274,12 +4271,14 @@ function nextInboxSequence(accountId) {
 // file therefore still cannot reveal which vaults belong to an identity. When
 // a device reconnects it proves each room membership again with its existing
 // bearer token and catches up from the room's durable sequence counters.
-function publishInboxRoom(roomCode, change, { excludeToken = null, payload = null } = {}) {
+function publishInboxRoomLocal(roomCode, change, { excludeToken = null, excludeRouteId = null, payload = null } = {}) {
   const sockets = inboxSocketsByRoom.get(roomCode);
   if (!sockets) return;
   for (const ws of sockets) {
     const subscribedToken = ws.inboxSubscriptions?.get(roomCode);
-    if (!subscribedToken || subscribedToken === excludeToken || ws.readyState !== ws.OPEN || !ws.accountId) continue;
+    if (!subscribedToken || subscribedToken === excludeToken ||
+        (excludeRouteId && opaqueRouteId(subscribedToken) === excludeRouteId) ||
+        ws.readyState !== ws.OPEN || !ws.accountId) continue;
     try {
       ws.send(JSON.stringify({
         type: change === 'typing' ? 'typing' : 'room-update',
@@ -4292,19 +4291,34 @@ function publishInboxRoom(roomCode, change, { excludeToken = null, payload = nul
   }
 }
 
-function publishInboxAccount(accountId, change, payload = null) {
-  const sockets = inboxAccountSockets.get(accountId);
+function publishInboxRoom(roomCode, change, { excludeToken = null, payload = null } = {}) {
+  publishInboxRoomLocal(roomCode, change, { excludeToken, payload });
+  realtimeCoordinator.publish('inbox-room', {
+    roomCode, change, excludeRouteId:excludeToken ? opaqueRouteId(excludeToken) : null, payload,
+  }).catch(() => {});
+}
+
+function publishInboxAccountLocal(accountId, accountRouteId, change, payload = null) {
+  const sockets = accountId ? inboxAccountSockets.get(accountId) : inboxAccountSocketsByRoute.get(accountRouteId);
   if (!sockets) return;
+  const sequenceAccountId = accountId || [...sockets][0]?.accountId;
+  if (!sequenceAccountId) return;
   for (const ws of sockets) {
     if (ws.readyState !== ws.OPEN) continue;
     try {
-      ws.send(JSON.stringify({ type:'account-update', change, sequence:nextInboxSequence(accountId), ...(payload || {}) }));
+      ws.send(JSON.stringify({ type:'account-update', change, sequence:nextInboxSequence(sequenceAccountId), ...(payload || {}) }));
     } catch (e) {}
   }
 }
 
-function closeReplacedAccountSockets(accountId, revokedTokenHashes, replacedByAnotherDevice) {
-  const sockets = inboxAccountSockets.get(accountId);
+function publishInboxAccount(accountId, change, payload = null) {
+  const accountRouteId = opaqueRouteId(accountId);
+  publishInboxAccountLocal(accountId, accountRouteId, change, payload);
+  realtimeCoordinator.publish('inbox-account', { accountRouteId, change, payload }).catch(() => {});
+}
+
+function closeReplacedAccountSocketsLocal(accountId, accountRouteId, revokedTokenHashes, replacedByAnotherDevice) {
+  const sockets = accountId ? inboxAccountSockets.get(accountId) : inboxAccountSocketsByRoute.get(accountRouteId);
   if (!sockets) return;
   for (const ws of [...sockets]) {
     if (!revokedTokenHashes.has(ws.sessionTokenHash)) continue;
@@ -4320,6 +4334,14 @@ function closeReplacedAccountSockets(accountId, revokedTokenHashes, replacedByAn
       }
     } catch (e) {}
   }
+}
+
+function closeReplacedAccountSockets(accountId, revokedTokenHashes, replacedByAnotherDevice) {
+  const accountRouteId = opaqueRouteId(accountId);
+  closeReplacedAccountSocketsLocal(accountId, accountRouteId, revokedTokenHashes, replacedByAnotherDevice);
+  realtimeCoordinator.publish('account-session-close', {
+    accountRouteId, revokedTokenHashes:[...revokedTokenHashes], replacedByAnotherDevice,
+  }).catch(() => {});
 }
 
 async function clearAccountRoomPushDestinations(accountId, account) {
@@ -4437,6 +4459,67 @@ function sendCallTerminalControl(socket, terminal) {
   }
 }
 
+function sendLocalSignalByRoute(routeId, signal, allOwners = false) {
+  const nativeSocket = nativeCallSignalingSocketsByRoute.get(routeId);
+  const webSocket = signalingSocketsByRoute.get(routeId);
+  const sockets = allOwners
+    ? new Set([nativeSocket, webSocket])
+    : new Set([nativeSocket && nativeSocket.readyState === nativeSocket.OPEN ? nativeSocket : webSocket]);
+  let delivered = false;
+  for (const socket of sockets) {
+    if (!socket || socket.readyState !== socket.OPEN) continue;
+    try { socket.send(JSON.stringify(signal)); delivered = true; } catch (error) {}
+  }
+  return delivered;
+}
+
+async function deliverSignalToToken(token, signal, { allOwners = false } = {}) {
+  // Redis owns the cross-replica routing decision when available, including
+  // native-over-WebView priority. If the lease resolves to this process (or
+  // Redis is unavailable), the existing in-process fast path remains intact.
+  const remoteDelivered = realtimeCoordinator.ready
+    ? await realtimeCoordinator.routeSignal(token, signal, { allOwners }) : false;
+  if (remoteDelivered && !allOwners) return true;
+  const localDelivered = sendLocalSignalByRoute(opaqueRouteId(token), signal, allOwners);
+  return remoteDelivered || localDelivered;
+}
+
+function handleRealtimeEvent(event) {
+  if (event.type === 'signal' && event.routeId && event.signal) {
+    sendLocalSignalByRoute(event.routeId, event.signal, event.allOwners === true);
+    return;
+  }
+  if (event.type === 'inbox-room' && typeof event.roomCode === 'string') {
+    // Presence carries only a one-way token hash across Redis. Update this
+    // replica's live projection without putting a room bearer credential on
+    // the broker, then wake the peer sockets already connected here.
+    if (event.change === 'presence' && event.excludeRouteId && event.payload && typeof event.payload.online === 'boolean') {
+      const room = rooms.get(event.roomCode);
+      if (room) {
+        for (const [memberToken, member] of room.members) {
+          if (opaqueRouteId(memberToken) === event.excludeRouteId) {
+            member.lastSeen = event.payload.online ? Date.now() : 0;
+            break;
+          }
+        }
+      }
+    }
+    publishInboxRoomLocal(event.roomCode, event.change, {
+      excludeRouteId:event.excludeRouteId || null, payload:event.payload || null,
+    });
+    return;
+  }
+  if (event.type === 'inbox-account' && event.accountRouteId) {
+    publishInboxAccountLocal(null, event.accountRouteId, event.change, event.payload || null);
+    return;
+  }
+  if (event.type === 'account-session-close' && event.accountRouteId && Array.isArray(event.revokedTokenHashes)) {
+    closeReplacedAccountSocketsLocal(
+      null, event.accountRouteId, new Set(event.revokedTokenHashes), event.replacedByAnotherDevice === true,
+    );
+  }
+}
+
 srv.on('upgrade', (req, socket, head) => {
   let u;
   try { u = new URL(req.url, 'http://x'); } catch (e) { socket.destroy(); return; }
@@ -4464,6 +4547,7 @@ srv.on('upgrade', (req, socket, head) => {
 inboxWss.on('connection', (ws) => {
   ws.authenticated = false;
   ws.isAlive = true;
+  ws.connectionId = crypto.randomUUID();
   ws.inboxSubscriptions = new Map();
   ws.on('pong', () => {
     ws.isAlive = true;
@@ -4471,6 +4555,7 @@ inboxWss.on('connection', (ws) => {
     for (const [code, token] of ws.inboxSubscriptions) {
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = now;
+      realtimeCoordinator.markPresence(code, token, ws.connectionId).catch(() => {});
     }
   });
   ws.on('error', (err) => console.error('Inbox socket error:', err.message));
@@ -4479,7 +4564,7 @@ inboxWss.on('connection', (ws) => {
   }, 5000);
   authTimer.unref();
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { msg = null; }
     if (!ws.authenticated) {
@@ -4496,6 +4581,10 @@ inboxWss.on('connection', (ws) => {
       let sockets = inboxAccountSockets.get(msg.accountId);
       if (!sockets) { sockets = new Set(); inboxAccountSockets.set(msg.accountId, sockets); }
       sockets.add(ws);
+      ws.accountRouteId = opaqueRouteId(msg.accountId);
+      let routedSockets = inboxAccountSocketsByRoute.get(ws.accountRouteId);
+      if (!routedSockets) { routedSockets = new Set(); inboxAccountSocketsByRoute.set(ws.accountRouteId, routedSockets); }
+      routedSockets.add(ws);
       try { ws.send(JSON.stringify({ type:'ready', sequence:inboxSequenceByAccount.get(msg.accountId) || 0 })); } catch (e) {}
       return;
     }
@@ -4507,28 +4596,40 @@ inboxWss.on('connection', (ws) => {
       const room = rooms.get(code);
       if (room?.members.has(item.token)) subscriptions.set(code, item.token);
     }
+    const previousSubscriptions = new Map(ws.inboxSubscriptions);
     replaceInboxSubscriptions(ws, subscriptions);
+    for (const [code, token] of previousSubscriptions) {
+      if (subscriptions.get(code) === token) continue;
+      await realtimeCoordinator.clearPresence(code, token, ws.connectionId);
+    }
     for (const [code, token] of subscriptions) {
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = Date.now();
-      publishInboxRoom(code, 'presence', { excludeToken:token });
+      await realtimeCoordinator.markPresence(code, token, ws.connectionId);
+      publishInboxRoom(code, 'presence', { excludeToken:token, payload:{ online:true } });
     }
     try { ws.send(JSON.stringify({ type:'subscribed', count:subscriptions.size })); } catch (e) {}
   });
 
-  ws.on('close', () => {
+  ws.on('close', async () => {
     if (!ws.accountId) return;
     const sockets = inboxAccountSockets.get(ws.accountId);
     if (!sockets) return;
     sockets.delete(ws);
     if (sockets.size === 0) inboxAccountSockets.delete(ws.accountId);
+    const routedSockets = inboxAccountSocketsByRoute.get(ws.accountRouteId);
+    if (routedSockets) {
+      routedSockets.delete(ws);
+      if (routedSockets.size === 0) inboxAccountSocketsByRoute.delete(ws.accountRouteId);
+    }
     const closingSubscriptions = new Map(ws.inboxSubscriptions);
     replaceInboxSubscriptions(ws, new Map());
     for (const [code, token] of closingSubscriptions) {
-      if (hasLiveInboxSubscription(code, token, ws)) continue;
+      const stillOnlineElsewhere = await realtimeCoordinator.clearPresence(code, token, ws.connectionId);
+      if (hasLiveInboxSubscription(code, token, ws) || stillOnlineElsewhere === true) continue;
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = 0;
-      publishInboxRoom(code, 'presence', { excludeToken:token });
+      publishInboxRoom(code, 'presence', { excludeToken:token, payload:{ online:false } });
     }
   });
 });
@@ -4554,8 +4655,16 @@ wss.on('connection', (ws) => {
   // didn't, ws.token was never set, so the signalingSockets lookup below is
   // just a harmless no-op.
   ws.on('close', () => {
-    if (ws.token && signalingSockets.get(ws.token) === ws) signalingSockets.delete(ws.token);
-    if (ws.token && nativeCallSignalingSockets.get(ws.token) === ws) nativeCallSignalingSockets.delete(ws.token);
+    if (ws.token && signalingSockets.get(ws.token) === ws) {
+      signalingSockets.delete(ws.token);
+      signalingSocketsByRoute.delete(ws.routeId);
+      realtimeCoordinator.unregisterSocket(ws.token, 'web').catch(() => {});
+    }
+    if (ws.token && nativeCallSignalingSockets.get(ws.token) === ws) {
+      nativeCallSignalingSockets.delete(ws.token);
+      nativeCallSignalingSocketsByRoute.delete(ws.routeId);
+      realtimeCoordinator.unregisterSocket(ws.token, 'native').catch(() => {});
+    }
   });
 
   // An unauthenticated socket that never sends anything gets 5 seconds to
@@ -4584,6 +4693,7 @@ wss.on('connection', (ws) => {
     ws.authenticated = true;
     ws.roomCode = roomCode;
     ws.token = token;
+    ws.routeId = opaqueRouteId(token);
     ws.nativeCallOwner = msg.nativeCall === true;
 
     // A reconnect (network switch, tab backgrounded and resumed, etc.)
@@ -4593,6 +4703,9 @@ wss.on('connection', (ws) => {
     const existing = socketRegistry.get(token);
     if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
     socketRegistry.set(token, ws);
+    const routedRegistry = ws.nativeCallOwner ? nativeCallSignalingSocketsByRoute : signalingSocketsByRoute;
+    routedRegistry.set(ws.routeId, ws);
+    realtimeCoordinator.registerSocket(token, ws.nativeCallOwner ? 'native' : 'web').catch(() => {});
     // Explicit authentication acknowledgement for native call clients.
     // URLSessionWebSocketTask may accept sends while its connection/auth
     // handshake is still in flight; without an acknowledgement the native
@@ -4613,13 +4726,16 @@ wss.on('connection', (ws) => {
     console.log(`Signal socket connected: room ${logCode(roomCode)}`);
 
     ws.isAlive = true;
-    ws.on('pong', () => { ws.isAlive = true; });
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      realtimeCoordinator.registerSocket(token, ws.nativeCallOwner ? 'native' : 'web').catch(() => {});
+    });
 
     // Real signaling traffic only starts arriving now that this socket is
     // authenticated — everything below is unchanged from before, it's just
     // registered here (post-auth) instead of unconditionally at connection
     // time.
-    ws.on('message', (raw2) => {
+    ws.on('message', async (raw2) => {
       let msg2;
       try { msg2 = JSON.parse(raw2); } catch (e) { return; }
       if (!msg2 || typeof msg2.type !== 'string' || typeof msg2.envelope !== 'string') return;
@@ -4673,22 +4789,15 @@ wss.on('connection', (ws) => {
       // everything else in this app.
       for (const [tok, peerMember] of room2.members) {
         if (tok === token) continue;
-        const nativePeerWs = nativeCallSignalingSockets.get(tok);
-        const peerWs = nativePeerWs && nativePeerWs.readyState === nativePeerWs.OPEN
-          ? nativePeerWs
-          : signalingSockets.get(tok);
-        if (peerWs && peerWs.readyState === peerWs.OPEN) {
-          // sessionId is a random per-page-load nonce the client uses to tell
-          // "the peer's session actually restarted" apart from "this looks
-          // like a replay" in its own sequence-number check — meaningless to
-          // this server, just forwarded along with everything else opaque.
-          peerWs.send(JSON.stringify({
-            type:msg2.type, from:token, sessionId:msg2.sessionId,
-            inviteId:msg2.inviteId,
-            terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
-              ? msg2.terminalReason : undefined,
-            envelope:msg2.envelope,
-          }));
+        const relayedSignal = {
+          type:msg2.type, from:opaqueRouteId(token), sessionId:msg2.sessionId,
+          inviteId:msg2.inviteId,
+          terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
+            ? msg2.terminalReason : undefined,
+          envelope:msg2.envelope,
+        };
+        const delivered = await deliverSignalToToken(tok, relayedSignal);
+        if (delivered) {
           // No success log here on purpose — this fires on every single
           // signaling message (every ICE candidate included), which was
           // flooding Railway's logs. The dropped-peer case below is the one
@@ -4828,9 +4937,10 @@ wss.on('connection', (ws) => {
           if (terminalInviteId) {
             room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome };
             try { ws.send(JSON.stringify({ type:'call-hangup-ack', inviteId:terminalInviteId })); } catch (e) {}
-            for (const peerSocket of new Set([
-              signalingSockets.get(tok), nativeCallSignalingSockets.get(tok),
-            ])) sendCallTerminalControl(peerSocket, room2.callTerminal);
+            await deliverSignalToToken(tok, {
+              type:'call-terminal', inviteId:room2.callTerminal.inviteId,
+              endedAt:room2.callTerminal.endedAt, callOutcome:room2.callTerminal.callOutcome,
+            }, { allOwners:true });
           }
           const nativeCallId = room2.nativeCallId;
           room2.ringingUntil = 0;
@@ -4866,9 +4976,10 @@ wss.on('connection', (ws) => {
             // Deliver to both possible state owners. During native calls the
             // foreground WebView and native engine may briefly coexist; both
             // must stop rather than leaving a timer or CallKit surface alive.
-            for (const peerSocket of new Set([
-              signalingSockets.get(tok), nativeCallSignalingSockets.get(tok),
-            ])) sendCallTerminalControl(peerSocket, room2.callTerminal);
+            await deliverSignalToToken(tok, {
+              type:'call-terminal', inviteId:room2.callTerminal.inviteId,
+              endedAt:room2.callTerminal.endedAt, callOutcome:room2.callTerminal.callOutcome,
+            }, { allOwners:true });
           }
           // A caller's 30-second timeout can reach the server a few
           // milliseconds after ringingUntil. The non-zero marker still means
@@ -5292,6 +5403,7 @@ async function shutdown(signal) {
     savePrivateNumberLifecycle();
   }
   saveSnapshot();
+  try { await realtimeCoordinator.close(); } catch (e) { console.error('Redis realtime shutdown failed:', e.message); }
   try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
   // Belt-and-suspenders: if something (a lingering keep-alive connection,
@@ -5317,6 +5429,12 @@ async function bootstrap() {
     loadPrivateNumberLifecycle();
     loadAccounts();
     console.warn('DATABASE_URL is not set — using the local account-store fallback.');
+  }
+  if (realtimeCoordinator.enabled) {
+    await realtimeCoordinator.start(handleRealtimeEvent);
+    console.log(`Redis realtime coordination ready (instance ${realtimeCoordinator.instanceId.slice(0, 8)}).`);
+  } else {
+    console.warn('REDIS_URL is not set — calls, presence and WebSockets are limited to this single application replica.');
   }
   // Run once at boot as well as on the six-hour timer. Deploys and restarts
   // must not postpone a due warning or reclamation indefinitely.
