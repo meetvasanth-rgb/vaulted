@@ -2102,27 +2102,27 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .marketing-card h3{margin:0 0 9px;font:750 18px/1.25 'Manrope',sans-serif;letter-spacing:-.025em}
 #s-landing .marketing-card p{margin:0;font:450 13px/1.6 'Manrope',sans-serif;color:#766970}
 #s-landing .motion-showcase{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:28px}
-#s-landing .motion-story-scroll{position:relative;min-height:calc(100dvh + 1680px);margin-top:30px}
-#s-landing .motion-story{position:sticky;top:clamp(18px,calc((100dvh - 560px)/2),72px);display:grid;grid-template-columns:minmax(230px,.72fr) minmax(320px,1.28fr);gap:34px;align-items:center;min-height:560px;margin:0;padding:42px;overflow:hidden;border-radius:32px;background:linear-gradient(145deg,#2E2029 0%,#4A2032 58%,#682C43 100%);box-shadow:0 28px 70px rgba(70,30,48,.2);isolation:isolate}
-#s-landing .motion-story::before{content:'';position:absolute;z-index:-1;width:430px;height:430px;right:-150px;top:-170px;border-radius:50%;border:1px solid rgba(255,255,255,.11);box-shadow:0 0 0 62px rgba(255,255,255,.025),0 0 0 124px rgba(255,255,255,.018)}
-#s-landing .motion-story-copy{align-self:center}
-#s-landing .motion-story-copy .motion-panel-label{color:#E6A4B3}
-#s-landing .motion-story-copy h3{max-width:360px;margin:12px 0 14px;font:750 clamp(30px,4.5vw,49px)/1.02 'Manrope',sans-serif;letter-spacing:-.055em;color:#fff}
-#s-landing .motion-story-copy p{max-width:370px;margin:0;font:450 13px/1.7 'Manrope',sans-serif;color:#D8C8CF}
-#s-landing .motion-story-status{display:flex;align-items:center;gap:8px;margin-top:24px;font:700 10px/1 'Manrope',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#F1D7DE}
+#s-landing .motion-story-scroll{position:relative;margin-top:30px}
+#s-landing .motion-story{display:block;margin:0}
+#s-landing .motion-story-copy{max-width:760px;margin:0 0 30px;padding:0 4px}
+#s-landing .motion-story-copy .motion-panel-label{color:#9B7784}
+#s-landing .motion-story-copy h3{max-width:690px;margin:12px 0 14px;font:750 clamp(30px,4.5vw,49px)/1.02 'Manrope',sans-serif;letter-spacing:-.055em;color:#271D25}
+#s-landing .motion-story-copy p{max-width:650px;margin:0;font:450 14px/1.7 'Manrope',sans-serif;color:#766970}
+#s-landing .motion-story-status{display:flex;align-items:center;gap:8px;margin-top:20px;font:700 10px/1 'Manrope',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#682C43}
 #s-landing .motion-story-status::before{content:'';width:8px;height:8px;border-radius:50%;background:#73B18A;box-shadow:0 0 0 5px rgba(115,177,138,.12);animation:identity-state-breathe 2.4s ease-in-out infinite}
-#s-landing .motion-deck{position:relative;min-height:438px;perspective:1100px;transform-style:preserve-3d}
-#s-landing .motion-deck-card{--deck-x:0px;--deck-y:0px;--card-x:0px;--card-rise:125px;--card-z:0px;--card-rotate:0deg;--card-scale:.88;--card-opacity:0;position:absolute;left:50%;bottom:0;width:min(100%,390px);min-height:270px;padding:25px;border:1px solid rgba(255,255,255,.22);border-radius:27px;background:#FFF9FB;color:#34272F;box-shadow:0 24px 60px rgba(18,9,14,.28);opacity:var(--card-opacity);transform:translate3d(calc(-50% + var(--card-x) + var(--deck-x)),calc(var(--card-rise) + var(--deck-y)),var(--card-z)) rotate(var(--card-rotate)) scale(var(--card-scale));transform-origin:50% 100%;will-change:transform,opacity;transition:transform .18s cubic-bezier(.22,1,.36,1),opacity .18s linear}
-#s-landing .motion-deck-card:nth-child(1){z-index:1;background:#E8DDE1}
-#s-landing .motion-deck-card:nth-child(2){z-index:2;background:#F3E9ED}
-#s-landing .motion-deck-card:nth-child(3){z-index:3;background:#FFF9FB}
-#s-landing .motion-deck-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:34px}
+#s-landing .motion-deck{display:grid;gap:clamp(44px,9vh,96px)}
+#s-landing .motion-deck-card{position:sticky;top:18px;display:flex;flex-direction:column;width:100%;min-height:min(78dvh,720px);padding:clamp(30px,5vw,64px);overflow:hidden;border:1px solid #E1D4D9;border-radius:32px;background:#FFF9FB;color:#34272F;box-shadow:0 28px 70px rgba(55,30,41,.14);transform-origin:50% 100%;isolation:isolate}
+#s-landing .motion-deck-card::before{content:'';position:absolute;z-index:-1;width:520px;height:520px;right:-170px;top:-210px;border-radius:50%;border:1px solid rgba(104,44,67,.12);box-shadow:0 0 0 72px rgba(104,44,67,.025),0 0 0 144px rgba(104,44,67,.018)}
+#s-landing .motion-deck-card:nth-child(1){z-index:1;background:linear-gradient(145deg,#F3E8EC,#FFF9FB)}
+#s-landing .motion-deck-card:nth-child(2){z-index:2;background:linear-gradient(145deg,#EAF1EC,#FFFDFB)}
+#s-landing .motion-deck-card:nth-child(3){z-index:3;background:linear-gradient(145deg,#EFE8ED,#FFF9FB)}
+#s-landing .motion-deck-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:auto}
 #s-landing .motion-deck-kicker{font:750 9px/1 'Manrope',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#9B7784}
-#s-landing .motion-deck-step{width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:#682C43;color:#fff;font:750 10px/1 'Manrope',sans-serif}
-#s-landing .motion-deck-card h4{margin:0 0 10px;font:750 25px/1.08 'Manrope',sans-serif;letter-spacing:-.045em;color:#34272F}
-#s-landing .motion-deck-card p{max-width:310px;margin:0;font:500 12px/1.55 'Manrope',sans-serif;color:#766970}
-#s-landing .motion-deck-visual{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:28px;padding:14px;border:1px solid #E5D8DD;border-radius:17px;background:#fff}
-#s-landing .motion-deck-avatar{width:38px;height:38px;display:grid;place-items:center;flex:none;border-radius:13px;background:#682C43;color:#fff;font:750 13px/1 'Manrope',sans-serif}
+#s-landing .motion-deck-step{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;background:#682C43;color:#fff;font:750 11px/1 'Manrope',sans-serif}
+#s-landing .motion-deck-card h4{max-width:720px;margin:clamp(52px,10vh,110px) 0 16px;font:750 clamp(38px,6vw,68px)/1.02 'Manrope',sans-serif;letter-spacing:-.055em;color:#34272F}
+#s-landing .motion-deck-card p{max-width:590px;margin:0;font:500 clamp(14px,1.8vw,18px)/1.65 'Manrope',sans-serif;color:#766970}
+#s-landing .motion-deck-visual{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:auto;padding:17px 18px;border:1px solid #E5D8DD;border-radius:19px;background:rgba(255,255,255,.86);box-shadow:0 12px 30px rgba(55,30,41,.06)}
+#s-landing .motion-deck-avatar{width:44px;height:44px;display:grid;place-items:center;flex:none;border-radius:14px;background:#682C43;color:#fff;font:750 14px/1 'Manrope',sans-serif}
 #s-landing .motion-deck-line{min-width:0;flex:1}
 #s-landing .motion-deck-line strong,#s-landing .motion-deck-line span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #s-landing .motion-deck-line strong{font:750 11px/1.2 'Manrope',sans-serif;color:#34272F}
@@ -2212,10 +2212,12 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .safety-strip{grid-template-columns:1fr 1fr}
   #s-landing .marketing-cta{align-items:flex-start;flex-direction:column;padding:28px 24px}
   #s-landing .motion-showcase{grid-template-columns:1fr}
-  #s-landing .motion-story-scroll{min-height:calc(100dvh + 1500px)}
-  #s-landing .motion-story{top:14px;grid-template-columns:1fr;min-height:760px;padding:30px 22px;gap:18px}
+  #s-landing .motion-story-scroll{min-height:0}
+  #s-landing .motion-story{min-height:0}
   #s-landing .motion-story-copy h3{font-size:36px}
-  #s-landing .motion-deck{min-height:460px}
+  #s-landing .motion-deck{gap:52px}
+  #s-landing .motion-deck-card{top:12px;min-height:calc(100dvh - 24px);padding:28px 22px;border-radius:27px}
+  #s-landing .motion-deck-card h4{margin:54px 0 14px;font-size:42px}
   #s-landing .motion-panel{min-height:400px;padding:22px}
   #s-landing .everyday-privacy{padding:34px 25px;border-radius:27px}
   #s-landing .use-case-grid{grid-template-columns:1fr}
@@ -2246,10 +2248,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .identity-signal::before,#s-landing .identity-signal-orbit::before,#s-landing .identity-signal-orbit::after,#s-landing .identity-signal-state::before,#s-landing .motion-story-status::before{animation:none!important}
   #s-landing .motion-story-scroll{min-height:0}
   #s-landing .motion-story{position:relative;top:auto}
-  #s-landing .motion-deck-card{opacity:1!important;animation:none!important;transition:none!important}
-  #s-landing .motion-deck-card:nth-child(1){transform:translate3d(calc(-50% - 26px),-108px,-60px) rotate(-4deg) scale(.92)}
-  #s-landing .motion-deck-card:nth-child(2){transform:translate3d(calc(-50% + 24px),-54px,-30px) rotate(3deg) scale(.96)}
-  #s-landing .motion-deck-card:nth-child(3){transform:translate3d(-50%,0,0)}
+  #s-landing .motion-deck-card{opacity:1!important;animation:none!important;transition:none!important;transform:none!important}
   #s-landing.motion-enhanced .marketing-section>.marketing-eyebrow,#s-landing.motion-enhanced .marketing-section>.marketing-title,#s-landing.motion-enhanced .marketing-section>.marketing-lede,#s-landing.motion-enhanced .motion-reveal{opacity:1;transform:none;filter:none;transition:none}
 }
 @media(min-width:900px){
@@ -15171,9 +15170,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeHomepageMotionDemo() {
   const landing = document.getElementById('s-landing');
   const demo = document.getElementById('private-conversation-demo');
-  const deckTrack = document.getElementById('vaultlix-motion-story-scroll');
-  const deckStory = document.getElementById('vaultlix-motion-story');
-  const deck = document.getElementById('vaultlix-motion-deck');
   const showcase = document.getElementById('vaultlix-motion-showcase');
   if (!landing || !demo) return;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -15206,74 +15202,9 @@ function initializeHomepageMotionDemo() {
   }, { threshold:.1, rootMargin:'0px 0px -8% 0px' });
   marketingSections.forEach(section => sectionObserver.observe(section));
 
-  // Keep the stage pinned and tie every frame directly to scroll position.
-  // There is intentionally no time-based catch-up: when the finger or wheel
-  // stops, the deck stops. The long track gives each card its own gesture,
-  // while the sticky story keeps that distance visually occupied.
-  if (deckTrack && deckStory && deck) {
-    const cards = [...deck.querySelectorAll('.motion-deck-card')];
-    const finalStates = [
-      { x:-38, y:-120, z:-70, rotate:-5, scale:.92, opacity:1 },
-      { x:32, y:-62, z:-34, rotate:4, scale:.96, opacity:1 },
-      { x:0, y:0, z:0, rotate:0, scale:1, opacity:1 },
-    ];
-    const renderDeck = progress => {
-      cards.forEach((card, index) => {
-        const local = Math.max(0, Math.min(1, (progress - index * .34) / .22));
-        const eased = 1 - Math.pow(1 - local, 3);
-        const final = finalStates[index];
-        card.style.setProperty('--card-x', `${(final.x * eased).toFixed(2)}px`);
-        card.style.setProperty('--card-rise', `${(125 + (final.y - 125) * eased).toFixed(2)}px`);
-        card.style.setProperty('--card-z', `${(final.z * eased).toFixed(2)}px`);
-        card.style.setProperty('--card-rotate', `${(final.rotate * eased).toFixed(2)}deg`);
-        card.style.setProperty('--card-scale', `${(.88 + (final.scale - .88) * eased).toFixed(4)}`);
-        card.style.setProperty('--card-opacity', `${(final.opacity * eased).toFixed(3)}`);
-      });
-    };
-    const updateDeckProgress = () => {
-      const rect = deckTrack.getBoundingClientRect();
-      const stickyTop = Number.parseFloat(getComputedStyle(deckStory).top) || 0;
-      const travel = Math.max(1, deckTrack.offsetHeight - deckStory.offsetHeight);
-      renderDeck(Math.max(0, Math.min(1, (stickyTop - rect.top) / travel)));
-    };
-    let deckFrame = null;
-    const scheduleDeckUpdate = () => {
-      if (deckFrame) return;
-      deckFrame = requestAnimationFrame(() => {
-        deckFrame = null;
-        updateDeckProgress();
-      });
-    };
-    landing.addEventListener('scroll', scheduleDeckUpdate, { passive:true });
-    window.addEventListener('scroll', scheduleDeckUpdate, { passive:true });
-    window.addEventListener('resize', scheduleDeckUpdate, { passive:true });
-    scheduleDeckUpdate();
-  }
-
-  // A small, pointer-led parallax makes the deck feel responsive without
-  // taking over scroll or touch. Coarse pointers stay animation-only.
-  if (deck && window.matchMedia('(hover:hover) and (pointer:fine)').matches) {
-    let frame = null;
-    deck.addEventListener('pointermove', event => {
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const rect = deck.getBoundingClientRect();
-        const x = ((event.clientX - rect.left) / rect.width - .5) * 12;
-        const y = ((event.clientY - rect.top) / rect.height - .5) * 9;
-        deck.querySelectorAll('.motion-deck-card').forEach((card, index) => {
-          const depth = (index + 1) / 3;
-          card.style.setProperty('--deck-x', `${(x * depth).toFixed(2)}px`);
-          card.style.setProperty('--deck-y', `${(y * depth).toFixed(2)}px`);
-        });
-      });
-    });
-    deck.addEventListener('pointerleave', () => {
-      deck.querySelectorAll('.motion-deck-card').forEach(card => {
-        card.style.setProperty('--deck-x', '0px');
-        card.style.setProperty('--deck-y', '0px');
-      });
-    });
-  }
+  // The three large cards use native sticky positioning. Each card advances
+  // with an actual scroll gesture, without a synthetic spacer, timer, or
+  // viewport-distance calculation that can leave an empty section.
 }
 document.addEventListener('DOMContentLoaded', initializeHomepageMotionDemo, { once:true });
 
