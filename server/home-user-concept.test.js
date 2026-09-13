@@ -69,14 +69,13 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /id="vaultlix-motion-story-scroll"/);
   assert.match(client, /id="vaultlix-motion-deck"/);
   assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
-  assert.match(client, /const updateDeckTarget = \(\) =>/);
-  assert.match(client, /\.motion-story-scroll\{position:relative;margin-top:30px\}/);
-  assert.match(client, /\.motion-story\{position:relative;display:grid/);
-  assert.doesNotMatch(client, /\.motion-story-scroll\{[^}]*min-height:calc\(100dvh \+ 2200px\)/);
+  assert.match(client, /const updateDeckProgress = \(\) =>/);
+  assert.match(client, /\.motion-story-scroll\{position:relative;min-height:calc\(100dvh \+ 1680px\);margin-top:30px\}/);
+  assert.match(client, /\.motion-story\{position:sticky;top:clamp/);
   assert.match(client, /class="motion-story" id="vaultlix-motion-story"/);
-  assert.match(client, /renderedProgress \+= Math\.sign\(difference\)/);
-  assert.match(client, /const maximumStep = elapsed \/ 1800/);
-  assert.match(client, /progress - index \* \.3/);
+  assert.match(client, /deckTrack\.offsetHeight - deckStory\.offsetHeight/);
+  assert.match(client, /progress - index \* \.34/);
+  assert.doesNotMatch(client, /renderedProgress \+= Math\.sign\(difference\)/);
   assert.match(client, /landing\.addEventListener\('scroll', scheduleDeckUpdate/);
   assert.match(client, /window\.addEventListener\('scroll', scheduleDeckUpdate/);
   assert.match(client, /classList\.add\('motion-enhanced'\)/);
@@ -87,8 +86,9 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /@keyframes landing-word-build/);
   assert.match(client, /landing-reveal-accent::after/);
   assert.match(client, /id="vaultlix-motion-showcase"/);
-  assert.match(client, /showcaseObserver\.observe\(showcase\)/);
-  assert.match(client, /\.motion-showcase\.is-playing \.message-demo-bubble/);
+  assert.match(client, /showcaseObserver\.observe\(panel\)/);
+  assert.match(client, /\.motion-panel\.is-playing \.message-demo-bubble/);
+  assert.match(client, /privacy-hook-copy motion-reveal/);
 });
 
 test('settings headings share the submenu font family', () => {
