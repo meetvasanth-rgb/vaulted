@@ -70,7 +70,7 @@ test('conversation mutations reuse the advisory-lock transaction client', async 
   assert.ok(!calls.some(call => call[0] === 'BEGIN' || call[0] === 'COMMIT'));
 });
 
-test('durable ciphertext history can rebuild a stale live-room checkpoint', async () => {
+test('durable ciphertext history can rebuild a stale in-memory conversation cache', async () => {
   const calls = [];
   const pool = { query:async (...args) => {
     calls.push(args);
@@ -174,6 +174,12 @@ test('production startup fails closed and account mutations await PostgreSQL', (
   assert.match(server, /await postgresStore\.withConversationLock\(roomCode/);
   assert.match(server, /evictConversationCache\(event\.roomCode\)/);
   assert.match(server, /databaseWasEmpty/);
+});
+
+test('PostgreSQL startup ignores the legacy checkpoint once the database is authoritative', () => {
+  assert.match(server, /const databaseWasEmpty = \(await postgresStore\.countActiveConversations\(\)\) === 0;[\s\S]*if \(databaseWasEmpty\) \{[\s\S]*loadSnapshot\(\)/);
+  assert.doesNotMatch(server, /loadSnapshot\(\);\s*const databaseWasEmpty/);
+  assert.match(server, /PostgreSQL conversation store ready \(authoritative; on-demand cache empty\)/);
 });
 
 test('Private Number retirement is transactional and records its tombstone first', async () => {

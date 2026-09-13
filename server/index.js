@@ -338,7 +338,7 @@ if (usableMemory <= 0) {
 // unaffected by how high any one room's own fairness threshold sits.
 const ROOM_BYTE_BUDGET = Math.max(Math.floor(GLOBAL_BYTE_BUDGET * 0.25), MAX_MESSAGE_CONTENT_BYTES);
 
-console.log(`Byte budgets: global=${GLOBAL_BYTE_BUDGET} bytes (${(GLOBAL_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB), per-room fairness cap=${ROOM_BYTE_BUDGET} bytes (${(ROOM_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB).`);
+console.log(`Byte budgets: global=${GLOBAL_BYTE_BUDGET} bytes (${(GLOBAL_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB), per-conversation fairness cap=${ROOM_BYTE_BUDGET} bytes (${(ROOM_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB).`);
 
 // Even at zero messages, a room still costs real memory (a Map entry, two
 // member records, ~20 scalar fields) — unbounded room COUNT is a separate
@@ -2215,7 +2215,7 @@ setInterval(async () => {
     // there) breaks the first time both people go quiet for a few days.
     if (r.persistent) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
-    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Room ${logCode(k)} expired`); }
+    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Conversation ${logCode(k)} expired`); }
   }
 }, ROOM_EXPIRY_SWEEP_MS);
 
@@ -3449,7 +3449,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // from unbounded room BYTES. Rejected explicitly (clear error, logged)
     // rather than degrading silently in some other way.
     if (!postgresEnabled && rooms.size >= MAX_CONCURRENT_ROOMS) {
-      console.warn(`MAX_CONCURRENT_ROOMS (${MAX_CONCURRENT_ROOMS}) reached — rejecting new room creation.`);
+      console.warn(`Conversation capacity (${MAX_CONCURRENT_ROOMS}) reached — rejecting new conversation creation.`);
       return resErr(res, 'Too many active conversations right now — please try again shortly.', 503);
     }
     // The label used to BE the entire room code, with zero entropy of its
@@ -3544,7 +3544,7 @@ async function api(path, method, d, p, res, ip, headers) {
     }
     if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
     trackAggregate(persistent ? 'vaultsPermanent' : 'vaultsTemporary');
-    console.log(`Room created: ${logCode(roomCode)}${persistent ? ' (permanent room)' : ''}`);
+    console.log(`Conversation created: ${logCode(roomCode)}${persistent ? ' (persistent)' : ''}`);
     // labelLength tells the client exactly where the user-typed label ends
     // and the appended random suffix begins, so it can render them
     // differently (see revealCode in client/index.html) without having to
@@ -3703,7 +3703,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // can resolve immediately instead of waiting on the first live poll.
     let peerPubKey = null, peerName = null;
     for (const [t,mb] of room.members) if (!sameConversationToken(t, token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
-    console.log(`Member joined ${logCode(roomCode)}`);
+    console.log(`Member joined conversation ${logCode(roomCode)}`);
     return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
@@ -3976,7 +3976,7 @@ async function api(path, method, d, p, res, ip, headers) {
     m.voipToken = d.voipToken.toLowerCase();
     m.voipEnvironment = d.environment;
     m.nativeRoomHandle = d.roomHandle;
-    console.log(`VoIP token registered for room ${logCode(d.code)} (${d.environment}).`);
+    console.log(`VoIP token registered for conversation ${logCode(d.code)} (${d.environment}).`);
     return res200(res, { ok: true });
   }
 
@@ -4420,7 +4420,7 @@ async function api(path, method, d, p, res, ip, headers) {
       // of conversion rather than claiming a start date that isn't real.
       if (!room.connectedSince && room.members.size >= 2) room.connectedSince = Date.now();
       if (room.totalMessageCount === undefined) room.totalMessageCount = 0;
-      console.log(`Room converted to permanent room: ${logCode(d.code)}`);
+      console.log(`Conversation made persistent: ${logCode(d.code)}`);
     }
     return res200(res, { ok: true, persistent: true, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
   }
@@ -5063,7 +5063,7 @@ wss.on('connection', (ws) => {
   // handler below still fires and cleans up signalingSockets same as any
   // other disconnect.
   ws.on('error', (err) => {
-    console.error(`Signal socket error (room ${ws.roomCode ? logCode(ws.roomCode) : 'pre-auth'}):`, err.message);
+    console.error(`Signal socket error (conversation ${ws.roomCode ? logCode(ws.roomCode) : 'pre-auth'}):`, err.message);
   });
 
   // Clean up on close regardless of whether auth ever completed — if it
@@ -5146,7 +5146,7 @@ wss.on('connection', (ws) => {
     // a log line), enough to confirm connectivity during testing without
     // logging anything that identifies a person, a device, or any
     // message/signal content.
-    console.log(`Signal socket connected: room ${logCode(roomCode)}`);
+    console.log(`Signal socket connected: conversation ${logCode(roomCode)}`);
 
     ws.isAlive = true;
     ws.on('pong', () => {
@@ -5234,7 +5234,7 @@ wss.on('connection', (ws) => {
           // flooding Railway's logs. The dropped-peer case below is the one
           // actually worth seeing.
         } else {
-          console.log(`Signal dropped (peer not connected): room ${logCode(roomCode)} type ${msg2.type}`);
+          console.log(`Signal dropped (peer not connected): conversation ${logCode(roomCode)} type ${msg2.type}`);
         }
 
         // A dropped call-invite means the receiver's phone was locked or the
@@ -5693,7 +5693,7 @@ function saveSnapshot({ log = true } = {}) {
     fs.chmodSync(SNAPSHOT_TMP_PATH, 0o600);
     fs.renameSync(SNAPSHOT_TMP_PATH, SNAPSHOT_PATH);
     fs.chmodSync(SNAPSHOT_PATH, 0o600);
-    if (log) console.log(`Room checkpoint saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
+    if (log) console.log(`Legacy conversation checkpoint saved: ${entries.length} conversation(s) -> ${SNAPSHOT_PATH}`);
   } catch (e) {
     console.error('Snapshot save failed:', e.message);
   }
@@ -5781,7 +5781,7 @@ function loadSnapshot() {
       restored++;
     }
     saveSnapshot({ log: false });
-    console.log(`Room checkpoint restored: ${restored} room(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
+    console.log(`Legacy conversation checkpoint restored: ${restored} conversation(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
   } catch (e) {
     console.error('Snapshot load failed:', e.message);
   }
@@ -5850,7 +5850,7 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`${signal} received — saving final room checkpoint before exit...`);
+  console.log(`${signal} received — closing Vaultlix services...`);
   saveAnalytics();
   if (!postgresEnabled) {
     saveAccounts();
@@ -5903,37 +5903,35 @@ async function bootstrap() {
   await sweepPrivateNumberRetention();
   if (postgresEnabled) {
     // One-time compatibility import for installations upgrading from the
-    // volume checkpoint. PostgreSQL remains authoritative afterward and the
-    // file is retained only as a rollback artifact.
-    loadSnapshot();
+    // volume checkpoint. Once PostgreSQL contains conversations, the old
+    // file is retained only as a rollback artifact and is never read or used
+    // to overwrite current database state during ordinary startup.
     const databaseWasEmpty = (await postgresStore.countActiveConversations()) === 0;
     let imported = 0;
-    for (const [roomCode, room] of rooms) {
-      // A retained rollback checkpoint must never resurrect a conversation
-      // already deleted from the authoritative database. Import every row
-      // only into a genuinely empty database; on later boots merely backfill
-      // metadata for conversations that still exist in PostgreSQL.
-      if (!databaseWasEmpty && !(await postgresStore.conversationExists(roomCode))) continue;
-      if (databaseWasEmpty) {
+    if (databaseWasEmpty) {
+      loadSnapshot();
+      for (const [roomCode, room] of rooms) {
         await postgresStore.createConversation({
           id:roomCode, persistent:!!room.persistent,
           deleteTimer:room.deleteTimer || 0,
           createdAt:room.createdAt || room.lastActivity || Date.now(),
           lastMessageAt:room.lastMessageAt || 0,
         });
+        await postgresStore.saveConversation(roomCode, room);
+        for (const [memberToken, member] of room.members) {
+          await postgresStore.upsertConversationMember(roomCode, member.slot, memberToken, member);
+        }
+        imported++;
       }
-      await postgresStore.saveConversation(roomCode, room);
-      for (const [memberToken, member] of room.members) {
-        await postgresStore.upsertConversationMember(roomCode, member.slot, memberToken, member);
-      }
-      imported++;
     }
     rooms.clear();
     totalByteSize = 0;
-    console.log(`PostgreSQL conversation store ready (${imported} checkpoint conversation(s) reconciled; on-demand cache empty).`);
+    console.log(databaseWasEmpty && imported
+      ? `PostgreSQL conversation store ready (${imported} legacy conversation(s) imported; on-demand cache empty).`
+      : 'PostgreSQL conversation store ready (authoritative; on-demand cache empty).');
   } else {
     if (!process.env.SNAPSHOT_DIR) {
-      console.warn('SNAPSHOT_DIR not set — durable room checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
+      console.warn('SNAPSHOT_DIR not set — legacy conversation checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
     }
     loadSnapshot();
     roomCheckpointTimer = setInterval(() => saveSnapshot({ log: false }), ROOM_CHECKPOINT_INTERVAL_MS);
