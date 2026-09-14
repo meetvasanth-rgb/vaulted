@@ -64,8 +64,13 @@ test('1980s Vinayagar Chaturthi creates a high-quality profile-ready period port
   assert.match(server, /Vinayagar Chaturthi portrait photographed in Tamil Nadu during the mid-1980s/);
   assert.match(server, /do not make a modern scene with a retro filter/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
-  assert.match(server, /head-and-shoulders or chest-up portrait/);
-  assert.match(server, /Do not make the person full-length/);
+  assert.match(server, /uploaded photograph is an identity reference only/);
+  assert.match(server, /taken by another person using an era-correct handheld 35mm camera/);
+  assert.match(server, /roughly 1\.8–2\.5 metres away with a normal 50mm lens/);
+  assert.match(server, /Never create a selfie, phone-camera perspective, outstretched camera arm/);
+  assert.match(server, /head height should occupy only about 28–35%/);
+  assert.match(server, /proportional to the neck, shoulders and torso/);
+  assert.match(server, /Do not crop through the chin or forehead/);
   assert.match(server, /Preserve bright eyes, healthy youthful skin/);
   assert.match(server, /selected 1980s festival scenario below is mandatory/);
   assert.match(server, /never place the subject in the role of a deity/);
