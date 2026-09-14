@@ -51,7 +51,7 @@ test('Daily Look sends only an explicitly selected, reduced image and never stor
 });
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
-  assert.match(server, /id:'vinayagar-chaturthi', name:'Vinayagar Chaturthi Wishes'/);
+  assert.match(server, /id:'vinayagar-80s', name:'1980s Vinayagar Chaturthi'/);
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
   assert.match(client, /Create today’s look/);
   assert.match(client, /function useDailyLookAsProfile\(\)/);
@@ -60,20 +60,19 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
-test('Vinayagar Chaturthi Wishes creates a current high-quality profile-ready portrait', () => {
-  assert.match(server, /contemporary, high-end Vinayagar Chaturthi wishes portrait/);
-  assert.match(server, /not retro, vintage/);
+test('1980s Vinayagar Chaturthi creates a high-quality profile-ready period portrait', () => {
+  assert.match(server, /Vinayagar Chaturthi portrait photographed in Tamil Nadu during the mid-1980s/);
+  assert.match(server, /do not make a modern scene with a retro filter/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
   assert.match(server, /head-and-shoulders or chest-up portrait/);
   assert.match(server, /Do not make the person full-length/);
   assert.match(server, /Preserve bright eyes, healthy youthful skin/);
-  assert.match(server, /selected wishes direction below is mandatory/);
+  assert.match(server, /selected 1980s festival scenario below is mandatory/);
   assert.match(server, /never place the subject in the role of a deity/);
   assert.match(server, /Do not add extra limbs, fingers, hands, faces/);
-  assert.match(server, /respectful, current Vinayagar Chaturthi wish/);
-  assert.doesNotMatch(server, /35mm colour film|DD MM '85|mid-1980s|Bollywood-inspired/);
-  assert.match(server, /one large soft warm key light about 45 degrees/);
-  assert.match(server, /Avoid orange colour casts, muddy skin, harsh flash hotspots/);
+  assert.match(server, /The face and background must share the same light direction, colour temperature, exposure, shadow softness/);
+  assert.match(server, /Do not use an independent portrait key light/);
+  assert.match(server, /without scratches, date stamps, heavy fading or ageing the face/);
   assert.match(server, /size:'1024x1024'/);
   assert.match(server, /form\.append\('size', style\.size \|\| '1024x1024'\)/);
   assert.match(server, /quality:'high'/);
@@ -89,18 +88,20 @@ test('Daily Look replaces Editorial Glow with an identity-preserving anime portr
   assert.doesNotMatch(server, /id:'editorial-glow'/);
 });
 
-test('Vinayagar Chaturthi Wishes rotates through three current festival looks per account', () => {
-  const lookBlock = server.match(/const VINAYAGAR_CHATURTHI_WISHES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
-  assert.equal((lookBlock.match(/^  '/gm) || []).length, 3);
-  assert.match(lookBlock, /Devotional close-up wish/);
-  assert.match(lookBlock, /Premium festive pandal wish/);
-  assert.match(lookBlock, /Modern minimal blessing card/);
-  assert.doesNotMatch(lookBlock, /1980s|retro|vintage|Bollywood/);
+test('1980s Vinayagar Chaturthi rotates through five lighting-matched festival scenarios per account', () => {
+  const lookBlock = server.match(/const VINAYAGAR_80S_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+  assert.equal((lookBlock.match(/^  '/gm) || []).length, 5);
+  assert.match(lookBlock, /Tamil home puja at dawn/);
+  assert.match(lookBlock, /temple-courtyard darshan in the morning/);
+  assert.match(lookBlock, /neighbourhood pandal in the afternoon/);
+  assert.match(lookBlock, /kozhukattai preparation at home/);
+  assert.match(lookBlock, /Vinayagar procession at blue hour/);
+  assert.doesNotMatch(lookBlock, /Devotional close-up wish|Premium festive pandal wish|Modern minimal blessing card/);
   assert.match(server, /function dailyLookVariantIndex\(accountId, generationCount, now = Date\.now\(\)\)/);
   assert.match(server, /seed \+ Math\.max\(0, Number\(generationCount\) \|\| 0\)/);
-  assert.match(server, /VINAYAGAR_CHATURTHI_WISHES\[variantIndex % VINAYAGAR_CHATURTHI_WISHES\.length\]/);
+  assert.match(server, /VINAYAGAR_80S_LOOKS\[variantIndex % VINAYAGAR_80S_LOOKS\.length\]/);
   assert.match(server, /dailyLookVariantIndex\(d\.accountId, usage\.count, now\)/);
-  assert.match(server, /Selected Vinayagar Chaturthi wishes direction for this generation/);
+  assert.match(server, /Selected 1980s Vinayagar Chaturthi scenario for this generation/);
 });
 
 test('Android Daily Look offers a dedicated camera capture path', () => {
