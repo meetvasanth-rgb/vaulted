@@ -51,7 +51,7 @@ test('Daily Look sends only an explicitly selected, reduced image and never stor
 });
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
-  assert.match(server, /id:'retro-80s', name:'1980s Ganesh Chaturthi'/);
+  assert.match(server, /id:'vinayagar-chaturthi', name:'Vinayagar Chaturthi Wishes'/);
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
   assert.match(client, /Create today’s look/);
   assert.match(client, /function useDailyLookAsProfile\(\)/);
@@ -60,25 +60,24 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
-test('1980s Portrait performs a full period reconstruction in profile-ready framing', () => {
-  assert.match(server, /complete period transformation/);
-  assert.match(server, /not a colour grade, lighting filter/);
-  assert.match(server, /Bollywood-inspired portrait made in India in the mid-1980s/);
-  assert.match(server, /DD MM '85/);
+test('Vinayagar Chaturthi Wishes creates a current high-quality profile-ready portrait', () => {
+  assert.match(server, /contemporary, high-end Vinayagar Chaturthi wishes portrait/);
+  assert.match(server, /not retro, vintage/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
   assert.match(server, /head-and-shoulders or chest-up portrait/);
   assert.match(server, /Do not make the person full-length/);
   assert.match(server, /Preserve bright eyes, healthy youthful skin/);
-  assert.match(server, /Film ageing belongs on the physical print/);
-  assert.match(server, /selected Ganesh Chaturthi look direction below is mandatory/);
-  assert.match(server, /Do not fall back to a generic old family photograph/);
-  assert.match(server, /authentic 1980s Bollywood publicity photograph, film still or star portrait/);
-  assert.doesNotMatch(server, /look like a genuine family portrait physically printed in 1985/);
+  assert.match(server, /selected wishes direction below is mandatory/);
+  assert.match(server, /never place the subject in the role of a deity/);
+  assert.match(server, /Do not add extra limbs, fingers, hands, faces/);
+  assert.match(server, /respectful, current Vinayagar Chaturthi wish/);
+  assert.doesNotMatch(server, /35mm colour film|DD MM '85|mid-1980s|Bollywood-inspired/);
   assert.match(server, /one large soft warm key light about 45 degrees/);
   assert.match(server, /Avoid orange colour casts, muddy skin, harsh flash hotspots/);
   assert.match(server, /size:'1024x1024'/);
   assert.match(server, /form\.append\('size', style\.size \|\| '1024x1024'\)/);
-  assert.match(server, /process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
+  assert.match(server, /quality:'high'/);
+  assert.match(server, /style\.quality \|\| process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:1/);
 });
 
@@ -90,18 +89,18 @@ test('Daily Look replaces Editorial Glow with an identity-preserving anime portr
   assert.doesNotMatch(server, /id:'editorial-glow'/);
 });
 
-test('1980s Portrait rotates sequentially through three distinct Ganesh Chaturthi looks per account', () => {
-  const lookBlock = server.match(/const RETRO_80S_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+test('Vinayagar Chaturthi Wishes rotates through three current festival looks per account', () => {
+  const lookBlock = server.match(/const VINAYAGAR_CHATURTHI_WISHES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
   assert.equal((lookBlock.match(/^  '/gm) || []).length, 3);
-  assert.match(lookBlock, /Ganesh Chaturthi home puja portrait/);
-  assert.match(lookBlock, /Ganesh Chaturthi pandal portrait/);
-  assert.match(lookBlock, /Ganesh Chaturthi pre-visarjan celebration portrait/);
-  assert.doesNotMatch(lookBlock, /Disco-era|film-magazine|wedding-album|star-at-home/);
+  assert.match(lookBlock, /Devotional close-up wish/);
+  assert.match(lookBlock, /Premium festive pandal wish/);
+  assert.match(lookBlock, /Modern minimal blessing card/);
+  assert.doesNotMatch(lookBlock, /1980s|retro|vintage|Bollywood/);
   assert.match(server, /function dailyLookVariantIndex\(accountId, generationCount, now = Date\.now\(\)\)/);
   assert.match(server, /seed \+ Math\.max\(0, Number\(generationCount\) \|\| 0\)/);
-  assert.match(server, /RETRO_80S_LOOKS\[variantIndex % RETRO_80S_LOOKS\.length\]/);
+  assert.match(server, /VINAYAGAR_CHATURTHI_WISHES\[variantIndex % VINAYAGAR_CHATURTHI_WISHES\.length\]/);
   assert.match(server, /dailyLookVariantIndex\(d\.accountId, usage\.count, now\)/);
-  assert.match(server, /Selected 1980s Ganesh Chaturthi look direction for this generation/);
+  assert.match(server, /Selected Vinayagar Chaturthi wishes direction for this generation/);
 });
 
 test('Android Daily Look offers a dedicated camera capture path', () => {

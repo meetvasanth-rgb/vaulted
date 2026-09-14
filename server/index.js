@@ -121,28 +121,29 @@ const DAILY_LOOK_RESET_OFFSET_MINUTES = (() => {
 })();
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
-const RETRO_80S_LOOKS = Object.freeze([
-  'Mid-1980s Ganesh Chaturthi home puja portrait: place the subject beside a respectfully depicted, traditionally crafted clay Ganesha murti on a modest flower-decorated wooden altar in an authentic Indian home. Include fresh marigold and mango-leaf torans, brass diyas, a steel pooja thali, coconuts, bananas and a small bowl of modaks. Dress the subject in festive period-appropriate Indian clothing that respects their existing gender presentation and cultural cues. Use soft morning window light with warm diya fill, a youthful celebratory expression and the intimate texture of a treasured 1985 family photograph.',
-  'Mid-1980s neighbourhood Ganesh Chaturthi pandal portrait: frame the subject as the youthful lead of a festive Indian cinema still, standing near a respectfully presented Ganesha murti beneath a handmade community pandal. Surround the scene with marigold garlands, banana stems, coloured cloth canopies, paper festoons, incandescent bulbs, rangoli and period loudspeakers, with softly blurred celebrants in authentic 1980s clothing only when people already exist in the source. Use luminous evening tungsten light, gentle frontal fill and rich saffron, red and green colour without tinting or ageing the face.',
-  'Mid-1980s Ganesh Chaturthi pre-visarjan celebration portrait: create an energetic but elegant chest-up festival photograph before the procession begins, with the subject in recognisably 1980s festive attire and a flower-covered Ganesha procession tableau clearly visible behind them. Add hand-painted decorative panels without readable text, marigold strings, gulal colour in the air, dhol drums, brass lamps and warm street bulbs; keep the atmosphere joyful and cinematic while preserving respectful distance from the murti. Freeze the face sharply with flattering warm light while allowing subtle 35mm motion and crowd energy in the background.',
+const VINAYAGAR_CHATURTHI_WISHES = Object.freeze([
+  'Devotional close-up wish: create an intimate, photorealistic close portrait with the subject beside a beautifully crafted eco-friendly clay Vinayagar murti. Keep the face and the murti equally clear and respectfully separated, with a peaceful natural expression, warm diya bokeh, fresh jasmine and marigolds, a copper kalash, banana leaves and a few modaks. Use luminous golden-hour window light, realistic skin texture, detailed jewellery and fabric, elegant cinematic depth and a premium social-media portrait finish. Add only the exact greeting “Happy Vinayagar Chaturthi” in small refined gold lettering within clean negative space; no other text.',
+  'Premium festive pandal wish: place the subject naturally in front of a magnificent but culturally authentic Vinayagar Chaturthi pandal, wearing tasteful contemporary traditional Indian festive clothing suited to their existing presentation. Use a richly decorated Vinayagar murti, layered marigold garlands, lotus flowers, brass lamps, rangoli and soft strings of warm lights, with a subtle celebratory crowd only when people already appear in the source. Compose it like current high-end editorial festival photography with sharp facial detail, natural skin, realistic shadows, saffron-red-gold colour and creamy bokeh. Add only the exact greeting “Vinayagar Chaturthi Wishes” in elegant unobtrusive lettering; no other text.',
+  'Modern minimal blessing card: preserve the subject as a recognisable, youthful chest-up portrait beside a serene eco-friendly clay Vinayagar murti against a clean ivory, vermilion and antique-gold setting. Frame them with a restrained circular floral halo, delicate kolam-inspired linework, mango leaves, lotus petals and softly glowing diyas, leaving generous balanced negative space. Use premium studio-soft lighting, crisp eyes, true skin colour, realistic fabric and ornament detail, and a sophisticated contemporary greeting-card composition suitable for WhatsApp and Instagram. Add only the exact greeting “May Vinayagar bless every new beginning” in tasteful readable typography; no logos, signatures or other text.',
 ]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
-    id:'retro-80s', name:'1980s Ganesh Chaturthi', note:'Three festive mid-80s portrait scenes',
+    id:'vinayagar-chaturthi', name:'Vinayagar Chaturthi Wishes', note:'A high-quality festive wish, unmistakably you',
     size:'1024x1024',
-    prompt:`Recreate the entire source photograph as a convincing Bollywood-inspired portrait made in India in the mid-1980s. This must be a complete period transformation of the wardrobe, hair, accessories, setting, furniture, lighting and photographic medium — not a colour grade, lighting filter or modern portrait with added grain.
+    quality:'high',
+    prompt:`Transform the source photograph into a contemporary, high-end Vinayagar Chaturthi wishes portrait. The result must look current, photorealistic and professionally photographed—not retro, vintage, illustrated or like a generic template.
 
-Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person. Film ageing belongs on the physical print, edges and background — never as ageing on the person's face.
+Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person and keep all stylisation away from their facial features.
 
-The selected Ganesh Chaturthi look direction below is mandatory and must be the dominant visual concept. Rebuild the scene, clothing, grooming, props, lighting and photographic treatment so both the mid-1980s period and Ganesh Chaturthi setting are obvious at first glance. Depict Lord Ganesha, the murti and all worship details respectfully and accurately; never place the subject in the role of a deity or turn sacred elements into fashion props. Do not fall back to a generic old family photograph, an ordinary home portrait or merely a sepia filter. Adapt the direction respectfully to the subject's existing gender presentation and visible cultural cues. Never add a moustache, change hair length, change religious or cultural markers, or force gendered clothing when it would conflict with the source person. Keep all styling tasteful and recognisably mid-1980s Indian cinema.
+The selected wishes direction below is mandatory and must be the dominant visual concept. Depict Lord Vinayagar, the murti and all worship details respectfully and accurately; never place the subject in the role of a deity, merge their face or body with the murti, make them touch the murti, or turn sacred elements into fashion props. Adapt clothing and grooming respectfully to the subject's existing gender presentation and visible cultural cues. Never add a moustache, change hair length, change religious or cultural markers, or force gendered clothing when it conflicts with the source person.
 
-Replace every visibly modern background element according to the selected look direction supplied below. The setting must be clearly visible and information-rich behind the subject, with several recognisable cinematic and period objects rather than a plain, blurred or generic home background. Keep those objects believable in scale and placement. Remove modern architecture, LEDs, smartphones, contemporary furniture and contemporary fashion. Preserve every clearly visible person from the source and do not invent additional people.
+Rebuild the setting to match the selected wishes direction while keeping every object believable in scale and placement. Preserve every clearly visible person from the source and do not invent additional people. Preserve each person's identity, apparent age and relationship naturally. Do not add extra limbs, fingers, hands, faces, jewellery or religious marks. Keep hands anatomically accurate and unobstructed wherever visible.
 
-Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait. The face must occupy roughly 45–60% of the frame, with the eyes near the upper third and enough shoulders and period room detail to tell the story. Do not make the person full-length, three-quarter-length, distant or surrounded by oversized empty background.
+Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait. The face must occupy roughly 45–60% of the frame, with the eyes near the upper third and enough shoulders and festive setting detail to tell the story. Do not make the person full-length, three-quarter-length, distant or surrounded by oversized empty background.
 
-Light the face beautifully and consistently: use one large soft warm key light about 45 degrees from the face, gentle frontal fill, soft natural catchlights and a subtle warm practical lamp in the room. Expose for the face with clean, luminous, true-to-source skin tone. Keep highlights controlled and shadows open. Avoid orange colour casts, muddy skin, harsh flash hotspots, deep eye shadows, blown highlights, grey skin or uneven mixed lighting.
+Light the face beautifully and consistently: use one large soft warm key light about 45 degrees from the face, gentle frontal fill and soft natural catchlights. Expose for the face with clean, luminous, true-to-source skin tone. Keep highlights controlled and shadows open. Avoid orange colour casts, muddy skin, harsh flash hotspots, deep eye shadows, blown highlights, grey skin or uneven mixed lighting.
 
-Photograph the scene on 35mm colour film and print it in 1985. Add believable aged-print colour, fine organic grain, mild lens softness, tiny dust and hairline scratches, subtle edge wear and a very light vignette. Keep grain and print damage restrained across the face. Add one small red-orange seven-segment camera date stamp in the bottom-right using a plausible DD MM '85 date. No other text, logos or watermarks. The final result must remain photorealistic and look like an authentic 1980s Bollywood publicity photograph, film still or star portrait matching the selected direction—not an AI effect and not a generic family portrait.`,
+Render at premium photographic quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric texture, accurate ornaments and clean edges. Text, when required by the selected direction, must use the exact supplied wording, be correctly spelled, highly legible and positioned away from faces and sacred details. The final image must feel like a respectful, current Vinayagar Chaturthi wish made personally for the user—not an AI effect or mass-produced template.`,
   },
   {
     id:'anime-portrait', name:'Anime Portrait', note:'Hand-drawn character energy, recognisably you',
@@ -1027,19 +1028,19 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
 function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
   const day = Math.floor((now + DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000) / DAY_MS);
   const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
-  return (seed + Math.max(0, Number(generationCount) || 0)) % RETRO_80S_LOOKS.length;
+  return (seed + Math.max(0, Number(generationCount) || 0)) % VINAYAGAR_CHATURTHI_WISHES.length;
 }
 
 async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
-  const scene = style.id === 'retro-80s'
-    ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
+  const scene = style.id === 'vinayagar-chaturthi'
+    ? VINAYAGAR_CHATURTHI_WISHES[variantIndex % VINAYAGAR_CHATURTHI_WISHES.length]
     : '';
-  form.append('prompt', scene ? `${style.prompt}\n\nSelected 1980s Ganesh Chaturthi look direction for this generation: ${scene}` : style.prompt);
+  form.append('prompt', scene ? `${style.prompt}\n\nSelected Vinayagar Chaturthi wishes direction for this generation: ${scene}` : style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');
-  form.append('quality', process.env.OPENAI_IMAGE_QUALITY || 'medium');
+  form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
   form.append('output_format', 'jpeg');
   const response = await openAiJson('https://api.openai.com/v1/images/edits', {
     method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,
