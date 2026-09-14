@@ -72,6 +72,10 @@ public class IncomingCallActivity extends Activity {
             getWindow().getDecorView().setSystemUiVisibility(0);
         }
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        // Route hardware volume keys to the ringtone stream while this
+        // incoming-call surface owns the foreground. Several OEMs otherwise
+        // consume volume-down in System UI before Activity.onKeyDown sees it.
+        setVolumeControlStream(AudioManager.STREAM_RING);
 
         handleIntent(getIntent());
     }
@@ -84,18 +88,24 @@ public class IncomingCallActivity extends Activity {
     }
 
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN
+                && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getRepeatCount() == 0
-                && incomingRingtone != null
-                && incomingRingtone.isPlaying()) {
+                && silenceIncomingRingtone()) {
             // Match the platform phone-call convention: volume-down silences
             // this incoming ring only. The call remains pending and the user
             // can still answer or decline it from the visible call surface.
-            stopIncomingRingtone();
             return true;
         }
-        return super.onKeyDown(keyCode, event);
+        return super.dispatchKeyEvent(event);
+    }
+
+    private boolean silenceIncomingRingtone() {
+        Ringtone ringtone = incomingRingtone;
+        if (ringtone == null || !ringtone.isPlaying()) return false;
+        stopIncomingRingtone();
+        return true;
     }
 
     public static void finishActiveCall() {

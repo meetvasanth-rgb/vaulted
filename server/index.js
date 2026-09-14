@@ -5451,10 +5451,12 @@ wss.on('connection', (ws) => {
           // data-only FCM terminal event keyed to this call. This closes the
           // native UI without displaying a second notification.
           if (peerMember.fcmToken) {
+            const caller = room2.members.get(token);
             sendFcmNotification(peerMember, JSON.stringify({
               isCallEnd: true,
               missedCall: isMissedCall,
               callOutcome,
+              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId || '',
               inviteId: terminalInviteId || '',
               code: roomCode,

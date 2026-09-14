@@ -26,6 +26,14 @@ test('iOS unanswered CallKit timeout records a missed call before native state d
   assert.match(client, /detail\.action === 'missed'[\s\S]*const callEvent = unansweredCallEvent\('receiver'\)[\s\S]*addCallSysMsg\(room, callEvent\.receiverText, eventId, callEvent\)/);
 });
 
+test('iOS unanswered calls create a deduplicated lock-screen missed-call alert', () => {
+  assert.match(ios, /if action == "missed" \{[\s\S]*postMissedCallNotification\(callID: callID, payload: payload\)/);
+  assert.match(ios, /UIApplication\.shared\.applicationState != \.active/);
+  assert.match(ios, /UNMutableNotificationContent\(\)[\s\S]*content\.body = caller\.isEmpty \? "Missed call"/);
+  assert.match(ios, /identifier: "vaultlix-missed-\\\(callID\.uuidString\)"/);
+  assert.match(ios, /content\.userInfo\["missedCall"\] = true/);
+});
+
 test('missed calls survive the iOS foreground and encrypted-room restoration race', () => {
   const scene = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
   assert.match(scene, /action\["action"\][\s\S]*== "missed"[\s\S]*\[2\.0, 5\.0, 9\.0\]/);
@@ -37,9 +45,13 @@ test('missed calls survive the iOS foreground and encrypted-room restoration rac
 
 test('Android call-end push preserves missed-call history until the encrypted inbox is ready', () => {
   assert.match(androidMessaging, /isCallEnd[\s\S]*missedCall[\s\S]*markPendingWebViewCallEnd[\s\S]*"Missed call"/);
+  assert.match(androidMessaging, /if \(missedCall\) showMissedCall\(data\)/);
+  assert.match(androidMessaging, /showMissedCall\(Map<String, String> data\)[\s\S]*CATEGORY_CALL/);
+  assert.match(androidMessaging, /engine\.shouldHandleRemoteEnd[\s\S]*engine\.end\(false\)/);
   assert.match(androidMain, /pendingEnd\[1\] != null && !pendingEnd\[1\]\.isEmpty\(\)[\s\S]*postDelayed[\s\S]*5_000/);
   assert.match(androidMain, /clearUnderlyingCallState\(pendingEnd\[0\], pendingEnd\[1\]\)/);
   assert.match(server, /const wasStillRinging = Boolean\(room2\.ringingUntil\)/);
+  assert.match(server, /isCallEnd: true,[\s\S]*missedCall: isMissedCall,[\s\S]*caller:/);
 });
 
 test('opening a conversation clears its missed-call inbox alert', () => {

@@ -285,7 +285,43 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         pendingActions.append(detail)
         NotificationCenter.default.post(name: .vaultlixCallAction, object: nil,
                                         userInfo: detail)
+        if action == "missed" {
+            postMissedCallNotification(callID: callID, payload: payload)
+        }
         if terminalActions.contains(action) { releaseAppKeyboardIfIdle() }
+    }
+
+    /// The encrypted conversation row is restored by the WebView when the app
+    /// next becomes active, but WebKit cannot present UI while iOS has it
+    /// suspended behind the lock screen. CallKit's local timeout and the
+    /// ordinary APNs call-end path both arrive natively, so create the missed
+    /// alert here and key it by call ID. Repeated terminal delivery replaces
+    /// the same pending request instead of notifying twice.
+    private func postMissedCallNotification(callID: UUID, payload: [String: Any]) {
+        guard UIApplication.shared.applicationState != .active else { return }
+        let caller = ((payload["caller"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = UNMutableNotificationContent()
+        content.title = "Vaultlix"
+        content.body = caller.isEmpty ? "Missed call" : "Missed call from \(String(caller.prefix(80)))"
+        content.sound = .default
+        if let code = payload["code"] as? String, !code.isEmpty {
+            content.threadIdentifier = code
+            content.userInfo["code"] = code
+        }
+        content.userInfo["missedCall"] = true
+        content.userInfo["callId"] = callID.uuidString
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(
+                identifier: "vaultlix-missed-\(callID.uuidString)",
+                content: content,
+                trigger: nil
+            )
+        ) { error in
+            if let error {
+                print("VXCALL missed notification failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     func consumePendingActions() -> [[String: Any]] {

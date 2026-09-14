@@ -23,6 +23,7 @@ import java.util.Map;
 
 public class VaultlixMessagingService extends MessagingService {
     public static final String CALL_CHANNEL_PREFIX = "vaultlix_calls_";
+    private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_system";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
     @Override
@@ -30,9 +31,10 @@ public class VaultlixMessagingService extends MessagingService {
         Map<String, String> data = remoteMessage.getData();
         if ("true".equalsIgnoreCase(data.get("isCallEnd"))) {
             NativeWebRtcCallEngine engine = NativeWebRtcCallEngine.get(this);
-            if (!engine.shouldHandleRemoteEnd(safe(data.get("code")))) return;
             String callOutcome = safe(data.get("callOutcome"));
-            if ("true".equalsIgnoreCase(data.get("missedCall")) ||
+            boolean missedCall = "true".equalsIgnoreCase(data.get("missedCall"))
+                    || "unanswered".equals(callOutcome);
+            if (missedCall ||
                     "cancelled".equals(callOutcome) || "declined".equals(callOutcome)) {
                 // The WebView is commonly frozen or not yet restored when a
                 // lock-screen ring expires. Persist the conversation-history
@@ -44,10 +46,16 @@ public class VaultlixMessagingService extends MessagingService {
                                 ("declined".equals(callOutcome) ? "Call declined" : "Missed call")
                 );
             }
-            engine.end(false);
-            clearActiveCallNotifications(this);
-            IncomingCallActivity.finishActiveCall();
-            LockedCallActivity.finishActiveCall();
+            // The engine may have already timed itself out before this FCM
+            // terminal event arrives. That must not suppress the missed-call
+            // alert; ownership only controls whether it is safe to end media.
+            if (missedCall) showMissedCall(data);
+            if (engine.shouldHandleRemoteEnd(safe(data.get("code")))) {
+                engine.end(false);
+                clearActiveCallNotifications(this);
+                IncomingCallActivity.finishActiveCall();
+                LockedCallActivity.finishActiveCall();
+            }
             return;
         }
         if ("true".equalsIgnoreCase(data.get("isCall"))) {
@@ -55,6 +63,57 @@ public class VaultlixMessagingService extends MessagingService {
             return;
         }
         super.onMessageReceived(remoteMessage);
+    }
+
+    private void showMissedCall(Map<String, String> data) {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    MESSAGE_CHANNEL_ID,
+                    "Messages and missed calls",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.enableVibration(true);
+            channel.setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+            );
+            channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+            manager.createNotificationChannel(channel);
+        }
+
+        String code = safe(data.get("code"));
+        String callId = safe(data.get("callId"));
+        String caller = safe(data.get("caller"));
+        Uri conversationUri = Uri.parse("https://vaultlix.com/").buildUpon()
+                .appendQueryParameter("room", code)
+                .build();
+        int notificationId = ("missed:" + (callId.isEmpty() ? code : callId)).hashCode();
+        Intent openConversation = new Intent(Intent.ACTION_VIEW, conversationUri, this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_CALL_NOTIFICATION_ID, notificationId);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this,
+                notificationId,
+                openConversation,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        manager.notify(notificationId, new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_vaultlix)
+                .setColor(Color.rgb(104, 44, 67))
+                .setContentTitle("Vaultlix")
+                .setContentText(caller.isEmpty() ? "Missed call" : "Missed call from " + caller)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setContentIntent(contentIntent)
+                .build());
     }
 
     private void showIncomingCall(Map<String, String> data) {
