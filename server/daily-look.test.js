@@ -156,6 +156,9 @@ test('every finished Daily Look receives a subtle deterministic Vaultlix waterma
   assert.match(server, /watermarkVersion:DAILY_LOOK_WATERMARK_VERSION/);
   assert.match(watermarkSource, /const sharp = require\('sharp'\)/);
   assert.match(watermarkSource, /\.composite\(\[\{ input:badge, left, top \}\]\)/);
+  assert.match(watermarkSource, /Draw the wordmark as paths, never as a font-backed text element/);
+  assert.match(watermarkSource, /<g transform=.*fill="none" stroke="#fff"/);
+  assert.doesNotMatch(watermarkSource, /<text\b/);
   assert.match(client, /function watermarkDailyLookImage\(dataUri\)/);
   assert.match(client, /const label = 'Vaultlix'/);
   assert.match(client, /context\.fillStyle = 'rgba\(37,20,29,\.58\)'/);
