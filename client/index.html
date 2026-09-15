@@ -11803,7 +11803,8 @@ function renderVaultList() {
   body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => {
     const room = rooms.get(el.dataset.room);
     if (room?.restorePending) {
-      toast('Opening this private conversation securely…');
+      const movedForward = prioritizeStartupRoomRestore(el.dataset.room);
+      toast(movedForward ? 'Opening this private conversation next…' : 'Opening this private conversation securely…');
     }
     else if (room?.restoreUnavailable) {
       toast('Retrying this preserved conversation…');
@@ -11812,6 +11813,41 @@ function renderVaultList() {
     else if (room && !room.everOnline) resumeWaitingScreen(room);
     else openConversationAfterPaint(el.dataset.room);
   }; });
+}
+
+// Startup restoration used to await every conversation from beginning to
+// end before even starting the next one. Each room needs a join request, a
+// key derivation and a full encrypted-history fetch, so a room near the end
+// of a five-room inbox could sit on "Opening securely" for 25–30 seconds.
+// Keep a small shared queue: three restores may overlap, and a room tapped by
+// the user jumps ahead of work that has not started yet. The cap avoids a
+// reconnect burst overwhelming either the device crypto provider or server.
+const STARTUP_ROOM_RESTORE_CONCURRENCY = 3;
+let pendingStartupRoomRestores = [];
+
+function prioritizeStartupRoomRestore(code) {
+  const index = pendingStartupRoomRestores.indexOf(code);
+  if (index < 1) return false;
+  pendingStartupRoomRestores.splice(index, 1);
+  pendingStartupRoomRestores.unshift(code);
+  return true;
+}
+
+async function restoreStartupRooms(codes, restoreOne) {
+  pendingStartupRoomRestores = [...new Set(codes.filter(Boolean))];
+  const worker = async () => {
+    while (pendingStartupRoomRestores.length) {
+      const code = pendingStartupRoomRestores.shift();
+      if (!code) continue;
+      await restoreOne(code);
+    }
+  };
+  try {
+    const workerCount = Math.min(STARTUP_ROOM_RESTORE_CONCURRENCY, pendingStartupRoomRestores.length);
+    await Promise.all(Array.from({ length:workerCount }, () => worker()));
+  } finally {
+    pendingStartupRoomRestores = [];
+  }
 }
 
 function prepareChatBodyForFirstPaint() {
@@ -13446,25 +13482,43 @@ async function restoreRoomHistory(room) {
     const nowTs = Date.now();
 
     if (data.messages && data.messages.length > 0) {
+      const unseen = [];
       for (const msg of data.messages) {
         if (room.seenMsgIds.has(msg.id)) continue;
         room.seenMsgIds.add(msg.id);
-
-        let rec = null;
-        if (msg.type === 'message') {
-          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from);
-          if (rec && rec.pending) {
-            // Shouldn't happen here — this function is only ever called once
-            // room.sharedKey is already confirmed set (see its call sites) —
-            // but if it somehow does, don't fabricate a record for it now;
-            // flag for a later key-rederive retry instead of dropping it.
-            room.pendingHistoryRestore = true;
-            rec = null;
-          } else if (rec) {
-            rec.isMe = msg.from === room.token;
-          }
-        }
         if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
+        unseen.push(msg);
+      }
+
+      // WebCrypto decryption is asynchronous, but awaiting every record in
+      // series made text-heavy conversations unnecessarily slow. Process a
+      // bounded batch concurrently, then apply records in server order so
+      // message ordering, timers and receipt semantics remain unchanged.
+      const processed = new Array(unseen.length);
+      let nextIndex = 0;
+      const decryptWorker = async () => {
+        while (nextIndex < unseen.length) {
+          const index = nextIndex++;
+          const msg = unseen[index];
+          let rec = null;
+          if (msg.type === 'message') {
+            rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from);
+            if (rec && rec.pending) {
+              room.pendingHistoryRestore = true;
+              rec = null;
+            } else if (rec) {
+              rec.isMe = msg.from === room.token;
+            }
+          }
+          processed[index] = rec;
+        }
+      };
+      const decryptWorkerCount = Math.min(8, unseen.length);
+      await Promise.all(Array.from({ length:decryptWorkerCount }, () => decryptWorker()));
+
+      for (let index = 0; index < unseen.length; index++) {
+        const msg = unseen[index];
+        const rec = processed[index];
         if (!rec) continue;
 
         const ledgerDeleteAt = room.deleteLedger.get(msg.id);
@@ -15586,11 +15640,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   // still being restored.
   let keyMismatchAfterRestore = false;
 
-  for (const code of idx) {
+  const preferredRestoreCode = restoredConversationCode
+    || nativeCallRoomCode
+    || startupParams.get('room')
+    || loadActiveRoomCode();
+  const restoreOrder = preferredRestoreCode && idx.includes(preferredRestoreCode)
+    ? [preferredRestoreCode, ...idx.filter(code => code !== preferredRestoreCode)]
+    : idx;
+  await restoreStartupRooms(restoreOrder, async code => {
     const session = loadRoomSession(code);
-    if (!session) continue;
+    if (!session) return;
     const room = rooms.get(code);
-    if (!room) continue;
+    if (!room) return;
     // Every trip through this loop is, by definition, a device reopening a
     // room it already had saved — exactly the "comeback" signal the
     // permanent-link suggestion looks for. Throttled to once per 4 hours so a burst
@@ -15658,7 +15719,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         room.restoreError = result.error;
         addRoomToState(room);
         restoredAny = true;
-        continue;
+        return;
       }
       // The server treats this as a genuine reconnect (same token already a
       // member) in the normal case, and result.token just echoes back
@@ -15713,7 +15774,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           await leaveRoomBestEffort(room);
           removeRoomFromState(room.code);
           keyMismatchAfterRestore = true;
-          continue;
+          return;
         }
         room.lastKnownPeerPubKey = peerPubKeyForRestore;
         room.everOnline = true; // peer's pubKey on file means they've been in this room before
@@ -15757,7 +15818,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       room.restoreError = e?.message || 'Could not restore conversation';
       if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
     }
-  }
+  });
 
   if (restoredAny) {
     // A notification tap that had to open a fresh window (app wasn't

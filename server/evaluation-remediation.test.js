@@ -44,6 +44,24 @@ test('authenticated launch paints the local inbox before network restoration', (
   assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*Opening this private conversation securely/);
 });
 
+test('startup restores conversations concurrently and prioritizes the room a user taps', () => {
+  assert.match(client, /const STARTUP_ROOM_RESTORE_CONCURRENCY = 3/);
+  assert.match(client, /async function restoreStartupRooms\(codes, restoreOne\)/);
+  assert.match(client, /Promise\.all\(Array\.from\(\{ length:workerCount \}, \(\) => worker\(\)\)\)/);
+  assert.match(client, /function prioritizeStartupRoomRestore\(code\)[\s\S]*pendingStartupRoomRestores\.unshift\(code\)/);
+  assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*prioritizeStartupRoomRestore\(el\.dataset\.room\)/);
+  assert.match(client, /preferredRestoreCode[\s\S]*restoreStartupRooms\(restoreOrder, async code =>/);
+});
+
+test('text-heavy encrypted history decrypts in bounded parallel batches without reordering', () => {
+  assert.match(client, /const decryptWorkerCount = Math\.min\(8, unseen\.length\)/);
+  assert.match(client, /Promise\.all\(Array\.from\(\{ length:decryptWorkerCount \}, \(\) => decryptWorker\(\)\)\)/);
+  const parallelAt = client.indexOf('const decryptWorkerCount = Math.min(8, unseen.length)');
+  const orderedAt = client.indexOf('for (let index = 0; index < unseen.length; index++)', parallelAt);
+  assert.ok(parallelAt > -1 && orderedAt > parallelAt,
+    'decrypted records must be applied in their original server order');
+});
+
 test('sign-out never erases conversation keys before a verified encrypted backup', () => {
   assert.match(client, /if \(room\.everOnline && \(!keys\.pubJwk \|\| !keys\.privJwk\)\) return false/);
   assert.match(client, /async function prepareAndConfirmAccountBackup\(state\)/);
