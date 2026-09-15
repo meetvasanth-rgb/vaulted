@@ -84,6 +84,7 @@ public class MainActivity extends BridgeActivity {
         nativeCallEngine = NativeWebRtcCallEngine.get(this);
         nativeCallEngine.addListener(nativeCallListener);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
+        purgeDecryptedMediaCache();
         openVaultlixInvite(getIntent());
     }
 
@@ -97,6 +98,24 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         hideAppSwitcherPrivacyCover();
+        // Share/open targets have finished reading their granted content URI
+        // by the time Vaultlix resumes. Remove the decrypted staging copies;
+        // a recipient app's explicit saved copy is outside our sandbox and
+        // intentionally remains under that user's control.
+        purgeDecryptedMediaCache();
+    }
+
+    private void purgeDecryptedMediaCache() {
+        String[] directories = { "shared-media", "open-media", "saved-media" };
+        for (String name : directories) {
+            File directory = new File(getCacheDir(), name);
+            File[] files = directory.listFiles();
+            if (files == null) continue;
+            for (File file : files) {
+                if (file == null || file.equals(pendingSaveMediaFile)) continue;
+                file.delete();
+            }
+        }
     }
 
     private void showAppSwitcherPrivacyCover() {
@@ -589,6 +608,8 @@ public class MainActivity extends BridgeActivity {
                 if (manager != null) manager.cancelAll();
                 nativeCallEngine.end(false);
                 nativeCallRoomStore.clear();
+                secureMessageStore.clearAll();
+                purgeDecryptedMediaCache();
                 restoreAudioRoute();
             });
         }

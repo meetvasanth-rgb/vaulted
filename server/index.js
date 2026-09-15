@@ -2525,6 +2525,11 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Cache-Control', 'no-store');
   }
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
+  // Message polls, attachment URLs, account bundles and even error bodies
+  // must never become reusable browser/WebView or intermediary cache entries.
+  // Individual sensitive endpoints also set this today; applying it at the
+  // API boundary closes omissions in present and future routes.
+  res.setHeader('Cache-Control', 'no-store');
   // Per-endpoint body cap, not one blanket ceiling — /api/send legitimately
   // carries large attachments (see BODY_LIMIT_SEND below), but giving every
   // other endpoint here that same allowance turned each of them into an

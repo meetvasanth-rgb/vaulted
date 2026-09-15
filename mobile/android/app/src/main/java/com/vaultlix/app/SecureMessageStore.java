@@ -12,6 +12,8 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Enumeration;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -102,6 +104,33 @@ final class SecureMessageStore {
             }
             database.execSQL("DELETE FROM messages WHERE conversation_id=?", new Object[]{conversationId});
             checkpoint();
+            return true;
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    synchronized boolean clearAll() {
+        try {
+            // Enumerate the Keystore rather than trusting the database index:
+            // this also destroys an orphan key left by an interrupted write.
+            KeyStore store = KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            Enumeration<String> aliases = store.aliases();
+            ArrayList<String> messageAliases = new ArrayList<>();
+            while (aliases.hasMoreElements()) {
+                String alias = aliases.nextElement();
+                if (alias != null && alias.startsWith("vaultlix.msg.")) messageAliases.add(alias);
+            }
+            for (String alias : messageAliases) store.deleteEntry(alias);
+
+            if (database != null) {
+                database.close();
+                database = null;
+            }
+            context.deleteDatabase(DB_NAME);
+            if (store.containsAlias(DB_WRAP_ALIAS)) store.deleteEntry(DB_WRAP_ALIAS);
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit();
             return true;
         } catch (Exception error) {
             return false;

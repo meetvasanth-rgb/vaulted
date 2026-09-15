@@ -4228,6 +4228,58 @@ function secureNativeDeleteMessage(conversationId, messageId) {
     }
   } catch (e) { console.warn('Native cryptographic deletion failed'); }
 }
+
+// A restored-history record can still be waiting in the idle cache queue
+// when its disappearing timer fires or the user deletes it.  Merely deleting
+// the native row here is not enough: the queued job would otherwise run a
+// moment later and recreate both the per-message key and ciphertext.  Remove
+// every queued copy before key destruction and mark the record so a callback
+// that was already dequeued cannot write it back either.
+function cancelSecureNativeCacheWrite(conversationId, messageId, record = null) {
+  if (record) record.deleted = true;
+  const key = `${conversationId}:${messageId}`;
+  secureNativeCacheKeys.delete(key);
+  for (let i = secureNativeCacheQueue.length - 1; i >= 0; i--) {
+    const item = secureNativeCacheQueue[i];
+    if (item.key !== key) continue;
+    item.rec.deleted = true;
+    secureNativeCacheQueue.splice(i, 1);
+  }
+}
+
+function scrubMessageRecord(record) {
+  if (!record) return;
+  record.deleted = true;
+  for (const field of ['content','base64','pdfPreview','url']) {
+    if (typeof record[field] === 'string') record[field] = '';
+  }
+  if (record.replyData && typeof record.replyData === 'object') {
+    for (const field of ['content','base64','pdfPreview','url']) {
+      if (typeof record.replyData[field] === 'string') record.replyData[field] = '';
+    }
+  }
+  if (Array.isArray(record.images)) {
+    for (const image of record.images) {
+      if (!image || typeof image !== 'object') continue;
+      image.deleted = true;
+      if (typeof image.base64 === 'string') image.base64 = '';
+      if (typeof image.url === 'string') image.url = '';
+    }
+    record.images.length = 0;
+  }
+}
+
+function cancelAndScrubConversationCache(room) {
+  if (!room?.code) return;
+  for (let i = secureNativeCacheQueue.length - 1; i >= 0; i--) {
+    const item = secureNativeCacheQueue[i];
+    if (item.room?.code !== room.code) continue;
+    item.rec.deleted = true;
+    secureNativeCacheKeys.delete(item.key);
+    secureNativeCacheQueue.splice(i, 1);
+  }
+  for (const record of room.messages || []) scrubMessageRecord(record);
+}
 function secureNativeClearConversation(conversationId) {
   if (!conversationId) return;
   try {
@@ -4973,6 +5025,7 @@ function removeRoomFromState(code) {
     // Leaving/closing a room mid-call shouldn't leave a dangling overlay,
     // running timer, or the app permanently thinking a call is in progress.
     if (room.callState !== 'idle') endCall(room);
+    cancelAndScrubConversationCache(room);
   }
   secureNativeClearConversation(code);
   if (room) {
@@ -12866,13 +12919,26 @@ function startReceiveDeleteTimer(room, msgId, seconds) {
 // element, so a message disappears on time even if you're looking at a
 // different room's tab when the countdown ends.
 function removeMessageRecord(room, msgId) {
-  secureNativeDeleteMessage(room.code, msgId);
   const idx = room.messages.findIndex(m => m.id === msgId);
+  const record = idx === -1 ? null : room.messages[idx];
+  cancelSecureNativeCacheWrite(room.code, msgId, record);
+  scrubMessageRecord(record);
+  // Destroy the native per-message key before dropping the last application
+  // reference to the record.  The native stores enforce the same ordering
+  // again before removing their SQLCipher row.
+  secureNativeDeleteMessage(room.code, msgId);
   if (idx !== -1) room.messages.splice(idx, 1);
   room.msgTimers.delete(msgId);
   if (room.code === activeRoomCode) {
     const el = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
-    if (el) { el.classList.add('msg-fade'); setTimeout(() => el.remove(), 500); }
+    if (el) {
+      // Detach data/blob URLs and plaintext immediately. The empty shell can
+      // still perform the existing fade without retaining readable content.
+      for (const media of el.querySelectorAll('[src]')) media.removeAttribute('src');
+      el.replaceChildren();
+      el.classList.add('msg-fade');
+      setTimeout(() => el.remove(), 500);
+    }
   }
 }
 
@@ -14949,6 +15015,7 @@ async function handleClearChat() {
 // touch localStorage, since message content was never persisted there in
 // the first place (see restoreRoomHistory's full=1 bootstrap-on-reload).
 function clearRoomChatLocally(room) {
+  cancelAndScrubConversationCache(room);
   secureNativeClearConversation(room.code);
   for (const handle of room.msgTimers.values()) clearTimeout(handle);
   room.msgTimers.clear();

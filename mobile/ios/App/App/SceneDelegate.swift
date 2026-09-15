@@ -136,6 +136,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             return
         }
         let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        sheet.completionWithItemsHandler = { [weak self] _, _, _, _ in
+            // The prepared private-number card is deliberately retained for
+            // instant repeat sharing. Conversation media uses unique URLs and
+            // must be removed as soon as the receiving activity finishes.
+            guard self?.preparedShareImageURL != fileURL else { return }
+            try? FileManager.default.removeItem(at: fileURL)
+        }
         if let popover = sheet.popoverPresentationController {
             popover.sourceView = presenter.view
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
@@ -379,6 +386,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
             VaultlixCallManager.shared.endAllCalls()
+            _ = SecureMessageStore.shared.clearAll()
+            clearPendingDocumentExport()
+            clearPendingOpenFile()
             return
         }
         if action == "secureStoreMessage",
