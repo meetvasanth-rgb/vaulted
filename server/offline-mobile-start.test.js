@@ -37,3 +37,20 @@ test('incoming CallKit flow holds the keyboard guard until the call is over', ()
   assert.match(iosManager, /didActivate audioSession:[\s\S]{0,220}enforceCallKeyboardGuard\(\)/);
   assert.match(iosScene, /sceneDidBecomeActive[\s\S]{0,180}enforceCallKeyboardGuard\(\)/);
 });
+
+test('an answered iOS CallKit call temporarily presents above App Lock', () => {
+  assert.match(client, /body\.native-ios-call-over-app-lock #privacy-cover\{display:none!important\}/);
+  assert.match(client, /function beginNativeIOSCallOverAppLock\(\)/);
+  assert.match(client, /if \(!quickLockActive \|\| !window\.webkit\?\.messageHandlers\?\.vaultlixCall\) return false/);
+  assert.match(client, /const presentNativeCallRoom = \(\) => \{[\s\S]{0,700}beginNativeIOSCallOverAppLock\(\);[\s\S]{0,100}showScreen\('s-chat'\)/);
+  assert.match(client, /const restoreAppLockAfterCall = finishNativeIOSCallOverAppLock\(\)/);
+  assert.match(client, /if \(restoreAppLockAfterCall && quickLockActive\) \{[\s\S]{0,500}hideCallOverlay\(\);/);
+});
+
+test('App Lock passcode fields request the native numeric keypad', () => {
+  for (const id of ['app-lock-passcode', 'app-lock-current', 'app-lock-new', 'app-lock-confirm']) {
+    assert.match(client, new RegExp(`id="${id}"[^>]*type="password"[^>]*inputmode="numeric"[^>]*pattern="\\[0-9\\]\\*"`));
+  }
+  assert.match(client, /if \(!\/\^\\d\{6,\}\$\/\.test\(next\)\) \{ error\.textContent = 'Use at least 6 digits\.'/);
+  assert.doesNotMatch(client, /id="account-login-password"[^>]*inputmode="numeric"/);
+});

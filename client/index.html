@@ -971,6 +971,10 @@ body.select-mode .chat-ftr{display:none}
   flex-direction:column; align-items:center; justify-content:center; gap:14px;
 }
 #privacy-cover.show{ display:flex; }
+/* CallKit may foreground the app while App Lock is armed. The call overlay
+   contains no messages or credentials and must remain usable until hang-up;
+   keep the lock armed underneath and reveal it again as soon as the call ends. */
+body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .pc-mark{
   width:56px; height:56px; border-radius:50%;
   border:0.5px solid var(--gold-border); background:var(--gold-dim);
@@ -3482,7 +3486,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="pc-word">Vaultlix</div>
   <div class="pc-lock-copy">Enter your independent Vaultlix passcode. The phone's passcode cannot unlock Vaultlix.</div>
   <form class="app-lock-form" id="app-lock-form" onsubmit="unlockAppLock(event)">
-    <input class="app-lock-input" id="app-lock-passcode" type="password" autocomplete="off" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode" oninput="scheduleAppLockAutoUnlock()"/>
+    <input class="app-lock-input" id="app-lock-passcode" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode" oninput="scheduleAppLockAutoUnlock()"/>
     <div class="app-lock-error" id="app-lock-error" aria-live="polite"></div>
     <button class="pc-unlock" id="app-lock-unlock" type="submit">Unlock Vaultlix</button>
     <button class="app-lock-forgot" type="button" onclick="forgetAppLock()">Forgot passcode? Erase Vaultlix from this device</button>
@@ -3493,9 +3497,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <form class="app-lock-sheet" id="app-lock-setup-form" onsubmit="saveAppLock(event)">
     <h2 class="app-lock-title" id="app-lock-title">Vaultlix App Lock</h2>
     <div class="app-lock-copy" id="app-lock-setup-copy">Create a passcode that is different from your phone passcode. Vaultlix will require it every time the app is reopened. App Lock protects the screen; it does not separately encrypt browser storage.</div>
-    <label class="app-lock-field" id="app-lock-current-wrap" style="display:none"><span>Current Vaultlix passcode</span><input id="app-lock-current" type="password" autocomplete="off" minlength="6"/></label>
-    <label class="app-lock-field"><span id="app-lock-new-label">New Vaultlix passcode</span><input id="app-lock-new" type="password" autocomplete="new-password" minlength="6" required/></label>
-    <label class="app-lock-field"><span>Confirm passcode</span><input id="app-lock-confirm" type="password" autocomplete="new-password" minlength="6" required/></label>
+    <label class="app-lock-field" id="app-lock-current-wrap" style="display:none"><span>Current Vaultlix passcode</span><input id="app-lock-current" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" minlength="6"/></label>
+    <label class="app-lock-field"><span id="app-lock-new-label">New Vaultlix passcode</span><input id="app-lock-new" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" minlength="6" required/></label>
+    <label class="app-lock-field"><span>Confirm passcode</span><input id="app-lock-confirm" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" minlength="6" required/></label>
     <div class="app-lock-error" id="app-lock-setup-error" aria-live="polite"></div>
     <div class="app-lock-copy"><strong>Important:</strong> Vaultlix cannot recover this passcode. Resetting it erases local conversation credentials; conversations stored only on this device may be permanently lost.</div>
     <div class="app-lock-actions"><button class="danger" id="app-lock-disable" type="button" onclick="disableAppLock()" style="display:none">Disable App Lock</button><button type="button" onclick="closeAppLockSettings()">Cancel</button><button class="primary" type="submit">Save</button></div>
@@ -4889,7 +4893,10 @@ async function handleNativeCallAction(detail) {
     // A terminal action restored after a background/locked launch has no UI
     // state left to terminate. Do not retain it until a later invite and
     // accidentally apply an old hang-up to a new call.
-    if (terminalNativeActions.has(detail.action)) return;
+    if (terminalNativeActions.has(detail.action)) {
+      finishNativeIOSCallOverAppLock();
+      return;
+    }
     if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail.action);
     else pendingNativeUnscopedAction = detail.action;
     return;
@@ -4901,6 +4908,10 @@ async function handleNativeCallAction(detail) {
     // web UI before rendering any call state.  Without this, iOS showed the
     // system green call indicator over the inbox while the actual call screen
     // remained hidden in whichever vault had previously been selected.
+    // App Lock stays armed throughout the call, but its passcode sheet must
+    // not cover CallKit's connected-call timer and controls. Only the opaque,
+    // full-screen call surface is exposed; the lock returns on hang-up.
+    beginNativeIOSCallOverAppLock();
     showScreen('s-chat');
     setActiveRoom(room.code);
   };
@@ -6531,6 +6542,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   room.callInviteId = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
   refreshCallButton();
+  const restoreAppLockAfterCall = finishNativeIOSCallOverAppLock();
   if (wasNativeCall && !room.signalWs) {
     setTimeout(() => { if (room.callState === 'idle' && !quickLockActive) connectSignaling(room); }, 250);
   }
@@ -6542,6 +6554,19 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (options.silentPresentation) {
     hideCallOverlay();
     if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
+    notifyLockedCallEnded();
+    return;
+  }
+
+  // If CallKit temporarily presented a call above App Lock, return directly
+  // to the passcode screen at hang-up without exposing the conversation or
+  // running the in-chat ending animation behind it. Preserve the same local
+  // encrypted call-history row that the normal presentation path creates.
+  if (restoreAppLockAfterCall && quickLockActive) {
+    hideCallOverlay();
+    if (wasActive) addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, callHistoryEventId);
+    else if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
+    if (toastMsg) toast(toastMsg, toastVariant);
     notifyLockedCallEnded();
     return;
   }
@@ -10741,6 +10766,23 @@ let quickLockActive = appLockConfigured() || sessionStorage.getItem(QUICK_LOCK_K
 let quickLockUnlocking = false;
 let appLockAutoUnlockTimer = null;
 let appLockAutoUnlockAttempt = 0;
+let nativeIOSCallOverAppLock = false;
+
+function beginNativeIOSCallOverAppLock() {
+  if (!quickLockActive || !window.webkit?.messageHandlers?.vaultlixCall) return false;
+  nativeIOSCallOverAppLock = true;
+  document.body.classList.add('native-ios-call-over-app-lock');
+  document.getElementById('privacy-cover')?.classList.remove('show');
+  return true;
+}
+
+function finishNativeIOSCallOverAppLock() {
+  const wasPresented = nativeIOSCallOverAppLock;
+  nativeIOSCallOverAppLock = false;
+  document.body.classList.remove('native-ios-call-over-app-lock');
+  if (quickLockActive) renderQuickLock();
+  return wasPresented;
+}
 
 async function deriveAppLockVerifier(passcode, salt, iterations = APP_LOCK_ITERATIONS) {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passcode), 'PBKDF2', false, ['deriveBits']);
@@ -10813,6 +10855,7 @@ function activateAppLock(manual = false) {
   closeSettings();
   quickLockActive = true;
   quickLockUnlocking = false;
+  if (manual) finishNativeIOSCallOverAppLock();
   sessionStorage.setItem(QUICK_LOCK_KEY, '1');
   const error = document.getElementById('app-lock-error');
   if (error) error.textContent = appLockWaitCopy();
@@ -10909,6 +10952,7 @@ function completeQuickUnlock() {
   appLockAutoUnlockAttempt += 1;
   quickLockActive = false;
   quickLockUnlocking = false;
+  finishNativeIOSCallOverAppLock();
   sessionStorage.removeItem(QUICK_LOCK_KEY);
   const cover = document.getElementById('privacy-cover');
   cover?.classList.remove('quick-locked', 'unlocking', 'show');
@@ -10951,7 +10995,7 @@ async function saveAppLock(event) {
   const next = document.getElementById('app-lock-new').value;
   const confirmation = document.getElementById('app-lock-confirm').value;
   if (enabled && !(await verifyAppLockPasscode(current))) { error.textContent = 'Current Vaultlix passcode is incorrect.'; return; }
-  if (next.length < 6) { error.textContent = 'Use at least 6 characters.'; return; }
+  if (!/^\d{6,}$/.test(next)) { error.textContent = 'Use at least 6 digits.'; return; }
   if (next !== confirmation) { error.textContent = 'The new passcodes do not match.'; return; }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const verifier = await deriveAppLockVerifier(next, salt);
