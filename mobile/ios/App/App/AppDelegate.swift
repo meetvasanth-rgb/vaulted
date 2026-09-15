@@ -745,7 +745,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        Self.allowsDocumentRotation ? [.portrait, .landscapeLeft, .landscapeRight] : .portrait
+        if UIDevice.current.userInterfaceIdiom == .pad || Self.allowsDocumentRotation {
+            return [.portrait, .landscapeLeft, .landscapeRight]
+        }
+        return .portrait
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {

@@ -210,7 +210,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         guard let windowScene = window?.windowScene else { return }
         if #available(iOS 16.0, *) {
             window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-            let orientations: UIInterfaceOrientationMask = open
+            let orientations: UIInterfaceOrientationMask = (open || UIDevice.current.userInterfaceIdiom == .pad)
                 ? [.portrait, .landscapeLeft, .landscapeRight]
                 : .portrait
             windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientations))
