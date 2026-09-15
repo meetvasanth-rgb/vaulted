@@ -17,6 +17,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -30,6 +31,7 @@ import java.util.Random;
 
 /** Keyguard-safe, audio-only presentation for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
+    private static final String TAG = "VaultlixCallAudio";
     private static volatile boolean running;
 
     static boolean isRunning() { return running; }
@@ -58,6 +60,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private long connectedAt;
     private boolean muted;
     private boolean speaker;
+    private boolean speakerRequested;
     private AudioManager audioManager;
     private LinearLayout callRoot;
     private String roomCode;
@@ -65,6 +68,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private boolean outgoing;
     private String pendingHistory = "";
     private AudioTrack ringbackTrack;
+    private final Runnable enforceRequestedAudioRoute = () -> {
+        if (!finishingCall) applyAudioRoute(speakerRequested);
+    };
     private final Runnable ringback = new Runnable() {
         @Override public void run() {
             if (!outgoing || connectedAt != 0 || finishingCall) return;
@@ -109,7 +115,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(this::clearIncomingCallBanner, 750);
         handler.postDelayed(this::clearIncomingCallBanner, 1800);
         audioManager = getSystemService(AudioManager.class);
-        configureAudio(false);
+        requestAudioRoute(false);
         buildUi(getIntent().getStringExtra(EXTRA_CALLER));
         if (outgoing) {
             try {
@@ -242,11 +248,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     private void toggleSpeaker() {
-        speaker = !speaker;
-        configureAudio(speaker);
+        requestAudioRoute(!speakerRequested);
+        routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+    }
+
+    private void renderAudioRoute(boolean speakerActive) {
+        speaker = speakerActive;
+        if (routeButton == null || routeLabel == null) return;
         routeButton.setBackground(circle(speaker ? CONTROL_ACTIVE : CONTROL));
         routeLabel.setText(speaker ? R.string.native_phone : R.string.native_speaker);
-        routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
     @Override public void onState(String value) {
@@ -256,6 +266,10 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
     @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return;
         connectedAt=System.currentTimeMillis();
+        // libwebrtc/OEM audio initialization can replace a route selected
+        // while the call was ringing. Reassert the user's current choice as
+        // soon as the remote track becomes active.
+        requestAudioRoute(speakerRequested);
         status.setText(getString(R.string.native_end_to_end_encrypted_call));
         security.setVisibility(View.GONE);
         timer.setVisibility(View.VISIBLE);
@@ -277,6 +291,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         finishingCall = true;
         stopRingback();
         handler.removeCallbacks(tick);
+        handler.removeCallbacks(enforceRequestedAudioRoute);
         String history = connectedAt == 0 ? pendingHistory : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
         MainActivity.notifyDedicatedCallEnded(roomCode, history);
         showCallEndedMoment();
@@ -405,17 +420,52 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         VaultlixMessagingService.clearActiveCallNotifications(this);
     }
 
-    @SuppressWarnings("deprecation") private void configureAudio(boolean useSpeaker) {
-        if (audioManager == null) return; audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                int desired = useSpeaker ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
-                if (device.getType() == desired) { audioManager.setCommunicationDevice(device); break; }
-            }
-        } else audioManager.setSpeakerphoneOn(useSpeaker);
+    private void requestAudioRoute(boolean useSpeaker) {
+        speakerRequested = useSpeaker;
+        handler.removeCallbacks(enforceRequestedAudioRoute);
+        applyAudioRoute(useSpeaker);
+        // WebRTC creates its playout stream asynchronously. Several OEMs
+        // accept setCommunicationDevice() and then restore the receiver a
+        // fraction of a second later, so keep the explicit user route across
+        // that bounded initialization window.
+        handler.postDelayed(enforceRequestedAudioRoute, 180);
+        handler.postDelayed(enforceRequestedAudioRoute, 600);
+        handler.postDelayed(enforceRequestedAudioRoute, 1_400);
     }
 
-    @SuppressWarnings("deprecation") private void restoreAudio() { if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
+    @SuppressWarnings("deprecation")
+    private boolean applyAudioRoute(boolean useSpeaker) {
+        if (audioManager == null) return false;
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        boolean applied = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            int desired = useSpeaker
+                    ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                    : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                if (device.getType() == desired) {
+                    applied = audioManager.setCommunicationDevice(device);
+                    break;
+                }
+            }
+            AudioDeviceInfo selected = audioManager.getCommunicationDevice();
+            boolean speakerActive = selected != null
+                    && selected.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+            renderAudioRoute(speakerActive);
+            if (!applied || speakerActive != useSpeaker) {
+                Log.w(TAG, "Audio route not yet applied; requestedSpeaker=" + useSpeaker
+                        + " selectedType=" + (selected == null ? "none" : selected.getType()));
+            }
+            return applied && speakerActive == useSpeaker;
+        }
+        audioManager.setSpeakerphoneOn(useSpeaker);
+        applied = audioManager.isSpeakerphoneOn() == useSpeaker;
+        renderAudioRoute(audioManager.isSpeakerphoneOn());
+        if (!applied) Log.w(TAG, "Legacy speaker route not yet applied; requestedSpeaker=" + useSpeaker);
+        return applied;
+    }
+
+    @SuppressWarnings("deprecation") private void restoreAudio() { handler.removeCallbacks(enforceRequestedAudioRoute); if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
     private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);return v; }
     private TextView callCaption(String value, int color){ TextView v=label(value,11,color);v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));v.setAllCaps(true);v.setLetterSpacing(.12f);return v; }
     private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(4),0,dp(4),0);return p; }

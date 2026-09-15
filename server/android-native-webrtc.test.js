@@ -83,6 +83,10 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);
   assert.match(nativeActivity, /"calling"\.equals\(value\)[\s\S]*native_calling/);
   assert.match(nativeActivity, /"ringing"\.equals\(value\)[\s\S]*native_ringing/);
+  assert.match(nativeActivity, /requestAudioRoute\(!speakerRequested\)/);
+  assert.match(nativeActivity, /onConnected\(\)[\s\S]*requestAudioRoute\(speakerRequested\)/);
+  assert.match(nativeActivity, /postDelayed\(enforceRequestedAudioRoute, 1_400\)/);
+  assert.match(nativeActivity, /getCommunicationDevice\(\)[\s\S]*renderAudioRoute\(speakerActive\)/);
   assert.match(engine, /private volatile String currentState = "idle"/);
   assert.match(engine, /currentState = state;[\s\S]*listener\.onState\(state\)/);
 });
