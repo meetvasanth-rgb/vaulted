@@ -704,6 +704,7 @@ public class MainActivity extends BridgeActivity {
                 Intent call = new Intent(MainActivity.this, NativeCallActivity.class)
                         .putExtra(NativeCallActivity.EXTRA_CALLER, peer)
                         .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code)
+                        .putExtra(NativeCallActivity.EXTRA_CALLER_AVATAR_PATH, saved.avatarPath)
                         .putExtra(NativeCallActivity.EXTRA_OUTGOING, true);
                 startActivity(call);
                 overridePendingTransition(0, 0);

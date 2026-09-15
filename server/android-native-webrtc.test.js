@@ -41,6 +41,7 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /answerIncomingCall/);
   assert.match(main, /prepareIncomingHandle/);
   assert.match(main, /NativeCallActivity\.class/);
+  assert.match(main, /NativeCallActivity\.EXTRA_CALLER_AVATAR_PATH, saved\.avatarPath/);
   assert.match(client, /startOutgoingCall\([\s\S]*room\.callPeerName/);
   assert.match(client, /if \(!room\.nativeIncomingPrepared\) renderCallOverlay\(room\)/);
   assert.match(client, /if \(!room\.nativeIncomingPrepared\) playChime\(\)/);
@@ -78,6 +79,7 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /name\.setTypeface\(Typeface\.create\("sans-serif", Typeface\.NORMAL\)\)/);
   assert.match(nativeActivity, /name\.setMaxLines\(2\)/);
   assert.match(nativeActivity, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
+  assert.match(nativeActivity, /BitmapFactory\.decodeFile\(callerAvatarPath\)/);
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
   assert.match(nativeActivity, /native_call_vanished/);
   assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);

@@ -12,6 +12,7 @@ const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'androi
 const androidStore = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallRoomStore.java'), 'utf8');
 const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
 const androidPush = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
+const androidActiveCall = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActivity.java'), 'utf8');
 
 test('profile images are authenticated, bounded and persisted', () => {
   assert.match(server, /function normalizeProfileImage\(value\)/);
@@ -60,6 +61,10 @@ test('incoming calls show the peer profile photo with an initial fallback', () =
   assert.match(androidStore, /ThumbnailUtils\.extractThumbnail\(decoded, 256, 256/);
   assert.match(androidIncoming, /BitmapFactory\.decodeFile\(callerAvatarPath\)/);
   assert.match(androidIncoming, /setClipToOutline\(true\)/);
+  assert.match(androidIncoming, /NativeCallActivity\.EXTRA_CALLER_AVATAR_PATH, callerAvatarPath/);
+  assert.match(androidActiveCall, /EXTRA_CALLER_AVATAR_PATH/);
+  assert.match(androidActiveCall, /BitmapFactory\.decodeFile\(callerAvatarPath\)/);
+  assert.match(androidActiveCall, /identity\.addView\(portrait/);
   assert.match(androidPush, /callerBuilder\.setIcon\(IconCompat\.createWithBitmap\(callerAvatar\)\)/);
   assert.match(androidPush, /notification\.setLargeIcon\(callerAvatar\)/);
 });

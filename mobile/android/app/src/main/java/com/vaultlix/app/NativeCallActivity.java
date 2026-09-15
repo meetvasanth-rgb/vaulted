@@ -2,6 +2,8 @@ package com.vaultlix.app;
 
 import android.app.Activity;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -26,6 +28,7 @@ import android.widget.ImageButton;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.ImageView;
 
 import java.util.Random;
 
@@ -38,6 +41,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
     static final String EXTRA_OUTGOING = "outgoing";
+    static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
     private static final int INK = Color.rgb(39, 29, 37);
     private static final int IVORY = Color.rgb(250, 246, 247);
     private static final int MUTED_TEXT = Color.rgb(190, 177, 184);
@@ -116,7 +120,10 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(this::clearIncomingCallBanner, 1800);
         audioManager = getSystemService(AudioManager.class);
         requestAudioRoute(false);
-        buildUi(getIntent().getStringExtra(EXTRA_CALLER));
+        buildUi(
+                getIntent().getStringExtra(EXTRA_CALLER),
+                getIntent().getStringExtra(EXTRA_CALLER_AVATAR_PATH)
+        );
         if (outgoing) {
             try {
                 ringbackTrack = buildRingbackTrack();
@@ -125,7 +132,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         }
     }
 
-    private void buildUi(String callerValue) {
+    private void buildUi(String callerValue, String callerAvatarPath) {
         String caller = callerValue == null || callerValue.trim().isEmpty()
                 ? getString(R.string.native_private_call) : callerValue.trim();
         FrameLayout stage = new FrameLayout(this);
@@ -157,11 +164,28 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         identity.setGravity(Gravity.CENTER);
         root.addView(identity, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        View callDot = new View(this);
-        GradientDrawable dot = circle(outgoing ? Color.TRANSPARENT : CONTROL_ACTIVE);
-        if (outgoing) { dot.setStroke(dp(2), CONTROL_ACTIVE); }
-        callDot.setBackground(dot);
-        identity.addView(callDot, new LinearLayout.LayoutParams(dp(13), dp(13)));
+        // Keep the same peer identity visible from ringing through the entire
+        // connected call. IncomingCallActivity previously owned the photo but
+        // dropped its path during this native activity handoff.
+        FrameLayout portrait = new FrameLayout(this);
+        View halo = new View(this);
+        halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
+        portrait.addView(halo, centered(dp(108), dp(108)));
+        Bitmap callerPhoto = callerAvatarPath == null ? null : BitmapFactory.decodeFile(callerAvatarPath);
+        if (callerPhoto != null) {
+            ImageView avatar = new ImageView(this);
+            avatar.setImageBitmap(callerPhoto);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            avatar.setBackground(circle(IVORY));
+            avatar.setClipToOutline(true);
+            portrait.addView(avatar, centered(dp(88), dp(88)));
+        } else {
+            TextView avatar = label(initialFor(caller), 34, CONTROL_ACTIVE);
+            avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            avatar.setBackground(circle(IVORY));
+            portrait.addView(avatar, centered(dp(88), dp(88)));
+        }
+        identity.addView(portrait, new LinearLayout.LayoutParams(dp(108), dp(108)));
 
         TextView name = label(caller, caller.length() > 22 ? 27 : 31, Color.WHITE);
         name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
@@ -237,6 +261,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         textParams.setMargins(0, dp(9), 0, 0);
         wrapper.addView(text, textParams);
         return wrapper;
+    }
+
+    private FrameLayout.LayoutParams centered(int width, int height) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
+        params.gravity = Gravity.CENTER;
+        return params;
     }
 
     private void toggleMute() {
