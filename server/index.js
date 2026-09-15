@@ -121,33 +121,118 @@ const DAILY_LOOK_RESET_OFFSET_MINUTES = (() => {
 })();
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
-const VINAYAGAR_80S_LOOKS = Object.freeze([
-  '1980s Tamil home puja at dawn: place the subject beside a respectfully crafted clay Vinayagar murti on a teak altar in a lived-in South Indian home with mango-leaf toran, jasmine and marigold garlands, brass kuthuvilakku, banana leaves, coconuts and kozhukattai. Use pale dawn daylight entering from one clearly visible side window as the broad key light, with only a gentle amber lift from the oil lamps. Match the face, clothing, altar and wall shadows to that same window direction; retain cool daylight in the room and warm lamp highlights without turning the skin orange. Capture it as a candid 1980s colour-film family portrait.',
-  '1980s temple-courtyard darshan in the morning: portray the subject respectfully after worship near a traditional Tamil temple Vinayagar shrine, with carved stone pillars, kolam, flower sellers, brass bells, coconuts and period-appropriate festival details. Use direct early-morning sunlight filtered through the temple corridor, creating a soft golden rim from behind and a believable warm reflection from the stone as frontal fill. The face, murti, pillars and ground must share the same sun angle, highlight colour and shadow length. Keep the scene devotional, youthful and photorealistic like a carefully exposed 1980s magazine photograph.',
-  '1980s neighbourhood pandal in the afternoon: place the subject near a decorated Vinayagar murti beneath a red-and-cream cloth canopy with hand-tied marigold strings, banana stems, painted plywood panels, tube lights switched off and a period horn loudspeaker. Diffused midday sun passing through the fabric canopy must be the only dominant light, casting soft warm-red overhead ambience and matching gentle shadows across the subject, murti and decorations. Add neutral reflected fill from the open front of the pandal so the face remains natural rather than red or muddy. Make it feel like a real 1980s community celebration photograph.',
-  '1980s kozhukattai preparation at home: create an intimate festival portrait in a period Tamil kitchen or dining room where the subject is presenting a brass plate of freshly prepared kozhukattai near a small flower-decorated Vinayagar altar. Include steel vessels, banana leaves, teak shelves, a stone or patterned floor and era-correct household details, with no modern appliances. Use soft late-morning daylight from a nearby doorway as the key and a whitewashed wall as natural fill. Match catchlights, cast shadows, food highlights and background exposure to that doorway; keep practical electric lights off to avoid inconsistent mixed lighting.',
-  '1980s Vinayagar procession at blue hour: frame the subject in a joyful waist-up portrait made by a nearby photographer before visarjan, with a flower-covered Vinayagar tableau, dhol players, paper festoons and period street decorations behind them; add background celebrants only when people already exist in the source. Keep the subject several metres in front of the tableau so their head, torso, people and murti follow one believable perspective and scale. Balance a believable on-camera 1980s flash on the subject with cool blue-hour ambient light and warm tungsten street bulbs in the background. The flash direction, facial highlights, garment shadows and nearby flower highlights must agree, while distant people and buildings remain naturally darker. Preserve slight film motion in the procession but keep every source face sharp, youthful and recognisable.',
+const RETRO_80S_LOOKS = Object.freeze([
+  {
+    id:'classic-heroine-publicity', direction:'Classic heroine publicity portrait',
+    pose:'Elegant upright three-quarter pose with the torso turned about 25 degrees, chin level, a graceful side glance, one hand lightly arranging the sari pallu near the shoulder and the other relaxed naturally below the crop.',
+    camera:'Eye-level camera, 85mm portrait-lens perspective, photographed by another person from about 2.5 metres away.',
+    framing:'Square waist-up portrait with the complete head, both shoulders and hands included where practical; the head occupies about 30–38% of the image height.',
+    styling:'Rich silk sari, structured period blouse, restrained gold jewellery, voluminous side-swept hair and refined mid-1980s studio makeup, adapted respectfully to the subject.',
+    setting:'Wood-panelled sitting room with floral curtains, cream-shaded brass lamp, framed landscape art and teak shelving.',
+    lighting:'Large soft warm key from camera-left, gentle neutral frontal fill and a dim amber practical lamp behind the subject; all facial and room shadows follow those sources.',
+  },
+  {
+    id:'classic-hero-publicity', direction:'Classic hero publicity portrait',
+    pose:'Relaxed seated pose in a cane-backed chair, torso angled about 20 degrees, one forearm resting on the chair arm, shoulders open, face turned toward camera and a calm confident expression.',
+    camera:'Eye-level camera, 70mm portrait perspective, photographed from roughly 2.2 metres away.',
+    framing:'Square waist-up portrait showing the complete head, shoulders, upper torso and resting forearm; the face remains naturally proportional.',
+    styling:'Open-neck or neatly tucked wide-collared period shirt, vintage wristwatch, carefully side-parted hair and facial hair only when already consistent with the source identity.',
+    setting:'1980s music-lover room with teak shelves, silver cassette deck, tape collection, sports-car poster, palm-sunset print and a brass horse ornament.',
+    lighting:'Soft warm window key from one side, broad low-contrast fill from the room and a subtle tungsten shelf light, with confident but open shadows.',
+  },
+  {
+    id:'disco-era-star', direction:'Disco-era star portrait',
+    pose:'Energetic standing three-quarter pose with one shoulder nearer the camera, chin slightly raised, one hand resting naturally near the waist and a controlled performance-ready expression.',
+    camera:'Slightly low camera position, 50mm normal-lens perspective, photographed from about 2.5 metres away without wide-angle distortion.',
+    framing:'Square waist-up portrait with breathing room around the hair and shoulders and the subject occupying about 60% of the frame.',
+    styling:'Tasteful colourful satin or subtly sequinned period outfit, feathered hair and restrained era makeup appropriate to the subject.',
+    setting:'Physical 1980s stage with mirrored panels, practical coloured bulbs, light haze and period audio equipment.',
+    lighting:'Clean neutral soft key on the face with burgundy, blue and amber rim lights confined mainly to the hair, clothing and background; never wash the skin in coloured light.',
+  },
+  {
+    id:'film-magazine-cover', direction:'Indian film-magazine publicity portrait',
+    pose:'Poised upright studio pose with shoulders nearly square, direct eye contact, chin subtly lowered and one hand resting elegantly at the waist or just inside the lower frame.',
+    camera:'Camera five centimetres above eye level, 85mm portrait-lens perspective, photographed from roughly 2.3 metres away.',
+    framing:'Square chest-to-waist-up cover composition with the eyes near the upper third and deliberate negative space on one side; no readable magazine text.',
+    styling:'Glamorous mid-1980s star styling, sculpted period hair, refined accessories and vivid but believable wardrobe adapted to the subject.',
+    setting:'Painted studio backdrop with bold saffron, teal and burgundy geometry, a small period pedestal and restrained aged-paper character.',
+    lighting:'Broad beauty key just above and to camera-left, soft frontal fill and a faint background glow; luminous true-to-source skin with controlled highlights.',
+  },
+  {
+    id:'bollywood-wedding', direction:'Bollywood-star wedding-album portrait',
+    pose:'Formal balanced three-quarter pose with the torso gently angled, shoulders relaxed, hands composed naturally together at mid-torso and a warm restrained smile toward camera.',
+    camera:'Natural eye-level camera, 85mm portrait perspective, photographed from approximately 2.7 metres away.',
+    framing:'Square three-quarter portrait from complete head to just below the composed hands, retaining enough room for clothing and ceremonial setting.',
+    styling:'Authentic lavish mid-1980s Indian wedding or formal clothing, traditional jewellery and restrained jasmine or floral details suited respectfully to the subject.',
+    setting:'Velvet curtains, brass kuthuvilakku lamps, floral arrangements and a richly hand-painted studio palace backdrop.',
+    lighting:'Softened direct period flash close to camera with a warm side fill from the brass lamps; facial, jewellery and backdrop highlights must agree.',
+  },
+  {
+    id:'star-at-home', direction:'Bollywood star-at-home candid portrait',
+    pose:'Casually seated or leaning into a patterned sofa, one elbow supported naturally, body turned away slightly and face caught looking just past the camera with relaxed youthful star presence.',
+    camera:'Eye-level documentary camera, 50mm normal-lens perspective, photographed from about 2 metres away.',
+    framing:'Square waist-up environmental portrait with the complete head, shoulders, supported arm and meaningful room detail visible.',
+    styling:'Simple but carefully styled cotton sari, kurta or wide-collared shirt appropriate to the subject, with natural period grooming.',
+    setting:'Production-designed home interior with patterned upholstery, lace antimacassars, film publicity photographs, books, a valve radio and warm practical lamps.',
+    lighting:'Large side-window daylight as the main source, soft wall bounce on the shadow side and low amber practical lamps in the background.',
+  },
+  {
+    id:'behind-the-scenes', direction:'Candid behind-the-scenes film-star portrait',
+    pose:'Relaxed in a cane director chair between takes, body angled about 30 degrees, one forearm on the armrest, the other hand relaxed, head turned back toward camera with an unposed expression.',
+    camera:'Eye-level handheld 50mm camera from approximately 2.2 metres, with documentary immediacy but no tilt or wide-angle distortion.',
+    framing:'Square medium portrait showing the complete head, torso, both chair arms and enough studio context to establish the moment.',
+    styling:'Understated period film-star clothing and grooming that preserve the source identity and visible cultural cues.',
+    setting:'Working film set with a faded cinema poster, compact stereo, cassettes, paperbacks, leafy plant and a glimpse of era-correct studio equipment.',
+    lighting:'Natural window light crossing the face, gentle reflector fill and a subdued tungsten work light deeper in the set; soft highlights and believable falloff.',
+  },
+  {
+    id:'bouffant-heroine', direction:'Bouffant heroine-inspired portrait',
+    pose:'Graceful near-profile pose with the torso turned about 40 degrees, face returning partly toward camera, fingertips lightly touching the outer hair near one shoulder and a serene sideward gaze.',
+    camera:'Camera slightly above eye level, 85mm portrait perspective, photographed by another person from roughly 2.4 metres away.',
+    framing:'Square waist-up portrait with complete hair silhouette, both shoulders and the delicate hand gesture fully inside the frame.',
+    styling:'Printed cotton or silk sari, believable bouffant or softly waved period hair, minimal gold jewellery and refined mid-1980s makeup when appropriate to the subject.',
+    setting:'Warm hand-painted studio interior with a teak side table, shaded lamp and muted floral panel.',
+    lighting:'Soft cinematic key from camera-right following the direction of the gaze, low neutral fill and a warm practical lamp separated behind the subject.',
+  },
+  {
+    id:'kurta-flares-hero', direction:'Kurta-and-flares hero-inspired portrait',
+    pose:'Composed standing pose leaning lightly against a teak desk, torso in three-quarter view, one hand resting on the desk and the watch-bearing wrist visible, with a direct assured gaze.',
+    camera:'Camera slightly below eye level, 70mm short-telephoto perspective, photographed from approximately 2.6 metres away.',
+    framing:'Square thigh-to-head or long waist-up portrait that suggests high-waisted flared styling while keeping the head naturally proportional.',
+    styling:'Patterned kurta or wide-collared shirt with period trousers, side-parted hair and a vintage wristwatch, adapted to the subject without forcing gendered presentation.',
+    setting:'Teak home office with rotary telephone, globe, venetian blinds, paper files and a softly blurred period calendar with no readable text.',
+    lighting:'Slatted daylight through the blinds as a soft directional key, neutral room fill and a modest amber desk lamp; no harsh stripes across the eyes.',
+  },
+  {
+    id:'cinema-poster', direction:'Solo hand-painted cinema-poster portrait',
+    pose:'Heroic three-quarter stance with shoulders set diagonally, chin gently raised, face turned into the light and arms held naturally close to the body in a composed poster-ready silhouette.',
+    camera:'Moderately low camera angle, 50mm normal-lens perspective, photographed from about 2.8 metres away without exaggerating the head or jaw.',
+    framing:'Square waist-up cinematic composition with the complete head and shoulders prominent but proportional and space for dramatic scenery around the subject.',
+    styling:'Bold but tasteful 1980s Indian cinema wardrobe and period grooming adapted to the source person.',
+    setting:'Rich hand-painted cinema-poster environment with dramatic clouds, saturated sunset colour and layered scenic depth, but no title, names, typography or additional stars.',
+    lighting:'Strong warm three-quarter key matching the painted sunset, restrained cool fill from the opposite side and a narrow rim on the far shoulder; keep the face photorealistic.',
+  },
 ]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
-    id:'vinayagar-80s', name:'1980s Vinayagar Chaturthi', note:'Five authentic festival scenes with natural matched light',
+    id:'retro-80s', name:'1980s Portrait', note:'Ten cinematic poses with directed camera and light',
     size:'1024x1024',
     quality:'high',
-    prompt:`Recreate the source photograph as a convincing Vinayagar Chaturthi portrait photographed in Tamil Nadu during the mid-1980s. Transform the setting, clothing, grooming, props and photographic medium completely; do not make a modern scene with a retro filter.
+    prompt:`Recreate the source photograph as a convincing Indian cinema portrait photographed in the mid-1980s. Transform the setting, clothing, grooming, props and photographic medium completely; do not make a modern scene with a retro filter.
 
 Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person and keep all stylisation away from their facial features.
 
-The selected 1980s festival scenario below is mandatory and must be the dominant visual concept. Depict Lord Vinayagar, the murti and all worship details respectfully and accurately; never place the subject in the role of a deity, merge their face or body with the murti, make them touch the murti, or turn sacred elements into fashion props. Adapt clothing and grooming respectfully to the subject's existing gender presentation and visible cultural cues. Never add a moustache, change hair length, change religious or cultural markers, or force gendered clothing when it conflicts with the source person.
+The selected 1980s shot brief below is mandatory. Follow its pose, body angle, gaze, hand placement, camera height, lens perspective, camera distance, crop, styling, setting and lighting as one coherent photograph. Recompose the person into that directed pose instead of copying an accidental pose from the source. Adapt gendered labels such as heroine or hero respectfully to the subject's existing presentation and visible cultural cues; the photographic direction matters more than forcing gendered clothing. Never add a moustache, change hair length, change religious or cultural markers, or force styling that conflicts with the source person.
 
-Rebuild the setting to match the selected festival scenario while keeping every object believable in scale and placement. Preserve every clearly visible person from the source and do not invent additional people. Preserve each person's identity, apparent age and relationship naturally. Do not add extra limbs, fingers, hands, faces, jewellery or religious marks. Keep hands anatomically accurate and unobstructed wherever visible.
+Rebuild the setting to match the selected shot brief while keeping every object believable in scale and placement. Remove smartphones, LEDs, contemporary furniture, modern architecture and present-day fashion. Preserve every clearly visible person from the source and do not invent additional people. Preserve each person's identity, apparent age and relationship naturally. Do not add extra limbs, fingers, hands, faces, jewellery or religious marks. Keep hands anatomically accurate and unobstructed wherever visible.
 
-The uploaded photograph is an identity reference only; discard its camera distance, crop, arm position and selfie perspective. The final photograph must visibly have been taken by another person using an era-correct handheld 35mm camera from roughly 1.8–2.5 metres away with a normal 50mm lens at natural eye level. Never create a selfie, phone-camera perspective, outstretched camera arm, wide-angle facial distortion or an oversized foreground head.
+The uploaded photograph is an identity reference only; discard its camera distance, crop, arm position and selfie perspective. Use the exact camera height, focal-length perspective, distance and framing prescribed by the selected shot brief. The final photograph must visibly have been taken by another person using an era-correct handheld or studio 35mm camera. Never create a selfie, phone-camera perspective, outstretched camera arm, wide-angle facial distortion or an oversized foreground head.
 
-Compose a square, profile-ready medium portrait showing the complete head, both shoulders, chest and enough upper torso to establish natural body proportions. The head height should occupy only about 28–35% of the full image height and must be proportional to the neck, shoulders and torso. Keep the subject near the centre rather than pressed against an edge. Preserve enough sharply coherent festival setting to establish the specific scenario, using realistic perspective: nearby objects may be larger, while the murti, people, architecture and decorations recede consistently with distance. Do not crop through the chin or forehead, enlarge the face to fill the frame, or make the body unnaturally small beneath the head.
+Compose the square, profile-ready portrait using the exact crop in the selected brief. Always show the complete head and both shoulders, maintain natural proportions between the head, neck, shoulders, torso and hands, and keep every prescribed hand gesture inside the frame. Preserve enough sharply coherent setting to make the selected direction unmistakable, with realistic depth and perspective. Do not crop through the chin or forehead, enlarge the face to fill the frame, make the body unnaturally small beneath the head or revert every direction to the same close-up portrait.
 
-Lighting integration is critical. Follow the exact light sources named in the selected scenario. The face and background must share the same light direction, colour temperature, exposure, shadow softness, contrast and atmospheric depth. Recreate matching highlights on hair, skin, clothing, jewellery, flowers, the murti and nearby surfaces. Do not use an independent portrait key light that contradicts the room, daylight, lamps or flash described in the scenario. Avoid cut-out edges, halos, pasted-on faces, orange skin, muddy shadows, harsh hotspots, blown highlights, grey skin or unexplained mixed lighting.
+Lighting integration is critical. Follow the exact light sources named in the selected brief. The face and background must share the same light direction, colour temperature, exposure, shadow softness, contrast and atmospheric depth. Recreate matching highlights on hair, skin, clothing, jewellery and nearby surfaces. Do not use an independent portrait key light that contradicts the specified room, daylight, stage lights, lamps or flash. Avoid cut-out edges, halos, pasted-on faces, orange skin, muddy shadows, harsh hotspots, blown highlights, grey skin or unexplained mixed lighting.
 
-Render at premium photographic quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric texture, accurate ornaments and clean edges. Apply restrained authentic 1980s colour-film character—subtle organic grain, mild lens softness and gentle print colour—without scratches, date stamps, heavy fading or ageing the face. Add no text, logos or watermarks. The final result must feel like a real photograph from the selected 1980s Vinayagar Chaturthi scenario, not an AI effect or generic studio composite.`,
+Render at premium photographic quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric texture, accurate accessories and clean edges. Apply restrained authentic 1980s colour-film character—subtle organic grain, mild lens softness and gentle print colour—with only minimal physical-print wear away from the face. Do not age the person. Add no text, logos, date stamps or watermarks. The final result must feel like a real photograph from the selected 1980s Indian cinema direction, not an AI effect, a generic family snapshot or the same repeated portrait composition.`,
   },
   {
     id:'anime-portrait', name:'Anime Portrait', note:'Hand-drawn character energy, recognisably you',
@@ -1032,16 +1117,28 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
 function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
   const day = Math.floor((now + DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000) / DAY_MS);
   const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
-  return (seed + Math.max(0, Number(generationCount) || 0)) % VINAYAGAR_80S_LOOKS.length;
+  return (seed + Math.max(0, Number(generationCount) || 0)) % RETRO_80S_LOOKS.length;
+}
+
+function retro80sShotBrief(look) {
+  return [
+    `Direction: ${look.direction}`,
+    `Prescribed pose: ${look.pose}`,
+    `Camera angle and lens: ${look.camera}`,
+    `Required framing: ${look.framing}`,
+    `Wardrobe and grooming: ${look.styling}`,
+    `Period setting: ${look.setting}`,
+    `Integrated lighting: ${look.lighting}`,
+  ].join('\n');
 }
 
 async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
-  const scene = style.id === 'vinayagar-80s'
-    ? VINAYAGAR_80S_LOOKS[variantIndex % VINAYAGAR_80S_LOOKS.length]
-    : '';
-  form.append('prompt', scene ? `${style.prompt}\n\nSelected 1980s Vinayagar Chaturthi scenario for this generation: ${scene}` : style.prompt);
+  const look = style.id === 'retro-80s'
+    ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
+    : null;
+  form.append('prompt', look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.prompt);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');

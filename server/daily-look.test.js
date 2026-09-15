@@ -51,7 +51,7 @@ test('Daily Look sends only an explicitly selected, reduced image and never stor
 });
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
-  assert.match(server, /id:'vinayagar-80s', name:'1980s Vinayagar Chaturthi'/);
+  assert.match(server, /id:'retro-80s', name:'1980s Portrait'/);
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
   assert.match(client, /Create today’s look/);
   assert.match(client, /function useDailyLookAsProfile\(\)/);
@@ -60,24 +60,23 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
-test('1980s Vinayagar Chaturthi creates a high-quality profile-ready period portrait', () => {
-  assert.match(server, /Vinayagar Chaturthi portrait photographed in Tamil Nadu during the mid-1980s/);
+test('1980s Portrait creates a high-quality profile-ready period portrait', () => {
+  assert.match(server, /Indian cinema portrait photographed in the mid-1980s/);
   assert.match(server, /do not make a modern scene with a retro filter/);
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
   assert.match(server, /uploaded photograph is an identity reference only/);
-  assert.match(server, /taken by another person using an era-correct handheld 35mm camera/);
-  assert.match(server, /roughly 1\.8–2\.5 metres away with a normal 50mm lens/);
+  assert.match(server, /taken by another person using an era-correct handheld or studio 35mm camera/);
+  assert.match(server, /exact camera height, focal-length perspective, distance and framing/);
   assert.match(server, /Never create a selfie, phone-camera perspective, outstretched camera arm/);
-  assert.match(server, /head height should occupy only about 28–35%/);
-  assert.match(server, /proportional to the neck, shoulders and torso/);
+  assert.match(server, /natural proportions between the head, neck, shoulders, torso and hands/);
   assert.match(server, /Do not crop through the chin or forehead/);
   assert.match(server, /Preserve bright eyes, healthy youthful skin/);
-  assert.match(server, /selected 1980s festival scenario below is mandatory/);
-  assert.match(server, /never place the subject in the role of a deity/);
+  assert.match(server, /selected 1980s shot brief below is mandatory/);
+  assert.match(server, /pose, body angle, gaze, hand placement, camera height, lens perspective/);
   assert.match(server, /Do not add extra limbs, fingers, hands, faces/);
   assert.match(server, /The face and background must share the same light direction, colour temperature, exposure, shadow softness/);
   assert.match(server, /Do not use an independent portrait key light/);
-  assert.match(server, /without scratches, date stamps, heavy fading or ageing the face/);
+  assert.match(server, /Do not age the person/);
   assert.match(server, /size:'1024x1024'/);
   assert.match(server, /form\.append\('size', style\.size \|\| '1024x1024'\)/);
   assert.match(server, /quality:'high'/);
@@ -93,20 +92,36 @@ test('Daily Look replaces Editorial Glow with an identity-preserving anime portr
   assert.doesNotMatch(server, /id:'editorial-glow'/);
 });
 
-test('1980s Vinayagar Chaturthi rotates through five lighting-matched festival scenarios per account', () => {
-  const lookBlock = server.match(/const VINAYAGAR_80S_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
-  assert.equal((lookBlock.match(/^  '/gm) || []).length, 5);
-  assert.match(lookBlock, /Tamil home puja at dawn/);
-  assert.match(lookBlock, /temple-courtyard darshan in the morning/);
-  assert.match(lookBlock, /neighbourhood pandal in the afternoon/);
-  assert.match(lookBlock, /kozhukattai preparation at home/);
-  assert.match(lookBlock, /Vinayagar procession at blue hour/);
-  assert.doesNotMatch(lookBlock, /Devotional close-up wish|Premium festive pandal wish|Modern minimal blessing card/);
+test('1980s Portrait rotates through ten fully directed cinematic shot briefs per account', () => {
+  const lookBlock = server.match(/const RETRO_80S_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+  assert.equal((lookBlock.match(/^    id:/gm) || []).length, 10);
+  assert.match(lookBlock, /Classic heroine publicity portrait/);
+  assert.match(lookBlock, /Classic hero publicity portrait/);
+  assert.match(lookBlock, /Disco-era star portrait/);
+  assert.match(lookBlock, /Indian film-magazine publicity portrait/);
+  assert.match(lookBlock, /Bollywood-star wedding-album portrait/);
+  assert.match(lookBlock, /Bollywood star-at-home candid portrait/);
+  assert.match(lookBlock, /Candid behind-the-scenes film-star portrait/);
+  assert.match(lookBlock, /Bouffant heroine-inspired portrait/);
+  assert.match(lookBlock, /Kurta-and-flares hero-inspired portrait/);
+  assert.match(lookBlock, /Solo hand-painted cinema-poster portrait/);
+  assert.equal((lookBlock.match(/pose:'/g) || []).length, 10);
+  assert.equal((lookBlock.match(/camera:'/g) || []).length, 10);
+  assert.equal((lookBlock.match(/framing:'/g) || []).length, 10);
+  assert.equal((lookBlock.match(/setting:'/g) || []).length, 10);
+  assert.equal((lookBlock.match(/lighting:'/g) || []).length, 10);
+  assert.doesNotMatch(lookBlock, /Vinayagar|Ganesh|murti|pandal|visarjan|kozhukattai/);
   assert.match(server, /function dailyLookVariantIndex\(accountId, generationCount, now = Date\.now\(\)\)/);
   assert.match(server, /seed \+ Math\.max\(0, Number\(generationCount\) \|\| 0\)/);
-  assert.match(server, /VINAYAGAR_80S_LOOKS\[variantIndex % VINAYAGAR_80S_LOOKS\.length\]/);
+  assert.match(server, /RETRO_80S_LOOKS\[variantIndex % RETRO_80S_LOOKS\.length\]/);
+  assert.match(server, /function retro80sShotBrief\(look\)/);
+  assert.match(server, /Prescribed pose:/);
+  assert.match(server, /Camera angle and lens:/);
+  assert.match(server, /Required framing:/);
+  assert.match(server, /Period setting:/);
+  assert.match(server, /Integrated lighting:/);
   assert.match(server, /dailyLookVariantIndex\(d\.accountId, usage\.count, now\)/);
-  assert.match(server, /Selected 1980s Vinayagar Chaturthi scenario for this generation/);
+  assert.match(server, /Selected 1980s shot brief for this generation/);
 });
 
 test('Android Daily Look offers a dedicated camera capture path', () => {
