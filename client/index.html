@@ -4759,6 +4759,10 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // key-rederive block, which runs the catch-up fetch once a real key
     // does arrive instead of leaving the room's history missing all session.
     pendingHistoryRestore: false,
+    // Membership/key restoration unlocks the conversation first; its older
+    // ciphertext history may continue rebuilding behind the visible chat.
+    historyRestorePromise: null,
+    pollAfterHistoryRestore: false,
     // Live-polled messages that arrived before room.sharedKey existed yet —
     // see flushPendingDecrypt/doPoll. { msgId, content, name, time }[].
     pendingDecrypt: [],
@@ -13568,8 +13572,33 @@ async function restoreRoomHistory(room) {
     // next regular doPoll doesn't mistake this same clearedAt value for a
     // brand-new clear and wipe the history this call just correctly built.
     room.lastKnownClearedAt = data.clearedAt || 0;
+    // Sending remains available while history restores. Merge any newly
+    // created records with restored history in chronological order before
+    // the chat is repainted.
+    room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
     persistRoomSeq(room);
   } catch(e) { console.error('E2E: restoreRoomHistory failed:', e.message); }
+}
+
+function restoreRoomHistoryInBackground(room) {
+  if (!room || room.historyRestorePromise) return room?.historyRestorePromise || null;
+  const job = restoreRoomHistory(room);
+  room.historyRestorePromise = job;
+  job.finally(() => {
+    if (room.historyRestorePromise !== job) return;
+    room.historyRestorePromise = null;
+    if (room.code === activeRoomCode && document.getElementById('s-chat')?.classList.contains('active')) {
+      renderChatBody(room);
+      flushPendingReads(room);
+    } else if (document.getElementById('s-vault-list')?.classList.contains('active')) {
+      renderVaultList();
+    }
+    if (room.pollAfterHistoryRestore) {
+      room.pollAfterHistoryRestore = false;
+      doPoll(room);
+    }
+  });
+  return job;
 }
 
 // ── USER-LEVEL INBOX SYNCHRONIZATION ────────────────────────────────────
@@ -13706,7 +13735,7 @@ function connectInbox() {
 function startRoomPolling(room) {
   if (room.pollInterval) clearInterval(room.pollInterval);
   room.pollInterval = null;
-  doPoll(room); // immediate first poll
+  doPoll(room); // immediate unless full history is still rebuilding
   connectInbox();
   subscribeInboxRooms();
   connectSignaling(room);
@@ -13717,6 +13746,10 @@ function startRoomPolling(room) {
 
 async function doPoll(room) {
   if (!room.code || !room.token) return;
+  if (room.historyRestorePromise) {
+    room.pollAfterHistoryRestore = true;
+    return;
+  }
   if (room.isPollRunning) return; // skip if previous poll for this room still in progress
   room.isPollRunning = true;
   try {
@@ -13997,6 +14030,7 @@ async function sendMsg() {
   updateComposerButtons();
 
   const now = new Date();
+  const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   // One stable client-generated id from the start (no temp-id-then-rename)
   // avoids a race where a read receipt for this message arrives before a
@@ -14005,7 +14039,7 @@ async function sendMsg() {
   const msgId = newMsgId();
 
   const rec = {
-    id: msgId, kind: 'text', isMe: true, name: room.myName, time, content,
+    id: msgId, kind: 'text', isMe: true, name: room.myName, time, ts:sentAt, content,
     replyData: replySnapshot,
     jumbo: isSingleEmoji(content),
     receiptState: null, timerStarted: false,
@@ -14016,7 +14050,7 @@ async function sendMsg() {
   if (rec.jumbo) triggerEmojiEffect(rec.content);
   cancelReply();
   // Update inbox ordering immediately rather than waiting for the next poll.
-  room.lastMessageAt = Date.now();
+  room.lastMessageAt = sentAt;
 
   try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
 }
@@ -15784,9 +15818,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         await persistRoom(room);
       }
       if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
-      if (room.sharedKey) {
-        await restoreRoomHistory(room);
-      } else {
+      const canRestoreHistory = !!room.sharedKey;
+      if (!canRestoreHistory) {
         // The peer's pubKey wasn't on file yet (most likely they were also
         // mid-reconnect at this same moment) — deriveSharedKey never ran,
         // so this bootstrap fetch has to be skipped too (it can't decrypt
@@ -15810,6 +15843,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       room.restorePending = false;
       restoredAny = true;
       if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+      if (canRestoreHistory) restoreRoomHistoryInBackground(room);
     } catch(e) {
       // Keep the locally known entry visible and retryable without holding
       // the entire launch screen hostage to one unavailable conversation.
@@ -15999,7 +16033,7 @@ async function sendKlipyGif(item, searchQuery) {
   const payload = JSON.stringify({ type:'klipy-gif', id:String(item.id || ''), title:String(item.title || 'GIF').slice(0, 200), url:url.replace(/&amp;/g, '&') });
   let encrypted; try { encrypted = await encryptTextMsg(room, payload); } catch (e) { toast("Couldn't encrypt — GIF not sent"); return; }
   const now = new Date(), msgId = newMsgId();
-  const rec = { id:msgId, kind:'gif', isMe:true, name:room.myName, time:now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'), klipyId:String(item.id || ''), title:String(item.title || 'GIF'), url:url.replace(/&amp;/g, '&'), receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null };
+  const rec = { id:msgId, kind:'gif', isMe:true, name:room.myName, time:now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'), ts:now.getTime(), klipyId:String(item.id || ''), title:String(item.title || 'GIF'), url:url.replace(/&amp;/g, '&'), receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null };
   room.messages.push(rec); renderMessageRecord(room, rec, true); room.lastMessageAt = Date.now(); closeKlipyPicker();
   try {
     await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId });
@@ -16384,7 +16418,7 @@ async function sendVoiceMessage(room, blob, durationSeconds, mime) {
 
   const msgId = newMsgId();
   const rec = {
-    id: msgId, kind: 'voice', isMe: true, name: room.myName, time,
+    id: msgId, kind: 'voice', isMe: true, name: room.myName, time, ts:now.getTime(),
     mime, base64, duration: durationSeconds,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };

@@ -62,6 +62,24 @@ test('text-heavy encrypted history decrypts in bounded parallel batches without 
     'decrypted records must be applied in their original server order');
 });
 
+test('a restored conversation unlocks before its encrypted history rebuild finishes', () => {
+  assert.match(client, /function restoreRoomHistoryInBackground\(room\)/);
+  assert.match(client, /historyRestorePromise: null/);
+  assert.match(client, /if \(room\.historyRestorePromise\) \{[\s\S]*room\.pollAfterHistoryRestore = true;[\s\S]*return;/);
+  const restoreReadyAt = client.indexOf('room.restorePending = false;', client.indexOf('const canRestoreHistory'));
+  const backgroundAt = client.indexOf('restoreRoomHistoryInBackground(room)', restoreReadyAt);
+  assert.ok(restoreReadyAt > -1 && backgroundAt > restoreReadyAt,
+    'the inbox row must unlock before history restoration begins');
+  assert.doesNotMatch(client.slice(client.indexOf('const canRestoreHistory'), backgroundAt), /await restoreRoomHistory\(room\)/);
+});
+
+test('messages sent while history restores retain timestamps for chronological merging', () => {
+  assert.match(client, /kind: 'text',[^\n]*ts:sentAt/);
+  assert.match(client, /kind:'gif',[^\n]*ts:now\.getTime\(\)/);
+  assert.match(client, /kind: 'voice',[^\n]*ts:now\.getTime\(\)/);
+  assert.match(client, /room\.messages\.sort\(\(left, right\) => \(Number\(left\?\.ts\) \|\| 0\) - \(Number\(right\?\.ts\) \|\| 0\)\)/);
+});
+
 test('sign-out never erases conversation keys before a verified encrypted backup', () => {
   assert.match(client, /if \(room\.everOnline && \(!keys\.pubJwk \|\| !keys\.privJwk\)\) return false/);
   assert.match(client, /async function prepareAndConfirmAccountBackup\(state\)/);
