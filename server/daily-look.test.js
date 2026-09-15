@@ -8,6 +8,9 @@ const path = require('node:path');
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const postgres = fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+const watermarkSource = fs.readFileSync(path.join(__dirname, 'daily-look-watermark.js'), 'utf8');
+const sharp = require('sharp');
+const { watermarkDailyLookOutput } = require('./daily-look-watermark');
 
 test('Daily Look keeps provider credentials on the server and requires an authenticated account', () => {
   assert.match(server, /process\.env\.OPENAI_API_KEY/);
@@ -145,15 +148,27 @@ test('the latest generated Daily Look remains downloadable after profile use and
   assert.match(client, /indexedDB\.deleteDatabase\(DAILY_LOOK_RESULT_DB\)/);
 });
 
-test('every finished Daily Look receives a subtle deterministic Vaultlix watermark', () => {
+test('every finished Daily Look receives a subtle deterministic Vaultlix watermark', async () => {
   assert.match(server, /keep the lower-right edge visually calm and free of the subject's face, hands and important details/);
   assert.match(server, /Do not generate any text, logo or watermark yourself/);
   assert.match(client, /const DAILY_LOOK_WATERMARK_VERSION = 1/);
+  assert.match(server, /watermarkDailyLookOutput\(Buffer\.from\(base64, 'base64'\)\)/);
+  assert.match(server, /watermarkVersion:DAILY_LOOK_WATERMARK_VERSION/);
+  assert.match(watermarkSource, /const sharp = require\('sharp'\)/);
+  assert.match(watermarkSource, /\.composite\(\[\{ input:badge, left, top \}\]\)/);
   assert.match(client, /function watermarkDailyLookImage\(dataUri\)/);
   assert.match(client, /const label = 'Vaultlix'/);
   assert.match(client, /context\.fillStyle = 'rgba\(37,20,29,\.58\)'/);
   assert.match(client, /canvas\.toDataURL\('image\/jpeg', \.94\)/);
+  assert.match(client, /if \(watermarkVersion < DAILY_LOOK_WATERMARK_VERSION\)/);
   assert.match(client, /finalImage = await watermarkDailyLookImage\(result\.generatedImage\)/);
   assert.match(client, /image:finalImage/);
   assert.match(client, /Number\(savedLook\.watermarkVersion\) < DAILY_LOOK_WATERMARK_VERSION/);
+  const source = await sharp({ create:{ width:256, height:256, channels:3, background:'#d8c6bd' } }).jpeg().toBuffer();
+  const branded = await watermarkDailyLookOutput(source);
+  const metadata = await sharp(branded).metadata();
+  assert.equal(metadata.format, 'jpeg');
+  assert.equal(metadata.width, 256);
+  assert.equal(metadata.height, 256);
+  assert.notDeepEqual(branded, source);
 });

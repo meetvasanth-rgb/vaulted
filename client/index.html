@@ -9293,15 +9293,23 @@ async function generateDailyLook() {
     return;
   }
   dailyLookSourceImage = null;
-  if (status) status.textContent = 'Adding the Vaultlix signature…';
-  let finalImage;
-  try { finalImage = await watermarkDailyLookImage(result.generatedImage); }
-  catch (error) {
-    if (status) status.textContent = error?.message || 'Could not finish this Daily Look.';
-    if (button) { button.disabled = false; button.textContent = 'Try again'; }
-    return;
+  let finalImage = result.generatedImage;
+  let watermarkVersion = Number(result.watermarkVersion) || 0;
+  // Compatibility fallback during a rolling deployment: if an older server
+  // answers without the server-side brand marker, this newer client still
+  // finishes the image locally. Current servers always return version 1.
+  if (watermarkVersion < DAILY_LOOK_WATERMARK_VERSION) {
+    if (status) status.textContent = 'Adding the Vaultlix signature…';
+    try {
+      finalImage = await watermarkDailyLookImage(result.generatedImage);
+      watermarkVersion = DAILY_LOOK_WATERMARK_VERSION;
+    } catch (error) {
+      if (status) status.textContent = error?.message || 'Could not finish this Daily Look.';
+      if (button) { button.disabled = false; button.textContent = 'Try again'; }
+      return;
+    }
   }
-  const savedLook = { accountId:state.accountId, image:finalImage, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now(), watermarkVersion:DAILY_LOOK_WATERMARK_VERSION };
+  const savedLook = { accountId:state.accountId, image:finalImage, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now(), watermarkVersion };
   await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt, savedLook.watermarkVersion).catch(() => null);
   showDailyLookResult(savedLook, `${savedLook.styleName} is ready. ${result.remaining} creation${result.remaining === 1 ? '' : 's'} remaining today.`);
 }

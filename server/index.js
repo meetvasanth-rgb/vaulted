@@ -11,6 +11,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const { EncryptedObjectStorage } = require('./object-storage');
+const { DAILY_LOOK_WATERMARK_VERSION, watermarkDailyLookOutput } = require('./daily-look-watermark');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
@@ -1151,7 +1152,8 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const result = await response.json();
   const base64 = result.data?.[0]?.b64_json;
   if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
-  return `data:image/jpeg;base64,${base64}`;
+  const branded = await watermarkDailyLookOutput(Buffer.from(base64, 'base64'));
+  return `data:image/jpeg;base64,${branded.toString('base64')}`;
 }
 
 async function claimDailyLook(accountId, account, now) {
@@ -3256,7 +3258,7 @@ async function api(path, method, d, p, res, ip, headers) {
       }
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, {
-        ok:true, generatedImage, generatedAt:completedAt,
+        ok:true, generatedImage, generatedAt:completedAt, watermarkVersion:DAILY_LOOK_WATERMARK_VERSION,
         nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
           ? completedDay.nextAt : 0,
         limit:DAILY_LOOK_DAILY_LIMIT,
