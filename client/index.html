@@ -9073,6 +9073,66 @@ let dailyLookSourceImage = null;
 let dailyLookGeneratedImage = null;
 let dailyLookStyleId = null;
 const DAILY_LOOK_RESULT_DB = 'vaultlix-daily-look';
+const DAILY_LOOK_WATERMARK_VERSION = 1;
+
+// Apply the brand after generation instead of asking the image model to draw
+// text (which is less predictable). The small translucent signature sits in
+// the lower safe margin and becomes part of the actual JPEG, so previews,
+// downloads and profile use all show the exact same result.
+function watermarkDailyLookImage(dataUri) {
+  return new Promise((resolve, reject) => {
+    if (!/^data:image\/(?:jpeg|png|webp);base64,/.test(dataUri || '')) {
+      reject(new Error('Could not finish the Vaultlix signature'));
+      return;
+    }
+    const image = new Image();
+    image.onload = () => {
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context || !width || !height) { reject(new Error('Could not finish the Vaultlix signature')); return; }
+      context.drawImage(image, 0, 0, width, height);
+
+      const unit = Math.min(width, height);
+      const fontSize = Math.max(18, Math.round(unit * .027));
+      const padX = Math.round(fontSize * .62);
+      const padY = Math.round(fontSize * .42);
+      const margin = Math.round(unit * .022);
+      const radius = Math.round(fontSize * .55);
+      context.font = `700 ${fontSize}px Manrope, Arial, sans-serif`;
+      context.textBaseline = 'middle';
+      const label = 'Vaultlix';
+      const labelWidth = Math.ceil(context.measureText(label).width);
+      const badgeWidth = labelWidth + padX * 2;
+      const badgeHeight = fontSize + padY * 2;
+      const x = width - badgeWidth - margin;
+      const y = height - badgeHeight - margin;
+
+      context.beginPath();
+      context.moveTo(x + radius, y);
+      context.lineTo(x + badgeWidth - radius, y);
+      context.quadraticCurveTo(x + badgeWidth, y, x + badgeWidth, y + radius);
+      context.lineTo(x + badgeWidth, y + badgeHeight - radius);
+      context.quadraticCurveTo(x + badgeWidth, y + badgeHeight, x + badgeWidth - radius, y + badgeHeight);
+      context.lineTo(x + radius, y + badgeHeight);
+      context.quadraticCurveTo(x, y + badgeHeight, x, y + badgeHeight - radius);
+      context.lineTo(x, y + radius);
+      context.quadraticCurveTo(x, y, x + radius, y);
+      context.closePath();
+      context.fillStyle = 'rgba(37,20,29,.58)';
+      context.fill();
+      context.fillStyle = 'rgba(255,255,255,.94)';
+      context.fillText(label, x + padX, y + badgeHeight / 2 + 1);
+      try { resolve(canvas.toDataURL('image/jpeg', .94)); }
+      catch (error) { reject(new Error('Could not finish the Vaultlix signature')); }
+    };
+    image.onerror = () => reject(new Error('Could not finish the Vaultlix signature'));
+    image.src = dataUri;
+  });
+}
 
 function dailyLookResultStore(mode, value) {
   return new Promise((resolve, reject) => {
@@ -9094,8 +9154,8 @@ function dailyLookResultStore(mode, value) {
   });
 }
 
-function saveDailyLookResult(accountId, image, styleName, generatedAt) {
-  return dailyLookResultStore('write', { accountId, image, styleName, generatedAt });
+function saveDailyLookResult(accountId, image, styleName, generatedAt, watermarkVersion = DAILY_LOOK_WATERMARK_VERSION) {
+  return dailyLookResultStore('write', { accountId, image, styleName, generatedAt, watermarkVersion });
 }
 
 function loadDailyLookResult(accountId) {
@@ -9155,7 +9215,13 @@ async function openDailyLook() {
   if (status) status.textContent = 'Checking today’s creation…';
   const savedLookPromise = loadDailyLookResult(state.accountId).catch(() => null);
   const result = await api('/api/account/daily-look/status', { accountId:state.accountId, sessionToken:state.sessionToken });
-  const savedLook = await savedLookPromise;
+  let savedLook = await savedLookPromise;
+  if (savedLook?.image && Number(savedLook.watermarkVersion) < DAILY_LOOK_WATERMARK_VERSION) {
+    try {
+      savedLook = { ...savedLook, image:await watermarkDailyLookImage(savedLook.image), watermarkVersion:DAILY_LOOK_WATERMARK_VERSION };
+      await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt, savedLook.watermarkVersion);
+    } catch (error) { /* Keep an older locally saved result available if migration fails. */ }
+  }
   if (result.error) {
     if (savedLook?.image) showDailyLookResult(savedLook, 'Your last Daily Look is saved on this device and ready to download.');
     else if (status) status.textContent = result.error;
@@ -9227,8 +9293,16 @@ async function generateDailyLook() {
     return;
   }
   dailyLookSourceImage = null;
-  const savedLook = { accountId:state.accountId, image:result.generatedImage, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now() };
-  await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt).catch(() => null);
+  if (status) status.textContent = 'Adding the Vaultlix signature…';
+  let finalImage;
+  try { finalImage = await watermarkDailyLookImage(result.generatedImage); }
+  catch (error) {
+    if (status) status.textContent = error?.message || 'Could not finish this Daily Look.';
+    if (button) { button.disabled = false; button.textContent = 'Try again'; }
+    return;
+  }
+  const savedLook = { accountId:state.accountId, image:finalImage, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now(), watermarkVersion:DAILY_LOOK_WATERMARK_VERSION };
+  await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt, savedLook.watermarkVersion).catch(() => null);
   showDailyLookResult(savedLook, `${savedLook.styleName} is ready. ${result.remaining} creation${result.remaining === 1 ? '' : 's'} remaining today.`);
 }
 

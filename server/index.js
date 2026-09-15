@@ -1138,7 +1138,8 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const look = style.id === 'retro-80s'
     ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
     : null;
-  form.append('prompt', look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.prompt);
+  const directedPrompt = look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.prompt;
+  form.append('prompt', `${directedPrompt}\n\nComposition requirement: keep the lower-right edge visually calm and free of the subject's face, hands and important details so a small Vaultlix signature can be added there later. Do not generate any text, logo or watermark yourself.`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');

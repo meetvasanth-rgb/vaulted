@@ -144,3 +144,16 @@ test('the latest generated Daily Look remains downloadable after profile use and
   assert.match(client, /VaultlixAndroid\.saveMedia\(dataUri, filename \|\| 'vaultlix-file'\)/);
   assert.match(client, /indexedDB\.deleteDatabase\(DAILY_LOOK_RESULT_DB\)/);
 });
+
+test('every finished Daily Look receives a subtle deterministic Vaultlix watermark', () => {
+  assert.match(server, /keep the lower-right edge visually calm and free of the subject's face, hands and important details/);
+  assert.match(server, /Do not generate any text, logo or watermark yourself/);
+  assert.match(client, /const DAILY_LOOK_WATERMARK_VERSION = 1/);
+  assert.match(client, /function watermarkDailyLookImage\(dataUri\)/);
+  assert.match(client, /const label = 'Vaultlix'/);
+  assert.match(client, /context\.fillStyle = 'rgba\(37,20,29,\.58\)'/);
+  assert.match(client, /canvas\.toDataURL\('image\/jpeg', \.94\)/);
+  assert.match(client, /finalImage = await watermarkDailyLookImage\(result\.generatedImage\)/);
+  assert.match(client, /image:finalImage/);
+  assert.match(client, /Number\(savedLook\.watermarkVersion\) < DAILY_LOOK_WATERMARK_VERSION/);
+});
