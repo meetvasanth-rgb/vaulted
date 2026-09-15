@@ -1105,6 +1105,14 @@ html.vaultlix-native-ios .call-data-column{font-size:11px}
 .call-hdr-name{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:300;letter-spacing:.12em;color:rgba(255,255,255,.9);text-shadow:0 1px 4px rgba(0,0,0,.2)}
 
 .call-identity{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;min-height:0}
+.call-peer-avatar-stage{position:relative;width:132px;height:132px;display:grid;place-items:center;margin-bottom:10px}
+.call-peer-avatar-stage .ring-wave{width:104px;height:104px;background:rgba(200,117,136,.24)}
+.call-peer-avatar-stage .ring-wave:nth-child(2){animation-delay:.6s}
+.call-peer-avatar-stage .ring-wave:nth-child(3){animation-delay:1.2s}
+.call-peer-avatar-photo{position:relative;z-index:2;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:#FAF6F7;color:#682C43;font:600 42px/1 'Inter',sans-serif;box-shadow:0 0 0 8px rgba(255,255,255,.055),0 20px 50px rgba(0,0,0,.34)}
+.call-peer-avatar-photo img{width:100%;height:100%;display:block;object-fit:cover}
+.call-peer-avatar-stage.compact{width:94px;height:94px;margin-bottom:8px}
+.call-peer-avatar-stage.compact .call-peer-avatar-photo{width:82px;height:82px;font-size:32px;box-shadow:0 0 0 6px rgba(255,255,255,.05),0 14px 34px rgba(0,0,0,.3)}
 .call-peer-name{max-width:min(86vw,520px);display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere;font-family:'Inter',sans-serif;font-size:clamp(27px,8vw,36px);font-weight:600;line-height:1.12;color:#fff;letter-spacing:-.035em}
 .call-status{font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.74);text-shadow:0 1px 3px rgba(0,0,0,.2)}
 .call-status.call-security{color:rgba(255,255,255,.9);font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.3)}
@@ -5381,17 +5389,7 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
         console.error('Native call room provisioning failed');
       }
     }
-    if (window.VaultlixAndroid?.supportsNativeWebRtc?.()) {
-      try {
-        const rawNativeKey = await crypto.subtle.exportKey('raw', room.sharedKey);
-        window.VaultlixAndroid.provisionCallRoom(
-          room.nativeRoomHandle, room.code, room.token,
-          bytesToBase64(new Uint8Array(rawNativeKey))
-        );
-      } catch (e) {
-        console.error('Android native call room provisioning failed');
-      }
-    }
+    await provisionAndroidCallRoom(room);
     // Only pulse the bar if it's actually showing this room right now —
     // deriveSharedKey also runs for background rooms (page-load restore,
     // background rekey on a non-active tab), and pulsing the one shared
@@ -5402,6 +5400,28 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
     console.error('E2E: deriveSharedKey failed:', e.message);
     room.sharedKey = null;
     if (room.code === activeRoomCode) updateE2EBar(room);
+  }
+}
+
+async function provisionAndroidCallRoom(room) {
+  if (!room?.sharedKey || !window.VaultlixAndroid?.supportsNativeWebRtc?.()) return false;
+  try {
+    const rawNativeKey = await crypto.subtle.exportKey('raw', room.sharedKey);
+    const nativeKey = bytesToBase64(new Uint8Array(rawNativeKey));
+    const peerImage = safeProfileImageUri(room.peerProfileImage) || '';
+    if (typeof window.VaultlixAndroid.provisionCallRoomWithAvatar === 'function') {
+      return !!window.VaultlixAndroid.provisionCallRoomWithAvatar(
+        room.nativeRoomHandle, room.code, room.token, nativeKey, peerImage
+      );
+    }
+    // Keep native calling compatible until every tester has upgraded to the
+    // avatar-aware Android bridge.
+    return !!window.VaultlixAndroid.provisionCallRoom(
+      room.nativeRoomHandle, room.code, room.token, nativeKey
+    );
+  } catch (e) {
+    console.error('Android native call room provisioning failed');
+    return false;
   }
 }
 
@@ -6827,6 +6847,15 @@ function renderCallOverlay(room) {
     }
   }
   const name = escHtml(room.callPeerName || room.peerName || 'them');
+  const peerImage = safeProfileImageUri(room.peerProfileImage);
+  const peerInitial = escHtml((room.callPeerName || room.peerName || 'V').trim().charAt(0).toUpperCase() || 'V');
+  const incomingAvatar = `<div class="call-peer-avatar-stage">
+          <div class="ring-wave"></div><div class="ring-wave"></div><div class="ring-wave"></div>
+          <div class="call-peer-avatar-photo">${peerImage ? `<img src="${escHtml(peerImage)}" alt=""/>` : peerInitial}</div>
+        </div>`;
+  const activeAvatar = `<div class="call-peer-avatar-stage compact">
+          <div class="call-peer-avatar-photo">${peerImage ? `<img src="${escHtml(peerImage)}" alt=""/>` : peerInitial}</div>
+        </div>`;
 
   if (room.callState === 'outgoing') {
     const outgoingSpeakerBtnHtml = room.speakerAvailable ? `
@@ -6858,10 +6887,7 @@ function renderCallOverlay(room) {
       ${stableIosRain ? '' : callDataRainHtml()}
       ${callHeaderBlock()}
       <div class="call-identity">
-        <div class="ring-container">
-          <div class="ring-wave"></div><div class="ring-wave"></div><div class="ring-wave"></div>
-          <div class="ring-dot"></div>
-        </div>
+        ${incomingAvatar}
         <div class="call-peer-name">${name}</div>
         <div class="call-status">Incoming encrypted call</div>
       </div>
@@ -6933,6 +6959,7 @@ function renderCallOverlay(room) {
     const identityHtml = videoMode ? `
         <span class="call-peer-name-compact">${name}</span>
         <span class="call-timer-compact" id="call-timer">${waitingForNativeMedia ? 'Connecting…' : '00:00'}</span>` : `
+        ${activeAvatar}
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status call-security">End-to-end encrypted call</div>
         <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>
@@ -9677,6 +9704,7 @@ async function reconcileConversationPeerIdentities(requests, state) {
       room.peerProfileImage = peer.profileImage;
       changed = true;
       if (room.code === activeRoomCode) renderChatPeerAvatar(room);
+      provisionAndroidCallRoom(room).catch(() => {});
     }
     if (!room.everOnline) { room.everOnline = true; changed = true; }
     if (changed) await persistRoom(room);

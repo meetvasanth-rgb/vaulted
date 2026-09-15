@@ -662,6 +662,11 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean provisionCallRoomWithAvatar(String handle, String code, String token, String keyBase64, String profileImage) {
+            return nativeCallRoomStore.save(handle, code, token, keyBase64, profileImage);
+        }
+
+        @JavascriptInterface
         public void removeCallRoom(String handle, String code) {
             nativeCallRoomStore.remove(handle == null ? "" : handle, code == null ? "" : code);
         }

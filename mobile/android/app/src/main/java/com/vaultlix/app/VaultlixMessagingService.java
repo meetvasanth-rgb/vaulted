@@ -5,6 +5,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
@@ -15,6 +17,7 @@ import android.service.notification.StatusBarNotification;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.Person;
+import androidx.core.graphics.drawable.IconCompat;
 
 import com.capacitorjs.plugins.pushnotifications.MessagingService;
 import com.google.firebase.messaging.RemoteMessage;
@@ -133,6 +136,9 @@ public class VaultlixMessagingService extends MessagingService {
         }
         if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
         if (body.isEmpty()) body = getString(R.string.tap_to_answer);
+        NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
+        String avatarPath = savedRoom == null ? null : savedRoom.avatarPath;
+        Bitmap callerAvatar = avatarPath == null ? null : BitmapFactory.decodeFile(avatarPath);
         boolean nativePrepared = engine.prepareIncoming(code);
 
         NotificationManager manager = getSystemService(NotificationManager.class);
@@ -165,7 +171,7 @@ public class VaultlixMessagingService extends MessagingService {
                 .appendQueryParameter("nativeCallAction", "answer")
                 .build();
         int requestCode = code.hashCode();
-        Intent displayIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, false, nativePrepared);
+        Intent displayIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, false, nativePrepared, avatarPath);
 
         PendingIntent displayCall = PendingIntent.getActivity(
                 this,
@@ -174,7 +180,7 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Intent answerIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, true, nativePrepared);
+        Intent answerIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, true, nativePrepared, avatarPath);
         PendingIntent answerCall = PendingIntent.getActivity(
                 this,
                 requestCode + 1,
@@ -193,10 +199,9 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Person callerPerson = new Person.Builder()
-                .setName(caller)
-                .setImportant(true)
-                .build();
+        Person.Builder callerBuilder = new Person.Builder().setName(caller).setImportant(true);
+        if (callerAvatar != null) callerBuilder.setIcon(IconCompat.createWithBitmap(callerAvatar));
+        Person callerPerson = callerBuilder.build();
 
         NotificationCompat.Builder notification = new NotificationCompat.Builder(this, callChannelId)
                 .setSmallIcon(R.drawable.ic_stat_vaultlix)
@@ -212,12 +217,13 @@ public class VaultlixMessagingService extends MessagingService {
                 .setTimeoutAfter(60_000)
                 .setContentIntent(displayCall)
                 .setFullScreenIntent(displayCall, true);
+        if (callerAvatar != null) notification.setLargeIcon(callerAvatar);
 
         wakeDisplayForIncomingCall();
         manager.notify(requestCode, notification.build());
     }
 
-    private Intent incomingCallIntent(Uri inviteUri, String caller, String callId, int notificationId, boolean autoAnswer, boolean nativePrepared) {
+    private Intent incomingCallIntent(Uri inviteUri, String caller, String callId, int notificationId, boolean autoAnswer, boolean nativePrepared, String avatarPath) {
         Intent intent = new Intent(this, IncomingCallActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra(IncomingCallActivity.EXTRA_INVITE_URI, inviteUri.toString());
@@ -225,6 +231,7 @@ public class VaultlixMessagingService extends MessagingService {
         intent.putExtra(IncomingCallActivity.EXTRA_CALL_ID, callId);
         intent.putExtra(IncomingCallActivity.EXTRA_AUTO_ANSWER, autoAnswer);
         intent.putExtra(IncomingCallActivity.EXTRA_NATIVE_PREPARED, nativePrepared);
+        if (avatarPath != null) intent.putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_PATH, avatarPath);
         intent.putExtra(EXTRA_CALL_NOTIFICATION_ID, notificationId);
         return intent;
     }

@@ -8,6 +8,10 @@ const path = require('node:path');
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const postgres = fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
+const androidStore = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallRoomStore.java'), 'utf8');
+const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
+const androidPush = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
 
 test('profile images are authenticated, bounded and persisted', () => {
   assert.match(server, /function normalizeProfileImage\(value\)/);
@@ -44,6 +48,20 @@ test('profile image controls support add, replace and remove', () => {
   assert.match(client, /saveProfileImageUpdate\('replace', image\)/);
   assert.match(client, /saveProfileImageUpdate\('remove'\)/);
   assert.match(client, /id="public-profile-photo"/);
+});
+
+test('incoming calls show the peer profile photo with an initial fallback', () => {
+  assert.match(client, /const peerImage = safeProfileImageUri\(room\.peerProfileImage\)/);
+  assert.match(client, /class="call-peer-avatar-photo"/);
+  assert.match(client, /provisionCallRoomWithAvatar/);
+  assert.match(client, /typeof window\.VaultlixAndroid\.provisionCallRoomWithAvatar === 'function'/);
+  assert.match(androidMain, /public boolean provisionCallRoomWithAvatar/);
+  assert.match(androidStore, /native-call-avatars/);
+  assert.match(androidStore, /ThumbnailUtils\.extractThumbnail\(decoded, 256, 256/);
+  assert.match(androidIncoming, /BitmapFactory\.decodeFile\(callerAvatarPath\)/);
+  assert.match(androidIncoming, /setClipToOutline\(true\)/);
+  assert.match(androidPush, /callerBuilder\.setIcon\(IconCompat\.createWithBitmap\(callerAvatar\)\)/);
+  assert.match(androidPush, /notification\.setLargeIcon\(callerAvatar\)/);
 });
 
 test('privacy copy discloses optional profile image storage and visibility', () => {

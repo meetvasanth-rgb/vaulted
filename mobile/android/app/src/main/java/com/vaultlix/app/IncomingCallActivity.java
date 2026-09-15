@@ -7,6 +7,8 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
@@ -46,6 +48,7 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_AUTO_ANSWER = "autoAnswer";
     public static final String EXTRA_CALL_ID = "callId";
     public static final String EXTRA_NATIVE_PREPARED = "nativePrepared";
+    public static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
 
     private String inviteUri;
     private int notificationId;
@@ -53,6 +56,7 @@ public class IncomingCallActivity extends Activity {
     private boolean answerInProgress;
     private boolean nativePrepared;
     private String caller;
+    private String callerAvatarPath;
     private final Handler ringtoneHandler = new Handler(Looper.getMainLooper());
     private final Runnable ringtoneTimeout = this::stopIncomingRingtone;
     private Ringtone incomingRingtone;
@@ -124,6 +128,7 @@ public class IncomingCallActivity extends Activity {
         inviteUri = intent.getStringExtra(EXTRA_INVITE_URI);
         callId = intent.getStringExtra(EXTRA_CALL_ID);
         caller = intent.getStringExtra(EXTRA_CALLER);
+        callerAvatarPath = intent.getStringExtra(EXTRA_CALLER_AVATAR_PATH);
         nativePrepared = intent.getBooleanExtra(EXTRA_NATIVE_PREPARED, false);
         notificationId = intent.getIntExtra(
                 VaultlixMessagingService.EXTRA_CALL_NOTIFICATION_ID,
@@ -174,10 +179,20 @@ public class IncomingCallActivity extends Activity {
         View halo = new View(this);
         halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
         portrait.addView(halo, centered(dp(132), dp(132)));
-        TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
-        avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        avatar.setBackground(circle(IVORY));
-        portrait.addView(avatar, centered(dp(104), dp(104)));
+        Bitmap callerPhoto = callerAvatarPath == null ? null : BitmapFactory.decodeFile(callerAvatarPath);
+        if (callerPhoto != null) {
+            ImageView avatar = new ImageView(this);
+            avatar.setImageBitmap(callerPhoto);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            avatar.setBackground(circle(IVORY));
+            avatar.setClipToOutline(true);
+            portrait.addView(avatar, centered(dp(104), dp(104)));
+        } else {
+            TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
+            avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            avatar.setBackground(circle(IVORY));
+            portrait.addView(avatar, centered(dp(104), dp(104)));
+        }
         root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
 
         TextView name = text(displayName, displayName.length() > 22 ? 28 : 32, Color.WHITE);
