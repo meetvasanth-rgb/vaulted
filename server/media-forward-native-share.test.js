@@ -33,3 +33,13 @@ test('ordinary image and file messages can be forwarded into another encrypted c
   assert.match(client, /await sendFileMessage\(target, file, rec\.base64/);
   assert.match(client, /if \(rec\.viewOnce\) \{ toast\('View-once photos cannot be forwarded'/);
 });
+
+test('forward picker filters contacts and confirms the selected recipient immediately', () => {
+  assert.match(client, /data-forward-search placeholder="Search contacts"/);
+  assert.match(client, /safeProfileImageUri\(room\.peerProfileImage\)/);
+  assert.match(client, /profileImage[\s\S]{0,140}<img src="\$\{profileImage\}"/);
+  assert.match(client, /button\.dataset\.forwardName\.includes\(query\)/);
+  assert.match(client, /textContent = 'Sending…'/);
+  assert.match(client, /textContent = '✓ Sent'/);
+  assert.match(client, /setTimeout\(close, 550\)/);
+});

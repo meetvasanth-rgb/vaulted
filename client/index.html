@@ -455,7 +455,7 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
    up on top of / instead of the app's own action row. Long-press is now a
    deliberate app gesture (see attachLongPress), so the native one needs to
    be turned off on the media elements it would normally trigger on. */
-.msg-image,.msg-file,.msg-viewonce{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.msg-image,.msg-file,.msg-pdf-card,.msg-viewonce{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 
 /* Multi-select mode: once active, every message shows an empty checkbox;
    picking one fills it in gold and brings that message back to full
@@ -12291,7 +12291,7 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // message as a whole, same as it would for a single photo; a quick tap
   // on an individual tile (handleAlbumImageTap) is a separate gesture that
   // opens just that one photo.
-  const media = div.querySelector('.msg-image, .msg-file, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif');
+  const media = div.querySelector('.msg-image, .msg-file, .msg-pdf-card, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif');
   if (media) attachLongPress(media, msgId);
   // Ordinary text bubbles previously only had the short-tap recognizer
   // below. Holding past its 400ms cutoff therefore did nothing at all,
@@ -12428,21 +12428,46 @@ function showForwardAttachmentPicker(rec) {
   const rows = targets.map(room => {
     const label = roomDisplayLabel(room);
     const avatarStyle = vaultAvatarPalette(room.peerPrivateNumber || room.code);
-    return `<button type="button" data-forward-room="${escHtml(room.code)}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;border-bottom:1px solid #EEE7E9;background:#fff;text-align:left;font:600 15px Inter,sans-serif;color:#211A1E;cursor:pointer"><span style="width:42px;height:42px;border-radius:50%;display:grid;place-items:center;flex:none;${avatarStyle}">${escHtml(label.trim().charAt(0).toUpperCase() || 'V')}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</span></button>`;
+    const profileImage = safeProfileImageUri(room.peerProfileImage);
+    const avatar = profileImage
+      ? `<img src="${profileImage}" alt="" style="width:100%;height:100%;object-fit:cover"/>`
+      : escHtml(label.trim().charAt(0).toUpperCase() || 'V');
+    return `<button type="button" data-forward-room="${escHtml(room.code)}" data-forward-name="${escHtml(label.toLocaleLowerCase())}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;border-bottom:1px solid #EEE7E9;background:#fff;text-align:left;font:600 15px Inter,sans-serif;color:#211A1E;cursor:pointer;transition:background .16s ease,opacity .16s ease"><span style="width:42px;height:42px;border-radius:50%;display:grid;place-items:center;overflow:hidden;flex:none;${avatarStyle}">${avatar}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(label)}</span><span data-forward-status role="status" aria-live="polite" style="flex:none;color:#7B2949;font-size:13px;font-weight:700"></span></button>`;
   }).join('');
-  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward attachment" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">Forward to</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div>${rows}</section>`;
+  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward attachment" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">Forward to</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div><label style="display:flex;align-items:center;gap:9px;background:#F7F1F3;border:1px solid #E8DDE1;border-radius:14px;padding:10px 12px;margin:4px 0 10px;color:#7B2949"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-forward-search placeholder="Search contacts" autocomplete="off" aria-label="Search contacts to forward to" style="width:100%;border:0;outline:0;background:transparent;font:500 15px Inter,sans-serif;color:#211A1E"></label><div data-forward-list>${rows}</div><div data-forward-empty hidden style="padding:22px 4px;text-align:center;font:500 14px Inter,sans-serif;color:#746A6E">No matching contacts</div></section>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
   overlay.querySelector('[data-forward-close]').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  overlay.querySelectorAll('[data-forward-room]').forEach(button => {
+  const targetButtons = [...overlay.querySelectorAll('[data-forward-room]')];
+  const search = overlay.querySelector('[data-forward-search]');
+  const empty = overlay.querySelector('[data-forward-empty]');
+  search.addEventListener('input', () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    let visible = 0;
+    targetButtons.forEach(button => {
+      const matches = !query || button.dataset.forwardName.includes(query);
+      button.hidden = !matches;
+      if (matches) visible++;
+    });
+    empty.hidden = visible !== 0;
+  });
+  targetButtons.forEach(button => {
     button.onclick = async () => {
       const target = rooms.get(button.dataset.forwardRoom);
       if (!target) return;
-      button.disabled = true;
+      targetButtons.forEach(candidate => { candidate.disabled = true; });
+      button.style.background = '#F5E8ED';
+      button.querySelector('[data-forward-status]').textContent = 'Sending…';
       const sent = await forwardAttachmentToRoom(target, rec);
-      if (sent) close();
-      else button.disabled = false;
+      if (sent) {
+        button.querySelector('[data-forward-status]').textContent = '✓ Sent';
+        setTimeout(close, 550);
+      } else {
+        button.style.background = '#fff';
+        button.querySelector('[data-forward-status]').textContent = 'Try again';
+        targetButtons.forEach(candidate => { candidate.disabled = false; });
+      }
     };
   });
 }
