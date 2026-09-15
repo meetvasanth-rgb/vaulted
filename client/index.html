@@ -13185,7 +13185,7 @@ function changePdfPreviewPage(direction) {
 function shareOpenPdf() {
   const rec = activePdfPreview?.rec;
   if (!rec) return;
-  downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
+  shareDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
 }
 
 function downloadOpenPdf() {
@@ -16687,7 +16687,7 @@ async function compressImageFile(file) {
 // asked to download a large data: URI through the download attribute —
 // which is exactly what made saving a received file or photo look broken.
 // A Blob doesn't have that ceiling.
-function downloadDataUri(dataUri, filename) {
+function transferDataUri(dataUri, filename, nativeAction) {
   try {
     // Greedy (.+), not [^;]+ — a voice note's mime routinely carries a
     // codec parameter (e.g. "audio/webm;codecs=opus"), and the old
@@ -16706,17 +16706,20 @@ function downloadDataUri(dataUri, filename) {
     // value can never carry a quote or other HTML-breaking character, even
     // though nothing here renders it as HTML today.
     if (!isPlausibleMimeShape(mime) || !isValidMediaBase64(base64)) { toast('Could not save file'); return; }
-    // Installed apps need a native hand-off. WKWebView and Android WebView
-    // do not reliably honor an anchor's download attribute (some versions
-    // simply navigate back to the profile or do nothing). Their system
-    // sheet provides Save Image / Save to Files as well as ordinary share
-    // destinations and keeps the decrypted bytes on-device.
+    // Installed apps need separate native Save and Share hand-offs. A share
+    // URI is temporary and a receiving app may try to read it only after
+    // Vaultlix resumes and cleans its cache; using it for a Download action
+    // caused Android to report "file does not exist". Save uses the document
+    // picker bridge, which copies the bytes to the chosen destination first.
     if (window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'shareMedia', dataUrl:dataUri, filename:filename || 'vaultlix-file' });
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:nativeAction === 'share' ? 'shareMedia' : 'saveMedia', dataUrl:dataUri, filename:filename || 'vaultlix-file' });
       return;
     }
-    if (typeof window.VaultlixAndroid?.shareMedia === 'function') {
+    if (nativeAction === 'share' && typeof window.VaultlixAndroid?.shareMedia === 'function') {
       if (window.VaultlixAndroid.shareMedia(dataUri, filename || 'vaultlix-file')) return;
+    }
+    if (nativeAction !== 'share' && typeof window.VaultlixAndroid?.saveMedia === 'function') {
+      if (window.VaultlixAndroid.saveMedia(dataUri, filename || 'vaultlix-file')) return;
     }
     const byteChars = atob(base64);
     const bytes = new Uint8Array(byteChars.length);
@@ -16733,6 +16736,14 @@ function downloadDataUri(dataUri, filename) {
   } catch (e) {
     toast('Could not save file');
   }
+}
+
+function downloadDataUri(dataUri, filename) {
+  transferDataUri(dataUri, filename, 'save');
+}
+
+function shareDataUri(dataUri, filename) {
+  transferDataUri(dataUri, filename, 'share');
 }
 
 function formatFileSize(bytes) {

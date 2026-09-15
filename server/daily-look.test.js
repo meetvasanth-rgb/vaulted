@@ -139,5 +139,8 @@ test('the latest generated Daily Look remains downloadable after profile use and
   assert.match(client, /Your last Daily Look is saved on this device and ready to download/);
   assert.match(client, /onclick="downloadDailyLook\(\)"/);
   assert.match(client, /onclick="beginAnotherDailyLook\(\)"/);
+  assert.match(client, /function downloadDailyLook\(\)[\s\S]{0,220}downloadDataUri\(dailyLookGeneratedImage/);
+  assert.match(client, /function downloadDataUri\(dataUri, filename\)[\s\S]{0,120}transferDataUri\(dataUri, filename, 'save'\)/);
+  assert.match(client, /VaultlixAndroid\.saveMedia\(dataUri, filename \|\| 'vaultlix-file'\)/);
   assert.match(client, /indexedDB\.deleteDatabase\(DAILY_LOOK_RESULT_DB\)/);
 });
