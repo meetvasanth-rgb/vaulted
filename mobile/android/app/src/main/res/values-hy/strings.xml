@@ -20,4 +20,6 @@
   <string name="native_private_identity_protected">Մասնավոր ինքնությունը պաշտպանված է</string>
   <string name="native_decline">Մերժել</string>
   <string name="native_answer">Պատասխանել</string>
+    <string name="native_end_to_end_encrypted">Ծայրից ծայր գաղտնագրված</string>
+    <string name="native_end_to_end_encrypted_call">Ծայրից ծայր գաղտնագրված զանգ</string>
 </resources>

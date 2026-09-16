@@ -1,4 +1,4 @@
-/* Native iOS image checks. This module has no network or storage access. */
+/* Native iOS and Android image checks. This module has no network or storage access. */
 (function(root) {
   'use strict';
   const enabled = /VaultlixImageSafety\/1/.test(root.navigator?.userAgent || '') || root.__vaultlixLocalImageSafety === true;
@@ -18,6 +18,10 @@
       const timer = setTimeout(() => finish('unavailable'), 25000);
       pending.set(requestId, finish);
       try {
+        if (typeof root.VaultlixAndroid?.screenImage === 'function') {
+          root.VaultlixAndroid.screenImage(requestId, base64);
+          return;
+        }
         const bridge = root.webkit?.messageHandlers?.vaultlixCall;
         if (!bridge) return finish('unavailable');
         bridge.postMessage({ action:'screenImage', requestId, base64 });

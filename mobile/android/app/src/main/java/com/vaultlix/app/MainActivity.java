@@ -365,6 +365,23 @@ public class MainActivity extends BridgeActivity {
 
     private final class AndroidCallBridge {
         @JavascriptInterface
+        public void screenImage(String requestId, String base64) {
+            if (requestId == null || requestId.length() > 80) return;
+            runOnUiThread(() -> {
+                String url = getBridge().getWebView().getUrl();
+                if (url == null || !url.startsWith("https://vaultlix.com/")) return;
+                LocalImageSafety.get(MainActivity.this).check(base64, status -> runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    String current = getBridge().getWebView().getUrl();
+                    if (current == null || !current.startsWith("https://vaultlix.com/")) return;
+                    String script = "window.dispatchEvent(new CustomEvent('vaultlix:image-safety-result',{detail:{requestId:"
+                            + JSONObject.quote(requestId) + ",status:" + JSONObject.quote(status) + "}}));";
+                    getBridge().getWebView().evaluateJavascript(script, null);
+                }));
+            });
+        }
+
+        @JavascriptInterface
         public double statusBarInsetCssPx() {
             WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
             if (insets == null) return 0;

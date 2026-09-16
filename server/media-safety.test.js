@@ -63,3 +63,10 @@ test('albums and reply thumbnails are independently included in local checks',()
   const context={};vm.createContext(context);vm.runInContext(extract('recordImagesForLocalCheck'),context);
   assert.deepEqual(Array.from(context.recordImagesForLocalCheck({kind:'album',images:[{base64:'a'},{base64:'b'}],replyData:{thumb:'c'}})),['a','b','c']);
 });
+test('Android bridge returns the same local verdict without using the iOS bridge',async()=>{
+  const events={}, calls=[];
+  const context={navigator:{userAgent:'VaultlixImageSafety/1'},crypto:webcrypto,TextEncoder,setTimeout,clearTimeout,addEventListener:(name,fn)=>events[name]=fn,VaultlixAndroid:{screenImage(requestId,base64){calls.push(base64);setTimeout(()=>events['vaultlix:image-safety-result']({detail:{requestId,status:'blocked'}}),1);}},fetch(){throw Error('No network permitted');}};
+  vm.createContext(context);vm.runInContext(code,context);
+  assert.equal(await context.VaultlixMediaSafety.check('YQ=='),'blocked');
+  assert.deepEqual(calls,['YQ==']);
+});
