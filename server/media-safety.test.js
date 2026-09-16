@@ -105,3 +105,24 @@ test('approved native photos avoid the second reveal gate, but other attachments
     assert.equal(context.needsAttachmentReveal(rec),true);
   }
 });
+test('photo checking reports each image and stops at a failed check',async()=>{
+  const messages=[],checked=[];
+  const context={localImageSafetyEnabled:()=>true,window:{VaultlixMediaSafety:{enabled:true,async check(image){checked.push(image);return image==='bad'?'blocked':'allowed';}}}};
+  vm.createContext(context);vm.runInContext('async '+extract('checkLocalImages'),context);
+  assert.equal(await context.checkLocalImages(['first','bad','third'],s=>messages.push(s)),'blocked');
+  assert.deepEqual(checked,['first','bad']);
+  assert.deepEqual(messages,['Checking photo 1 of 3…','Checking photo 2 of 3…']);
+});
+test('photo send shows feedback before starting and removes it on failure without duplicate sends',async()=>{
+  const buttons={},events=[];
+  let finish;
+  const context={document:{createElement:()=>({style:{},querySelector:key=>buttons[key] ||= {},addEventListener(){},remove(){events.push('overlay-closed');}}),body:{appendChild(){}}},safeImageDataUri:()=>'',MEDIA_BLOCKED_HTML:'',beginPhotoSendProgress:()=>{events.push('progress-visible');return {update(){},close(){events.push('progress-closed');}};},requestAnimationFrame:fn=>fn(),setTimeout:fn=>fn(),sendAlbumMessage:()=>{events.push('send-started');return new Promise((_,reject)=>{finish=()=>reject(Error('test'));});},toast:()=>events.push('error-shown')};
+  vm.createContext(context);vm.runInContext(extract('showSendImageOptions'),context);
+  context.showSendImageOptions({},[{file:{type:'image/jpeg'},base64:'a'},{file:{},base64:'b'}]);
+  const pending=buttons['#send-img-normal'].onclick();
+  await Promise.resolve();
+  await buttons['#send-img-normal'].onclick();
+  assert.deepEqual(events,['progress-visible','overlay-closed','send-started']);
+  finish();await pending;
+  assert.deepEqual(events.slice(-2),['error-shown','progress-closed']);
+});

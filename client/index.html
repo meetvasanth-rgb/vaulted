@@ -2494,6 +2494,12 @@ html.vaultlix-native-android .emergency-sheet{
   html.vaultlix-native-android #s-chat .sys-msg{font-size:13px!important}
   html.vaultlix-native-android #s-chat .msg-time{font-size:11px!important}
 }
+
+#photo-send-progress{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(340px,calc(100% - 32px));z-index:998;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.photo-send-status{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:16px;background:#1A1916;color:#fff;font-size:14px;box-shadow:0 4px 20px #0003}
+.photo-send-spinner{width:18px;height:18px;flex-shrink:0;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:photo-send-spin .8s linear infinite}
+@keyframes photo-send-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.photo-send-spinner{animation:none}}
 </style>
 <style>
 .account-overlay{position:fixed;inset:0;z-index:12000;background:rgba(39,29,37,.48);backdrop-filter:blur(5px);display:none;align-items:flex-end;justify-content:center;padding:0}
@@ -8984,18 +8990,19 @@ function updateAccountSettingsStatus() {
 function localImageSafetyEnabled() {
   return /VaultlixImageSafety\/1/.test(navigator.userAgent) || window.__vaultlixLocalImageSafety === true;
 }
-async function checkLocalImages(images) {
+async function checkLocalImages(images, onProgress) {
   if (!localImageSafetyEnabled()) return 'unsupported';
   if (!window.VaultlixMediaSafety?.enabled) return 'unavailable';
-  for (const image of images) {
+  for (const [index, image] of images.entries()) {
+    onProgress?.(`Checking photo ${index + 1} of ${images.length}…`);
     const status = await window.VaultlixMediaSafety.check(image);
     if (status !== 'allowed') return status;
   }
   return 'allowed';
 }
-async function allowLocalImageSend(images) {
+async function allowLocalImageSend(images, onProgress) {
   if (!localImageSafetyEnabled() || !images.length) return true;
-  const status = await checkLocalImages(images);
+  const status = await checkLocalImages(images, onProgress);
   if (status === 'allowed') return true;
   toast(status === 'blocked' ? 'This photo may contain nudity and cannot be shared. If this seems wrong, contact support.' : (window.VaultlixMediaSafety?.failureMessage?.() || 'The on-device checker is not ready. Close and reopen Vaultlix, then try again.'));
   return false;
@@ -16425,12 +16432,12 @@ async function handleFileSelect(event) {
 // its real post-compression type instead of the original file's — and size
 // is always derived from the base64 actually being sent rather than
 // file.size, since compression means those two routinely no longer match.
-async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0) {
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const mime = mimeOverride || file.type;
-  if (!await allowLocalImageSend([...(isImage || String(mime).startsWith('image/') ? [base64] : []), ...(pdfPreview ? [pdfPreview] : [])])) return false;
+  if (!await allowLocalImageSend([...(isImage || String(mime).startsWith('image/') ? [base64] : []), ...(pdfPreview ? [pdfPreview] : [])], onProgress)) return false;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
   const msgId = newMsgId();
 
@@ -16446,6 +16453,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview, pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce });
   let encryptedPayload;
   try {
+    onProgress?.('Encrypting photos…');
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
     toast("Couldn't encrypt — message not sent");
@@ -16453,6 +16461,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   }
   let attachmentId;
   try {
+    onProgress?.('Sending photos…');
     attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
   } catch (error) {
     toast('Could not securely upload file');
@@ -16503,8 +16512,8 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // of a wall of separate image messages. A single photo still goes through
 // sendFileMessage as its own normal message; grouping only makes sense
 // once there's more than one.
-async function sendAlbumMessage(room, items, viewOnce) {
-  if (!await allowLocalImageSend(items.map(item => item.base64))) return false;
+async function sendAlbumMessage(room, items, viewOnce, onProgress) {
+  if (!await allowLocalImageSend(items.map(item => item.base64), onProgress)) return false;
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
@@ -16525,6 +16534,7 @@ async function sendAlbumMessage(room, items, viewOnce) {
   });
   let encryptedPayload;
   try {
+    onProgress?.('Encrypting photos…');
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
     toast("Couldn't encrypt — message not sent");
@@ -16532,6 +16542,7 @@ async function sendAlbumMessage(room, items, viewOnce) {
   }
   let attachmentId;
   try {
+    onProgress?.('Sending photos…');
     attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
   } catch (error) {
     toast('Could not securely upload photos');
@@ -16802,6 +16813,22 @@ function seekVoice(e, msgId) {
 // only the recipient's side is gated.
 // items: array of { file, base64, mime } — one photo or several from a
 // multi-select all share the single choice made here.
+function beginPhotoSendProgress(count) {
+  let host = document.getElementById('photo-send-progress');
+  if (!host) {
+    host = document.createElement('div'); host.id = 'photo-send-progress';
+    document.body.appendChild(host);
+  }
+  const notice = document.createElement('div'); notice.className = 'photo-send-status';
+  notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
+  const spinner = document.createElement('span'); spinner.className = 'photo-send-spinner'; spinner.setAttribute('aria-hidden', 'true');
+  const label = document.createElement('span'); label.textContent = `Preparing ${count === 1 ? 'photo' : count + ' photos'}…`;
+  notice.append(spinner, label); host.appendChild(notice);
+  return {
+    update(message) { label.textContent = message; },
+    close() { notice.remove(); if (!host.children.length) host.remove(); },
+  };
+}
 function showSendImageOptions(room, items) {
   const overlay = document.createElement('div');
   overlay.id = 'send-img-overlay';
@@ -16835,13 +16862,25 @@ function showSendImageOptions(room, items) {
     </div>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
+  let sending = false;
   const sendAll = async (viewOnce) => {
+    if (sending) return;
+    sending = true;
+    const progress = beginPhotoSendProgress(items.length);
     close();
-    if (items.length > 1) {
-      await sendAlbumMessage(room, items, viewOnce);
-    } else {
-      const { file, base64, mime } = items[0];
-      await sendFileMessage(room, file, base64, true, viewOnce, mime);
+    try {
+      // Paint feedback before hashing, serialization and encryption begin.
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      if (items.length > 1) {
+        await sendAlbumMessage(room, items, viewOnce, progress.update);
+      } else {
+        const { file, base64, mime } = items[0];
+        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, progress.update);
+      }
+    } catch (error) {
+      toast('Could not send photos. Please try again.');
+    } finally {
+      progress.close();
     }
   };
   overlay.querySelector('#send-img-once').onclick = () => sendAll(true);
