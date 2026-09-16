@@ -42,9 +42,9 @@ test('hidden incoming content and inbox previews do not render unscreened text o
   const nodes=[];
   function node(tag){const n={tag,children:[],dataset:{},events:{},append(...items){this.children.push(...items);},addEventListener(event,callback){this.events[event]=callback;}};nodes.push(n);return n;}
   const body={insertBefore(n){this.last=n;}}, typing={};
-  const context={renderLocalImageSafetyGate:()=>false,document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{VaultlixContentSafety:{check}},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
+  const context={localImageSafetyEnabled:()=>false,localRecordChecks:new WeakMap(),renderLocalImageSafetyGate:()=>false,document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{VaultlixContentSafety:{check}},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
   vm.createContext(context);
-  for(const name of ['renderMessageRecord','vaultInboxPreview']){const start=html.indexOf('function '+name+'('),end=html.indexOf('\nfunction ',start+1);vm.runInContext(html.slice(start,end),context);}
+  for(const name of ['needsAttachmentReveal','renderMessageRecord','vaultInboxPreview']){const start=html.indexOf('function '+name+'('),end=html.indexOf('\nfunction ',start+1);vm.runInContext(html.slice(start,end),context);}
   const malicious={kind:'text',isMe:false,content:'I will kill you',id:'text'};
   context.renderMessageRecord({},malicious,false);
   assert.equal(body.last.children[0].children[0].textContent,'Potentially harmful message hidden by on-device safety checks.');
@@ -53,6 +53,11 @@ test('hidden incoming content and inbox previews do not render unscreened text o
     context.renderMessageRecord({},{kind,isMe:false,id:kind},false);
     assert.match(body.last.children[0].children[0].textContent,/Attachment hidden/);
   }
+  context.localImageSafetyEnabled=()=>true;
+  const approvedPhoto={kind:'file',isImage:true,base64:'photo',isMe:false,id:'approved',fileName:'I will kill you'};
+  context.localRecordChecks.set(approvedPhoto,'allowed');
+  context.renderMessageRecord({},approvedPhoto,false);
+  assert.equal(body.last.children[0].children[0].textContent,'Potentially harmful message hidden by on-device safety checks.');
   assert.equal(nodes.some(n=>['img','audio','video','iframe'].includes(n.tag)),false);
 });
 test('legacy cleanup requires a verified durable copy and preserves sources on failure',async t=>{

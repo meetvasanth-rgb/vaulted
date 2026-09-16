@@ -12983,6 +12983,15 @@ function scheduleDeferredKlipyGifs(body) {
   }));
 }
 const safetyRevealedRecords = new WeakSet();
+function needsAttachmentReveal(rec) {
+  const isAttachment = ['file','album','voice','gif','image'].includes(rec.kind) || !!rec.replyData?.isImage;
+  if (!isAttachment) return false;
+  // Approval covers the complete photo/album, not a document's preview or a
+  // voice/video message's reply thumbnail. Keep the latter opt-in.
+  const isPhoto = rec.kind === 'file' && rec.isImage && !!rec.base64;
+  const isAlbum = rec.kind === 'album' && rec.images?.length > 0 && rec.images.every(image => !!image.base64);
+  return !((isPhoto || isAlbum) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
+}
 function renderMessageRecord(room, rec, animate) {
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
@@ -13011,7 +13020,7 @@ function renderMessageRecord(room, rec, animate) {
   if (renderLocalImageSafetyGate(room, rec, div, body, typing)) return div;
   const safetyText = [rec.content,rec.replyData?.text,rec.name,rec.fileName,rec.title].filter(v=>typeof v==='string').join(' ');
   const screened = window.VaultlixContentSafety?.check(safetyText);
-  const hiddenMedia = ['file','album','voice','gif','image'].includes(rec.kind) || !!rec.replyData?.isImage;
+  const hiddenMedia = needsAttachmentReveal(rec);
   if (!rec.isMe && !safetyRevealedRecords.has(rec) && (hiddenMedia || screened?.blocked || (!window.VaultlixContentSafety && rec.kind === 'text'))) {
     const notice=document.createElement('div'); notice.className='msg-blocked';
     const label=document.createElement('span');

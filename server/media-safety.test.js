@@ -85,3 +85,23 @@ test('HTML bypasses the unversioned module cached by older service workers',()=>
   const server=fs.readFileSync(path.join(__dirname,'index.js'),'utf8');
   assert.match(server,/if \(url === '\/media-safety-v2\.js'\) url = '\/media-safety\.js'/);
 });
+
+test('approved native photos avoid the second reveal gate, but other attachments stay opt-in',()=>{
+  const context={localImageSafetyEnabled:()=>true,localRecordChecks:new WeakMap()};
+  vm.createContext(context);vm.runInContext(extract('needsAttachmentReveal'),context);
+  for(const rec of [{kind:'file',isImage:true,base64:'photo'}, {kind:'album',images:[{base64:'a'},{base64:'b'}]}, {kind:'file',isImage:true,base64:'photo',viewOnce:true}]) {
+    for(const status of [undefined,'pending','blocked','unavailable']) {
+      context.localRecordChecks.set(rec,status);
+      assert.equal(context.needsAttachmentReveal(rec),true);
+    }
+    context.localRecordChecks.set(rec,'allowed');
+    assert.equal(context.needsAttachmentReveal(rec),false);
+    context.localImageSafetyEnabled=()=>false;
+    assert.equal(context.needsAttachmentReveal(rec),true);
+    context.localImageSafetyEnabled=()=>true;
+  }
+  for(const rec of [{kind:'file',pdfPreview:'preview'}, {kind:'voice',replyData:{isImage:true,thumb:'photo'}}, {kind:'gif'}, {kind:'album',images:[]}]) {
+    context.localRecordChecks.set(rec,'allowed');
+    assert.equal(context.needsAttachmentReveal(rec),true);
+  }
+});
