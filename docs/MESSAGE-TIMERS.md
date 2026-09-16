@@ -15,9 +15,12 @@ Pending decryption preserves it, and encrypted native cache records include
 it. PostgreSQL stores it on `encrypted_messages`; both the in-memory and
 database expiry sweeps use it. Tombstones synchronize server deletions.
 
-Timer changes show a confirmation toast to the changer and a notification to
-the other peer when their open chat receives the updated setting. They are
-setting notifications, not encrypted chat-history records.
+Timer changes are encrypted, timestamped system notices in the conversation,
+using the same visual style as call history. The changing client supplies the
+encrypted notice in the setting request; the server stores it with the change.
+Both peers receive it through normal history synchronization. A stable message
+ID prevents retries from duplicating the notice. Notices have no disappearing
+timer of their own; manual deletion and clearing history still apply.
 
 ## Upgrade from room-wide timers
 

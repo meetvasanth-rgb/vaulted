@@ -80,6 +80,15 @@ test('timer changes never expire earlier untimed messages and old timed messages
   await new Promise(resolve=>setTimeout(resolve,5500));
   poll=await post(base,'/api/poll',{code:created.code,token:peer.token,lastSeq:0,full:1});
   assert.deepEqual(poll.messages.filter(m=>m.type==='message').map(m=>m.id),['before','after']);
+  const noticeChange={...auth,deleteTimer:60,noticeId:'timer-notice',noticeContent:'v:encrypted-notice'};
+  const update=await post(base,'/api/set-timer',noticeChange);
+  assert.equal(update.notice.id,'timer-notice');
+  await post(base,'/api/set-timer',noticeChange);
+  poll=await post(base,'/api/poll',{code:created.code,token:peer.token,lastSeq:0,full:1});
+  const notices=poll.messages.filter(m=>m.id==='timer-notice');
+  assert.equal(notices.length,1);assert.equal(notices[0].deleteTimerSeconds,0);
+  assert.equal(notices[0].content,'v:encrypted-notice');
+
 });
 
 const vm = require('node:vm');
@@ -104,10 +113,16 @@ test('client ignores room timer for old messages and repeated reads never extend
   context.handleReadReceipts(room,[{msgId:'old',readAt:5000,deleteTimerSeconds:0}]);
   assert.equal(old.deleteAt,undefined);
 });
-test('successful timer changes notify the active peer without claiming failure on old history',async()=>{
-  const notices=[];const room={deleteTimerSeconds:0};
-  const context={getActiveRoom:()=>room,api:async(_,body)=>({deleteTimer:body.deleteTimer}),persistRoom(){},updateTimerBar(){},toast:s=>notices.push(s),formatDuration:s=>s+'s'};
-  vm.createContext(context);vm.runInContext('async '+clientFunction('changeRoomTimer'),context);
+test('timer changes insert timestamped chat notices without success toasts',async()=>{
+  const notices=[];const room={code:'room',messages:[],deleteTimerSeconds:0};let id=0;
+  const context={getActiveRoom:()=>room,newMsgId:()=>`timer-${++id}`,encryptMsg:async(_,text)=>'v:'+text,api:async(_,body)=>({deleteTimer:body.deleteTimer,notice:{id:body.noticeId,ts:1000}}),persistRoom(){},updateTimerBar(){},toast:s=>notices.push(s),formatDuration:s=>s+'s',formatMsgTime:()=> '16:14',secureNativeStoreMessage(){},activeRoomCode:'room',renderChatBody(){}};
+  vm.createContext(context);vm.runInContext(clientFunction('timerNoticeRecord')+'\nasync '+clientFunction('changeRoomTimer'),context);
   await context.changeRoomTimer('60');await context.changeRoomTimer('0');
-  assert.match(notices[0],/on.*new messages/);assert.match(notices[1],/off for new messages/);
+  assert.equal(notices.length,0);assert.equal(room.messages.length,2);
+  assert.match(room.messages[0].content,/on.*60s.*16:14/);
+  assert.match(room.messages[1].content,/off.*16:14/);
+  for(const rec of room.messages){assert.equal(rec.kind,'sys');assert.equal(rec.timerEvent,true);assert.equal(rec.deleteTimerSeconds,0);}
+  vm.runInContext(clientFunction('isVisibleConversationRecord'),context);
+  assert.equal(context.isVisibleConversationRecord(room.messages[0]),true);
+  assert.equal(context.isVisibleConversationRecord({kind:'sys',content:'Joined'}),false);
 });

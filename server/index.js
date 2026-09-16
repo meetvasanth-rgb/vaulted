@@ -4227,12 +4227,26 @@ async function api(path, method, d, p, res, ip, headers) {
   // POST /api/set-timer — change the disappearing-message duration for this
   // room at any point in the conversation, not just at creation. The value
   // rides the existing deleteTimer field returned on every /api/poll
-  // response; session-setting changes are intentionally not chat messages.
+  // response. Updated clients supply an encrypted notice stored with the change.
   if (path==='/api/set-timer' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in conversation.',403);
+    if (d.noticeContent !== undefined && (typeof d.noticeContent !== 'string' || !d.noticeContent.startsWith('v:') || d.noticeContent.length > 4096 || typeof d.noticeId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(d.noticeId))) {
+      return resErr(res,'Invalid encrypted timer notice.',400);
+    }
+    const existingNotice = d.noticeId && room.msgs.find(msg => msg.id === d.noticeId);
+    if (existingNotice) return res200(res,{ok:true,deleteTimer:room.deleteTimer,notice:{id:existingNotice.id,ts:existingNotice.ts}});
+    let notice = null;
+    if (d.noticeContent) {
+      const ts = Date.now();
+      notice = {id:d.noticeId,seq:room.seq+1,type:'message',from:d.token,name:m.name,content:d.noticeContent,ts,time:new Date(ts).toTimeString().slice(0,5),deleteTimerSeconds:0,deliveredAt:null,readAt:null,reactions:{},reactionSeq:0};
+      if (postgresEnabled) notice.seq = await postgresStore.appendEncryptedMessage(d.code,d.token,notice,room.dbClient || null);
+      room.seq = notice.seq;
+      pushRoomMsg(room,notice);
+      room.lastMessageAt = ts;
+    }
     for (const msg of room.msgs) {
       if (msg.type === 'message' && !Number.isFinite(msg.deleteTimerSeconds)) msg.deleteTimerSeconds = messageDeleteTimer(room, msg);
     }
@@ -4243,7 +4257,7 @@ async function api(path, method, d, p, res, ip, headers) {
     room.deleteTimerSetAt = Date.now();
     room.lastActivity = Date.now();
     publishInboxRoom(d.code, 'timer', { excludeToken:d.token });
-    return res200(res, { ok: true, deleteTimer: room.deleteTimer });
+    return res200(res, { ok: true, deleteTimer: room.deleteTimer, notice:notice ? {id:notice.id,ts:notice.ts} : null });
   }
 
   // POST /api/clear-chat — wipes all message history for this room while
