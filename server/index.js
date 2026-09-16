@@ -2467,7 +2467,7 @@ function serveStatic(req, res) {
   // "/install" (no ".html") misses the readFile below, falls through to the
   // SPA catch-all, and silently serves the main app instead of install.html.
   // A new pathname bypasses older service workers' cache-first safety module.
-  if (url === '/media-safety-v2.js') url = '/media-safety.js';
+  if (url === '/media-safety-v2.js' || url === '/media-safety-v3.js') url = '/media-safety.js';
   if (url === '/install') url = '/install.html';
   if (url === '/admin') url = '/admin.html';
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }

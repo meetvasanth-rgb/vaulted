@@ -6,10 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { webcrypto } = require('node:crypto');
 const code = fs.readFileSync(path.join(__dirname, '../client/media-safety.js'), 'utf8');
-function runtime({ native = true, reply = 'allowed', bridge = true } = {}) {
+function runtime({ native = true, reply = 'allowed', bridge = true, storage, source = code } = {}) {
   const events = {}, calls = [];
   const context = {
-    navigator:{userAgent:native ? 'VaultlixImageSafety/1' : 'Safari'}, crypto:webcrypto, TextEncoder,
+    localStorage:storage, navigator:{userAgent:native ? 'VaultlixImageSafety/1' : 'Safari'}, crypto:webcrypto, TextEncoder,
     setTimeout, clearTimeout, addEventListener:(name,fn) => events[name] = fn,
     webkit:bridge ? {messageHandlers:{vaultlixCall:{postMessage(message) {
       calls.push(message);
@@ -17,7 +17,7 @@ function runtime({ native = true, reply = 'allowed', bridge = true } = {}) {
     }}}} : undefined,
     fetch() { throw new Error('Image checks must never use the network'); },
   };
-  vm.createContext(context); vm.runInContext(code,context);
+  vm.createContext(context); vm.runInContext(source,context);
   return {api:context.VaultlixMediaSafety,calls};
 }
 test('native screening stays local and deduplicates identical photos', async () => {
@@ -45,7 +45,7 @@ function extract(name) {
   return html.slice(start,end);
 }
 test('received and cached photo records have no reveal button before local approval',async()=>{
-  const context={localImageSafetyEnabled:()=>true,localRecordChecks:new WeakMap(),checkLocalImages:async()=> 'blocked',activeRoomCode:'room',renderChatBody(){},openReportPanel(){},document:{createElement:()=>({children:[],append(...nodes){this.children.push(...nodes);}})}};
+  const context={setTimeout,clearTimeout,localImageSafetyEnabled:()=>true,localRecordChecks:new WeakMap(),checkLocalImages:async()=> 'blocked',activeRoomCode:'room',renderChatBody(){},openReportPanel(){},document:{createElement:()=>({children:[],append(...nodes){this.children.push(...nodes);}})}};
   vm.createContext(context);
   vm.runInContext(extract('recordImagesForLocalCheck')+'\n'+extract('renderLocalImageSafetyGate'),context);
   const rec={kind:'file',isImage:true,base64:'YQ==',isMe:false};
@@ -79,11 +79,11 @@ test('missing bridge and unreadable input have different recovery guidance',asyn
   assert.match(api.failureMessage(),/smaller still image/);
 });
 test('HTML bypasses the unversioned module cached by older service workers',()=>{
-  assert.match(html,/src="\/media-safety-v2\.js"/);
+  assert.match(html,/src="\/media-safety-v3\.js"/);
   const worker=fs.readFileSync(path.join(__dirname,'../client/sw.js'),'utf8');
-  assert.match(worker,/'\/media-safety-v2\.js'/);
+  assert.match(worker,/'\/media-safety-v3\.js'/);
   const server=fs.readFileSync(path.join(__dirname,'index.js'),'utf8');
-  assert.match(server,/if \(url === '\/media-safety-v2\.js'\) url = '\/media-safety\.js'/);
+  assert.ok(server.includes("url === '/media-safety-v3.js'"));
 });
 
 test('approved native photos avoid the second reveal gate, but other attachments stay opt-in',()=>{
@@ -138,4 +138,56 @@ test('selection shows progress before compression and waits for every photo befo
   events.length=0;context.compressImageFile=async()=>{throw Error('read failed');};
   await context.handleFileSelect({target:{files:[{name:'c',size:10,type:'image/jpeg'}]}});
   assert.deepEqual(events,['visible','Preparing photo 1 of 1…','error','closed']);
+});
+
+function approvalStorage() {
+  const values = new Map();
+  return { values, getItem:key=>values.get(key), setItem:(key,value)=>values.set(key,value), removeItem:key=>values.delete(key) };
+}
+test('approval fingerprints survive reload without storing photos and changed content is checked', async()=>{
+  const storage=approvalStorage();
+  await runtime({storage}).api.check('YQ==');
+  assert.equal([...storage.values.values()].join('').includes('YQ=='),false);
+  const next=runtime({storage});
+  assert.equal(await next.api.check('data:image/png;base64,YQ=='),'allowed');
+  assert.equal(next.calls.length,0);
+  await next.api.check('Yg=='); assert.equal(next.calls.length,1);
+  next.api.clear();
+  await next.api.check('YQ=='); assert.equal(next.calls.length,2);
+});
+test('policy changes, expired approvals and storage failures require native checks',async()=>{
+  const storage=approvalStorage(); await runtime({storage}).api.check('YQ==');
+  const revised=runtime({storage,source:code.replace('nsfw-ios-android-v1','nsfw-ios-android-v2')});
+  await revised.api.check('YQ=='); assert.equal(revised.calls.length,1);
+  for(const [key,value] of storage.values) storage.setItem(key,JSON.stringify(JSON.parse(value).map(([hash])=>[hash,1])));
+  const expired=runtime({storage}); await expired.api.check('YQ=='); assert.equal(expired.calls.length,1);
+  const broken=runtime({storage:{getItem(){throw Error();},setItem(){throw Error();}}});
+  assert.equal(await broken.api.check('YQ=='),'allowed');assert.equal(broken.calls.length,1);
+});
+test('view-once bypasses durable approvals and failed checks are never persisted',async()=>{
+  const storage=approvalStorage(); await runtime({storage}).api.check('YQ==');
+  const ephemeral=runtime({storage});
+  await ephemeral.api.check('YQ==',{persist:false});assert.equal(ephemeral.calls.length,1);
+  const before=JSON.stringify([...storage.values]);
+  await ephemeral.api.check('Yg==',{persist:false});
+  assert.equal(JSON.stringify([...storage.values]),before);
+  const empty=approvalStorage();
+  await runtime({storage:empty,reply:'blocked'}).api.check('YQ==');
+  await runtime({storage:empty,reply:'unavailable'}).api.check('YQ==');
+  assert.equal(empty.values.size,0);
+});
+test('quick image checks stay quiet; slow checks show status after delay without revealing media',async()=>{
+  let settle, delayed, cleared=false, renders=0, options;
+  const context={localImageSafetyEnabled:()=>true,localRecordChecks:new WeakMap(),checkLocalImages:(_images,_progress,value)=>{options=value;return new Promise(resolve=>settle=resolve);},setTimeout:fn=>{delayed=fn;return 1;},clearTimeout:()=>{cleared=true;},activeRoomCode:'room',renderChatBody:()=>renders++,openReportPanel(){},document:{createElement:()=>({children:[],append(...nodes){this.children.push(...nodes);}})}};
+  vm.createContext(context);vm.runInContext(extract('recordImagesForLocalCheck')+'\n'+extract('renderLocalImageSafetyGate'),context);
+  const rec={kind:'file',isImage:true,base64:'photo',viewOnce:true};
+  const room={code:'room',messages:[rec]},body={insertBefore(){}},div={children:[],append(...nodes){this.children.push(...nodes);}};
+  assert.equal(context.renderLocalImageSafetyGate(room,rec,div,body,{}),true);
+  assert.equal(div.children[0].children[0].textContent,'');
+  assert.equal(options.persist,false);
+  delayed();assert.equal(renders,1);
+  div.children=[];context.renderLocalImageSafetyGate(room,rec,div,body,{});
+  assert.match(div.children[0].children[0].textContent,/Checking photo/);
+  settle('allowed');await Promise.resolve();assert.equal(cleared,true);
+  assert.equal(context.renderLocalImageSafetyGate(room,rec,div,body,{}),false);
 });

@@ -835,6 +835,7 @@ body.select-mode .chat-ftr{display:none}
 .msg-pdf-icon{width:34px;height:34px;border-radius:8px;background:#762B47;color:#fff;display:grid;place-items:center;flex:none;font:800 9px/1 Inter,sans-serif;letter-spacing:.04em}
 .msg-pdf-copy{min-width:0;display:flex;flex-direction:column;gap:4px}.msg-pdf-name{font:600 12px/1.25 Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msg-pdf-meta{font:500 10px/1.2 Inter,sans-serif;color:#8A7F84}
 .msg-media-blocked { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; color:#8A7F72; font-size:12px; }
+.msg-image-check-placeholder { min-width:160px; min-height:120px; display:flex; align-items:center; justify-content:center; border-radius:12px; background:var(--bg-secondary, #f5f3f4); color:#777; font-size:12px; padding:12px; }
 .msg-blocked { display:flex; align-items:center; gap:8px; background:#FDF0EE; border:0.5px solid #F1C4BC; border-radius:6px; padding:8px 12px; margin-top:4px; color:#C87588; font-size:12px; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 .msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
@@ -4073,7 +4074,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
      factory; renderQrCanvas() below (in the app's own script) draws it. -->
 <script src="/vendor/safety-words.js"></script>
 <script src="/content-safety.js"></script>
-<script src="/media-safety-v2.js"></script>
+<script src="/media-safety-v3.js"></script>
 <script>
 var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),T.exports}catch(N){throw T=0,N}};var vr=or((W,V)=>{var $=(function(){var L=function(x,w){var g=236,l=17,n=x,s=N[w],t=null,r=0,h=null,i=[],v={},_=function(a,f){r=n*4+17,t=(function(e){for(var u=new Array(e),o=0;o<e;o+=1){u[o]=new Array(e);for(var d=0;d<e;d+=1)u[o][d]=null}return u})(r),B(0,0),B(r-7,0),B(0,r-7),E(),C(),m(a,f),n>=7&&O(a),h==null&&(h=ir(n,s,i)),U(h,f)},B=function(a,f){for(var e=-1;e<=7;e+=1)if(!(a+e<=-1||r<=a+e))for(var u=-1;u<=7;u+=1)f+u<=-1||r<=f+u||(0<=e&&e<=6&&(u==0||u==6)||0<=u&&u<=6&&(e==0||e==6)||2<=e&&e<=4&&2<=u&&u<=4?t[a+e][f+u]=!0:t[a+e][f+u]=!1)},y=function(){for(var a=0,f=0,e=0;e<8;e+=1){_(!0,e);var u=P.getLostPoint(v);(e==0||a>u)&&(a=u,f=e)}return f},C=function(){for(var a=8;a<r-8;a+=1)t[a][6]==null&&(t[a][6]=a%2==0);for(var f=8;f<r-8;f+=1)t[6][f]==null&&(t[6][f]=f%2==0)},E=function(){for(var a=P.getPatternPosition(n),f=0;f<a.length;f+=1)for(var e=0;e<a.length;e+=1){var u=a[f],o=a[e];if(t[u][o]==null)for(var d=-2;d<=2;d+=1)for(var c=-2;c<=2;c+=1)d==-2||d==2||c==-2||c==2||d==0&&c==0?t[u+d][o+c]=!0:t[u+d][o+c]=!1}},O=function(a){for(var f=P.getBCHTypeNumber(n),e=0;e<18;e+=1){var u=!a&&(f>>e&1)==1;t[Math.floor(e/3)][e%3+r-8-3]=u}for(var e=0;e<18;e+=1){var u=!a&&(f>>e&1)==1;t[e%3+r-8-3][Math.floor(e/3)]=u}},m=function(a,f){for(var e=s<<3|f,u=P.getBCHTypeInfo(e),o=0;o<15;o+=1){var d=!a&&(u>>o&1)==1;o<6?t[o][8]=d:o<8?t[o+1][8]=d:t[r-15+o][8]=d}for(var o=0;o<15;o+=1){var d=!a&&(u>>o&1)==1;o<8?t[8][r-o-1]=d:o<9?t[8][15-o-1+1]=d:t[8][15-o-1]=d}t[r-8][8]=!a},U=function(a,f){for(var e=-1,u=r-1,o=7,d=0,c=P.getMaskFunction(f),p=r-1;p>0;p-=2)for(p==6&&(p-=1);;){for(var b=0;b<2;b+=1)if(t[u][p-b]==null){var D=!1;d<a.length&&(D=(a[d]>>>o&1)==1);var A=c(u,p-b);A&&(D=!D),t[u][p-b]=D,o-=1,o==-1&&(d+=1,o=7)}if(u+=e,u<0||r<=u){u-=e,e=-e;break}}},H=function(a,f){for(var e=0,u=0,o=0,d=new Array(f.length),c=new Array(f.length),p=0;p<f.length;p+=1){var b=f[p].dataCount,D=f[p].totalCount-b;u=Math.max(u,b),o=Math.max(o,D),d[p]=new Array(b);for(var A=0;A<d[p].length;A+=1)d[p][A]=255&a.getBuffer()[A+e];e+=b;var R=P.getErrorCorrectPolynomial(D),I=K(d[p],R.getLength()-1),S=I.mod(R);c[p]=new Array(R.getLength()-1);for(var A=0;A<c[p].length;A+=1){var X=A+S.getLength()-c[p].length;c[p][A]=X>=0?S.getAt(X):0}}for(var Z=0,A=0;A<f.length;A+=1)Z+=f[A].totalCount;for(var J=new Array(Z),Q=0,A=0;A<u;A+=1)for(var p=0;p<f.length;p+=1)A<d[p].length&&(J[Q]=d[p][A],Q+=1);for(var A=0;A<o;A+=1)for(var p=0;p<f.length;p+=1)A<c[p].length&&(J[Q]=c[p][A],Q+=1);return J},ir=function(a,f,e){for(var u=Y.getRSBlocks(a,f),o=G(),d=0;d<e.length;d+=1){var c=e[d];o.put(c.getMode(),4),o.put(c.getLength(),P.getLengthInBits(c.getMode(),a)),c.write(o)}for(var p=0,d=0;d<u.length;d+=1)p+=u[d].dataCount;if(o.getLengthInBits()>p*8)throw"code length overflow. ("+o.getLengthInBits()+">"+p*8+")";for(o.getLengthInBits()+4<=p*8&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=p*8||(o.put(g,8),o.getLengthInBits()>=p*8));)o.put(l,8);return H(o,u)};v.addData=function(a,f){f=f||"Byte";var e=null;switch(f){case"Numeric":e=q(a);break;case"Alphanumeric":e=z(a);break;case"Byte":e=rr(a);break;case"Kanji":e=tr(a);break;default:throw"mode:"+f}i.push(e),h=null},v.isDark=function(a,f){if(a<0||r<=a||f<0||r<=f)throw a+","+f;return t[a][f]},v.getModuleCount=function(){return r},v.make=function(){if(n<1){for(var a=1;a<40;a++){for(var f=Y.getRSBlocks(a,s),e=G(),u=0;u<i.length;u++){var o=i[u];e.put(o.getMode(),4),e.put(o.getLength(),P.getLengthInBits(o.getMode(),a)),o.write(e)}for(var d=0,u=0;u<f.length;u++)d+=f[u].dataCount;if(e.getLengthInBits()<=d*8)break}n=a}_(!1,y())},v.createTableTag=function(a,f){a=a||2,f=typeof f>"u"?a*4:f;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+f+"px;",e+='">',e+="<tbody>";for(var u=0;u<v.getModuleCount();u+=1){e+="<tr>";for(var o=0;o<v.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+a+"px;",e+=" height: "+a+"px;",e+=" background-color: ",e+=v.isDark(u,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>",e},v.createSvgTag=function(a,f,e,u){var o={};typeof arguments[0]=="object"&&(o=arguments[0],a=o.cellSize,f=o.margin,e=o.alt,u=o.title),a=a||2,f=typeof f>"u"?a*4:f,e=typeof e=="string"?{text:e}:e||{},e.text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,u=typeof u=="string"?{text:u}:u||{},u.text=u.text||null,u.id=u.text?u.id||"qrcode-title":null;var d=v.getModuleCount()*a+f*2,c,p,b,D,A="",R;for(R="l"+a+",0 0,"+a+" -"+a+",0 0,-"+a+"z ",A+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',A+=o.scalable?"":' width="'+d+'px" height="'+d+'px"',A+=' viewBox="0 0 '+d+" "+d+'" ',A+=' preserveAspectRatio="xMinYMin meet"',A+=u.text||e.text?' role="img" aria-labelledby="'+F([u.id,e.id].join(" ").trim())+'"':"",A+=">",A+=u.text?'<title id="'+F(u.id)+'">'+F(u.text)+"</title>":"",A+=e.text?'<description id="'+F(e.id)+'">'+F(e.text)+"</description>":"",A+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',A+='<path d="',b=0;b<v.getModuleCount();b+=1)for(D=b*a+f,c=0;c<v.getModuleCount();c+=1)v.isDark(b,c)&&(p=c*a+f,A+="M"+p+","+D+R);return A+='" stroke="transparent" fill="black"/>',A+="</svg>",A},v.createDataURL=function(a,f){a=a||2,f=typeof f>"u"?a*4:f;var e=v.getModuleCount()*a+f*2,u=f,o=e-f;return fr(e,e,function(d,c){if(u<=d&&d<o&&u<=c&&c<o){var p=Math.floor((d-u)/a),b=Math.floor((c-u)/a);return v.isDark(b,p)?0:1}else return 1})},v.createImgTag=function(a,f,e){a=a||2,f=typeof f>"u"?a*4:f;var u=v.getModuleCount()*a+f*2,o="";return o+="<img",o+=' src="',o+=v.createDataURL(a,f),o+='"',o+=' width="',o+=u,o+='"',o+=' height="',o+=u,o+='"',e&&(o+=' alt="',o+=F(e),o+='"'),o+="/>",o};var F=function(a){for(var f="",e=0;e<a.length;e+=1){var u=a.charAt(e);switch(u){case"<":f+="&lt;";break;case">":f+="&gt;";break;case"&":f+="&amp;";break;case'"':f+="&quot;";break;default:f+=u;break}}return f},ur=function(a){var f=1;a=typeof a>"u"?f*2:a;var e=v.getModuleCount()*f+a*2,u=a,o=e-a,d,c,p,b,D,A={"\u2588\u2588":"\u2588","\u2588 ":"\u2580"," \u2588":"\u2584","  ":" "},R={"\u2588\u2588":"\u2580","\u2588 ":"\u2580"," \u2588":" ","  ":" "},I="";for(d=0;d<e;d+=2){for(p=Math.floor((d-u)/f),b=Math.floor((d+1-u)/f),c=0;c<e;c+=1)D="\u2588",u<=c&&c<o&&u<=d&&d<o&&v.isDark(p,Math.floor((c-u)/f))&&(D=" "),u<=c&&c<o&&u<=d+1&&d+1<o&&v.isDark(b,Math.floor((c-u)/f))?D+=" ":D+="\u2588",I+=a<1&&d+1>=o?R[D]:A[D];I+=`
 `}return e%2&&a>0?I.substring(0,I.length-e-1)+Array(e+1).join("\u2580"):I.substring(0,I.length-1)};return v.createASCII=function(a,f){if(a=a||1,a<2)return ur(f);a-=1,f=typeof f>"u"?a*2:f;var e=v.getModuleCount()*a+f*2,u=f,o=e-f,d,c,p,b,D=Array(a+1).join("\u2588\u2588"),A=Array(a+1).join("  "),R="",I="";for(d=0;d<e;d+=1){for(p=Math.floor((d-u)/a),I="",c=0;c<e;c+=1)b=1,u<=c&&c<o&&u<=d&&d<o&&v.isDark(p,Math.floor((c-u)/a))&&(b=0),I+=b?D:A;for(p=0;p<a;p+=1)R+=I+`
@@ -8990,19 +8991,19 @@ function updateAccountSettingsStatus() {
 function localImageSafetyEnabled() {
   return /VaultlixImageSafety\/1/.test(navigator.userAgent) || window.__vaultlixLocalImageSafety === true;
 }
-async function checkLocalImages(images, onProgress) {
+async function checkLocalImages(images, onProgress, options) {
   if (!localImageSafetyEnabled()) return 'unsupported';
   if (!window.VaultlixMediaSafety?.enabled) return 'unavailable';
   for (const [index, image] of images.entries()) {
     onProgress?.(`Checking photo ${index + 1} of ${images.length}…`);
-    const status = await window.VaultlixMediaSafety.check(image);
+    const status = await window.VaultlixMediaSafety.check(image, options);
     if (status !== 'allowed') return status;
   }
   return 'allowed';
 }
-async function allowLocalImageSend(images, onProgress) {
+async function allowLocalImageSend(images, onProgress, options) {
   if (!localImageSafetyEnabled() || !images.length) return true;
-  const status = await checkLocalImages(images, onProgress);
+  const status = await checkLocalImages(images, onProgress, options);
   if (status === 'allowed') return true;
   toast(status === 'blocked' ? 'This photo may contain nudity and cannot be shared. If this seems wrong, contact support.' : (window.VaultlixMediaSafety?.failureMessage?.() || 'The on-device checker is not ready. Close and reopen Vaultlix, then try again.'));
   return false;
@@ -9042,20 +9043,27 @@ function renderLocalImageSafetyGate(room, rec, div, body, typing) {
   if (status === 'allowed') return false;
   if (!status) {
     status = 'pending'; localRecordChecks.set(rec, status);
-    checkLocalImages(images).then(result => {
+    const delayedNotice = setTimeout(() => {
+      if (localRecordChecks.get(rec) === 'pending') {
+        localRecordChecks.set(rec, 'checking');
+        if (room.code === activeRoomCode && room.messages.includes(rec)) renderChatBody(room);
+      }
+    }, 400);
+    checkLocalImages(images, undefined, { persist: !rec.viewOnce && !(rec.images || []).some(image => image.viewOnce) }).then(result => {
+      clearTimeout(delayedNotice);
       localRecordChecks.set(rec, result);
       if (room.code === activeRoomCode && room.messages.includes(rec)) renderChatBody(room);
     });
   }
-  const notice = document.createElement('div'); notice.className = 'msg-blocked';
+  const notice = document.createElement('div'); notice.className = status === 'pending' || status === 'checking' ? 'msg-image-check-placeholder' : 'msg-blocked';
   const label = document.createElement('span');
-  label.textContent = status === 'pending' ? 'Checking photo on this device…' : status === 'blocked' ? 'Photo hidden: possible nudity detected on this device.' : 'Photo unavailable: the on-device check could not finish.';
+  label.textContent = status === 'pending' ? '' : status === 'checking' ? 'Checking photo on this device…' : status === 'blocked' ? 'Photo hidden: possible nudity detected on this device.' : 'Photo unavailable: the on-device check could not finish.';
   notice.append(label);
   if (status === 'unavailable') {
     const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry';
     retry.onclick = () => { localRecordChecks.delete(rec); renderChatBody(room); }; notice.append(retry);
   }
-  if (!rec.isMe) {
+  if (!rec.isMe && status !== 'pending' && status !== 'checking') {
     const report = document.createElement('button'); report.type = 'button'; report.textContent = 'Report / Block';
     report.onclick = openReportPanel; notice.append(report);
   }
@@ -10603,6 +10611,7 @@ function clearReplacedAccountLocally(accountId, reload = true) {
       idbRemoveSession(code).catch(() => {});
     }
   }
+  window.VaultlixMediaSafety?.clear?.();
   localStorage.removeItem(ACCOUNT_STATE_KEY);
   saveRoomsIndex([]);
   saveActiveRoomCode(null);
@@ -10628,6 +10637,7 @@ async function signOutAnonymousAccount() {
   }));
   try { await api('/api/account/logout', { accountId:state.accountId, sessionToken:state.sessionToken }); } catch(e) {}
   disconnectInbox();
+  window.VaultlixMediaSafety?.clear?.();
   localStorage.removeItem(ACCOUNT_STATE_KEY);
   clearTimeout(accountSyncTimer);
   for (const code of localCodes) {
@@ -16473,7 +16483,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const mime = mimeOverride || file.type;
-  if (!await allowLocalImageSend([...(isImage || String(mime).startsWith('image/') ? [base64] : []), ...(pdfPreview ? [pdfPreview] : [])], onProgress)) return false;
+  if (!await allowLocalImageSend([...(isImage || String(mime).startsWith('image/') ? [base64] : []), ...(pdfPreview ? [pdfPreview] : [])], onProgress, { persist: !viewOnce })) return false;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
   const msgId = newMsgId();
 
@@ -16549,7 +16559,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // sendFileMessage as its own normal message; grouping only makes sense
 // once there's more than one.
 async function sendAlbumMessage(room, items, viewOnce, onProgress) {
-  if (!await allowLocalImageSend(items.map(item => item.base64), onProgress)) return false;
+  if (!await allowLocalImageSend(items.map(item => item.base64), onProgress, { persist: !viewOnce })) return false;
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
