@@ -84,7 +84,7 @@ test('durable ciphertext history can rebuild a stale in-memory conversation cach
   const messages = await store.loadEncryptedMessages('room-1', 100, 999);
   assert.deepEqual(messages, [{
     id:'message-1', senderTokenHash:'a'.repeat(64), seq:7,
-    content:'ciphertext', ts:1234, expiresAt:null, viewOnce:false,
+    content:'ciphertext', ts:1234, expiresAt:null, viewOnce:false, deleteTimerSeconds:0,
   }]);
   assert.match(calls[0][0], /ORDER BY sequence DESC[\s\S]*LIMIT \$3/);
   assert.match(calls[0][0], /ORDER BY sequence ASC/);
@@ -159,7 +159,7 @@ test('attachment metadata is claimed in the same transaction as its encrypted me
   }, transactionClient);
   assert.match(calls[1][0], /UPDATE encrypted_attachments SET[\s\S]*status='attached'/);
   assert.match(calls[2][0], /attachment_id/);
-  assert.equal(calls[2][1].at(-1), '1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e');
+  assert.equal(calls[2][1][8], '1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e');
 });
 
 test('production startup fails closed and account mutations await PostgreSQL', () => {
@@ -195,4 +195,14 @@ test('Private Number retirement is transactional and records its tombstone first
   assert.match(calls[2][0], /DELETE FROM accounts/);
   assert.equal(calls[3][0], 'COMMIT');
   assert.equal(calls[4][0], 'RELEASE');
+});
+
+test('per-message timer survives database serialization independently of room settings',async()=>{
+  const calls=[];
+  const client={query:async(sql,args)=>{calls.push([sql,args]);return{rows:sql.includes('SELECT * FROM (')?[{message_id:'timed',sequence:1,created_at:100,ciphertext:'encrypted',delete_timer_seconds:300}]:[]};}};
+  const store=new PostgresStore('',{pool:client});
+  await store.appendEncryptedMessage('room','token',{id:'timed',seq:1,ts:100,content:'encrypted',deleteTimerSeconds:300},client);
+  assert.equal(calls.find(([sql])=>sql.includes('INSERT INTO encrypted_messages'))[1][9],300);
+  const messages=await store.loadEncryptedMessages('room');
+  assert.equal(messages[0].deleteTimerSeconds,300);
 });

@@ -5573,7 +5573,7 @@ async function flushPendingDecrypt(room) {
   const queued = room.pendingDecrypt;
   room.pendingDecrypt = [];
   for (const item of queued) {
-    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts, item.from);
+    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts, item.from, item.deleteTimerSeconds || 0, item.readAt);
     if (!rec || rec.pending) continue; // still not ready (shouldn't happen), or genuinely empty
     const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
     room.messages.push(rec);
@@ -11308,8 +11308,9 @@ function flushPendingReads(room) {
 function confirmRead(room, msgIds) {
   if (!msgIds || !msgIds.length) return;
   api('/api/read', { code: room.code, token: room.token, msgIds }).catch(() => {});
-  if (room.deleteTimerSeconds > 0) {
-    for (const id of msgIds) startReceiveDeleteTimer(room, id, room.deleteTimerSeconds);
+  for (const id of msgIds) {
+    const rec = room.messages.find(message => message.id === id);
+    if (rec?.deleteTimerSeconds > 0) startReceiveDeleteTimer(room, id, rec.deleteTimerSeconds);
   }
 }
 
@@ -12195,9 +12196,10 @@ async function changeRoomTimer(value) {
       toast(result.error);
       return;
     }
+    room.deleteTimerSeconds = result.deleteTimer;
     persistRoom(room);
-    // Both participants also see this reflected as a system message in the
-    // chat itself (posted server-side), so no local toast needed here.
+    updateTimerBar(room);
+    toast(seconds ? `Disappearing messages on · ${formatDuration(seconds)} after reading. Applies to new messages.` : 'Disappearing messages off for new messages.');
   } catch (e) {
     room.deleteTimerSeconds = previous;
     updateTimerBar(room);
@@ -13125,7 +13127,7 @@ function renderMessageRecord(room, rec, animate) {
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
   }
 
-  const progressHtml = room.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file' && rec.kind !== 'album' && rec.kind !== 'voice'
+  const progressHtml = rec.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file' && rec.kind !== 'album' && rec.kind !== 'voice'
     ? `<div class="msg-progress-wrap"><div class="msg-progress" id="progress-${rec.id}" style="width:100%"></div></div>`
     : '';
 
@@ -13172,18 +13174,20 @@ function renderMessageRecord(room, rec, animate) {
 // ── READ RECEIPTS + DISAPPEARING MESSAGES ───────────────────────────────
 function handleReadReceipts(room, receipts) {
   if (!receipts || !receipts.length) return;
-  for (const { msgId, deliveredAt, readAt } of receipts) {
+  for (const { msgId, deliveredAt, readAt, deleteTimerSeconds = 0 } of receipts) {
     const rec = room.messages.find(m => m.id === msgId);
     if (!rec) continue;
+    rec.deleteTimerSeconds = deleteTimerSeconds;
     if (readAt) {
+      rec.readAt = readAt;
       rec.receiptState = 'read';
       if (room.code === activeRoomCode) {
         const el = document.getElementById(`receipt-${msgId}`);
         if (el) { el.textContent = '✓✓'; el.classList.remove('delivered'); el.classList.add('read'); }
       }
-      if (!rec.timerStarted && room.deleteTimerSeconds > 0) {
+      if (!rec.timerStarted && rec.deleteTimerSeconds > 0) {
         rec.timerStarted = true;
-        startDeleteTimer(room, msgId, room.deleteTimerSeconds);
+        startDeleteTimer(room, msgId, rec.deleteTimerSeconds);
       }
     } else if (deliveredAt && rec.receiptState !== 'read') {
       rec.receiptState = 'delivered';
@@ -13198,24 +13202,28 @@ function handleReadReceipts(room, receipts) {
 // Sender-side timer: starts once the peer has confirmed reading the message.
 function startDeleteTimer(room, msgId, seconds) {
   const rec = room.messages.find(m => m.id === msgId);
-  if (!rec) return;
-  rec.deleteAt = Date.now() + seconds * 1000;
+  if (!rec || rec.deleteAt || !(seconds > 0)) return;
+  rec.timerStarted = true;
+  rec.deleteAt = (Number(rec.readAt) || Date.now()) + seconds * 1000;
+  const remaining = Math.max(0, rec.deleteAt - Date.now());
   room.deleteLedger.set(msgId, rec.deleteAt);
   persistDeleteLedger(room);
   if (room.code === activeRoomCode && seconds <= 3600) {
     const bubble = document.querySelector(`.msg[data-msg-id="${msgId}"] .bubble`);
     if (bubble) bubble.title = `Disappears in ${formatDuration(seconds)}`;
   }
-  const handle = setTimeout(() => removeMessageRecord(room, msgId), seconds * 1000);
+  const handle = setTimeout(() => removeMessageRecord(room, msgId), Math.min(remaining, 2147483647));
   room.msgTimers.set(msgId, handle);
 }
 
-// Receiver-side timer: starts the instant we receive it (= read, in this app's model).
+// Receiver-side timer: starts when confirmed read, never merely delivered.
 function startReceiveDeleteTimer(room, msgId, seconds) {
   if (!seconds) return;
   const rec = room.messages.find(m => m.id === msgId);
-  if (!rec) return;
-  rec.deleteAt = Date.now() + seconds * 1000;
+  if (!rec || rec.deleteAt || !(seconds > 0)) return;
+  rec.timerStarted = true;
+  rec.deleteAt = (Number(rec.readAt) || Date.now()) + seconds * 1000;
+  const remaining = Math.max(0, rec.deleteAt - Date.now());
   room.deleteLedger.set(msgId, rec.deleteAt);
   persistDeleteLedger(room);
   if (room.code === activeRoomCode) {
@@ -13227,7 +13235,7 @@ function startReceiveDeleteTimer(room, msgId, seconds) {
       }, 100);
     }
   }
-  const handle = setTimeout(() => removeMessageRecord(room, msgId), seconds * 1000);
+  const handle = setTimeout(() => removeMessageRecord(room, msgId), Math.min(remaining, 2147483647));
   room.msgTimers.set(msgId, handle);
 }
 
@@ -13671,9 +13679,9 @@ function callEventForViewer(callEvent, fromMe) {
   return { viewerRole, text:text.trim().slice(0, 120) };
 }
 
-async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null) {
+async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null) {
   if (!content) return null;
-  const base = { id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
+  const base = { deleteTimerSeconds, readAt, id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
   try {
     content = await resolveEncryptedAttachment(room, content);
   } catch (error) {
@@ -13783,7 +13791,7 @@ async function restoreRoomHistory(room) {
           const msg = unseen[index];
           let rec = null;
           if (msg.type === 'message') {
-            rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from);
+            rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
             if (rec && rec.pending) {
               room.pendingHistoryRestore = true;
               rec = null;
@@ -14178,8 +14186,12 @@ async function doPoll(room) {
     }
 
     if (data.deleteTimer !== undefined) {
+      const changed = room.deleteTimerSeconds !== data.deleteTimer;
       room.deleteTimerSeconds = data.deleteTimer;
-      if (room.code === activeRoomCode) updateTimerBar(room);
+      if (room.code === activeRoomCode) {
+        updateTimerBar(room);
+        if (changed) toast(data.deleteTimer ? `Disappearing messages on · ${formatDuration(data.deleteTimer)} after reading. Applies to new messages.` : 'Disappearing messages off for new messages.');
+      }
     }
 
     // Keeps the Settings-panel "N messages exchanged" stat for a permanent
@@ -14208,7 +14220,7 @@ async function doPoll(room) {
         if (room.seenMsgIds.size > 500) { const first = room.seenMsgIds.values().next().value; room.seenMsgIds.delete(first); }
 
         if (msg.type === 'message') {
-          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from);
+          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
           if (rec && rec.pending) {
             // No shared key yet to decrypt this with (the rederive block
             // above either hasn't run for this peer yet or just failed) —
@@ -14216,7 +14228,7 @@ async function doPoll(room) {
             // redeliver it. Hold onto the raw envelope and replay it via
             // flushPendingDecrypt() the moment deriveSharedKey succeeds,
             // instead of silently dropping it.
-            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from });
+            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt });
           } else if (rec) {
             const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
             room.messages.push(rec);
@@ -14884,7 +14896,7 @@ function startWaitingForPeer(room, { silent = false } = {}) {
       pendingRoomCode = null;
       room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
       if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
-      if (d.deleteTimer) room.deleteTimerSeconds = d.deleteTimer;
+      if (d.deleteTimer !== undefined) room.deleteTimerSeconds = d.deleteTimer;
       // This is the transition from invitation to established
       // conversation. Save it immediately so a later peer departure cannot
       // turn the conversation back into a shareable waiting room.
@@ -14961,7 +14973,7 @@ async function handleSetup({ silent = false } = {}) {
       if (mode === 'connection' && pendingConnectionPeerName) room.peerName = pendingConnectionPeerName;
       if (mode === 'connection' && pendingConnectionPeerPrivateNumber) room.peerPrivateNumber = pendingConnectionPeerPrivateNumber;
       if (mode === 'connection') room.peerProfileImage = safeProfileImageUri(pendingConnectionPeerProfileImage);
-      room.deleteTimerSeconds = result.deleteTimer || timerVal;
+      room.deleteTimerSeconds = result.deleteTimer ?? timerVal;
       room.persistent = !!result.persistent;
       room.codeLabelLen = result.labelLength || null;
       addRoomToState(room);
@@ -15028,7 +15040,7 @@ async function handleSetup({ silent = false } = {}) {
       pendingJoinPeerName = null;
       pendingJoinPeerPrivateNumber = null;
       pendingJoinPeerProfileImage = null;
-      if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
+      if (result.deleteTimer !== undefined) room.deleteTimerSeconds = result.deleteTimer;
       room.persistent = !!result.persistent;
       room.connectedSince = result.connectedSince || null;
       room.totalMessageCount = result.totalMessageCount || 0;
@@ -16099,7 +16111,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         // a server key learned during this launch for the next offline one.
         await persistRoom(room);
       }
-      if (result.deleteTimer) room.deleteTimerSeconds = result.deleteTimer;
+      if (result.deleteTimer !== undefined) room.deleteTimerSeconds = result.deleteTimer;
       const canRestoreHistory = !!room.sharedKey;
       if (!canRestoreHistory) {
         // The peer's pubKey wasn't on file yet (most likely they were also

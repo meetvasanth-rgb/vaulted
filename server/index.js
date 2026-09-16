@@ -525,6 +525,7 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
       time:existing?.time || `${sentAt.getHours().toString().padStart(2,'0')}:${sentAt.getMinutes().toString().padStart(2,'0')}`,
       ts:durable.ts,
       expiresAt:durable.expiresAt,
+      deleteTimerSeconds:durable.deleteTimerSeconds,
       deliveredAt:durable.deliveredAt ?? existing?.deliveredAt ?? null,
       readAt:durable.readAt ?? existing?.readAt ?? null,
       reactions:durable.reactions || existing?.reactions || {},
@@ -2329,34 +2330,23 @@ setInterval(async () => {
 // Policy's claim that a disappearing message is "delete[d] from the server
 // as soon as its timer expires" — this sweep is what makes that true.
 //
-// msg.readAt and room.deleteTimer are both already server-held state, the
-// same anchor point both the sender's and receiver's local countdowns use
-// (the sender's timer starts once the peer's read receipt lands; the
-// receiver's starts on their own read) — so this doesn't depend on either
-// client staying open, unlike the purely client-side version it backs up.
-// A message that's never read never starts its countdown here either,
-// exactly matching the behavior it's reinforcing rather than replacing:
-// the client-side timers still drive the immediate on-screen countdown/
-// removal UX; this is the guarantee that the deletion actually happens
-// even if a client's own timer never gets the chance to run (app closed,
-// backgrounded and throttled, etc). Reuses the exact same deleted/
-// deletionSeq fields as the manual "delete for everyone" path, so it flows
-// through the existing /api/poll sync mechanism with no client changes.
+// The server owns the read timestamp and the duration captured when each
+// message was accepted. Expiry therefore survives disconnects and room
+// setting changes. Both local countdowns and the PostgreSQL sweep use the
+// same policy; deletion tombstones synchronize the result to both peers.
+function messageDeleteTimer(room, msg) {
+  if (Number.isFinite(msg.deleteTimerSeconds)) return Math.max(0, msg.deleteTimerSeconds);
+  // Legacy records only inherit the old server rule, never a newer setting.
+  return msg.ts >= (room.deleteTimerSetAt || 0) ? Math.max(0, room.deleteTimer || 0) : 0;
+}
 setInterval(() => {
   const now = Date.now();
   for (const [roomCode, room] of rooms) {
-    if (!room.deleteTimer) continue;
     let changed = false;
     for (const msg of room.msgs) {
       if (msg.type !== 'message' || msg.deleted || !msg.readAt) continue;
-      // Only messages sent at or after the timer's CURRENT setting took
-      // effect are ever in scope — see deleteTimerSetAt above. Without this
-      // guard, turning on (or changing) the timer applied it retroactively
-      // to every already-read message in the room's history, deleting
-      // conversation that predates the setting entirely; this makes it
-      // match the expected "only affects what happens from now on" behavior.
-      if (msg.ts < (room.deleteTimerSetAt || 0)) continue;
-      if (now - msg.readAt >= room.deleteTimer * 1000) {
+      const seconds = messageDeleteTimer(room, msg);
+      if (seconds > 0 && now - msg.readAt >= seconds * 1000) {
         deleteRoomMsgContent(room, msg);
         changed = true;
       }
@@ -3954,7 +3944,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, deleteTimerSeconds:room.deleteTimer || 0, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
     if (postgresEnabled) {
       seq = await postgresStore.appendEncryptedMessage(d.code, d.token, message, room.dbClient || null);
       message.seq = seq;
@@ -4243,17 +4233,13 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in conversation.',403);
+    for (const msg of room.msgs) {
+      if (msg.type === 'message' && !Number.isFinite(msg.deleteTimerSeconds)) msg.deleteTimerSeconds = messageDeleteTimer(room, msg);
+    }
     const val = parseInt(d.deleteTimer);
     room.deleteTimer = (isNaN(val) || val < 0) ? 0 : val;
-    // Anchor point for the sweep below — turning the timer on (or changing
-    // its duration) only ever applies to messages sent from this moment
-    // forward. Without this, enabling e.g. a 5-minute timer on a room with
-    // existing history immediately swept up every already-read message
-    // older than 5 minutes on the very next sweep cycle, deleting past
-    // conversation that had nothing to do with the setting being turned on
-    // just now. Set unconditionally (even when turning the timer OFF) so
-    // that if it's re-enabled later, only messages from that later point
-    // are ever in scope — never a stale timestamp from an earlier session.
+    // Retained only as a safe migration boundary for pre-snapshot messages.
+    // New messages store their own duration, unaffected by later settings.
     room.deleteTimerSetAt = Date.now();
     room.lastActivity = Date.now();
     publishInboxRoom(d.code, 'timer', { excludeToken:d.token });
@@ -4378,7 +4364,7 @@ async function api(path, method, d, p, res, ip, headers) {
       if (!messageFromToken(msg, token) || msg.type !== 'message' || !msg.deliveredAt) continue;
       // Return if: new delivery (seq > lastReceiptSeq) OR newly read (readAt set but not yet reported)
       if (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)) {
-        readReceipts.push({ msgId: msg.id, seq: msg.seq, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null });
+        readReceipts.push({ msgId: msg.id, seq: msg.seq, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null, deleteTimerSeconds:messageDeleteTimer(room, msg) });
         if (msg.readAt) msg.readReported = true;
       }
     }
@@ -4407,6 +4393,7 @@ async function api(path, method, d, p, res, ip, headers) {
 
     const messages = newMsgs.map(msg => ({
       ...msg,
+      deleteTimerSeconds:messageDeleteTimer(room, msg),
       from:messageFromToken(msg, token) ? token : msg.from,
       reactions:reactionsForViewer(msg.reactions, token),
     }));

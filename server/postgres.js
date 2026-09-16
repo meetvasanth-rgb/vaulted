@@ -208,6 +208,10 @@ ALTER TABLE conversations ADD COLUMN IF NOT EXISTS cleared_at bigint NOT NULL DE
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash text;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS state_version bigint NOT NULL DEFAULT 1;
 ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS attachment_id uuid;
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS delete_timer_seconds integer;
+UPDATE encrypted_messages m SET delete_timer_seconds = CASE
+  WHEN m.created_at >= c.delete_timer_set_at THEN c.delete_timer ELSE 0 END
+FROM conversations c WHERE c.conversation_id=m.conversation_id AND m.delete_timer_seconds IS NULL;
 ALTER TABLE accounts ALTER COLUMN creation_order SET DEFAULT nextval('account_creation_order_seq');
 WITH ordered AS (
   SELECT account_id, row_number() OVER (ORDER BY created_at, account_id) AS ordinal
@@ -582,9 +586,8 @@ class PostgresStore {
         FROM encrypted_messages m
         JOIN conversations c ON c.conversation_id=m.conversation_id
         JOIN message_receipts r ON r.conversation_id=m.conversation_id AND r.message_id=m.message_id
-        WHERE c.status='active' AND c.delete_timer>0
-          AND m.created_at>=c.delete_timer_set_at
-          AND r.read_at IS NOT NULL AND r.read_at + (c.delete_timer::bigint * 1000) <= $1
+        WHERE c.status='active' AND m.delete_timer_seconds>0
+          AND r.read_at IS NOT NULL AND r.read_at + (m.delete_timer_seconds::bigint * 1000) <= $1
         ORDER BY r.read_at LIMIT $2 FOR UPDATE OF m SKIP LOCKED`, [now, limit]);
       const affected = new Set();
       for (const row of rows) {
@@ -753,11 +756,11 @@ class PostgresStore {
       }
       await client.query(`INSERT INTO encrypted_messages (
         conversation_id, message_id, sender_token_hash, sequence, ciphertext,
-        created_at, expires_at, view_once, attachment_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        created_at, expires_at, view_once, attachment_id, delete_timer_seconds
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       ON CONFLICT (conversation_id, message_id) DO NOTHING`, [
         conversationId, message.id, senderTokenHash, sequence, message.content,
-        message.ts, message.expiresAt || null, !!message.viewOnce, message.attachmentId || null,
+        message.ts, message.expiresAt || null, !!message.viewOnce, message.attachmentId || null, message.deleteTimerSeconds || 0,
       ]);
       return sequence;
     });
@@ -768,7 +771,7 @@ class PostgresStore {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
     const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
-        ciphertext, created_at, expires_at, view_once, attachment_id
+        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds
       FROM encrypted_messages
       WHERE conversation_id=$1 AND (expires_at IS NULL OR expires_at > $2)
       ORDER BY sequence DESC
@@ -798,6 +801,7 @@ class PostgresStore {
       ts:Number(row.created_at),
       expiresAt:row.expires_at == null ? null : Number(row.expires_at),
       viewOnce:!!row.view_once,
+      deleteTimerSeconds:Number(row.delete_timer_seconds || 0),
       };
       if (row.attachment_id) value.attachmentId = row.attachment_id;
       if (receipt) {
