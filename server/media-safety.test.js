@@ -70,3 +70,18 @@ test('Android bridge returns the same local verdict without using the iOS bridge
   assert.equal(await context.VaultlixMediaSafety.check('YQ=='),'blocked');
   assert.deepEqual(calls,['YQ==']);
 });
+
+test('missing bridge and unreadable input have different recovery guidance',async()=>{
+  const {api}=runtime({bridge:false});
+  assert.equal(await api.check('YQ=='),'unavailable');
+  assert.match(api.failureMessage(),/Close and reopen/);
+  assert.equal(await api.check(''),'unavailable');
+  assert.match(api.failureMessage(),/smaller still image/);
+});
+test('HTML bypasses the unversioned module cached by older service workers',()=>{
+  assert.match(html,/src="\/media-safety-v2\.js"/);
+  const worker=fs.readFileSync(path.join(__dirname,'../client/sw.js'),'utf8');
+  assert.match(worker,/'\/media-safety-v2\.js'/);
+  const server=fs.readFileSync(path.join(__dirname,'index.js'),'utf8');
+  assert.match(server,/if \(url === '\/media-safety-v2\.js'\) url = '\/media-safety\.js'/);
+});

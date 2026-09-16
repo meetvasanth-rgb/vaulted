@@ -26,3 +26,23 @@ Outputs produced: a signed APK for device testing and a signed Android App Bundl
 - APK SHA-256: 03d8eb52befd4e80d0c815a7ad792dcf4ad59ae9e5246be4126060048a520922.
 - AAB SHA-256: 6039c4c80fd2637bed576fe52f1a45c16aa8886f3d20368986841d558c5b10de.
 - No Play Console upload or publication was performed. Native device interaction and accuracy/performance testing remain for a physical Android phone.
+
+## Connected-device investigation — 16 September 2026
+
+An OPPO CPH2723 running Android 16 and Play build 69 reported unavailable
+checks for outgoing and received photos. Isolated instrumentation using a
+generated blue JPEG passed the production decoder/model, the production root
+origin guard, and the JavaScript-to-native-to-JavaScript round trip. The test
+app did not access Vaultlix accounts, messages, or user photos.
+
+The older iOS-only `/media-safety.js` can remain cache-first in an existing
+service worker during an Android upgrade. The web client now requests
+`/media-safety-v2.js`, a server alias for the maintained module, so old workers
+cannot supply that unversioned cached response. The shell cache advances to v5.
+Failure messages now distinguish unavailable bridges, timeouts, input limits,
+and native read failures instead of attributing every failure to image size.
+
+Validation: 249 Node tests and three isolated device instrumentation tests pass.
+The actual user's send/receive flow still needs a retry after this deployment;
+the cache explanation is a hypothesis, not yet a confirmed device root cause.
+No Android binary, Play release, or installed app data was changed.
