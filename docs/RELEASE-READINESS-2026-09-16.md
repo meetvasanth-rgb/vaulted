@@ -18,7 +18,9 @@ Release archive, local export, and upload succeeded using Xcode 26.6. The archiv
 
 ## Live deployment
 
-Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` showed ACTIVE and Deployment successful for “Allow landscape orientation on iPad”, deployment `ead43641-fe4d-44d5-9174-fc0f5d452385`. Postgres and Redis were Online. The public `https://vaultlix.com` landing page loaded. This was the initial verification. The subsequent safety remediation is prepared and tested locally; the owner approved verified-copy legacy cleanup and production deployment. Deployment verification is in progress.
+Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` is ACTIVE with deployment `9a8b65a4-5e4f-49a4-90f1-dff53815ce80`, commit `9609fa3` (verified-copy cleanup and safety workflow). Railway displayed Deployment successful. PostgreSQL account/conversation stores, Redis and object storage initialized successfully. The safety migration logged `0 source reports`; no legacy report records needed copying. The owner explicitly approved cleanup, GitHub push and production deployment.
+
+Live verification: `https://vaultlix.com` returned 200 and included both safety scripts. The public filter, dictionary and admin JavaScript matched the committed files byte-for-byte. Unauthenticated access to `/api/admin/safety` returned 404. No real user reports or conversations were created, moderated or deleted as a deployment test. Build 56 uses the hosted client and therefore receives the deployed web safety changes when refreshed; no new native binary was uploaded.
 
 ## App Store findings and changes
 
