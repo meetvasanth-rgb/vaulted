@@ -13,7 +13,7 @@ Owner: Vasanthkumar Sarveswaran. On 16 September 2026 the owner committed to rev
 
 ## Storage and access
 
-Reports and account blocks are persisted in PostgreSQL in production, with a mode-0600 atomic JSON fallback for local development. Legacy JSONL reports are imported once. Duplicate source files are currently retained; cleanup after verified import requires the owner approval requested during this task. Deployment of the revised retention promise is pending that cleanup decision. Invalid legacy JSON causes startup to fail rather than silently losing evidence. Legacy reports without account/conversation references cannot use automated account actions.
+Reports and account blocks are persisted in PostgreSQL in production, with a mode-0600 atomic JSON fallback for local development. Legacy JSONL reports are imported once. The owner approved duplicate-source cleanup. Each report is read back from durable storage and its original evidence is verified before the unchanged source file is removed. Failed writes, conflicting records, malformed input or changing source files prevent cleanup. Invalid legacy JSON causes startup to fail rather than silently losing evidence. Legacy reports without account/conversation references cannot use automated account actions.
 
 Admin routes use the existing timing-safe bearer-key authorization and failed-guess limit, and return no-store responses. New reports require both an account session and matching conversation membership. Submitted excerpts are limited to five text messages of 500 characters each; the server discards excerpts unless includeMessages is explicitly true. Ordinary ciphertext is not decrypted by the service.
 
@@ -27,4 +27,4 @@ Incoming media/attachments require an explicit reveal. This is an exposure contr
 
 ## Verification
 
-The 240-test suite passes, including account/membership authorization, explicit excerpt consent, unauthorized admin access, stale review rejection, bidirectional blocks, persisted blocks/restrictions, appeal restoration, deadlines, legacy retention, and hidden-message/attachment rendering. The protected queue and saved review status were checked in a browser using synthetic local data. Production PostgreSQL initialization and public asset availability must also be verified after deployment; local tests do not exercise a real production database or native devices.
+The 241-test suite passes, including account/membership authorization, explicit excerpt consent, unauthorized admin access, stale review rejection, bidirectional blocks, persisted blocks/restrictions, appeal restoration, deadlines, legacy retention, and hidden-message/attachment rendering. The protected queue and saved review status were checked in a browser using synthetic local data. Production PostgreSQL initialization and public asset availability must also be verified after deployment; local tests do not exercise a real production database or native devices.

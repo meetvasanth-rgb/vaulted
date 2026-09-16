@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const RETENTION = 90 * 86400000;
 const SLA = 86400000;
 const SCHEMA = `CREATE TABLE IF NOT EXISTS safety_reports (id text PRIMARY KEY, data jsonb NOT NULL);
@@ -11,31 +12,57 @@ CREATE TABLE IF NOT EXISTS safety_migrations (id text PRIMARY KEY);`;
 class SafetyStore {
   constructor(directory, pool = null) { this.directory=directory; this.pool=pool; this.reports=new Map(); this.blocks=new Map(); this.suspensions=new Set(); }
   async initialize() {
+    const file=path.join(this.directory,'safety-workflow.json');
+    const legacy=path.join(this.directory,'safety-reports.jsonl');
+    const fileText=fs.existsSync(file)?fs.readFileSync(file,'utf8'):null;
+    const legacyText=fs.existsSync(legacy)?fs.readFileSync(legacy,'utf8'):null;
+    let databaseMigrated=false;
     if(this.pool) {
       await this.pool.query(SCHEMA);
-      if ((await this.pool.query("SELECT 1 FROM safety_migrations WHERE id='legacy-v1'")).rowCount) return;
+      databaseMigrated=!!(await this.pool.query("SELECT 1 FROM safety_migrations WHERE id='legacy-v1'")).rowCount;
+      if(databaseMigrated && fileText===null && legacyText===null) return;
     }
-    let legacyMigrated = false;
-    const file=path.join(this.directory,'safety-workflow.json');
-    if(fs.existsSync(file)) {
-      const data=JSON.parse(fs.readFileSync(file,'utf8'));
-      legacyMigrated = data.legacyMigrated === true;
-      this.suspensions = new Set(data.suspensions || []);
-      for(const r of data.reports || []) this.reports.set(r.id,r);
-      for(const b of data.blocks || []) this.blocks.set(`${b.blocker}:${b.blocked}`,b);
+    const data=fileText===null?{}:JSON.parse(fileText);
+    const legacyReports=legacyText===null?[]:legacyText.split('\n').filter(Boolean).map(line=>JSON.parse(line));
+    this.suspensions=new Set(data.suspensions || []);
+    for(const r of data.reports || []) this.reports.set(r.id,r);
+    for(const b of data.blocks || []) this.blocks.set(`${b.blocker}:${b.blocked}`,b);
+    if(!data.legacyMigrated && !databaseMigrated) for(const r of legacyReports) {
+      if(!this.reports.has(r.id)) this.reports.set(r.id,{...r,status:'open',updatedAt:r.createdAt,history:[]});
     }
-    // Preserve legacy reports. No invalid JSON is silently discarded.
-    const legacy=path.join(this.directory,'safety-reports.jsonl');
-    if(!legacyMigrated && fs.existsSync(legacy)) for(const line of fs.readFileSync(legacy,'utf8').split('\n').filter(Boolean)) {
-      const r=JSON.parse(line); if(!this.reports.has(r.id)) this.reports.set(r.id,{...r,status:'open',updatedAt:r.createdAt,history:[]});
-    }
-    if(this.pool) {
+    if(this.pool && !databaseMigrated) {
       for(const r of this.reports.values()) await this.pool.query('INSERT INTO safety_reports(id,data) VALUES($1,$2) ON CONFLICT DO NOTHING',[r.id,r]);
       for(const b of this.blocks.values()) await this.pool.query('INSERT INTO safety_blocks VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[b.blocker,b.blocked,b.createdAt]);
       for(const id of this.suspensions) await this.pool.query('INSERT INTO safety_suspensions VALUES($1) ON CONFLICT DO NOTHING',[id]);
+    } else if(!this.pool) this.flush();
+
+    // Read back durable copies before removing any source file. A conflict,
+    // malformed input, failed write or changed source preserves the originals.
+    const copied=this.pool?null:JSON.parse(fs.readFileSync(file,'utf8'));
+    const sourceReports=this.pool?[...(data.reports || []),...legacyReports]:legacyReports;
+    for(const original of sourceReports) {
+      if(typeof original.id!=='string' || !original.id) throw Error('Legacy report has no valid ID; source retained.');
+      const saved=this.pool?(await this.pool.query('SELECT data FROM safety_reports WHERE id=$1',[original.id])).rows[0]?.data:copied.reports.find(r=>r.id===original.id);
+      // Review state may have legitimately advanced after a previous import.
+      const evidence=r=>Object.fromEntries(Object.entries(r).filter(([key])=>!['status','updatedAt','history','dueAt','overdue'].includes(key)));
+      if(!saved || !isDeepStrictEqual(evidence(original),Object.fromEntries(Object.keys(evidence(original)).map(key=>[key,saved[key]])))) throw Error('Legacy report copy verification failed; source retained.');
+    }
+    if(this.pool) {
+      for(const b of data.blocks || []) if(!(await this.pool.query('SELECT 1 FROM safety_blocks WHERE blocker=$1 AND blocked=$2',[b.blocker,b.blocked])).rowCount) throw Error('Block copy verification failed; source retained.');
+      for(const id of data.suspensions || []) if(!(await this.isSuspended(id))) throw Error('Restriction copy verification failed; source retained.');
       await this.pool.query("INSERT INTO safety_migrations VALUES('legacy-v1') ON CONFLICT DO NOTHING");
-      this.reports.clear(); this.blocks.clear();
-    } else this.flush();
+    }
+    const removeVerifiedSource=(source,expected)=>{
+      if(expected===null) return;
+      if(fs.readFileSync(source,'utf8')!==expected) throw Error('Legacy source changed during migration; source retained.');
+      fs.unlinkSync(source);
+    };
+    removeVerifiedSource(legacy,legacyText);
+    if(this.pool) {
+      removeVerifiedSource(file,fileText);
+      this.reports.clear(); this.blocks.clear(); this.suspensions.clear();
+    }
+    console.log(`Safety migration verified: ${sourceReports.length} source reports; duplicate sources cleaned.`);
   }
   flush() {
     fs.mkdirSync(this.directory,{recursive:true,mode:0o700});

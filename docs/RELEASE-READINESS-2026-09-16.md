@@ -18,7 +18,7 @@ Release archive, local export, and upload succeeded using Xcode 26.6. The archiv
 
 ## Live deployment
 
-Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` showed ACTIVE and Deployment successful for “Allow landscape orientation on iPad”, deployment `ead43641-fe4d-44d5-9174-fc0f5d452385`. Postgres and Redis were Online. The public `https://vaultlix.com` landing page loaded. This was the initial verification. The subsequent safety remediation is prepared and tested locally; deployment is pending the owner’s decision on removing duplicate legacy report files after verified migration.
+Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` showed ACTIVE and Deployment successful for “Allow landscape orientation on iPad”, deployment `ead43641-fe4d-44d5-9174-fc0f5d452385`. Postgres and Redis were Online. The public `https://vaultlix.com` landing page loaded. This was the initial verification. The subsequent safety remediation is prepared and tested locally; the owner approved verified-copy legacy cleanup and production deployment. Deployment verification is in progress.
 
 ## App Store findings and changes
 
@@ -54,7 +54,7 @@ Do not claim full Guideline 1.2 compliance yet. Apple requires filtering, report
 
 Implemented local text filtering with a pinned multilingual dictionary, threat/exploitation checks and basic obfuscation normalization; incoming text and inbox previews are screened, and incoming attachments are hidden until explicitly revealed. Account-level blocking is durable and prevents new connections in both directions. Reports require authenticated membership and explicit consent for excerpts.
 
-The protected admin queue now has 24-hour deadlines, overdue indicators, review notes, conversation closure, suspension of new connections and appeal restoration. The owner committed to daily review and action within 24 hours. See [Safety operations](SAFETY-OPERATIONS.md) for the review process, retention, tests and known limitations. All 240 tests pass. Synthetic browser validation confirmed the queue and saved review state.
+The protected admin queue now has 24-hour deadlines, overdue indicators, review notes, conversation closure, suspension of new connections and appeal restoration. The owner committed to daily review and action within 24 hours. See [Safety operations](SAFETY-OPERATIONS.md) for the review process, retention, tests and known limitations. All 241 tests pass. Synthetic browser validation confirmed the queue and saved review state.
 
 These changes reduce the previously identified gaps; they do not establish guaranteed Guideline 1.2 approval. Text filters are imperfect, media reveal controls do not classify image/audio content, and the operator must actively monitor the queue. No claim of comprehensive moderation or completed native-device acceptance testing is made.
 
