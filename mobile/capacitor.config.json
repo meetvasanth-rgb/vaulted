@@ -11,5 +11,8 @@
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#1A1916"
+  },
+  "ios": {
+    "appendUserAgent": "VaultlixImageSafety/1"
   }
 }

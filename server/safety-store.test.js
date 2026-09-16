@@ -42,7 +42,7 @@ test('hidden incoming content and inbox previews do not render unscreened text o
   const nodes=[];
   function node(tag){const n={tag,children:[],dataset:{},events:{},append(...items){this.children.push(...items);},addEventListener(event,callback){this.events[event]=callback;}};nodes.push(n);return n;}
   const body={insertBefore(n){this.last=n;}}, typing={};
-  const context={document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{VaultlixContentSafety:{check}},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
+  const context={renderLocalImageSafetyGate:()=>false,document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{VaultlixContentSafety:{check}},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
   vm.createContext(context);
   for(const name of ['renderMessageRecord','vaultInboxPreview']){const start=html.indexOf('function '+name+'('),end=html.indexOf('\nfunction ',start+1);vm.runInContext(html.slice(start,end),context);}
   const malicious={kind:'text',isMe:false,content:'I will kill you',id:'text'};

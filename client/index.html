@@ -3316,7 +3316,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
     <div class="legal-section">
       <h3>Content safety and reports</h3>
-      <p>Safety checks run on your device before sending text and when displaying incoming content; ordinary message plaintext is not sent to a moderation service. These checks detect some abusive, threatening and exploitative language, but are not comprehensive and do not classify the contents of every image, recording or document. Incoming attachments are hidden until you choose to open them. Use Report and Block for content the checks miss.</p>
+      <p>Safety checks run on your device before sending text and when displaying incoming content; ordinary message plaintext is not sent to a moderation service. These checks detect some abusive, threatening and exploitative language, but are not comprehensive and do not classify the contents of every image, recording or document. On supported iOS builds, a bundled model checks photos and profile images for possible nudity on your device before sharing or display. Photos and classification results are not sent to a screening provider. Flagged images are withheld; failed checks can be retried. These checks can make mistakes and do not cover video, audio, documents or every form of harmful content. Incoming attachments also require an explicit reveal. Use Report and Block for content the checks miss, or contact legal@vaultlix.com if a photo is incorrectly blocked.</p>
       <p>When you submit a report, we receive its category, your written details, the reporting and reported account identifiers, and the conversation reference. Up to five recent text messages are shared with our reviewer only if you explicitly select the message-sharing option. Reports are reviewed by the operator within 24 hours. Unresolved reports remain available until handled; resolved reports and review notes are removed 90 days after their last review update. Account-level block records remain while needed to enforce your block. A reviewer may close a reported conversation and suspend an account from new connections; restrictions can be reviewed on appeal. Contact privacy@vaultlix.com for follow-up or an appeal.</p>
       <p>Profile photos and display names are linked to your Vaultlix account and shown to people who know your exact private number or connect with you. Daily Look requests are authenticated to that account to enforce usage limits. Photos, report details and voluntarily shared report messages are therefore linked to account identity; end-to-end encryption of ordinary messages does not make these account features anonymous.</p>
       </div>
@@ -4067,6 +4067,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
      factory; renderQrCanvas() below (in the app's own script) draws it. -->
 <script src="/vendor/safety-words.js"></script>
 <script src="/content-safety.js"></script>
+<script src="/media-safety.js"></script>
 <script>
 var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),T.exports}catch(N){throw T=0,N}};var vr=or((W,V)=>{var $=(function(){var L=function(x,w){var g=236,l=17,n=x,s=N[w],t=null,r=0,h=null,i=[],v={},_=function(a,f){r=n*4+17,t=(function(e){for(var u=new Array(e),o=0;o<e;o+=1){u[o]=new Array(e);for(var d=0;d<e;d+=1)u[o][d]=null}return u})(r),B(0,0),B(r-7,0),B(0,r-7),E(),C(),m(a,f),n>=7&&O(a),h==null&&(h=ir(n,s,i)),U(h,f)},B=function(a,f){for(var e=-1;e<=7;e+=1)if(!(a+e<=-1||r<=a+e))for(var u=-1;u<=7;u+=1)f+u<=-1||r<=f+u||(0<=e&&e<=6&&(u==0||u==6)||0<=u&&u<=6&&(e==0||e==6)||2<=e&&e<=4&&2<=u&&u<=4?t[a+e][f+u]=!0:t[a+e][f+u]=!1)},y=function(){for(var a=0,f=0,e=0;e<8;e+=1){_(!0,e);var u=P.getLostPoint(v);(e==0||a>u)&&(a=u,f=e)}return f},C=function(){for(var a=8;a<r-8;a+=1)t[a][6]==null&&(t[a][6]=a%2==0);for(var f=8;f<r-8;f+=1)t[6][f]==null&&(t[6][f]=f%2==0)},E=function(){for(var a=P.getPatternPosition(n),f=0;f<a.length;f+=1)for(var e=0;e<a.length;e+=1){var u=a[f],o=a[e];if(t[u][o]==null)for(var d=-2;d<=2;d+=1)for(var c=-2;c<=2;c+=1)d==-2||d==2||c==-2||c==2||d==0&&c==0?t[u+d][o+c]=!0:t[u+d][o+c]=!1}},O=function(a){for(var f=P.getBCHTypeNumber(n),e=0;e<18;e+=1){var u=!a&&(f>>e&1)==1;t[Math.floor(e/3)][e%3+r-8-3]=u}for(var e=0;e<18;e+=1){var u=!a&&(f>>e&1)==1;t[e%3+r-8-3][Math.floor(e/3)]=u}},m=function(a,f){for(var e=s<<3|f,u=P.getBCHTypeInfo(e),o=0;o<15;o+=1){var d=!a&&(u>>o&1)==1;o<6?t[o][8]=d:o<8?t[o+1][8]=d:t[r-15+o][8]=d}for(var o=0;o<15;o+=1){var d=!a&&(u>>o&1)==1;o<8?t[8][r-o-1]=d:o<9?t[8][15-o-1+1]=d:t[8][15-o-1]=d}t[r-8][8]=!a},U=function(a,f){for(var e=-1,u=r-1,o=7,d=0,c=P.getMaskFunction(f),p=r-1;p>0;p-=2)for(p==6&&(p-=1);;){for(var b=0;b<2;b+=1)if(t[u][p-b]==null){var D=!1;d<a.length&&(D=(a[d]>>>o&1)==1);var A=c(u,p-b);A&&(D=!D),t[u][p-b]=D,o-=1,o==-1&&(d+=1,o=7)}if(u+=e,u<0||r<=u){u-=e,e=-e;break}}},H=function(a,f){for(var e=0,u=0,o=0,d=new Array(f.length),c=new Array(f.length),p=0;p<f.length;p+=1){var b=f[p].dataCount,D=f[p].totalCount-b;u=Math.max(u,b),o=Math.max(o,D),d[p]=new Array(b);for(var A=0;A<d[p].length;A+=1)d[p][A]=255&a.getBuffer()[A+e];e+=b;var R=P.getErrorCorrectPolynomial(D),I=K(d[p],R.getLength()-1),S=I.mod(R);c[p]=new Array(R.getLength()-1);for(var A=0;A<c[p].length;A+=1){var X=A+S.getLength()-c[p].length;c[p][A]=X>=0?S.getAt(X):0}}for(var Z=0,A=0;A<f.length;A+=1)Z+=f[A].totalCount;for(var J=new Array(Z),Q=0,A=0;A<u;A+=1)for(var p=0;p<f.length;p+=1)A<d[p].length&&(J[Q]=d[p][A],Q+=1);for(var A=0;A<o;A+=1)for(var p=0;p<f.length;p+=1)A<c[p].length&&(J[Q]=c[p][A],Q+=1);return J},ir=function(a,f,e){for(var u=Y.getRSBlocks(a,f),o=G(),d=0;d<e.length;d+=1){var c=e[d];o.put(c.getMode(),4),o.put(c.getLength(),P.getLengthInBits(c.getMode(),a)),c.write(o)}for(var p=0,d=0;d<u.length;d+=1)p+=u[d].dataCount;if(o.getLengthInBits()>p*8)throw"code length overflow. ("+o.getLengthInBits()+">"+p*8+")";for(o.getLengthInBits()+4<=p*8&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=p*8||(o.put(g,8),o.getLengthInBits()>=p*8));)o.put(l,8);return H(o,u)};v.addData=function(a,f){f=f||"Byte";var e=null;switch(f){case"Numeric":e=q(a);break;case"Alphanumeric":e=z(a);break;case"Byte":e=rr(a);break;case"Kanji":e=tr(a);break;default:throw"mode:"+f}i.push(e),h=null},v.isDark=function(a,f){if(a<0||r<=a||f<0||r<=f)throw a+","+f;return t[a][f]},v.getModuleCount=function(){return r},v.make=function(){if(n<1){for(var a=1;a<40;a++){for(var f=Y.getRSBlocks(a,s),e=G(),u=0;u<i.length;u++){var o=i[u];e.put(o.getMode(),4),e.put(o.getLength(),P.getLengthInBits(o.getMode(),a)),o.write(e)}for(var d=0,u=0;u<f.length;u++)d+=f[u].dataCount;if(e.getLengthInBits()<=d*8)break}n=a}_(!1,y())},v.createTableTag=function(a,f){a=a||2,f=typeof f>"u"?a*4:f;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+f+"px;",e+='">',e+="<tbody>";for(var u=0;u<v.getModuleCount();u+=1){e+="<tr>";for(var o=0;o<v.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+a+"px;",e+=" height: "+a+"px;",e+=" background-color: ",e+=v.isDark(u,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>",e},v.createSvgTag=function(a,f,e,u){var o={};typeof arguments[0]=="object"&&(o=arguments[0],a=o.cellSize,f=o.margin,e=o.alt,u=o.title),a=a||2,f=typeof f>"u"?a*4:f,e=typeof e=="string"?{text:e}:e||{},e.text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,u=typeof u=="string"?{text:u}:u||{},u.text=u.text||null,u.id=u.text?u.id||"qrcode-title":null;var d=v.getModuleCount()*a+f*2,c,p,b,D,A="",R;for(R="l"+a+",0 0,"+a+" -"+a+",0 0,-"+a+"z ",A+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',A+=o.scalable?"":' width="'+d+'px" height="'+d+'px"',A+=' viewBox="0 0 '+d+" "+d+'" ',A+=' preserveAspectRatio="xMinYMin meet"',A+=u.text||e.text?' role="img" aria-labelledby="'+F([u.id,e.id].join(" ").trim())+'"':"",A+=">",A+=u.text?'<title id="'+F(u.id)+'">'+F(u.text)+"</title>":"",A+=e.text?'<description id="'+F(e.id)+'">'+F(e.text)+"</description>":"",A+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',A+='<path d="',b=0;b<v.getModuleCount();b+=1)for(D=b*a+f,c=0;c<v.getModuleCount();c+=1)v.isDark(b,c)&&(p=c*a+f,A+="M"+p+","+D+R);return A+='" stroke="transparent" fill="black"/>',A+="</svg>",A},v.createDataURL=function(a,f){a=a||2,f=typeof f>"u"?a*4:f;var e=v.getModuleCount()*a+f*2,u=f,o=e-f;return fr(e,e,function(d,c){if(u<=d&&d<o&&u<=c&&c<o){var p=Math.floor((d-u)/a),b=Math.floor((c-u)/a);return v.isDark(b,p)?0:1}else return 1})},v.createImgTag=function(a,f,e){a=a||2,f=typeof f>"u"?a*4:f;var u=v.getModuleCount()*a+f*2,o="";return o+="<img",o+=' src="',o+=v.createDataURL(a,f),o+='"',o+=' width="',o+=u,o+='"',o+=' height="',o+=u,o+='"',e&&(o+=' alt="',o+=F(e),o+='"'),o+="/>",o};var F=function(a){for(var f="",e=0;e<a.length;e+=1){var u=a.charAt(e);switch(u){case"<":f+="&lt;";break;case">":f+="&gt;";break;case"&":f+="&amp;";break;case'"':f+="&quot;";break;default:f+=u;break}}return f},ur=function(a){var f=1;a=typeof a>"u"?f*2:a;var e=v.getModuleCount()*f+a*2,u=a,o=e-a,d,c,p,b,D,A={"\u2588\u2588":"\u2588","\u2588 ":"\u2580"," \u2588":"\u2584","  ":" "},R={"\u2588\u2588":"\u2580","\u2588 ":"\u2580"," \u2588":" ","  ":" "},I="";for(d=0;d<e;d+=2){for(p=Math.floor((d-u)/f),b=Math.floor((d+1-u)/f),c=0;c<e;c+=1)D="\u2588",u<=c&&c<o&&u<=d&&d<o&&v.isDark(p,Math.floor((c-u)/f))&&(D=" "),u<=c&&c<o&&u<=d+1&&d+1<o&&v.isDark(b,Math.floor((c-u)/f))?D+=" ":D+="\u2588",I+=a<1&&d+1>=o?R[D]:A[D];I+=`
 `}return e%2&&a>0?I.substring(0,I.length-e-1)+Array(e+1).join("\u2580"):I.substring(0,I.length-1)};return v.createASCII=function(a,f){if(a=a||1,a<2)return ur(f);a-=1,f=typeof f>"u"?a*2:f;var e=v.getModuleCount()*a+f*2,u=f,o=e-f,d,c,p,b,D=Array(a+1).join("\u2588\u2588"),A=Array(a+1).join("  "),R="",I="";for(d=0;d<e;d+=1){for(p=Math.floor((d-u)/a),I="",c=0;c<e;c+=1)b=1,u<=c&&c<o&&u<=d&&d<o&&v.isDark(p,Math.floor((c-u)/a))&&(b=0),I+=b?D:A;for(p=0;p<a;p+=1)R+=I+`
@@ -6948,7 +6949,7 @@ function renderCallOverlay(room) {
     }
   }
   const name = escHtml(room.callPeerName || room.peerName || 'them');
-  const peerImage = safeProfileImageUri(room.peerProfileImage);
+  const peerImage = displayProfileImageUri(room.peerProfileImage);
   const peerInitial = escHtml((room.callPeerName || room.peerName || 'V').trim().charAt(0).toUpperCase() || 'V');
   const incomingAvatar = `<div class="call-peer-avatar-stage">
           <div class="ring-wave"></div><div class="ring-wave"></div><div class="ring-wave"></div>
@@ -8980,6 +8981,80 @@ function updateAccountSettingsStatus() {
   }
   if (state) scheduleNumberCardPrewarm(state);
 }
+function localImageSafetyEnabled() {
+  return /VaultlixImageSafety\/1/.test(navigator.userAgent) || window.__vaultlixLocalImageSafety === true;
+}
+async function checkLocalImages(images) {
+  if (!localImageSafetyEnabled()) return 'unsupported';
+  if (!window.VaultlixMediaSafety?.enabled) return 'unavailable';
+  for (const image of images) {
+    const status = await window.VaultlixMediaSafety.check(image);
+    if (status !== 'allowed') return status;
+  }
+  return 'allowed';
+}
+async function allowLocalImageSend(images) {
+  if (!localImageSafetyEnabled() || !images.length) return true;
+  const status = await checkLocalImages(images);
+  if (status === 'allowed') return true;
+  toast(status === 'blocked' ? 'This photo may contain nudity and cannot be shared. If this seems wrong, contact support.' : 'Could not check this photo on your device. Try a smaller still image.');
+  return false;
+}
+const localProfileChecks = new Map();
+function displayProfileImageUri(value) {
+  const image = safeProfileImageUri(value);
+  if (!image || !localImageSafetyEnabled()) return image;
+  const existing = localProfileChecks.get(image);
+  if (existing) return existing === 'allowed' ? image : null;
+  // This bounded, in-memory cache is cleared when the page closes.
+  if (localProfileChecks.size >= 128) localProfileChecks.delete(localProfileChecks.keys().next().value);
+  localProfileChecks.set(image, 'pending');
+  checkLocalImages([image]).then(status => {
+    localProfileChecks.set(image, status);
+    renderAccountProfilePhoto();
+    renderVaultList();
+    const room = rooms.get(activeRoomCode);
+    if (room) renderChatPeerAvatar(room);
+  });
+  return null;
+}
+const localRecordChecks = new WeakMap();
+function recordImagesForLocalCheck(rec) {
+  const images = [];
+  if (rec.kind === 'file' && (rec.isImage || String(rec.mime || '').startsWith('image/'))) images.push(rec.base64);
+  if (rec.kind === 'album') for (const item of rec.images || []) images.push(item.base64);
+  if (rec.pdfPreview) images.push(rec.pdfPreview);
+  if (rec.replyData?.thumb) images.push(rec.replyData.thumb);
+  return images;
+}
+function renderLocalImageSafetyGate(room, rec, div, body, typing) {
+  if (!localImageSafetyEnabled()) return false;
+  const images = recordImagesForLocalCheck(rec);
+  if (!images.length) return false;
+  let status = localRecordChecks.get(rec);
+  if (status === 'allowed') return false;
+  if (!status) {
+    status = 'pending'; localRecordChecks.set(rec, status);
+    checkLocalImages(images).then(result => {
+      localRecordChecks.set(rec, result);
+      if (room.code === activeRoomCode && room.messages.includes(rec)) renderChatBody(room);
+    });
+  }
+  const notice = document.createElement('div'); notice.className = 'msg-blocked';
+  const label = document.createElement('span');
+  label.textContent = status === 'pending' ? 'Checking photo on this device…' : status === 'blocked' ? 'Photo hidden: possible nudity detected on this device.' : 'Photo unavailable: the on-device check could not finish.';
+  notice.append(label);
+  if (status === 'unavailable') {
+    const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry';
+    retry.onclick = () => { localRecordChecks.delete(rec); renderChatBody(room); }; notice.append(retry);
+  }
+  if (!rec.isMe) {
+    const report = document.createElement('button'); report.type = 'button'; report.textContent = 'Report / Block';
+    report.onclick = openReportPanel; notice.append(report);
+  }
+  div.append(notice); body.insertBefore(div, typing); return true;
+}
+
 function safeProfileImageUri(value) {
   if (typeof value !== 'string' || value.length > 342 * 1024) return null;
   return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value) ? value : null;
@@ -8989,7 +9064,7 @@ function renderAccountProfilePhoto(state = loadAccountState()) {
   const change = document.getElementById('account-profile-photo-change');
   const remove = document.getElementById('account-profile-photo-remove');
   if (!preview) return;
-  const image = safeProfileImageUri(state?.profileImage);
+  const image = displayProfileImageUri(state?.profileImage);
   preview.replaceChildren();
   if (image) {
     const img = document.createElement('img');
@@ -9073,6 +9148,7 @@ async function prepareDailyLookImage(file) {
 async function saveProfileImageUpdate(profileImageAction, profileImage = null) {
   const state = loadAccountState();
   if (!state) return false;
+  if (profileImageAction === 'replace' && !await allowLocalImageSend([profileImage])) return false;
   const result = await api('/api/account/profile', {
     accountId:state.accountId,
     sessionToken:state.sessionToken,
@@ -11708,7 +11784,7 @@ function renderChatPeerAvatar(room) {
   const button = document.getElementById('chat-peer-avatar');
   if (!button || !room) return;
   const label = roomDisplayLabel(room) || 'Vaultlix user';
-  const image = safeProfileImageUri(room.peerProfileImage);
+  const image = displayProfileImageUri(room.peerProfileImage);
   button.replaceChildren();
   button.setAttribute('aria-label', image ? `View ${label}'s profile image` : `${label} has no profile image`);
   button.title = image ? 'View profile image' : 'No profile image';
@@ -11725,7 +11801,7 @@ function renderChatPeerAvatar(room) {
 
 function openPeerProfileImage() {
   const room = rooms.get(activeRoomCode);
-  const image = safeProfileImageUri(room?.peerProfileImage);
+  const image = displayProfileImageUri(room?.peerProfileImage);
   if (!image) {
     toast("This person hasn't added a profile image");
     return;
@@ -11932,7 +12008,7 @@ function renderVaultList() {
       : vaultInboxPreview(room, previews);
     const activity = vaultLastActivity(room);
     const avatarStyle = vaultAvatarPalette(room.peerPrivateNumber || room.code);
-    const profileImage = safeProfileImageUri(room.peerProfileImage);
+    const profileImage = displayProfileImageUri(room.peerProfileImage);
     const avatarContent = profileImage
       ? `<img class="profile-image-avatar" src="${escHtml(profileImage)}" alt=""/>`
       : escHtml(label.trim().charAt(0).toUpperCase() || 'V');
@@ -12572,7 +12648,7 @@ function showForwardAttachmentPicker(rec) {
   const rows = targets.map(room => {
     const label = roomDisplayLabel(room);
     const avatarStyle = vaultAvatarPalette(room.peerPrivateNumber || room.code);
-    const profileImage = safeProfileImageUri(room.peerProfileImage);
+    const profileImage = displayProfileImageUri(room.peerProfileImage);
     const avatar = profileImage
       ? `<img src="${profileImage}" alt="" style="width:100%;height:100%;object-fit:cover"/>`
       : escHtml(label.trim().charAt(0).toUpperCase() || 'V');
@@ -12932,6 +13008,7 @@ function renderMessageRecord(room, rec, animate) {
   const div = document.createElement('div');
   div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
   div.dataset.msgId = rec.id;
+  if (renderLocalImageSafetyGate(room, rec, div, body, typing)) return div;
   const safetyText = [rec.content,rec.replyData?.text,rec.name,rec.fileName,rec.title].filter(v=>typeof v==='string').join(' ');
   const screened = window.VaultlixContentSafety?.check(safetyText);
   const hiddenMedia = ['file','album','voice','gif','image'].includes(rec.kind) || !!rec.replyData?.isImage;
@@ -14518,7 +14595,8 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
     profileName.textContent = signedIn
       ? result.profile.displayName
       : `${result.profile.displayName} invited you to extend a private line`;
-    const publicImage = safeProfileImageUri(result.profile.profileImage);
+    let publicImage = safeProfileImageUri(result.profile.profileImage);
+    if (publicImage && localImageSafetyEnabled() && await checkLocalImages([publicImage]) !== 'allowed') publicImage = null;
     if (profilePhoto) {
       if (publicImage) profilePhoto.src = publicImage; else profilePhoto.removeAttribute('src');
       profilePhoto.alt = publicImage ? `${result.profile.displayName} profile image` : '';
@@ -16343,6 +16421,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const mime = mimeOverride || file.type;
+  if (!await allowLocalImageSend([...(isImage || String(mime).startsWith('image/') ? [base64] : []), ...(pdfPreview ? [pdfPreview] : [])])) return false;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
   const msgId = newMsgId();
 
@@ -16416,6 +16495,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // sendFileMessage as its own normal message; grouping only makes sense
 // once there's more than one.
 async function sendAlbumMessage(room, items, viewOnce) {
+  if (!await allowLocalImageSend(items.map(item => item.base64))) return false;
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');

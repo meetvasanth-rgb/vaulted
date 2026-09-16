@@ -52,7 +52,7 @@ test('profile image controls support add, replace and remove', () => {
 });
 
 test('incoming calls show the peer profile photo with an initial fallback', () => {
-  assert.match(client, /const peerImage = safeProfileImageUri\(room\.peerProfileImage\)/);
+  assert.match(client, /const peerImage = displayProfileImageUri\(room\.peerProfileImage\)/);
   assert.match(client, /class="call-peer-avatar-photo"/);
   assert.match(client, /provisionCallRoomWithAvatar/);
   assert.match(client, /typeof window\.VaultlixAndroid\.provisionCallRoomWithAvatar === 'function'/);

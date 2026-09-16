@@ -24,6 +24,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         window?.rootViewController = bridgeController
         window?.makeKeyAndVisible()
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
+        bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
+            source: "window.__vaultlixLocalImageSafety = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -224,6 +226,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         guard message.name == "vaultlixCall",
               let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
+        if action == "screenImage" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com",
+                  let requestId = body["requestId"] as? String, requestId.count <= 80,
+                  let base64 = body["base64"] as? String else { return }
+            LocalImageSafety.shared.check(base64: base64) { [weak self] status in
+                self?.emit(name: "vaultlix:image-safety-result", detail: ["requestId": requestId, "status": status])
+            }
+            return
+        }
         if action == "ready" {
             webReady = true
             if let token = VaultlixCallManager.shared.voIPToken
