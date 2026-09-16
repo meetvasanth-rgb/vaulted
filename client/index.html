@@ -16397,26 +16397,39 @@ async function handleFileSelect(event) {
 
   const images = [];
   const others = [];
-  for (const file of valid) {
-    if (file.type.startsWith('image/')) {
-      // Compressed here, before anything else touches it — base64/encrypt/
-      // send all work on the already-shrunk bytes, and so does the picker
-      // preview below.
-      const { base64, mime } = await compressImageFile(file);
-      images.push({ file, base64, mime });
-    } else {
-      const base64 = await fileToBase64(file);
-      const pdfPreview = isPdfAttachment(file.type, file.name)
-        ? await createPdfFirstPagePreview(base64)
-        : null;
-      others.push({ file, base64, pdfPreview });
+  const photoCount = valid.filter(file => file.type.startsWith('image/')).length;
+  const progress = photoCount ? beginPhotoSendProgress(photoCount) : null;
+  let photoIndex = 0;
+  try {
+    for (const file of valid) {
+      if (file.type.startsWith('image/')) {
+        // Compressed here, before anything else touches it — base64/encrypt/
+        // send all work on the already-shrunk bytes, and so does the picker
+        // preview below.
+        progress?.update(`Preparing photo ${++photoIndex} of ${photoCount}…`);
+        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        const { base64, mime } = await compressImageFile(file);
+        images.push({ file, base64, mime });
+      } else {
+        const base64 = await fileToBase64(file);
+        const pdfPreview = isPdfAttachment(file.type, file.name)
+          ? await createPdfFirstPagePreview(base64)
+          : null;
+        others.push({ file, base64, pdfPreview });
+      }
     }
-  }
 
-  // Non-image files send immediately, one after another — view-once isn't a
-  // meaningful concept for a PDF or a zip, so no picker needed for these.
-  for (const { file, base64, pdfPreview } of others) {
-    await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount);
+    // Non-image files send immediately, one after another — view-once isn't a
+    // meaningful concept for a PDF or a zip, so no picker needed for these.
+    for (const { file, base64, pdfPreview } of others) {
+      progress?.update('Sending attachments…');
+      await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount);
+    }
+  } catch (error) {
+    toast('Could not prepare the selected attachments. Please select them again.');
+    return;
+  } finally {
+    progress?.close();
   }
 
   // Photos get the view-once choice, asked once for the whole batch (not

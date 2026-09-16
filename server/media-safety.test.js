@@ -126,3 +126,16 @@ test('photo send shows feedback before starting and removes it on failure withou
   finish();await pending;
   assert.deepEqual(events.slice(-2),['error-shown','progress-closed']);
 });
+test('selection shows progress before compression and waits for every photo before send options',async()=>{
+  const events=[];let release;
+  const context={getActiveRoom:()=>({}),MAX_FILE_SIZE:1000,beginPhotoSendProgress:()=>{events.push('visible');return{update:s=>events.push(s),close:()=>events.push('closed')};},requestAnimationFrame:fn=>fn(),setTimeout:fn=>fn(),compressImageFile:async file=>{events.push('compress-'+file.name);if(file.name==='a')await new Promise(resolve=>release=resolve);return{base64:'data',mime:'image/jpeg'};},showSendImageOptions:(_,images)=>events.push('options-'+images.length),toast:()=>events.push('error')};
+  vm.createContext(context);vm.runInContext('async '+extract('handleFileSelect'),context);
+  const pending=context.handleFileSelect({target:{files:[{name:'a',size:10,type:'image/jpeg'},{name:'b',size:10,type:'image/jpeg'}]}});
+  await Promise.resolve();
+  assert.deepEqual(events,['visible','Preparing photo 1 of 2…','compress-a']);
+  release();await pending;
+  assert.deepEqual(events.slice(3),['Preparing photo 2 of 2…','compress-b','closed','options-2']);
+  events.length=0;context.compressImageFile=async()=>{throw Error('read failed');};
+  await context.handleFileSelect({target:{files:[{name:'c',size:10,type:'image/jpeg'}]}});
+  assert.deepEqual(events,['visible','Preparing photo 1 of 1…','error','closed']);
+});
