@@ -24,7 +24,7 @@ test('admin dashboard represents identities and conversations instead of vault a
 });
 
 test('admin identity directory returns useful metadata without account secrets', () => {
-  const route = server.slice(server.indexOf("if (path === '/api/admin/stats'"), server.indexOf("resErr(res,'Not found.'"));
+  const route = server.slice(server.indexOf("if ((path === '/api/admin/stats'"), server.indexOf("resErr(res,'Not found.'"));
   assert.match(route, /displayName: account\.displayName/);
   assert.match(route, /privateNumber: account\.privateNumber/);
   assert.match(route, /activeDevices:/);

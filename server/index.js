@@ -9,6 +9,9 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { SafetyStore } = require('./safety-store');
+const contentSafety = require('../client/content-safety');
+let safetyStore;
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const { EncryptedObjectStorage } = require('./object-storage');
 const { DAILY_LOOK_WATERMARK_VERSION, watermarkDailyLookOutput } = require('./daily-look-watermark');
@@ -625,13 +628,13 @@ function evictConversationCache(code) {
 // out of totalByteSize too, or the tracked global total would drift
 // upward forever as rooms come and go, eventually making the global budget
 // think it's full when the real rooms Map is mostly empty.
-function destroyRoom(code) {
+function destroyRoom(code, durableAlreadyDeleted = false) {
   const room = rooms.get(code);
   if (room) {
     publishInboxRoom(code, 'room-closed');
   }
   evictConversationCache(code);
-  if (postgresEnabled && !room?.dbClient) postgresStore.deleteConversation(code).catch(error => console.error('Conversation delete failed:', error.message));
+  if (postgresEnabled && !durableAlreadyDeleted && !room?.dbClient) postgresStore.deleteConversation(code).catch(error => console.error('Conversation delete failed:', error.message));
   realtimeCoordinator.publish('conversation-invalidated', { roomCode:code }).catch(() => {});
   // Closing/expiry must reach durable state immediately so a backup taken
   // before the next periodic pass cannot resurrect an already-erased vault.
@@ -2746,29 +2749,40 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
 
 async function api(path, method, d, p, res, ip, headers) {
 
-  if (path === '/api/report' && method === 'POST') {
-    if (await rateLimited(`safety-report:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many reports — try again later.', 429);
+  if ((path === '/api/report' || path === '/api/connections/block') && method === 'POST') {
+    if (await rateLimited(`safety-report:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many safety requests — try again later.', 429);
     const room = rooms.get(d.code);
     const member = room && typeof d.token === 'string' ? room.members.get(d.token) : null;
-    if (!room || !member) return resErr(res, 'This conversation is no longer available.', 403);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!room || !member || !account) return resErr(res, 'Sign in and reopen this conversation to continue.', 403);
+    const relationship = (account.connectionRequests || []).find(r => {
+      const code = String(r.inviteUrl || '').match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i)?.[1];
+      const slot = r.recipientAccountId === d.accountId ? 1 : r.senderAccountId === d.accountId ? 2 : 0;
+      return r.status === 'accepted' && code === d.code && slot === member.slot;
+    });
+    if (!relationship) return resErr(res, 'Conversation does not belong to this account.', 403);
+    const peerAccountId = relationship.senderAccountId === d.accountId ? relationship.recipientAccountId : relationship.senderAccountId;
+    if (path === '/api/connections/block') {
+      await safetyStore.block(d.accountId, peerAccountId);
+      // Persist the account-level block before closing any room. New requests
+      // in either direction are denied, including after sign-in on a new device.
+      if (postgresEnabled) await postgresStore.withConversationLock(d.code, async client => {
+        await postgresStore.deleteConversation(d.code, client);
+      });
+      destroyRoom(d.code, postgresEnabled);
+      return res200(res, {ok:true});
+    }
     const reasons = new Set(['spam','harassment','threats','sexual','illegal','other']);
     if (!reasons.has(d.reason)) return resErr(res, 'Choose a valid report reason.', 400);
     const details = typeof d.details === 'string' ? d.details.trim().slice(0, 500) : '';
-    const includeMessages = d.includeMessages === true;
-    const messages = includeMessages && Array.isArray(d.messages) ? d.messages.slice(-5).map(msg => ({
+    const messages = d.includeMessages === true && Array.isArray(d.messages) ? d.messages.slice(-5).map(msg => ({
       content: typeof msg.content === 'string' ? msg.content.slice(0, 500) : '',
-      isReporter: !!msg.isMe,
-      ts: Number.isFinite(msg.ts) ? msg.ts : Date.now(),
+      isReporter: !!msg.isMe, ts: Number.isFinite(msg.ts) ? msg.ts : Date.now(),
     })).filter(msg => msg.content) : [];
-    try {
-      appendSafetyReport({
-        id: crypto.randomUUID(), createdAt: new Date().toISOString(), reason:d.reason, details,
-        vaultHash: crypto.createHash('sha256').update(`vaultlix-report-v1\0${d.code}`).digest('hex'),
-        reporterHash: crypto.createHash('sha256').update(`vaultlix-reporter-v1\0${d.token}`).digest('hex'),
-        messages,
-      });
-    } catch (error) { console.error('Safety report save failed:', error.message); return resErr(res, 'Report could not be saved.', 503); }
-    return res200(res, { ok:true });
+    const report = await safetyStore.add({reason:d.reason,details,messages,
+      reporterAccountId:d.accountId,reportedAccountId:peerAccountId,roomCode:d.code});
+    res.setHeader('Cache-Control','no-store');
+    return res200(res, {ok:true,reportId:report.id});
   }
 
   // Native Android can acknowledge an answer before its call-only WebView and
@@ -2934,6 +2948,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path === '/api/account/register' && method === 'POST') {
     const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
+    if (contentSafety.check(displayName).blocked) return resErr(res, 'Choose a username without abusive or threatening language.', 400);
     if (!displayName || displayName.length > 32) {
       return resErr(res, 'Username must be between 2 and 32 characters.', 400);
     }
@@ -3133,6 +3148,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     const displayName = normalizeDisplayName(d.displayName);
+    if (contentSafety.check(displayName).blocked) return resErr(res, 'Choose a username without abusive or threatening language.', 400);
     if (!displayName || displayName.length > 32) return resErr(res, 'Enter a username between 2 and 32 characters.', 400);
     let profileImage = normalizeProfileImage(account.profileImage) || null;
     if (d.profileImageAction === 'replace') {
@@ -3384,6 +3400,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!sender) return resErr(res, 'Your session has expired.', 401);
     if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
     if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
+    if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(recipient.accountId) || await safetyStore.blocked(d.accountId, recipient.accountId)) return resErr(res, 'This connection is unavailable.', 403);
     const now = Date.now();
     // Accepted relationships are durable. Quick Connect must classify the
     // pair before creating anything, regardless of who originally sent the
@@ -3512,7 +3529,12 @@ async function api(path, method, d, p, res, ip, headers) {
     const previousRequestCount = (account.connectionRequests || []).length;
     account.connectionRequests = compactConnectionRequests(account.connectionRequests, now);
     if (recoveredRequest || account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
-    return res200(res, { ok:true, requests:account.connectionRequests.map(({senderAccountId, recipientAccountId, ...safe}) => ({
+    const visibleRequests = [];
+    for (const r of account.connectionRequests) {
+      const peer = r.senderAccountId === d.accountId ? r.recipientAccountId : r.senderAccountId;
+      if (!(await safetyStore.blocked(d.accountId, peer))) visibleRequests.push(r);
+    }
+    return res200(res, { ok:true, requests:visibleRequests.map(({senderAccountId, recipientAccountId, ...safe}) => ({
       ...safe,
       senderProfileImage:normalizeProfileImage(accounts.get(senderAccountId)?.profileImage) || null,
       recipientProfileImage:normalizeProfileImage(accounts.get(recipientAccountId)?.profileImage) || null,
@@ -3524,6 +3546,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!account) return resErr(res, 'Your session has expired.', 401);
     const request = (account.connectionRequests || []).find(r => r.id === d.requestId && r.direction === 'incoming' && r.status === 'pending');
     if (!request) return resErr(res, 'Request is no longer available.', 404);
+    if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(request.senderAccountId) || await safetyStore.blocked(d.accountId, request.senderAccountId)) return resErr(res, 'This connection is unavailable.', 403);
     if (!['accepted','rejected'].includes(d.action)) return resErr(res, 'Invalid response.', 400);
     request.status = d.action; request.respondedAt = Date.now();
     if (d.action === 'accepted') {
@@ -4559,7 +4582,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if (path === '/api/admin/stats' && method === 'GET') {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -4578,6 +4601,42 @@ async function api(path, method, d, p, res, ip, headers) {
       // out after ten refreshes even though every supplied key was correct.
       await rateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS);
       res.writeHead(404); res.end(); return;
+    }
+    if (path === '/api/admin/safety') {
+      res.setHeader('Cache-Control','no-store');
+      if (method === 'GET') {
+        const reports = await safetyStore.list();
+        // Never expose room credentials or account identifiers in the queue.
+        return res200(res,{reports:reports.map(({roomCode,reporterAccountId,reportedAccountId,...r})=>({...r,canClose:!!roomCode,canModerateAccount:!!reportedAccountId})),owner:'Vasanthkumar',responseHours:24});
+      }
+      if(typeof d.note !== 'string') return resErr(res,'A review note is required.',400);
+      const closedCodes = new Set();
+      try {
+        await safetyStore.review(d.id,d.status,`${d.note || ''}${d.accountAction && d.accountAction !== 'none' ? ' [Account: '+d.accountAction+']' : ''}`,d.expectedUpdatedAt, async (report,client) => {
+          const codes = new Set();
+          if (d.accountAction && !['none','suspend','restore'].includes(d.accountAction)) throw Error('Invalid account action.');
+          if (d.accountAction && d.accountAction !== 'none') {
+            if(!report.reportedAccountId || d.status !== 'resolved') throw Error('Resolve the report with a note before changing account access.');
+            await safetyStore.setSuspended(report.reportedAccountId,d.accountAction==='suspend',client);
+            if(d.accountAction==='suspend') {
+              if(report.roomCode) codes.add(report.roomCode);
+            }
+          }
+          if (d.closeConversation === true) {
+            if (!report.roomCode || d.status !== 'resolved') throw Error('Select Resolved and add a resolution note before closing a conversation.');
+            codes.add(report.roomCode);
+          }
+          for(const code of [...codes].sort()) {
+            if (client) {
+              await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[code]);
+              await postgresStore.deleteConversation(code,client);
+            } else destroyRoom(code);
+            closedCodes.add(code);
+          }
+        });
+      } catch(error) { return resErr(res,error.message,409); }
+      if (postgresEnabled) for(const code of closedCodes) destroyRoom(code,true);
+      return res200(res,{ok:true});
     }
     const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;
     const now = Date.now();
@@ -5622,26 +5681,7 @@ const ACCOUNTS_PATH = path.join(SNAPSHOT_DIR, 'accounts.json');
 const ACCOUNTS_TMP_PATH = ACCOUNTS_PATH + '.tmp';
 const NUMBER_LIFECYCLE_PATH = path.join(SNAPSHOT_DIR, 'private-number-lifecycle.json');
 const NUMBER_LIFECYCLE_TMP_PATH = NUMBER_LIFECYCLE_PATH + '.tmp';
-const REPORTS_PATH = path.join(SNAPSHOT_DIR, 'safety-reports.jsonl');
-const REPORTS_TMP_PATH = REPORTS_PATH + '.tmp';
 const SAFETY_REPORT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
-
-function appendSafetyReport(report) {
-  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
-  let retained = [];
-  if (fs.existsSync(REPORTS_PATH)) {
-    const cutoff = Date.now() - SAFETY_REPORT_RETENTION_MS;
-    retained = fs.readFileSync(REPORTS_PATH, 'utf8').split('\n').filter(Boolean).flatMap(line => {
-      try { const parsed = JSON.parse(line); return Date.parse(parsed.createdAt) >= cutoff ? [parsed] : []; }
-      catch (e) { return []; }
-    });
-  }
-  retained.push(report);
-  retained = retained.slice(-10000);
-  fs.writeFileSync(REPORTS_TMP_PATH, retained.map(item => JSON.stringify(item)).join('\n') + '\n', { encoding:'utf8', mode:0o600 });
-  fs.renameSync(REPORTS_TMP_PATH, REPORTS_PATH);
-  fs.chmodSync(REPORTS_PATH, 0o600);
-}
 
 // Anonymous account ciphertext must survive every restart independently of
 // the live-room checkpoint. Atomic replacement prevents a power loss or
@@ -5989,6 +6029,10 @@ async function bootstrap() {
     loadAccounts();
     console.warn('DATABASE_URL is not set — using the local account-store fallback.');
   }
+  safetyStore = new SafetyStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
+  await safetyStore.initialize();
+  await safetyStore.prune();
+  setInterval(() => safetyStore.prune().catch(error => console.error('Safety retention failed:', error.message)), 60 * 60 * 1000).unref();
   if (realtimeCoordinator.enabled) {
     await realtimeCoordinator.start(handleRealtimeEvent);
     console.log(`Redis realtime coordination ready (instance ${realtimeCoordinator.instanceId.slice(0, 8)}).`);

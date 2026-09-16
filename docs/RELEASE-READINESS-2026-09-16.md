@@ -18,7 +18,7 @@ Release archive, local export, and upload succeeded using Xcode 26.6. The archiv
 
 ## Live deployment
 
-Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` showed ACTIVE and Deployment successful for “Allow landscape orientation on iPad”, deployment `ead43641-fe4d-44d5-9174-fc0f5d452385`. Postgres and Redis were Online. The public `https://vaultlix.com` landing page loaded. No server redeployment was needed or triggered.
+Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` showed ACTIVE and Deployment successful for “Allow landscape orientation on iPad”, deployment `ead43641-fe4d-44d5-9174-fc0f5d452385`. Postgres and Redis were Online. The public `https://vaultlix.com` landing page loaded. This was the initial verification. The subsequent safety remediation is prepared and tested locally; deployment is pending the owner’s decision on removing duplicate legacy report files after verified migration.
 
 ## App Store findings and changes
 
@@ -26,7 +26,7 @@ Railway production service `450037dc-2e2b-41ec-b5ff-bc8f0084343a` showed ACTIVE 
 - Five iPhone screenshots were present. Existing six-iPad-screenshot inventory came from the handoff and requires fresh visual verification if edited.
 - Reviewer account and contact fields looked empty in accessibility/DOM output but were visibly populated in a screenshot and persisted after reload. Do not diagnose these sensitive fields from the redacted text output. Credentials are intentionally excluded from this report.
 - Support and privacy-policy URLs are `https://vaultlix.com`. The privacy policy is accessible inside the site rather than as a dedicated document URL.
-- Published privacy categories: User ID and Device ID linked to identity; photos/videos, messages, audio, other user content and product interaction not linked. This declaration still needs a full data-flow review: profile photos and Daily Look requests are associated with an account even when message bodies are end-to-end encrypted. Encryption alone does not establish that data is unlinked.
+- Privacy labels corrected and published on 16 September: photos/videos (including profile photos/Daily Look), emails/text messages, audio and other user content are linked to identity, for App Functionality. Product Interaction is linked and includes App Functionality (account-level Daily Look usage) alongside Analytics. User ID and Device ID remain linked. No tracking purposes were enabled. App Store Connect displayed the updated publication and linked categories.
 - Content rights already declared as obtained. DSA status is non-trader; the owner must ensure this matches their actual commercial activity.
 - Age questionnaire already disclosed messaging and user-generated content, but the computed store rating was 4+. Raised the override to 18+ to match the existing published under-18 exclusion. Apple showed 18+ after saving.
 - Owner confirmed no French encryption declaration and explicitly authorized excluding France. Availability was changed from 175 to 174 territories; France showed Not Available.
@@ -52,9 +52,11 @@ Sources checked on 16 September 2026:
 
 Do not claim full Guideline 1.2 compliance yet. Apple requires filtering, reporting with timely responses, blocking, and published contact information. Exact-number invitations and recipient consent reduce exposure but do not replace those requirements.
 
-The app exposes Report and Block. `/api/report` stores a reason, limited details and optionally up to five user-selected plaintext messages only when the report explicitly includes them. The server otherwise relays encrypted messaging. Daily Look has image moderation; GIF search requests a high content filter. Neither covers ordinary messages or all user attachments. No general objectionable-message filtering or complete operator response workflow was verified.
+Implemented local text filtering with a pinned multilingual dictionary, threat/exploitation checks and basic obfuscation normalization; incoming text and inbox previews are screened, and incoming attachments are hidden until explicitly revealed. Account-level blocking is durable and prevents new connections in both directions. Reports require authenticated membership and explicit consent for excerpts.
 
-A remediation should preserve end-to-end encryption: apply any message checks on-device before encryption, provide transparent user controls, and send plaintext to moderators only through an explicit report. Validate multilingual coverage, forwarding, attachment paths, and abuse evasion; do not present a small keyword list as comprehensive moderation. Establish an owner and response process for stored safety reports and verify that blocking prevents renewed contact. A server plaintext-scanning bypass must not be introduced.
+The protected admin queue now has 24-hour deadlines, overdue indicators, review notes, conversation closure, suspension of new connections and appeal restoration. The owner committed to daily review and action within 24 hours. See [Safety operations](SAFETY-OPERATIONS.md) for the review process, retention, tests and known limitations. All 240 tests pass. Synthetic browser validation confirmed the queue and saved review state.
+
+These changes reduce the previously identified gaps; they do not establish guaranteed Guideline 1.2 approval. Text filters are imperfect, media reveal controls do not classify image/audio content, and the operator must actively monitor the queue. No claim of comprehensive moderation or completed native-device acceptance testing is made.
 
 Reference: [Apple Guideline 1.2](https://developer.apple.com/app-store/review/guidelines/#user-generated-content).
 

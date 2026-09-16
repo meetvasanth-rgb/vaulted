@@ -34,7 +34,7 @@
 
       <section class="hero">
         <div><p class="eyebrow">Right now</p><h1>People and conversations.</h1><p>Account operations for the current Private Number architecture.</p></div>
-        <div class="privacy-seal"><span>✓</span><div><strong>Privacy boundary intact</strong><small>No passwords, keys or message contents</small></div></div>
+        <div class="privacy-seal"><span>✓</span><div><strong>Privacy boundary intact</strong><small>No passwords, keys or unreported message contents</small></div></div>
       </section>
 
       <section class="metric-grid" aria-label="Live metrics">
@@ -50,6 +50,12 @@
           <thead><tr><th>Username</th><th>Private Number</th><th>Created</th><th>Updated</th><th>Devices</th><th>Notifications</th><th>Pending requests</th></tr></thead>
           <tbody id="identity-rows"><tr><td colspan="7" class="empty-row">Loading identities…</td></tr></tbody>
         </table></div>
+      </section>
+
+      <section class="panel" aria-labelledby="safety-heading">
+        <div class="panel-head"><div><p class="eyebrow">Safety reports</p><h2 id="safety-heading">Review queue</h2><p class="panel-copy">Owner: Vasanthkumar · Review within 24 hours. Only explicitly reported details and optional message excerpts are shown. Unresolved reports remain until handled.</p></div><strong id="safety-summary" role="status">Loading…</strong></div>
+        <p id="safety-error" class="error" role="alert"></p>
+        <div id="safety-reports"></div>
       </section>
 
       <section class="content-grid">
@@ -82,8 +88,8 @@
 
         <article class="panel privacy-panel">
           <p class="eyebrow">Administrator visibility</p><h2>Privacy boundary</h2>
-          <ul><li>Passwords or recovery codes</li><li>Conversation codes or invite secrets</li><li>IP addresses or locations</li><li>Message, media or call contents</li><li>Encryption keys or notification tokens</li></ul>
-          <p class="privacy-note">Usernames and Private Numbers are visible for account support. End-to-end encrypted content remains inaccessible.</p>
+          <ul><li>Passwords or recovery codes</li><li>Conversation codes or invite secrets</li><li>IP addresses or locations</li><li>Unreported message, media or call contents</li><li>Encryption keys or notification tokens</li></ul>
+          <p class="privacy-note">Usernames and Private Numbers are visible for account support. Ordinary end-to-end encrypted content remains inaccessible. The safety queue contains only reports and text excerpts deliberately shared by the reporter.</p>
         </article>
       </section>
     </section>

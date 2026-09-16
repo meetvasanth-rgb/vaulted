@@ -21,6 +21,7 @@
       if (!response.ok) throw new Error('Access denied');
       const stats = await response.json();
       render(stats);
+      loadSafetyReports();
       $('login').hidden = true;
       $('dashboard').hidden = false;
       history.replaceState({ signedOut: false }, '', '/admin');
@@ -71,6 +72,54 @@
     $('cipher-count').textContent = number(s.live.storedCiphertextMessages);
     renderIdentities(s.identities || []);
     renderChart(s.daily || []);
+  }
+
+  async function loadSafetyReports() {
+    const key = adminKey;
+    try {
+      const response = await fetch('/api/admin/safety',{headers:{Authorization:`Bearer ${key}`},cache:'no-store'});
+      if (!response.ok) throw Error('Report queue unavailable. Refresh and follow up before the 24-hour deadline.');
+      const data=await response.json();
+      if (!adminKey || key !== adminKey) return;
+      // Avoid replacing an operator's unsaved review note during refresh.
+      if ($('safety-reports').contains(document.activeElement) || [...$('safety-reports').querySelectorAll('textarea')].some(input=>input.value.trim())) return;
+      $('safety-error').textContent='';
+      const open=data.reports.filter(r=>!['resolved','dismissed'].includes(r.status));
+      $('safety-summary').textContent=`${open.length} open · ${open.filter(r=>r.overdue).length} overdue`;
+      $('safety-reports').replaceChildren();
+      if(!data.reports.length) $('safety-reports').textContent='No reports received.';
+      for(const r of data.reports) {
+        const details=document.createElement('details'); details.className='safety-report';
+        const summary=document.createElement('summary');
+        summary.textContent=`${r.overdue?'OVERDUE · ':''}${r.reason} · ${r.status} · ${formatDate(r.createdAt)} · ${r.id}`;
+        const due=document.createElement('p'); due.textContent=`Review due: ${formatDate(r.dueAt)}`;
+        const evidence=document.createElement('pre'); evidence.className='safety-evidence';
+        evidence.textContent=`Reporter's details: ${r.details || '(none)'}\n\n`+(r.messages?.length?r.messages.map(m=>`${m.isReporter?'Reporter':'Other participant'}: ${m.content}`).join('\n'):'No message excerpts shared.');
+        const history=document.createElement('p'); history.textContent=(r.history||[]).map(h=>`${formatDate(h.at)} · ${h.status}: ${h.note}`).join('\n');
+        const form=document.createElement('form');
+        const note=document.createElement('textarea'); note.required=true; note.maxLength=950; note.placeholder='Record your assessment, action taken, and any follow-up. Never paste passwords or keys.';note.setAttribute('aria-label','Review note');
+        const select=document.createElement('select');select.setAttribute('aria-label','Report status');
+        for(const [value,label] of [['reviewing','In review'],['resolved','Resolved'],['dismissed','Dismissed with explanation']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
+        const close=document.createElement('input'); close.type='checkbox'; close.disabled=!r.canClose;
+        const closeLabel=document.createElement('label');closeLabel.append(close,document.createTextNode(' Close the reported conversation for both participants (irreversible).'));
+        const accountAction=document.createElement('select');accountAction.setAttribute('aria-label','Reported account action');accountAction.disabled=!r.canModerateAccount;
+        for(const [value,label] of [['none','No account change'],['suspend','Suspend new connections and close reported conversation'],['restore','Restore reported account after appeal']]){const option=document.createElement('option');option.value=value;option.textContent=label;accountAction.append(option);}
+        const save=document.createElement('button');save.type='submit';save.textContent='Save review';
+        form.append(note,select,accountAction,closeLabel,save);
+        form.addEventListener('submit',async event=>{
+          event.preventDefault();
+          if((close.checked || accountAction.value!=='none') && select.value!=='resolved'){ $('safety-error').textContent='Select Resolved when closing the reported conversation.';return; }
+          if((close.checked || accountAction.value==='suspend') && !confirm('This closes conversations permanently. Suspension prevents new connections until restored. Continue?'))return;
+          save.disabled=true;
+          try{
+            const response=await fetch('/api/admin/safety',{method:'POST',headers:{Authorization:`Bearer ${adminKey}`,'Content-Type':'application/json'},body:JSON.stringify({id:r.id,status:select.value,note:note.value,expectedUpdatedAt:r.updatedAt,closeConversation:close.checked,accountAction:accountAction.value})});
+            const result=await response.json();if(!response.ok)throw Error(result.error||'Review could not be saved.');
+            note.value=''; save.blur(); await loadSafetyReports();
+          }catch(error){$('safety-error').textContent=error.message;}finally{save.disabled=false;}
+        });
+        details.append(summary,due,evidence,history,form);$('safety-reports').append(details);
+      }
+    }catch(error){if(adminKey===key)$('safety-error').textContent=error.message;}
   }
 
   function escapeHtml(value) {
@@ -129,6 +178,8 @@
   $('refresh').addEventListener('click', () => loadStats(false));
   function signOut() {
     adminKey = '';
+    $('safety-reports').replaceChildren();
+    $('safety-summary').textContent='Signed out';
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = null;
     $('admin-key').value = '';
