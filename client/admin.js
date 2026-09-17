@@ -208,10 +208,25 @@
     $('trend-chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"><title>Conversations and messages over the last fourteen days</title>${grid}<polyline points="${points(messages)}" fill="none" stroke="#71947c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${points(vaults)}" fill="none" stroke="#682c43" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>${labels}</svg>`;
   }
 
+  function clearClaimQr() {
+    const canvas=$('allocate-qr');
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+  }
+  function renderClaimQr(link) {
+    const qr=qrcode(0,'M');qr.addData(link);qr.make();
+    const canvas=$('allocate-qr'), count=qr.getModuleCount(), cell=6, size=(count+8)*cell;
+    canvas.width=canvas.height=size;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#000';
+    for(let row=0;row<count;row++)for(let col=0;col<count;col++)if(qr.isDark(row,col))ctx.fillRect((col+4)*cell,(row+4)*cell,cell,cell);
+  }
+  $('allocate-save-qr').addEventListener('click',()=>{
+    if(!adminKey || !$('allocate-link').value)return;
+    const link=document.createElement('a');link.download='vaultlix-private-number-qr.png';link.href=$('allocate-qr').toDataURL('image/png');link.click();
+  });
   $('allocate-number-form').addEventListener('submit',async event=>{
     event.preventDefault(); const key=adminKey;if(!key)return;
     $('allocate-submit').disabled=true;
-    $('allocate-result').hidden=true;$('allocate-link').value='';
+    $('allocate-result').hidden=true;$('allocate-link').value='';clearClaimQr();
     $('allocate-status').textContent='Reserving number…';
     try {
       const response=await fetch('/api/admin/allocate-number',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({privateNumber:$('allocate-number').value.trim()}),cache:'no-store'});
@@ -219,6 +234,7 @@
       if(!response.ok)throw Error(result.error || 'Could not reserve number.');
       $('allocate-status').textContent=`${result.privateNumber} reserved until ${new Date(result.reservedUntil).toLocaleString()}.`;
       $('allocate-link').value=result.claimUrl;$('allocate-result').hidden=false;
+      try{renderClaimQr(result.claimUrl);}catch(_){clearClaimQr();$('allocate-status').textContent+=' QR unavailable; copy the claim link below.';}
     }catch(error){if(adminKey===key)$('allocate-status').textContent=error.message || 'Reservation could not be confirmed. Do not assume it failed; retrying may report it reserved.';}
     finally{$('allocate-submit').disabled=false;}
   });
@@ -235,7 +251,7 @@
   $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); });
   function signOut() {
     adminKey = '';
-    $('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';
+    clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';
     clearInterval(healthTimer); healthTimer=null;
     $('service-health-cards').replaceChildren();
     $('service-health-history').replaceChildren();

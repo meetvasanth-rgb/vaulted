@@ -12,7 +12,7 @@ fragment, which is not sent in the initial HTTP request. The client removes the
 fragment from history, validates it through POST, and keeps it in memory during
 signup. Anyone with the link can redeem it; share it privately. No email is sent.
 Refreshing before completing signup requires reopening the original link.
-The admin must copy the link when issued; plaintext tokens are not recoverable.
+New links use #g= and a random 128-bit token (22 base64url characters). Existing #numberGift= links remain accepted. The admin page renders the link as a QR code locally and supports saving it as PNG; no external QR service receives the claim. Copy the link or save the QR when issued; plaintext tokens are not recoverable. Signing out clears the displayed QR and link.
 
 Signup on an existing signed-in account is refused by the UI: this feature
 creates new identities and never renumbers existing users. The friend chooses

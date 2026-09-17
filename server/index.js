@@ -1276,7 +1276,7 @@ async function reservePrivateNumber(category = 'standard', preferredSuffix = '')
   throw new Error('Could not allocate a Vaultlix Private Number');
 }
 async function verifyPrivateNumberReservation(privateNumber, reservationToken) {
-  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(reservationToken)) return null;
+  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{22,96}$/.test(reservationToken)) return null;
   const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
   if (postgresEnabled) return postgresStore.verifyPrivateNumberReservation(privateNumber, tokenHash);
   const reservation = privateNumberReservations.get(privateNumber);
@@ -4666,7 +4666,7 @@ async function api(path, method, d, p, res, ip, headers) {
       if (await rateLimited('admin-number-allocation',20,60*60*1000)) return resErr(res,'Allocation limit reached. Try again later.',429);
       const privateNumber=d.privateNumber;
       if (!isNumberAvailable(privateNumber,{activeNumbers:privateNumbers,lifecycle:privateNumberLifecycle})) return resErr(res,'This number is unavailable.',409);
-      const reservationToken=crypto.randomBytes(32).toString('base64url');
+      const reservationToken=crypto.randomBytes(16).toString('base64url');
       const tokenHash=crypto.createHash('sha256').update(reservationToken).digest('hex');
       const reservedUntil=Date.now()+7*DAY_MS;
       const reserved=postgresEnabled ? await postgresStore.reservePrivateNumber(privateNumber,tokenHash,'admin-gift',reservedUntil) : (()=>{
@@ -4675,7 +4675,7 @@ async function api(path, method, d, p, res, ip, headers) {
         privateNumberReservations.set(privateNumber,{tokenHash,category:'admin-gift',reservedUntil});return true;
       })();
       if(!reserved) return resErr(res,'This number is assigned, reserved or retired.',409);
-      return res200(res,{ok:true,privateNumber,reservedUntil,claimUrl:`https://vaultlix.com/#numberGift=${privateNumber}.${reservationToken}`});
+      return res200(res,{ok:true,privateNumber,reservedUntil,claimUrl:`https://vaultlix.com/#g=${privateNumber}.${reservationToken}`});
     }
     if (path === '/api/admin/health') {
       res.setHeader('Cache-Control','no-store');

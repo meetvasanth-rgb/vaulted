@@ -10120,7 +10120,7 @@ function showAccountTab(name) {
   guestView.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
   guestView.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
 }
-let pendingNumberGift = /^#numberGift=([2-9][0-9]{5,9})\.([A-Za-z0-9_-]{40,96})$/.exec(location.hash);
+let pendingNumberGift = /^#(?:g|numberGift)=([2-9][0-9]{5,9})\.([A-Za-z0-9_-]{22,96})$/.exec(location.hash);
 if (pendingNumberGift) history.replaceState(null, '', location.pathname);
 let activeNumberGift = false;
 let pendingPrivateNumber = '';

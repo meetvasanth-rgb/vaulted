@@ -20,9 +20,11 @@ test('admin gifts require authentication and permit exactly one new owner', {tim
   assert.equal((await post('/api/admin/allocate-number',{privateNumber:'234567'})).status,404);
   assert.equal((await post('/api/admin/allocate-number',{privateNumber:'123'},'health-test-key')).status,400);
   const gift=await post('/api/admin/allocate-number',{privateNumber:'234567'},'health-test-key');
-  assert.equal(gift.status,200);assert.match(gift.data.claimUrl,/^https:\/\/vaultlix.com\/#numberGift=234567\./);
+  assert.equal(gift.status,200);assert.match(gift.data.claimUrl,/^https:\/\/vaultlix.com\/#g=234567\./);
   assert.equal((await post('/api/admin/allocate-number',{privateNumber:'234567'},'health-test-key')).status,409);
   const reservationToken=gift.data.claimUrl.split('.').at(-1);
+  assert.equal(reservationToken.length,22);
+  assert.ok(gift.data.claimUrl.length<=58);
   const payload={accountId:'a'.repeat(64),privateNumber:'234567',displayName:'Gift Friend',authSecret:'A'.repeat(43),recoverySecret:'B'.repeat(43),passwordWrap:'x'.repeat(30),recoveryWrap:'y'.repeat(30),bundle:'z'.repeat(30)};
   assert.equal((await post('/api/account/register',payload)).status,409);
   assert.equal((await post('/api/account/number-gift',{privateNumber:'234567',reservationToken:'C'.repeat(43)})).status,409);
@@ -61,4 +63,15 @@ test('claim link fills gifted signup without generating a replacement number',as
   vm.createContext(context);vm.runInContext(html.slice(start,end),context);await context.openNumberGift();
   assert.equal(context.activeNumberGift,true);assert.equal(context.pendingPrivateNumber,'234567');assert.equal(context.pendingPrivateNumberReservation,'T'.repeat(43));assert.equal(context.opened,true);assert.equal(requests[0].path,'/api/account/number-gift');
   assert.equal(nodes['account-private-number-preference'].disabled,true);
+});
+
+test('gift URL parser accepts existing and compact links and rejects malformed tokens',()=>{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const html=fs.readFileSync('client/index.html','utf8');
+  const expression=html.match(/let pendingNumberGift = (.+);/)[1];
+  for(const [hash,valid] of [['#numberGift=234567.'+'A'.repeat(43),true],['#g=234567.'+'B'.repeat(22),true],['#g=234567.short',false],['#g=123456.'+'B'.repeat(22),false]]) {
+    const result=vm.runInNewContext(expression,{location:{hash}});
+    assert.equal(!!result,valid);
+    if(valid)assert.equal(result[1],'234567');
+  }
 });
