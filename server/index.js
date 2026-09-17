@@ -252,6 +252,19 @@ const RETRO_80S_LOOKS = Object.freeze([
     lighting:'Strong warm three-quarter key matching the painted sunset, restrained cool fill from the opposite side and a narrow rim on the far shoulder; keep the face photorealistic.',
   },
 ]);
+// One surprise direction per creation; successive daily generations vary the result.
+const ENHANCER_LOOKS = Object.freeze([
+  'Natural editorial photograph in a sunlit garden, soft morning light, gentle foliage bokeh and realistic skin detail.',
+  'Cinematic photograph beside a coastal sunset, warm golden key light, soft sky fill and a softly blurred sea.',
+  'Refined studio portrait on a warm cream backdrop, broad softbox lighting, bright catchlights and subtle depth.',
+  'Premium hand-drawn cinematic anime portrait, faithful facial proportions and recognisable likeness, restrained cel shading, a pastel cherry-blossom background and soft daylight.',
+  'Modern cafe portrait with warm window light, tasteful timber details, soft background blur and fresh natural colours.',
+  'Elegant mountain-lake portrait in luminous early daylight, delicate atmospheric depth and balanced skin tones.',
+  'Cinematic city portrait at blue hour, softly glowing distant lights and a gentle neutral face light that matches the surroundings.',
+  'Painterly anime portrait with delicate linework, unchanged apparent age and facial proportions, a dreamy cloud garden and luminous soft light.',
+  'Professional editorial photograph against a muted terracotta architectural background, soft side light and clean natural colour.',
+  'Airy botanical conservatory photograph, diffused skylight, green foliage and subtle film colour with realistic facial detail.',
+]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     id:'retro-80s', name:'1980s Portrait', note:'Ten cinematic poses with directed camera and light',
@@ -274,16 +287,9 @@ Lighting integration is critical. Follow the exact light sources named in the se
 Render at premium photographic quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric texture, accurate accessories and clean edges. Apply restrained authentic 1980s colour-film character—subtle organic grain, mild lens softness and gentle print colour—with only minimal physical-print wear away from the face. Do not age the person. Add no text, logos, date stamps or watermarks. The final result must feel like a real photograph from the selected 1980s Indian cinema direction, not an AI effect, a generic family snapshot or the same repeated portrait composition.`,
   },
   {
-    id:'anime-portrait', name:'Anime Portrait', note:'Hand-drawn character energy, recognisably you',
-    size:'1024x1024',
-    prompt:`Transform the source into a premium hand-drawn cinematic anime portrait while keeping the person immediately recognisable. Preserve the subject's exact identity, facial geometry, skin tone, apparent age, hairstyle, facial hair, glasses, distinctive features, expression and gaze. Do not replace them with a generic character, change ethnicity, beautify, de-age or exaggerate the eyes.
-
-Compose a square, profile-photo-ready head-and-shoulders or chest-up portrait with the face occupying roughly 45–60% of the frame and the eyes near the upper third. Use confident clean line work, detailed layered hair, restrained expressive eyes, natural skin colour, painterly cel shading and a subtle atmospheric interpretation of the source environment. Keep anatomy faithful and the likeness stronger than the stylisation. No text, logos, watermarks or extra people.`,
-  },
-  {
-    id:'neon-night', name:'Neon Night', note:'Cinematic colour without losing the real you',
-    size:'1024x1024',
-    prompt:'Transform this portrait into a cinematic night portrait with restrained burgundy, blue and amber practical lighting. Preserve the person\'s exact identity, facial structure, skin tone, age and expression. Keep skin natural, the background believable and the result photorealistic, sophisticated and suitable as a profile photo. No text, logos, watermarks or extra people.',
+    id:'surprise-enhancer', name:'Surprise Enhancer', note:'A fresh look every time — cinematic, natural or anime',
+    size:'1024x1024', quality:'high',
+    prompt:`Enhance the uploaded photograph into a polished, profile-ready portrait following the selected surprise direction. Preserve every visible person's unmistakable identity, facial geometry, skin tone, exact apparent age, expression, hairstyle, cultural markers and natural facial fullness. Fresh, youthful lighting means bright eyes, soft flattering light and healthy natural skin texture, never making the person younger or changing facial features. Do not add wrinkles, eye bags, grey hair, plastic skin, exaggerated eyes or a generic replacement face. Preserve all visible people without adding anyone. Keep anatomy accurate and head/body proportions natural. Integrate the subjects into the chosen background with consistent light direction, colour temperature and shadows. Frame the complete head and shoulders safely inside a square crop. Apply exactly one coherent visual direction, not a collage of styles. No text, logos or watermarks.`,
   },
 ]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
@@ -1178,7 +1184,7 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const look = style.id === 'retro-80s'
     ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
     : null;
-  const directedPrompt = look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.prompt;
+  const directedPrompt = look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.id === 'surprise-enhancer' ? `${style.prompt}\n\nSelected surprise direction:\n${ENHANCER_LOOKS[variantIndex % ENHANCER_LOOKS.length]}` : style.prompt;
   form.append('prompt', `${directedPrompt}\n\nComposition requirement: keep the lower-right edge visually calm and free of the subject's face, hands and important details so a small Vaultlix signature can be added there later. Do not generate any text, logo or watermark yourself.`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');

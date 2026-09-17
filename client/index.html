@@ -3984,7 +3984,8 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="daily-look-hero"><strong>A fresh look. Still unmistakably you.</strong><span>Choose a changing Vaultlix style, then keep the result or make it your profile image.</span></div>
     <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
     <div class="daily-look-styles" id="daily-look-styles" aria-label="Choose a Daily Look style"></div>
-    <input id="daily-look-photo-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookPhoto(event)"/>
+    <input id="daily-look-profile-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookProfilePhoto(event)"/>
+        <input id="daily-look-photo-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookPhoto(event)"/>
     <input id="daily-look-camera-input" type="file" accept="image/*" capture="environment" hidden onchange="handleDailyLookPhoto(event)"/>
     <div class="daily-look-photo-actions" id="daily-look-photo-actions">
       <button class="account-secondary" id="daily-look-photo-button" type="button" onclick="chooseDailyLookPhoto()">Choose gallery</button>
@@ -9305,6 +9306,15 @@ function renderDailyLookStyles(styles = []) {
   if (!holder) return;
   const featured = styles.find(style => style.featured) || styles[0];
   if (!styles.some(style => style.id === dailyLookStyleId)) dailyLookStyleId = featured?.id || null;
+  const gallery = document.createElement('button');
+  gallery.type = 'button'; gallery.className = 'daily-look-style';
+  const galleryTitle = document.createElement('strong'); galleryTitle.textContent = 'Choose profile photo';
+  const galleryNote = document.createElement('span'); galleryNote.textContent = 'Use a photo from your device · no AI generation';
+  gallery.append(galleryTitle, galleryNote);
+  gallery.onclick = () => {
+    const input = document.getElementById('daily-look-profile-input');
+    if (input) { input.value = ''; input.click(); }
+  };
   holder.replaceChildren(...styles.map(style => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -9316,7 +9326,7 @@ function renderDailyLookStyles(styles = []) {
     if (style.featured) { const badge = document.createElement('em'); badge.textContent = 'Featured'; button.appendChild(badge); }
     button.onclick = () => { dailyLookStyleId = style.id; renderDailyLookStyles(styles); };
     return button;
-  }));
+  }), gallery);
 }
 
 function resetDailyLookView() {
@@ -9343,6 +9353,7 @@ async function openDailyLook() {
   const state = loadAccountState();
   if (!state) { openAccountPanel(); return; }
   resetDailyLookView();
+  renderDailyLookStyles([]);
   document.getElementById('daily-look-overlay')?.classList.add('open');
   const status = document.getElementById('daily-look-status');
   if (status) status.textContent = 'Checking today’s creation…';
@@ -9386,6 +9397,20 @@ function chooseDailyLookPhoto() {
 function chooseDailyLookCamera() {
   const input = document.getElementById('daily-look-camera-input');
   if (input) { input.value = ''; input.click(); }
+}
+
+async function handleDailyLookProfilePhoto(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const status = document.getElementById('daily-look-status');
+  if (status) status.textContent = 'Preparing your profile photo…';
+  try {
+    const image = await compressProfileImage(file);
+    if (await saveProfileImageUpdate('replace', image)) {
+      closeDailyLook(); toast('Profile image updated');
+    } else if (status) status.textContent = 'Profile photo was not saved. Please try again.';
+  } catch (error) { if (status) status.textContent = error?.message || 'Could not update profile photo.'; }
+  finally { event.target.value = ''; }
 }
 
 async function handleDailyLookPhoto(event) {

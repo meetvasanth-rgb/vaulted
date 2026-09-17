@@ -87,12 +87,12 @@ test('1980s Portrait creates a high-quality profile-ready period portrait', () =
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:1/);
 });
 
-test('Daily Look replaces Editorial Glow with an identity-preserving anime portrait', () => {
-  assert.match(server, /id:'anime-portrait', name:'Anime Portrait'/);
-  assert.match(server, /premium hand-drawn cinematic anime portrait/);
-  assert.match(server, /Do not replace them with a generic character/);
-  assert.match(server, /likeness stronger than the stylisation/);
-  assert.doesNotMatch(server, /id:'editorial-glow'/);
+test('Daily Look offers surprise enhancement including anime and removes Neon generation', () => {
+  assert.match(server, /id:'surprise-enhancer', name:'Surprise Enhancer'/);
+  assert.match(server, /ENHANCER_LOOKS\[variantIndex % ENHANCER_LOOKS.length\]/);
+  assert.match(server, /cinematic anime portrait/);
+  assert.match(server, /never making the person younger/);
+  assert.doesNotMatch(server, /id:'neon-night'|id:'anime-portrait'/);
 });
 
 test('1980s Portrait rotates through ten fully directed cinematic shot briefs per account', () => {
@@ -174,4 +174,19 @@ test('every finished Daily Look receives a subtle deterministic Vaultlix waterma
   assert.equal(metadata.width, 256);
   assert.equal(metadata.height, 256);
   assert.notDeepEqual(branded, source);
+});
+
+test('device profile selection saves through existing checks without generating a Daily Look', async()=>{
+  const vm=require('node:vm');
+  const start=client.indexOf('async function handleDailyLookProfilePhoto(');
+  const end=client.indexOf('async function handleDailyLookPhoto(',start);
+  const events=[],status={};
+  const context={document:{getElementById:()=>status},compressProfileImage:async()=>{events.push('prepare');return 'photo';},saveProfileImageUpdate:async(action,image)=>{events.push([action,image]);return true;},closeDailyLook:()=>events.push('closed'),toast:()=>{}};
+  vm.createContext(context);vm.runInContext(client.slice(start,end),context);
+  await context.handleDailyLookProfilePhoto({target:{files:[]}});assert.equal(events.length,0);
+  const event={target:{files:[{}],value:'selected'}};
+  await context.handleDailyLookProfilePhoto(event);
+  assert.deepEqual(events,['prepare',['replace','photo'],'closed']);assert.equal(event.target.value,'');
+  events.length=0;context.saveProfileImageUpdate=async()=>false;
+  await context.handleDailyLookProfilePhoto(event);assert.deepEqual(events,['prepare']);assert.match(status.textContent,/not saved/);
 });
