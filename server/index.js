@@ -14,6 +14,8 @@ const contentSafety = require('../client/content-safety');
 let safetyStore;
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const { EncryptedObjectStorage } = require('./object-storage');
+const { HeadBucketCommand } = require('@aws-sdk/client-s3');
+const { createHealthMonitor } = require('./system-health');
 const { DAILY_LOOK_WATERMARK_VERSION, watermarkDailyLookOutput } = require('./daily-look-watermark');
 const {
   NUMBER_TIERS,
@@ -103,6 +105,39 @@ const realtimeCoordinator = new RealtimeCoordinator({ url:process.env.REDIS_URL 
 const objectStorage = new EncryptedObjectStorage();
 let postgresEnabled = false;
 let objectStorageEnabled = false;
+let providerStatusCache;
+const getSystemHealth = createHealthMonitor({ checks:[
+  { id:'app', name:'Railway application', run:async()=>({status:'healthy',detail:'This application instance is responding.', uptimeSeconds:Math.floor(process.uptime()), version:String(process.env.RAILWAY_GIT_COMMIT_SHA || 'local').slice(0,12), memoryMB:Math.round(process.memoryUsage().rss/1048576)}) },
+  { id:'postgres', name:'PostgreSQL', run:async()=>{
+    if (!postgresEnabled || !postgresStore.pool) return {status:'down',detail:'Durable database is not available.'};
+    await postgresStore.pool.query({text:'SELECT 1',query_timeout:3000});
+    return {status:'healthy',detail:'Read-only query succeeded.'};
+  } },
+  { id:'redis', name:'Redis', run:async()=>{
+    if (!realtimeCoordinator.enabled) return {status:'warning',detail:'Shared realtime coordination is not configured.'};
+    if (!realtimeCoordinator.publisher?.isReady || !realtimeCoordinator.subscriber?.isReady) throw Error('not ready');
+    if (await realtimeCoordinator.publisher.ping() !== 'PONG') throw Error('ping');
+    return {status:'healthy',detail:'Ping succeeded; both realtime connections are ready.'};
+  } },
+  { id:'storage', name:'Media storage', run:async(signal)=>{
+    if (!objectStorageEnabled) return {status:'warning',detail:'Object storage is not enabled.'};
+    await objectStorage.client.send(new HeadBucketCommand({Bucket:objectStorage.bucket}),{abortSignal:signal});
+    return {status:'healthy',detail:'Bucket is reachable. Upload/download not tested.'};
+  } },
+  { id:'cloudflare', name:'Cloudflare public status', external:true, run:async(signal)=>{
+    if (providerStatusCache && Date.now()-providerStatusCache.at<300000) return providerStatusCache.value;
+    const response=await fetch('https://www.cloudflarestatus.com/api/v2/status.json',{signal});
+    if (!response.ok) throw Error('provider');
+    const data=await response.json();
+    if (!['none','minor','major','critical'].includes(data?.status?.indicator)) throw Error('invalid status');
+    const value={status:data.status.indicator==='none'?'healthy':'warning',detail:data.status.indicator==='none'?'Provider reports normal operation; not a test of your calls.':'Provider reports an incident; it may not affect Vaultlix.',providerCheckedAt:new Date().toISOString()};
+    providerStatusCache={at:Date.now(),value}; return value;
+  } },
+  { id:'turn', name:'Cloudflare call relay', run:async()=>({status:process.env.CF_TURN_KEY_ID && process.env.CF_TURN_KEY_API_TOKEN?'configured':'warning',detail:'Configuration only. Live relay connectivity has not been tested.'}) },
+  { id:'apns', name:'Apple push notifications', run:async()=>({status:APNS_CONFIGURED?'configured':'warning',detail:'Configuration only. Device delivery has not been tested.'}) },
+  { id:'firebase', name:'Android push notifications', run:async()=>({status:process.env.FIREBASE_SERVICE_ACCOUNT_JSON?'configured':'warning',detail:'Configuration only. Device delivery has not been tested.'}) },
+] });
+
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
@@ -4585,7 +4620,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -4604,6 +4639,10 @@ async function api(path, method, d, p, res, ip, headers) {
       // out after ten refreshes even though every supplied key was correct.
       await rateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS);
       res.writeHead(404); res.end(); return;
+    }
+    if (path === '/api/admin/health') {
+      res.setHeader('Cache-Control','no-store');
+      return res200(res, await getSystemHealth());
     }
     if (path === '/api/admin/safety') {
       res.setHeader('Cache-Control','no-store');

@@ -2,6 +2,7 @@
   'use strict';
   let adminKey = '';
   let refreshTimer = null;
+  let healthTimer = null, healthBusy = false;
   const $ = id => document.getElementById(id);
   const number = value => new Intl.NumberFormat().format(value || 0);
   const bytes = value => {
@@ -16,11 +17,14 @@
   };
 
   async function loadStats(initial = false) {
+    const key = adminKey;
     try {
-      const response = await fetch('/api/admin/stats', { headers: { Authorization: `Bearer ${adminKey}` }, cache: 'no-store' });
+      const response = await fetch('/api/admin/stats', { headers: { Authorization: `Bearer ${key}` }, cache: 'no-store' });
       if (!response.ok) throw new Error('Access denied');
       const stats = await response.json();
+      if (!adminKey || adminKey !== key) return;
       render(stats);
+      if (!healthTimer) { loadHealth(); healthTimer=setInterval(loadHealth,30000); }
       loadSafetyReports();
       $('login').hidden = true;
       $('dashboard').hidden = false;
@@ -28,6 +32,7 @@
       $('login-error').textContent = '';
       if (!refreshTimer) refreshTimer = setInterval(loadStats, 15000);
     } catch (error) {
+      if (!adminKey || adminKey !== key) return;
       if (initial) {
         adminKey = '';
         $('login-error').textContent = 'Access key not recognised.';
@@ -36,6 +41,40 @@
         $('live-dot').textContent = 'Reconnecting';
       }
     }
+  }
+
+  async function loadHealth() {
+    if (healthBusy || !adminKey) return;
+    const key=adminKey;
+    healthBusy=true;
+    try {
+      const response=await fetch('/api/admin/health',{headers:{Authorization:`Bearer ${key}`},cache:'no-store',signal:AbortSignal.timeout(10000)});
+      if (!response.ok) throw Error('unavailable');
+      const data=await response.json();
+      if (adminKey!==key) return;
+      const labels={healthy:'Healthy',warning:'Needs attention',down:'Check failed',unknown:'Unknown',configured:'Configured · not tested'};
+      $('service-health-summary').textContent=labels[data.status] || 'Unknown';
+      $('service-health-updated').textContent=`Last checked ${new Date(data.checkedAt).toLocaleString()}`;
+      const cards=data.services.map(service=>{
+        const card=document.createElement('article'); card.className='service-health-card';
+        const title=document.createElement('h3');title.textContent=service.name;
+        const badge=document.createElement('span');badge.className=`service-status ${Object.hasOwn(labels,service.status)?service.status:'unknown'}`;badge.textContent=labels[service.status] || 'Unknown';
+        const detail=document.createElement('p');detail.textContent=service.detail;
+        const time=document.createElement('small');time.textContent=service.status==='configured'?'No live probe':`Check ${service.latencyMs} ms`;
+        if(service.version) time.textContent+=` · Build ${service.version} · Memory ${service.memoryMB} MB`;
+        if(service.providerCheckedAt) time.textContent+=` · Provider fetched ${new Date(service.providerCheckedAt).toLocaleTimeString()}`;
+        card.append(title,badge,detail,time);return card;
+      });
+      $('service-health-cards').replaceChildren(...cards);
+      const events=data.history.map(event=>{const item=document.createElement('li');item.textContent=`${new Date(event.at).toLocaleString()} · ${event.name}: ${labels[event.from]} → ${labels[event.to]}`;return item;});
+      if (!events.length) {const item=document.createElement('li');item.textContent='No status changes recorded yet.';events.push(item);}
+      $('service-health-history').replaceChildren(...events);
+    } catch (_) {
+      if(adminKey===key) {
+        $('service-health-summary').textContent='Unavailable · previous results are stale';
+        $('service-health-cards').replaceChildren();
+      }
+    } finally {healthBusy=false;}
   }
 
   function render(s) {
@@ -175,9 +214,12 @@
     $('admin-key').value = '';
     loadStats(true);
   });
-  $('refresh').addEventListener('click', () => loadStats(false));
+  $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); });
   function signOut() {
     adminKey = '';
+    clearInterval(healthTimer); healthTimer=null;
+    $('service-health-cards').replaceChildren();
+    $('service-health-history').replaceChildren();
     $('safety-reports').replaceChildren();
     $('safety-summary').textContent='Signed out';
     if (refreshTimer) clearInterval(refreshTimer);

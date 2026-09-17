@@ -44,6 +44,14 @@
         <article class="metric coral"><span>Calls now</span><strong id="calls-now">—</strong><small id="calls-detail">—</small></article>
       </section>
 
+      <section class="panel" aria-labelledby="system-health-title">
+        <div class="panel-head"><div><p class="eyebrow">Service monitoring</p><h2 id="system-health-title">System health</h2><p class="panel-copy">Updates every 30 seconds while this page is open. Provider status is refreshed every five minutes. Configuration is not proof of delivery.</p></div><strong id="service-health-summary" role="status">Checking…</strong></div>
+        <p id="service-health-updated" class="micro">Waiting for checks</p>
+        <div id="service-health-cards" class="service-health-grid"></div>
+        <details><summary>Recent status changes</summary><ul id="service-health-history"></ul></details>
+        <p class="micro">History covers this server instance since monitoring began and resets on restart. This page cannot detect its own server going offline independently; external uptime monitoring is not yet connected.</p>
+      </section>
+
       <section class="panel identity-panel">
         <div class="panel-head"><div><p class="eyebrow">User directory</p><h2>Vaultlix identities</h2><p class="panel-copy">Only account metadata needed for support and operations is shown.</p></div><span class="identity-count" id="identity-count">—</span></div>
         <div class="table-wrap"><table class="identity-table">
@@ -77,7 +85,7 @@
         </article>
 
         <article class="panel system-panel">
-          <div class="panel-head"><div><p class="eyebrow">Identity infrastructure</p><h2>System health</h2><p class="panel-copy">Live readiness for identities, notifications and encrypted conversations.</p></div><span class="health-pill" id="health-pill">Checking</span></div>
+          <div class="panel-head"><div><p class="eyebrow">Identity infrastructure</p><h2>Resource summary</h2><p class="panel-copy">Live readiness for identities, notifications and encrypted conversations.</p></div><span class="health-pill" id="health-pill">Checking</span></div>
           <div class="gauges">
             <div class="gauge"><div><span id="notification-ring" style="--value:0"><b id="notification-pct">0%</b></span></div><strong>Notification readiness</strong><small id="notification-detail">—</small></div>
             <div class="gauge"><div><span id="room-ring" style="--value:0"><b id="room-pct">0%</b></span></div><strong>Live conversation load</strong><small id="room-detail">—</small></div>
