@@ -66,7 +66,7 @@ test('/privacy is a real page built from the in-app screen', () => {
   assert.match(r.body, /<title>Privacy Policy \| Vaultlix<\/title>/);
   assert.match(r.body, /<link rel="canonical" href="https:\/\/vaultlix\.com\/privacy">/);
   assert.match(r.body, /<h1 class="legal-title">Privacy Policy<\/h1>/);
-  assert.match(r.body, /id="s-privacy" class="screen active"/);
+  assert.match(r.body, /id="s-privacy" class="screen active seo-page"/);
   assert.match(r.body, /<a class="legal-back" href="\/"/);
   assert.ok(!/onclick=/.test(r.body), 'no app-only handlers left');
   assert.match(r.body, /Nothing readable\./);
@@ -126,6 +126,38 @@ test('HEAD requests send headers only; other methods are ignored', () => {
   const seo = makeSeo();
   assert.strictEqual(call(seo, '/robots.txt', 'HEAD').body, '');
   assert.strictEqual(call(seo, '/robots.txt', 'POST').handled, false);
+});
+
+test('content pages are served in the shared layout with one H1 and no app handlers', () => {
+  const seo = makeSeo();
+  for (const [p, h1] of [
+    ['/messaging-without-phone-number', 'Message and call without sharing your phone number'],
+    ['/how-vaultlix-numbers-work', 'How your Vaultlix number works'],
+    ['/use-cases/online-dating', 'Get to know a match without giving out your number'],
+    ['/compare/vaultlix-vs-zangi', 'Vaultlix vs Zangi'],
+  ]) {
+    const r = call(seo, p);
+    assert.strictEqual(r.status, 200, p);
+    assert.match(r.body, new RegExp(`<link rel="canonical" href="https://vaultlix.com${p}">`));
+    assert.strictEqual((r.body.match(/<h1\b/g) || []).length, 1, `${p} has one H1`);
+    assert.ok(r.body.includes(h1), p);
+    assert.match(r.body, /class="legal-card"/);
+    assert.match(r.body, /class="seo-cta" href="\/"/);
+    assert.ok(!/onclick=/.test(r.body), p);
+  }
+  const sitemap = call(seo, '/sitemap.xml').body;
+  assert.ok(sitemap.includes('<loc>https://vaultlix.com/messaging-without-phone-number</loc>'));
+  assert.ok(sitemap.includes('<loc>https://vaultlix.com/how-vaultlix-numbers-work</loc>'));
+});
+
+test('content pages only make product claims that appear in the app itself', { skip: !fs.existsSync(path.join(__dirname, '../client/index.html')) }, () => {
+  const app = fs.readFileSync(path.join(__dirname, '../client/index.html'), 'utf8');
+  for (const claim of [
+    'Vaultlix is not a cellular number', 'cannot receive SMS', 'does not search contacts or suggest people',
+    'Choose the username people will see', 'A conversation appears after they accept', 'Vaultlix cannot recover this passcode',
+    'losing both this device and the recovery code permanently loses', 'Your password and recovery code belong to you',
+    'restored on another device', 'Recover account', 'Emergency Exit', 'Hide the active conversation immediately', 'Report and block', 'Emergency Exit',
+  ]) assert.ok(app.includes(claim), `app still says: ${claim}`);
 });
 
 test('builds pages from the real client/index.html when present', { skip: !fs.existsSync(path.join(__dirname, '../client/index.html')) }, () => {

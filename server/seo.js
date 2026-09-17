@@ -58,13 +58,83 @@ const PAGES = {
     description: 'Answers about Vaultlix private numbers, end-to-end encryption, how connections work, and why no phone number or email address is needed.',
     lastmod: '2026-09-17',
   },
+  // Content pages: written in server/seo-pages/*.html and rendered inside the
+  // same legal-card layout and stylesheet as the pages above.
+  '/messaging-without-phone-number': {
+    file: 'messaging-without-phone-number.html',
+    title: 'Messaging Without a Phone Number | Vaultlix',
+    description: 'Chat and call one-to-one without sharing your phone number, email or contacts. How Vaultlix works, what it doesn\'t do, and how other options compare.',
+    breadcrumb: 'Messaging without a phone number',
+    lastmod: '2026-09-17',
+  },
+  '/how-vaultlix-numbers-work': {
+    file: 'how-vaultlix-numbers-work.html',
+    title: 'How Vaultlix Numbers Work (and What They Can\'t Do)',
+    description: 'Your Vaultlix number is a permanent private number for one-to-one messages and calls inside Vaultlix. How to get one, share it and keep it safe.',
+    breadcrumb: 'How Vaultlix numbers work',
+    lastmod: '2026-09-17',
+  },
+  '/use-cases/online-dating': {
+    file: 'online-dating.html',
+    title: 'Talk to Dating Matches Without Sharing Your Number | Vaultlix',
+    description: 'Share a Vaultlix number with dating matches instead of your phone number. Message and call one-to-one, approve who connects, and erase the conversation for both.',
+    breadcrumb: 'Online dating',
+    lastmod: '2026-09-17',
+  },
+  '/compare/vaultlix-vs-zangi': {
+    file: 'vaultlix-vs-zangi.html',
+    title: 'Vaultlix vs Zangi: Private Number Messengers Compared',
+    description: 'Vaultlix vs Zangi: both replace your phone number with a private number. Compare password recovery, who can contact you, safety controls, groups, calls and devices.',
+    breadcrumb: 'Vaultlix vs Zangi',
+    lastmod: '2026-09-17',
+  },
 };
 
 // Indexable URLs for sitemap.xml. Only public marketing/legal pages — never
 // app routes, invitations, profiles, admin or API paths.
-const SITEMAP_PATHS = ['/', '/faq', '/privacy', '/terms', '/install', '/get-app'];
+const SITEMAP_PATHS = ['/', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/use-cases/online-dating', '/compare/vaultlix-vs-zangi', '/faq', '/privacy', '/terms', '/install', '/get-app'];
 
-const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).map(([p, cfg]) => [cfg.screen, p]));
+const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).filter(([, cfg]) => cfg.screen).map(([p, cfg]) => [cfg.screen, p]));
+
+// Content pages sit on the same ground and card as the in-app legal screens
+// (#s-privacy/#s-terms/#s-faq), and their H2s reuse the legal-section H3 look.
+const CONTENT_PAGE_STYLE = '.seo-content{background:#FBF7F8;padding:24px 16px}'
+  + '.legal-section h2{font-size:13px;font-weight:600;margin-bottom:8px;letter-spacing:.04em;text-transform:uppercase}'
+  + '.legal-section ol{font-size:13px;color:#5F5B55;line-height:1.75;padding-left:18px}.legal-section ol li{margin-bottom:4px}'
+  + '.legal-section a{color:var(--gold)}'
+  // Comparison tables: legal-section text size and colours, legal-highlight border tone.
+  + '.seo-table{overflow-x:auto;margin:8px 0}.seo-table table{border-collapse:collapse;width:100%;font-size:13px;line-height:1.55;color:#5F5B55}'
+  + '.seo-table th,.seo-table td{text-align:left;vertical-align:top;padding:9px 8px;border-bottom:.5px solid #E8E2DA}'
+  + '.seo-table thead th{color:var(--vx-ink,#271D25);font-weight:600}.seo-table tbody th{color:var(--vx-ink,#271D25);font-weight:600;width:28%}'
+  // Same values as the homepage "Create my number" button (#s-landing .landing-hero-action).
+  + '.seo-cta{display:inline-flex;align-items:center;justify-content:center;gap:9px;margin:28px 0 8px;padding:13px 18px;border:1px solid #682C43;border-radius:999px;background:#682C43;color:#fff;font:750 12px/1 \'Manrope\',sans-serif;box-shadow:0 10px 24px rgba(104,44,67,.22);text-decoration:none;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}'
+  + '.seo-cta:hover{background:#542237;box-shadow:0 13px 28px rgba(104,44,67,.27);transform:translateY(-2px)}'
+  + '@media(max-width:760px){.seo-cta{font-size:14px;padding:15px 20px}}';
+
+// Every public web page (legal + content). The in-app legal screens are
+// designed mobile-first: their card only gets inner padding under 640px and
+// nothing centres it, so on a desktop browser text ran into the card edge and
+// the card hugged the left side. These rules apply to the web pages only.
+const PUBLIC_PAGE_STYLE = '.seo-page{justify-content:center;align-items:flex-start}'
+  + '.seo-page .legal-contact{line-height:1.8}.seo-page .legal-contact a{color:var(--gold)}'
+  + '.seo-page .legal-back{margin-bottom:24px}'
+  + '@media(min-width:641px){.screen.seo-page{padding:48px 24px 72px!important}.seo-page .legal-card{padding:40px 48px 36px!important}}'
+  // Content pages use H3 only for questions under a section heading.
+  + '.seo-content .legal-section h3{font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;margin:18px 0 4px}'
+  + '.seo-content .legal-section h2+h3{margin-top:10px}.seo-content .legal-section{margin-bottom:30px}.seo-content .legal-highlight{margin:12px 0 30px}.seo-content .legal-section ol+p,.seo-content .legal-section ul+p{margin-top:10px}';
+
+function renderContentPage(fragment) {
+  return `<div class="screen active seo-content seo-page">
+  <div class="legal-card">
+    <a class="legal-back" href="/" style="text-decoration:none;width:fit-content">← Back to Vaultlix</a>
+    <div class="legal-logo">
+      <div class="rule"></div>
+      <span>Vaultlix</span>
+    </div>
+${fragment}
+  </div>
+</div>`;
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -101,7 +171,7 @@ function extractFontLink(html) {
 function staticizeScreen(screenHtml) {
   return screenHtml
     // The screen is shown by adding .active in the app; do the same statically.
-    .replace(/class="screen"/, 'class="screen active"')
+    .replace(/class="screen"/, 'class="screen active seo-page"')
     // "Back to Vaultlix" button -> real link home. Same class, so same look.
     .replace(
       /<button class="legal-back" onclick="goBack\(\)">([\s\S]*?)<\/button>/,
@@ -128,7 +198,7 @@ function buildPage(routePath, cfg, parts) {
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Vaultlix', item: `${ORIGIN}/` },
-      { '@type': 'ListItem', position: 2, name: cfg.title.split(' | ')[0].split(':')[0], item: url },
+      { '@type': 'ListItem', position: 2, name: cfg.breadcrumb || cfg.title.split(' | ')[0].split(':')[0], item: url },
     ],
   };
   const fonts = parts.fontLink
@@ -157,10 +227,11 @@ function buildPage(routePath, cfg, parts) {
 <meta property="og:image" content="${ORIGIN}/icons/icon-512.png?v=20260904">
 ${fonts}
 <link rel="stylesheet" href="${parts.cssPath}">
+<style>${PUBLIC_PAGE_STYLE}${cfg.file ? CONTENT_PAGE_STYLE : ''}</style>
 <script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
 </head>
 <body>
-${parts.screens[cfg.screen]}
+${cfg.file ? renderContentPage(parts.fragments[cfg.file]) : parts.screens[cfg.screen]}
 </body>
 </html>
 `;
@@ -177,14 +248,23 @@ function createSeo({ clientDir, now = () => new Date() } = {}) {
     const cssHash = crypto.createHash('sha1').update(cssBody).digest('hex').slice(0, 12);
     css = { body: cssBody, path: `/seo-site.${cssHash}.css`, etag: `"${cssHash}"` };
     const screens = {};
+    const fragments = {};
     for (const cfg of Object.values(PAGES)) {
+      if (cfg.file) {
+        try { fragments[cfg.file] = fs.readFileSync(path.join(__dirname, 'seo-pages', cfg.file), 'utf8'); } catch (e) { /* reported below */ }
+        continue;
+      }
       const el = extractElementById(html, cfg.screen);
       if (el) screens[cfg.screen] = staticizeScreen(el);
     }
-    const parts = { screens, cssPath: css.path, fontLink: extractFontLink(html) };
+    const parts = { screens, fragments, cssPath: css.path, fontLink: extractFontLink(html) };
     pages = {};
     for (const [routePath, cfg] of Object.entries(PAGES)) {
-      if (!screens[cfg.screen]) {
+      if (cfg.file && !fragments[cfg.file]) {
+        console.warn(`[seo] server/seo-pages/${cfg.file} not found; ${routePath} is not served.`);
+        continue;
+      }
+      if (!cfg.file && !screens[cfg.screen]) {
         console.warn(`[seo] screen #${cfg.screen} not found in index.html; ${routePath} falls back to the app.`);
         continue;
       }
