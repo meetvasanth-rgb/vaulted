@@ -168,3 +168,12 @@ test('builds pages from the real client/index.html when present', { skip: !fs.ex
     assert.strictEqual((r.body.match(/<h1\b/g) || []).length, 1, `${p} has one H1`);
   }
 });
+
+test('account deletion page is public and provides an external request method', () => {
+  const seo=makeSeo();const r=call(seo,'/delete-account');
+  assert.strictEqual(r.status,200);
+  assert.match(r.body,/mailto:privacy@vaultlix\.com\?subject=/);
+  assert.match(r.body,/Settings → Privacy &amp; Security → Delete Account/);
+  assert.match(r.body,/What is deleted/);assert.match(r.body,/Data that may be retained/);
+  assert.match(call(seo,'/sitemap.xml').body,/<loc>https:\/\/vaultlix.com\/delete-account<\/loc>/);
+});

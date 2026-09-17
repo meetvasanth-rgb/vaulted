@@ -40,6 +40,13 @@ const NOINDEX_ROUTES = [
 ];
 
 const PAGES = {
+  '/delete-account': {
+    file: 'delete-account.html',
+    title: 'Delete Your Vaultlix Account and Data',
+    description: 'Delete your Vaultlix account in the app or contact Vaultlix to request account and associated data deletion.',
+    breadcrumb: 'Delete account',
+    lastmod: '2026-09-17',
+  },
   '/privacy': {
     screen: 's-privacy',
     title: 'Privacy Policy | Vaultlix',
@@ -92,7 +99,7 @@ const PAGES = {
 
 // Indexable URLs for sitemap.xml. Only public marketing/legal pages — never
 // app routes, invitations, profiles, admin or API paths.
-const SITEMAP_PATHS = ['/', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/use-cases/online-dating', '/compare/vaultlix-vs-zangi', '/faq', '/privacy', '/terms', '/install', '/get-app'];
+const SITEMAP_PATHS = ['/', '/delete-account', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/use-cases/online-dating', '/compare/vaultlix-vs-zangi', '/faq', '/privacy', '/terms', '/install', '/get-app'];
 
 const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).filter(([, cfg]) => cfg.screen).map(([p, cfg]) => [cfg.screen, p]));
 
