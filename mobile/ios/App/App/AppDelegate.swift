@@ -26,6 +26,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var outgoingCalls: Set<UUID> = []
     private var outgoingWebAudioSessionActive = false
     private var callKitAudioSessionActive = false
+    private var appKeyboardLockedForCall = false
     private var ringbackCallID: UUID?
     private var ringbackEngine: AVAudioEngine?
     private var ringbackPlayer: AVAudioPlayerNode?
@@ -49,8 +50,11 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// temporarily; WebKit can restore the DOM-focused textarea during the
     /// scene transition. Blur and briefly lock the composer in the DOM first,
     /// then clear every native responder before reporting the call.
-    private func dismissAppKeyboard() {
-        let script = """
+    private func setAppKeyboardLockedForCall(_ locked: Bool) {
+        appKeyboardLockedForCall = locked
+        let script: String
+        if locked {
+            script = """
         (() => {
           const active = document.activeElement;
           if (active && typeof active.blur === 'function') active.blur();
@@ -59,16 +63,21 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             input.blur();
             input.readOnly = true;
             input.dataset.vaultlixCallKeyboardGuard = '1';
-            window.setTimeout(() => {
-              if (input.dataset.vaultlixCallKeyboardGuard === '1') {
-                delete input.dataset.vaultlixCallKeyboardGuard;
-                input.readOnly = false;
-              }
-            }, 1500);
           }
           return active ? active.id || active.tagName : 'none';
         })();
         """
+        } else {
+            script = """
+        (() => {
+          const input = document.getElementById('msg-input');
+          if (input && input.dataset.vaultlixCallKeyboardGuard === '1') {
+            delete input.dataset.vaultlixCallKeyboardGuard;
+            input.readOnly = false;
+          }
+        })();
+        """
+        }
         var webViewCount = 0
         var nativeDismissed = false
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
@@ -89,7 +98,32 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             from: nil,
             for: nil
         )
-        print("VXCALL keyboard dismiss webViews=\(webViewCount) native=\(nativeDismissed)")
+        print("VXCALL keyboard lock=\(locked) webViews=\(webViewCount) native=\(nativeDismissed)")
+    }
+
+    private func dismissAppKeyboard() {
+        setAppKeyboardLockedForCall(true)
+    }
+
+    private func releaseAppKeyboardIfIdle() {
+        guard calls.isEmpty, appKeyboardLockedForCall else { return }
+        setAppKeyboardLockedForCall(false)
+    }
+
+    /// CallKit can return Vaultlix to the foreground after Answer and WebKit
+    /// may restore the field that was focused before the incoming call. Keep
+    /// the composer guarded for the complete call, and reassert the native
+    /// dismissal whenever the scene or audio session becomes active.
+    func enforceCallKeyboardGuard() {
+        guard !calls.isEmpty else {
+            releaseAppKeyboardIfIdle()
+            return
+        }
+        dismissAppKeyboard()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, !self.calls.isEmpty else { return }
+            self.dismissAppKeyboard()
+        }
     }
 
     func start() {
@@ -145,7 +179,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // end push already in flight during a rolling server deploy cannot
         // strand a CXCall on the device.
         if action == "end" || action == "endCall" {
-            endCall(callID: callID)
+            endCall(callID: callID, outcome: data["callOutcome"] as? String)
             completion()
             return
         }
@@ -185,12 +219,18 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
             guard let self,
-                  self.calls[callID] != nil,
+                  let payload = self.calls[callID],
                   !self.answeredCalls.contains(callID) else { return }
             self.provider.reportCall(with: callID, endedAt: Date(), reason: .unanswered)
             self.calls.removeValue(forKey: callID)
             NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
             self.nativeMediaCalls.remove(callID)
+            // This local CallKit timeout can win the race with the caller's
+            // remote hang-up push. Once calls[callID] is removed, that later
+            // push is intentionally ignored, so emit the missed event here
+            // while the opaque room handle is still available. The web layer
+            // encrypts and stores the resulting conversation history row.
+            self.postAction("missed", callID: callID, payload: payload)
         }
 
         // iOS requires every VoIP push to be reported to CallKit promptly.
@@ -228,6 +268,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // to the already-provisioned WebView lets the foreground UI select
         // the right vault without exposing or reconstructing the vault code.
         if let roomHandle = payload["roomHandle"] as? String { detail["roomHandle"] = roomHandle }
+        if let inviteID = payload["inviteId"] as? String { detail["inviteId"] = inviteID }
         if let caller = payload["caller"] as? String { detail["caller"] = String(caller.prefix(80)) }
         // When iOS keeps the WebView suspended behind the lock screen, it can
         // queue connected/audio events and the later terminal event together.
@@ -236,7 +277,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // A terminal action supersedes every earlier presentation action for
         // the same call; the encrypted call-history message remains canonical.
         let terminalActions: Set<String> = [
-            "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeBusy", "nativeFailed",
+            "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeCancelled", "nativeBusy", "nativeFailed",
         ]
         if terminalActions.contains(action) {
             pendingActions.removeAll { ($0["callId"] as? String) == callID.uuidString }
@@ -244,6 +285,43 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         pendingActions.append(detail)
         NotificationCenter.default.post(name: .vaultlixCallAction, object: nil,
                                         userInfo: detail)
+        if action == "missed" {
+            postMissedCallNotification(callID: callID, payload: payload)
+        }
+        if terminalActions.contains(action) { releaseAppKeyboardIfIdle() }
+    }
+
+    /// The encrypted conversation row is restored by the WebView when the app
+    /// next becomes active, but WebKit cannot present UI while iOS has it
+    /// suspended behind the lock screen. CallKit's local timeout and the
+    /// ordinary APNs call-end path both arrive natively, so create the missed
+    /// alert here and key it by call ID. Repeated terminal delivery replaces
+    /// the same pending request instead of notifying twice.
+    private func postMissedCallNotification(callID: UUID, payload: [String: Any]) {
+        guard UIApplication.shared.applicationState != .active else { return }
+        let caller = ((payload["caller"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = UNMutableNotificationContent()
+        content.title = "Vaultlix"
+        content.body = caller.isEmpty ? "Missed call" : "Missed call from \(String(caller.prefix(80)))"
+        content.sound = .default
+        if let code = payload["code"] as? String, !code.isEmpty {
+            content.threadIdentifier = code
+            content.userInfo["code"] = code
+        }
+        content.userInfo["missedCall"] = true
+        content.userInfo["callId"] = callID.uuidString
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(
+                identifier: "vaultlix-missed-\(callID.uuidString)",
+                content: content,
+                trigger: nil
+            )
+        ) { error in
+            if let error {
+                print("VXCALL missed notification failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     func consumePendingActions() -> [[String: Any]] {
@@ -255,6 +333,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         print("VXCALL manager answer requested")
         guard let payload = calls[action.callUUID] else { action.fail(); return }
+        enforceCallKeyboardGuard()
         do {
             // CallKit owns activation/deactivation, but the application must
             // still describe the session it needs. Without playAndRecord +
@@ -311,10 +390,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         stopRingback(callID: action.callUUID)
         let payload = calls.removeValue(forKey: action.callUUID) ?? [:]
+        let wasAnswered = answeredCalls.contains(action.callUUID)
+        let wasOutgoing = outgoingCalls.contains(action.callUUID)
+        let outcome = wasAnswered ? "ended" : (wasOutgoing ? "cancelled" : "declined")
         answeredCalls.remove(action.callUUID)
         connectedCalls.remove(action.callUUID)
         outgoingCalls.remove(action.callUUID)
-        NativeWebRTCCallEngine.shared.end(callID: action.callUUID, notifyPeer: true)
+        NativeWebRTCCallEngine.shared.end(callID: action.callUUID, notifyPeer: true, outcome: outcome)
         nativeMediaCalls.remove(action.callUUID)
         postAction("declineOrEnd", callID: action.callUUID, payload: payload)
         action.fulfill()
@@ -328,12 +410,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
         NativeWebRTCCallEngine.shared.reset()
+        releaseAppKeyboardIfIdle()
     }
 
-    func endCallFromWeb(roomCode: String) {
+    func endCallFromWeb(roomCode: String, outcome: String = "ended") {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first else { return }
         stopRingback(callID: match.key)
-        NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true)
+        NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true, outcome: outcome)
         provider.reportCall(with: match.key, endedAt: Date(), reason: .remoteEnded)
         calls.removeValue(forKey: match.key)
         answeredCalls.remove(match.key)
@@ -354,6 +437,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
         outgoingWebAudioSessionActive = false
+        releaseAppKeyboardIfIdle()
     }
 
     func answerCallFromWeb(roomCode: String) {
@@ -368,7 +452,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
-    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String) -> Bool {
+    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String, inviteID: String) -> Bool {
         dismissAppKeyboard()
         let callID = UUID()
         let payload: [String: Any] = [
@@ -376,11 +460,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             "roomHandle": roomHandle,
             "code": code,
             "caller": String(peer.prefix(80)),
+            "inviteId": inviteID,
         ]
         guard NativeWebRTCCallEngine.shared.prepareOutgoing(
             callID: callID,
             roomHandle: roomHandle,
-            caller: caller
+            caller: caller,
+            inviteID: inviteID
         ) else { return false }
         calls[callID] = payload
         nativeMediaCalls.insert(callID)
@@ -415,7 +501,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         provider.reportCall(with: callID, updated: update)
     }
 
-    func endCall(callID: UUID) {
+    func endCall(callID: UUID, outcome: String? = nil) {
         guard let payload = calls[callID] else { return }
         stopRingback(callID: callID)
         let wasAnswered = answeredCalls.contains(callID)
@@ -429,7 +515,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // CallKit and native WebRTC are only two of the three call-state
         // owners. Tell the embedded web UI as well, otherwise its call screen
         // and duration timer remain live after the remote peer has hung up.
-        postAction(wasAnswered ? "ended" : "missed", callID: callID, payload: payload)
+        let action = outcome == "cancelled" ? "nativeCancelled" :
+            (outcome == "unanswered" ? "missed" :
+                (outcome == "declined" ? "nativeDeclined" : (wasAnswered ? "ended" : "missed")))
+        postAction(action, callID: callID, payload: payload)
     }
 
     /// Called only after libwebrtc reports an established ICE path. The web
@@ -484,6 +573,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         print("VXCALL manager didActivate")
+        enforceCallKeyboardGuard()
         callKitAudioSessionActive = true
         NativeWebRTCCallEngine.shared.callKitDidActivate(audioSession)
         // CallKit owns the VoIP audio session. Starting a player before this
@@ -650,7 +740,16 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
+    static var allowsDocumentRotation = false
     var window: UIWindow?
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        if UIDevice.current.userInterfaceIdiom == .pad || Self.allowsDocumentRotation {
+            return [.portrait, .landscapeLeft, .landscapeRight]
+        }
+        return .portrait
+    }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         VaultlixCallManager.shared.start()
@@ -680,7 +779,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if (action == "end" || action == "endCall"),
            let rawCallID = userInfo["callId"] as? String,
            let callID = UUID(uuidString: rawCallID) {
-            VaultlixCallManager.shared.endCall(callID: callID)
+            VaultlixCallManager.shared.endCall(callID: callID, outcome: userInfo["callOutcome"] as? String)
             completionHandler(.newData)
             return
         }

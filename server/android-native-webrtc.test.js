@@ -15,7 +15,8 @@ test('Android native calls use encrypted signaling and forced TURN', () => {
   assert.match(engine, /call-accept/);
   assert.match(engine, /scheduleTurnRetry/);
   assert.match(engine, /send hangup room=/);
-  assert.match(engine, /250, TimeUnit\.MILLISECONDS/);
+  assert.match(engine, /retryHangupUntilAcknowledged\(generation, 10, callOutcome\)/);
+  assert.match(engine, /"call-hangup-ack"\.equals\(type\)/);
 });
 
 test('Android native call credentials are device-bound and removed with a vault', () => {
@@ -40,6 +41,7 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /answerIncomingCall/);
   assert.match(main, /prepareIncomingHandle/);
   assert.match(main, /NativeCallActivity\.class/);
+  assert.match(main, /NativeCallActivity\.EXTRA_CALLER_AVATAR_PATH, saved\.avatarPath/);
   assert.match(client, /startOutgoingCall\([\s\S]*room\.callPeerName/);
   assert.match(client, /if \(!room\.nativeIncomingPrepared\) renderCallOverlay\(room\)/);
   assert.match(client, /if \(!room\.nativeIncomingPrepared\) playChime\(\)/);
@@ -52,9 +54,17 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /wasNativeCall && window\.VaultlixAndroid\?\.supportsNativeWebRtc/);
   assert.match(client, /detail\.action === 'declineOrEnd'[\s\S]*room\.callState === 'active' \|\| room\.callState === 'outgoing'/);
   assert.match(incoming, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
-  assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\)/);
+  assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\);[\s\S]*startIncomingRingtone\(\)/);
+  assert.match(incoming, /RingtoneManager\.getDefaultUri\(RingtoneManager\.TYPE_RINGTONE\)/);
+  assert.match(incoming, /ringtone\.setLooping\(true\)/);
+  assert.match(incoming, /setVolumeControlStream\(AudioManager\.STREAM_RING\)/);
+  assert.match(incoming, /dispatchKeyEvent\(KeyEvent event\)[\s\S]*KEYCODE_VOLUME_DOWN[\s\S]*silenceIncomingRingtone\(\)[\s\S]*return true;/);
+  assert.match(incoming, /volume-down silences[\s\S]*call remains pending/);
+  assert.match(incoming, /stopIncomingRingtone\(\);[\s\S]*NativeCallActions\.markAnswerStarted/);
+  assert.match(incoming, /private void declineCall\(\) \{[\s\S]*stopIncomingRingtone\(\)/);
+  assert.match(incoming, /protected void onDestroy\(\) \{[\s\S]*stopIncomingRingtone\(\)/);
   assert.match(incoming, /answerCall\(\)[\s\S]*clearActiveCallNotifications\(this\)/);
-  assert.match(incoming, /name\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
+  assert.match(incoming, /name\.setTypeface\(Typeface\.create\("sans-serif", Typeface\.NORMAL\)\)/);
   assert.match(incoming, /name\.setMaxLines\(2\)/);
   assert.match(incoming, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
   const nativeActivity = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
@@ -63,15 +73,22 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 750\)/);
   assert.match(nativeActivity, /handler\.postDelayed\(this::clearIncomingCallBanner, 1800\)/);
   assert.match(nativeActivity, /onConnected\(\)[\s\S]*clearIncomingCallBanner\(\)/);
-  assert.match(nativeActivity, /brand\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
-  assert.match(nativeActivity, /name\.setTypeface\(Typeface\.create\("sans-serif-medium", Typeface\.NORMAL\)\)/);
+  assert.match(nativeActivity, /brand\.setTypeface\(identityTypeface\(\)\)/);
+  assert.match(nativeActivity, /brandRule\.setBackgroundColor\(CONTROL_ACTIVE\)/);
+  assert.match(nativeActivity, /native_end_to_end_encrypted_call/);
+  assert.match(nativeActivity, /name\.setTypeface\(Typeface\.create\("sans-serif", Typeface\.NORMAL\)\)/);
   assert.match(nativeActivity, /name\.setMaxLines\(2\)/);
   assert.match(nativeActivity, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
+  assert.match(nativeActivity, /BitmapFactory\.decodeFile\(callerAvatarPath\)/);
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
   assert.match(nativeActivity, /native_call_vanished/);
   assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);
   assert.match(nativeActivity, /"calling"\.equals\(value\)[\s\S]*native_calling/);
   assert.match(nativeActivity, /"ringing"\.equals\(value\)[\s\S]*native_ringing/);
+  assert.match(nativeActivity, /requestAudioRoute\(!speakerRequested\)/);
+  assert.match(nativeActivity, /onConnected\(\)[\s\S]*requestAudioRoute\(speakerRequested\)/);
+  assert.match(nativeActivity, /postDelayed\(enforceRequestedAudioRoute, 1_400\)/);
+  assert.match(nativeActivity, /getCommunicationDevice\(\)[\s\S]*renderAudioRoute\(speakerActive\)/);
   assert.match(engine, /private volatile String currentState = "idle"/);
   assert.match(engine, /currentState = state;[\s\S]*listener\.onState\(state\)/);
 });

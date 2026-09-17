@@ -7,12 +7,73 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 const ios = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'AppDelegate.swift'), 'utf8');
 const android = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActivity.java'), 'utf8');
 const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
+const androidMessaging = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
+const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
+const androidEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeWebRtcCallEngine.java'), 'utf8');
+const iosEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'NativeWebRTCCallEngine.swift'), 'utf8');
+const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 
 test('locked iOS terminal call actions cannot resurrect stale call UI', () => {
   assert.match(ios, /"occurredAt": Date\(\)\.timeIntervalSince1970 \* 1000/);
   assert.match(ios, /pendingActions\.removeAll/);
   assert.match(client, /staleTerminalAction/);
   assert.match(client, /silentPresentation:true/);
+});
+
+test('iOS unanswered CallKit timeout records a missed call before native state disappears', () => {
+  assert.match(ios, /let payload = self\.calls\[callID\][\s\S]*reason: \.unanswered/);
+  assert.match(ios, /reason: \.unanswered[\s\S]*self\.postAction\("missed", callID: callID, payload: payload\)/);
+  assert.match(client, /detail\.action === 'missed'[\s\S]*const callEvent = unansweredCallEvent\('receiver'\)[\s\S]*addCallSysMsg\(room, callEvent\.receiverText, eventId, callEvent\)/);
+});
+
+test('iOS unanswered calls create a deduplicated lock-screen missed-call alert', () => {
+  assert.match(ios, /if action == "missed" \{[\s\S]*postMissedCallNotification\(callID: callID, payload: payload\)/);
+  assert.match(ios, /UIApplication\.shared\.applicationState != \.active/);
+  assert.match(ios, /UNMutableNotificationContent\(\)[\s\S]*content\.body = caller\.isEmpty \? "Missed call"/);
+  assert.match(ios, /identifier: "vaultlix-missed-\\\(callID\.uuidString\)"/);
+  assert.match(ios, /content\.userInfo\["missedCall"\] = true/);
+});
+
+test('missed calls survive the iOS foreground and encrypted-room restoration race', () => {
+  const scene = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
+  assert.match(scene, /action\["action"\][\s\S]*== "missed"[\s\S]*\[2\.0, 5\.0, 9\.0\]/);
+  assert.match(client, /const pendingNativeMissedCallActions = new Map\(\)/);
+  assert.match(client, /detail\.action === 'missed'[\s\S]*pendingNativeMissedCallActions\.set\(key, detail\)/);
+  assert.match(client, /function replayPendingNativeMissedCalls\(room\)[\s\S]*handleNativeCallAction\(detail\)/);
+  assert.match(client, /function addRoomToState\(room\)[\s\S]*replayPendingNativeMissedCalls\(room\)/);
+});
+
+test('Android call-end push preserves missed-call history until the encrypted inbox is ready', () => {
+  assert.match(androidMessaging, /isCallEnd[\s\S]*missedCall[\s\S]*markPendingWebViewCallEnd[\s\S]*"Missed call"/);
+  assert.match(androidMessaging, /if \(missedCall\) showMissedCall\(data\)/);
+  assert.match(androidMessaging, /showMissedCall\(Map<String, String> data\)[\s\S]*CATEGORY_CALL/);
+  assert.match(androidMessaging, /engine\.shouldHandleRemoteEnd[\s\S]*engine\.end\(false\)/);
+  assert.match(androidMain, /pendingEnd\[1\] != null && !pendingEnd\[1\]\.isEmpty\(\)[\s\S]*postDelayed[\s\S]*5_000/);
+  assert.match(androidMain, /clearUnderlyingCallState\(pendingEnd\[0\], pendingEnd\[1\]\)/);
+  assert.match(server, /const wasStillRinging = Boolean\(room2\.ringingUntil\)/);
+  assert.match(server, /isCallEnd: true,[\s\S]*missedCall: isMissedCall,[\s\S]*caller:/);
+});
+
+test('opening a conversation clears its missed-call inbox alert', () => {
+  assert.match(client, /function setActiveRoom\(code(?:, \{ deferMessages = false \} = \{\})?\)[\s\S]*room\.unread = 0/);
+  assert.match(client, /missed_encrypted_call'\), alert: room\.unread > 0/);
+  assert.match(client, /function renderChatBody\(room\)[\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*body\.scrollTop = body\.scrollHeight/);
+});
+
+test('hang-up is acknowledged, retried and reconciled on both call engines', () => {
+  assert.match(server, /CALL_TERMINAL_TTL_MS = 2 \* 60 \* 1000/);
+  assert.match(server, /room2\.callTerminal = \{ inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome \}/);
+  assert.match(server, /type:'call-hangup-ack'/);
+  assert.match(server, /sendCallTerminalControl\(ws, activeCallTerminalFor\(room, token\)\)/);
+  assert.match(client, /function queueReliableCallHangup/);
+  assert.match(client, /retryPendingCallHangup\(room\)/);
+  assert.match(client, /msg\.type === 'call-terminal'[\s\S]*room\.callInviteId === msg\.inviteId/);
+  assert.match(iosEngine, /retry\(10\)/);
+  assert.match(iosEngine, /type == "call-hangup-ack"/);
+  assert.match(iosEngine, /case "call-invite":[\s\S]*inviteID = wireInviteID/);
+  assert.match(androidEngine, /retryHangupUntilAcknowledged\(generation, 10, callOutcome\)/);
+  assert.match(androidEngine, /"call-hangup-ack"\.equals\(type\)/);
+  assert.match(androidEngine, /case "call-invite":[\s\S]*inviteId = wireInviteId/);
 });
 
 test('native Android ending uses the Vaultlix sand treatment', () => {
@@ -23,8 +84,10 @@ test('native Android ending uses the Vaultlix sand treatment', () => {
 });
 
 test('locked Android incoming call uses the polished Vaultlix call surface', () => {
-  assert.match(androidIncoming, /verticalGradient\(INK_SOFT, INK\)/);
-  assert.match(androidIncoming, /native_private_identity_protected/);
+  assert.match(androidIncoming, /brandRule\.setBackgroundColor\(BURGUNDY\)/);
+  assert.match(androidIncoming, /brand\.setTypeface\(getResources\(\)\.getFont\(R\.font\.cormorant_garamond\)\)/);
+  assert.match(androidIncoming, /native_incoming_encrypted_call/);
+  assert.doesNotMatch(androidIncoming, /native_private_identity_protected/);
   assert.match(androidIncoming, /callAction\(R\.drawable\.ic_call_end, R\.string\.native_answer, ANSWER, true\)/);
   assert.match(androidIncoming, /ring\.animate\(\)\.scaleX\(1\.08f\)/);
 });

@@ -7,13 +7,22 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -39,6 +48,7 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_AUTO_ANSWER = "autoAnswer";
     public static final String EXTRA_CALL_ID = "callId";
     public static final String EXTRA_NATIVE_PREPARED = "nativePrepared";
+    public static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
 
     private String inviteUri;
     private int notificationId;
@@ -46,6 +56,10 @@ public class IncomingCallActivity extends Activity {
     private boolean answerInProgress;
     private boolean nativePrepared;
     private String caller;
+    private String callerAvatarPath;
+    private final Handler ringtoneHandler = new Handler(Looper.getMainLooper());
+    private final Runnable ringtoneTimeout = this::stopIncomingRingtone;
+    private Ringtone incomingRingtone;
     private static WeakReference<IncomingCallActivity> activeActivity = new WeakReference<>(null);
 
     @Override
@@ -62,14 +76,40 @@ public class IncomingCallActivity extends Activity {
             getWindow().getDecorView().setSystemUiVisibility(0);
         }
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        // Route hardware volume keys to the ringtone stream while this
+        // incoming-call surface owns the foreground. Several OEMs otherwise
+        // consume volume-down in System UI before Activity.onKeyDown sees it.
+        setVolumeControlStream(AudioManager.STREAM_RING);
 
         handleIntent(getIntent());
     }
 
     @Override
     protected void onDestroy() {
+        stopIncomingRingtone();
         if (activeActivity.get() == this) activeActivity.clear();
         super.onDestroy();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN
+                && event.getAction() == KeyEvent.ACTION_DOWN
+                && event.getRepeatCount() == 0
+                && silenceIncomingRingtone()) {
+            // Match the platform phone-call convention: volume-down silences
+            // this incoming ring only. The call remains pending and the user
+            // can still answer or decline it from the visible call surface.
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private boolean silenceIncomingRingtone() {
+        Ringtone ringtone = incomingRingtone;
+        if (ringtone == null || !ringtone.isPlaying()) return false;
+        stopIncomingRingtone();
+        return true;
     }
 
     public static void finishActiveCall() {
@@ -88,6 +128,7 @@ public class IncomingCallActivity extends Activity {
         inviteUri = intent.getStringExtra(EXTRA_INVITE_URI);
         callId = intent.getStringExtra(EXTRA_CALL_ID);
         caller = intent.getStringExtra(EXTRA_CALLER);
+        callerAvatarPath = intent.getStringExtra(EXTRA_CALLER_AVATAR_PATH);
         nativePrepared = intent.getBooleanExtra(EXTRA_NATIVE_PREPARED, false);
         notificationId = intent.getIntExtra(
                 VaultlixMessagingService.EXTRA_CALL_NOTIFICATION_ID,
@@ -104,8 +145,12 @@ public class IncomingCallActivity extends Activity {
         }
         showIncomingCall(caller);
         // The full-screen call surface now owns presentation. Remove the
-        // duplicate heads-up notification so Android never shows two call UIs.
+        // duplicate heads-up notification so Android never shows two call UIs,
+        // then keep ringing from the visible activity. Pixel devices delay
+        // notification audio until after this cancellation, otherwise leaving
+        // the full-screen incoming call completely silent.
         cancelNotification();
+        startIncomingRingtone();
         if (intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)) answerCall();
     }
 
@@ -115,24 +160,18 @@ public class IncomingCallActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(30), dp(30), dp(30), dp(30));
-        root.setBackground(verticalGradient(INK_SOFT, INK));
+        root.setPadding(dp(30), dp(72), dp(30), dp(30));
+        root.setBackgroundColor(INK);
 
-        LinearLayout brandRow = new LinearLayout(this);
-        brandRow.setGravity(Gravity.CENTER);
-        ImageView brandLock = new ImageView(this);
-        brandLock.setImageResource(R.drawable.ic_call_lock);
-        brandLock.setImageTintList(ColorStateList.valueOf(ROSE));
-        brandLock.setPadding(dp(7), dp(7), dp(7), dp(7));
-        brandLock.setBackground(circle(Color.argb(42, 255, 255, 255)));
-        brandRow.addView(brandLock, new LinearLayout.LayoutParams(dp(32), dp(32)));
-        TextView brand = text("VAULTLIX", 13, IVORY);
-        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        brand.setLetterSpacing(0.24f);
+        View brandRule = new View(this);
+        brandRule.setBackgroundColor(BURGUNDY);
+        root.addView(brandRule, new LinearLayout.LayoutParams(dp(50), dp(1)));
+        TextView brand = text("Vaultlix", 20, IVORY);
+        brand.setTypeface(getResources().getFont(R.font.cormorant_garamond));
+        brand.setLetterSpacing(0.12f);
         LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(-2, -2);
-        brandParams.setMargins(dp(10), 0, 0, 0);
-        brandRow.addView(brand, brandParams);
-        root.addView(brandRow, new LinearLayout.LayoutParams(-1, dp(40)));
+        brandParams.setMargins(0, dp(14), 0, 0);
+        root.addView(brand, brandParams);
 
         root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .75f));
 
@@ -140,37 +179,35 @@ public class IncomingCallActivity extends Activity {
         View halo = new View(this);
         halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
         portrait.addView(halo, centered(dp(132), dp(132)));
-        TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
-        avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        avatar.setBackground(circle(IVORY));
-        portrait.addView(avatar, centered(dp(104), dp(104)));
+        Bitmap callerPhoto = callerAvatarPath == null ? null : BitmapFactory.decodeFile(callerAvatarPath);
+        if (callerPhoto != null) {
+            ImageView avatar = new ImageView(this);
+            avatar.setImageBitmap(callerPhoto);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            avatar.setBackground(circle(IVORY));
+            avatar.setClipToOutline(true);
+            portrait.addView(avatar, centered(dp(104), dp(104)));
+        } else {
+            TextView avatar = text(initialFor(displayName), 42, BURGUNDY);
+            avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            avatar.setBackground(circle(IVORY));
+            portrait.addView(avatar, centered(dp(104), dp(104)));
+        }
         root.addView(portrait, new LinearLayout.LayoutParams(dp(132), dp(132)));
 
         TextView name = text(displayName, displayName.length() > 22 ? 28 : 32, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
         nameParams.setMargins(0, dp(28), 0, dp(9));
         root.addView(name, nameParams);
 
-        TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 17, ROSE);
-        subtitle.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 11, IVORY);
+        subtitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        subtitle.setAllCaps(true);
+        subtitle.setLetterSpacing(.12f);
         root.addView(subtitle);
-
-        LinearLayout privacy = new LinearLayout(this);
-        privacy.setGravity(Gravity.CENTER);
-        ImageView privacyLock = new ImageView(this);
-        privacyLock.setImageResource(R.drawable.ic_call_lock);
-        privacyLock.setImageTintList(ColorStateList.valueOf(Color.rgb(202, 190, 197)));
-        privacy.addView(privacyLock, new LinearLayout.LayoutParams(dp(14), dp(14)));
-        TextView privacyText = text(getString(R.string.native_private_identity_protected), 12, Color.rgb(202, 190, 197));
-        LinearLayout.LayoutParams privacyTextParams = new LinearLayout.LayoutParams(-2, -2);
-        privacyTextParams.setMargins(dp(7), 0, 0, 0);
-        privacy.addView(privacyText, privacyTextParams);
-        LinearLayout.LayoutParams privacyParams = new LinearLayout.LayoutParams(-2, dp(34));
-        privacyParams.setMargins(0, dp(18), 0, 0);
-        root.addView(privacy, privacyParams);
 
         root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1f));
 
@@ -202,6 +239,7 @@ public class IncomingCallActivity extends Activity {
             return;
         }
         answerInProgress = true;
+        stopIncomingRingtone();
         NativeCallActions.markAnswerStarted(this, callId);
         NativeCallActions.answer(this, callId);
         cancelNotification();
@@ -215,7 +253,8 @@ public class IncomingCallActivity extends Activity {
             NativeWebRtcCallEngine.get(this).answer();
             Intent call = new Intent(this, NativeCallActivity.class)
                     .putExtra(NativeCallActivity.EXTRA_CALLER, caller)
-                    .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, extractRoomCode());
+                    .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, extractRoomCode())
+                    .putExtra(NativeCallActivity.EXTRA_CALLER_AVATAR_PATH, callerAvatarPath);
             startActivity(call);
             finish();
             return;
@@ -250,6 +289,7 @@ public class IncomingCallActivity extends Activity {
     }
 
     private void declineCall() {
+        stopIncomingRingtone();
         cancelNotification();
         NativeCallActions.decline(this, callId, null);
         finish();
@@ -263,6 +303,30 @@ public class IncomingCallActivity extends Activity {
         if (notificationId == Integer.MIN_VALUE) return;
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) manager.cancel(notificationId);
+    }
+
+    private void startIncomingRingtone() {
+        stopIncomingRingtone();
+        AudioManager manager = getSystemService(AudioManager.class);
+        if (manager != null && manager.getRingerMode() != AudioManager.RINGER_MODE_NORMAL) return;
+        Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), sound);
+        if (ringtone == null) return;
+        ringtone.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
+        ringtone.setLooping(true);
+        incomingRingtone = ringtone;
+        ringtone.play();
+        ringtoneHandler.postDelayed(ringtoneTimeout, 60_000);
+    }
+
+    private void stopIncomingRingtone() {
+        ringtoneHandler.removeCallbacks(ringtoneTimeout);
+        Ringtone ringtone = incomingRingtone;
+        incomingRingtone = null;
+        if (ringtone != null && ringtone.isPlaying()) ringtone.stop();
     }
 
     private TextView text(String value, int sizeSp, int color) {

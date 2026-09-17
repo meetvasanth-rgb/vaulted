@@ -2,6 +2,8 @@ package com.vaultlix.app;
 
 import android.app.Activity;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -17,23 +19,29 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.Space;
 import android.widget.TextView;
+import android.widget.ImageView;
 
 import java.util.Random;
 
 /** Keyguard-safe, audio-only presentation for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
+    private static final String TAG = "VaultlixCallAudio";
+    private static volatile boolean running;
+
+    static boolean isRunning() { return running; }
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
     static final String EXTRA_OUTGOING = "outgoing";
+    static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
     private static final int INK = Color.rgb(39, 29, 37);
     private static final int IVORY = Color.rgb(250, 246, 247);
     private static final int MUTED_TEXT = Color.rgb(190, 177, 184);
@@ -46,6 +54,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private final Handler handler = new Handler(Looper.getMainLooper());
     private NativeWebRtcCallEngine engine;
     private TextView status;
+    private TextView security;
+    private TextView timer;
+    private TextView tagline;
     private TextView muteLabel;
     private TextView routeLabel;
     private ImageButton muteButton;
@@ -53,12 +64,17 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private long connectedAt;
     private boolean muted;
     private boolean speaker;
+    private boolean speakerRequested;
     private AudioManager audioManager;
     private LinearLayout callRoot;
     private String roomCode;
     private boolean finishingCall;
     private boolean outgoing;
+    private String pendingHistory = "";
     private AudioTrack ringbackTrack;
+    private final Runnable enforceRequestedAudioRoute = () -> {
+        if (!finishingCall) applyAudioRoute(speakerRequested);
+    };
     private final Runnable ringback = new Runnable() {
         @Override public void run() {
             if (!outgoing || connectedAt != 0 || finishingCall) return;
@@ -74,15 +90,16 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     };
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            if (connectedAt == 0 || status == null) return;
+            if (connectedAt == 0 || timer == null) return;
             long seconds = Math.max(0, (System.currentTimeMillis() - connectedAt) / 1000);
-            status.setText(String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60));
+            timer.setText(String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60));
             handler.postDelayed(this, 1000);
         }
     };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        running = true;
         setShowWhenLocked(true);
         setTurnScreenOn(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -102,8 +119,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(this::clearIncomingCallBanner, 750);
         handler.postDelayed(this::clearIncomingCallBanner, 1800);
         audioManager = getSystemService(AudioManager.class);
-        configureAudio(false);
-        buildUi(getIntent().getStringExtra(EXTRA_CALLER));
+        requestAudioRoute(false);
+        buildUi(
+                getIntent().getStringExtra(EXTRA_CALLER),
+                getIntent().getStringExtra(EXTRA_CALLER_AVATAR_PATH)
+        );
         if (outgoing) {
             try {
                 ringbackTrack = buildRingbackTrack();
@@ -112,7 +132,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         }
     }
 
-    private void buildUi(String callerValue) {
+    private void buildUi(String callerValue, String callerAvatarPath) {
         String caller = callerValue == null || callerValue.trim().isEmpty()
                 ? getString(R.string.native_private_call) : callerValue.trim();
         FrameLayout stage = new FrameLayout(this);
@@ -123,61 +143,79 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         callRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(28), dp(28), dp(28), dp(28));
+        // Mirror the iOS/Web call surface's 84pt top rhythm. The old Android
+        // lock+wordmark row hugged the status bar and looked detached from
+        // the rest of the call identity.
+        root.setPadding(dp(28), dp(72), dp(28), dp(28));
         root.setBackgroundColor(Color.TRANSPARENT);
 
-        LinearLayout brandRow = new LinearLayout(this);
-        brandRow.setGravity(Gravity.CENTER_VERTICAL);
-        ImageView lock = new ImageView(this);
-        lock.setImageResource(R.drawable.ic_call_lock);
-        lock.setImageTintList(ColorStateList.valueOf(IVORY));
-        lock.setPadding(dp(9), dp(9), dp(9), dp(9));
-        lock.setBackground(circle(CONTROL));
-        brandRow.addView(lock, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        View brandRule = new View(this);
+        brandRule.setBackgroundColor(CONTROL_ACTIVE);
+        root.addView(brandRule, new LinearLayout.LayoutParams(dp(50), dp(1)));
         TextView brand = label("Vaultlix", 20, IVORY);
-        brand.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        brand.setLetterSpacing(-0.02f);
+        brand.setTypeface(identityTypeface());
+        brand.setLetterSpacing(.12f);
         LinearLayout.LayoutParams brandText = new LinearLayout.LayoutParams(-2, -2);
-        brandText.setMargins(dp(11), 0, 0, 0);
-        brandRow.addView(brand, brandText);
-        root.addView(brandRow, new LinearLayout.LayoutParams(-2, dp(42)));
+        brandText.setMargins(0, dp(14), 0, 0);
+        root.addView(brand, brandText);
 
-        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, 1.05f));
-        TextView avatar = label(initialFor(caller), 39, IVORY);
-        avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        avatar.setBackground(circle(CONTROL_ACTIVE));
-        root.addView(avatar, new LinearLayout.LayoutParams(dp(104), dp(104)));
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.VERTICAL);
+        identity.setGravity(Gravity.CENTER);
+        root.addView(identity, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        // Keep the same peer identity visible from ringing through the entire
+        // connected call. IncomingCallActivity previously owned the photo but
+        // dropped its path during this native activity handoff.
+        FrameLayout portrait = new FrameLayout(this);
+        View halo = new View(this);
+        halo.setBackground(circle(Color.argb(24, 255, 255, 255)));
+        portrait.addView(halo, centered(dp(108), dp(108)));
+        Bitmap callerPhoto = callerAvatarPath == null ? null : BitmapFactory.decodeFile(callerAvatarPath);
+        if (callerPhoto != null) {
+            ImageView avatar = new ImageView(this);
+            avatar.setImageBitmap(callerPhoto);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            avatar.setBackground(circle(IVORY));
+            avatar.setClipToOutline(true);
+            portrait.addView(avatar, centered(dp(88), dp(88)));
+        } else {
+            TextView avatar = label(initialFor(caller), 34, CONTROL_ACTIVE);
+            avatar.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            avatar.setBackground(circle(IVORY));
+            portrait.addView(avatar, centered(dp(88), dp(88)));
+        }
+        identity.addView(portrait, new LinearLayout.LayoutParams(dp(108), dp(108)));
 
         TextView name = label(caller, caller.length() > 22 ? 27 : 31, Color.WHITE);
-        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        name.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         name.setMaxLines(2);
         name.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
-        nameParams.setMargins(0, dp(25), 0, dp(8));
-        root.addView(name, nameParams);
+        nameParams.setMargins(0, dp(25), 0, dp(10));
+        identity.addView(name, nameParams);
 
-        status = label(statusText(engine.currentState()), 18, IVORY);
-        root.addView(status);
+        status = callCaption(statusText(engine.currentState()), IVORY);
+        identity.addView(status);
+        security = callCaption(getString(R.string.native_end_to_end_encrypted), Color.WHITE);
+        LinearLayout.LayoutParams securityParams = new LinearLayout.LayoutParams(-2, -2);
+        securityParams.setMargins(0, dp(9), 0, 0);
+        identity.addView(security, securityParams);
+        timer = label("00:00", 34, Color.WHITE);
+        timer.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        timer.setLetterSpacing(.06f);
+        timer.setVisibility(View.GONE);
+        LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(-2, -2);
+        timerParams.setMargins(0, dp(8), 0, 0);
+        identity.addView(timer, timerParams);
+        tagline = label(getString(R.string.native_call_vanished), 13, MUTED_TEXT);
+        tagline.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        tagline.setLetterSpacing(.10f);
+        tagline.setVisibility(View.GONE);
+        LinearLayout.LayoutParams taglineParams = new LinearLayout.LayoutParams(-2, -2);
+        taglineParams.setMargins(0, dp(12), 0, 0);
+        identity.addView(tagline, taglineParams);
 
-        LinearLayout privacyPill = new LinearLayout(this);
-        privacyPill.setGravity(Gravity.CENTER);
-        privacyPill.setPadding(dp(14), dp(8), dp(14), dp(8));
-        privacyPill.setBackground(roundRect(Color.rgb(48, 64, 57), 99));
-        ImageView privacyLock = new ImageView(this);
-        privacyLock.setImageResource(R.drawable.ic_call_lock);
-        privacyLock.setImageTintList(ColorStateList.valueOf(Color.rgb(165, 214, 181)));
-        privacyPill.addView(privacyLock, new LinearLayout.LayoutParams(dp(15), dp(15)));
-        TextView secure = label(getString(R.string.native_encrypted_relayed), 12, Color.rgb(202, 218, 207));
-        LinearLayout.LayoutParams secureParams = new LinearLayout.LayoutParams(-2, -2);
-        // Keep the lock visually attached to the privacy copy across OEM
-        // font metrics and display scaling (notably OnePlus/ColorOS).
-        secureParams.setMargins(dp(4), 0, 0, 0);
-        privacyPill.addView(secure, secureParams);
-        LinearLayout.LayoutParams pillParams = new LinearLayout.LayoutParams(-2, -2);
-        pillParams.setMargins(0, dp(20), 0, 0);
-        root.addView(privacyPill, pillParams);
-
-        root.addView(new Space(this), new LinearLayout.LayoutParams(1, 0, .9f));
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);
         actions.setBaselineAligned(false);
@@ -190,7 +228,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         routeLabel = (TextView) routeControl.getChildAt(1);
         routeButton.setOnClickListener(v -> toggleSpeaker());
         LinearLayout endControl = control(R.drawable.ic_call_end, R.string.native_end, END, true);
-        ((ImageButton) endControl.getChildAt(0)).setOnClickListener(v -> { engine.end(true); finishCall(); });
+        ((ImageButton) endControl.getChildAt(0)).setOnClickListener(v -> {
+            if (outgoing && connectedAt == 0) pendingHistory = "Cancelled call";
+            engine.end(true);
+            finishCall();
+        });
         actions.addView(muteControl, controlParams());
         actions.addView(routeControl, controlParams());
         actions.addView(endControl, controlParams());
@@ -221,6 +263,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         return wrapper;
     }
 
+    private FrameLayout.LayoutParams centered(int width, int height) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
+        params.gravity = Gravity.CENTER;
+        return params;
+    }
+
     private void toggleMute() {
         muted = !muted;
         engine.setMuted(muted);
@@ -230,11 +278,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     private void toggleSpeaker() {
-        speaker = !speaker;
-        configureAudio(speaker);
+        requestAudioRoute(!speakerRequested);
+        routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+    }
+
+    private void renderAudioRoute(boolean speakerActive) {
+        speaker = speakerActive;
+        if (routeButton == null || routeLabel == null) return;
         routeButton.setBackground(circle(speaker ? CONTROL_ACTIVE : CONTROL));
         routeLabel.setText(speaker ? R.string.native_phone : R.string.native_speaker);
-        routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
     @Override public void onState(String value) {
@@ -242,15 +294,35 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             if (connectedAt == 0 && status != null) status.setText(statusText(value));
         });
     }
-    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return; connectedAt=System.currentTimeMillis(); getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM); tick.run(); }); }
-    @Override public void onEnded(String reason) { runOnUiThread(this::finishCall); }
+    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return;
+        connectedAt=System.currentTimeMillis();
+        // libwebrtc/OEM audio initialization can replace a route selected
+        // while the call was ringing. Reassert the user's current choice as
+        // soon as the remote track becomes active.
+        requestAudioRoute(speakerRequested);
+        status.setText(getString(R.string.native_end_to_end_encrypted_call));
+        security.setVisibility(View.GONE);
+        timer.setVisibility(View.VISIBLE);
+        tagline.setVisibility(View.VISIBLE);
+        getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
+        tick.run();
+    }); }
+    @Override public void onEnded(String reason) { runOnUiThread(() -> {
+        if (connectedAt == 0) {
+            if ("declined".equals(reason)) pendingHistory = outgoing ? "Call declined" : "Declined call";
+            else if ("cancelled".equals(reason)) pendingHistory = outgoing ? "Cancelled call" : "Caller cancelled";
+            else if ("unanswered".equals(reason)) pendingHistory = outgoing ? "No answer" : "Missed encrypted call";
+        }
+        finishCall();
+    }); }
 
     private void finishCall() {
         if (finishingCall) return;
         finishingCall = true;
         stopRingback();
         handler.removeCallbacks(tick);
-        String history = connectedAt == 0 ? "" : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
+        handler.removeCallbacks(enforceRequestedAudioRoute);
+        String history = connectedAt == 0 ? pendingHistory : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
         MainActivity.notifyDedicatedCallEnded(roomCode, history);
         showCallEndedMoment();
     }
@@ -365,6 +437,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     @Override protected void onDestroy() {
+        running = false;
         handler.removeCallbacks(tick);
         stopRingback();
         if (ringbackTrack != null) { ringbackTrack.release(); ringbackTrack = null; }
@@ -377,18 +450,54 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         VaultlixMessagingService.clearActiveCallNotifications(this);
     }
 
-    @SuppressWarnings("deprecation") private void configureAudio(boolean useSpeaker) {
-        if (audioManager == null) return; audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                int desired = useSpeaker ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
-                if (device.getType() == desired) { audioManager.setCommunicationDevice(device); break; }
-            }
-        } else audioManager.setSpeakerphoneOn(useSpeaker);
+    private void requestAudioRoute(boolean useSpeaker) {
+        speakerRequested = useSpeaker;
+        handler.removeCallbacks(enforceRequestedAudioRoute);
+        applyAudioRoute(useSpeaker);
+        // WebRTC creates its playout stream asynchronously. Several OEMs
+        // accept setCommunicationDevice() and then restore the receiver a
+        // fraction of a second later, so keep the explicit user route across
+        // that bounded initialization window.
+        handler.postDelayed(enforceRequestedAudioRoute, 180);
+        handler.postDelayed(enforceRequestedAudioRoute, 600);
+        handler.postDelayed(enforceRequestedAudioRoute, 1_400);
     }
 
-    @SuppressWarnings("deprecation") private void restoreAudio() { if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
+    @SuppressWarnings("deprecation")
+    private boolean applyAudioRoute(boolean useSpeaker) {
+        if (audioManager == null) return false;
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        boolean applied = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            int desired = useSpeaker
+                    ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                    : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                if (device.getType() == desired) {
+                    applied = audioManager.setCommunicationDevice(device);
+                    break;
+                }
+            }
+            AudioDeviceInfo selected = audioManager.getCommunicationDevice();
+            boolean speakerActive = selected != null
+                    && selected.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+            renderAudioRoute(speakerActive);
+            if (!applied || speakerActive != useSpeaker) {
+                Log.w(TAG, "Audio route not yet applied; requestedSpeaker=" + useSpeaker
+                        + " selectedType=" + (selected == null ? "none" : selected.getType()));
+            }
+            return applied && speakerActive == useSpeaker;
+        }
+        audioManager.setSpeakerphoneOn(useSpeaker);
+        applied = audioManager.isSpeakerphoneOn() == useSpeaker;
+        renderAudioRoute(audioManager.isSpeakerphoneOn());
+        if (!applied) Log.w(TAG, "Legacy speaker route not yet applied; requestedSpeaker=" + useSpeaker);
+        return applied;
+    }
+
+    @SuppressWarnings("deprecation") private void restoreAudio() { handler.removeCallbacks(enforceRequestedAudioRoute); if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
     private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);return v; }
+    private TextView callCaption(String value, int color){ TextView v=label(value,11,color);v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));v.setAllCaps(true);v.setLetterSpacing(.12f);return v; }
     private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(4),0,dp(4),0);return p; }
     private GradientDrawable circle(int color){ GradientDrawable d=new GradientDrawable();d.setShape(GradientDrawable.OVAL);d.setColor(color);return d; }
     private GradientDrawable roundRect(int color,int radius){ GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d; }

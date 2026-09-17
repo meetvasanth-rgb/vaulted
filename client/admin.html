@@ -34,7 +34,7 @@
 
       <section class="hero">
         <div><p class="eyebrow">Right now</p><h1>People and conversations.</h1><p>Account operations for the current Private Number architecture.</p></div>
-        <div class="privacy-seal"><span>✓</span><div><strong>Privacy boundary intact</strong><small>No passwords, keys or message contents</small></div></div>
+        <div class="privacy-seal"><span>✓</span><div><strong>Privacy boundary intact</strong><small>No passwords, keys or unreported message contents</small></div></div>
       </section>
 
       <section class="metric-grid" aria-label="Live metrics">
@@ -44,12 +44,32 @@
         <article class="metric coral"><span>Calls now</span><strong id="calls-now">—</strong><small id="calls-detail">—</small></article>
       </section>
 
+      <section class="panel" aria-labelledby="system-health-title">
+        <div class="panel-head"><div><p class="eyebrow">Service monitoring</p><h2 id="system-health-title">System health</h2><p class="panel-copy">Updates every 30 seconds while this page is open. Provider status is refreshed every five minutes. Configuration is not proof of delivery.</p></div><strong id="service-health-summary" role="status">Checking…</strong></div>
+        <p id="service-health-updated" class="micro">Waiting for checks</p>
+        <div id="service-health-cards" class="service-health-grid"></div>
+        <details><summary>Recent status changes</summary><ul id="service-health-history"></ul></details>
+        <p class="micro">History covers this server instance since monitoring began and resets on restart. This page cannot detect its own server going offline independently; external uptime monitoring is not yet connected.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="allocate-title">
+        <div class="panel-head"><div><p class="eyebrow">Admin gifts</p><h2 id="allocate-title">Allocate a number</h2><p class="panel-copy">Reserve an available 6–10 digit number for a new user. Starts with 2–9. The claim link expires in seven days and can create one account. No Plus subscription or payment is required.</p></div></div>
+        <form id="allocate-number-form"><label for="allocate-number">Exact Private Number</label><input id="allocate-number" type="text" inputmode="numeric" pattern="[2-9][0-9]{5,9}" minlength="6" maxlength="10" required autocomplete="off"><button id="allocate-submit" type="submit">Reserve number</button></form>
+        <p id="allocate-status" role="status"></p>
+        <div id="allocate-result" hidden><label for="allocate-link">Private claim link</label><input id="allocate-link" type="text" readonly style="width:100%;box-sizing:border-box"><canvas id="allocate-qr" aria-label="Private number claim QR code" role="img" style="display:block;max-width:100%;margin:16px 0"></canvas><button id="allocate-save-qr" type="button">Save QR code</button><button id="allocate-copy" type="button">Copy claim link</button><p class="micro">Share privately with your friend. Anyone holding this link or QR code can claim the number. Your friend chooses their own password and recovery details. Copy the link now; it is not shown again after sign-out or refresh.</p></div>
+      </section>
       <section class="panel identity-panel">
         <div class="panel-head"><div><p class="eyebrow">User directory</p><h2>Vaultlix identities</h2><p class="panel-copy">Only account metadata needed for support and operations is shown.</p></div><span class="identity-count" id="identity-count">—</span></div>
         <div class="table-wrap"><table class="identity-table">
           <thead><tr><th>Username</th><th>Private Number</th><th>Created</th><th>Updated</th><th>Devices</th><th>Notifications</th><th>Pending requests</th></tr></thead>
           <tbody id="identity-rows"><tr><td colspan="7" class="empty-row">Loading identities…</td></tr></tbody>
         </table></div>
+      </section>
+
+      <section class="panel" aria-labelledby="safety-heading">
+        <div class="panel-head"><div><p class="eyebrow">Safety reports</p><h2 id="safety-heading">Review queue</h2><p class="panel-copy">Owner: Vasanthkumar · Review within 24 hours. Only explicitly reported details and optional message excerpts are shown. Unresolved reports remain until handled.</p></div><strong id="safety-summary" role="status">Loading…</strong></div>
+        <p id="safety-error" class="error" role="alert"></p>
+        <div id="safety-reports"></div>
       </section>
 
       <section class="content-grid">
@@ -71,7 +91,7 @@
         </article>
 
         <article class="panel system-panel">
-          <div class="panel-head"><div><p class="eyebrow">Identity infrastructure</p><h2>System health</h2><p class="panel-copy">Live readiness for identities, notifications and encrypted conversations.</p></div><span class="health-pill" id="health-pill">Checking</span></div>
+          <div class="panel-head"><div><p class="eyebrow">Identity infrastructure</p><h2>Resource summary</h2><p class="panel-copy">Live readiness for identities, notifications and encrypted conversations.</p></div><span class="health-pill" id="health-pill">Checking</span></div>
           <div class="gauges">
             <div class="gauge"><div><span id="notification-ring" style="--value:0"><b id="notification-pct">0%</b></span></div><strong>Notification readiness</strong><small id="notification-detail">—</small></div>
             <div class="gauge"><div><span id="room-ring" style="--value:0"><b id="room-pct">0%</b></span></div><strong>Live conversation load</strong><small id="room-detail">—</small></div>
@@ -82,12 +102,13 @@
 
         <article class="panel privacy-panel">
           <p class="eyebrow">Administrator visibility</p><h2>Privacy boundary</h2>
-          <ul><li>Passwords or recovery codes</li><li>Conversation codes or invite secrets</li><li>IP addresses or locations</li><li>Message, media or call contents</li><li>Encryption keys or notification tokens</li></ul>
-          <p class="privacy-note">Usernames and Private Numbers are visible for account support. End-to-end encrypted content remains inaccessible.</p>
+          <ul><li>Passwords or recovery codes</li><li>Conversation codes or invite secrets</li><li>IP addresses or locations</li><li>Unreported message, media or call contents</li><li>Encryption keys or notification tokens</li></ul>
+          <p class="privacy-note">Usernames and Private Numbers are visible for account support. Ordinary end-to-end encrypted content remains inaccessible. The safety queue contains only reports and text excerpts deliberately shared by the reporter.</p>
         </article>
       </section>
     </section>
   </main>
+  <script src="/vendor/claim-qrcode.js" defer></script>
   <script src="/admin.js" defer></script>
 </body>
 </html>

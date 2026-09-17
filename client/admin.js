@@ -2,6 +2,7 @@
   'use strict';
   let adminKey = '';
   let refreshTimer = null;
+  let healthTimer = null, healthBusy = false;
   const $ = id => document.getElementById(id);
   const number = value => new Intl.NumberFormat().format(value || 0);
   const bytes = value => {
@@ -16,17 +17,22 @@
   };
 
   async function loadStats(initial = false) {
+    const key = adminKey;
     try {
-      const response = await fetch('/api/admin/stats', { headers: { Authorization: `Bearer ${adminKey}` }, cache: 'no-store' });
+      const response = await fetch('/api/admin/stats', { headers: { Authorization: `Bearer ${key}` }, cache: 'no-store' });
       if (!response.ok) throw new Error('Access denied');
       const stats = await response.json();
+      if (!adminKey || adminKey !== key) return;
       render(stats);
+      if (!healthTimer) { loadHealth(); healthTimer=setInterval(loadHealth,30000); }
+      loadSafetyReports();
       $('login').hidden = true;
       $('dashboard').hidden = false;
       history.replaceState({ signedOut: false }, '', '/admin');
       $('login-error').textContent = '';
       if (!refreshTimer) refreshTimer = setInterval(loadStats, 15000);
     } catch (error) {
+      if (!adminKey || adminKey !== key) return;
       if (initial) {
         adminKey = '';
         $('login-error').textContent = 'Access key not recognised.';
@@ -35,6 +41,40 @@
         $('live-dot').textContent = 'Reconnecting';
       }
     }
+  }
+
+  async function loadHealth() {
+    if (healthBusy || !adminKey) return;
+    const key=adminKey;
+    healthBusy=true;
+    try {
+      const response=await fetch('/api/admin/health',{headers:{Authorization:`Bearer ${key}`},cache:'no-store',signal:AbortSignal.timeout(10000)});
+      if (!response.ok) throw Error('unavailable');
+      const data=await response.json();
+      if (adminKey!==key) return;
+      const labels={healthy:'Healthy',warning:'Needs attention',down:'Check failed',unknown:'Unknown',configured:'Configured · not tested'};
+      $('service-health-summary').textContent=labels[data.status] || 'Unknown';
+      $('service-health-updated').textContent=`Last checked ${new Date(data.checkedAt).toLocaleString()}`;
+      const cards=data.services.map(service=>{
+        const card=document.createElement('article'); card.className='service-health-card';
+        const title=document.createElement('h3');title.textContent=service.name;
+        const badge=document.createElement('span');badge.className=`service-status ${Object.hasOwn(labels,service.status)?service.status:'unknown'}`;badge.textContent=labels[service.status] || 'Unknown';
+        const detail=document.createElement('p');detail.textContent=service.detail;
+        const time=document.createElement('small');time.textContent=service.status==='configured'?'No live probe':`Check ${service.latencyMs} ms`;
+        if(service.version) time.textContent+=` · Build ${service.version} · Memory ${service.memoryMB} MB`;
+        if(service.providerCheckedAt) time.textContent+=` · Provider fetched ${new Date(service.providerCheckedAt).toLocaleTimeString()}`;
+        card.append(title,badge,detail,time);return card;
+      });
+      $('service-health-cards').replaceChildren(...cards);
+      const events=data.history.map(event=>{const item=document.createElement('li');item.textContent=`${new Date(event.at).toLocaleString()} · ${event.name}: ${labels[event.from]} → ${labels[event.to]}`;return item;});
+      if (!events.length) {const item=document.createElement('li');item.textContent='No status changes recorded yet.';events.push(item);}
+      $('service-health-history').replaceChildren(...events);
+    } catch (_) {
+      if(adminKey===key) {
+        $('service-health-summary').textContent='Unavailable · previous results are stale';
+        $('service-health-cards').replaceChildren();
+      }
+    } finally {healthBusy=false;}
   }
 
   function render(s) {
@@ -71,6 +111,54 @@
     $('cipher-count').textContent = number(s.live.storedCiphertextMessages);
     renderIdentities(s.identities || []);
     renderChart(s.daily || []);
+  }
+
+  async function loadSafetyReports() {
+    const key = adminKey;
+    try {
+      const response = await fetch('/api/admin/safety',{headers:{Authorization:`Bearer ${key}`},cache:'no-store'});
+      if (!response.ok) throw Error('Report queue unavailable. Refresh and follow up before the 24-hour deadline.');
+      const data=await response.json();
+      if (!adminKey || key !== adminKey) return;
+      // Avoid replacing an operator's unsaved review note during refresh.
+      if ($('safety-reports').contains(document.activeElement) || [...$('safety-reports').querySelectorAll('textarea')].some(input=>input.value.trim())) return;
+      $('safety-error').textContent='';
+      const open=data.reports.filter(r=>!['resolved','dismissed'].includes(r.status));
+      $('safety-summary').textContent=`${open.length} open · ${open.filter(r=>r.overdue).length} overdue`;
+      $('safety-reports').replaceChildren();
+      if(!data.reports.length) $('safety-reports').textContent='No reports received.';
+      for(const r of data.reports) {
+        const details=document.createElement('details'); details.className='safety-report';
+        const summary=document.createElement('summary');
+        summary.textContent=`${r.overdue?'OVERDUE · ':''}${r.reason} · ${r.status} · ${formatDate(r.createdAt)} · ${r.id}`;
+        const due=document.createElement('p'); due.textContent=`Review due: ${formatDate(r.dueAt)}`;
+        const evidence=document.createElement('pre'); evidence.className='safety-evidence';
+        evidence.textContent=`Reporter's details: ${r.details || '(none)'}\n\n`+(r.messages?.length?r.messages.map(m=>`${m.isReporter?'Reporter':'Other participant'}: ${m.content}`).join('\n'):'No message excerpts shared.');
+        const history=document.createElement('p'); history.textContent=(r.history||[]).map(h=>`${formatDate(h.at)} · ${h.status}: ${h.note}`).join('\n');
+        const form=document.createElement('form');
+        const note=document.createElement('textarea'); note.required=true; note.maxLength=950; note.placeholder='Record your assessment, action taken, and any follow-up. Never paste passwords or keys.';note.setAttribute('aria-label','Review note');
+        const select=document.createElement('select');select.setAttribute('aria-label','Report status');
+        for(const [value,label] of [['reviewing','In review'],['resolved','Resolved'],['dismissed','Dismissed with explanation']]){const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);}
+        const close=document.createElement('input'); close.type='checkbox'; close.disabled=!r.canClose;
+        const closeLabel=document.createElement('label');closeLabel.append(close,document.createTextNode(' Close the reported conversation for both participants (irreversible).'));
+        const accountAction=document.createElement('select');accountAction.setAttribute('aria-label','Reported account action');accountAction.disabled=!r.canModerateAccount;
+        for(const [value,label] of [['none','No account change'],['suspend','Suspend new connections and close reported conversation'],['restore','Restore reported account after appeal']]){const option=document.createElement('option');option.value=value;option.textContent=label;accountAction.append(option);}
+        const save=document.createElement('button');save.type='submit';save.textContent='Save review';
+        form.append(note,select,accountAction,closeLabel,save);
+        form.addEventListener('submit',async event=>{
+          event.preventDefault();
+          if((close.checked || accountAction.value!=='none') && select.value!=='resolved'){ $('safety-error').textContent='Select Resolved when closing the reported conversation.';return; }
+          if((close.checked || accountAction.value==='suspend') && !confirm('This closes conversations permanently. Suspension prevents new connections until restored. Continue?'))return;
+          save.disabled=true;
+          try{
+            const response=await fetch('/api/admin/safety',{method:'POST',headers:{Authorization:`Bearer ${adminKey}`,'Content-Type':'application/json'},body:JSON.stringify({id:r.id,status:select.value,note:note.value,expectedUpdatedAt:r.updatedAt,closeConversation:close.checked,accountAction:accountAction.value})});
+            const result=await response.json();if(!response.ok)throw Error(result.error||'Review could not be saved.');
+            note.value=''; save.blur(); await loadSafetyReports();
+          }catch(error){$('safety-error').textContent=error.message;}finally{save.disabled=false;}
+        });
+        details.append(summary,due,evidence,history,form);$('safety-reports').append(details);
+      }
+    }catch(error){if(adminKey===key)$('safety-error').textContent=error.message;}
   }
 
   function escapeHtml(value) {
@@ -120,15 +208,58 @@
     $('trend-chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"><title>Conversations and messages over the last fourteen days</title>${grid}<polyline points="${points(messages)}" fill="none" stroke="#71947c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${points(vaults)}" fill="none" stroke="#682c43" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>${labels}</svg>`;
   }
 
+  function clearClaimQr() {
+    const canvas=$('allocate-qr');
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+  }
+  function renderClaimQr(link, privateNumber) {
+    const qr=qrcode(0,'M');qr.addData(link);qr.make();
+    const canvas=$('allocate-qr'), count=qr.getModuleCount(), cell=6, size=(count+8)*cell;
+    canvas.width=size;canvas.height=size+76;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,canvas.height);ctx.fillStyle='#000';
+    for(let row=0;row<count;row++)for(let col=0;col<count;col++)if(qr.isDark(row,col))ctx.fillRect((col+4)*cell,(row+4)*cell,cell,cell);
+    ctx.textAlign='center';ctx.fillStyle='#682c43';ctx.font='bold 24px sans-serif';ctx.fillText(privateNumber,size/2,size+25);
+    ctx.fillStyle='#5e5559';ctx.font='14px sans-serif';ctx.fillText('Vaultlix · Scan to claim',size/2,size+53);
+    canvas.setAttribute('aria-label',`Claim private number ${privateNumber} with this QR code`);
+  }
+  $('allocate-save-qr').addEventListener('click',()=>{
+    if(!adminKey || !$('allocate-link').value)return;
+    const link=document.createElement('a');link.download='vaultlix-private-number-qr.png';link.href=$('allocate-qr').toDataURL('image/png');link.click();
+  });
+  $('allocate-number-form').addEventListener('submit',async event=>{
+    event.preventDefault(); const key=adminKey;if(!key)return;
+    $('allocate-submit').disabled=true;
+    $('allocate-result').hidden=true;$('allocate-link').value='';clearClaimQr();
+    $('allocate-status').textContent='Reserving number…';
+    try {
+      const response=await fetch('/api/admin/allocate-number',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({privateNumber:$('allocate-number').value.trim()}),cache:'no-store'});
+      const result=await response.json();if(adminKey!==key)return;
+      if(!response.ok)throw Error(result.error || 'Could not reserve number.');
+      $('allocate-status').textContent=`${result.privateNumber} reserved until ${new Date(result.reservedUntil).toLocaleString()}.`;
+      $('allocate-link').value=result.claimUrl;$('allocate-result').hidden=false;
+      try{renderClaimQr(result.claimUrl,result.privateNumber);}catch(_){clearClaimQr();$('allocate-status').textContent+=' QR unavailable; copy the claim link below.';}
+    }catch(error){if(adminKey===key)$('allocate-status').textContent=error.message || 'Reservation could not be confirmed. Do not assume it failed; retrying may report it reserved.';}
+    finally{$('allocate-submit').disabled=false;}
+  });
+  $('allocate-copy').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText($('allocate-link').value);$('allocate-status').textContent='Claim link copied. Share it privately.';}
+    catch(_){$('allocate-link').focus();$('allocate-link').select();$('allocate-status').textContent='Copy the selected claim link.';}
+  });
   $('login-form').addEventListener('submit', event => {
     event.preventDefault();
     adminKey = $('admin-key').value;
     $('admin-key').value = '';
     loadStats(true);
   });
-  $('refresh').addEventListener('click', () => loadStats(false));
+  $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); });
   function signOut() {
     adminKey = '';
+    clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';
+    clearInterval(healthTimer); healthTimer=null;
+    $('service-health-cards').replaceChildren();
+    $('service-health-history').replaceChildren();
+    $('safety-reports').replaceChildren();
+    $('safety-summary').textContent='Signed out';
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = null;
     $('admin-key').value = '';

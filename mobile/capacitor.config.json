@@ -4,11 +4,16 @@
   "webDir": "www",
   "server": {
     "url": "https://vaultlix.com",
+    "errorPath": "offline.html",
     "cleartext": false,
     "androidScheme": "https"
   },
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#1A1916"
+    "backgroundColor": "#1A1916",
+    "appendUserAgent": "VaultlixImageSafety/1"
+  },
+  "ios": {
+    "appendUserAgent": "VaultlixImageSafety/1"
   }
 }

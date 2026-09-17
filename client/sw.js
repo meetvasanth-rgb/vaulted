@@ -1,14 +1,88 @@
-// Vaultlix service worker — exists solely to receive Web Push events and show
-// a notification. It does NOT cache app files (this app has no offline mode;
-// every session needs a live connection to relay E2E-encrypted messages), so
-// there's no fetch handler here beyond letting requests pass straight through.
+// Vaultlix service worker — receives Web Push and keeps only the static app
+// shell available for an offline launch. API responses, ciphertext, account
+// data, messages and keys are deliberately never written to this cache.
+
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v6';
+const APP_SHELL_FILES = [
+  '/',
+  '/index.html',
+  '/number-card.js',
+  '/content-safety.js',
+  '/media-safety-v3.js',
+  '/vendor/safety-words.js',
+  '/manifest.json',
+  '/favicon.ico',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-1024.png',
+  '/icons/icon-master.svg',
+  '/icons/favicon-32.png',
+];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(APP_SHELL_CACHE);
+    // One missing decorative asset must not prevent the navigation shell
+    // from installing. Each same-origin file is therefore cached separately.
+    await Promise.allSettled(APP_SHELL_FILES.map(path => cache.add(path)));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+    await Promise.all(names
+      .filter(name => name.startsWith('vaultlix-app-shell-') && name !== APP_SHELL_CACHE)
+      .map(name => caches.delete(name)));
+    await self.clients.claim();
+  })());
+});
+
+// Only the app shell may be stored as the offline /index.html. Public pages
+// such as /privacy, /terms and /faq are separate HTML documents; caching them
+// under /index.html would replace the offline app with a legal page.
+function isAppShellNavigation(pathname) {
+  return pathname === '/' || pathname === '/index.html'
+    || /^\/join\/[a-z0-9-]+\/?$/i.test(pathname)
+    || /^\/[2-9][0-9]{5,9}\/?$/.test(pathname);
+}
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // Network and encrypted-data routes must never enter the app-shell cache.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/')) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok && isAppShellNavigation(url.pathname)) {
+          const cache = await caches.open(APP_SHELL_CACHE);
+          await cache.put('/index.html', response.clone());
+        }
+        return response;
+      } catch (error) {
+        const cache = await caches.open(APP_SHELL_CACHE);
+        return (await cache.match('/index.html')) || (await cache.match('/')) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  if (APP_SHELL_FILES.includes(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(APP_SHELL_CACHE);
+      const cached = await cache.match(request, { ignoreSearch:true });
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok) await cache.put(url.pathname, response.clone());
+      return response;
+    })());
+  }
 });
 
 // The server never sees plaintext (that's the whole point of E2E encryption),
@@ -23,6 +97,7 @@ self.addEventListener('push', (event) => {
   const body = data.body || 'New message';
   const tag = data.tag || 'vaultlix-message';
   const isCall = !!data.isCall;
+  const sessionReplaced = !!data.sessionReplaced;
 
   event.waitUntil((async () => {
     // iOS Safari REQUIRES every push event to result in a visible
@@ -105,8 +180,16 @@ self.addEventListener('push', (event) => {
         code: data.code || null,
         connectionRequest: !!data.connectionRequest,
         requestId: data.requestId || null,
+        sessionReplaced,
+        accountId: sessionReplaced ? (data.accountId || null) : null,
       },
     });
+
+    if (sessionReplaced) {
+      for (const client of clientsList) {
+        if ('postMessage' in client) client.postMessage({ type:'session-replaced', accountId:data.accountId || null });
+      }
+    }
 
     if (hasFocusedClient) {
       const shown = await self.registration.getNotifications({ tag });
@@ -157,6 +240,8 @@ self.addEventListener('notificationclick', (event) => {
   const code = (event.notification.data && event.notification.data.code) || null;
   const connectionRequest = !!(event.notification.data && event.notification.data.connectionRequest);
   const requestId = (event.notification.data && event.notification.data.requestId) || null;
+  const sessionReplaced = !!(event.notification.data && event.notification.data.sessionReplaced);
+  const accountId = (event.notification.data && event.notification.data.accountId) || null;
   event.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (clientsList.length > 0) {
@@ -170,7 +255,8 @@ self.addEventListener('notificationclick', (event) => {
       // if the room list hasn't finished restoring yet, it queues the
       // code and applies it once that finishes instead of dropping it.
       if ('postMessage' in c) {
-        if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
+        if (sessionReplaced) c.postMessage({ type:'session-replaced', accountId });
+        else if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
         else if (code) c.postMessage({ type: 'notification-click', code });
       }
       return;
@@ -180,6 +266,9 @@ self.addEventListener('notificationclick', (event) => {
     // The page reads this on boot, after its own room-restore sequence
     // finishes (see the `?room=` handling in index.html).
     if (self.clients.openWindow) {
+      if (sessionReplaced) {
+        return self.clients.openWindow(accountId ? `/?sessionReplaced=1&accountId=${encodeURIComponent(accountId)}` : '/?sessionReplaced=1');
+      }
       if (connectionRequest) {
         return self.clients.openWindow(requestId ? `/?connectionRequest=${encodeURIComponent(requestId)}` : '/?connectionRequest=pending');
       }

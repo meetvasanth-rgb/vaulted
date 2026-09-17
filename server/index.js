@@ -2,6 +2,8 @@ const http = require('http');
 const http2 = require('http2');
 const path = require('path');
 const fs = require('fs');
+const { createSeo } = require('./seo');
+const seo = createSeo({ clientDir: path.join(__dirname, '../client') });
 const crypto = require('crypto');
 const { promisify } = require('util');
 const webpush = require('web-push');
@@ -9,10 +11,22 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { SafetyStore } = require('./safety-store');
+const contentSafety = require('../client/content-safety');
+let safetyStore;
+const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
+const { EncryptedObjectStorage } = require('./object-storage');
+const { HeadBucketCommand } = require('@aws-sdk/client-s3');
+const { createHealthMonitor } = require('./system-health');
+const { DAILY_LOOK_WATERMARK_VERSION, watermarkDailyLookOutput } = require('./daily-look-watermark');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
+  normalizePreferredSuffix,
   generateStandardNumber,
+  generatePreferredNumber,
+  generateReserveNumber,
+  RESERVE_CATEGORIES,
   assignAccountTier,
   isNumberAvailable,
 } = require('./private-number-policy');
@@ -22,6 +36,7 @@ const scryptAsync = promisify(crypto.scrypt);
 const PORT = process.env.PORT || 3000;
 const PROCESS_STARTED_AT = Date.now();
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_API || '';
 if (ADMIN_KEY && ADMIN_KEY.length < 32) console.warn('ADMIN_KEY is shorter than 32 characters — replace it with a stronger key.');
 // Named rooms are meant to persist for 4 days of inactivity, one-time
 // (auto-generated code) rooms for 24 hours — per the product spec. This used
@@ -39,7 +54,47 @@ const ADMIN_AUTH_WINDOW_MS = process.env.NODE_ENV === 'test' && process.env.TEST
   ? Number(process.env.TEST_ADMIN_AUTH_WINDOW_MS)
   : 10 * 60 * 1000;
 
+// The product is inbox/conversation based. `rooms` remains a short-lived
+// compatibility cache for the existing HTTP/client protocol, but membership
+// keys are one-way token hashes so a durable conversation record never needs
+// to retain a bearer credential.
 const rooms = new Map();
+function conversationTokenHash(token) {
+  const value = String(token || '');
+  return /^[a-f0-9]{64}$/.test(value)
+    ? value
+    : crypto.createHash('sha256').update(value).digest('hex');
+}
+function conversationTokenRoute(tokenOrHash) {
+  const hash = conversationTokenHash(tokenOrHash);
+  return Buffer.from(hash, 'hex').toString('base64url');
+}
+function sameConversationToken(left, right) {
+  const a = Buffer.from(conversationTokenHash(left), 'hex');
+  const b = Buffer.from(conversationTokenHash(right), 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+class ConversationMembers extends Map {
+  constructor(entries = []) {
+    super();
+    for (const [token, member] of entries || []) this.set(token, member);
+  }
+  set(token, member) {
+    const tokenHash = conversationTokenHash(token);
+    return super.set(tokenHash, { ...member, tokenHash, routeId:conversationTokenRoute(tokenHash) });
+  }
+  get(token) { return super.get(conversationTokenHash(token)); }
+  has(token) { return super.has(conversationTokenHash(token)); }
+  delete(token) { return super.delete(conversationTokenHash(token)); }
+}
+function messageFromToken(message, token) {
+  return !!message && sameConversationToken(message.from, token);
+}
+function reactionsForViewer(reactions, token) {
+  return Object.fromEntries(Object.entries(reactions || {}).map(([reactor, value]) => [
+    sameConversationToken(reactor, token) ? token : reactor, value,
+  ]));
+}
 const { markInviteTerminated, isInviteTerminated } = require('./call-invite-state');
 const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 const accounts = new Map();
@@ -48,11 +103,197 @@ const privateNumberReservations = new Map();
 const privateNumberLifecycle = new Map();
 const profileLookupBuckets = new Map();
 const postgresStore = new PostgresStore(process.env.DATABASE_URL || '');
+const realtimeCoordinator = new RealtimeCoordinator({ url:process.env.REDIS_URL || '' });
+const objectStorage = new EncryptedObjectStorage();
 let postgresEnabled = false;
+let objectStorageEnabled = false;
+let providerStatusCache;
+const getSystemHealth = createHealthMonitor({ checks:[
+  { id:'app', name:'Railway application', run:async()=>({status:'healthy',detail:'This application instance is responding.', uptimeSeconds:Math.floor(process.uptime()), version:String(process.env.RAILWAY_GIT_COMMIT_SHA || 'local').slice(0,12), memoryMB:Math.round(process.memoryUsage().rss/1048576)}) },
+  { id:'postgres', name:'PostgreSQL', run:async()=>{
+    if (!postgresEnabled || !postgresStore.pool) return {status:'down',detail:'Durable database is not available.'};
+    await postgresStore.pool.query({text:'SELECT 1',query_timeout:3000});
+    return {status:'healthy',detail:'Read-only query succeeded.'};
+  } },
+  { id:'redis', name:'Redis', run:async()=>{
+    if (!realtimeCoordinator.enabled) return {status:'warning',detail:'Shared realtime coordination is not configured.'};
+    if (!realtimeCoordinator.publisher?.isReady || !realtimeCoordinator.subscriber?.isReady) throw Error('not ready');
+    if (await realtimeCoordinator.publisher.ping() !== 'PONG') throw Error('ping');
+    return {status:'healthy',detail:'Ping succeeded; both realtime connections are ready.'};
+  } },
+  { id:'storage', name:'Media storage', run:async(signal)=>{
+    if (!objectStorageEnabled) return {status:'warning',detail:'Object storage is not enabled.'};
+    await objectStorage.client.send(new HeadBucketCommand({Bucket:objectStorage.bucket}),{abortSignal:signal});
+    return {status:'healthy',detail:'Bucket is reachable. Upload/download not tested.'};
+  } },
+  { id:'cloudflare', name:'Cloudflare public status', external:true, run:async(signal)=>{
+    if (providerStatusCache && Date.now()-providerStatusCache.at<300000) return providerStatusCache.value;
+    const response=await fetch('https://www.cloudflarestatus.com/api/v2/status.json',{signal});
+    if (!response.ok) throw Error('provider');
+    const data=await response.json();
+    if (!['none','minor','major','critical'].includes(data?.status?.indicator)) throw Error('invalid status');
+    const value={status:data.status.indicator==='none'?'healthy':'warning',detail:data.status.indicator==='none'?'Provider reports normal operation; not a test of your calls.':'Provider reports an incident; it may not affect Vaultlix.',providerCheckedAt:new Date().toISOString()};
+    providerStatusCache={at:Date.now(),value}; return value;
+  } },
+  { id:'turn', name:'Cloudflare call relay', run:async()=>({status:process.env.CF_TURN_KEY_ID && process.env.CF_TURN_KEY_API_TOKEN?'configured':'warning',detail:'Configuration only. Live relay connectivity has not been tested.'}) },
+  { id:'apns', name:'Apple push notifications', run:async()=>({status:APNS_CONFIGURED?'configured':'warning',detail:'Configuration only. Device delivery has not been tested.'}) },
+  { id:'firebase', name:'Android push notifications', run:async()=>({status:process.env.FIREBASE_SERVICE_ACCOUNT_JSON?'configured':'warning',detail:'Configuration only. Device delivery has not been tested.'}) },
+] });
+
 const CONNECTION_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_LOOK_DAILY_LIMIT = 5;
+const ATTACHMENT_UPLOAD_TTL_MS = 15 * 60 * 1000;
+const ATTACHMENT_GARBAGE_SWEEP_MS = 10 * 60 * 1000;
+// Older builds did not tag attachment ciphertext separately. Migrating any
+// retained envelope above 8KB captures even aggressively compressed images
+// and tiny documents without ever attempting to inspect/decrypt content.
+// An unusually long text message may also be externalized, which is safe:
+// it remains the same opaque ciphertext and follows the identical fetch path.
+const INLINE_ATTACHMENT_MIGRATION_MIN_BYTES = 8 * 1024;
+// Daily Look is currently launched for the India test cohort. Keep the
+// midnight boundary configurable for a later regional rollout while making
+// today's product promise an exact 12:00 AM IST reset on every replica.
+const DAILY_LOOK_RESET_OFFSET_MINUTES = (() => {
+  const configured = Number(process.env.DAILY_LOOK_RESET_OFFSET_MINUTES);
+  return Number.isFinite(configured) && configured >= -720 && configured <= 840 ? configured : 330;
+})();
+const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
+const dailyLookClaims = new Set();
+const RETRO_80S_LOOKS = Object.freeze([
+  {
+    id:'classic-heroine-publicity', direction:'Classic heroine publicity portrait',
+    pose:'Elegant upright three-quarter pose with the torso turned about 25 degrees, chin level, a graceful side glance, one hand lightly arranging the sari pallu near the shoulder and the other relaxed naturally below the crop.',
+    camera:'Eye-level camera, 85mm portrait-lens perspective, photographed by another person from about 2.5 metres away.',
+    framing:'Square waist-up portrait with the complete head, both shoulders and hands included where practical; the head occupies about 30–38% of the image height.',
+    styling:'Rich silk sari, structured period blouse, restrained gold jewellery, voluminous side-swept hair and refined mid-1980s studio makeup, adapted respectfully to the subject.',
+    setting:'Wood-panelled sitting room with floral curtains, cream-shaded brass lamp, framed landscape art and teak shelving.',
+    lighting:'Large soft warm key from camera-left, gentle neutral frontal fill and a dim amber practical lamp behind the subject; all facial and room shadows follow those sources.',
+  },
+  {
+    id:'classic-hero-publicity', direction:'Classic hero publicity portrait',
+    pose:'Relaxed seated pose in a cane-backed chair, torso angled about 20 degrees, one forearm resting on the chair arm, shoulders open, face turned toward camera and a calm confident expression.',
+    camera:'Eye-level camera, 70mm portrait perspective, photographed from roughly 2.2 metres away.',
+    framing:'Square waist-up portrait showing the complete head, shoulders, upper torso and resting forearm; the face remains naturally proportional.',
+    styling:'Open-neck or neatly tucked wide-collared period shirt, vintage wristwatch, carefully side-parted hair and facial hair only when already consistent with the source identity.',
+    setting:'1980s music-lover room with teak shelves, silver cassette deck, tape collection, sports-car poster, palm-sunset print and a brass horse ornament.',
+    lighting:'Soft warm window key from one side, broad low-contrast fill from the room and a subtle tungsten shelf light, with confident but open shadows.',
+  },
+  {
+    id:'disco-era-star', direction:'Disco-era star portrait',
+    pose:'Energetic standing three-quarter pose with one shoulder nearer the camera, chin slightly raised, one hand resting naturally near the waist and a controlled performance-ready expression.',
+    camera:'Slightly low camera position, 50mm normal-lens perspective, photographed from about 2.5 metres away without wide-angle distortion.',
+    framing:'Square waist-up portrait with breathing room around the hair and shoulders and the subject occupying about 60% of the frame.',
+    styling:'Tasteful colourful satin or subtly sequinned period outfit, feathered hair and restrained era makeup appropriate to the subject.',
+    setting:'Physical 1980s stage with mirrored panels, practical coloured bulbs, light haze and period audio equipment.',
+    lighting:'Clean neutral soft key on the face with burgundy, blue and amber rim lights confined mainly to the hair, clothing and background; never wash the skin in coloured light.',
+  },
+  {
+    id:'film-magazine-cover', direction:'Indian film-magazine publicity portrait',
+    pose:'Poised upright studio pose with shoulders nearly square, direct eye contact, chin subtly lowered and one hand resting elegantly at the waist or just inside the lower frame.',
+    camera:'Camera five centimetres above eye level, 85mm portrait-lens perspective, photographed from roughly 2.3 metres away.',
+    framing:'Square chest-to-waist-up cover composition with the eyes near the upper third and deliberate negative space on one side; no readable magazine text.',
+    styling:'Glamorous mid-1980s star styling, sculpted period hair, refined accessories and vivid but believable wardrobe adapted to the subject.',
+    setting:'Painted studio backdrop with bold saffron, teal and burgundy geometry, a small period pedestal and restrained aged-paper character.',
+    lighting:'Broad beauty key just above and to camera-left, soft frontal fill and a faint background glow; luminous true-to-source skin with controlled highlights.',
+  },
+  {
+    id:'bollywood-wedding', direction:'Bollywood-star wedding-album portrait',
+    pose:'Formal balanced three-quarter pose with the torso gently angled, shoulders relaxed, hands composed naturally together at mid-torso and a warm restrained smile toward camera.',
+    camera:'Natural eye-level camera, 85mm portrait perspective, photographed from approximately 2.7 metres away.',
+    framing:'Square three-quarter portrait from complete head to just below the composed hands, retaining enough room for clothing and ceremonial setting.',
+    styling:'Authentic lavish mid-1980s Indian wedding or formal clothing, traditional jewellery and restrained jasmine or floral details suited respectfully to the subject.',
+    setting:'Velvet curtains, brass kuthuvilakku lamps, floral arrangements and a richly hand-painted studio palace backdrop.',
+    lighting:'Softened direct period flash close to camera with a warm side fill from the brass lamps; facial, jewellery and backdrop highlights must agree.',
+  },
+  {
+    id:'star-at-home', direction:'Bollywood star-at-home candid portrait',
+    pose:'Casually seated or leaning into a patterned sofa, one elbow supported naturally, body turned away slightly and face caught looking just past the camera with relaxed youthful star presence.',
+    camera:'Eye-level documentary camera, 50mm normal-lens perspective, photographed from about 2 metres away.',
+    framing:'Square waist-up environmental portrait with the complete head, shoulders, supported arm and meaningful room detail visible.',
+    styling:'Simple but carefully styled cotton sari, kurta or wide-collared shirt appropriate to the subject, with natural period grooming.',
+    setting:'Production-designed home interior with patterned upholstery, lace antimacassars, film publicity photographs, books, a valve radio and warm practical lamps.',
+    lighting:'Large side-window daylight as the main source, soft wall bounce on the shadow side and low amber practical lamps in the background.',
+  },
+  {
+    id:'behind-the-scenes', direction:'Candid behind-the-scenes film-star portrait',
+    pose:'Relaxed in a cane director chair between takes, body angled about 30 degrees, one forearm on the armrest, the other hand relaxed, head turned back toward camera with an unposed expression.',
+    camera:'Eye-level handheld 50mm camera from approximately 2.2 metres, with documentary immediacy but no tilt or wide-angle distortion.',
+    framing:'Square medium portrait showing the complete head, torso, both chair arms and enough studio context to establish the moment.',
+    styling:'Understated period film-star clothing and grooming that preserve the source identity and visible cultural cues.',
+    setting:'Working film set with a faded cinema poster, compact stereo, cassettes, paperbacks, leafy plant and a glimpse of era-correct studio equipment.',
+    lighting:'Natural window light crossing the face, gentle reflector fill and a subdued tungsten work light deeper in the set; soft highlights and believable falloff.',
+  },
+  {
+    id:'bouffant-heroine', direction:'Bouffant heroine-inspired portrait',
+    pose:'Graceful near-profile pose with the torso turned about 40 degrees, face returning partly toward camera, fingertips lightly touching the outer hair near one shoulder and a serene sideward gaze.',
+    camera:'Camera slightly above eye level, 85mm portrait perspective, photographed by another person from roughly 2.4 metres away.',
+    framing:'Square waist-up portrait with complete hair silhouette, both shoulders and the delicate hand gesture fully inside the frame.',
+    styling:'Printed cotton or silk sari, believable bouffant or softly waved period hair, minimal gold jewellery and refined mid-1980s makeup when appropriate to the subject.',
+    setting:'Warm hand-painted studio interior with a teak side table, shaded lamp and muted floral panel.',
+    lighting:'Soft cinematic key from camera-right following the direction of the gaze, low neutral fill and a warm practical lamp separated behind the subject.',
+  },
+  {
+    id:'kurta-flares-hero', direction:'Kurta-and-flares hero-inspired portrait',
+    pose:'Composed standing pose leaning lightly against a teak desk, torso in three-quarter view, one hand resting on the desk and the watch-bearing wrist visible, with a direct assured gaze.',
+    camera:'Camera slightly below eye level, 70mm short-telephoto perspective, photographed from approximately 2.6 metres away.',
+    framing:'Square thigh-to-head or long waist-up portrait that suggests high-waisted flared styling while keeping the head naturally proportional.',
+    styling:'Patterned kurta or wide-collared shirt with period trousers, side-parted hair and a vintage wristwatch, adapted to the subject without forcing gendered presentation.',
+    setting:'Teak home office with rotary telephone, globe, venetian blinds, paper files and a softly blurred period calendar with no readable text.',
+    lighting:'Slatted daylight through the blinds as a soft directional key, neutral room fill and a modest amber desk lamp; no harsh stripes across the eyes.',
+  },
+  {
+    id:'cinema-poster', direction:'Solo hand-painted cinema-poster portrait',
+    pose:'Heroic three-quarter stance with shoulders set diagonally, chin gently raised, face turned into the light and arms held naturally close to the body in a composed poster-ready silhouette.',
+    camera:'Moderately low camera angle, 50mm normal-lens perspective, photographed from about 2.8 metres away without exaggerating the head or jaw.',
+    framing:'Square waist-up cinematic composition with the complete head and shoulders prominent but proportional and space for dramatic scenery around the subject.',
+    styling:'Bold but tasteful 1980s Indian cinema wardrobe and period grooming adapted to the source person.',
+    setting:'Rich hand-painted cinema-poster environment with dramatic clouds, saturated sunset colour and layered scenic depth, but no title, names, typography or additional stars.',
+    lighting:'Strong warm three-quarter key matching the painted sunset, restrained cool fill from the opposite side and a narrow rim on the far shoulder; keep the face photorealistic.',
+  },
+]);
+// One surprise direction per creation; successive daily generations vary the result.
+const ENHANCER_LOOKS = Object.freeze([
+  'Natural editorial photograph in a sunlit garden, soft morning light, gentle foliage bokeh and realistic skin detail.',
+  'Cinematic photograph beside a coastal sunset, warm golden key light, soft sky fill and a softly blurred sea.',
+  'Refined studio portrait on a warm cream backdrop, broad softbox lighting, bright catchlights and subtle depth.',
+  'Premium hand-drawn cinematic anime portrait, faithful facial proportions and recognisable likeness, restrained cel shading, a pastel cherry-blossom background and soft daylight.',
+  'Modern cafe portrait with warm window light, tasteful timber details, soft background blur and fresh natural colours.',
+  'Elegant mountain-lake portrait in luminous early daylight, delicate atmospheric depth and balanced skin tones.',
+  'Cinematic city portrait at blue hour, softly glowing distant lights and a gentle neutral face light that matches the surroundings.',
+  'Painterly anime portrait with delicate linework, unchanged apparent age and facial proportions, a dreamy cloud garden and luminous soft light.',
+  'Professional editorial photograph against a muted terracotta architectural background, soft side light and clean natural colour.',
+  'Airy botanical conservatory photograph, diffused skylight, green foliage and subtle film colour with realistic facial detail.',
+]);
+const DAILY_LOOK_STYLES = Object.freeze([
+  {
+    id:'retro-80s', name:'1980s Portrait', note:'Ten cinematic poses with directed camera and light',
+    size:'1024x1024',
+    quality:'high',
+    prompt:`Recreate the source photograph as a convincing Indian cinema portrait photographed in the mid-1980s. Transform the setting, clothing, grooming, props and photographic medium completely; do not make a modern scene with a retro filter.
+
+Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person and keep all stylisation away from their facial features.
+
+The selected 1980s shot brief below is mandatory. Follow its pose, body angle, gaze, hand placement, camera height, lens perspective, camera distance, crop, styling, setting and lighting as one coherent photograph. Recompose the person into that directed pose instead of copying an accidental pose from the source. Adapt gendered labels such as heroine or hero respectfully to the subject's existing presentation and visible cultural cues; the photographic direction matters more than forcing gendered clothing. Never add a moustache, change hair length, change religious or cultural markers, or force styling that conflicts with the source person.
+
+Rebuild the setting to match the selected shot brief while keeping every object believable in scale and placement. Remove smartphones, LEDs, contemporary furniture, modern architecture and present-day fashion. Preserve every clearly visible person from the source and do not invent additional people. Preserve each person's identity, apparent age and relationship naturally. Do not add extra limbs, fingers, hands, faces, jewellery or religious marks. Keep hands anatomically accurate and unobstructed wherever visible.
+
+The uploaded photograph is an identity reference only; discard its camera distance, crop, arm position and selfie perspective. Use the exact camera height, focal-length perspective, distance and framing prescribed by the selected shot brief. The final photograph must visibly have been taken by another person using an era-correct handheld or studio 35mm camera. Never create a selfie, phone-camera perspective, outstretched camera arm, wide-angle facial distortion or an oversized foreground head.
+
+Compose the square, profile-ready portrait using the exact crop in the selected brief. Always show the complete head and both shoulders, maintain natural proportions between the head, neck, shoulders, torso and hands, and keep every prescribed hand gesture inside the frame. Preserve enough sharply coherent setting to make the selected direction unmistakable, with realistic depth and perspective. Do not crop through the chin or forehead, enlarge the face to fill the frame, make the body unnaturally small beneath the head or revert every direction to the same close-up portrait.
+
+Lighting integration is critical. Follow the exact light sources named in the selected brief. The face and background must share the same light direction, colour temperature, exposure, shadow softness, contrast and atmospheric depth. Recreate matching highlights on hair, skin, clothing, jewellery and nearby surfaces. Do not use an independent portrait key light that contradicts the specified room, daylight, stage lights, lamps or flash. Avoid cut-out edges, halos, pasted-on faces, orange skin, muddy shadows, harsh hotspots, blown highlights, grey skin or unexplained mixed lighting.
+
+Render at premium photographic quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric texture, accurate accessories and clean edges. Apply restrained authentic 1980s colour-film character—subtle organic grain, mild lens softness and gentle print colour—with only minimal physical-print wear away from the face. Do not age the person. Add no text, logos, date stamps or watermarks. The final result must feel like a real photograph from the selected 1980s Indian cinema direction, not an AI effect, a generic family snapshot or the same repeated portrait composition.`,
+  },
+  {
+    id:'surprise-enhancer', name:'Surprise Enhancer', note:'A fresh look every time — cinematic, natural or anime',
+    size:'1024x1024', quality:'high',
+    prompt:`Enhance the uploaded photograph into a polished, profile-ready portrait following the selected surprise direction. Preserve every visible person's unmistakable identity, facial geometry, skin tone, exact apparent age, expression, hairstyle, cultural markers and natural facial fullness. Fresh, youthful lighting means bright eyes, soft flattering light and healthy natural skin texture, never making the person younger or changing facial features. Do not add wrinkles, eye bags, grey hair, plastic skin, exaggerated eyes or a generic replacement face. Preserve all visible people without adding anyone. Keep anatomy accurate and head/body proportions natural. Integrate the subjects into the chosen background with consistent light direction, colour temperature and shadows. Frame the complete head and shoulders safely inside a square crop. Apply exactly one coherent visual direction, not a collage of styles. No text, logos or watermarks.`,
+  },
+]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
 const NUMBER_RETENTION_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env.TEST_NUMBER_RETENTION_SWEEP_MS
   ? Number(process.env.TEST_NUMBER_RETENTION_SWEEP_MS)
@@ -226,7 +467,7 @@ if (usableMemory <= 0) {
 // unaffected by how high any one room's own fairness threshold sits.
 const ROOM_BYTE_BUDGET = Math.max(Math.floor(GLOBAL_BYTE_BUDGET * 0.25), MAX_MESSAGE_CONTENT_BYTES);
 
-console.log(`Byte budgets: global=${GLOBAL_BYTE_BUDGET} bytes (${(GLOBAL_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB), per-room fairness cap=${ROOM_BYTE_BUDGET} bytes (${(ROOM_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB).`);
+console.log(`Byte budgets: global=${GLOBAL_BYTE_BUDGET} bytes (${(GLOBAL_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB), per-conversation fairness cap=${ROOM_BYTE_BUDGET} bytes (${(ROOM_BYTE_BUDGET / 1024 / 1024).toFixed(1)}MB).`);
 
 // Even at zero messages, a room still costs real memory (a Map entry, two
 // member records, ~20 scalar fields) — unbounded room COUNT is a separate
@@ -295,6 +536,110 @@ function pushRoomMsg(room, msg) {
   if (totalByteSize < 0) totalByteSize = 0;
 }
 
+// PostgreSQL is the durable ciphertext history. The live conversation map is
+// only a bounded projection used by the existing HTTP and signaling protocol.
+// A full client bootstrap therefore reconciles that projection with PostgreSQL
+// before returning history; plaintext remains exclusively on the devices.
+async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
+  if (!postgresEnabled) return;
+  const databaseClient = client || postgresStore.pool;
+  const [durableMessages, tombstones] = await Promise.all([
+    postgresStore.loadEncryptedMessages(roomCode, 100, Date.now(), databaseClient),
+    postgresStore.loadDeletionTombstones(roomCode, Date.now(), databaseClient),
+  ]);
+  const tokenByHash = new Map();
+  for (const tokenHash of room.members.keys()) tokenByHash.set(tokenHash, tokenHash);
+
+  const existingById = new Map(room.msgs.map(message => [message.id, message]));
+  const restoredMessages = [];
+  for (const durable of durableMessages) {
+    const from = tokenByHash.get(durable.senderTokenHash);
+    if (!from) continue;
+    const existing = existingById.get(durable.id);
+    const sentAt = new Date(durable.ts);
+    restoredMessages.push({
+      seq:durable.seq,
+      id:durable.id,
+      type:'message',
+      from,
+      name:room.members.get(from)?.name || existing?.name || null,
+      content:durable.content,
+      viewOnce:durable.viewOnce,
+      time:existing?.time || `${sentAt.getHours().toString().padStart(2,'0')}:${sentAt.getMinutes().toString().padStart(2,'0')}`,
+      ts:durable.ts,
+      expiresAt:durable.expiresAt,
+      deleteTimerSeconds:durable.deleteTimerSeconds,
+      deliveredAt:durable.deliveredAt ?? existing?.deliveredAt ?? null,
+      readAt:durable.readAt ?? existing?.readAt ?? null,
+      reactions:durable.reactions || existing?.reactions || {},
+      reactionSeq:durable.reactionSequence || existing?.reactionSeq || 0,
+      readReported:existing?.readReported || false,
+    });
+  }
+
+  // System events are process-local presentation state and are not part of
+  // encrypted history. Preserve the genuine ones while replacing only the
+  // ciphertext records with PostgreSQL's authoritative, deletion-aware set.
+  const systemMessages = room.msgs.filter(message => message.type === 'system');
+  const oldBytes = room.byteSize || 0;
+  room.msgs = [...systemMessages, ...restoredMessages, ...tombstones]
+    .sort((left, right) => (left.seq || 0) - (right.seq || 0))
+    .slice(-100);
+  room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
+  totalByteSize = Math.max(0, totalByteSize - oldBytes + room.byteSize);
+  const highestSequence = room.msgs.reduce((highest, message) => Math.max(highest, message.seq || 0), 0);
+  room.seq = Math.max(room.seq || 0, highestSequence);
+  // PostgreSQL is authoritative after a restart. Without restoring this
+  // watermark, /api/poll returned 0 and every hydrated inbox row fell back
+  // to the same local session-save time instead of its actual last message.
+  const durableLastMessageAt = restoredMessages.reduce((latest, message) => {
+    const timestamp = new Date(message.ts || 0).getTime() || 0;
+    return Math.max(latest, timestamp);
+  }, 0);
+  room.lastMessageAt = Math.max(Number(room.lastMessageAt) || 0, durableLastMessageAt);
+}
+
+async function loadConversationFromPostgres(roomCode, client = null) {
+  if (!postgresEnabled || typeof roomCode !== 'string' || !roomCode) return rooms.get(roomCode) || null;
+  const record = await postgresStore.loadConversation(roomCode, client || postgresStore.pool);
+  if (!record) { evictConversationCache(roomCode); return null; }
+  const room = {
+    ...record,
+    members:new ConversationMembers(record.members),
+    msgs:[], byteSize:0,
+    activeCall:false, ringingUntil:0, callTerminal:null,
+    nativeCallId:null, nativeCalleeToken:null, nativeInviteId:null,
+  };
+  const [durableMessages, tombstones] = await Promise.all([
+    postgresStore.loadEncryptedMessages(roomCode, 100, Date.now(), client || postgresStore.pool),
+    postgresStore.loadDeletionTombstones(roomCode, Date.now(), client || postgresStore.pool),
+  ]);
+  room.msgs = [...durableMessages.map(message => {
+    const member = room.members.get(message.senderTokenHash);
+    const sentAt = new Date(message.ts);
+    return {
+      seq:message.seq, id:message.id, type:'message', from:message.senderTokenHash,
+      name:member?.name || null, content:message.content, viewOnce:message.viewOnce,
+      time:`${sentAt.getHours().toString().padStart(2,'0')}:${sentAt.getMinutes().toString().padStart(2,'0')}`,
+      ts:message.ts, expiresAt:message.expiresAt,
+      deliveredAt:message.deliveredAt, readAt:message.readAt,
+      reactions:message.reactions || {}, reactionSeq:message.reactionSequence || 0,
+      readReported:false,
+    };
+  }), ...tombstones].sort((a, b) => (a.seq || a.deletionSeq || 0) - (b.seq || b.deletionSeq || 0)).slice(-100);
+  room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
+  evictConversationCache(roomCode);
+  rooms.set(roomCode, room);
+  totalByteSize += room.byteSize;
+  return room;
+}
+
+async function ensureConversationLoaded(roomCode, { force = false, client = null } = {}) {
+  if (!postgresEnabled) return rooms.get(roomCode) || null;
+  if (!force && rooms.has(roomCode)) return rooms.get(roomCode);
+  return loadConversationFromPostgres(roomCode, client);
+}
+
 // Shared by every place that nulls a message's content out from under it —
 // the disappearing-message sweep below, /api/delete-message, and
 // /api/view-once-opened — so room.byteSize AND totalByteSize stay in sync
@@ -304,7 +649,7 @@ function pushRoomMsg(room, msg) {
 // still-live messages more aggressively than they need to) — centralized
 // here for the same reason pushRoomMsg is: three separate call sites is
 // three chances to forget one.
-function deleteRoomMsgContent(room, msg) {
+function deleteRoomMsgContent(room, msg, deletionSequence = null) {
   if (msg.content) {
     const freed = msg.content.length;
     room.byteSize = Math.max(0, (room.byteSize || 0) - freed);
@@ -312,7 +657,14 @@ function deleteRoomMsgContent(room, msg) {
   }
   msg.content = null;
   msg.deleted = true;
-  msg.deletionSeq = ++room.deletionSeq;
+  msg.deletionSeq = deletionSequence == null ? ++room.deletionSeq : deletionSequence;
+  room.deletionSeq = Math.max(room.deletionSeq || 0, msg.deletionSeq);
+}
+
+function evictConversationCache(code) {
+  const cached = rooms.get(code);
+  if (cached) totalByteSize = Math.max(0, totalByteSize - (cached.byteSize || 0));
+  rooms.delete(code);
 }
 
 // Every room-deletion site must go through here instead of calling
@@ -320,16 +672,17 @@ function deleteRoomMsgContent(room, msg) {
 // out of totalByteSize too, or the tracked global total would drift
 // upward forever as rooms come and go, eventually making the global budget
 // think it's full when the real rooms Map is mostly empty.
-function destroyRoom(code) {
+function destroyRoom(code, durableAlreadyDeleted = false) {
   const room = rooms.get(code);
   if (room) {
-    totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0));
     publishInboxRoom(code, 'room-closed');
   }
-  rooms.delete(code);
+  evictConversationCache(code);
+  if (postgresEnabled && !durableAlreadyDeleted && !room?.dbClient) postgresStore.deleteConversation(code).catch(error => console.error('Conversation delete failed:', error.message));
+  realtimeCoordinator.publish('conversation-invalidated', { roomCode:code }).catch(() => {});
   // Closing/expiry must reach durable state immediately so a backup taken
   // before the next periodic pass cannot resurrect an already-erased vault.
-  saveSnapshot({ log: false });
+  if (!postgresEnabled) saveSnapshot({ log: false });
 }
 
 // VAPID keys identify this server to push services (Apple/Google/Mozilla's push
@@ -425,11 +778,15 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     isCall: !!parsed.isCall,
     isCallEnd: !!parsed.isCallEnd,
     missedCall: !!parsed.missedCall,
+    callOutcome: parsed.callOutcome || '',
     caller: parsed.caller || '',
     callId: parsed.callId || '',
+    inviteId: parsed.inviteId || '',
     msgId: parsed.msgId || '',
     connectionRequest: !!parsed.connectionRequest,
     requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
+    sessionReplaced: !!parsed.sessionReplaced,
+    accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
   });
   return new Promise((resolve) => {
     let client;
@@ -491,11 +848,15 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         isCall: parsed.isCall ? 'true' : 'false',
         isCallEnd: parsed.isCallEnd ? 'true' : 'false',
         missedCall: parsed.missedCall ? 'true' : 'false',
+        callOutcome: String(parsed.callOutcome || ''),
         caller: String(parsed.caller || ''),
         callId: String(parsed.callId || ''),
+        inviteId: String(parsed.inviteId || ''),
         msgId: String(parsed.msgId || ''),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
+        sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
+        accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
       },
@@ -613,7 +974,7 @@ function sendVoipPush(member, payload) {
 // Remote hang-up is deliberately a normal background APNs notification,
 // never a PushKit notification. Apple requires every VoIP push to report a
 // new incoming CallKit call and terminates apps that use it for call cleanup.
-function sendNativeCallEnd(member, callId) {
+function sendNativeCallEnd(member, callId, callOutcome = 'ended') {
   if (!APNS_CONFIGURED || !member || !member.apnsToken || !callId) return Promise.resolve(false);
   const host = member.apnsEnvironment === 'sandbox'
     ? 'https://api.sandbox.push.apple.com'
@@ -621,7 +982,8 @@ function sendNativeCallEnd(member, callId) {
   // This is an ordinary background APNs notification, so use the action
   // consumed by UIApplication's remote-notification callback. Current iOS
   // builds accept both spellings to remain compatible during rolling deploys.
-  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId });
+  const safeOutcome = ['cancelled','unanswered','declined','ended'].includes(callOutcome) ? callOutcome : 'ended';
+  const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId, callOutcome:safeOutcome });
   return new Promise(resolve => {
     let client;
     try { client = http2.connect(host); } catch (e) { resolve(false); return; }
@@ -706,16 +1068,14 @@ async function dummyPasswordDerivation() {
 }
 
 // ── RATE LIMITING ────────────────────────────────────────────────────────
-// Simple in-memory fixed-window counters — same "nothing persisted beyond
-// process memory" posture as everything else here, no external store. Not
-// meant to stop a genuinely distributed attack (that's a job for a CDN/WAF
-// in front of this, not application code); this exists purely because
-// today there is NO limit at all on either room creation or message
-// sending — a single script could spam-create rooms or flood one room with
-// messages with nothing in the way.
+// Redis owns the cross-replica fixed window. The small local counter remains
+// only as a fail-safe when Redis is unavailable, so a broker interruption
+// never silently removes abuse protection.
 const rateLimitBuckets = new Map(); // key -> { count, windowStart }
 
-function rateLimited(key, maxCount, windowMs) {
+async function rateLimited(key, maxCount, windowMs) {
+  const sharedResult = await realtimeCoordinator.rateLimited(key, maxCount, windowMs);
+  if (sharedResult !== null) return sharedResult;
   const now = Date.now();
   const bucket = rateLimitBuckets.get(key);
   if (!bucket || now - bucket.windowStart >= windowMs) {
@@ -726,11 +1086,13 @@ function rateLimited(key, maxCount, windowMs) {
   return bucket.count > maxCount;
 }
 
-function profileLookupRetryAfter(req, ip) {
-  const suppliedKey = String(req.headers['x-vaultlix-lookup-key'] || '');
+async function profileLookupRetryAfter(headers, ip) {
+  const suppliedKey = String((headers && headers['x-vaultlix-lookup-key']) || '');
   const deviceKey = /^[A-Za-z0-9_-]{20,128}$/.test(suppliedKey) ? suppliedKey : `ip:${ip}`;
   const key = crypto.createHash('sha256').update(deviceKey).digest('hex');
   const now = Date.now();
+  const sharedRetry = await realtimeCoordinator.progressiveRateLimit(`profile-lookup:${key}`, now, 60 * 60 * 1000, 10);
+  if (sharedRetry !== null) return sharedRetry;
   let bucket = profileLookupBuckets.get(key);
   if (!bucket || now - bucket.windowStart >= 60 * 60 * 1000) {
     bucket = { count:0, windowStart:now, blockedUntil:0 };
@@ -744,10 +1106,123 @@ function profileLookupRetryAfter(req, ip) {
   return delaySeconds;
 }
 
+function publicDailyLookStyles(now = Date.now()) {
+  const featuredIndex = Math.floor(now / (7 * DAY_MS)) % DAILY_LOOK_STYLES.length;
+  return DAILY_LOOK_STYLES.map((style, index) => ({
+    id:style.id, name:style.name, note:style.note, featured:index === featuredIndex,
+  }));
+}
+
+function dailyLookDayWindow(now = Date.now()) {
+  const offsetMs = DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000;
+  const startedAt = Math.floor((now + offsetMs) / DAY_MS) * DAY_MS - offsetMs;
+  return { startedAt, nextAt:startedAt + DAY_MS };
+}
+
+function dailyLookUsage(account, now = Date.now()) {
+  const dayWindow = dailyLookDayWindow(now);
+  const windowStartedAt = Number(account?.dailyLookWindowStartedAt) || 0;
+  const inCurrentWindow = windowStartedAt === dayWindow.startedAt;
+  const count = inCurrentWindow ? Math.max(0, Number(account?.dailyLookGenerationCount) || 0) : 0;
+  return {
+    count,
+    remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - count),
+    nextAt:count >= DAILY_LOOK_DAILY_LIMIT ? dayWindow.nextAt : 0,
+  };
+}
+
+function parseDailyLookImage(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match) return null;
+  let bytes;
+  try { bytes = Buffer.from(match[2], 'base64'); } catch (error) { return null; }
+  if (!bytes.length || bytes.length > 900 * 1024) return null;
+  return { bytes, mime:`image/${match[1]}`, extension:match[1] === 'jpeg' ? 'jpg' : match[1] };
+}
+
+async function openAiJson(url, options, timeoutMs = 90000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(url, { ...options, signal:controller.signal }); }
+  finally { clearTimeout(timer); }
+}
+
+async function moderateDailyLookImage(imageDataUri, apiKey) {
+  const response = await openAiJson('https://api.openai.com/v1/moderations', {
+    method:'POST',
+    headers:{ Authorization:`Bearer ${apiKey}`, 'Content-Type':'application/json' },
+    body:JSON.stringify({
+      model:'omni-moderation-latest',
+      input:[{ type:'image_url', image_url:{ url:imageDataUri } }],
+    }),
+  }, 30000);
+  if (!response.ok) throw new Error(`moderation-${response.status}`);
+  const result = await response.json();
+  return result.results?.some(item => item.flagged === true) === true;
+}
+
+function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
+  const day = Math.floor((now + DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000) / DAY_MS);
+  const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
+  return (seed + Math.max(0, Number(generationCount) || 0)) % RETRO_80S_LOOKS.length;
+}
+
+function retro80sShotBrief(look) {
+  return [
+    `Direction: ${look.direction}`,
+    `Prescribed pose: ${look.pose}`,
+    `Camera angle and lens: ${look.camera}`,
+    `Required framing: ${look.framing}`,
+    `Wardrobe and grooming: ${look.styling}`,
+    `Period setting: ${look.setting}`,
+    `Integrated lighting: ${look.lighting}`,
+  ].join('\n');
+}
+
+async function createDailyLook(image, style, apiKey, variantIndex = 0) {
+  const form = new FormData();
+  form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
+  const look = style.id === 'retro-80s'
+    ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
+    : null;
+  const directedPrompt = look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.id === 'surprise-enhancer' ? `${style.prompt}\n\nSelected surprise direction:\n${ENHANCER_LOOKS[variantIndex % ENHANCER_LOOKS.length]}` : style.prompt;
+  form.append('prompt', `${directedPrompt}\n\nComposition requirement: keep the lower-right edge visually calm and free of the subject's face, hands and important details so a small Vaultlix signature can be added there later. Do not generate any text, logo or watermark yourself.`);
+  form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
+  form.append('size', style.size || '1024x1024');
+  form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
+  form.append('output_format', 'jpeg');
+  const response = await openAiJson('https://api.openai.com/v1/images/edits', {
+    method:'POST', headers:{ Authorization:`Bearer ${apiKey}` }, body:form,
+  });
+  if (!response.ok) throw new Error(`image-${response.status}`);
+  const result = await response.json();
+  const base64 = result.data?.[0]?.b64_json;
+  if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
+  const branded = await watermarkDailyLookOutput(Buffer.from(base64, 'base64'));
+  return `data:image/jpeg;base64,${branded.toString('base64')}`;
+}
+
+async function claimDailyLook(accountId, account, now) {
+  if (postgresEnabled) {
+    return postgresStore.claimDailyLook(accountId, now, dailyLookDayWindow(now).startedAt, now - DAILY_LOOK_CLAIM_TIMEOUT_MS, DAILY_LOOK_DAILY_LIMIT);
+  }
+  if (dailyLookClaims.has(accountId) || dailyLookUsage(account, now).remaining <= 0) return false;
+  dailyLookClaims.add(accountId);
+  return true;
+}
+
+async function releaseDailyLookClaim(accountId) {
+  if (postgresEnabled) await postgresStore.releaseDailyLookClaim(accountId);
+  else dailyLookClaims.delete(accountId);
+}
+
 // Check an existing failure bucket without incrementing it. Admin auth uses
 // this before comparing credentials so a correct guess cannot bypass the
 // lockout after the failure budget has already been exhausted.
-function isRateLimited(key, maxCount, windowMs) {
+async function isRateLimited(key, maxCount, windowMs) {
+  const sharedResult = await realtimeCoordinator.isRateLimited(key, maxCount);
+  if (sharedResult !== null) return sharedResult;
   const bucket = rateLimitBuckets.get(key);
   if (!bucket || Date.now() - bucket.windowStart >= windowMs) return false;
   return bucket.count >= maxCount;
@@ -770,18 +1245,22 @@ async function verifyAccountSecret(secret, verifier) {
 }
 function validAccountId(value) { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
 function validAccountSecret(value) { return typeof value === 'string' && /^[A-Za-z0-9_-]{40,96}$/.test(value); }
+function accountDeviceHash(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{20,128}$/.test(value)) return null;
+  return crypto.createHash('sha256').update(`vaultlix-device-v1\0${value}`).digest('hex');
+}
 function validEncryptedField(value, max) { return typeof value === 'string' && value.length >= 20 && value.length <= max; }
 function normalizePrivateNumber(value) {
   return normalizePrivateNumberPolicy(value);
 }
-function generatePrivateNumberCandidate(category = 'standard') {
-  if (category !== NUMBER_TIERS.STANDARD) throw new Error('Reserve allocation is not enabled');
-  return generateStandardNumber();
+function generatePrivateNumberCandidate(category = 'standard', preferredSuffix = '') {
+  if (category === 'preferred') return generatePreferredNumber(preferredSuffix);
+  return category === NUMBER_TIERS.STANDARD ? generateStandardNumber() : generateReserveNumber(category);
 }
-async function reservePrivateNumber(category = 'standard') {
-  if (category !== NUMBER_TIERS.STANDARD) throw new Error('Reserve allocation is not enabled');
+async function reservePrivateNumber(category = 'standard', preferredSuffix = '') {
+  if (category !== NUMBER_TIERS.STANDARD && category !== 'preferred' && !RESERVE_CATEGORIES.includes(category)) throw new Error('Invalid Private Number category');
   for (let attempt = 0; attempt < 100; attempt++) {
-    const privateNumber = generatePrivateNumberCandidate(category);
+    const privateNumber = generatePrivateNumberCandidate(category, preferredSuffix);
     if (!isNumberAvailable(privateNumber, { activeNumbers:privateNumbers, lifecycle:privateNumberLifecycle })) continue;
     const reservationToken = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
@@ -799,7 +1278,7 @@ async function reservePrivateNumber(category = 'standard') {
   throw new Error('Could not allocate a Vaultlix Private Number');
 }
 async function verifyPrivateNumberReservation(privateNumber, reservationToken) {
-  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{40,96}$/.test(reservationToken)) return null;
+  if (typeof reservationToken !== 'string' || !/^[A-Za-z0-9_-]{22,96}$/.test(reservationToken)) return null;
   const tokenHash = crypto.createHash('sha256').update(reservationToken).digest('hex');
   if (postgresEnabled) return postgresStore.verifyPrivateNumberReservation(privateNumber, tokenHash);
   const reservation = privateNumberReservations.get(privateNumber);
@@ -814,6 +1293,17 @@ function normalizeDisplayName(value) {
   // hydration. New registrations and edits enforce the tighter UI limit.
   return displayName.length >= 2 && displayName.length <= 40 && !/[<>\u0000-\u001f]/.test(displayName) ? displayName : '';
 }
+function normalizeProfileImage(value) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || value.length > 342 * 1024) return undefined;
+  const match = value.match(/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return undefined;
+  // Base64 expands bytes by roughly 4/3. Keep the decoded profile image
+  // below 256 KiB so a profile can never amplify account/database payloads.
+  const padding = (match[2].match(/=*$/) || [''])[0].length;
+  const decodedBytes = Math.floor(match[2].length * 3 / 4) - padding;
+  return decodedBytes > 0 && decodedBytes <= 256 * 1024 ? value : undefined;
+}
 function accountByPrivateNumber(value) {
   const privateNumber = normalizePrivateNumber(value);
   const accountId = privateNumber ? privateNumbers.get(privateNumber) : null;
@@ -823,6 +1313,7 @@ function publicAccount(account) {
   return {
     privateNumber:account.privateNumber,
     displayName:account.displayName,
+    profileImage:normalizeProfileImage(account.profileImage) || null,
     address:`https://vaultlix.com/${account.privateNumber}`,
     tier:account.tier || NUMBER_TIERS.STANDARD,
     isFounding:!!account.isFounding,
@@ -870,12 +1361,12 @@ function touchAccountActivity(accountId, account, { persist = false } = {}) {
     persistAccount(accountId).catch(error => console.warn('Account activity save failed:', error.message));
   }
 }
-function newAccountSession(account) {
+function newAccountSession(account, deviceHash = null) {
   const token = crypto.randomBytes(32).toString('base64url');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const now = Date.now();
   account.sessions = (account.sessions || []).filter(s => s.expiresAt > now).slice(-4);
-  account.sessions.push({ tokenHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
+  account.sessions.push({ tokenHash, deviceHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
   account.lastActiveAt = now;
   account.reclaimWarnings = [];
   return token;
@@ -972,8 +1463,19 @@ numberRetentionTimer.unref();
 
 // Sweep stale buckets periodically so IPs/tokens that stopped being active
 // don't sit in memory forever — mirrors the room-expiry sweep further down.
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
+  if (postgresEnabled) {
+    try {
+      const expired = await postgresStore.sweepExpiredConversations(now, NAMED_ROOM_TTL, ONE_TIME_ROOM_TTL);
+      for (const roomCode of expired) {
+        evictConversationCache(roomCode);
+        publishInboxRoom(roomCode, 'room-closed');
+        realtimeCoordinator.publish('conversation-invalidated', { roomCode }).catch(() => {});
+      }
+    } catch (error) { console.error('Conversation expiry sweep failed:', error.message); }
+    return;
+  }
   for (const [key, bucket] of rateLimitBuckets) {
     if (now - bucket.windowStart > 10 * 60 * 1000) rateLimitBuckets.delete(key);
   }
@@ -1835,8 +2337,19 @@ function code() {
   return formats[crypto.randomInt(formats.length)]();
 }
 
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
+  if (postgresEnabled) {
+    try {
+      const changedRooms = await postgresStore.expireDisappearingMessages(now, DELETION_TOMBSTONE_TTL_MS);
+      for (const roomCode of changedRooms) {
+        evictConversationCache(roomCode);
+        publishInboxRoom(roomCode, 'deletion');
+        realtimeCoordinator.publish('conversation-invalidated', { roomCode }).catch(() => {});
+      }
+    } catch (error) { console.error('Disappearing-message sweep failed:', error.message); }
+    return;
+  }
   for (const [k,r] of rooms) {
     // Anon Link rooms (r.persistent) are meant to be an ongoing channel
     // between two specific people and are deliberately exempt from the
@@ -1846,7 +2359,7 @@ setInterval(() => {
     // there) breaks the first time both people go quiet for a few days.
     if (r.persistent) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
-    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Room ${logCode(k)} expired`); }
+    if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Conversation ${logCode(k)} expired`); }
   }
 }, ROOM_EXPIRY_SWEEP_MS);
 
@@ -1860,34 +2373,23 @@ setInterval(() => {
 // Policy's claim that a disappearing message is "delete[d] from the server
 // as soon as its timer expires" — this sweep is what makes that true.
 //
-// msg.readAt and room.deleteTimer are both already server-held state, the
-// same anchor point both the sender's and receiver's local countdowns use
-// (the sender's timer starts once the peer's read receipt lands; the
-// receiver's starts on their own read) — so this doesn't depend on either
-// client staying open, unlike the purely client-side version it backs up.
-// A message that's never read never starts its countdown here either,
-// exactly matching the behavior it's reinforcing rather than replacing:
-// the client-side timers still drive the immediate on-screen countdown/
-// removal UX; this is the guarantee that the deletion actually happens
-// even if a client's own timer never gets the chance to run (app closed,
-// backgrounded and throttled, etc). Reuses the exact same deleted/
-// deletionSeq fields as the manual "delete for everyone" path, so it flows
-// through the existing /api/poll sync mechanism with no client changes.
+// The server owns the read timestamp and the duration captured when each
+// message was accepted. Expiry therefore survives disconnects and room
+// setting changes. Both local countdowns and the PostgreSQL sweep use the
+// same policy; deletion tombstones synchronize the result to both peers.
+function messageDeleteTimer(room, msg) {
+  if (Number.isFinite(msg.deleteTimerSeconds)) return Math.max(0, msg.deleteTimerSeconds);
+  // Legacy records only inherit the old server rule, never a newer setting.
+  return msg.ts >= (room.deleteTimerSetAt || 0) ? Math.max(0, room.deleteTimer || 0) : 0;
+}
 setInterval(() => {
   const now = Date.now();
   for (const [roomCode, room] of rooms) {
-    if (!room.deleteTimer) continue;
     let changed = false;
     for (const msg of room.msgs) {
       if (msg.type !== 'message' || msg.deleted || !msg.readAt) continue;
-      // Only messages sent at or after the timer's CURRENT setting took
-      // effect are ever in scope — see deleteTimerSetAt above. Without this
-      // guard, turning on (or changing) the timer applied it retroactively
-      // to every already-read message in the room's history, deleting
-      // conversation that predates the setting entirely; this makes it
-      // match the expected "only affects what happens from now on" behavior.
-      if (msg.ts < (room.deleteTimerSetAt || 0)) continue;
-      if (now - msg.readAt >= room.deleteTimer * 1000) {
+      const seconds = messageDeleteTimer(room, msg);
+      if (seconds > 0 && now - msg.readAt >= seconds * 1000) {
         deleteRoomMsgContent(room, msg);
         changed = true;
       }
@@ -1909,6 +2411,57 @@ function resErr(res, msg, status=400) {
 function res204(res) {
   res.writeHead(204);
   res.end();
+}
+
+function validAttachmentId(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function attachmentObjectKey(conversationId, attachmentId) {
+  const conversationRoute = crypto.createHash('sha256').update(String(conversationId)).digest('hex').slice(0, 32);
+  return `encrypted-attachments/v1/${conversationRoute}/${attachmentId}`;
+}
+
+async function sweepAttachmentGarbage() {
+  if (!objectStorageEnabled || !postgresEnabled) return;
+  const garbage = await postgresStore.listAttachmentGarbage(Date.now(), 100);
+  for (const attachment of garbage) {
+    try {
+      await objectStorage.delete(attachment.objectKey);
+      await postgresStore.deleteAttachmentRecord(attachment.id);
+    } catch (error) {
+      console.error('Encrypted attachment cleanup failed:', error.message);
+    }
+  }
+}
+
+async function migrateInlineAttachmentPayloads() {
+  if (!objectStorageEnabled || !postgresEnabled) return;
+  let migrated = 0;
+  for (;;) {
+    const candidates = await postgresStore.listInlinePayloadCandidates(25, INLINE_ATTACHMENT_MIGRATION_MIN_BYTES);
+    if (!candidates.length) break;
+    let progressed = false;
+    for (const candidate of candidates) {
+      const id = crypto.randomUUID();
+      const objectKey = attachmentObjectKey(candidate.conversationId, id);
+      const ciphertext = Buffer.from(candidate.ciphertext, 'utf8');
+      try {
+        await objectStorage.put(objectKey, ciphertext);
+        const changed = await postgresStore.externalizeMessagePayload(candidate, {
+          id, objectKey, size:ciphertext.length, createdAt:Date.now(), expiresAt:Number.MAX_SAFE_INTEGER,
+        });
+        if (!changed) await objectStorage.delete(objectKey).catch(() => {});
+        else { migrated++; progressed = true; }
+      } catch (error) {
+        await objectStorage.delete(objectKey).catch(() => {});
+        console.error('Encrypted attachment migration paused:', error.message);
+        return;
+      }
+    }
+    if (!progressed || candidates.length < 25) break;
+  }
+  if (migrated) console.log(`Externalized ${migrated} existing encrypted attachment payload(s) to object storage.`);
 }
 
 function computeETag(buf) {
@@ -1941,6 +2494,7 @@ function sendHtmlShell(req, res, data) {
 }
 
 function serveStatic(req, res) {
+  if (seo.handle(req, res)) return;
   let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   // Explicit route, ahead of the SPA catch-all below — without this, a
   // request for /robots.txt falls through to the readFile-miss branch and
@@ -1956,11 +2510,25 @@ function serveStatic(req, res) {
   // Extension-less route for the install page — without this, a request for
   // "/install" (no ".html") misses the readFile below, falls through to the
   // SPA catch-all, and silently serves the main app instead of install.html.
+  // A new pathname bypasses older service workers' cache-first safety module.
+  if (url === '/media-safety-v2.js' || url === '/media-safety-v3.js') url = '/media-safety.js';
   if (url === '/install') url = '/install.html';
   if (url === '/admin') url = '/admin.html';
+  if (url === '/get-app' || url === '/get-app/') url = '/get-app.html';
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
-  fs.readFile(path.join(__dirname,'../client',url), (err,data) => {
+  // PDF.js is loaded lazily only when somebody selects a PDF. Keeping the
+  // two pinned, audited files behind same-origin URLs avoids a third-party
+  // CDN seeing when a user previews a document and keeps the normal app
+  // launch free of the renderer's download cost.
+  const vendorFile = url === '/vendor/pdf.min.mjs'
+    ? path.join(__dirname, '../node_modules/pdfjs-dist/build/pdf.min.mjs')
+    : (url === '/vendor/pdf.worker.min.mjs'
+        ? path.join(__dirname, '../node_modules/pdfjs-dist/build/pdf.worker.min.mjs')
+        : null);
+  fs.readFile(vendorFile || path.join(__dirname,'../client',url), (err,data) => {
     if (err) {
+      if (vendorFile) { res.writeHead(404); res.end(); return; }
+      if (!seo.isAppShellRoute(req.url.split('?')[0])) { seo.sendNotFound(req, res); return; }
       fs.readFile(path.join(__dirname,'../client/index.html'), (e,d) => {
         if (e) { res.writeHead(404); res.end(); return; }
         sendHtmlShell(req, res, d);
@@ -1970,7 +2538,7 @@ function serveStatic(req, res) {
       sendHtmlShell(req, res, data);
       return;
     }
-    const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4'};
+    const t={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.ico':'image/x-icon','.json':'application/json','.webmanifest':'application/manifest+json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.mp4':'video/mp4'};
     // Explicit Content-Length (rather than letting Node fall back to
     // chunked transfer-encoding on HTTP/1.1) matters specifically for
     // og:image — link-preview crawlers (WhatsApp's included) are known to
@@ -1999,7 +2567,12 @@ function serveStatic(req, res) {
 // rejected; 20MB (unchanged from the previous single blanket cap) keeps
 // that same ~1.2MB+ of headroom without moving the actual ceiling.
 //
-// Every other endpoint here only ever carries a few hundred bytes of JSON —
+// Profile updates are the other bounded exception: the client converts a
+// selected photo to a small JPEG data URI before upload. Its validator caps
+// decoded image data at 128 KiB, so 192 KiB leaves room for base64 expansion,
+// authentication fields and JSON without granting a general large-body cap.
+//
+// Every remaining endpoint here only ever carries a few hundred bytes of JSON —
 // a code, a token, a name, a msgId, at most a PushSubscription. Measured a
 // realistic PushSubscription body (real FCM endpoint shape, real-length
 // p256dh/auth keys) at ~455 bytes, and a padded worst-case within
@@ -2010,9 +2583,13 @@ function serveStatic(req, res) {
 // don't stop a flood of requests to a small endpoint from each individually
 // buffering up to that ceiling before any handler or auth check ever runs.
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
+const BODY_LIMIT_PROFILE = 384 * 1024;
+const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
-  if (pathname === '/api/account/register' || pathname === '/api/account/sync') return 1100 * 1024;
+  if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
+  if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
+  if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 
@@ -2089,6 +2666,11 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Cache-Control', 'no-store');
   }
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
+  // Message polls, attachment URLs, account bundles and even error bodies
+  // must never become reusable browser/WebView or intermediary cache entries.
+  // Individual sensitive endpoints also set this today; applying it at the
+  // API boundary closes omissions in present and future routes.
+  res.setHeader('Cache-Control', 'no-store');
   // Per-endpoint body cap, not one blanket ceiling — /api/send legitimately
   // carries large attachments (see BODY_LIMIT_SEND below), but giving every
   // other endpoint here that same allowance turned each of them into an
@@ -2130,38 +2712,115 @@ const srv = http.createServer((req, res) => {
     // stays fire-and-forget — just needs a catch so a thrown error (a
     // malformed password field, scrypt failing, etc.) can't crash the
     // process or hang the request with no response ever sent.
-    api(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers).catch(err => {
+    dispatchApi(u.pathname, req.method, d, u.searchParams, res, clientIp(req), req.headers).catch(err => {
       console.error('API error:', err.message);
       try { resErr(res, 'Internal error.', 500); } catch(e) {}
     });
   });
 });
 
+function deferredResponse(res) {
+  const originalWriteHead = res.writeHead.bind(res);
+  const originalEnd = res.end.bind(res);
+  let head = null;
+  let ending = null;
+  res.writeHead = (...args) => { head = args; return res; };
+  res.end = (...args) => { ending = args; return res; };
+  return {
+    status:() => Number(head?.[0] || 200),
+    restore() { res.writeHead = originalWriteHead; res.end = originalEnd; },
+    flush() {
+      this.restore();
+      if (head) originalWriteHead(...head);
+      originalEnd(...(ending || []));
+    },
+  };
+}
+
+async function dispatchApi(path, method, d, p, res, ip, headers) {
+  const roomCode = typeof d.code === 'string' ? d.code.toLowerCase().trim() : '';
+  if (!postgresEnabled || !roomCode || path === '/api/create') {
+    return api(path, method, d, p, res, ip, headers);
+  }
+  d.code = roomCode;
+  const mutationPaths = new Set([
+    '/api/join', '/api/send', '/api/push-subscribe', '/api/push-unsubscribe',
+    '/api/native-push-subscribe', '/api/voip-subscribe', '/api/react',
+    '/api/delete-message', '/api/view-once-opened', '/api/set-timer',
+    '/api/clear-chat', '/api/mark-delivered', '/api/read', '/api/leave',
+    '/api/close', '/api/make-persistent', '/api/revoke-link', '/api/poll',
+  ]);
+  if (!mutationPaths.has(path)) {
+    await ensureConversationLoaded(roomCode);
+    return api(path, method, d, p, res, ip, headers);
+  }
+  const deferred = deferredResponse(res);
+  try {
+    await postgresStore.withConversationLock(roomCode, async client => {
+      const room = await ensureConversationLoaded(roomCode, { force:true, client });
+      if (room) room.dbClient = client;
+      await api(path, method, d, p, res, ip, headers);
+      if (deferred.status() < 400) {
+        const current = rooms.get(roomCode);
+        if (current) {
+          delete current.dbClient;
+          await postgresStore.saveConversation(roomCode, current, client);
+        } else if (room) {
+          await postgresStore.deleteConversation(roomCode, client);
+        }
+      } else {
+        // Discard any partial in-memory edits made before a validation
+        // response. PostgreSQL was not changed, so the next request can
+        // reconstruct the authoritative state instead of observing a dirty
+        // replica-local cache entry (or its transaction client reference).
+        evictConversationCache(roomCode);
+      }
+    });
+    deferred.flush();
+    realtimeCoordinator.publish('conversation-invalidated', { roomCode }).catch(() => {});
+  } catch (error) {
+    evictConversationCache(roomCode);
+    deferred.restore();
+    throw error;
+  }
+}
+
 async function api(path, method, d, p, res, ip, headers) {
 
-  if (path === '/api/report' && method === 'POST') {
-    if (rateLimited(`safety-report:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many reports — try again later.', 429);
+  if ((path === '/api/report' || path === '/api/connections/block') && method === 'POST') {
+    if (await rateLimited(`safety-report:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many safety requests — try again later.', 429);
     const room = rooms.get(d.code);
     const member = room && typeof d.token === 'string' ? room.members.get(d.token) : null;
-    if (!room || !member) return resErr(res, 'This conversation is no longer available.', 403);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!room || !member || !account) return resErr(res, 'Sign in and reopen this conversation to continue.', 403);
+    const relationship = (account.connectionRequests || []).find(r => {
+      const code = String(r.inviteUrl || '').match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i)?.[1];
+      const slot = r.recipientAccountId === d.accountId ? 1 : r.senderAccountId === d.accountId ? 2 : 0;
+      return r.status === 'accepted' && code === d.code && slot === member.slot;
+    });
+    if (!relationship) return resErr(res, 'Conversation does not belong to this account.', 403);
+    const peerAccountId = relationship.senderAccountId === d.accountId ? relationship.recipientAccountId : relationship.senderAccountId;
+    if (path === '/api/connections/block') {
+      await safetyStore.block(d.accountId, peerAccountId);
+      // Persist the account-level block before closing any room. New requests
+      // in either direction are denied, including after sign-in on a new device.
+      if (postgresEnabled) await postgresStore.withConversationLock(d.code, async client => {
+        await postgresStore.deleteConversation(d.code, client);
+      });
+      destroyRoom(d.code, postgresEnabled);
+      return res200(res, {ok:true});
+    }
     const reasons = new Set(['spam','harassment','threats','sexual','illegal','other']);
     if (!reasons.has(d.reason)) return resErr(res, 'Choose a valid report reason.', 400);
     const details = typeof d.details === 'string' ? d.details.trim().slice(0, 500) : '';
-    const includeMessages = d.includeMessages === true;
-    const messages = includeMessages && Array.isArray(d.messages) ? d.messages.slice(-5).map(msg => ({
+    const messages = d.includeMessages === true && Array.isArray(d.messages) ? d.messages.slice(-5).map(msg => ({
       content: typeof msg.content === 'string' ? msg.content.slice(0, 500) : '',
-      isReporter: !!msg.isMe,
-      ts: Number.isFinite(msg.ts) ? msg.ts : Date.now(),
+      isReporter: !!msg.isMe, ts: Number.isFinite(msg.ts) ? msg.ts : Date.now(),
     })).filter(msg => msg.content) : [];
-    try {
-      appendSafetyReport({
-        id: crypto.randomUUID(), createdAt: new Date().toISOString(), reason:d.reason, details,
-        vaultHash: crypto.createHash('sha256').update(`vaultlix-report-v1\0${d.code}`).digest('hex'),
-        reporterHash: crypto.createHash('sha256').update(`vaultlix-reporter-v1\0${d.token}`).digest('hex'),
-        messages,
-      });
-    } catch (error) { console.error('Safety report save failed:', error.message); return resErr(res, 'Report could not be saved.', 503); }
-    return res200(res, { ok:true });
+    const report = await safetyStore.add({reason:d.reason,details,messages,
+      reporterAccountId:d.accountId,reportedAccountId:peerAccountId,roomCode:d.code});
+    res.setHeader('Cache-Control','no-store');
+    return res200(res, {ok:true,reportId:report.id});
   }
 
   // Native Android can acknowledge an answer before its call-only WebView and
@@ -2169,15 +2828,27 @@ async function api(path, method, d, p, res, ip, headers) {
   // the caller's ringing timeout immediately; the actual SDP and media setup
   // still begins only after the E2E call-accept arrives below.
   if (path === '/api/native-call/answer' && method === 'POST') {
-    if (rateLimited(`native-call-answer:${ip}`, 30, 60 * 1000)) return resErr(res, 'Too many call actions.', 429);
+    if (await rateLimited(`native-call-answer:${ip}`, 30, 60 * 1000)) return resErr(res, 'Too many call actions.', 429);
     const callId = typeof d.callId === 'string' ? d.callId.trim() : '';
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(callId)) {
       return resErr(res, 'Invalid call action.', 400);
     }
 
     let matchedRoom = null;
-    for (const room of rooms.values()) {
-      if (room.nativeCallId === callId) { matchedRoom = room; break; }
+    let matchedRoomCode = '';
+    for (const [candidateCode, room] of rooms) {
+      if (room.nativeCallId === callId) { matchedRoom = room; matchedRoomCode = candidateCode; break; }
+    }
+    const sharedCall = await realtimeCoordinator.getCallStateById(callId);
+    if (!matchedRoom && sharedCall?.roomCode) {
+      matchedRoomCode = sharedCall.roomCode;
+      matchedRoom = await ensureConversationLoaded(sharedCall.roomCode);
+      if (matchedRoom) {
+        matchedRoom.nativeCallId = callId;
+        matchedRoom.nativeCalleeToken = sharedCall.calleeTokenHash || null;
+        matchedRoom.nativeInviteId = sharedCall.inviteId || null;
+        matchedRoom.ringingUntil = Number(sharedCall.ringingUntil || 0);
+      }
     }
     if (!matchedRoom) return res200(res, { ok: true });
 
@@ -2189,19 +2860,14 @@ async function api(path, method, d, p, res, ip, headers) {
     matchedRoom.ringingUntil = 0;
     matchedRoom.activeCall = true;
     matchedRoom.lastActivity = Date.now();
+    await realtimeCoordinator.setCallState(matchedRoomCode, {
+      ...(sharedCall || {}), callId, status:'active', ringingUntil:0,
+    }).catch(() => {});
 
     const calleeToken = matchedRoom.nativeCalleeToken;
     for (const [memberToken] of matchedRoom.members) {
-      if (memberToken === calleeToken) continue;
-      const callerSockets = new Set([
-        nativeCallSignalingSockets.get(memberToken),
-        signalingSockets.get(memberToken),
-      ]);
-      for (const callerSocket of callerSockets) {
-        if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
-          try { callerSocket.send(JSON.stringify({ type: 'native-call-answering' })); } catch (e) {}
-        }
-      }
+      if (sameConversationToken(memberToken, calleeToken)) continue;
+      await deliverSignalToMember(memberToken, { type:'native-call-answering' }, { allOwners:true });
       break;
     }
     return res200(res, { ok: true });
@@ -2212,45 +2878,76 @@ async function api(path, method, d, p, res, ip, headers) {
   // capability scoped to the one currently ringing call; no room code,
   // membership token or E2E material is exposed to this endpoint.
   if (path === '/api/native-call/decline' && method === 'POST') {
-    if (rateLimited(`native-call-decline:${ip}`, 30, 60 * 1000)) return resErr(res, 'Too many call actions.', 429);
+    if (await rateLimited(`native-call-decline:${ip}`, 30, 60 * 1000)) return resErr(res, 'Too many call actions.', 429);
     const callId = typeof d.callId === 'string' ? d.callId.trim() : '';
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(callId)) {
       return resErr(res, 'Invalid call action.', 400);
     }
 
     let matchedRoom = null;
-    for (const room of rooms.values()) {
-      if (room.nativeCallId === callId) { matchedRoom = room; break; }
+    let matchedRoomCode = '';
+    for (const [candidateCode, room] of rooms) {
+      if (room.nativeCallId === callId) { matchedRoom = room; matchedRoomCode = candidateCode; break; }
+    }
+    const sharedCall = await realtimeCoordinator.getCallStateById(callId);
+    if (!matchedRoom && sharedCall?.roomCode) {
+      matchedRoomCode = sharedCall.roomCode;
+      matchedRoom = await ensureConversationLoaded(matchedRoomCode);
+      if (matchedRoom) {
+        matchedRoom.nativeCallId = callId;
+        matchedRoom.nativeCalleeToken = sharedCall.calleeTokenHash || null;
+        matchedRoom.nativeInviteId = sharedCall.inviteId || null;
+        matchedRoom.ringingUntil = Number(sharedCall.ringingUntil || 0);
+      }
     }
     // Deliberately return the same result for an expired/already-declined ID:
     // native retries stay idempotent and this is not a call-ID oracle.
     if (!matchedRoom) return res200(res, { ok: true });
 
     const calleeToken = matchedRoom.nativeCalleeToken;
-    markInviteTerminated(matchedRoom, matchedRoom.nativeInviteId);
+    const terminalInviteId = matchedRoom.nativeInviteId;
+    const nativeCallId = matchedRoom.nativeCallId;
+    const now = Date.now();
+    markInviteTerminated(matchedRoom, terminalInviteId, now);
+    if (terminalInviteId) {
+      matchedRoom.callTerminal = {
+        inviteId:terminalInviteId, endedByToken:calleeToken, endedAt:now, callOutcome:'declined',
+      };
+    }
     matchedRoom.ringingUntil = 0;
     matchedRoom.activeCall = false;
     matchedRoom.nativeCallId = null;
     matchedRoom.nativeCalleeToken = null;
     matchedRoom.lastActivity = Date.now();
+    await realtimeCoordinator.setCallState(matchedRoomCode, {
+      ...(sharedCall || {}), callId, inviteId:terminalInviteId,
+      status:'terminal', outcome:'declined', endedAt:now, ringingUntil:0,
+      endedByTokenHash:conversationTokenHash(calleeToken),
+    }, 120).catch(() => {});
 
     // This control frame contains no message/call content. It is delivered
     // only over the already authenticated socket belonging to the other
     // member of this 1:1 vault. The browser accepts it only while it is the
     // outgoing caller, then stops its local ringtone immediately.
     for (const [memberToken] of matchedRoom.members) {
-      if (memberToken === calleeToken) continue;
+      if (sameConversationToken(memberToken, calleeToken)) continue;
       // Deliver to both owners when both exist. A stale native incoming-call
       // socket must not prevent the foreground WebView that placed this
       // outgoing call from receiving the terminal state.
-      const callerSockets = new Set([
-        nativeCallSignalingSockets.get(memberToken),
-        signalingSockets.get(memberToken),
-      ]);
-      for (const callerSocket of callerSockets) {
-        if (callerSocket && callerSocket.readyState === callerSocket.OPEN) {
-          try { callerSocket.send(JSON.stringify({ type: 'native-call-declined' })); } catch (e) {}
-        }
+      await deliverSignalToMember(memberToken, { type:'native-call-declined' }, { allOwners:true });
+      if (matchedRoom.callTerminal) {
+        await deliverSignalToMember(memberToken, {
+          type:'call-terminal', inviteId:matchedRoom.callTerminal.inviteId,
+          endedAt:matchedRoom.callTerminal.endedAt,
+          callOutcome:matchedRoom.callTerminal.callOutcome || 'ended',
+        }, { allOwners:true });
+      }
+      const caller = matchedRoom.members.get(memberToken);
+      if (caller?.fcmToken) {
+        sendFcmNotification(caller, JSON.stringify({
+          isCallEnd:true, missedCall:false, callOutcome:'declined',
+          callId:nativeCallId || '', inviteId:terminalInviteId || '', code:matchedRoomCode,
+        }), 30).catch(() => {});
       }
       break;
     }
@@ -2264,19 +2961,40 @@ async function api(path, method, d, p, res, ip, headers) {
   // vaults, codenames, room tokens or E2E private keys.
   if (path === '/api/account/private-number' && method === 'POST') {
     const generationKey = `private-number:${ip}`;
-    if (rateLimited(generationKey, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
+    if (await rateLimited(generationKey, 20, 60 * 60 * 1000)) return resErr(res, 'Too many number requests — try again later.', 429);
     res.setHeader('Cache-Control', 'no-store');
-    // Reserve allocation is deliberately absent from this public flow.
-    // Until the gated allocator ships, every self-serve request is Standard.
-    const category = NUMBER_TIERS.STANDARD;
+    // A five-digit preference still creates a normal 10-digit identity.
+    // The server validates and supplies the random prefix; the client cannot
+    // manufacture a full number or promote itself into another tier.
+    const preferredSuffix = normalizePreferredSuffix(d.preferredSuffix);
+    if (d.preferredSuffix && !preferredSuffix) return resErr(res, 'Enter exactly five digits.', 400);
+    const requestedCategory = typeof d.category === 'string' ? d.category.toLowerCase() : NUMBER_TIERS.STANDARD;
+    const category = preferredSuffix
+      ? 'preferred'
+      : (requestedCategory === NUMBER_TIERS.STANDARD || RESERVE_CATEGORIES.includes(requestedCategory)
+          ? requestedCategory
+          : NUMBER_TIERS.STANDARD);
+    const earlyTester = accounts.size < 10_000;
+    // Keep accepting the earlier launch-build categories during rollout,
+    // while the new five-digit preference remains a normal 10-digit number
+    // and is available to every creator.
+    if (category !== NUMBER_TIERS.STANDARD && category !== 'preferred' && !earlyTester) return resErr(res, 'Reserve number selection is currently closed.', 403);
     const remaining = Math.max(0, 20 - (rateLimitBuckets.get(generationKey)?.count || 0));
-    return res200(res, { ok:true, ...(await reservePrivateNumber(category)), earlyTester:false, generationsRemaining:remaining });
+    return res200(res, { ok:true, ...(await reservePrivateNumber(category, preferredSuffix)), earlyTester, generationsRemaining:remaining });
+  }
+
+  if (path === '/api/account/number-gift' && method === 'POST') {
+    res.setHeader('Cache-Control','no-store');
+    if(await rateLimited(`gift-check:${ip}`,30,60*60*1000)) return resErr(res,'Too many attempts. Try later.',429);
+    const privateNumber=normalizePrivateNumber(d.privateNumber);
+    if(!privateNumber || await verifyPrivateNumberReservation(privateNumber,d.reservationToken)!=='admin-gift' || privateNumbers.has(privateNumber)) return resErr(res,'This claim link is invalid, expired or already used.',409);
+    return res200(res,{ok:true,privateNumber,category:'admin-gift'});
   }
 
   if (path === '/api/account/register' && method === 'POST') {
-    if (rateLimited(`account-register:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many registration attempts — try again later.', 429);
     const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
+    if (contentSafety.check(displayName).blocked) return resErr(res, 'Choose a username without abusive or threatening language.', 400);
     if (!displayName || displayName.length > 32) {
       return resErr(res, 'Username must be between 2 and 32 characters.', 400);
     }
@@ -2295,10 +3013,20 @@ async function api(path, method, d, p, res, ip, headers) {
       if (!(await verifyAccountSecret(d.authSecret, existing.authVerifier))) {
         return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
       }
-      const sessionToken = newAccountSession(existing);
+      const sessionToken = await replaceAccountLoginSession(d.accountId, existing, accountDeviceHash(d.deviceId));
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision, retention:accountRetention(existing) });
+    }
+    // Apply creation limits only after the authenticated idempotent path.
+    // Previously a lost response caused the same safe retry to consume the
+    // shared IP allowance again. Five attempts was also too small for homes,
+    // offices and tester labs where several phones share one public address.
+    // Keep both an IP ceiling and a per-proposed-account ceiling so raising
+    // the NAT-friendly allowance does not make this endpoint unbounded.
+    if (await rateLimited(`account-register-ip:${ip}`, 30, 60 * 60 * 1000) ||
+        await rateLimited(`account-register-id:${d.accountId}`, 6, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many registration attempts — try again later.', 429);
     }
     if (existing || existingNumberOwner) return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
     // Reservation tokens close the selection-to-registration race across
@@ -2321,10 +3049,12 @@ async function api(path, method, d, p, res, ip, headers) {
     const creationOrder = postgresEnabled
       ? await postgresStore.allocateAccountCreationOrder()
       : allocateLocalAccountCreationOrder();
-    const reservationTier = reservedCategory === NUMBER_TIERS.STANDARD ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE;
+    const reservationTier = reservedCategory === NUMBER_TIERS.STANDARD || reservedCategory === 'preferred'
+      ? NUMBER_TIERS.STANDARD
+      : NUMBER_TIERS.RESERVE;
     const { tier, isFounding } = assignAccountTier({ creationOrder, reservationTier });
     const account = {
-      version: 2, privateNumber, displayName,
+      version: 2, privateNumber, displayName, profileImage:null,
       authVerifier,
       recoveryVerifier,
       passwordWrap: d.passwordWrap,
@@ -2334,26 +3064,32 @@ async function api(path, method, d, p, res, ip, headers) {
       numberCategory:reservedCategory,
       // Early-test special numbers are a product grant, not an untrusted
       // client claim. The category comes from the server-side reservation.
-      numberProtection:reservedCategory === 'standard' ? 'free' : 'promotional',
+      numberProtection:reservedCategory === 'standard' || reservedCategory === 'preferred' ? 'free' : 'promotional',
       tier, isFounding, creationOrder,
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
+      dailyLookGeneratedAt:null, dailyLookWindowStartedAt:null, dailyLookGenerationCount:0,
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
-    const sessionToken = newAccountSession(account);
+    const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
+    const tokenHash = d.reservationToken ? crypto.createHash('sha256').update(d.reservationToken).digest('hex') : null;
+    if (postgresEnabled) {
+      if (!await postgresStore.registerReservedAccount(d.accountId, account, tokenHash)) return resErr(res,'That number is unavailable or the claim expired.',409);
+    } else {
+      // Recheck after password hashing: another signup may have finished meanwhile.
+      const reservation=privateNumberReservations.get(privateNumber);
+      if(accounts.has(d.accountId) || !isNumberAvailable(privateNumber,{activeNumbers:privateNumbers,lifecycle:privateNumberLifecycle}) ||
+        (tokenHash ? !reservation || reservation.tokenHash!==tokenHash || reservation.reservedUntil<Date.now() : reservation && reservation.reservedUntil>=Date.now())) return resErr(res,'That number is unavailable or the claim expired.',409);
+      if(tokenHash) privateNumberReservations.delete(privateNumber);
+    }
     accounts.set(d.accountId, account);
     privateNumbers.set(privateNumber, d.accountId);
-    await persistAccount(d.accountId);
-    if (d.reservationToken) {
-      const tokenHash = crypto.createHash('sha256').update(d.reservationToken).digest('hex');
-      if (postgresEnabled) await postgresStore.completePrivateNumberReservation(privateNumber, tokenHash, d.accountId);
-      else privateNumberReservations.delete(privateNumber);
-    }
+    if (!postgresEnabled) await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision, retention:accountRetention(account) });
   }
 
   if (path === '/api/account/login' && method === 'POST') {
-    if (rateLimited(`account-login:${ip}`, 10, 15 * 60 * 1000)) return resErr(res, 'Too many login attempts — try again later.', 429);
+    if (await rateLimited(`account-login:${ip}`, 10, 15 * 60 * 1000)) return resErr(res, 'Too many login attempts — try again later.', 429);
     const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     // Always perform a scrypt check, including for an unknown ID, to avoid a
@@ -2361,14 +3097,69 @@ async function api(path, method, d, p, res, ip, headers) {
     const verifier = account ? account.authVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.authSecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
-    const sessionToken = newAccountSession(account);
+    const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
   }
 
+  if (path === '/api/account/change-password' && method === 'POST') {
+    if (await rateLimited(`account-password-change:${d.accountId || ip}`, 6, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many password changes — try again later.', 429);
+    }
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const currentPasswordValid = await verifyAccountSecret(d.currentAuthSecret, account.authVerifier);
+    if (!currentPasswordValid) return resErr(res, 'Current password is incorrect.', 403);
+    if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) {
+      return resErr(res, 'Invalid password update.', 400);
+    }
+    account.authVerifier = await hashAccountSecret(d.newAuthSecret);
+    account.passwordWrap = d.passwordWrap;
+    const sessionToken = await replaceAccountLoginSession(d.accountId, account, accountDeviceHash(d.deviceId), {
+      notificationTitle:'Vaultlix password changed',
+      notificationBody:'Your Vaultlix password was changed. This device has been signed out.',
+      notificationTag:'vaultlix-password-changed',
+    });
+    account.updatedAt = Date.now();
+    await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, accountId:d.accountId, sessionToken, revision:account.revision, ...publicAccount(account) });
+  }
+
+  // A password sign-in can restore the master key without possessing an
+  // older locally saved recovery code. Let that authenticated device rotate
+  // to a fresh code and atomically place its locally encrypted copy inside
+  // the already master-key-encrypted account bundle. The server receives
+  // only verifiers and ciphertext; it never sees the readable code.
+  if (path === '/api/account/recovery-code' && method === 'POST') {
+    if (await rateLimited(`account-recovery-code:${d.accountId || ip}`, 4, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many recovery-code changes — try again later.', 429);
+    }
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!validAccountSecret(d.recoverySecret) || !validEncryptedField(d.recoveryWrap, 4096) ||
+        !validEncryptedField(d.bundle, 1024 * 1024)) {
+      return resErr(res, 'Invalid recovery-code update.', 400);
+    }
+    if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Your encrypted account changed. Try again.', 409);
+    }
+    account.recoveryVerifier = await hashAccountSecret(d.recoverySecret);
+    account.recoveryWrap = d.recoveryWrap;
+    account.bundle = d.bundle;
+    account.revision++;
+    account.updatedAt = Date.now();
+    await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, revision:account.revision, ...publicAccount(account) });
+  }
+
   if (path === '/api/account/recover' && method === 'POST') {
-    if (rateLimited(`account-recover:${ip}`, 6, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
+    if (await rateLimited(`account-recover:${ip}`, 6, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
     const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
@@ -2377,8 +3168,11 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) return resErr(res, 'Invalid recovery update.', 400);
     account.authVerifier = await hashAccountSecret(d.newAuthSecret);
     account.passwordWrap = d.passwordWrap;
-    account.sessions = [];
-    const sessionToken = newAccountSession(account);
+    const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId), {
+      notificationTitle:'Vaultlix identity recovered',
+      notificationBody:'Your Vaultlix identity was recovered and its password was changed. This device has been signed out.',
+      notificationTag:'vaultlix-identity-recovered',
+    });
     account.updatedAt = Date.now();
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
@@ -2386,7 +3180,7 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path === '/api/account/recovery-bundle' && method === 'POST') {
-    if (rateLimited(`account-recovery-read:${ip}`, 8, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
+    if (await rateLimited(`account-recovery-read:${ip}`, 8, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
     const found = accountByPrivateNumber(d.privateNumber);
     const account = found?.account || null;
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
@@ -2400,13 +3194,25 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path === '/api/account/profile' && method === 'POST') {
-    if (rateLimited(`account-profile:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many profile changes — try again later.', 429);
+    if (await rateLimited(`account-profile:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many profile changes — try again later.', 429);
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     const displayName = normalizeDisplayName(d.displayName);
+    if (contentSafety.check(displayName).blocked) return resErr(res, 'Choose a username without abusive or threatening language.', 400);
     if (!displayName || displayName.length > 32) return resErr(res, 'Enter a username between 2 and 32 characters.', 400);
+    let profileImage = normalizeProfileImage(account.profileImage) || null;
+    if (d.profileImageAction === 'replace') {
+      const replacement = normalizeProfileImage(d.profileImage);
+      if (replacement === undefined || replacement === null) return resErr(res, 'Choose a valid profile image under 256 KB.', 400);
+      profileImage = replacement;
+    } else if (d.profileImageAction === 'remove') {
+      profileImage = null;
+    } else if (d.profileImageAction != null) {
+      return resErr(res, 'Invalid profile image update.', 400);
+    }
     account.displayName = displayName;
+    account.profileImage = profileImage;
     account.updatedAt = Date.now();
 
     // Connection requests are durable identity links, but historically they
@@ -2427,6 +3233,7 @@ async function api(path, method, d, p, res, ip, headers) {
           request.recipientDisplayName = displayName;
           changed = true;
         }
+        if (request.senderAccountId === d.accountId || request.recipientAccountId === d.accountId) affectedAccountIds.add(accountId);
         if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') continue;
         const match = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i);
         if (!match) continue;
@@ -2453,7 +3260,83 @@ async function api(path, method, d, p, res, ip, headers) {
       if (accountId !== d.accountId) publishInboxAccount(accountId, 'peer-profile');
     }
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, displayName });
+    return res200(res, { ok:true, displayName, profileImage });
+  }
+
+  if (path === '/api/account/daily-look/status' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const usage = dailyLookUsage(account);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, {
+      ok:true,
+      available:usage.remaining > 0,
+      nextAt:usage.nextAt,
+      testing:true,
+      limit:DAILY_LOOK_DAILY_LIMIT,
+      remaining:usage.remaining,
+      configured:!!OPENAI_API_KEY,
+      styles:publicDailyLookStyles(),
+    });
+  }
+
+  if (path === '/api/account/daily-look' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const requestDayStartedAt = dailyLookDayWindow().startedAt;
+    if (await rateLimited(`daily-look-account:${d.accountId}:${requestDayStartedAt}`, 10, 60 * 60 * 1000) ||
+        await rateLimited(`daily-look-ip:${ip}`, 20, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many image attempts — try again later.', 429);
+    }
+    const apiKey = OPENAI_API_KEY;
+    if (!apiKey) return resErr(res, 'Daily Look is temporarily unavailable.', 503);
+    const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId);
+    const image = parseDailyLookImage(d.image);
+    if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
+    const now = Date.now();
+    const usage = dailyLookUsage(account, now);
+    if (usage.remaining <= 0) {
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'You have created five Daily Looks. Your next one will be available tomorrow.', 429);
+    }
+    if (!(await claimDailyLook(d.accountId, account, now))) {
+      return resErr(res, 'A Daily Look is already being created, or today’s five looks are complete.', 429);
+    }
+    try {
+      if (await moderateDailyLookImage(d.image, apiKey)) {
+        await releaseDailyLookClaim(d.accountId);
+        return resErr(res, 'This photo cannot be used for Daily Look. Choose another.', 400);
+      }
+      const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
+      const generatedImage = await createDailyLook(image, style, apiKey, variantIndex);
+      const completedAt = Date.now();
+      const completedDay = dailyLookDayWindow(completedAt);
+      const completedUsage = dailyLookUsage(account, completedAt);
+      if (!completedUsage.count) account.dailyLookWindowStartedAt = completedDay.startedAt;
+      account.dailyLookGenerationCount = completedUsage.count + 1;
+      account.dailyLookGeneratedAt = completedAt;
+      account.updatedAt = completedAt;
+      if (postgresEnabled) await postgresStore.completeDailyLook(d.accountId, completedAt, completedDay.startedAt);
+      else {
+        dailyLookClaims.delete(d.accountId);
+        await persistAccount(d.accountId);
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      return res200(res, {
+        ok:true, generatedImage, generatedAt:completedAt, watermarkVersion:DAILY_LOOK_WATERMARK_VERSION,
+        nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
+          ? completedDay.nextAt : 0,
+        limit:DAILY_LOOK_DAILY_LIMIT,
+        remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - account.dailyLookGenerationCount),
+        style:{ id:style.id, name:style.name },
+      });
+    } catch (error) {
+      await releaseDailyLookClaim(d.accountId).catch(() => {});
+      console.warn(`Daily Look provider request failed (${String(error?.message || 'unknown').slice(0, 32)}).`);
+      return resErr(res, 'Daily Look could not be created. Your daily creation is still available.', 502);
+    }
   }
 
   if (path === '/api/account/sync' && method === 'POST') {
@@ -2497,20 +3380,20 @@ async function api(path, method, d, p, res, ip, headers) {
     for (const item of d.conversations) {
       if (!item || typeof item.code !== 'string' || typeof item.token !== 'string') continue;
       const code = item.code.toLowerCase().trim();
-      const room = rooms.get(code);
+      const room = await ensureConversationLoaded(code);
       if (!room) { updates.push({ code, roomGone:true }); continue; }
       if (!room.members.has(item.token)) continue;
       const lastSeq = Number.parseInt(item.lastSeq || 0, 10);
       const lastReceiptSeq = Number.parseInt(item.lastReceiptSeq || 0, 10);
       const lastReactionSeq = Number.parseInt(item.lastReactionSeq || 0, 10);
       const lastDeletionSeq = Number.parseInt(item.lastDeletionSeq || 0, 10);
-      const receiptChanged = room.msgs.some(msg => msg.type === 'message' && msg.from === item.token &&
+      const receiptChanged = room.msgs.some(msg => msg.type === 'message' && messageFromToken(msg, item.token) &&
         msg.deliveredAt && (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)));
-      const peerMessageChanged = room.msgs.some(msg => msg.seq > lastSeq && !msg.deleted && msg.from !== item.token);
+      const peerMessageChanged = room.msgs.some(msg => msg.seq > lastSeq && !msg.deleted && !messageFromToken(msg, item.token));
       let typing = false;
       const now = Date.now();
       for (const [token, member] of room.members) {
-        if (token !== item.token && member.typing && now - member.typing < 3000) typing = true;
+        if (!sameConversationToken(token, item.token) && member.typing && now - member.typing < 3000) typing = true;
       }
       updates.push({
         code,
@@ -2520,7 +3403,8 @@ async function api(path, method, d, p, res, ip, headers) {
       });
     }
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, sequence:inboxSequenceByAccount.get(d.accountId) || 0, updates });
+    const sharedSequence = await realtimeCoordinator.currentInboxSequence(d.accountId);
+    return res200(res, { ok:true, sequence:sharedSequence ?? inboxSequenceByAccount.get(d.accountId) ?? 0, updates });
   }
 
   if (path === '/api/account/logout' && method === 'POST') {
@@ -2538,7 +3422,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // bundle and recovery material. Room destruction remains room-token
   // scoped through /api/close so this endpoint cannot become a vault oracle.
   if (path === '/api/account/delete' && method === 'POST') {
-    if (rateLimited(`account-delete:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many account deletion attempts — try again later.', 429);
+    if (await rateLimited(`account-delete:${ip}`, 5, 60 * 60 * 1000)) return resErr(res, 'Too many account deletion attempts — try again later.', 429);
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
@@ -2548,7 +3432,7 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path.startsWith('/api/profile/') && method === 'GET') {
-    const retryAfter = profileLookupRetryAfter(req, ip);
+    const retryAfter = await profileLookupRetryAfter(headers, ip);
     if (retryAfter) {
       res.setHeader('Retry-After', String(retryAfter));
       res.setHeader('Cache-Control', 'no-store');
@@ -2561,12 +3445,13 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   if (path === '/api/connections/request' && method === 'POST') {
-    if (rateLimited(`connection-request:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many requests — try again later.', 429);
+    if (await rateLimited(`connection-request:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many requests — try again later.', 429);
     const sender = authenticateAccountSession(d.accountId, d.sessionToken);
     const recipient = accountByPrivateNumber(d.privateNumber);
     if (!sender) return resErr(res, 'Your session has expired.', 401);
     if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
     if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
+    if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(recipient.accountId) || await safetyStore.blocked(d.accountId, recipient.accountId)) return resErr(res, 'This connection is unavailable.', 403);
     const now = Date.now();
     // Accepted relationships are durable. Quick Connect must classify the
     // pair before creating anything, regardless of who originally sent the
@@ -2578,11 +3463,49 @@ async function api(path, method, d, p, res, ip, headers) {
       (r.recipientAccountId === d.accountId && r.senderAccountId === recipient.accountId);
     const acceptedRelationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'accepted');
     if (acceptedRelationship) {
-      return res200(res, { ok:true, requestId:acceptedRelationship.id, status:'connected' });
+      if (d.replaceExisting === true) {
+        // A verified key mismatch can leave the durable account relationship
+        // marked accepted even though the associated E2EE room is no longer
+        // usable. Replacement is never automatic: an authenticated member
+        // explicitly requests it, and the other person must consent again.
+        acceptedRelationship.status = 'replaced';
+        acceptedRelationship.respondedAt = now;
+        const senderMirror = (sender.connectionRequests || []).find(r => r.id === acceptedRelationship.id);
+        if (senderMirror) { senderMirror.status = 'replaced'; senderMirror.respondedAt = now; }
+      } else {
+        return res200(res, {
+          ok:true,
+          requestId:acceptedRelationship.id,
+          status:'connected',
+          // Both authenticated participants already received this invitation
+          // when the relationship was accepted. Returning it again lets a
+          // device locate the matching session inside its client-encrypted
+          // account backup without exposing room membership credentials.
+          inviteUrl:acceptedRelationship.inviteUrl || null,
+        });
+      }
     }
     const relationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'pending');
     if (relationship?.status === 'pending') {
       const needsResponse = relationship.senderAccountId === recipient.accountId;
+      // Older deployments could leave only one side of a pending request
+      // after an interrupted persistence cycle. Returning "pending" without
+      // repairing the caller's mirror made the request reach the recipient
+      // while remaining invisible in the sender's inbox. Rebuild the missing
+      // authenticated copy idempotently before responding.
+      const senderMirror = (sender.connectionRequests || []).find(r => r.id === relationship.id);
+      const senderDirection = needsResponse ? 'incoming' : 'outgoing';
+      if (!senderMirror) {
+        sender.connectionRequests = compactConnectionRequests(sender.connectionRequests, now);
+        sender.connectionRequests.push({
+          ...relationship,
+          direction:senderDirection,
+        });
+        await persistAccount(d.accountId);
+      } else if (senderMirror.direction !== senderDirection) {
+        senderMirror.direction = senderDirection;
+        await persistAccount(d.accountId);
+      }
       return res200(res, { ok:true, requestId:relationship.id, status:needsResponse ? 'action_required' : 'pending' });
     }
     const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
@@ -2607,17 +3530,18 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path === '/api/account/native-push-subscribe' && method === 'POST') {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);
-    if (rateLimited(`account-native-push:${d.accountId}`, 20, 60 * 1000)) return resErr(res, 'Too many notification updates.', 429);
+    if (await rateLimited(`account-native-push:${d.accountId}`, 20, 60 * 1000)) return resErr(res, 'Too many notification updates.', 429);
+    const deviceHash = accountDeviceHash(d.deviceId);
     let destination;
     if (d.platform === 'android') {
       const fcmToken = validateFcmToken(d.deviceToken);
       if (!fcmToken) return resErr(res, 'Invalid device token.', 400);
-      destination = { platform:'android', fcmToken, updatedAt:Date.now() };
+      destination = { platform:'android', fcmToken, deviceHash, updatedAt:Date.now() };
     } else if (d.platform === 'ios') {
       const apnsToken = validateApnsToken(d.deviceToken);
       if (!apnsToken) return resErr(res, 'Invalid device token.', 400);
       if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res, 'Invalid APNs environment.', 400);
-      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, updatedAt:Date.now() };
+      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, deviceHash, updatedAt:Date.now() };
     } else {
       return resErr(res, 'Invalid native platform.', 400);
     }
@@ -2634,10 +3558,38 @@ async function api(path, method, d, p, res, ip, headers) {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);
     const now = Date.now();
+    // Heal pending request mirrors left one-sided by an interrupted write in
+    // an older deployment. This is deliberately done on the authenticated
+    // inbox read as well as on a repeated send, so the intended recipient can
+    // recover the request without asking its sender to submit it again.
+    const knownRequestIds = new Set((account.connectionRequests || []).map(request => request.id));
+    let recoveredRequest = false;
+    for (const [peerAccountId, peerAccount] of accounts) {
+      if (peerAccountId === d.accountId) continue;
+      for (const request of peerAccount.connectionRequests || []) {
+        if (request.status !== 'pending' || knownRequestIds.has(request.id)) continue;
+        if (request.senderAccountId !== d.accountId && request.recipientAccountId !== d.accountId) continue;
+        account.connectionRequests.push({
+          ...request,
+          direction:request.senderAccountId === d.accountId ? 'outgoing' : 'incoming',
+        });
+        knownRequestIds.add(request.id);
+        recoveredRequest = true;
+      }
+    }
     const previousRequestCount = (account.connectionRequests || []).length;
     account.connectionRequests = compactConnectionRequests(account.connectionRequests, now);
-    if (account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
-    return res200(res, { ok:true, requests:account.connectionRequests.map(({senderAccountId, recipientAccountId, ...safe}) => safe) });
+    if (recoveredRequest || account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
+    const visibleRequests = [];
+    for (const r of account.connectionRequests) {
+      const peer = r.senderAccountId === d.accountId ? r.recipientAccountId : r.senderAccountId;
+      if (!(await safetyStore.blocked(d.accountId, peer))) visibleRequests.push(r);
+    }
+    return res200(res, { ok:true, requests:visibleRequests.map(({senderAccountId, recipientAccountId, ...safe}) => ({
+      ...safe,
+      senderProfileImage:normalizeProfileImage(accounts.get(senderAccountId)?.profileImage) || null,
+      recipientProfileImage:normalizeProfileImage(accounts.get(recipientAccountId)?.profileImage) || null,
+    })) });
   }
 
   if (path === '/api/connections/respond' && method === 'POST') {
@@ -2645,6 +3597,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!account) return resErr(res, 'Your session has expired.', 401);
     const request = (account.connectionRequests || []).find(r => r.id === d.requestId && r.direction === 'incoming' && r.status === 'pending');
     if (!request) return resErr(res, 'Request is no longer available.', 404);
+    if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(request.senderAccountId) || await safetyStore.blocked(d.accountId, request.senderAccountId)) return resErr(res, 'This connection is unavailable.', 403);
     if (!['accepted','rejected'].includes(d.action)) return resErr(res, 'Invalid response.', 400);
     request.status = d.action; request.respondedAt = Date.now();
     if (d.action === 'accepted') {
@@ -2663,7 +3616,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/create' && method==='POST') {
     // A short-window abuse limit prevents automated room-creation floods;
     // it is not a per-account or per-device conversation allowance.
-    if (rateLimited(`create:${ip}`, 20, 10 * 60 * 1000)) {
+    if (await rateLimited(`create:${ip}`, 20, 10 * 60 * 1000)) {
       return resErr(res, 'Too many conversations created from this connection — try again in a few minutes.', 429);
     }
     // Hard ceiling on total concurrent rooms, independent of the byte
@@ -2671,8 +3624,8 @@ async function api(path, method, d, p, res, ip, headers) {
     // member records), and unbounded room COUNT is a distinct DoS surface
     // from unbounded room BYTES. Rejected explicitly (clear error, logged)
     // rather than degrading silently in some other way.
-    if (rooms.size >= MAX_CONCURRENT_ROOMS) {
-      console.warn(`MAX_CONCURRENT_ROOMS (${MAX_CONCURRENT_ROOMS}) reached — rejecting new room creation.`);
+    if (!postgresEnabled && rooms.size >= MAX_CONCURRENT_ROOMS) {
+      console.warn(`Conversation capacity (${MAX_CONCURRENT_ROOMS}) reached — rejecting new conversation creation.`);
       return resErr(res, 'Too many active conversations right now — please try again shortly.', 503);
     }
     // The label used to BE the entire room code, with zero entropy of its
@@ -2730,23 +3683,44 @@ async function api(path, method, d, p, res, ip, headers) {
       seq: 0,          // global message sequence counter
       reactionSeq: 0,  // separate counter so reaction updates can be synced like read receipts
       deletionSeq: 0,  // same pattern again, for "delete for everyone" — see /api/delete-message
-      members: new Map([[token, { name, pubKey: d.pubKey||null, lastSeen: createdAt, slot:1 }]]),
+      members: new ConversationMembers([[token, { name, pubKey: d.pubKey||null, lastSeen: createdAt, slot:1 }]]),
       msgs: [],        // { seq, id, type, from, name, content, time, ts, deliveredAt, readAt, reactions, reactionSeq }
       byteSize: 0,     // running total of msgs[].content.length — see pushRoomMsg/deleteRoomMsgContent
     };
     rooms.set(roomCode, room);
+    let createdInDatabase = true;
+    let databaseAtCapacity = false;
     try {
       if (postgresEnabled) {
-        await postgresStore.createConversation({ id:roomCode, persistent, deleteTimer:room.deleteTimer, createdAt });
-        await postgresStore.upsertConversationMember(roomCode, 1, token, room.members.get(token));
+        // Serialize creation globally so replicas cannot both observe the
+        // final free capacity slot and exceed the production ceiling.
+        await postgresStore.withConversationLock('__conversation-creation__', async client => {
+          if (await postgresStore.countActiveConversations(client) >= MAX_CONCURRENT_ROOMS) {
+            databaseAtCapacity = true;
+            return;
+          }
+          createdInDatabase = await postgresStore.createConversation({ id:roomCode, persistent, deleteTimer:room.deleteTimer, createdAt }, client);
+          if (!createdInDatabase) return;
+          await postgresStore.upsertConversationMember(roomCode, 1, token, room.members.get(token), client);
+          await postgresStore.saveConversation(roomCode, room, client);
+        });
       }
     } catch (error) {
-      rooms.delete(roomCode);
+      evictConversationCache(roomCode);
       throw error;
+    }
+    if (databaseAtCapacity) {
+      evictConversationCache(roomCode);
+      console.warn(`MAX_CONCURRENT_ROOMS (${MAX_CONCURRENT_ROOMS}) reached — rejecting new conversation creation.`);
+      return resErr(res, 'Too many active conversations right now — please try again shortly.', 503);
+    }
+    if (!createdInDatabase) {
+      evictConversationCache(roomCode);
+      return resErr(res, 'That conversation identifier is already in use. Please try again.', 409);
     }
     if (persistent) analytics.roomsCreatedPermanent++; else analytics.roomsCreatedTemporary++;
     trackAggregate(persistent ? 'vaultsPermanent' : 'vaultsTemporary');
-    console.log(`Room created: ${logCode(roomCode)}${persistent ? ' (permanent room)' : ''}`);
+    console.log(`Conversation created: ${logCode(roomCode)}${persistent ? ' (persistent)' : ''}`);
     // labelLength tells the client exactly where the user-typed label ends
     // and the appended random suffix begins, so it can render them
     // differently (see revealCode in client/index.html) without having to
@@ -2786,7 +3760,7 @@ async function api(path, method, d, p, res, ip, headers) {
       // back, which meant the raw room code sat there visibly if that poll
       // was even slightly delayed.
       let peerPubKey = null, peerName = null;
-      for (const [t,mb] of room.members) if (t!==d.token) { peerPubKey = mb.pubKey; peerName = mb.name; }
+      for (const [t,mb] of room.members) if (!sameConversationToken(t, d.token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
       return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
     }
 
@@ -2800,7 +3774,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // tightened further — mobile carriers (India especially) put many real
     // users behind one shared CGNAT IP, and this has to stay generous
     // enough not to collide with that.
-    if (rateLimited(`join:${ip}`, 20, 10 * 60 * 1000)) {
+    if (await rateLimited(`join:${ip}`, 20, 10 * 60 * 1000)) {
       return resErr(res, 'Too many join attempts from this connection — try again in a few minutes.', 429);
     }
 
@@ -2855,7 +3829,7 @@ async function api(path, method, d, p, res, ip, headers) {
       for (const [t, m] of room.members) {
         if (m.lastSeen < staleThreshold) {
           room.members.delete(t);
-          if (postgresEnabled && m.slot) await postgresStore.deleteConversationMember(roomCode, m.slot);
+          if (postgresEnabled && m.slot) await postgresStore.deleteConversationMember(roomCode, m.slot, room.dbClient || postgresStore.pool);
         }
       }
     }
@@ -2865,7 +3839,6 @@ async function api(path, method, d, p, res, ip, headers) {
     const usedSlots = new Set([...room.members.values()].map(member => member.slot).filter(Boolean));
     const slot = usedSlots.has(1) ? 2 : 1;
     const member = { name, pubKey: d.pubKey||null, lastSeen: Date.now(), slot };
-    if (postgresEnabled) await postgresStore.upsertConversationMember(roomCode, slot, token, member);
     room.members.set(token, member);
     analytics.joins = (analytics.joins || 0) + 1;
     trackAggregate('joins');
@@ -2876,15 +3849,10 @@ async function api(path, method, d, p, res, ip, headers) {
       room.connectedSince = Date.now();
     }
 
-    // System message — tagged with `from` so the poll filter (which already
-    // excludes a caller's own messages) also excludes this one for the
-    // joiner themselves. Without it, system messages had no sender at all,
-    // so the "X joined" announcement got echoed back to X's own client too
-    // — confusing since the app had just told them "You're X" a moment
-    // earlier. The other member still gets it normally, which is the whole
-    // point of the message.
+    // Membership is connection state, not conversation content. Keep an id
+    // for the acceptance push, but do not place "joined" in either person's
+    // encrypted conversation timeline.
     const joinedEventId = uid();
-    pushRoomMsg(room, { seq: ++room.seq, id: joinedEventId, type:'system', content:`${name} joined`, ts: Date.now(), from: token });
     publishInboxRoom(roomCode, 'membership', { excludeToken:token });
 
     // The creator may have shared the invitation and moved on to another
@@ -2899,7 +3867,7 @@ async function api(path, method, d, p, res, ip, headers) {
     });
     if (acceptedPayload) {
       for (const [memberToken, member] of room.members) {
-        if (memberToken !== token && hasPushDestination(member)) {
+        if (!sameConversationToken(memberToken, token) && hasPushDestination(member)) {
           sendMemberPush(member, acceptedPayload, { urgency: 'high', TTL: 3600, label: 'vault accepted' });
         }
       }
@@ -2910,9 +3878,62 @@ async function api(path, method, d, p, res, ip, headers) {
     // (room password changed, genuinely new participant, etc.) its header
     // can resolve immediately instead of waiting on the first live poll.
     let peerPubKey = null, peerName = null;
-    for (const [t,mb] of room.members) if (t!==token) { peerPubKey = mb.pubKey; peerName = mb.name; }
-    console.log(`Member joined ${logCode(roomCode)}`);
+    for (const [t,mb] of room.members) if (!sameConversationToken(t, token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
+    console.log(`Member joined conversation ${logCode(roomCode)}`);
     return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
+  }
+
+  // POST /api/attachment/prepare — authorize an opaque, client-encrypted
+  // attachment and return a short-lived direct-to-bucket upload URL. The
+  // plaintext file, name and MIME type never enter this process; the bucket
+  // receives only the same E2E ciphertext envelope peers already exchange.
+  if (path==='/api/attachment/prepare' && method==='POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    const messageId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
+    const size = Number(d.size);
+    if (!messageId || !Number.isSafeInteger(size) || size < 1 || size > MAX_MESSAGE_CONTENT_BYTES) {
+      return resErr(res,'Invalid encrypted attachment.',400);
+    }
+    if (await rateLimited(`attachment:${d.token}`, 20, 10 * 1000)) return resErr(res,'Uploading too fast — slow down a moment.',429);
+    const attachmentId = crypto.randomUUID();
+    const objectKey = attachmentObjectKey(d.code, attachmentId);
+    const createdAt = Date.now();
+    const created = await postgresStore.createPendingAttachment(d.code, d.token, {
+      id:attachmentId, messageId, objectKey, size,
+      createdAt, expiresAt:createdAt + ATTACHMENT_UPLOAD_TTL_MS,
+    });
+    if (!created) return resErr(res,'Could not prepare encrypted attachment.',409);
+    try {
+      const uploadUrl = await objectStorage.createUploadUrl(objectKey);
+      return res200(res, { attachmentId, uploadUrl, contentType:'application/octet-stream' });
+    } catch (error) {
+      await postgresStore.deleteAttachmentRecord(attachmentId).catch(() => {});
+      console.error('Encrypted attachment upload signing failed:', error.message);
+      return resErr(res,'Could not prepare encrypted attachment.',503);
+    }
+  }
+
+  // POST /api/attachment/download — membership is rechecked every time;
+  // the returned bucket URL is private, narrowly scoped to one object and
+  // expires after ten minutes.
+  if (path==='/api/attachment/download' && method==='POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (!validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
+    const attachment = await postgresStore.attachmentForMessage(d.code, d.attachmentId);
+    if (!attachment) return resErr(res,'Encrypted attachment not found.',404);
+    try {
+      const downloadUrl = await objectStorage.createDownloadUrl(attachment.objectKey);
+      return res200(res, { downloadUrl, size:attachment.size });
+    } catch (error) {
+      console.error('Encrypted attachment download signing failed:', error.message);
+      return resErr(res,'Could not open encrypted attachment.',503);
+    }
   }
 
   // POST /api/send
@@ -2925,7 +3946,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // punishing by IP would hit the wrong person. 20 messages per 10
     // seconds is far above normal typing speed but stops a flooding script;
     // there was no limit of any kind here before this.
-    if (rateLimited(`send:${d.token}`, 20, 10 * 1000)) {
+    if (await rateLimited(`send:${d.token}`, 20, 10 * 1000)) {
       return resErr(res, 'Sending too fast — slow down a moment.', 429);
     }
     // d.content had no size check at all — the 100-message trim below is a
@@ -2934,7 +3955,9 @@ async function api(path, method, d, p, res, ip, headers) {
     // derivation above for how that number was actually measured, not
     // guessed). This is the per-message half of the fix; the cumulative
     // per-room byte budget below is the other half.
-    if (typeof d.content !== 'string' || d.content.length > MAX_MESSAGE_CONTENT_BYTES) {
+    if (d.attachmentId != null && !validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
+    const attachmentId = validAttachmentId(d.attachmentId) ? d.attachmentId : null;
+    if ((!attachmentId && typeof d.content !== 'string') || (typeof d.content === 'string' && d.content.length > MAX_MESSAGE_CONTENT_BYTES)) {
       return resErr(res, 'Message too large.', 413);
     }
     const m = room.members.get(d.token);
@@ -2952,12 +3975,25 @@ async function api(path, method, d, p, res, ip, headers) {
     // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
+    let messageContent = d.content;
+    if (attachmentId) {
+      if (!objectStorageEnabled || !postgresEnabled || !clientMsgId) return resErr(res,'Encrypted attachment storage is unavailable.',503);
+      const pending = await postgresStore.pendingAttachment(d.code, d.token, attachmentId);
+      if (!pending || pending.messageId !== msgId) return resErr(res,'Encrypted attachment is invalid or expired.',409);
+      try {
+        const uploadedSize = await objectStorage.sizeOf(pending.objectKey);
+        if (uploadedSize !== pending.size) return resErr(res,'Encrypted attachment upload is incomplete.',409);
+      } catch (error) {
+        return resErr(res,'Encrypted attachment upload is incomplete.',409);
+      }
+      messageContent = `obj:v1:${attachmentId}`;
+    }
     // Call completion is observed independently by both native endpoints.
     // They deliberately submit the same stable call-event ID, so make the
     // encrypted message stream idempotent before allocating a new sequence.
-    const existingMessage = (room.messages || []).find(message => message.id === msgId);
+    const existingMessage = (room.msgs || []).find(message => message.id === msgId);
     if (existingMessage) return res200(res, { ok:true, id:msgId, seq:existingMessage.seq, duplicate:true });
-    const seq = room.seq + 1;
+    let seq = room.seq + 1;
     // viewOnce travels as a plain top-level field (client/index.html's
     // sendFileMessage/sendAlbumMessage) alongside the encrypted content —
     // this server can't see inside that encrypted payload, so without this
@@ -2967,8 +4003,11 @@ async function api(path, method, d, p, res, ip, headers) {
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
-    if (postgresEnabled) await postgresStore.appendEncryptedMessage(d.code, d.token, message);
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, deleteTimerSeconds:room.deleteTimer || 0, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    if (postgresEnabled) {
+      seq = await postgresStore.appendEncryptedMessage(d.code, d.token, message, room.dbClient || null);
+      message.seq = seq;
+    }
     room.seq = seq;
     pushRoomMsg(room, message);
     publishInboxRoom(d.code, 'message', { excludeToken:d.token });
@@ -2987,7 +4026,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // message after hang-up. The flag affects notification fan-out only; the
     // encrypted record, inbox event, receipts and catch-up behavior are kept.
     if (d.suppressNotification !== true) for (const [t, mb] of room.members) {
-      if (t !== d.token && hasPushDestination(mb)) {
+      if (!sameConversationToken(t, d.token) && hasPushDestination(mb)) {
         // tag used to just be d.code (the room code) — same tag for every
         // message in the room, combined with sw.js's renotify:true. That
         // combination hits a long-standing, still-unresolved Chrome bug
@@ -3063,7 +4102,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/push-unsubscribe' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
-    if (rateLimited(`push-unsubscribe:${d.token}`, 20, 60 * 1000)) return resErr(res,'Too many notification updates.',429);
+    if (await rateLimited(`push-unsubscribe:${d.token}`, 20, 60 * 1000)) return resErr(res,'Too many notification updates.',429);
     const m = room.members.get(d.token);
     m.pushSub = null;
     m.fcmToken = null;
@@ -3081,7 +4120,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/native-push-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
-    if (rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
+    if (await rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     const m = room.members.get(d.token);
     if (d.platform === 'android') {
       const deviceToken = validateFcmToken(d.deviceToken);
@@ -3103,7 +4142,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/voip-subscribe' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
-    if (rateLimited(`voip-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
+    if (await rateLimited(`voip-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     if (!validateVoipToken(d.voipToken)) return resErr(res,'Invalid VoIP token.',400);
     if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
     if (typeof d.roomHandle !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(d.roomHandle)) {
@@ -3113,7 +4152,7 @@ async function api(path, method, d, p, res, ip, headers) {
     m.voipToken = d.voipToken.toLowerCase();
     m.voipEnvironment = d.environment;
     m.nativeRoomHandle = d.roomHandle;
-    console.log(`VoIP token registered for room ${logCode(d.code)} (${d.environment}).`);
+    console.log(`VoIP token registered for conversation ${logCode(d.code)} (${d.environment}).`);
     return res200(res, { ok: true });
   }
 
@@ -3126,7 +4165,7 @@ async function api(path, method, d, p, res, ip, headers) {
   if (path==='/api/turn-credentials' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
-    if (rateLimited(`turn:${d.token}`, 6, 60 * 1000)) return resErr(res,'Too many requests.',429);
+    if (await rateLimited(`turn:${d.token}`, 6, 60 * 1000)) return resErr(res,'Too many requests.',429);
     if (!process.env.CF_TURN_KEY_ID || !process.env.CF_TURN_KEY_API_TOKEN) {
       console.error('TURN credentials requested but CF_TURN_KEY_ID/CF_TURN_KEY_API_TOKEN not set.');
       return resErr(res,'Calling is not configured.',503);
@@ -3170,9 +4209,14 @@ async function api(path, method, d, p, res, ip, headers) {
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (!msg) return resErr(res,'Message not found.',404);
     if (!msg.reactions) msg.reactions = {};
-    if (d.emoji) msg.reactions[d.token] = String(d.emoji).slice(0,8);
-    else delete msg.reactions[d.token];
-    msg.reactionSeq = ++room.reactionSeq;
+    const reactorHash = conversationTokenHash(d.token);
+    const reaction = d.emoji ? String(d.emoji).slice(0,8) : '';
+    if (reaction) msg.reactions[reactorHash] = reaction;
+    else delete msg.reactions[reactorHash];
+    msg.reactionSeq = postgresEnabled
+      ? await postgresStore.setMessageReaction(d.code, msg.id, d.token, reaction, Date.now(), room.dbClient || null)
+      : ++room.reactionSeq;
+    room.reactionSeq = Math.max(room.reactionSeq || 0, msg.reactionSeq);
     room.lastActivity = Date.now();
     publishInboxRoom(d.code, 'reaction', { excludeToken:d.token });
     return res200(res, { ok: true });
@@ -3195,11 +4239,11 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
-    if (msg.from !== d.token) return resErr(res,'Only the sender can delete this for everyone.',403);
+    if (!messageFromToken(msg, d.token)) return resErr(res,'Only the sender can delete this for everyone.',403);
     const deletedAt = Date.now();
-    const deletionSequence = room.deletionSeq + 1;
-    if (postgresEnabled) await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS);
-    deleteRoomMsgContent(room, msg);
+    let deletionSequence = room.deletionSeq + 1;
+    if (postgresEnabled) deletionSequence = await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS, room.dbClient || null);
+    deleteRoomMsgContent(room, msg, deletionSequence);
     room.lastActivity = Date.now();
     publishInboxRoom(d.code, 'deletion', { excludeToken:d.token });
     return res200(res, { ok: true });
@@ -3227,12 +4271,12 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
-    if (msg.viewOnce !== true || msg.from === d.token) return resErr(res,'Not authorized to open this message.',403);
+    if (msg.viewOnce !== true || messageFromToken(msg, d.token)) return resErr(res,'Not authorized to open this message.',403);
     if (!msg.deleted) {
       const deletedAt = Date.now();
-      const deletionSequence = room.deletionSeq + 1;
-      if (postgresEnabled) await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS);
-      deleteRoomMsgContent(room, msg);
+      let deletionSequence = room.deletionSeq + 1;
+      if (postgresEnabled) deletionSequence = await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS, room.dbClient || null);
+      deleteRoomMsgContent(room, msg, deletionSequence);
       room.lastActivity = Date.now();
       publishInboxRoom(d.code, 'deletion', { excludeToken:d.token });
     }
@@ -3240,38 +4284,39 @@ async function api(path, method, d, p, res, ip, headers) {
   }
 
   // POST /api/set-timer — change the disappearing-message duration for this
-  // room at any point in the conversation, not just at creation. Either
-  // member can change it; a system message announces the new setting to
-  // both, and the value itself rides the existing deleteTimer field already
-  // returned on every /api/poll response, so both clients pick it up within
-  // one poll cycle without any extra sync mechanism.
+  // room at any point in the conversation, not just at creation. The value
+  // rides the existing deleteTimer field returned on every /api/poll
+  // response. Updated clients supply an encrypted notice stored with the change.
   if (path==='/api/set-timer' && method==='POST') {
     const room = rooms.get(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in conversation.',403);
+    if (d.noticeContent !== undefined && (typeof d.noticeContent !== 'string' || !d.noticeContent.startsWith('v:') || d.noticeContent.length > 4096 || typeof d.noticeId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(d.noticeId))) {
+      return resErr(res,'Invalid encrypted timer notice.',400);
+    }
+    const existingNotice = d.noticeId && room.msgs.find(msg => msg.id === d.noticeId);
+    if (existingNotice) return res200(res,{ok:true,deleteTimer:room.deleteTimer,notice:{id:existingNotice.id,ts:existingNotice.ts}});
+    let notice = null;
+    if (d.noticeContent) {
+      const ts = Date.now();
+      notice = {id:d.noticeId,seq:room.seq+1,type:'message',from:d.token,name:m.name,content:d.noticeContent,ts,time:new Date(ts).toTimeString().slice(0,5),deleteTimerSeconds:0,deliveredAt:null,readAt:null,reactions:{},reactionSeq:0};
+      if (postgresEnabled) notice.seq = await postgresStore.appendEncryptedMessage(d.code,d.token,notice,room.dbClient || null);
+      room.seq = notice.seq;
+      pushRoomMsg(room,notice);
+      room.lastMessageAt = ts;
+    }
+    for (const msg of room.msgs) {
+      if (msg.type === 'message' && !Number.isFinite(msg.deleteTimerSeconds)) msg.deleteTimerSeconds = messageDeleteTimer(room, msg);
+    }
     const val = parseInt(d.deleteTimer);
     room.deleteTimer = (isNaN(val) || val < 0) ? 0 : val;
-    // Anchor point for the sweep below — turning the timer on (or changing
-    // its duration) only ever applies to messages sent from this moment
-    // forward. Without this, enabling e.g. a 5-minute timer on a room with
-    // existing history immediately swept up every already-read message
-    // older than 5 minutes on the very next sweep cycle, deleting past
-    // conversation that had nothing to do with the setting being turned on
-    // just now. Set unconditionally (even when turning the timer OFF) so
-    // that if it's re-enabled later, only messages from that later point
-    // are ever in scope — never a stale timestamp from an earlier session.
+    // Retained only as a safe migration boundary for pre-snapshot messages.
+    // New messages store their own duration, unaffected by later settings.
     room.deleteTimerSetAt = Date.now();
     room.lastActivity = Date.now();
-    pushRoomMsg(room, {
-      seq: ++room.seq, id: uid(), type:'system',
-      content: room.deleteTimer
-        ? `${m.name} set disappearing messages to ${formatTimerLabel(room.deleteTimer)}`
-        : `${m.name} turned off disappearing messages`,
-      ts: Date.now(),
-    });
     publishInboxRoom(d.code, 'timer', { excludeToken:d.token });
-    return res200(res, { ok: true, deleteTimer: room.deleteTimer });
+    return res200(res, { ok: true, deleteTimer: room.deleteTimer, notice:notice ? {id:notice.id,ts:notice.ts} : null });
   }
 
   // POST /api/clear-chat — wipes all message history for this room while
@@ -3293,8 +4338,8 @@ async function api(path, method, d, p, res, ip, headers) {
     totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0)); // this room's share is gone too
     room.byteSize = 0; // everything that byte total was tracking is gone with room.msgs
     room.clearedAt = Date.now();
+    if (postgresEnabled) await postgresStore.clearConversationMessages(d.code, room.clearedAt, room.dbClient || null);
     room.lastActivity = Date.now();
-    pushRoomMsg(room, { seq: ++room.seq, id: uid(), type:'system', content:`${m.name} cleared the chat`, ts: Date.now() });
     publishInboxRoom(d.code, 'clear', { excludeToken:d.token });
     return res200(res, { ok: true, clearedAt: room.clearedAt });
   }
@@ -3329,6 +4374,11 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in conversation.',403);
 
+    // A full bootstrap is explicitly asking for authoritative retained
+    // history. Reconcile it with the durable ciphertext store first instead
+    // of trusting a potentially older live-room checkpoint.
+    if (includeOwn) await hydrateRoomMessagesFromPostgres(roomCode, room, room.dbClient || null);
+
     const m = room.members.get(token);
     m.lastSeen = Date.now();
 
@@ -3336,8 +4386,11 @@ async function api(path, method, d, p, res, ip, headers) {
     let peerName=null, peerOnline=false, peerPubKey=null;
     const now = Date.now();
     for (const [t,mb] of room.members) {
-      if (t!==token) {
-        peerName=mb.name; peerOnline=(now-mb.lastSeen)<8000; peerPubKey=mb.pubKey;
+      if (!sameConversationToken(t, token)) {
+        peerName=mb.name;
+        const sharedPresence = await realtimeCoordinator.isPresentByRoute(roomCode, conversationTokenRoute(t));
+        peerOnline=sharedPresence === null ? (now-mb.lastSeen)<8000 : sharedPresence;
+        peerPubKey=mb.pubKey;
       }
     }
 
@@ -3354,8 +4407,8 @@ async function api(path, method, d, p, res, ip, headers) {
     const newMsgs = room.msgs.filter(msg => {
       if (msg.seq <= clientLastSeq) return false;
       if (msg.deleted) return false; // deleted-for-everyone — nothing left to recover
-      if (msg.type === 'system') return msg.from !== token;
-      return includeOwn || msg.from !== token;
+      if (msg.type === 'system') return !messageFromToken(msg, token);
+      return includeOwn || !messageFromToken(msg, token);
     });
 
     // Mark delivered — only for messages where the CALLER is the recipient,
@@ -3369,18 +4422,22 @@ async function api(path, method, d, p, res, ip, headers) {
     // caller's own messages there — this only matters for the bootstrap
     // case, which is exactly the false-positive scenario being fixed.
     let deliveredChanged = false;
+    const deliveredMessageIds = [];
     for (const msg of newMsgs) {
-      if (msg.type==='message' && msg.from !== token && !msg.deliveredAt) { msg.deliveredAt = Date.now(); deliveredChanged = true; }
+      if (msg.type==='message' && !messageFromToken(msg, token) && !msg.deliveredAt) {
+        msg.deliveredAt = Date.now(); deliveredChanged = true; deliveredMessageIds.push(msg.id);
+      }
     }
+    if (postgresEnabled && deliveredMessageIds.length) await postgresStore.markMessagesDelivered(roomCode, deliveredMessageIds, Date.now(), room.dbClient || null);
     if (deliveredChanged) publishInboxRoom(roomCode, 'receipt', { excludeToken:token });
 
     // Read receipts for sender's messages
     const readReceipts = [];
     for (const msg of room.msgs) {
-      if (msg.from !== token || msg.type !== 'message' || !msg.deliveredAt) continue;
+      if (!messageFromToken(msg, token) || msg.type !== 'message' || !msg.deliveredAt) continue;
       // Return if: new delivery (seq > lastReceiptSeq) OR newly read (readAt set but not yet reported)
       if (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)) {
-        readReceipts.push({ msgId: msg.id, seq: msg.seq, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null });
+        readReceipts.push({ msgId: msg.id, seq: msg.seq, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null, deleteTimerSeconds:messageDeleteTimer(room, msg) });
         if (msg.readAt) msg.readReported = true;
       }
     }
@@ -3391,7 +4448,7 @@ async function api(path, method, d, p, res, ip, headers) {
     for (const msg of room.msgs) {
       if (msg.type !== 'message') continue;
       if (msg.reactionSeq && msg.reactionSeq > lastReactionSeq) {
-        reactionUpdates.push({ msgId: msg.id, reactions: msg.reactions || {}, reactionSeq: msg.reactionSeq });
+        reactionUpdates.push({ msgId: msg.id, reactions: reactionsForViewer(msg.reactions, token), reactionSeq: msg.reactionSeq });
       }
     }
 
@@ -3407,7 +4464,13 @@ async function api(path, method, d, p, res, ip, headers) {
       }
     }
 
-    return res200(res, { messages: newMsgs, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
+    const messages = newMsgs.map(msg => ({
+      ...msg,
+      deleteTimerSeconds:messageDeleteTimer(room, msg),
+      from:messageFromToken(msg, token) ? token : msg.from,
+      reactions:reactionsForViewer(msg.reactions, token),
+    }));
+    return res200(res, { messages, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
   // POST /api/mark-delivered — reports that a push notification actually
@@ -3424,6 +4487,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (msg && msg.type === 'message' && !msg.deliveredAt) {
       msg.deliveredAt = Date.now();
+      if (postgresEnabled) await postgresStore.markMessagesDelivered(d.code, [msg.id], msg.deliveredAt, room.dbClient || null);
       publishInboxRoom(d.code, 'receipt', { excludeToken:d.token });
     }
     return res200(res, { ok: true });
@@ -3434,7 +4498,10 @@ async function api(path, method, d, p, res, ip, headers) {
     const room = rooms.get(d.code);
     if (room && room.members.has(d.token) && Array.isArray(d.msgIds)) {
       let changed = false;
-      for (const msg of room.msgs) if (d.msgIds.includes(msg.id) && !msg.readAt) { msg.readAt = Date.now(); changed = true; }
+      const changedIds = [];
+      const readAt = Date.now();
+      for (const msg of room.msgs) if (d.msgIds.includes(msg.id) && !msg.readAt) { msg.readAt = readAt; changed = true; changedIds.push(msg.id); }
+      if (postgresEnabled && changedIds.length) await postgresStore.markMessagesRead(d.code, changedIds, readAt, room.dbClient || null);
       room.lastActivity = Date.now();
       if (changed) publishInboxRoom(d.code, 'receipt', { excludeToken:d.token });
     }
@@ -3471,17 +4538,14 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!room || !room.members.has(d.token)) return res200(res,{typing:false});
     const now = Date.now();
     let typing = false;
-    for (const [t,m] of room.members) if (t!==d.token && m.typing && now-m.typing<3000) typing=true;
+    for (const [t,m] of room.members) if (!sameConversationToken(t, d.token) && m.typing && now-m.typing<3000) typing=true;
     return res200(res,{typing});
   }
 
   // POST /api/leave — previously had NO auth check at all: it read d.code,
   // deleted whatever member matched d.token (a no-op if that token wasn't
-  // actually a member), and pushed a system message using the caller's own
-  // unverified d.name — anyone who merely knew a vault code could forge a
-  // "${d.name} left" message into a room they were never part of, with no
-  // length cap on d.name, no cap on room.msgs growth (the 100-message trim
-  // only ever ran in /api/send), and no rate limit. Fixed with the same
+  // actually a member). Anyone who merely knew a vault code could therefore
+  // mutate membership without authentication. Fixed with the same
   // auth pattern as /api/clear-chat: confirm room, confirm actual
   // membership, and derive the display name from the AUTHENTICATED member
   // (m.name) — never from d.name — before touching anything.
@@ -3494,15 +4558,15 @@ async function api(path, method, d, p, res, ip, headers) {
   // outcome below — missing room, bad token, or an actual successful leave
   // — returns the identical 204 with no body.
   if (path==='/api/leave' && method==='POST') {
-    if (rateLimited(`leave:${ip}`, 20, 10 * 60 * 1000)) {
+    if (await rateLimited(`leave:${ip}`, 20, 10 * 60 * 1000)) {
       return resErr(res, 'Too many leave attempts from this connection — try again in a few minutes.', 429);
     }
     const room = rooms.get(d.code);
     const m = (room && typeof d.token === 'string') ? room.members.get(d.token) : null;
     if (!room || !m) return res204(res);
     room.members.delete(d.token);
+    if (postgresEnabled && m.slot) await postgresStore.deleteConversationMember(d.code, m.slot, room.dbClient || postgresStore.pool);
     room.lastActivity = Date.now();
-    pushRoomMsg(room, { seq:++room.seq, id:uid(), type:'system', content:`${m.name} left`, ts:Date.now() });
     publishInboxRoom(d.code, 'membership', { excludeToken:d.token });
     if (room.members.size===0) destroyRoom(d.code);
     return res204(res);
@@ -3543,7 +4607,7 @@ async function api(path, method, d, p, res, ip, headers) {
       // of conversion rather than claiming a start date that isn't real.
       if (!room.connectedSince && room.members.size >= 2) room.connectedSince = Date.now();
       if (room.totalMessageCount === undefined) room.totalMessageCount = 0;
-      console.log(`Room converted to permanent room: ${logCode(d.code)}`);
+      console.log(`Conversation made persistent: ${logCode(d.code)}`);
     }
     return res200(res, { ok: true, persistent: true, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0 });
   }
@@ -3580,7 +4644,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if (path === '/api/admin/stats' && method === 'GET') {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -3588,7 +4652,7 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!expectedKey || !providedKey) {
       res.writeHead(404); res.end(); return;
     }
-    if (isRateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS)) {
+    if (await isRateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS)) {
       res.writeHead(404); res.end(); return;
     }
     const providedBuf = Buffer.from(providedKey);
@@ -3597,8 +4661,65 @@ async function api(path, method, d, p, res, ip, headers) {
       // Count failed guesses only. The dashboard refreshes every 15 seconds;
       // counting successful requests here locked a legitimate administrator
       // out after ten refreshes even though every supplied key was correct.
-      rateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS);
+      await rateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS);
       res.writeHead(404); res.end(); return;
+    }
+    if (path === '/api/admin/allocate-number') {
+      res.setHeader('Cache-Control','no-store');
+      if (typeof d.privateNumber !== 'string' || !/^[2-9][0-9]{5,9}$/.test(d.privateNumber)) return resErr(res,'Enter 6–10 digits, starting with 2–9.',400);
+      if (await rateLimited('admin-number-allocation',20,60*60*1000)) return resErr(res,'Allocation limit reached. Try again later.',429);
+      const privateNumber=d.privateNumber;
+      if (!isNumberAvailable(privateNumber,{activeNumbers:privateNumbers,lifecycle:privateNumberLifecycle})) return resErr(res,'This number is unavailable.',409);
+      const reservationToken=crypto.randomBytes(16).toString('base64url');
+      const tokenHash=crypto.createHash('sha256').update(reservationToken).digest('hex');
+      const reservedUntil=Date.now()+7*DAY_MS;
+      const reserved=postgresEnabled ? await postgresStore.reservePrivateNumber(privateNumber,tokenHash,'admin-gift',reservedUntil) : (()=>{
+        const current=privateNumberReservations.get(privateNumber);
+        if(current && (current.assignedAccountId || current.reservedUntil>=Date.now())) return false;
+        privateNumberReservations.set(privateNumber,{tokenHash,category:'admin-gift',reservedUntil});return true;
+      })();
+      if(!reserved) return resErr(res,'This number is assigned, reserved or retired.',409);
+      return res200(res,{ok:true,privateNumber,reservedUntil,claimUrl:`https://vaultlix.com/#g=${privateNumber}.${reservationToken}`});
+    }
+    if (path === '/api/admin/health') {
+      res.setHeader('Cache-Control','no-store');
+      return res200(res, await getSystemHealth());
+    }
+    if (path === '/api/admin/safety') {
+      res.setHeader('Cache-Control','no-store');
+      if (method === 'GET') {
+        const reports = await safetyStore.list();
+        // Never expose room credentials or account identifiers in the queue.
+        return res200(res,{reports:reports.map(({roomCode,reporterAccountId,reportedAccountId,...r})=>({...r,canClose:!!roomCode,canModerateAccount:!!reportedAccountId})),owner:'Vasanthkumar',responseHours:24});
+      }
+      if(typeof d.note !== 'string') return resErr(res,'A review note is required.',400);
+      const closedCodes = new Set();
+      try {
+        await safetyStore.review(d.id,d.status,`${d.note || ''}${d.accountAction && d.accountAction !== 'none' ? ' [Account: '+d.accountAction+']' : ''}`,d.expectedUpdatedAt, async (report,client) => {
+          const codes = new Set();
+          if (d.accountAction && !['none','suspend','restore'].includes(d.accountAction)) throw Error('Invalid account action.');
+          if (d.accountAction && d.accountAction !== 'none') {
+            if(!report.reportedAccountId || d.status !== 'resolved') throw Error('Resolve the report with a note before changing account access.');
+            await safetyStore.setSuspended(report.reportedAccountId,d.accountAction==='suspend',client);
+            if(d.accountAction==='suspend') {
+              if(report.roomCode) codes.add(report.roomCode);
+            }
+          }
+          if (d.closeConversation === true) {
+            if (!report.roomCode || d.status !== 'resolved') throw Error('Select Resolved and add a resolution note before closing a conversation.');
+            codes.add(report.roomCode);
+          }
+          for(const code of [...codes].sort()) {
+            if (client) {
+              await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',[code]);
+              await postgresStore.deleteConversation(code,client);
+            } else destroyRoom(code);
+            closedCodes.add(code);
+          }
+        });
+      } catch(error) { return resErr(res,error.message,409); }
+      if (postgresEnabled) for(const code of closedCodes) destroyRoom(code,true);
+      return res200(res,{ok:true});
     }
     const total = analytics.roomsCreatedTemporary + analytics.roomsCreatedPermanent;
     const now = Date.now();
@@ -3620,6 +4741,17 @@ async function api(path, method, d, p, res, ip, headers) {
       if (room.activeCall) activeCalls++;
       storedCiphertextMessages += room.msgs.length;
     }
+    const durableConversationStats = postgresEnabled
+      ? await postgresStore.conversationStats(activeCutoff)
+      : null;
+    if (durableConversationStats) {
+      occupiedVaults = durableConversationStats.occupiedConversations;
+      permanentVaults = durableConversationStats.permanentConversations;
+      temporaryVaults = durableConversationStats.temporaryConversations;
+      activeAnonymousSessions = durableConversationStats.activeMembers;
+      storedCiphertextMessages = durableConversationStats.storedMessages;
+    }
+    const activeConversationCount = durableConversationStats?.activeConversations ?? rooms.size;
     const memory = process.memoryUsage();
     const days = Object.entries(analytics.daily || {})
       .sort(([a], [b]) => a.localeCompare(b))
@@ -3652,7 +4784,7 @@ async function api(path, method, d, p, res, ip, headers) {
       pendingConnectionRequests += identity.pendingRequests;
     }
     const ciphertextLoad = GLOBAL_BYTE_BUDGET ? totalByteSize / GLOBAL_BYTE_BUDGET : 1;
-    const conversationLoad = MAX_CONCURRENT_ROOMS ? rooms.size / MAX_CONCURRENT_ROOMS : 1;
+    const conversationLoad = MAX_CONCURRENT_ROOMS ? activeConversationCount / MAX_CONCURRENT_ROOMS : 1;
     const healthStatus = !postgresEnabled ? 'critical'
       : ciphertextLoad >= 0.85 || conversationLoad >= 0.85 ? 'degraded'
       : 'healthy';
@@ -3671,8 +4803,8 @@ async function api(path, method, d, p, res, ip, headers) {
         activeIdentitySessions,
         notificationReadyIdentities,
         pendingConnectionRequests,
-        activeConversations: rooms.size,
-        activeVaults: rooms.size,
+        activeConversations: activeConversationCount,
+        activeVaults: activeConversationCount,
         occupiedVaults,
         permanentVaults,
         temporaryVaults,
@@ -3696,6 +4828,9 @@ async function api(path, method, d, p, res, ip, headers) {
       system: {
         healthStatus,
         durableStorage: postgresEnabled ? 'PostgreSQL connected' : 'Unavailable',
+        attachmentStorage: objectStorageEnabled ? 'Object storage connected' : 'Unavailable',
+        realtimeCoordination: realtimeCoordinator.ready ? 'Redis connected' : 'Single-replica mode',
+        realtimeInstance: realtimeCoordinator.instanceId.slice(0, 8),
         uptimeSeconds: Math.floor((now - PROCESS_STARTED_AT) / 1000),
         nodeVersion: process.version,
         rssBytes: memory.rss,
@@ -3757,6 +4892,9 @@ const signalingSockets = new Map();
 // that participant; the web socket remains available for outgoing web calls.
 const nativeCallSignalingSockets = new Map();
 const inboxAccountSockets = new Map();
+const inboxAccountSocketsByRoute = new Map();
+const signalingSocketsByRoute = new Map();
+const nativeCallSignalingSocketsByRoute = new Map();
 // Direct fan-out index: room code -> sockets currently subscribed to it.
 // Without this, every message/receipt/typing event scanned every online
 // account socket just to find the two participants, making event delivery
@@ -3765,7 +4903,9 @@ const inboxAccountSockets = new Map();
 const inboxSocketsByRoom = new Map();
 const inboxSequenceByAccount = new Map();
 
-function nextInboxSequence(accountId) {
+async function nextInboxSequence(accountId) {
+  const shared = await realtimeCoordinator.nextInboxSequence(accountId);
+  if (shared !== null) return shared;
   const next = (inboxSequenceByAccount.get(accountId) || 0) + 1;
   inboxSequenceByAccount.set(accountId, next);
   return next;
@@ -3775,33 +4915,135 @@ function nextInboxSequence(accountId) {
 // file therefore still cannot reveal which vaults belong to an identity. When
 // a device reconnects it proves each room membership again with its existing
 // bearer token and catches up from the room's durable sequence counters.
-function publishInboxRoom(roomCode, change, { excludeToken = null, payload = null } = {}) {
+async function publishInboxRoomLocal(roomCode, change, { excludeToken = null, excludeRouteId = null, payload = null } = {}) {
   const sockets = inboxSocketsByRoom.get(roomCode);
   if (!sockets) return;
   for (const ws of sockets) {
     const subscribedToken = ws.inboxSubscriptions?.get(roomCode);
-    if (!subscribedToken || subscribedToken === excludeToken || ws.readyState !== ws.OPEN || !ws.accountId) continue;
+    if (!subscribedToken || subscribedToken === excludeToken ||
+        (excludeRouteId && opaqueRouteId(subscribedToken) === excludeRouteId) ||
+        ws.readyState !== ws.OPEN || !ws.accountId) continue;
     try {
       ws.send(JSON.stringify({
         type: change === 'typing' ? 'typing' : 'room-update',
         roomCode,
         change,
-        sequence: nextInboxSequence(ws.accountId),
+        sequence: await nextInboxSequence(ws.accountId),
         ...(payload || {}),
       }));
     } catch (e) {}
   }
 }
 
-function publishInboxAccount(accountId, change, payload = null) {
-  const sockets = inboxAccountSockets.get(accountId);
+function publishInboxRoom(roomCode, change, { excludeToken = null, payload = null } = {}) {
+  publishInboxRoomLocal(roomCode, change, { excludeToken, payload });
+  realtimeCoordinator.publish('inbox-room', {
+    roomCode, change, excludeRouteId:excludeToken ? opaqueRouteId(excludeToken) : null, payload,
+  }).catch(() => {});
+}
+
+async function publishInboxAccountLocal(accountId, accountRouteId, change, payload = null) {
+  const sockets = accountId ? inboxAccountSockets.get(accountId) : inboxAccountSocketsByRoute.get(accountRouteId);
   if (!sockets) return;
+  const sequenceAccountId = accountId || [...sockets][0]?.accountId;
+  if (!sequenceAccountId) return;
   for (const ws of sockets) {
     if (ws.readyState !== ws.OPEN) continue;
     try {
-      ws.send(JSON.stringify({ type:'account-update', change, sequence:nextInboxSequence(accountId), ...(payload || {}) }));
+      ws.send(JSON.stringify({ type:'account-update', change, sequence:await nextInboxSequence(sequenceAccountId), ...(payload || {}) }));
     } catch (e) {}
   }
+}
+
+function publishInboxAccount(accountId, change, payload = null) {
+  const accountRouteId = opaqueRouteId(accountId);
+  publishInboxAccountLocal(accountId, accountRouteId, change, payload);
+  realtimeCoordinator.publish('inbox-account', { accountRouteId, change, payload }).catch(() => {});
+}
+
+function closeReplacedAccountSocketsLocal(accountId, accountRouteId, revokedTokenHashes, replacedByAnotherDevice) {
+  const sockets = accountId ? inboxAccountSockets.get(accountId) : inboxAccountSocketsByRoute.get(accountRouteId);
+  if (!sockets) return;
+  for (const ws of [...sockets]) {
+    if (!revokedTokenHashes.has(ws.sessionTokenHash)) continue;
+    try {
+      if (replacedByAnotherDevice) {
+        ws.send(JSON.stringify({ type:'account-update', change:'session-replaced', accountId }));
+        ws.close(4004, 'Signed in on another device');
+      } else {
+        // Refreshing credentials on this installation invalidates the old
+        // token, but is not a device replacement. A 4004 here made the old
+        // socket erase newly restored local state in a response/close race.
+        ws.close(4003, 'Session refreshed on this device');
+      }
+    } catch (e) {}
+  }
+}
+
+function closeReplacedAccountSockets(accountId, revokedTokenHashes, replacedByAnotherDevice) {
+  const accountRouteId = opaqueRouteId(accountId);
+  closeReplacedAccountSocketsLocal(accountId, accountRouteId, revokedTokenHashes, replacedByAnotherDevice);
+  realtimeCoordinator.publish('account-session-close', {
+    accountRouteId, revokedTokenHashes:[...revokedTokenHashes], replacedByAnotherDevice,
+  }).catch(() => {});
+}
+
+async function clearAccountRoomPushDestinations(accountId, account) {
+  const affected = new Map();
+  for (const request of account.connectionRequests || []) {
+    if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') continue;
+    const match = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i);
+    if (!match || affected.has(match[1].toLowerCase())) continue;
+    const roomCode = match[1].toLowerCase();
+    const room = rooms.get(roomCode);
+    if (!room) continue;
+    const slot = request.recipientAccountId === accountId ? 1 :
+      (request.senderAccountId === accountId ? 2 : null);
+    if (!slot) continue;
+    const memberEntry = [...room.members].find(([, member]) => member.slot === slot);
+    if (!memberEntry) continue;
+    const member = memberEntry[1];
+    member.pushSub = null;
+    member.fcmToken = null;
+    member.apnsToken = null;
+    member.apnsEnvironment = null;
+    member.voipToken = null;
+    member.voipEnvironment = null;
+    member.nativeRoomHandle = null;
+    affected.set(roomCode, memberEntry);
+  }
+  if (postgresEnabled) {
+    await Promise.all([...affected].map(([roomCode, [memberToken, member]]) =>
+      postgresStore.upsertConversationMember(roomCode, member.slot, memberToken, member)));
+  }
+}
+
+async function replaceAccountLoginSession(accountId, account, deviceHash, options = {}) {
+  const now = Date.now();
+  const activeSessions = (account.sessions || []).filter(session => session.expiresAt > now);
+  const revokedTokenHashes = new Set(activeSessions.map(session => session.tokenHash));
+  const differentDevice = activeSessions.some(session => !deviceHash || !session.deviceHash || session.deviceHash !== deviceHash);
+
+  if (differentDevice) {
+    const payload = JSON.stringify({
+      title:options.notificationTitle || 'Vaultlix signed out',
+      body:options.notificationBody || 'Your Vaultlix identity was signed in on another device. This device has been signed out.',
+      tag:options.notificationTag || 'vaultlix-session-replaced',
+      sessionReplaced:true,
+      accountId,
+    });
+    const previousDestinations = account.pushDestinations || [];
+    for (const destination of previousDestinations) {
+      if (deviceHash && destination.deviceHash === deviceHash) continue;
+      sendMemberPush(destination, payload, { urgency:'high', TTL:3600, label:'session replacement' });
+    }
+    account.pushDestinations = previousDestinations.filter(destination => deviceHash && destination.deviceHash === deviceHash);
+    await clearAccountRoomPushDestinations(accountId, account);
+  }
+
+  account.sessions = [];
+  closeReplacedAccountSockets(accountId, revokedTokenHashes, differentDevice);
+  return newAccountSession(account, deviceHash);
 }
 
 function hasLiveInboxSubscription(roomCode, token, exceptSocket = null) {
@@ -3836,6 +5078,105 @@ const SIGNAL_TYPE_ALLOWLIST = new Set([
   'call-invite', 'call-ringing', 'call-accept', 'call-decline', 'call-busy',
   'call-hangup', 'offer', 'answer', 'ice-candidate', 'call-reaction',
 ]);
+const CALL_TERMINAL_TTL_MS = 2 * 60 * 1000;
+
+function activeCallTerminalFor(room, recipientToken, now = Date.now()) {
+  const terminal = room?.callTerminal;
+  if (!terminal || typeof terminal.inviteId !== 'string' ||
+      sameConversationToken(terminal.endedByToken || '', recipientToken) || now - terminal.endedAt > CALL_TERMINAL_TTL_MS) {
+    if (terminal && now - (terminal.endedAt || 0) > CALL_TERMINAL_TTL_MS) room.callTerminal = null;
+    return null;
+  }
+  return terminal;
+}
+
+function sendCallTerminalControl(socket, terminal) {
+  if (!socket || socket.readyState !== socket.OPEN || !terminal) return false;
+  try {
+    socket.send(JSON.stringify({
+      type:'call-terminal', inviteId:terminal.inviteId,
+      endedAt:terminal.endedAt, callOutcome:terminal.callOutcome || 'ended',
+    }));
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function sendLocalSignalByRoute(routeId, signal, allOwners = false) {
+  const nativeSocket = nativeCallSignalingSocketsByRoute.get(routeId);
+  const webSocket = signalingSocketsByRoute.get(routeId);
+  const sockets = allOwners
+    ? new Set([nativeSocket, webSocket])
+    : new Set([nativeSocket && nativeSocket.readyState === nativeSocket.OPEN ? nativeSocket : webSocket]);
+  let delivered = false;
+  for (const socket of sockets) {
+    if (!socket || socket.readyState !== socket.OPEN) continue;
+    try { socket.send(JSON.stringify(signal)); delivered = true; } catch (error) {}
+  }
+  return delivered;
+}
+
+async function deliverSignalToToken(token, signal, { allOwners = false } = {}) {
+  // Redis owns the cross-replica routing decision when available, including
+  // native-over-WebView priority. If the lease resolves to this process (or
+  // Redis is unavailable), the existing in-process fast path remains intact.
+  const remoteDelivered = realtimeCoordinator.ready
+    ? await realtimeCoordinator.routeSignal(token, signal, { allOwners }) : false;
+  if (remoteDelivered && !allOwners) return true;
+  const localDelivered = sendLocalSignalByRoute(opaqueRouteId(token), signal, allOwners);
+  return remoteDelivered || localDelivered;
+}
+
+async function deliverSignalToMember(tokenOrHash, signal, { allOwners = false } = {}) {
+  const routeId = conversationTokenRoute(tokenOrHash);
+  const remoteDelivered = realtimeCoordinator.ready
+    ? await realtimeCoordinator.routeSignalByRoute(routeId, signal, { allOwners }) : false;
+  if (remoteDelivered && !allOwners) return true;
+  const localDelivered = sendLocalSignalByRoute(routeId, signal, allOwners);
+  return remoteDelivered || localDelivered;
+}
+
+function handleRealtimeEvent(event) {
+  if (event.type === 'conversation-invalidated' && typeof event.roomCode === 'string') {
+    evictConversationCache(event.roomCode);
+    return;
+  }
+  if (event.type === 'signal' && event.routeId && event.signal) {
+    sendLocalSignalByRoute(event.routeId, event.signal, event.allOwners === true);
+    return;
+  }
+  if (event.type === 'inbox-room' && typeof event.roomCode === 'string') {
+    // Presence carries only a one-way token hash across Redis. Update this
+    // replica's live projection without putting a room bearer credential on
+    // the broker, then wake the peer sockets already connected here.
+    if (event.change === 'presence' && event.excludeRouteId && event.payload && typeof event.payload.online === 'boolean') {
+      const room = rooms.get(event.roomCode);
+      if (room) {
+        for (const [memberToken, member] of room.members) {
+          if (conversationTokenRoute(memberToken) === event.excludeRouteId) {
+            member.lastSeen = event.payload.online ? Date.now() : 0;
+            break;
+          }
+        }
+      }
+    }
+    if (!['presence', 'typing'].includes(event.change)) evictConversationCache(event.roomCode);
+    publishInboxRoomLocal(event.roomCode, event.change, {
+      excludeRouteId:event.excludeRouteId || null, payload:event.payload || null,
+    });
+    return;
+  }
+  if (event.type === 'inbox-account' && event.accountRouteId) {
+    publishInboxAccountLocal(null, event.accountRouteId, event.change, event.payload || null);
+    return;
+  }
+  if (event.type === 'account-session-close' && event.accountRouteId && Array.isArray(event.revokedTokenHashes)) {
+    closeReplacedAccountSocketsLocal(
+      null, event.accountRouteId, new Set(event.revokedTokenHashes), event.replacedByAnotherDevice === true,
+    );
+  }
+}
 
 srv.on('upgrade', (req, socket, head) => {
   let u;
@@ -3864,6 +5205,7 @@ srv.on('upgrade', (req, socket, head) => {
 inboxWss.on('connection', (ws) => {
   ws.authenticated = false;
   ws.isAlive = true;
+  ws.connectionId = crypto.randomUUID();
   ws.inboxSubscriptions = new Map();
   ws.on('pong', () => {
     ws.isAlive = true;
@@ -3871,6 +5213,7 @@ inboxWss.on('connection', (ws) => {
     for (const [code, token] of ws.inboxSubscriptions) {
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = now;
+      realtimeCoordinator.markPresence(code, token, ws.connectionId).catch(() => {});
     }
   });
   ws.on('error', (err) => console.error('Inbox socket error:', err.message));
@@ -3879,7 +5222,7 @@ inboxWss.on('connection', (ws) => {
   }, 5000);
   authTimer.unref();
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { msg = null; }
     if (!ws.authenticated) {
@@ -3892,10 +5235,16 @@ inboxWss.on('connection', (ws) => {
       clearTimeout(authTimer);
       ws.authenticated = true;
       ws.accountId = msg.accountId;
+      ws.sessionTokenHash = crypto.createHash('sha256').update(msg.sessionToken).digest('hex');
       let sockets = inboxAccountSockets.get(msg.accountId);
       if (!sockets) { sockets = new Set(); inboxAccountSockets.set(msg.accountId, sockets); }
       sockets.add(ws);
-      try { ws.send(JSON.stringify({ type:'ready', sequence:inboxSequenceByAccount.get(msg.accountId) || 0 })); } catch (e) {}
+      ws.accountRouteId = opaqueRouteId(msg.accountId);
+      let routedSockets = inboxAccountSocketsByRoute.get(ws.accountRouteId);
+      if (!routedSockets) { routedSockets = new Set(); inboxAccountSocketsByRoute.set(ws.accountRouteId, routedSockets); }
+      routedSockets.add(ws);
+      const sharedSequence = await realtimeCoordinator.currentInboxSequence(msg.accountId);
+      try { ws.send(JSON.stringify({ type:'ready', sequence:sharedSequence ?? inboxSequenceByAccount.get(msg.accountId) ?? 0 })); } catch (e) {}
       return;
     }
     if (!msg || msg.type !== 'subscribe' || !Array.isArray(msg.conversations)) return;
@@ -3903,31 +5252,43 @@ inboxWss.on('connection', (ws) => {
     for (const item of msg.conversations.slice(0, 20)) {
       if (!item || typeof item.code !== 'string' || typeof item.token !== 'string') continue;
       const code = item.code.toLowerCase().trim();
-      const room = rooms.get(code);
+      const room = await ensureConversationLoaded(code);
       if (room?.members.has(item.token)) subscriptions.set(code, item.token);
     }
+    const previousSubscriptions = new Map(ws.inboxSubscriptions);
     replaceInboxSubscriptions(ws, subscriptions);
+    for (const [code, token] of previousSubscriptions) {
+      if (subscriptions.get(code) === token) continue;
+      await realtimeCoordinator.clearPresence(code, token, ws.connectionId);
+    }
     for (const [code, token] of subscriptions) {
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = Date.now();
-      publishInboxRoom(code, 'presence', { excludeToken:token });
+      await realtimeCoordinator.markPresence(code, token, ws.connectionId);
+      publishInboxRoom(code, 'presence', { excludeToken:token, payload:{ online:true } });
     }
     try { ws.send(JSON.stringify({ type:'subscribed', count:subscriptions.size })); } catch (e) {}
   });
 
-  ws.on('close', () => {
+  ws.on('close', async () => {
     if (!ws.accountId) return;
     const sockets = inboxAccountSockets.get(ws.accountId);
     if (!sockets) return;
     sockets.delete(ws);
     if (sockets.size === 0) inboxAccountSockets.delete(ws.accountId);
+    const routedSockets = inboxAccountSocketsByRoute.get(ws.accountRouteId);
+    if (routedSockets) {
+      routedSockets.delete(ws);
+      if (routedSockets.size === 0) inboxAccountSocketsByRoute.delete(ws.accountRouteId);
+    }
     const closingSubscriptions = new Map(ws.inboxSubscriptions);
     replaceInboxSubscriptions(ws, new Map());
     for (const [code, token] of closingSubscriptions) {
-      if (hasLiveInboxSubscription(code, token, ws)) continue;
+      const stillOnlineElsewhere = await realtimeCoordinator.clearPresence(code, token, ws.connectionId);
+      if (hasLiveInboxSubscription(code, token, ws) || stillOnlineElsewhere === true) continue;
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = 0;
-      publishInboxRoom(code, 'presence', { excludeToken:token });
+      publishInboxRoom(code, 'presence', { excludeToken:token, payload:{ online:false } });
     }
   });
 });
@@ -3946,15 +5307,23 @@ wss.on('connection', (ws) => {
   // handler below still fires and cleans up signalingSockets same as any
   // other disconnect.
   ws.on('error', (err) => {
-    console.error(`Signal socket error (room ${ws.roomCode ? logCode(ws.roomCode) : 'pre-auth'}):`, err.message);
+    console.error(`Signal socket error (conversation ${ws.roomCode ? logCode(ws.roomCode) : 'pre-auth'}):`, err.message);
   });
 
   // Clean up on close regardless of whether auth ever completed — if it
   // didn't, ws.token was never set, so the signalingSockets lookup below is
   // just a harmless no-op.
   ws.on('close', () => {
-    if (ws.token && signalingSockets.get(ws.token) === ws) signalingSockets.delete(ws.token);
-    if (ws.token && nativeCallSignalingSockets.get(ws.token) === ws) nativeCallSignalingSockets.delete(ws.token);
+    if (ws.token && signalingSockets.get(ws.token) === ws) {
+      signalingSockets.delete(ws.token);
+      signalingSocketsByRoute.delete(ws.routeId);
+      realtimeCoordinator.unregisterSocket(ws.token, 'web').catch(() => {});
+    }
+    if (ws.token && nativeCallSignalingSockets.get(ws.token) === ws) {
+      nativeCallSignalingSockets.delete(ws.token);
+      nativeCallSignalingSocketsByRoute.delete(ws.routeId);
+      realtimeCoordinator.unregisterSocket(ws.token, 'native').catch(() => {});
+    }
   });
 
   // An unauthenticated socket that never sends anything gets 5 seconds to
@@ -3964,7 +5333,7 @@ wss.on('connection', (ws) => {
     if (!ws.authenticated) { try { ws.close(4003, 'Auth timeout'); } catch(e) {} }
   }, 5000);
 
-  ws.once('message', (raw) => {
+  ws.once('message', async (raw) => {
     clearTimeout(authTimer);
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { msg = null; }
@@ -3974,7 +5343,7 @@ wss.on('connection', (ws) => {
     }
     const roomCode = msg.code.toLowerCase().trim();
     const token = msg.token;
-    const room = rooms.get(roomCode);
+    const room = await ensureConversationLoaded(roomCode);
     if (!room || !room.members.has(token)) {
       try { ws.close(4001, 'Unauthorized'); } catch(e) {}
       return;
@@ -3983,6 +5352,7 @@ wss.on('connection', (ws) => {
     ws.authenticated = true;
     ws.roomCode = roomCode;
     ws.token = token;
+    ws.routeId = opaqueRouteId(token);
     ws.nativeCallOwner = msg.nativeCall === true;
 
     // A reconnect (network switch, tab backgrounded and resumed, etc.)
@@ -3992,6 +5362,9 @@ wss.on('connection', (ws) => {
     const existing = socketRegistry.get(token);
     if (existing && existing !== ws) { try { existing.close(4002, 'Replaced by new connection'); } catch(e) {} }
     socketRegistry.set(token, ws);
+    const routedRegistry = ws.nativeCallOwner ? nativeCallSignalingSocketsByRoute : signalingSocketsByRoute;
+    routedRegistry.set(ws.routeId, ws);
+    realtimeCoordinator.registerSocket(token, ws.nativeCallOwner ? 'native' : 'web').catch(() => {});
     // Explicit authentication acknowledgement for native call clients.
     // URLSessionWebSocketTask may accept sends while its connection/auth
     // handshake is still in flight; without an acknowledgement the native
@@ -3999,21 +5372,37 @@ wss.on('connection', (ws) => {
     // forever. Browser clients safely ignore this envelope-free control
     // frame, while the iOS engine uses it to flush its bounded signal queue.
     try { ws.send(JSON.stringify({ type: 'ready' })); } catch (e) {}
+    // A hang-up is terminal state, not a disposable negotiation packet. If
+    // this member's socket was suspended at the instant the peer ended the
+    // call, replay the short-lived marker immediately after authentication.
+    // It contains only the random per-call ID; no room credential or media.
+    sendCallTerminalControl(ws, activeCallTerminalFor(room, token));
+    const sharedCall = await realtimeCoordinator.getCallState(roomCode);
+    if (sharedCall?.status === 'terminal' && sharedCall.inviteId &&
+        !sameConversationToken(sharedCall.endedByTokenHash || '', token)) {
+      sendCallTerminalControl(ws, {
+        inviteId:sharedCall.inviteId, endedAt:sharedCall.endedAt,
+        callOutcome:sharedCall.outcome || 'ended',
+      });
+    }
     // Pseudonymized room code only — no token material at all (even a
     // truncated bearer token is credential material and has no business in
     // a log line), enough to confirm connectivity during testing without
     // logging anything that identifies a person, a device, or any
     // message/signal content.
-    console.log(`Signal socket connected: room ${logCode(roomCode)}`);
+    console.log(`Signal socket connected: conversation ${logCode(roomCode)}`);
 
     ws.isAlive = true;
-    ws.on('pong', () => { ws.isAlive = true; });
+    ws.on('pong', () => {
+      ws.isAlive = true;
+      realtimeCoordinator.registerSocket(token, ws.nativeCallOwner ? 'native' : 'web').catch(() => {});
+    });
 
     // Real signaling traffic only starts arriving now that this socket is
     // authenticated — everything below is unchanged from before, it's just
     // registered here (post-auth) instead of unconditionally at connection
     // time.
-    ws.on('message', (raw2) => {
+    ws.on('message', async (raw2) => {
       let msg2;
       try { msg2 = JSON.parse(raw2); } catch (e) { return; }
       if (!msg2 || typeof msg2.type !== 'string' || typeof msg2.envelope !== 'string') return;
@@ -4048,10 +5437,18 @@ wss.on('connection', (ws) => {
       // renegotiation), on top of the call-state messages already flowing.
       // 60/10s comfortably covers that — the client's own call-invite retry
       // loop alone is only 1 every 3s, sustained, not bursty.
-      if (rateLimited(`sig:${token}`, 60, 10 * 1000)) return;
+      if (await rateLimited(`sig:${token}`, 60, 10 * 1000)) return;
 
-      const room2 = rooms.get(roomCode);
+      const room2 = await ensureConversationLoaded(roomCode);
       if (!room2 || !room2.members.has(token)) { try { ws.close(4001, 'No longer in room'); } catch(e) {} return; }
+      const sharedCallState = await realtimeCoordinator.getCallState(roomCode);
+      if (sharedCallState) {
+        room2.nativeCallId = room2.nativeCallId || sharedCallState.callId || null;
+        room2.nativeInviteId = room2.nativeInviteId || sharedCallState.inviteId || null;
+        room2.nativeCalleeToken = room2.nativeCalleeToken || sharedCallState.calleeTokenHash || null;
+        room2.ringingUntil = Math.max(room2.ringingUntil || 0, Number(sharedCallState.ringingUntil || 0));
+        room2.activeCall = room2.activeCall || sharedCallState.status === 'active';
+      }
       room2.lastActivity = Date.now();
 
       // A terminal native action can race the caller's already-scheduled
@@ -4066,23 +5463,22 @@ wss.on('connection', (ws) => {
       // queue, no retry, no persistence — same "never stored" posture as
       // everything else in this app.
       for (const [tok, peerMember] of room2.members) {
-        if (tok === token) continue;
-        const nativePeerWs = nativeCallSignalingSockets.get(tok);
-        const peerWs = nativePeerWs && nativePeerWs.readyState === nativePeerWs.OPEN
-          ? nativePeerWs
-          : signalingSockets.get(tok);
-        if (peerWs && peerWs.readyState === peerWs.OPEN) {
-          // sessionId is a random per-page-load nonce the client uses to tell
-          // "the peer's session actually restarted" apart from "this looks
-          // like a replay" in its own sequence-number check — meaningless to
-          // this server, just forwarded along with everything else opaque.
-          peerWs.send(JSON.stringify({ type: msg2.type, from: token, sessionId: msg2.sessionId, inviteId: msg2.inviteId, envelope: msg2.envelope }));
+        if (sameConversationToken(tok, token)) continue;
+        const relayedSignal = {
+          type:msg2.type, from:opaqueRouteId(token), sessionId:msg2.sessionId,
+          inviteId:msg2.inviteId,
+          terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
+            ? msg2.terminalReason : undefined,
+          envelope:msg2.envelope,
+        };
+        const delivered = await deliverSignalToMember(tok, relayedSignal);
+        if (delivered) {
           // No success log here on purpose — this fires on every single
           // signaling message (every ICE candidate included), which was
           // flooding Railway's logs. The dropped-peer case below is the one
           // actually worth seeing.
         } else {
-          console.log(`Signal dropped (peer not connected): room ${logCode(roomCode)} type ${msg2.type}`);
+          console.log(`Signal dropped (peer not connected): conversation ${logCode(roomCode)} type ${msg2.type}`);
         }
 
         // A dropped call-invite means the receiver's phone was locked or the
@@ -4108,6 +5504,7 @@ wss.on('connection', (ws) => {
             // zero. Treating it as new created a second CallKit call roughly
             // 10 seconds after the first was answered.
             : !(nativeCallInProgress || room2.activeCall || (room2.ringingUntil && room2.ringingUntil > now));
+          if (isNewInvitation) room2.callTerminal = null;
           // A new invitation supersedes any stale native ring retained for
           // this room. Close that old surface before issuing the new call ID
           // so OEM lock screens cannot leave both activities around.
@@ -4134,14 +5531,21 @@ wss.on('connection', (ws) => {
             room2.ringingUntil = now + 30000; // matches client CALL_RING_TIMEOUT_MS
           }
           if (inviteId) room2.nativeInviteId = inviteId;
+          if (isNewInvitation || !room2.nativeCallId) {
+            room2.nativeCallId = crypto.randomUUID();
+            room2.nativeCalleeToken = tok;
+          }
+          await realtimeCoordinator.setCallState(roomCode, {
+            callId:room2.nativeCallId, inviteId:inviteId || '', status:'ringing',
+            callerTokenHash:conversationTokenHash(token), calleeTokenHash:conversationTokenHash(tok),
+            ringingUntil:room2.ringingUntil,
+          }, 120);
           if (!alreadyRinging && (peerMember.voipToken || hasPushDestination(peerMember))) {
             const caller = room2.members.get(token);
-            const nativeCallId = crypto.randomUUID();
-            room2.nativeCallId = nativeCallId;
+            const nativeCallId = room2.nativeCallId;
             // Retain the callee member token for both native platforms. It is
             // server-side room state only and lets a native Android decline
             // identify the caller without exposing room credentials.
-            room2.nativeCalleeToken = tok;
             // code rides along so tapping the notification (see sw.js's
             // notificationclick) can jump straight to the room the call is
             // actually in, rather than whichever room the app happens to open
@@ -4154,6 +5558,7 @@ wss.on('connection', (ws) => {
               isCall: true,
               caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId,
+              inviteId: inviteId || '',
               code: roomCode,
             });
             if (peerMember.voipToken) {
@@ -4164,6 +5569,7 @@ wss.on('connection', (ws) => {
                 aps: { 'content-available': 1 },
                 action: 'incoming',
                 callId: nativeCallId,
+                inviteId: inviteId || '',
                 caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
                 hasVideo: false,
                 // Opaque random handle generated and stored only on the
@@ -4205,12 +5611,40 @@ wss.on('connection', (ws) => {
           }
           room2.ringingUntil = 0;
           room2.activeCall = true;
+          const sharedCall = await realtimeCoordinator.getCallState(roomCode);
+          if (sharedCall?.callId) await realtimeCoordinator.setCallState(roomCode, {
+            ...sharedCall, status:'active', ringingUntil:0,
+          }, 120);
         } else if (msg2.type === 'call-decline' || msg2.type === 'call-busy') {
-          markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId);
+          const now = Date.now();
+          const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
+          const callOutcome = msg2.type === 'call-decline' ? 'declined' : 'ended';
+          markInviteTerminated(room2, terminalInviteId, now);
+          if (terminalInviteId) {
+            room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome };
+            try { ws.send(JSON.stringify({ type:'call-hangup-ack', inviteId:terminalInviteId })); } catch (e) {}
+            await deliverSignalToMember(tok, {
+              type:'call-terminal', inviteId:room2.callTerminal.inviteId,
+              endedAt:room2.callTerminal.endedAt, callOutcome:room2.callTerminal.callOutcome,
+            }, { allOwners:true });
+          }
+          const nativeCallId = room2.nativeCallId;
           room2.ringingUntil = 0;
           room2.activeCall = false;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
+          if (nativeCallId) await realtimeCoordinator.setCallState(roomCode, {
+            callId:nativeCallId, inviteId:terminalInviteId || '', status:'terminal',
+            outcome:callOutcome, endedAt:now, ringingUntil:0,
+            callerTokenHash:conversationTokenHash(tok), calleeTokenHash:conversationTokenHash(token),
+            endedByTokenHash:conversationTokenHash(token),
+          }, 120);
+          if (msg2.type === 'call-decline' && peerMember.fcmToken) {
+            sendFcmNotification(peerMember, JSON.stringify({
+              isCallEnd:true, missedCall:false, callOutcome:'declined',
+              callId:nativeCallId || '', inviteId:terminalInviteId || '', code:roomCode,
+            }), 30).catch(() => {});
+          }
         } else if (msg2.type === 'call-hangup') {
           // A hangup landing while the ring window is still open means
           // nobody ever answered — the caller gave up (their own 30s ring
@@ -4221,28 +5655,61 @@ wss.on('connection', (ws) => {
           // surfaced anything past that first notification — same as a phone
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
-          markInviteTerminated(room2, msg2.inviteId || room2.nativeInviteId, now);
-          const wasStillRinging = room2.ringingUntil && room2.ringingUntil > now;
+          const callOutcome = ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
+            ? msg2.terminalReason
+            : (room2.ringingUntil ? 'unanswered' : 'ended');
+          const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
+          markInviteTerminated(room2, terminalInviteId, now);
+          if (terminalInviteId) {
+            room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome };
+            // Confirm server receipt so web and native senders can keep the
+            // signaling socket alive only until the terminal state is safe.
+            try { ws.send(JSON.stringify({ type:'call-hangup-ack', inviteId:terminalInviteId })); } catch (e) {}
+            // Deliver to both possible state owners. During native calls the
+            // foreground WebView and native engine may briefly coexist; both
+            // must stop rather than leaving a timer or CallKit surface alive.
+            await deliverSignalToMember(tok, {
+              type:'call-terminal', inviteId:room2.callTerminal.inviteId,
+              endedAt:room2.callTerminal.endedAt, callOutcome:room2.callTerminal.callOutcome,
+            }, { allOwners:true });
+          }
+          // A caller's 30-second timeout can reach the server a few
+          // milliseconds after ringingUntil. The non-zero marker still means
+          // the callee never answered: both native and WebView answer paths
+          // clear it immediately. Classify from that state rather than the
+          // wall-clock edge so an unanswered call is never lost from history.
+          const wasStillRinging = Boolean(room2.ringingUntil);
+          const isMissedCall = wasStillRinging && callOutcome === 'unanswered';
           room2.ringingUntil = 0;
           room2.activeCall = false;
           const nativeCallId = room2.nativeCallId;
           const nativeCallee = room2.nativeCalleeToken ? room2.members.get(room2.nativeCalleeToken) : null;
           room2.nativeCallId = null;
           room2.nativeCalleeToken = null;
-          if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId).catch(() => {});
+          if (nativeCallId) await realtimeCoordinator.setCallState(roomCode, {
+            callId:nativeCallId, inviteId:terminalInviteId || '', status:'terminal',
+            outcome:callOutcome, endedAt:now, ringingUntil:0,
+            callerTokenHash:conversationTokenHash(token), calleeTokenHash:conversationTokenHash(tok),
+            endedByTokenHash:conversationTokenHash(token),
+          }, 120);
+          if (nativeCallId && nativeCallee) sendNativeCallEnd(nativeCallee, nativeCallId, callOutcome).catch(() => {});
           // Android's full-screen incoming-call surface is native too. Its
           // WebSocket may be frozen while the keyguard is up, so send a
           // data-only FCM terminal event keyed to this call. This closes the
           // native UI without displaying a second notification.
           if (peerMember.fcmToken) {
+            const caller = room2.members.get(token);
             sendFcmNotification(peerMember, JSON.stringify({
               isCallEnd: true,
-              missedCall: !!wasStillRinging,
+              missedCall: isMissedCall,
+              callOutcome,
+              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId || '',
+              inviteId: terminalInviteId || '',
               code: roomCode,
             }), 30).catch(() => {});
           }
-          if (wasStillRinging && hasPushDestination(peerMember)) {
+          if (isMissedCall && hasPushDestination(peerMember)) {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
               title: 'Vaultlix',
@@ -4252,6 +5719,7 @@ wss.on('connection', (ws) => {
               missedCall: true,
               caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId || '',
+              inviteId: terminalInviteId || '',
               code: roomCode,
             });
             sendMemberPush(peerMember, missedPayload, { urgency: 'high', TTL: 3600, label: 'missed call' });
@@ -4296,26 +5764,7 @@ const ACCOUNTS_PATH = path.join(SNAPSHOT_DIR, 'accounts.json');
 const ACCOUNTS_TMP_PATH = ACCOUNTS_PATH + '.tmp';
 const NUMBER_LIFECYCLE_PATH = path.join(SNAPSHOT_DIR, 'private-number-lifecycle.json');
 const NUMBER_LIFECYCLE_TMP_PATH = NUMBER_LIFECYCLE_PATH + '.tmp';
-const REPORTS_PATH = path.join(SNAPSHOT_DIR, 'safety-reports.jsonl');
-const REPORTS_TMP_PATH = REPORTS_PATH + '.tmp';
 const SAFETY_REPORT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
-
-function appendSafetyReport(report) {
-  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
-  let retained = [];
-  if (fs.existsSync(REPORTS_PATH)) {
-    const cutoff = Date.now() - SAFETY_REPORT_RETENTION_MS;
-    retained = fs.readFileSync(REPORTS_PATH, 'utf8').split('\n').filter(Boolean).flatMap(line => {
-      try { const parsed = JSON.parse(line); return Date.parse(parsed.createdAt) >= cutoff ? [parsed] : []; }
-      catch (e) { return []; }
-    });
-  }
-  retained.push(report);
-  retained = retained.slice(-10000);
-  fs.writeFileSync(REPORTS_TMP_PATH, retained.map(item => JSON.stringify(item)).join('\n') + '\n', { encoding:'utf8', mode:0o600 });
-  fs.renameSync(REPORTS_TMP_PATH, REPORTS_PATH);
-  fs.chmodSync(REPORTS_PATH, 0o600);
-}
 
 // Anonymous account ciphertext must survive every restart independently of
 // the live-room checkpoint. Atomic replacement prevents a power loss or
@@ -4365,14 +5814,17 @@ function hydrateAccounts(entries, source) {
       if (!record || record.version !== 2 || !normalizePrivateNumber(record.privateNumber) || !normalizeDisplayName(record.displayName) || !record.authVerifier || !record.recoveryVerifier ||
           !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
           !validEncryptedField(record.bundle, 1024 * 1024)) continue;
-      record.sessions = (record.sessions || []).filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || '')).slice(-5);
+      record.sessions = (record.sessions || [])
+        .filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || ''))
+        .map(session => ({ ...session, deviceHash:/^[a-f0-9]{64}$/.test(session.deviceHash || '') ? session.deviceHash : null }))
+        .slice(-1);
       record.lastActiveAt = Number(record.lastActiveAt) || Date.now();
-      record.numberCategory = ['standard','reserve','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
+      record.numberCategory = ['standard','preferred','reserve','zeros','sequence','repeated','pairs','admin-gift'].includes(record.numberCategory) ? record.numberCategory : 'standard';
       fallbackCreationOrder++;
       record.creationOrder = Number(record.creationOrder) || fallbackCreationOrder;
       const assignedTier = assignAccountTier({
         creationOrder:record.creationOrder,
-        reservationTier:record.numberCategory === 'standard' ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE,
+        reservationTier:['standard','preferred'].includes(record.numberCategory) ? NUMBER_TIERS.STANDARD : NUMBER_TIERS.RESERVE,
       });
       record.tier = [NUMBER_TIERS.STANDARD, NUMBER_TIERS.RESERVE, NUMBER_TIERS.FOUNDING].includes(record.tier)
         ? record.tier
@@ -4383,15 +5835,20 @@ function hydrateAccounts(entries, source) {
       record.reclaimWarnings = Array.isArray(record.reclaimWarnings)
         ? record.reclaimWarnings.filter(id => RECLAIM_WARNING_WINDOWS.some(item => item.id === id))
         : [];
+      record.dailyLookGeneratedAt = Number(record.dailyLookGeneratedAt) || null;
+      record.dailyLookWindowStartedAt = Number(record.dailyLookWindowStartedAt) || null;
+      record.dailyLookGenerationCount = Math.max(0, Number(record.dailyLookGenerationCount) || 0);
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
-          return fcmToken ? [{ platform:'android', fcmToken, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+          const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
+          return fcmToken ? [{ platform:'android', fcmToken, deviceHash, updatedAt:Number(destination.updatedAt) || 0 }] : [];
         }
         if (destination?.platform === 'ios') {
           const apnsToken = validateApnsToken(destination.apnsToken);
           const apnsEnvironment = destination.apnsEnvironment === 'sandbox' ? 'sandbox' : 'production';
-          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+          const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
+          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, deviceHash, updatedAt:Number(destination.updatedAt) || 0 }] : [];
         }
         return [];
       }).slice(-10);
@@ -4463,7 +5920,7 @@ function saveSnapshot({ log = true } = {}) {
     fs.chmodSync(SNAPSHOT_TMP_PATH, 0o600);
     fs.renameSync(SNAPSHOT_TMP_PATH, SNAPSHOT_PATH);
     fs.chmodSync(SNAPSHOT_PATH, 0o600);
-    if (log) console.log(`Room checkpoint saved: ${entries.length} room(s) -> ${SNAPSHOT_PATH}`);
+    if (log) console.log(`Legacy conversation checkpoint saved: ${entries.length} conversation(s) -> ${SNAPSHOT_PATH}`);
   } catch (e) {
     console.error('Snapshot save failed:', e.message);
   }
@@ -4507,7 +5964,7 @@ function loadSnapshot() {
         const ttl = room.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
         if (now - room.lastActivity > ttl) { expired++; continue; } // would've expired anyway — don't resurrect it
       }
-      room.members = new Map(room.members);
+      room.members = new ConversationMembers(room.members);
       // Calls and sockets are live process state. A graceful-restart snapshot
       // must never resurrect a stale "active call" badge in the dashboard.
       room.activeCall = false;
@@ -4551,7 +6008,7 @@ function loadSnapshot() {
       restored++;
     }
     saveSnapshot({ log: false });
-    console.log(`Room checkpoint restored: ${restored} room(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
+    console.log(`Legacy conversation checkpoint restored: ${restored} conversation(s) (${expired} already expired, discarded). ${droppedPushSubs} stale/invalid push subscription(s) dropped on re-validation.`);
   } catch (e) {
     console.error('Snapshot load failed:', e.message);
   }
@@ -4620,13 +6077,15 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`${signal} received — saving final room checkpoint before exit...`);
+  console.log(`${signal} received — closing Vaultlix services...`);
   saveAnalytics();
   if (!postgresEnabled) {
     saveAccounts();
     savePrivateNumberLifecycle();
   }
-  saveSnapshot();
+  if (!postgresEnabled) saveSnapshot();
+  try { await realtimeCoordinator.close(); } catch (e) { console.error('Redis realtime shutdown failed:', e.message); }
+  try { objectStorage.close(); } catch (e) {}
   try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
   // Belt-and-suspenders: if something (a lingering keep-alive connection,
@@ -4653,16 +6112,71 @@ async function bootstrap() {
     loadAccounts();
     console.warn('DATABASE_URL is not set — using the local account-store fallback.');
   }
+  safetyStore = new SafetyStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
+  await safetyStore.initialize();
+  await safetyStore.prune();
+  setInterval(() => safetyStore.prune().catch(error => console.error('Safety retention failed:', error.message)), 60 * 60 * 1000).unref();
+  if (realtimeCoordinator.enabled) {
+    await realtimeCoordinator.start(handleRealtimeEvent);
+    console.log(`Redis realtime coordination ready (instance ${realtimeCoordinator.instanceId.slice(0, 8)}).`);
+  } else {
+    console.warn('REDIS_URL is not set — calls, presence and WebSockets are limited to this single application replica.');
+  }
+  if (objectStorage.enabled) {
+    await objectStorage.initialize();
+    objectStorageEnabled = true;
+    console.log('Encrypted attachment object storage ready.');
+  } else {
+    console.warn('Object storage is not configured — new image and file attachments cannot be externalized.');
+  }
   // Run once at boot as well as on the six-hour timer. Deploys and restarts
   // must not postpone a due warning or reclamation indefinitely.
   await sweepPrivateNumberRetention();
-  if (!process.env.SNAPSHOT_DIR) {
-    console.warn('SNAPSHOT_DIR not set — durable room checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
+  if (postgresEnabled) {
+    // One-time compatibility import for installations upgrading from the
+    // volume checkpoint. Once PostgreSQL contains conversations, the old
+    // file is retained only as a rollback artifact and is never read or used
+    // to overwrite current database state during ordinary startup.
+    const databaseWasEmpty = (await postgresStore.countActiveConversations()) === 0;
+    let imported = 0;
+    if (databaseWasEmpty) {
+      loadSnapshot();
+      for (const [roomCode, room] of rooms) {
+        await postgresStore.createConversation({
+          id:roomCode, persistent:!!room.persistent,
+          deleteTimer:room.deleteTimer || 0,
+          createdAt:room.createdAt || room.lastActivity || Date.now(),
+          lastMessageAt:room.lastMessageAt || 0,
+        });
+        await postgresStore.saveConversation(roomCode, room);
+        for (const [memberToken, member] of room.members) {
+          await postgresStore.upsertConversationMember(roomCode, member.slot, memberToken, member);
+        }
+        imported++;
+      }
+    }
+    rooms.clear();
+    totalByteSize = 0;
+    console.log(databaseWasEmpty && imported
+      ? `PostgreSQL conversation store ready (${imported} legacy conversation(s) imported; on-demand cache empty).`
+      : 'PostgreSQL conversation store ready (authoritative; on-demand cache empty).');
+  } else {
+    if (!process.env.SNAPSHOT_DIR) {
+      console.warn('SNAPSHOT_DIR not set — legacy conversation checkpoints will use local container disk, which does NOT survive a Railway deploy. Attach a Railway Volume (for example at /data) and set SNAPSHOT_DIR to that mount path.');
+    }
+    loadSnapshot();
+    roomCheckpointTimer = setInterval(() => saveSnapshot({ log: false }), ROOM_CHECKPOINT_INTERVAL_MS);
+    roomCheckpointTimer.unref();
   }
-  loadSnapshot();
-  roomCheckpointTimer = setInterval(() => saveSnapshot({ log: false }), ROOM_CHECKPOINT_INTERVAL_MS);
-  roomCheckpointTimer.unref();
   srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));
+  if (objectStorageEnabled && postgresEnabled) {
+    setImmediate(() => migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message)));
+    const attachmentGarbageTimer = setInterval(() => {
+      sweepAttachmentGarbage().catch(error => console.error('Encrypted attachment cleanup failed:', error.message));
+      migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message));
+    }, ATTACHMENT_GARBAGE_SWEEP_MS);
+    attachmentGarbageTimer.unref();
+  }
 }
 
 bootstrap().catch(err => {

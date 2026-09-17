@@ -37,6 +37,8 @@ final class NativeWebRTCCallEngine: NSObject {
     private var inviteID: String?
     private var inviteRetryGeneration = 0
     private var acceptRetryGeneration = 0
+    private var hangupRetryGeneration = 0
+    private var ending = false
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
 
     private func trace(_ message: String) {
@@ -78,7 +80,7 @@ final class NativeWebRTCCallEngine: NSObject {
     }
 
     @discardableResult
-    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String) -> Bool {
+    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String, inviteID: String) -> Bool {
         guard let stored = NativeCallRoomStore.shared.room(handle: roomHandle) else {
             trace("prepare-outgoing missing-room")
             return false
@@ -89,7 +91,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.room = stored
             self.callID = callID
             self.outgoing = true
-            self.inviteID = UUID().uuidString
+            self.inviteID = inviteID
             self.outgoingCaller = String(caller.prefix(80))
             self.connectSignalingLocked()
         }
@@ -145,11 +147,38 @@ final class NativeWebRTCCallEngine: NSObject {
         }
     }
 
-    func end(callID: UUID, notifyPeer: Bool) {
+    func end(callID: UUID, notifyPeer: Bool, outcome requestedOutcome: String? = nil) {
         queue.async {
             guard self.callID == callID else { return }
-            if notifyPeer { self.sendSignalLocked(type: "call-hangup", payload: [:]) }
-            self.resetLocked()
+            guard notifyPeer else { self.resetLocked(); return }
+            guard !self.ending else { return }
+            let fallback = self.answered ? "ended" : (self.outgoing ? "cancelled" : "declined")
+            let callOutcome = self.normalizedOutcome(requestedOutcome, fallback: fallback)
+            self.ending = true
+            // Stop media immediately, while retaining only encrypted
+            // signaling long enough for the server to acknowledge hang-up.
+            self.peer?.close()
+            self.peer = nil
+            self.audioTrack?.isEnabled = false
+            self.audioTrack = nil
+            self.audioSource = nil
+            self.hangupRetryGeneration += 1
+            let generation = self.hangupRetryGeneration
+            func retry(_ remaining: Int) {
+                guard generation == self.hangupRetryGeneration, self.ending, self.room != nil else { return }
+                self.sendSignalLocked(
+                    type: callOutcome == "declined" ? "call-decline" : "call-hangup",
+                    payload: ["reason": callOutcome]
+                )
+                guard remaining > 1 else {
+                    self.queue.asyncAfter(deadline: .now() + 0.5) {
+                        if generation == self.hangupRetryGeneration { self.resetLocked() }
+                    }
+                    return
+                }
+                self.queue.asyncAfter(deadline: .now() + 0.4) { retry(remaining - 1) }
+            }
+            retry(10)
         }
     }
 
@@ -231,6 +260,23 @@ final class NativeWebRTCCallEngine: NSObject {
             }
             return
         }
+        let wireInviteID = object["inviteId"] as? String
+        if type == "call-hangup-ack" {
+            if ending, wireInviteID == inviteID { resetLocked() }
+            return
+        }
+        if type == "call-terminal" {
+            guard wireInviteID == inviteID, let callID else { return }
+            let outcome = normalizedOutcome(object["callOutcome"] as? String, fallback: "ended")
+            DispatchQueue.main.async {
+                let action = outcome == "cancelled" ? "nativeCancelled" :
+                    (outcome == "unanswered" ? "missed" :
+                        (outcome == "declined" ? "nativeDeclined" : "ended"))
+                VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: action)
+            }
+            resetLocked()
+            return
+        }
         guard let envelope = object["envelope"] as? String else {
             trace("signal ignored-envelope")
             return
@@ -247,6 +293,7 @@ final class NativeWebRTCCallEngine: NSObject {
         switch type {
         case "call-invite":
             guard !outgoing else { return }
+            if let wireInviteID { inviteID = wireInviteID }
             sendSignalLocked(type: "call-ringing", payload: [:])
             if answered { sendSignalLocked(type: "call-accept", payload: [:]) }
         case "call-ringing":
@@ -278,11 +325,12 @@ final class NativeWebRTCCallEngine: NSObject {
             // together instead of leaving a live system call behind.
             if let callID {
                 DispatchQueue.main.async {
-                    VaultlixCallManager.shared.nativeCallDidEnd(
-                        callID: callID,
-                        action: type == "call-decline" ? "nativeDeclined" :
-                            (type == "call-busy" ? "nativeBusy" : "ended")
-                    )
+                    let outcome = self.normalizedOutcome(payload["reason"] as? String, fallback: "ended")
+                    let action = type == "call-decline" ? "nativeDeclined" :
+                        (type == "call-busy" ? "nativeBusy" :
+                            (outcome == "cancelled" ? "nativeCancelled" :
+                                (outcome == "unanswered" ? "missed" : "ended")))
+                    VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: action)
                 }
             }
             resetLocked()
@@ -436,6 +484,9 @@ final class NativeWebRTCCallEngine: NSObject {
         trace("signal sending type=\(type)")
         var wire: [String: Any] = ["type": type, "sessionId": sessionID, "envelope": envelope]
         if let inviteID { wire["inviteId"] = inviteID }
+        if type == "call-hangup" {
+            wire["terminalReason"] = normalizedOutcome(payload["reason"] as? String, fallback: "ended")
+        }
         sendRawLocked(wire)
     }
 
@@ -539,6 +590,7 @@ final class NativeWebRTCCallEngine: NSObject {
         reconnectGeneration += 1
         acceptRetryGeneration += 1
         inviteRetryGeneration += 1
+        hangupRetryGeneration += 1
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
@@ -561,8 +613,14 @@ final class NativeWebRTCCallEngine: NSObject {
         turnAttempt = 0
         offerReceived = false
         outgoing = false
+        ending = false
         inviteID = nil
         outgoingCaller = "Someone"
+    }
+
+    private func normalizedOutcome(_ value: String?, fallback: String) -> String {
+        guard let value, ["cancelled", "unanswered", "declined", "ended"].contains(value) else { return fallback }
+        return value
     }
 }
 

@@ -12,7 +12,7 @@ test('public Private Number is separate from the private random account id', () 
   assert.match(client, /function randomAccountId\(\)/);
   assert.match(server, /const privateNumbers = new Map\(\)/);
   assert.match(server, /version: 2, privateNumber, displayName/);
-  assert.match(server, /function generatePrivateNumberCandidate\(category = 'standard'\)/);
+  assert.match(server, /function generatePrivateNumberCandidate\(category = 'standard', preferredSuffix = ''\)/);
   assert.match(server, /normalizePrivateNumberPolicy/);
 });
 
@@ -24,7 +24,7 @@ test('Private Number profiles and authenticated connection requests are exposed'
   assert.match(client, /Accept connection/);
 });
 
-test('signed-in settings support username changes and encrypted device recovery-code storage', () => {
+test('signed-in settings support username changes and a protected recovery-code reveal', () => {
   assert.match(server, /path === '\/api\/account\/profile'/);
   assert.match(server, /account\.displayName = displayName/);
   assert.match(client, /id="account-profile-display-name"/);
@@ -33,9 +33,10 @@ test('signed-in settings support username changes and encrypted device recovery-
   assert.doesNotMatch(client, /id="settings-account-row" onclick="openAccountPanel/);
   assert.match(client, /profile:\['settings-account-row','settings-profile-controls'\]/);
   assert.match(client, /function populateAccountProfileSettings\(state = loadAccountState\(\)\)/);
-  assert.match(client, /recoveryCodeWrap:await aesEncryptJson\(masterKey/);
-  assert.match(client, /saveRecoveryCodeOnDevice\(event\)/);
-  assert.match(client, /api\('\/api\/account\/recovery-bundle'/);
+  assert.match(client, /recoveryCodeWrap = await aesEncryptJson\(masterKey, \{ recoveryCode \}\)/);
+  assert.match(client, /decryptSavedRecoveryCode/);
+  assert.match(client, /authorizeRecoveryCodeAccess/);
+  assert.doesNotMatch(client, /saveRecoveryCodeOnDevice\(event\)/);
   assert.doesNotMatch(server, /account\.recoveryCode\s*=/);
 });
 
@@ -67,6 +68,15 @@ test('the conversation gear is isolated from global settings', () => {
   assert.doesNotMatch(client, />Profile \/ Details</);
 });
 
+test('an accepted conversation exposes the peer Private Number directly', () => {
+  assert.match(client, /id="settings-peer-private-number"/);
+  assert.match(client, /function populateConversationPeerNumber\(room = getActiveRoom\(\)\)/);
+  assert.match(client, /normalizePrivateNumber\(room\?\.peerPrivateNumber\)/);
+  assert.match(client, /function copyActivePeerPrivateNumber\(\)/);
+  assert.match(client, /function shareActivePeerPrivateNumber\(\)/);
+  assert.match(client, /Visible only inside your connected conversation with this participant\./);
+});
+
 test('new connection keeps its number form visible on Android', () => {
   assert.match(client, /#new-connection-overlay \.account-form\{order:2\}/);
   assert.match(client, /#new-connection-overlay \.account-copy\{order:3/);
@@ -83,10 +93,10 @@ test('vault setup uses the permanent identity name', () => {
 
 test('registration uses a reserved system-generated ten-digit Private Number', () => {
   assert.match(server, /path === '\/api\/account\/private-number'/);
-  assert.match(server, /await reservePrivateNumber\(category\)/);
+  assert.match(server, /await reservePrivateNumber\(category, preferredSuffix\)/);
   assert.match(server, /isNumberAvailable\(privateNumber/);
   assert.match(client, /id="account-private-number-value"/);
-  assert.match(client, /function generatePrivateNumber\(category = 'standard'\)/);
+  assert.match(client, /function generatePrivateNumber\(category = 'standard', preferredSuffix = ''\)/);
   assert.match(client, /Generation limit reached\. Try again in about one hour\./);
   assert.match(client, /Password policy:<\/strong> Minimum 8 characters/);
   assert.match(client, /password\.length < 8/);

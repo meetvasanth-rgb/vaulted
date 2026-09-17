@@ -5,15 +5,38 @@ const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('home page explains the private-number user model', () => {
-  assert.match(client, /aria-label="Your private number\. No SIM required\."/);
-  assert.match(client, /Get my Vaultlix number/);
-  assert.equal((client.match(/Get your own Vaultlix Private Number and connect privately—without sharing your phone number\./g) || []).length, 2);
+test('home page explains the Vaultlix-number user model without repetitive privacy copy', () => {
+  assert.match(client, /aria-label="Your Vaultlix number\. No SIM required\."/);
+  assert.match(client, /Create my number/);
+  assert.equal((client.match(/Dating someone new, selling online or meeting a client\? Share Vaultlix and keep your personal number to yourself\./g) || []).length, 2);
   assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
   assert.match(client, /01 · Identify/);
-  assert.match(client, /02 · Approve/);
-  assert.match(client, /03 · Connect/);
-  assert.match(client, /People must know the exact number and you decide whether to connect/);
+  assert.match(client, /02 · Share/);
+  assert.match(client, /03 · Decide/);
+  assert.match(client, /People need your exact number, and you decide who connects/);
+});
+
+test('create and sign-in homepage actions open the correct account path directly', () => {
+  assert.match(client, /class="landing-hero-action"[^>]*onclick="openCreateAccount\(\)"[^>]*>Create my number/);
+  assert.match(client, /landing-hero-action-secondary"[^>]*onclick="openLoginOrInbox\(\)"[^>]*>Sign in/);
+  assert.match(client, /function openCreateAccount\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('create'\)/);
+  assert.match(client, /id="account-create-form"/);
+  assert.match(client, /function openLoginOrInbox\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('login'\)/);
+});
+
+test('shareable create-number link opens account creation directly', () => {
+  assert.match(client, /const startupCreateNumber = startupParams\.get\('create'\) === '1'/);
+  assert.match(client, /else if \(startupCreateNumber && !loadAccountState\(\)\) \{\s*openCreateAccount\(\);/);
+});
+
+test('home page leads with relatable private-number use cases', () => {
+  assert.match(client, /id="everyday-privacy"/);
+  assert.match(client, /Keep your personal number for the people who already have it\./);
+  assert.match(client, /Dating someone new/);
+  assert.match(client, /Buying or selling/);
+  assert.match(client, /Meeting a client/);
+  assert.match(client, /No app installation required to open your invitation\. You decide whether to accept the connection\. When you’re finished, you can erase the conversation for both people\./);
+  assert.doesNotMatch(client, /Selling on Marketplace/);
 });
 
 test('home page footer does not repeat the FAQ section', () => {
@@ -39,6 +62,37 @@ test('homepage motion demos are isolated from real conversations', () => {
   assert.match(client, /IntersectionObserver/);
   assert.equal(chat.includes('message-demo'), false);
   assert.equal(chat.includes('privacy-scroll-stage'), false);
+});
+
+test('homepage motion system is layered, responsive and accessible', () => {
+  assert.match(client, /id="vaultlix-motion-story"/);
+  assert.match(client, /id="vaultlix-motion-story-scroll"/);
+  assert.match(client, /id="vaultlix-motion-deck"/);
+  assert.equal((client.match(/class="motion-deck-card"/g) || []).length, 3);
+  assert.match(client, /\.motion-story-scroll\{position:relative;margin-top:30px\}/);
+  assert.match(client, /\.motion-deck\{position:relative;height:calc\(100dvh - 36px\)/);
+  assert.match(client, /\.motion-deck-card\{position:absolute;inset:0/);
+  assert.match(client, /class="motion-story" id="vaultlix-motion-story"/);
+  assert.match(client, /classList\.add\('motion-enhanced'\)/);
+  assert.match(client, /const sectionObserver = new IntersectionObserver/);
+  assert.doesNotMatch(client, /renderDeck = progress/);
+  assert.doesNotMatch(client, /deckTrack\.offsetHeight - deckStory\.offsetHeight/);
+  assert.doesNotMatch(client, /scheduleDeckUpdate/);
+  assert.doesNotMatch(client, /const updateCardStack = \(\) =>/);
+  assert.match(client, /homepage-deck-card-one 10\.5s/);
+  assert.match(client, /homepage-deck-card-two 10\.5s/);
+  assert.match(client, /homepage-deck-card-three 10\.5s/);
+  assert.match(client, /const deckObserver = new IntersectionObserver/);
+  assert.match(client, /threshold:\.62/);
+  assert.match(client, /deckObserver\.observe\(deck\)/);
+  assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1!important;animation:none!important/);
+  assert.match(client, /Your line, waiting for you/);
+  assert.match(client, /@keyframes landing-word-build/);
+  assert.match(client, /landing-reveal-accent::after/);
+  assert.match(client, /id="vaultlix-motion-showcase"/);
+  assert.match(client, /showcaseObserver\.observe\(panel\)/);
+  assert.match(client, /\.motion-panel\.is-playing \.message-demo-bubble/);
+  assert.match(client, /privacy-hook-copy motion-reveal/);
 });
 
 test('settings headings share the submenu font family', () => {
@@ -70,6 +124,13 @@ test('contact identity is visually stable and long names remain bounded', () => 
   assert.match(client, /maxlength="32"/);
 });
 
+test('every restored inbox conversation retains a visible activity date', () => {
+  assert.match(client, /inboxActivityAt: new Date\(inboxActivityAt \|\| lastMessageAt \|\| connectedSince \|\| Date\.now\(\)\)/);
+  assert.match(client, /inboxActivityAt:session\.inboxActivityAt \|\| session\.savedAt/);
+  assert.match(client, /const fallbackTime = new Date\(room\.inboxActivityAt \|\| 0\)/);
+  assert.match(client, /Math\.max\(messageTime, serverTime, connectedTime, fallbackTime, 0\)/);
+});
+
 test('one-to-one conversation polish uses safe areas and native visual language', () => {
   assert.match(client, /\.emergency-overlay\{[^}]*safe-area-inset-top/);
   assert.match(client, /vaultlix-native-android \.emergency-overlay/);
@@ -78,9 +139,11 @@ test('one-to-one conversation polish uses safe areas and native visual language'
   assert.doesNotMatch(client, /bar\.innerHTML = '[^']*🔒/);
   assert.match(client, /#s-chat #timer-bar-select\{[^}]*appearance:none!important/);
   assert.match(client, /\.status-dot\.away\{background:#AAA2A6/);
-  assert.match(client, /reconnected = 'Connection restored'/);
-  assert.match(client, /onclick="quickLockFromHeader\(\)"/);
+  assert.doesNotMatch(client, /Connection restored|sys-reconnect-/);
+  assert.match(client, /if \(!isVisibleConversationRecord\(rec\)\) return null/);
+  assert.match(client, /id="chat-peer-avatar"[^>]*onclick="openPeerProfileImage\(\)"/);
   assert.match(client, /function quickLockFromHeader\(\)/);
+  assert.match(client, /onclick="quickLockFromConversationMenu\(\)"/);
 });
 
 test('user-facing legacy vault labels are replaced with conversation language', () => {

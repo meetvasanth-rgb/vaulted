@@ -15,9 +15,13 @@ test('v2 schema stores only ciphertext and supports deletion synchronization', (
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS account_inbox_counters/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS message_receipts/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS message_reactions/);
+  assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS encrypted_attachments/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS attachment_id uuid/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS private_number_lifecycle/);
   assert.match(SCHEMA_SQL, /last_active_at bigint/);
   assert.match(SCHEMA_SQL, /number_protection varchar/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash/);
   assert.doesNotMatch(SCHEMA_SQL, /message_plaintext|plaintext_message|decrypted_content/);
 });
 
@@ -34,16 +38,57 @@ test('conversation writes hash bearer tokens and deletion is transactional', asy
   assert.match(calls[2][0], /DELETE FROM conversation_members/);
   await store.appendEncryptedMessage('room-1', 'bearer-secret', { id:'message-1', seq:1, content:'ciphertext', ts:2 });
   assert.match(calls.at(-5)[0], /BEGIN/);
-  assert.match(calls.at(-4)[0], /INSERT INTO encrypted_messages/);
-  assert.match(calls.at(-3)[0], /UPDATE conversations/);
+  assert.match(calls.at(-4)[0], /UPDATE conversations[\s\S]*next_message_sequence/);
+  assert.match(calls.at(-3)[0], /INSERT INTO encrypted_messages/);
   assert.equal(calls.at(-2)[0], 'COMMIT');
   assert.equal(calls.at(-1)[0], 'RELEASE');
   await store.deleteEncryptedMessage('room-1', 'message-1', 3, 10, 1000);
-  assert.equal(calls.at(-5)[0], 'BEGIN');
+  assert.equal(calls.at(-6)[0], 'BEGIN');
+  assert.match(calls.at(-5)[0], /UPDATE conversations[\s\S]*next_deletion_sequence/);
   assert.match(calls.at(-4)[0], /DELETE FROM encrypted_messages/);
   assert.match(calls.at(-3)[0], /INSERT INTO deletion_tombstones/);
   assert.equal(calls.at(-2)[0], 'COMMIT');
   assert.equal(calls.at(-1)[0], 'RELEASE');
+});
+
+test('conversation mutations reuse the advisory-lock transaction client', async () => {
+  const calls = [];
+  const transactionClient = { query:async (...args) => {
+    calls.push(args);
+    return { rows:/UPDATE conversations/.test(args[0]) ? [{ sequence:'12' }] : [] };
+  } };
+  const store = new PostgresStore('', { pool:{ query:transactionClient.query } });
+  const sequence = await store.appendEncryptedMessage(
+    'room-1', 'bearer-secret',
+    { id:'message-1', seq:1, content:'ciphertext', ts:2 },
+    transactionClient,
+  );
+  assert.equal(sequence, 12);
+  assert.equal(calls.length, 2);
+  assert.match(calls[0][0], /next_message_sequence/);
+  assert.match(calls[1][0], /INSERT INTO encrypted_messages/);
+  assert.ok(!calls.some(call => call[0] === 'BEGIN' || call[0] === 'COMMIT'));
+});
+
+test('durable ciphertext history can rebuild a stale in-memory conversation cache', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    return { rows:[{
+      conversation_id:'room-1', message_id:'message-1',
+      sender_token_hash:'a'.repeat(64), sequence:'7', ciphertext:'ciphertext',
+      created_at:'1234', expires_at:null, view_once:false,
+    }] };
+  } };
+  const store = new PostgresStore('', { pool });
+  const messages = await store.loadEncryptedMessages('room-1', 100, 999);
+  assert.deepEqual(messages, [{
+    id:'message-1', senderTokenHash:'a'.repeat(64), seq:7,
+    content:'ciphertext', ts:1234, expiresAt:null, viewOnce:false, deleteTimerSeconds:0,
+  }]);
+  assert.match(calls[0][0], /ORDER BY sequence DESC[\s\S]*LIMIT \$3/);
+  assert.match(calls[0][0], /ORDER BY sequence ASC/);
+  assert.deepEqual(calls[0][1], ['room-1', 999, 100]);
 });
 
 test('account persistence uses parameterized upserts', async () => {
@@ -61,14 +106,80 @@ test('account persistence uses parameterized upserts', async () => {
   assert.equal(calls[1][1][0], 'a'.repeat(64));
 });
 
+test('Daily Look claim uses the current midnight-reset window in PostgreSQL', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    return { rows:[{ account_id:'a'.repeat(64) }] };
+  } };
+  const store = new PostgresStore('', { pool });
+  const claimed = await store.claimDailyLook('a'.repeat(64), 2000, 1000, 1500, 5);
+  assert.equal(claimed, true);
+  assert.match(calls[0][0], /daily_look_window_started_at <> \$3/);
+  assert.deepEqual(calls[0][1], ['a'.repeat(64), 2000, 1000, 1500, 5]);
+});
+
+test('Private Number reservation pins PostgreSQL parameter types across identity tables', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => { calls.push(args); return { rows:[{ private_number:'2345678901' }] }; } };
+  const store = new PostgresStore('', { pool });
+  const reserved = await store.reservePrivateNumber('2345678901', 'a'.repeat(64), 'standard', 200);
+  assert.equal(reserved, true);
+  assert.match(calls[0][0], /\$1::varchar\(10\)/);
+  assert.match(calls[0][0], /\$2::char\(64\)/);
+  assert.match(calls[0][0], /\$4::bigint/);
+  assert.match(calls[0][0], /reserved_until < \$5::bigint/);
+});
+
+test('conversation expiry sweep pins timestamp and TTL parameters to bigint', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    return { rows:[{ conversation_id:'expired-room' }] };
+  } };
+  const store = new PostgresStore('', { pool });
+  const expired = await store.sweepExpiredConversations(3000, 2000, 1000);
+  assert.deepEqual(expired, ['expired-room']);
+  assert.match(calls[0][0], /\$1::bigint-last_activity/);
+  assert.match(calls[0][0], /THEN \$2::bigint ELSE \$3::bigint/);
+  assert.deepEqual(calls[0][1], [3000, 2000, 1000]);
+});
+
+test('attachment metadata is claimed in the same transaction as its encrypted message', async () => {
+  const calls = [];
+  const transactionClient = { query:async (...args) => {
+    calls.push(args);
+    if (/RETURNING next_message_sequence/.test(args[0])) return { rows:[{ sequence:'4' }], rowCount:1 };
+    return { rows:[], rowCount:1 };
+  } };
+  const store = new PostgresStore('', { pool:{ query:transactionClient.query } });
+  await store.appendEncryptedMessage('room-1', 'bearer-secret', {
+    id:'message-1', seq:1, content:'obj:v1:attachment-id', ts:2,
+    attachmentId:'1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e',
+  }, transactionClient);
+  assert.match(calls[1][0], /UPDATE encrypted_attachments SET[\s\S]*status='attached'/);
+  assert.match(calls[2][0], /attachment_id/);
+  assert.equal(calls[2][1][8], '1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e');
+});
+
 test('production startup fails closed and account mutations await PostgreSQL', () => {
   assert.match(server, /await postgresStore\.initialize\(\)/);
   assert.match(server, /hydrateAccounts\(await postgresStore\.loadAccounts\(\), 'PostgreSQL'\)/);
   assert.match(server, /bootstrap\(\)\.catch\(err => \{[\s\S]*process\.exit\(1\)/);
   assert.match(server, /await persistAccount\(d\.accountId\)/);
   assert.match(server, /await releaseAccountNumber\(d\.accountId, account, 'account-deleted'\)/);
-  assert.match(server, /await postgresStore\.appendEncryptedMessage\(d\.code, d\.token, message\)/);
+  assert.match(server, /await postgresStore\.appendEncryptedMessage\(d\.code, d\.token, message, room\.dbClient \|\| null\)/);
+  assert.match(server, /if \(includeOwn\) await hydrateRoomMessagesFromPostgres\(roomCode, room, room\.dbClient \|\| null\)/);
   assert.match(server, /await postgresStore\.deleteEncryptedMessage\(d\.code, msg\.id/);
+  assert.match(server, /await postgresStore\.withConversationLock\(roomCode/);
+  assert.match(server, /evictConversationCache\(event\.roomCode\)/);
+  assert.match(server, /databaseWasEmpty/);
+});
+
+test('PostgreSQL startup ignores the legacy checkpoint once the database is authoritative', () => {
+  assert.match(server, /const databaseWasEmpty = \(await postgresStore\.countActiveConversations\(\)\) === 0;[\s\S]*if \(databaseWasEmpty\) \{[\s\S]*loadSnapshot\(\)/);
+  assert.doesNotMatch(server, /loadSnapshot\(\);\s*const databaseWasEmpty/);
+  assert.match(server, /PostgreSQL conversation store ready \(authoritative; on-demand cache empty\)/);
 });
 
 test('Private Number retirement is transactional and records its tombstone first', async () => {
@@ -84,4 +195,14 @@ test('Private Number retirement is transactional and records its tombstone first
   assert.match(calls[2][0], /DELETE FROM accounts/);
   assert.equal(calls[3][0], 'COMMIT');
   assert.equal(calls[4][0], 'RELEASE');
+});
+
+test('per-message timer survives database serialization independently of room settings',async()=>{
+  const calls=[];
+  const client={query:async(sql,args)=>{calls.push([sql,args]);return{rows:sql.includes('SELECT * FROM (')?[{message_id:'timed',sequence:1,created_at:100,ciphertext:'encrypted',delete_timer_seconds:300}]:[]};}};
+  const store=new PostgresStore('',{pool:client});
+  await store.appendEncryptedMessage('room','token',{id:'timed',seq:1,ts:100,content:'encrypted',deleteTimerSeconds:300},client);
+  assert.equal(calls.find(([sql])=>sql.includes('INSERT INTO encrypted_messages'))[1][9],300);
+  const messages=await store.loadEncryptedMessages('room');
+  assert.equal(messages[0].deleteTimerSeconds,300);
 });

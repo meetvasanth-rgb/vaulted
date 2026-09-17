@@ -12,6 +12,8 @@
     <string name="native_calling">Calling…</string>
     <string name="native_ringing">Ringing…</string>
     <string name="native_encrypted_relayed">End-to-end encrypted · relayed privately</string>
+    <string name="native_end_to_end_encrypted">End-to-end encrypted</string>
+    <string name="native_end_to_end_encrypted_call">End-to-end encrypted call</string>
     <string name="native_mute">Mute</string>
     <string name="native_unmute">Unmute</string>
     <string name="native_speaker">Speaker</string>

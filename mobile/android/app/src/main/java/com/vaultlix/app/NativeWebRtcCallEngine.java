@@ -82,6 +82,7 @@ final class NativeWebRtcCallEngine {
     private boolean outgoing;
     private boolean answered;
     private boolean offerReceived;
+    private boolean ending;
     private int sequenceOut;
     private int sequenceIn;
     private String peerSessionId;
@@ -138,11 +139,11 @@ final class NativeWebRtcCallEngine {
         return true;
     }
 
-    boolean prepareOutgoing(String handle, String caller) {
+    boolean prepareOutgoing(String handle, String caller, String requestedInviteId) {
         NativeCallRoomStore.Room saved = roomStore.byHandle(handle);
         if (saved == null) return false;
         executor.execute(() -> {
-            prepare(saved, true, caller);
+            prepare(saved, true, caller, requestedInviteId);
             sendInvite();
             scheduleInviteRetry(generation, 9);
         });
@@ -163,32 +164,55 @@ final class NativeWebRtcCallEngine {
 
     void setMuted(boolean muted) { executor.execute(() -> { if (audioTrack != null) audioTrack.setEnabled(!muted); }); }
 
-    void end(boolean notifyPeer) {
+    void end(boolean notifyPeer) { end(notifyPeer, null); }
+
+    void end(boolean notifyPeer, String requestedOutcome) {
         executor.execute(() -> {
-            if (!notifyPeer || socket == null) {
-                reset("ended");
-                return;
-            }
-            Log.i(TAG, "send hangup room=" + currentRoomCode);
-            sendSignal("call-hangup", new JSONObject());
-            // OkHttp queues WebSocket.send asynchronously. Cancelling the
-            // socket in reset() in this same tick discarded the final frame,
-            // leaving the peer's native call alive until its timeout. Give
-            // the encrypted control frame a short bounded flush window.
-            int run = generation;
-            scheduler.schedule(() -> executor.execute(() -> {
-                if (run == generation) reset("ended");
-            }), 250, TimeUnit.MILLISECONDS);
+            if (!notifyPeer) { reset("ended"); return; }
+            if (ending || room == null) return;
+            final String callOutcome = normalizeOutcome(requestedOutcome,
+                    answered ? "ended" : (outgoing ? "cancelled" : "declined"));
+            ending = true;
+            // End microphone/media immediately but retain the authenticated
+            // signal path until the server confirms terminal-state receipt.
+            if (peer != null) { peer.close(); peer.dispose(); peer = null; }
+            if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
+            if (audioSource != null) { audioSource.dispose(); audioSource = null; }
+            pendingIce.clear();
+            retryHangupUntilAcknowledged(generation, 10, callOutcome);
         });
     }
 
+    private void retryHangupUntilAcknowledged(int run, int remaining, String callOutcome) {
+        if (run != generation || !ending || room == null) return;
+        Log.i(TAG, "send hangup room=" + currentRoomCode + " remaining=" + remaining);
+        try {
+            sendSignal("declined".equals(callOutcome) ? "call-decline" : "call-hangup",
+                    new JSONObject().put("reason", callOutcome));
+        }
+        catch (Exception ignored) {}
+        if (remaining <= 1) {
+            scheduler.schedule(() -> executor.execute(() -> {
+                if (run == generation && ending) reset("ended");
+            }), 500, TimeUnit.MILLISECONDS);
+            return;
+        }
+        scheduler.schedule(() -> executor.execute(() -> retryHangupUntilAcknowledged(run, remaining - 1, callOutcome)),
+                400, TimeUnit.MILLISECONDS);
+    }
+
     private void prepare(NativeCallRoomStore.Room saved, boolean isOutgoing, String caller) {
+        prepare(saved, isOutgoing, caller, "");
+    }
+
+    private void prepare(NativeCallRoomStore.Room saved, boolean isOutgoing, String caller, String requestedInviteId) {
         reset(null);
         room = saved;
         preparingRoomCode = "";
         currentRoomCode = saved.code;
         outgoing = isOutgoing;
-        inviteId = isOutgoing ? UUID.randomUUID().toString() : "";
+        inviteId = isOutgoing && requestedInviteId != null && requestedInviteId.matches("^[A-Za-z0-9-]{16,64}$")
+                ? requestedInviteId : (isOutgoing ? UUID.randomUUID().toString() : "");
         callerName = caller == null ? "Someone" : caller;
         int run = generation;
         connectSocket(run);
@@ -230,13 +254,28 @@ final class NativeWebRtcCallEngine {
             if ("ready".equals(type)) { signalingReady = true; flushSignals(); return; }
             if ("native-call-declined".equals(type)) { reset("declined"); return; }
             if ("native-call-answering".equals(type)) { notifyState("connecting"); return; }
+            String wireInviteId = wire.optString("inviteId");
+            if ("call-hangup-ack".equals(type)) {
+                if (ending && !wireInviteId.isEmpty() && wireInviteId.equals(inviteId)) reset("ended");
+                return;
+            }
+            if ("call-terminal".equals(type)) {
+                if (!wireInviteId.isEmpty() && wireInviteId.equals(inviteId)) {
+                    reset(normalizeOutcome(wire.optString("callOutcome"), "ended"));
+                }
+                return;
+            }
             String remoteSession = wire.optString("sessionId");
             if (!remoteSession.isEmpty() && !remoteSession.equals(peerSessionId)) { peerSessionId = remoteSession; sequenceIn = 0; }
             JSONObject payload = decrypt(wire.optString("envelope"));
             if (payload == null) return;
             switch (type) {
                 case "call-invite":
-                    if (!outgoing) { sendSignal("call-ringing", new JSONObject()); if (answered) sendSignal("call-accept", new JSONObject()); }
+                    if (!outgoing) {
+                        if (!wireInviteId.isEmpty()) inviteId = wireInviteId;
+                        sendSignal("call-ringing", new JSONObject());
+                        if (answered) sendSignal("call-accept", new JSONObject());
+                    }
                     break;
                 case "call-ringing": if (outgoing) notifyState("ringing"); break;
                 case "call-accept":
@@ -253,7 +292,11 @@ final class NativeWebRtcCallEngine {
                     break;
                 case "answer": if (outgoing) processAnswer(payload); break;
                 case "ice-candidate": addRemoteCandidate(payload.optJSONObject("candidate")); break;
-                case "call-hangup": case "call-decline": case "call-busy": reset(type); break;
+                case "call-hangup":
+                    reset(normalizeOutcome(payload.optString("reason"), "ended"));
+                    break;
+                case "call-decline": reset("declined"); break;
+                case "call-busy": reset("busy"); break;
                 default: break;
             }
         } catch (Exception error) { Log.w(TAG, "signal parse failed", error); }
@@ -367,6 +410,10 @@ final class NativeWebRtcCallEngine {
         try {
             JSONObject wire = new JSONObject().put("type", type).put("sessionId", sessionId).put("envelope", encrypt(payload));
             if (!inviteId.isEmpty()) wire.put("inviteId", inviteId);
+            if ("call-hangup".equals(type)) {
+                String outcome = normalizeOutcome(payload.optString("reason"), "ended");
+                wire.put("terminalReason", outcome);
+            }
             if (!signalingReady || socket == null) { if (queuedSignals.size() < 128) queuedSignals.add(wire); return; }
             socket.send(wire.toString());
         } catch (Exception error) { Log.w(TAG, "signal encryption failed", error); }
@@ -427,13 +474,18 @@ final class NativeWebRtcCallEngine {
         if (peer != null) { peer.close(); peer.dispose(); peer = null; }
         if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
         if (audioSource != null) { audioSource.dispose(); audioSource = null; }
-        room = null; signalingReady = false; outgoing = false; answered = false; offerReceived = false;
+        room = null; signalingReady = false; outgoing = false; answered = false; offerReceived = false; ending = false;
         inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
         if (reason != null) for (Listener listener : listeners) listener.onEnded(reason);
         currentRoomCode = "";
         preparingRoomCode = "";
         currentState = "idle";
+    }
+
+    private static String normalizeOutcome(String value, String fallback) {
+        return "cancelled".equals(value) || "unanswered".equals(value) || "declined".equals(value) || "ended".equals(value)
+                ? value : fallback;
     }
 
     private final class PeerObserver implements PeerConnection.Observer {

@@ -20,4 +20,6 @@
   <string name="native_private_identity_protected">私人身份已受保护</string>
   <string name="native_decline">拒绝</string>
   <string name="native_answer">接听</string>
+    <string name="native_end_to_end_encrypted">端到端加密</string>
+    <string name="native_end_to_end_encrypted_call">端到端加密通话</string>
 </resources>

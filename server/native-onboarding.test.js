@@ -32,3 +32,13 @@ test('account creation and sign-in continue to the notification step', () => {
   assert.match(client, /openNativeOnboarding\('notifications'\)/);
   assert.match(client, /native-onboarding-account/);
 });
+
+test('a new identity is guided into its first private connection', () => {
+  assert.match(client, /id="first-connection-overlay"/);
+  assert.match(client, /Who is one person you’d like a private line with\?/);
+  assert.match(client, /localStorage\.setItem\(FIRST_CONNECTION_GUIDE_KEY, 'pending'\)/);
+  assert.match(client, /if \(!resumedQuickConnect\) maybeOpenFirstConnectionGuide\(\)/);
+  assert.match(client, /function shareFirstConnectionInvite\(\)[\s\S]*https:\/\/vaultlix\.com\/\$\{state\.privateNumber\}/);
+  assert.match(client, /function showFirstConnectionQr\(\)[\s\S]*showOwnPrivateNumberQr\(\)/);
+  assert.match(client, /The name stays on this device[\s\S]*never uploads your contacts/);
+});

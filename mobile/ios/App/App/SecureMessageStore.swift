@@ -16,13 +16,13 @@ final class SecureMessageStore {
         queue.sync {
             guard valid(conversationID), valid(messageID), open() else { return false }
             let account = messageKeyAccount(conversationID, messageID)
-            deleteKey(account: account)
+            guard deleteKey(account: account) else { return false }
             let key = SymmetricKey(size: .bits256)
             let keyData = key.withUnsafeBytes { Data($0) }
             guard saveKey(keyData, account: account),
                   let sealed = try? AES.GCM.seal(Data(plaintext.utf8), using: key),
                   let nonce = sealed.nonce.withUnsafeBytes({ Data($0) }) as Data? else {
-                deleteKey(account: account)
+                _ = deleteKey(account: account)
                 return false
             }
             let sql = "INSERT OR REPLACE INTO messages(conversation_id,message_id,nonce,ciphertext,tag,created_at) VALUES(?,?,?,?,?,?)"
@@ -35,7 +35,7 @@ final class SecureMessageStore {
             bind(sealed.ciphertext, to: statement, at: 4)
             bind(sealed.tag, to: statement, at: 5)
             sqlite3_bind_int64(statement, 6, createdAt)
-            if sqlite3_step(statement) != SQLITE_DONE { deleteKey(account: account); return false }
+            if sqlite3_step(statement) != SQLITE_DONE { _ = deleteKey(account: account); return false }
             return true
         }
     }
@@ -43,7 +43,7 @@ final class SecureMessageStore {
     func delete(conversationID: String, messageID: String) -> Bool {
         queue.sync {
             guard valid(conversationID), valid(messageID), open() else { return false }
-            deleteKey(account: messageKeyAccount(conversationID, messageID))
+            guard deleteKey(account: messageKeyAccount(conversationID, messageID)) else { return false }
             return execute("DELETE FROM messages WHERE conversation_id=? AND message_id=?", [conversationID, messageID]) && checkpoint()
         }
     }
@@ -54,13 +54,41 @@ final class SecureMessageStore {
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(database, "SELECT message_id FROM messages WHERE conversation_id=?", -1, &statement, nil) == SQLITE_OK else { return false }
             bind(conversationID, to: statement, at: 1)
+            var allKeysDestroyed = true
             while sqlite3_step(statement) == SQLITE_ROW {
                 if let value = sqlite3_column_text(statement, 0) {
-                    deleteKey(account: messageKeyAccount(conversationID, String(cString: value)))
+                    if !deleteKey(account: messageKeyAccount(conversationID, String(cString: value))) {
+                        allKeysDestroyed = false
+                    }
                 }
             }
             sqlite3_finalize(statement)
+            guard allKeysDestroyed else { return false }
             return execute("DELETE FROM messages WHERE conversation_id=?", [conversationID]) && checkpoint()
+        }
+    }
+
+    func clearAll() -> Bool {
+        queue.sync {
+            // Delete every item in this ThisDeviceOnly service in one Keychain
+            // operation, including orphan per-message keys and database.v1.
+            // Only after the keys are gone do we remove SQLCipher and its WAL.
+            let keyStatus = SecItemDelete([
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: "com.vaultlix.secure-messages",
+            ] as CFDictionary)
+            guard keyStatus == errSecSuccess || keyStatus == errSecItemNotFound else { return false }
+            if let database { sqlite3_close(database) }
+            database = nil
+            guard let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return false }
+            for name in ["vaultlix-messages.db", "vaultlix-messages.db-wal", "vaultlix-messages.db-shm"] {
+                let url = directory.appendingPathComponent(name)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    do { try FileManager.default.removeItem(at: url) }
+                    catch { return false }
+                }
+            }
+            return true
         }
     }
 
@@ -130,7 +158,11 @@ final class SecureMessageStore {
         return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
-    private func deleteKey(account: String) { SecItemDelete(keyQuery(account) as CFDictionary) }
+    @discardableResult
+    private func deleteKey(account: String) -> Bool {
+        let status = SecItemDelete(keyQuery(account) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
     private func keyQuery(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "com.vaultlix.secure-messages",

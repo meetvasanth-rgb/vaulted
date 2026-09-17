@@ -3,13 +3,18 @@ import Capacitor
 import WebKit
 import AVFoundation
 import UserNotifications
+import LocalAuthentication
 
-class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler {
+class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate {
     var window: UIWindow?
     private var observers: [NSObjectProtocol] = []
     private var webReady = false
     private var pendingUniversalLink: URL?
     private var appSwitcherPrivacyCover: UIView?
+    private var preparedShareImageURL: URL?
+    private var pendingDocumentExportURL: URL?
+    private var pendingOpenFileURL: URL?
+    private var documentInteractionController: UIDocumentInteractionController?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -19,6 +24,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         window?.rootViewController = bridgeController
         window?.makeKeyAndVisible()
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
+        bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
+            source: "window.__vaultlixLocalImageSafety = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -83,6 +90,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
               window?.windowScene?.activationState == .foregroundActive else { return }
         for action in VaultlixCallManager.shared.consumePendingActions() {
             emit(name: "vaultlix:call-action", detail: action)
+            // A locked/background call can activate the scene before the
+            // encrypted room list is restored. Missed events are additive and
+            // carry a stable call ID, so replay only those across the short
+            // startup window. The web client deduplicates the history row.
+            if (action["action"] as? String) == "missed" {
+                for delay in [2.0, 5.0, 9.0] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                        guard let self,
+                              self.window?.windowScene?.activationState == .foregroundActive else { return }
+                        self.emit(name: "vaultlix:call-action", detail: action)
+                    }
+                }
+            }
         }
     }
 
@@ -94,11 +114,128 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         ])
     }
 
+    private func topViewController(from controller: UIViewController?) -> UIViewController? {
+        if let navigation = controller as? UINavigationController {
+            return topViewController(from: navigation.visibleViewController)
+        }
+        if let tabs = controller as? UITabBarController {
+            return topViewController(from: tabs.selectedViewController)
+        }
+        if let presented = controller?.presentedViewController {
+            return topViewController(from: presented)
+        }
+        return controller
+    }
+
+    private func presentShareImage(_ fileURL: URL) {
+        guard let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            emit(name: "vaultlix:share-image-failed", detail: [:])
+            return
+        }
+        if presenter is UIActivityViewController {
+            emit(name: "vaultlix:share-image-presented", detail: [:])
+            return
+        }
+        let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        sheet.completionWithItemsHandler = { [weak self] _, _, _, _ in
+            // The prepared private-number card is deliberately retained for
+            // instant repeat sharing. Conversation media uses unique URLs and
+            // must be removed as soon as the receiving activity finishes.
+            guard self?.preparedShareImageURL != fileURL else { return }
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+        }
+        presenter.present(sheet, animated: true) { [weak self] in
+            self?.emit(name: "vaultlix:share-image-presented", detail: [:])
+        }
+    }
+
+    private func presentSaveFile(_ fileURL: URL) {
+        guard let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            try? FileManager.default.removeItem(at: fileURL)
+            emit(name: "vaultlix:share-image-failed", detail: [:])
+            return
+        }
+        let picker = UIDocumentPickerViewController(forExporting: [fileURL], asCopy: true)
+        picker.delegate = self
+        pendingDocumentExportURL = fileURL
+        presenter.present(picker, animated: true)
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        clearPendingDocumentExport()
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        clearPendingDocumentExport()
+    }
+
+    private func clearPendingDocumentExport() {
+        guard let fileURL = pendingDocumentExportURL else { return }
+        pendingDocumentExportURL = nil
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    private func presentOpenFile(_ fileURL: URL) {
+        guard let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            try? FileManager.default.removeItem(at: fileURL)
+            emit(name: "vaultlix:share-image-failed", detail: [:])
+            return
+        }
+        let controller = UIDocumentInteractionController(url: fileURL)
+        controller.delegate = self
+        documentInteractionController = controller
+        pendingOpenFileURL = fileURL
+        if !controller.presentOpenInMenu(from: presenter.view.bounds, in: presenter.view, animated: true) {
+            clearPendingOpenFile()
+        }
+    }
+
+    func documentInteractionControllerDidDismissOpenInMenu(_ controller: UIDocumentInteractionController) {
+        clearPendingOpenFile()
+    }
+
+    private func clearPendingOpenFile() {
+        if let fileURL = pendingOpenFileURL { try? FileManager.default.removeItem(at: fileURL) }
+        pendingOpenFileURL = nil
+        documentInteractionController = nil
+    }
+
+    private func setDocumentPreviewOpen(_ open: Bool) {
+        AppDelegate.allowsDocumentRotation = open
+        guard let windowScene = window?.windowScene else { return }
+        if #available(iOS 16.0, *) {
+            window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            let orientations: UIInterfaceOrientationMask = (open || UIDevice.current.userInterfaceIdiom == .pad)
+                ? [.portrait, .landscapeLeft, .landscapeRight]
+                : .portrait
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: orientations))
+        } else {
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+    }
+
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         guard message.name == "vaultlixCall",
               let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
+        if action == "screenImage" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com",
+                  let requestId = body["requestId"] as? String, requestId.count <= 80,
+                  let base64 = body["base64"] as? String else { return }
+            LocalImageSafety.shared.check(base64: base64) { [weak self] status in
+                self?.emit(name: "vaultlix:image-safety-result", detail: ["requestId": requestId, "status": status])
+            }
+            return
+        }
         if action == "ready" {
             webReady = true
             if let token = VaultlixCallManager.shared.voIPToken
@@ -116,30 +253,154 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             feedback.impactOccurred()
             return
         }
-        if action == "shareImage",
-           let dataURL = body["dataUrl"] as? String,
-           dataURL.hasPrefix("data:image/png;base64,"),
-           dataURL.count <= 12_000_000,
-           let comma = dataURL.firstIndex(of: ","),
-           let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
-           !data.isEmpty, data.count <= 8_000_000,
-           let controller = window?.rootViewController {
+        if action == "setDocumentPreviewOpen" {
+            setDocumentPreviewOpen(body["open"] as? Bool ?? false)
+            return
+        }
+        if action == "authenticateSensitiveAction" {
+            // Acknowledge support before LocalAuthentication presents its
+            // system sheet. The web UI uses this to distinguish a real
+            // in-progress Face ID/passcode check from an older app build
+            // that has the shared bridge but does not know this action.
+            emit(name: "vaultlix:device-auth-result", detail: ["pending": true, "available": true])
+            let context = LAContext()
+            var policyError: NSError?
+            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+                emit(name: "vaultlix:device-auth-result", detail: ["ok": false, "available": false])
+                return
+            }
+            let reason = (body["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let promptReason = (reason?.isEmpty == false ? reason : nil) ?? "Open your Vaultlix recovery code"
+            context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: promptReason
+            ) { [weak self] success, _ in
+                DispatchQueue.main.async {
+                    self?.emit(name: "vaultlix:device-auth-result", detail: ["ok": success, "available": true])
+                }
+            }
+            return
+        }
+        if action == "prepareShareImage" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:image/png;base64,"),
+                  dataURL.count <= 12_000_000,
+                  let comma = dataURL.firstIndex(of: ","),
+                  let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+                  !data.isEmpty, data.count <= 8_000_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
             let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-private-number.png")
             do {
                 try data.write(to: fileURL, options: .atomic)
-                let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-                if let popover = sheet.popoverPresentationController {
-                    popover.sourceView = controller.view
-                    popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
-                }
-                controller.present(sheet, animated: true)
-            } catch {}
+                preparedShareImageURL = fileURL
+                emit(name: "vaultlix:share-image-ready", detail: [:])
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
+        if action == "sharePreparedImage" {
+            guard let fileURL = preparedShareImageURL else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            presentShareImage(fileURL)
+            return
+        }
+        if action == "shareImage" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:image/png;base64,"),
+                  dataURL.count <= 12_000_000,
+                  let comma = dataURL.firstIndex(of: ","),
+                  let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+                  !data.isEmpty, data.count <= 8_000_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-private-number.png")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                preparedShareImageURL = fileURL
+                presentShareImage(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
+        if action == "shareMedia" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:"),
+                  dataURL.count <= 16_000_000,
+                  let marker = dataURL.range(of: ";base64,"),
+                  marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
+                  let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !data.isEmpty, data.count <= 10_500_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let requested = (body["filename"] as? String) ?? "vaultlix-file"
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+            let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+            let filename = safeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "vaultlix-file" : safeName
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-\(UUID().uuidString)-\(filename)")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                presentShareImage(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
+        if action == "saveMedia" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:"),
+                  dataURL.count <= 16_000_000,
+                  let marker = dataURL.range(of: ";base64,"),
+                  marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
+                  let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !data.isEmpty, data.count <= 10_500_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let requested = (body["filename"] as? String) ?? "vaultlix-file"
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+            let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+            let filename = safeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "vaultlix-file" : safeName
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-save-\(UUID().uuidString)-\(filename)")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                presentSaveFile(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
+            return
+        }
+        if action == "openMedia" {
+            guard let dataURL = body["dataUrl"] as? String,
+                  dataURL.hasPrefix("data:"),
+                  dataURL.count <= 16_000_000,
+                  let marker = dataURL.range(of: ";base64,"),
+                  marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
+                  let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !data.isEmpty, data.count <= 10_500_000 else {
+                emit(name: "vaultlix:share-image-failed", detail: [:])
+                return
+            }
+            let requested = (body["filename"] as? String) ?? "vaultlix-file"
+            let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._- "))
+            let safeName = requested.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
+            let filename = safeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "vaultlix-file" : safeName
+            let fileURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-open-\(UUID().uuidString)-\(filename)")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                presentOpenFile(fileURL)
+            } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }
         if action == "emergencyReset" {
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
             VaultlixCallManager.shared.endAllCalls()
+            _ = SecureMessageStore.shared.clearAll()
+            clearPendingDocumentExport()
+            clearPendingOpenFile()
             return
         }
         if action == "secureStoreMessage",
@@ -175,7 +436,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
            let code = body["code"] as? String,
            let caller = body["caller"] as? String,
            let peer = body["peer"] as? String,
+           let inviteID = body["inviteId"] as? String,
            roomHandle.range(of: "^[A-Za-z0-9_-]{16,64}$", options: .regularExpression) != nil,
+           inviteID.range(of: "^[A-Za-z0-9-]{16,64}$", options: .regularExpression) != nil,
            code.count <= 128 {
             // A JavaScript blur is not sufficient on every iOS release: the
             // system InputUI process can remain attached while CallKit takes
@@ -186,7 +449,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             (window?.rootViewController as? CAPBridgeViewController)?.webView?.endEditing(true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
                 let success = VaultlixCallManager.shared.startOutgoingCall(
-                    roomHandle: roomHandle, code: code, caller: caller, peer: peer
+                    roomHandle: roomHandle, code: code, caller: caller, peer: peer, inviteID: inviteID
                 )
                 if !success {
                     self?.emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code])
@@ -232,7 +495,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
         guard action == "end",
               let code = body["code"] as? String,
               code.count <= 128 else { return }
-        VaultlixCallManager.shared.endCallFromWeb(roomCode: code)
+        VaultlixCallManager.shared.endCallFromWeb(
+            roomCode: code,
+            outcome: body["reason"] as? String ?? "ended"
+        )
         VaultlixCallManager.shared.releaseOutgoingWebAudio()
     }
 
@@ -270,9 +536,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
 
     private func translatedVaultlixConnectURL(_ url: URL) -> URL? {
         guard url.scheme?.lowercased() == "vaultlix",
-              url.host?.lowercased() == "connect",
               url.path.range(of: "^/[2-9][0-9]{5,9}/?$", options: .regularExpression) != nil else { return nil }
-        return URL(string: "https://vaultlix.com\(url.path)?ref=qr")
+        if url.host?.lowercased() == "connect" {
+            return URL(string: "https://vaultlix.com\(url.path)?ref=qr")
+        }
+        if url.host?.lowercased() == "recover",
+           let fragment = url.fragment,
+           fragment.range(of: "^k=[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil {
+            let privateNumber = url.path.replacingOccurrences(of: "/", with: "")
+            return URL(string: "https://vaultlix.com/?recover=\(privateNumber)#\(fragment)")
+        }
+        return nil
     }
 
     private func flushPendingUniversalLink() {
@@ -324,6 +598,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         hideAppSwitcherPrivacyCover()
+        VaultlixCallManager.shared.enforceCallKeyboardGuard()
         if webReady,
            let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {
