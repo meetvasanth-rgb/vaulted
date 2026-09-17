@@ -282,9 +282,9 @@ class PostgresStore {
     }]);
   }
 
-  async saveAccount(accountId, account) {
+  async saveAccount(accountId, account, queryClient = this.pool) {
     if (!this.enabled) return;
-    await this.pool.query(`INSERT INTO accounts (
+    await queryClient.query(`INSERT INTO accounts (
       account_id, private_number, display_name, profile_image, auth_verifier, recovery_verifier,
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
       connection_requests, push_destinations, last_active_at, number_category,
@@ -378,6 +378,31 @@ class PostgresStore {
       WHERE private_number=$1 AND token_hash=$2 AND reserved_until >= $3
         AND assigned_account_id IS NULL`, [privateNumber, tokenHash, now]);
     return rows.length === 1 ? rows[0].category : null;
+  }
+
+  async registerReservedAccount(accountId, account, tokenHash) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const key of [`signup-account:${accountId}`, `signup-number:${account.privateNumber}`].sort()) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+      }
+      const existing = await client.query('SELECT account_id FROM accounts WHERE account_id=$1 OR private_number=$2', [accountId, account.privateNumber]);
+      const retired = await client.query('SELECT private_number FROM private_number_lifecycle WHERE private_number=$1', [account.privateNumber]);
+      const reservation = await client.query('SELECT * FROM private_number_reservations WHERE private_number=$1 FOR UPDATE', [account.privateNumber]);
+      const row = reservation.rows[0];
+      if (existing.rows.length || retired.rows.length ||
+          (tokenHash ? !row || row.token_hash !== tokenHash || Number(row.reserved_until) < Date.now() || row.assigned_account_id : row && (row.assigned_account_id || Number(row.reserved_until) >= Date.now()))) {
+        await client.query('ROLLBACK'); return false;
+      }
+      await this.saveAccount(accountId, account, client);
+      if (tokenHash) await client.query('UPDATE private_number_reservations SET assigned_account_id=$2 WHERE private_number=$1', [account.privateNumber, accountId]);
+      await client.query('COMMIT'); return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (error.code === '23505') return false;
+      throw error;
+    } finally { client.release(); }
   }
 
   async completePrivateNumberReservation(privateNumber, tokenHash, accountId) {

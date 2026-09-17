@@ -52,6 +52,12 @@
         <p class="micro">History covers this server instance since monitoring began and resets on restart. This page cannot detect its own server going offline independently; external uptime monitoring is not yet connected.</p>
       </section>
 
+      <section class="panel" aria-labelledby="allocate-title">
+        <div class="panel-head"><div><p class="eyebrow">Admin gifts</p><h2 id="allocate-title">Allocate a number</h2><p class="panel-copy">Reserve an available 6–10 digit number for a new user. Starts with 2–9. The claim link expires in seven days and can create one account. No Plus subscription or payment is required.</p></div></div>
+        <form id="allocate-number-form"><label for="allocate-number">Exact Private Number</label><input id="allocate-number" type="text" inputmode="numeric" pattern="[2-9][0-9]{5,9}" minlength="6" maxlength="10" required autocomplete="off"><button id="allocate-submit" type="submit">Reserve number</button></form>
+        <p id="allocate-status" role="status"></p>
+        <div id="allocate-result" hidden><label for="allocate-link">Private claim link</label><input id="allocate-link" type="text" readonly style="width:100%;box-sizing:border-box"><button id="allocate-copy" type="button">Copy claim link</button><p class="micro">Share privately with your friend. Anyone holding this link can claim the number. Your friend chooses their own password and recovery details. Copy the link now; it is not shown again after sign-out or refresh.</p></div>
+      </section>
       <section class="panel identity-panel">
         <div class="panel-head"><div><p class="eyebrow">User directory</p><h2>Vaultlix identities</h2><p class="panel-copy">Only account metadata needed for support and operations is shown.</p></div><span class="identity-count" id="identity-count">—</span></div>
         <div class="table-wrap"><table class="identity-table">

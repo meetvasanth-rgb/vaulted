@@ -9659,7 +9659,7 @@ function openAccountPanel() {
   if (state) {
     document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
   }
-  else generatePrivateNumber();
+  else if (!activeNumberGift) generatePrivateNumber();
   document.getElementById('account-overlay').classList.add('open');
   if (state) refreshConnectionRequests();
 }
@@ -9958,6 +9958,21 @@ function confirmRecoveryBackup() {
   closeRecoveryBackup();
   toast('Recovery reminder turned off');
 }
+async function openNumberGift() {
+  const claim=pendingNumberGift; pendingNumberGift=null;
+  if(loadAccountState()) {toast('Open the private claim link on a device signed out of Vaultlix. It is for a new account.');return;}
+  const result=await api('/api/account/number-gift',{privateNumber:claim[1],reservationToken:claim[2]});
+  if(result.error) {toast(result.error);return;}
+  activeNumberGift=true;
+  pendingPrivateNumber=result.privateNumber;
+  pendingPrivateNumberReservation=claim[2];pendingPrivateNumberCategory='admin-gift';
+  document.getElementById('account-private-number-preference').value='';
+  document.getElementById('account-private-number-preference').disabled=true;
+  document.getElementById('account-private-number-value').textContent=formatPrivateNumber(result.privateNumber);
+  document.getElementById('account-generation-counter').textContent='Admin gift · reserved for this signup';
+  openCreateAccount();
+}
+
 function openCreateAccount() {
   if (loadAccountState()) {
     showScreen('s-vault-list');
@@ -10105,6 +10120,9 @@ function showAccountTab(name) {
   guestView.querySelectorAll('.account-tab').forEach(el => el.classList.toggle('active', el.dataset.accountTab === name));
   guestView.querySelectorAll('.account-form').forEach(el => el.classList.toggle('active', el.id === `account-${name}-form`));
 }
+let pendingNumberGift = /^#numberGift=([2-9][0-9]{5,9})\.([A-Za-z0-9_-]{40,96})$/.exec(location.hash);
+if (pendingNumberGift) history.replaceState(null, '', location.pathname);
+let activeNumberGift = false;
 let pendingPrivateNumber = '';
 let pendingPrivateNumberReservation = '';
 let pendingPrivateNumberCategory = 'standard';
@@ -10150,6 +10168,7 @@ function revealPrivateNumber(output, privateNumber) {
   });
 }
 async function generatePrivateNumber(category = 'standard', preferredSuffix = '') {
+  if (activeNumberGift) { toast('This signup uses your gifted number.'); return; }
   const output = document.getElementById('account-private-number-value');
   if (!output) return;
   output.textContent = 'Generating…';
@@ -16332,7 +16351,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // commitment was already dropped from state and storage inside the loop
   // above; this is purely the explanation.
   if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
-  if (startupRecovery) {
+  if (pendingNumberGift) {
+    await openNumberGift();
+  } else if (startupRecovery) {
     openRecoveryFromLink(startupRecovery);
   } else if (startupConnectionRequestId && loadAccountState()) {
     history.replaceState(null, '', '/');

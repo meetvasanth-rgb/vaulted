@@ -2979,6 +2979,14 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok:true, ...(await reservePrivateNumber(category, preferredSuffix)), earlyTester, generationsRemaining:remaining });
   }
 
+  if (path === '/api/account/number-gift' && method === 'POST') {
+    res.setHeader('Cache-Control','no-store');
+    if(await rateLimited(`gift-check:${ip}`,30,60*60*1000)) return resErr(res,'Too many attempts. Try later.',429);
+    const privateNumber=normalizePrivateNumber(d.privateNumber);
+    if(!privateNumber || await verifyPrivateNumberReservation(privateNumber,d.reservationToken)!=='admin-gift' || privateNumbers.has(privateNumber)) return resErr(res,'This claim link is invalid, expired or already used.',409);
+    return res200(res,{ok:true,privateNumber,category:'admin-gift'});
+  }
+
   if (path === '/api/account/register' && method === 'POST') {
     const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
@@ -3059,14 +3067,19 @@ async function api(path, method, d, p, res, ip, headers) {
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
+    const tokenHash = d.reservationToken ? crypto.createHash('sha256').update(d.reservationToken).digest('hex') : null;
+    if (postgresEnabled) {
+      if (!await postgresStore.registerReservedAccount(d.accountId, account, tokenHash)) return resErr(res,'That number is unavailable or the claim expired.',409);
+    } else {
+      // Recheck after password hashing: another signup may have finished meanwhile.
+      const reservation=privateNumberReservations.get(privateNumber);
+      if(accounts.has(d.accountId) || !isNumberAvailable(privateNumber,{activeNumbers:privateNumbers,lifecycle:privateNumberLifecycle}) ||
+        (tokenHash ? !reservation || reservation.tokenHash!==tokenHash || reservation.reservedUntil<Date.now() : reservation && reservation.reservedUntil>=Date.now())) return resErr(res,'That number is unavailable or the claim expired.',409);
+      if(tokenHash) privateNumberReservations.delete(privateNumber);
+    }
     accounts.set(d.accountId, account);
     privateNumbers.set(privateNumber, d.accountId);
-    await persistAccount(d.accountId);
-    if (d.reservationToken) {
-      const tokenHash = crypto.createHash('sha256').update(d.reservationToken).digest('hex');
-      if (postgresEnabled) await postgresStore.completePrivateNumberReservation(privateNumber, tokenHash, d.accountId);
-      else privateNumberReservations.delete(privateNumber);
-    }
+    if (!postgresEnabled) await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision, retention:accountRetention(account) });
   }
@@ -4627,7 +4640,7 @@ async function api(path, method, d, p, res, ip, headers) {
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -4646,6 +4659,23 @@ async function api(path, method, d, p, res, ip, headers) {
       // out after ten refreshes even though every supplied key was correct.
       await rateLimited(`admin-auth:${ip}`, 10, ADMIN_AUTH_WINDOW_MS);
       res.writeHead(404); res.end(); return;
+    }
+    if (path === '/api/admin/allocate-number') {
+      res.setHeader('Cache-Control','no-store');
+      if (typeof d.privateNumber !== 'string' || !/^[2-9][0-9]{5,9}$/.test(d.privateNumber)) return resErr(res,'Enter 6–10 digits, starting with 2–9.',400);
+      if (await rateLimited('admin-number-allocation',20,60*60*1000)) return resErr(res,'Allocation limit reached. Try again later.',429);
+      const privateNumber=d.privateNumber;
+      if (!isNumberAvailable(privateNumber,{activeNumbers:privateNumbers,lifecycle:privateNumberLifecycle})) return resErr(res,'This number is unavailable.',409);
+      const reservationToken=crypto.randomBytes(32).toString('base64url');
+      const tokenHash=crypto.createHash('sha256').update(reservationToken).digest('hex');
+      const reservedUntil=Date.now()+7*DAY_MS;
+      const reserved=postgresEnabled ? await postgresStore.reservePrivateNumber(privateNumber,tokenHash,'admin-gift',reservedUntil) : (()=>{
+        const current=privateNumberReservations.get(privateNumber);
+        if(current && (current.assignedAccountId || current.reservedUntil>=Date.now())) return false;
+        privateNumberReservations.set(privateNumber,{tokenHash,category:'admin-gift',reservedUntil});return true;
+      })();
+      if(!reserved) return resErr(res,'This number is assigned, reserved or retired.',409);
+      return res200(res,{ok:true,privateNumber,reservedUntil,claimUrl:`https://vaultlix.com/#numberGift=${privateNumber}.${reservationToken}`});
     }
     if (path === '/api/admin/health') {
       res.setHeader('Cache-Control','no-store');
@@ -5785,7 +5815,7 @@ function hydrateAccounts(entries, source) {
         .map(session => ({ ...session, deviceHash:/^[a-f0-9]{64}$/.test(session.deviceHash || '') ? session.deviceHash : null }))
         .slice(-1);
       record.lastActiveAt = Number(record.lastActiveAt) || Date.now();
-      record.numberCategory = ['standard','preferred','reserve','zeros','sequence','repeated','pairs'].includes(record.numberCategory) ? record.numberCategory : 'standard';
+      record.numberCategory = ['standard','preferred','reserve','zeros','sequence','repeated','pairs','admin-gift'].includes(record.numberCategory) ? record.numberCategory : 'standard';
       fallbackCreationOrder++;
       record.creationOrder = Number(record.creationOrder) || fallbackCreationOrder;
       const assignedTier = assignAccountTier({
