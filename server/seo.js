@@ -58,13 +58,53 @@ const PAGES = {
     description: 'Answers about Vaultlix private numbers, end-to-end encryption, how connections work, and why no phone number or email address is needed.',
     lastmod: '2026-09-17',
   },
+  // Content pages: written in server/seo-pages/*.html and rendered inside the
+  // same legal-card layout and stylesheet as the pages above.
+  '/messaging-without-phone-number': {
+    file: 'messaging-without-phone-number.html',
+    title: 'Messaging Without a Phone Number | Vaultlix',
+    description: 'Chat and call one-to-one without sharing your phone number, email or contacts. How Vaultlix works, what it doesn\'t do, and how other options compare.',
+    breadcrumb: 'Messaging without a phone number',
+    lastmod: '2026-09-17',
+  },
+  '/how-vaultlix-numbers-work': {
+    file: 'how-vaultlix-numbers-work.html',
+    title: 'How Vaultlix Numbers Work (and What They Can\'t Do)',
+    description: 'Your Vaultlix number is a permanent private number for one-to-one messages and calls inside Vaultlix. How to get one, share it and keep it safe.',
+    breadcrumb: 'How Vaultlix numbers work',
+    lastmod: '2026-09-17',
+  },
 };
 
 // Indexable URLs for sitemap.xml. Only public marketing/legal pages — never
 // app routes, invitations, profiles, admin or API paths.
-const SITEMAP_PATHS = ['/', '/faq', '/privacy', '/terms', '/install', '/get-app'];
+const SITEMAP_PATHS = ['/', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/faq', '/privacy', '/terms', '/install', '/get-app'];
 
-const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).map(([p, cfg]) => [cfg.screen, p]));
+const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).filter(([, cfg]) => cfg.screen).map(([p, cfg]) => [cfg.screen, p]));
+
+// Content pages sit on the same ground and card as the in-app legal screens
+// (#s-privacy/#s-terms/#s-faq), and their H2s reuse the legal-section H3 look.
+const CONTENT_PAGE_STYLE = '.seo-content{background:#FBF7F8;padding:24px 16px}'
+  + '.legal-section h2{font-size:13px;font-weight:600;margin-bottom:8px;letter-spacing:.04em;text-transform:uppercase}'
+  + '.legal-section ol{font-size:13px;color:#5F5B55;line-height:1.75;padding-left:18px}.legal-section ol li{margin-bottom:4px}'
+  + '.legal-section a{color:var(--gold)}'
+  // Same values as the homepage "Create my number" button (#s-landing .landing-hero-action).
+  + '.seo-cta{display:inline-flex;align-items:center;justify-content:center;gap:9px;margin:28px 0 8px;padding:13px 18px;border:1px solid #682C43;border-radius:999px;background:#682C43;color:#fff;font:750 12px/1 \'Manrope\',sans-serif;box-shadow:0 10px 24px rgba(104,44,67,.22);text-decoration:none;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}'
+  + '.seo-cta:hover{background:#542237;box-shadow:0 13px 28px rgba(104,44,67,.27);transform:translateY(-2px)}'
+  + '@media(max-width:760px){.seo-cta{font-size:14px;padding:15px 20px}}';
+
+function renderContentPage(fragment) {
+  return `<div class="screen active seo-content">
+  <div class="legal-card">
+    <a class="legal-back" href="/" style="text-decoration:none;width:fit-content">← Back to Vaultlix</a>
+    <div class="legal-logo">
+      <div class="rule"></div>
+      <span>Vaultlix</span>
+    </div>
+${fragment}
+  </div>
+</div>`;
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -128,7 +168,7 @@ function buildPage(routePath, cfg, parts) {
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Vaultlix', item: `${ORIGIN}/` },
-      { '@type': 'ListItem', position: 2, name: cfg.title.split(' | ')[0].split(':')[0], item: url },
+      { '@type': 'ListItem', position: 2, name: cfg.breadcrumb || cfg.title.split(' | ')[0].split(':')[0], item: url },
     ],
   };
   const fonts = parts.fontLink
@@ -157,10 +197,10 @@ function buildPage(routePath, cfg, parts) {
 <meta property="og:image" content="${ORIGIN}/icons/icon-512.png?v=20260904">
 ${fonts}
 <link rel="stylesheet" href="${parts.cssPath}">
-<script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
+${cfg.file ? `<style>${CONTENT_PAGE_STYLE}</style>\n` : ''}<script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
 </head>
 <body>
-${parts.screens[cfg.screen]}
+${cfg.file ? renderContentPage(parts.fragments[cfg.file]) : parts.screens[cfg.screen]}
 </body>
 </html>
 `;
@@ -177,14 +217,23 @@ function createSeo({ clientDir, now = () => new Date() } = {}) {
     const cssHash = crypto.createHash('sha1').update(cssBody).digest('hex').slice(0, 12);
     css = { body: cssBody, path: `/seo-site.${cssHash}.css`, etag: `"${cssHash}"` };
     const screens = {};
+    const fragments = {};
     for (const cfg of Object.values(PAGES)) {
+      if (cfg.file) {
+        try { fragments[cfg.file] = fs.readFileSync(path.join(__dirname, 'seo-pages', cfg.file), 'utf8'); } catch (e) { /* reported below */ }
+        continue;
+      }
       const el = extractElementById(html, cfg.screen);
       if (el) screens[cfg.screen] = staticizeScreen(el);
     }
-    const parts = { screens, cssPath: css.path, fontLink: extractFontLink(html) };
+    const parts = { screens, fragments, cssPath: css.path, fontLink: extractFontLink(html) };
     pages = {};
     for (const [routePath, cfg] of Object.entries(PAGES)) {
-      if (!screens[cfg.screen]) {
+      if (cfg.file && !fragments[cfg.file]) {
+        console.warn(`[seo] server/seo-pages/${cfg.file} not found; ${routePath} is not served.`);
+        continue;
+      }
+      if (!cfg.file && !screens[cfg.screen]) {
         console.warn(`[seo] screen #${cfg.screen} not found in index.html; ${routePath} falls back to the app.`);
         continue;
       }
