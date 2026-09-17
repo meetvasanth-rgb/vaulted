@@ -212,12 +212,15 @@
     const canvas=$('allocate-qr');
     canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
   }
-  function renderClaimQr(link) {
+  function renderClaimQr(link, privateNumber) {
     const qr=qrcode(0,'M');qr.addData(link);qr.make();
     const canvas=$('allocate-qr'), count=qr.getModuleCount(), cell=6, size=(count+8)*cell;
-    canvas.width=canvas.height=size;
-    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#000';
+    canvas.width=size;canvas.height=size+76;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,size,canvas.height);ctx.fillStyle='#000';
     for(let row=0;row<count;row++)for(let col=0;col<count;col++)if(qr.isDark(row,col))ctx.fillRect((col+4)*cell,(row+4)*cell,cell,cell);
+    ctx.textAlign='center';ctx.fillStyle='#682c43';ctx.font='bold 24px sans-serif';ctx.fillText(privateNumber,size/2,size+25);
+    ctx.fillStyle='#5e5559';ctx.font='14px sans-serif';ctx.fillText('Vaultlix · Scan to claim',size/2,size+53);
+    canvas.setAttribute('aria-label',`Claim private number ${privateNumber} with this QR code`);
   }
   $('allocate-save-qr').addEventListener('click',()=>{
     if(!adminKey || !$('allocate-link').value)return;
@@ -234,7 +237,7 @@
       if(!response.ok)throw Error(result.error || 'Could not reserve number.');
       $('allocate-status').textContent=`${result.privateNumber} reserved until ${new Date(result.reservedUntil).toLocaleString()}.`;
       $('allocate-link').value=result.claimUrl;$('allocate-result').hidden=false;
-      try{renderClaimQr(result.claimUrl);}catch(_){clearClaimQr();$('allocate-status').textContent+=' QR unavailable; copy the claim link below.';}
+      try{renderClaimQr(result.claimUrl,result.privateNumber);}catch(_){clearClaimQr();$('allocate-status').textContent+=' QR unavailable; copy the claim link below.';}
     }catch(error){if(adminKey===key)$('allocate-status').textContent=error.message || 'Reservation could not be confirmed. Do not assume it failed; retrying may report it reserved.';}
     finally{$('allocate-submit').disabled=false;}
   });
