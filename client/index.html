@@ -9038,6 +9038,7 @@ function displayProfileImageUri(value) {
     localProfileChecks.set(image, status);
     renderAccountProfilePhoto();
     renderVaultList();
+    refreshConnectionRequestAvatars();
     const room = rooms.get(activeRoomCode);
     if (room) renderChatPeerAvatar(room);
   });
@@ -10011,6 +10012,22 @@ let pendingIncomingConnections = [];
 let pendingOutgoingConnections = [];
 let pendingConnectionFocusId = null;
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function connectionRequestAvatar(request) {
+  const image = displayProfileImageUri(request.senderProfileImage);
+  const name = String(request.senderDisplayName || 'Vaultlix user');
+  return image
+    ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(name)} profile photo" style="width:100%;height:100%;object-fit:cover;border-radius:50%" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>${escapeHtml(Array.from(name)[0].toUpperCase())}</span>`
+    : `<span>${escapeHtml(Array.from(name)[0].toUpperCase())}</span>`;
+}
+function connectionRequestAvatarCard(request) {
+  return `<span class="connection-request-avatar" data-request-avatar="${escapeHtml(request.id)}" style="display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:#f2e8ec;color:#682c43;font-size:22px;margin-bottom:10px;overflow:hidden">${connectionRequestAvatar(request)}</span>`;
+}
+function refreshConnectionRequestAvatars() {
+  document.querySelectorAll('[data-request-avatar]').forEach(node => {
+    const request = pendingIncomingConnections.find(item => item.id === node.dataset.requestAvatar);
+    if (request) node.innerHTML = connectionRequestAvatar(request);
+  });
+}
 function peerIdentityFromConnection(request, state = loadAccountState()) {
   const selfNumber = normalizePrivateNumber(state?.privateNumber);
   const senderNumber = normalizePrivateNumber(request?.senderPrivateNumber);
@@ -10073,7 +10090,7 @@ async function refreshConnectionRequests() {
     await openJoinFromLink(url.pathname.split('/').filter(Boolean).pop(), true);
     return;
   }
-  const incomingHtml = incoming.map(r => `<div class="account-status-card${r.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(r.id)}"><div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  const incomingHtml = incoming.map(r => `<div class="account-status-card${r.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(r.id)}">${connectionRequestAvatarCard(r)}<div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
   const outgoingHtml = outgoing.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.recipientDisplayName || 'Vaultlix user')}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.recipientPrivateNumber))}</div><div class="account-note">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (!incomingHtml && !outgoingHtml) { list.textContent = 'No pending connection requests.'; return; }
   list.innerHTML = `${incomingHtml}${outgoingHtml}`;
@@ -12121,7 +12138,7 @@ function renderVaultList() {
     return;
   }
   const previews = vaultPreviewsEnabled();
-  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}"><div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
+  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
   const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (rooms.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
