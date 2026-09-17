@@ -39,6 +39,15 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+// Only the app shell may be stored as the offline /index.html. Public pages
+// such as /privacy, /terms and /faq are separate HTML documents; caching them
+// under /index.html would replace the offline app with a legal page.
+function isAppShellNavigation(pathname) {
+  return pathname === '/' || pathname === '/index.html'
+    || /^\/join\/[a-z0-9-]+\/?$/i.test(pathname)
+    || /^\/[2-9][0-9]{5,9}\/?$/.test(pathname);
+}
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -51,7 +60,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        if (response.ok) {
+        if (response.ok && isAppShellNavigation(url.pathname)) {
           const cache = await caches.open(APP_SHELL_CACHE);
           await cache.put('/index.html', response.clone());
         }

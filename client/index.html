@@ -19,7 +19,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="shortcut icon" href="/favicon.ico">
-<title>Vaultlix – Your Private Line</title>
+<title>Vaultlix – Your Private Line, No Phone Number Needed</title>
 <meta name="description" content="Vaultlix gives you a prestigious secondary private number—your private line without sharing your phone number, email, or contacts.">
 <link rel="canonical" href="https://vaultlix.com/">
 <meta name="google-site-verification" content="iUxelLTt2YqTWtiOtuZF7LNBiFjOhf_XIX0DuZ2VCaY" />
@@ -27,7 +27,7 @@
 <meta property="og:site_name" content="Vaultlix">
 <meta property="og:title" content="Vaultlix">
 <meta property="og:description" content="Create a Vaultlix private number and connect without sharing your phone number, email, or contacts.">
-<meta property="og:url" content="https://vaultlix.com">
+<meta property="og:url" content="https://vaultlix.com/">
 <meta property="og:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
 <meta property="og:image:secure_url" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
 <meta property="og:image:type" content="image/png">
@@ -2736,8 +2736,8 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="logo-rule" id="logoRule"></div>
       <div class="logo-sub" id="logoSub">A second number for everyday life</div>
       <h1 class="landing-title landing-reveal landing-reveal-run" aria-label="Your Vaultlix number. No SIM required.">
-        <span class="landing-reveal-line" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:0">Your</span><span class="landing-reveal-word" style="--word-index:1">Vaultlix</span><span class="landing-reveal-word" style="--word-index:2">number.</span></span>
-        <span class="landing-reveal-line landing-reveal-accent" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:3">No</span><span class="landing-reveal-word" style="--word-index:4">SIM</span><span class="landing-reveal-word" style="--word-index:5">required.</span></span>
+        <span class="landing-reveal-line" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:0">Your</span> <span class="landing-reveal-word" style="--word-index:1">Vaultlix</span> <span class="landing-reveal-word" style="--word-index:2">number.</span></span>
+        <span class="landing-reveal-line landing-reveal-accent" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:3">No</span> <span class="landing-reveal-word" style="--word-index:4">SIM</span> <span class="landing-reveal-word" style="--word-index:5">required.</span></span>
       </h1>
       <p class="tagline" id="logoTag">Dating someone new, selling online or meeting a client? Share Vaultlix and keep your personal number to yourself.</p>
       <div class="landing-hero-actions">
@@ -2944,9 +2944,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
   </main>
   <div class="landing-footer">
-  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-privacy')">Privacy</span>
+  <a href="/privacy" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;color:inherit !important;" onclick="showScreen('s-privacy');return false;">Privacy</a>
   <span style="margin:0 4px">·</span>
-  <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="showScreen('s-terms')">Terms</span>
+  <a href="/terms" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;color:inherit !important;" onclick="showScreen('s-terms');return false;">Terms</a>
   <span style="margin:0 6px">·</span>
   <span id="landing-footer-account-label" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;" onclick="openLoginOrInbox()">Sign in</span>
 </div>
@@ -8322,7 +8322,8 @@ function notifyMsg(room) {
 
 function updateDocumentTitle() {
   const total = updateVaultUnreadBadge();
-  document.title = total > 0 ? `(${total}) Vaultlix` : 'Vaultlix';
+  window.__vaultlixBaseTitle = window.__vaultlixBaseTitle || document.title.replace(/^\(\d+\)\s*/, '');
+  document.title = total > 0 ? `(${total}) ${window.__vaultlixBaseTitle}` : window.__vaultlixBaseTitle;
 
   // The document.title prefix above is the only unread indicator this app
   // has ever actually set — it does nothing for an installed/home-screen

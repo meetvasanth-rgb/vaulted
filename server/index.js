@@ -2,6 +2,8 @@ const http = require('http');
 const http2 = require('http2');
 const path = require('path');
 const fs = require('fs');
+const { createSeo } = require('./seo');
+const seo = createSeo({ clientDir: path.join(__dirname, '../client') });
 const crypto = require('crypto');
 const { promisify } = require('util');
 const webpush = require('web-push');
@@ -2492,6 +2494,7 @@ function sendHtmlShell(req, res, data) {
 }
 
 function serveStatic(req, res) {
+  if (seo.handle(req, res)) return;
   let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   // Explicit route, ahead of the SPA catch-all below — without this, a
   // request for /robots.txt falls through to the readFile-miss branch and
@@ -2525,6 +2528,7 @@ function serveStatic(req, res) {
   fs.readFile(vendorFile || path.join(__dirname,'../client',url), (err,data) => {
     if (err) {
       if (vendorFile) { res.writeHead(404); res.end(); return; }
+      if (!seo.isAppShellRoute(req.url.split('?')[0])) { seo.sendNotFound(req, res); return; }
       fs.readFile(path.join(__dirname,'../client/index.html'), (e,d) => {
         if (e) { res.writeHead(404); res.end(); return; }
         sendHtmlShell(req, res, d);
