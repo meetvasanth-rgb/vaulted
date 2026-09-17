@@ -3519,6 +3519,19 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </form>
 </div>
 
+<div class="account-overlay" id="share-vaultlix-overlay" onclick="if(event.target===this)closeShareVaultlix()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="share-vaultlix-title">
+    <div class="account-head"><div><div class="account-kicker">Better with friends</div><div class="account-title" id="share-vaultlix-title">Share Vaultlix</div></div><button id="share-vaultlix-close" class="account-close" type="button" onclick="closeShareVaultlix()" aria-label="Close share dialog">×</button></div>
+    <p class="account-copy">Invite friends to private chats and calls. Scan the QR code to see app availability.</p>
+    <div style="display:flex;justify-content:center;overflow:hidden"><canvas id="share-vaultlix-qr" style="max-width:100%;height:auto" role="img" aria-label="QR code for the Vaultlix app download page"></canvas></div>
+    <input id="share-vaultlix-link" aria-label="Public app link" readonly value="https://vaultlix.com/get-app" style="width:100%;box-sizing:border-box;margin:16px 0;padding:12px;border:1px solid #ded5d8;border-radius:10px;font:inherit"/>
+    <button class="account-primary" type="button" onclick="shareVaultlixApp()">Share app</button>
+    <button class="account-secondary" type="button" onclick="copyVaultlixAppLink()">Copy link</button>
+    <button class="account-secondary" type="button" onclick="saveVaultlixAppQr()">Save QR image</button>
+    <p class="account-copy" id="share-vaultlix-status" role="status">This shares only the public app link, not your Private Number or conversations.</p>
+  </div>
+</div>
+
 <!-- Settings overlay + panel -->
 <div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
 <div class="settings-panel" id="settings-panel">
@@ -3531,6 +3544,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 
   <div class="settings-body">
     <div class="settings-menu" id="settings-menu">
+<button type="button" class="settings-link-row" style="width:100%;text-align:left;border:0;background:transparent" onclick="openShareVaultlix()"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43" aria-hidden="true">↗</div><div class="settings-row-text"><div class="settings-row-title">Share Vaultlix</div><div class="settings-row-sub">Invite friends with the app link or QR code</div></div></button>
 <div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="profile">Profile</div><div class="settings-row-sub" data-i18n="profile_subtitle">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
 <div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub" data-i18n="privacy_security_subtitle">App lock, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="notifications">Notifications</div><div class="settings-row-sub" data-i18n="notifications_subtitle">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
@@ -11448,6 +11462,47 @@ function nativePlatform() {
 
 function isNativeApp() { return nativePlatform() !== null; }
 function isNativeIosApp() { return nativePlatform() === 'ios'; }
+
+const VAULTLIX_PUBLIC_APP_LINK = 'https://vaultlix.com/get-app';
+let shareVaultlixReturnFocus = null;
+function openShareVaultlix() {
+  shareVaultlixReturnFocus = document.activeElement;
+  renderQrCanvas(document.getElementById('share-vaultlix-qr'), VAULTLIX_PUBLIC_APP_LINK);
+  document.getElementById('share-vaultlix-status').textContent = 'This shares only the public app link, not your Private Number or conversations.';
+  document.getElementById('share-vaultlix-overlay').classList.add('open');
+  document.getElementById('share-vaultlix-close').focus();
+}
+function closeShareVaultlix() {
+  document.getElementById('share-vaultlix-overlay').classList.remove('open');
+  shareVaultlixReturnFocus?.focus();
+}
+async function copyVaultlixAppLink() {
+  const status = document.getElementById('share-vaultlix-status');
+  try { await navigator.clipboard.writeText(VAULTLIX_PUBLIC_APP_LINK); status.textContent = 'App link copied.'; }
+  catch (_) {
+    const input = document.getElementById('share-vaultlix-link'); input.focus(); input.select();
+    status.textContent = 'Press and hold the selected link to copy it.';
+  }
+}
+async function shareVaultlixApp() {
+  try {
+    if (!await openSystemShare('Join me on Vaultlix for private chats and calls. '+VAULTLIX_PUBLIC_APP_LINK)) await copyVaultlixAppLink();
+  } catch(error) {
+    if (error?.name !== 'AbortError') document.getElementById('share-vaultlix-status').textContent = 'Sharing is unavailable. Use Copy link instead.';
+  }
+}
+function saveVaultlixAppQr() {
+  try { downloadDataUri(document.getElementById('share-vaultlix-qr').toDataURL('image/png'), 'vaultlix-app-qr.png'); }
+  catch (_) { document.getElementById('share-vaultlix-status').textContent = 'Could not save the QR image. Please try again.'; }
+}
+document.getElementById('share-vaultlix-overlay').addEventListener('keydown', event => {
+  if(event.key === 'Escape') { event.stopPropagation(); closeShareVaultlix(); }
+  if(event.key === 'Tab') {
+    const items=[...document.getElementById('share-vaultlix-overlay').querySelectorAll('button,input')];
+    if(event.shiftKey && document.activeElement===items[0]) {event.preventDefault();items.at(-1).focus();}
+    else if(!event.shiftKey && document.activeElement===items.at(-1)) {event.preventDefault();items[0].focus();}
+  }
+});
 
 function canUseSystemShare() {
   return typeof navigator.share === 'function' ||

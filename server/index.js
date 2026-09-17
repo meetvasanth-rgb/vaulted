@@ -2511,6 +2511,7 @@ function serveStatic(req, res) {
   if (url === '/media-safety-v2.js' || url === '/media-safety-v3.js') url = '/media-safety.js';
   if (url === '/install') url = '/install.html';
   if (url === '/admin') url = '/admin.html';
+  if (url === '/get-app' || url === '/get-app/') url = '/get-app.html';
   if (!url.startsWith('/') || url.includes('..')) { res.writeHead(403); res.end(); return; }
   // PDF.js is loaded lazily only when somebody selects a PDF. Keeping the
   // two pinned, audited files behind same-origin URLs avoids a third-party
