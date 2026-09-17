@@ -75,3 +75,14 @@ test('gift URL parser accepts existing and compact links and rejects malformed t
     if(valid)assert.equal(result[1],'234567');
   }
 });
+
+test('running app routes short and legacy gift links and defers during startup',async()=>{
+  const fs=require('node:fs'),vm=require('node:vm');const html=fs.readFileSync('client/index.html','utf8');
+  const start=html.indexOf('function receiveNumberGiftURL('),end=html.indexOf("window.addEventListener('hashchange'",start);
+  let opened=0;const context={URL,location:{hash:'',pathname:'/'},history:{replaceState(){}},numberGiftStartupReady:false,pendingNumberGift:null,openNumberGift:async()=>{opened++;},toast(){}};
+  vm.createContext(context);vm.runInContext(html.slice(start,end),context);
+  assert.equal(context.receiveNumberGiftURL('https://vaultlix.com/#g=234567.'+'A'.repeat(22)),true);assert.equal(opened,0);assert.equal(context.pendingNumberGift[1],'234567');
+  context.numberGiftStartupReady=true;
+  assert.equal(context.receiveNumberGiftURL('https://vaultlix.com/#numberGift=234567.'+'B'.repeat(43)),true);assert.equal(opened,1);
+  assert.equal(context.receiveNumberGiftURL('https://example.com/#g=234567.'+'A'.repeat(22)),false);assert.equal(opened,1);
+});

@@ -9960,6 +9960,7 @@ function confirmRecoveryBackup() {
 }
 async function openNumberGift() {
   const claim=pendingNumberGift; pendingNumberGift=null;
+  if (!claim) return;
   if(loadAccountState()) {toast('Open the private claim link on a device signed out of Vaultlix. It is for a new account.');return;}
   const result=await api('/api/account/number-gift',{privateNumber:claim[1],reservationToken:claim[2]});
   if(result.error) {toast(result.error);return;}
@@ -10122,6 +10123,20 @@ function showAccountTab(name) {
 }
 let pendingNumberGift = /^#(?:g|numberGift)=([2-9][0-9]{5,9})\.([A-Za-z0-9_-]{22,96})$/.exec(location.hash);
 if (pendingNumberGift) history.replaceState(null, '', location.pathname);
+let numberGiftStartupReady = false;
+function receiveNumberGiftURL(rawURL) {
+  let url;
+  try { url = new URL(rawURL); } catch (_) { return false; }
+  if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return false;
+  const claim = /^#(?:g|numberGift)=([2-9][0-9]{5,9})\.([A-Za-z0-9_-]{22,96})$/.exec(url.hash);
+  if (!claim) return false;
+  pendingNumberGift = claim;
+  if (location.hash === url.hash) history.replaceState(null, '', location.pathname);
+  if (numberGiftStartupReady) openNumberGift().catch(() => toast('Could not open your reserved number. Please reopen the claim link.'));
+  return true;
+}
+window.addEventListener('hashchange', () => receiveNumberGiftURL(location.href));
+
 let activeNumberGift = false;
 let pendingPrivateNumber = '';
 let pendingPrivateNumberReservation = '';
@@ -14969,6 +14984,7 @@ window.vaultlixOpenInviteURL = function(rawURL) {
   try {
     const url = new URL(rawURL);
     if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return;
+    if (receiveNumberGiftURL(url.href)) return;
     const recovery = parseRecoveryLink(url.href);
     if (recovery) { openRecoveryFromLink(recovery); return; }
     const match = url.pathname.match(/^\/join\/([a-z0-9-]+)\/?$/i);
@@ -16351,6 +16367,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // commitment was already dropped from state and storage inside the loop
   // above; this is purely the explanation.
   if (keyMismatchAfterRestore) showKeyMismatchOverlay(false);
+  numberGiftStartupReady = true;
   if (pendingNumberGift) {
     await openNumberGift();
   } else if (startupRecovery) {
