@@ -66,7 +66,7 @@ test('/privacy is a real page built from the in-app screen', () => {
   assert.match(r.body, /<title>Privacy Policy \| Vaultlix<\/title>/);
   assert.match(r.body, /<link rel="canonical" href="https:\/\/vaultlix\.com\/privacy">/);
   assert.match(r.body, /<h1 class="legal-title">Privacy Policy<\/h1>/);
-  assert.match(r.body, /id="s-privacy" class="screen active"/);
+  assert.match(r.body, /id="s-privacy" class="screen active seo-page"/);
   assert.match(r.body, /<a class="legal-back" href="\/"/);
   assert.ok(!/onclick=/.test(r.body), 'no app-only handlers left');
   assert.match(r.body, /Nothing readable\./);

@@ -111,8 +111,20 @@ const CONTENT_PAGE_STYLE = '.seo-content{background:#FBF7F8;padding:24px 16px}'
   + '.seo-cta:hover{background:#542237;box-shadow:0 13px 28px rgba(104,44,67,.27);transform:translateY(-2px)}'
   + '@media(max-width:760px){.seo-cta{font-size:14px;padding:15px 20px}}';
 
+// Every public web page (legal + content). The in-app legal screens are
+// designed mobile-first: their card only gets inner padding under 640px and
+// nothing centres it, so on a desktop browser text ran into the card edge and
+// the card hugged the left side. These rules apply to the web pages only.
+const PUBLIC_PAGE_STYLE = '.seo-page{justify-content:center;align-items:flex-start}'
+  + '.seo-page .legal-contact{line-height:1.8}.seo-page .legal-contact a{color:var(--gold)}'
+  + '.seo-page .legal-back{margin-bottom:24px}'
+  + '@media(min-width:641px){.screen.seo-page{padding:48px 24px 72px!important}.seo-page .legal-card{padding:40px 48px 36px!important}}'
+  // Content pages use H3 only for questions under a section heading.
+  + '.seo-content .legal-section h3{font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;margin:18px 0 4px}'
+  + '.seo-content .legal-section h2+h3{margin-top:10px}.seo-content .legal-section{margin-bottom:30px}.seo-content .legal-highlight{margin:12px 0 30px}.seo-content .legal-section ol+p,.seo-content .legal-section ul+p{margin-top:10px}';
+
 function renderContentPage(fragment) {
-  return `<div class="screen active seo-content">
+  return `<div class="screen active seo-content seo-page">
   <div class="legal-card">
     <a class="legal-back" href="/" style="text-decoration:none;width:fit-content">← Back to Vaultlix</a>
     <div class="legal-logo">
@@ -159,7 +171,7 @@ function extractFontLink(html) {
 function staticizeScreen(screenHtml) {
   return screenHtml
     // The screen is shown by adding .active in the app; do the same statically.
-    .replace(/class="screen"/, 'class="screen active"')
+    .replace(/class="screen"/, 'class="screen active seo-page"')
     // "Back to Vaultlix" button -> real link home. Same class, so same look.
     .replace(
       /<button class="legal-back" onclick="goBack\(\)">([\s\S]*?)<\/button>/,
@@ -215,7 +227,8 @@ function buildPage(routePath, cfg, parts) {
 <meta property="og:image" content="${ORIGIN}/icons/icon-512.png?v=20260904">
 ${fonts}
 <link rel="stylesheet" href="${parts.cssPath}">
-${cfg.file ? `<style>${CONTENT_PAGE_STYLE}</style>\n` : ''}<script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
+<style>${PUBLIC_PAGE_STYLE}${cfg.file ? CONTENT_PAGE_STYLE : ''}</style>
+<script type="application/ld+json">${JSON.stringify(breadcrumb)}</script>
 </head>
 <body>
 ${cfg.file ? renderContentPage(parts.fragments[cfg.file]) : parts.screens[cfg.screen]}
