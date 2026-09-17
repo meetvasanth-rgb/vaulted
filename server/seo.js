@@ -84,7 +84,7 @@ const PAGES = {
   '/compare/vaultlix-vs-zangi': {
     file: 'vaultlix-vs-zangi.html',
     title: 'Vaultlix vs Zangi: Private Number Messengers Compared',
-    description: 'Vaultlix and Zangi both replace your phone number with a private in-app number. Compare sign-up, privacy, groups, calls, devices and pricing, checked 17 September 2026.',
+    description: 'Vaultlix vs Zangi: both replace your phone number with a private number. Compare password recovery, who can contact you, safety controls, groups, calls and devices.',
     breadcrumb: 'Vaultlix vs Zangi',
     lastmod: '2026-09-17',
   },

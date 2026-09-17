@@ -156,7 +156,7 @@ test('content pages only make product claims that appear in the app itself', { s
     'Vaultlix is not a cellular number', 'cannot receive SMS', 'does not search contacts or suggest people',
     'Choose the username people will see', 'A conversation appears after they accept', 'Vaultlix cannot recover this passcode',
     'losing both this device and the recovery code permanently loses', 'Your password and recovery code belong to you',
-    'restored on another device', 'Hide the active conversation immediately', 'Report and block', 'Emergency Exit',
+    'restored on another device', 'Recover account', 'Emergency Exit', 'Hide the active conversation immediately', 'Report and block', 'Emergency Exit',
   ]) assert.ok(app.includes(claim), `app still says: ${claim}`);
 });
 
