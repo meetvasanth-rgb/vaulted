@@ -74,11 +74,25 @@ const PAGES = {
     breadcrumb: 'How Vaultlix numbers work',
     lastmod: '2026-09-17',
   },
+  '/use-cases/online-dating': {
+    file: 'online-dating.html',
+    title: 'Talk to Dating Matches Without Sharing Your Number | Vaultlix',
+    description: 'Share a Vaultlix number with dating matches instead of your phone number. Message and call one-to-one, approve who connects, and erase the conversation for both.',
+    breadcrumb: 'Online dating',
+    lastmod: '2026-09-17',
+  },
+  '/compare/vaultlix-vs-zangi': {
+    file: 'vaultlix-vs-zangi.html',
+    title: 'Vaultlix vs Zangi: Private Number Messengers Compared',
+    description: 'Vaultlix and Zangi both replace your phone number with a private in-app number. Compare sign-up, privacy, groups, calls, devices and pricing, checked 17 September 2026.',
+    breadcrumb: 'Vaultlix vs Zangi',
+    lastmod: '2026-09-17',
+  },
 };
 
 // Indexable URLs for sitemap.xml. Only public marketing/legal pages — never
 // app routes, invitations, profiles, admin or API paths.
-const SITEMAP_PATHS = ['/', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/faq', '/privacy', '/terms', '/install', '/get-app'];
+const SITEMAP_PATHS = ['/', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/use-cases/online-dating', '/compare/vaultlix-vs-zangi', '/faq', '/privacy', '/terms', '/install', '/get-app'];
 
 const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).filter(([, cfg]) => cfg.screen).map(([p, cfg]) => [cfg.screen, p]));
 
@@ -88,6 +102,10 @@ const CONTENT_PAGE_STYLE = '.seo-content{background:#FBF7F8;padding:24px 16px}'
   + '.legal-section h2{font-size:13px;font-weight:600;margin-bottom:8px;letter-spacing:.04em;text-transform:uppercase}'
   + '.legal-section ol{font-size:13px;color:#5F5B55;line-height:1.75;padding-left:18px}.legal-section ol li{margin-bottom:4px}'
   + '.legal-section a{color:var(--gold)}'
+  // Comparison tables: legal-section text size and colours, legal-highlight border tone.
+  + '.seo-table{overflow-x:auto;margin:8px 0}.seo-table table{border-collapse:collapse;width:100%;font-size:13px;line-height:1.55;color:#5F5B55}'
+  + '.seo-table th,.seo-table td{text-align:left;vertical-align:top;padding:9px 8px;border-bottom:.5px solid #E8E2DA}'
+  + '.seo-table thead th{color:var(--vx-ink,#271D25);font-weight:600}.seo-table tbody th{color:var(--vx-ink,#271D25);font-weight:600;width:28%}'
   // Same values as the homepage "Create my number" button (#s-landing .landing-hero-action).
   + '.seo-cta{display:inline-flex;align-items:center;justify-content:center;gap:9px;margin:28px 0 8px;padding:13px 18px;border:1px solid #682C43;border-radius:999px;background:#682C43;color:#fff;font:750 12px/1 \'Manrope\',sans-serif;box-shadow:0 10px 24px rgba(104,44,67,.22);text-decoration:none;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}'
   + '.seo-cta:hover{background:#542237;box-shadow:0 13px 28px rgba(104,44,67,.27);transform:translateY(-2px)}'

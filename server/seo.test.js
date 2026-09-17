@@ -133,6 +133,8 @@ test('content pages are served in the shared layout with one H1 and no app handl
   for (const [p, h1] of [
     ['/messaging-without-phone-number', 'Message and call without sharing your phone number'],
     ['/how-vaultlix-numbers-work', 'How your Vaultlix number works'],
+    ['/use-cases/online-dating', 'Get to know a match without giving out your number'],
+    ['/compare/vaultlix-vs-zangi', 'Vaultlix vs Zangi'],
   ]) {
     const r = call(seo, p);
     assert.strictEqual(r.status, 200, p);
@@ -154,6 +156,7 @@ test('content pages only make product claims that appear in the app itself', { s
     'Vaultlix is not a cellular number', 'cannot receive SMS', 'does not search contacts or suggest people',
     'Choose the username people will see', 'A conversation appears after they accept', 'Vaultlix cannot recover this passcode',
     'losing both this device and the recovery code permanently loses', 'Your password and recovery code belong to you',
+    'restored on another device', 'Hide the active conversation immediately', 'Report and block', 'Emergency Exit',
   ]) assert.ok(app.includes(claim), `app still says: ${claim}`);
 });
 
