@@ -338,12 +338,13 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-row-badge.temp{background:#F4E8EC;color:#8D3C56}
 .vault-list-row-badge.perm{background:#EAF1EC;color:#557761}
 .vault-list-row-unread{background:#C87588;color:#fff;border-radius:10px;min-width:20px;height:20px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;line-height:1;font-weight:700}
-.vault-list-actions{position:fixed;left:0;right:0;bottom:0;padding:12px 18px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(251,247,248,0),#FBF7F8 18%);display:flex;gap:10px;justify-content:center;z-index:5}
-.vault-list-action{min-height:50px;border-radius:17px;padding:0 20px;font:700 14px/1 inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;flex:1;max-width:365px}
-.vault-list-actions .vault-list-action:only-child{max-width:760px}
-.vault-list-action svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.vault-list-action.primary{background:#682C43;color:#fff;border:1px solid #682C43;box-shadow:0 10px 24px rgba(104,44,67,.2)}
-.vault-list-action.secondary{background:#fff;color:#682C43;border:1px solid #DCCDD2}
+.vault-list-actions{position:fixed;left:0;right:0;bottom:0;padding:10px 18px calc(10px + env(safe-area-inset-bottom));background:rgba(251,247,248,.96);border-top:1px solid #E8DDE1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;justify-content:center;z-index:5;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.vault-list-action{min-height:52px;border-radius:16px;padding:6px 8px;font:700 11px/1.1 inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:0;background:#fff;color:#682C43;border:1px solid #E2D2D8}
+.vault-list-action svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.vault-list-action.active{background:#682C43;color:#fff;border-color:#682C43;box-shadow:0 8px 18px rgba(104,44,67,.2)}
+.vault-list-action:active{transform:scale(.97)}
+.vault-call-icon{grid-row:1/3;width:48px;height:48px;border-radius:50%;background:#F2E8EC;color:#8D3C56;display:flex;align-items:center;justify-content:center}
+.vault-call-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 @media(min-width:760px){
   .vault-list-hdr{padding-left:max(28px,calc((100vw - 760px)/2));padding-right:max(28px,calc((100vw - 760px)/2))}
   .vault-list-main{padding-top:0}.vault-list-row{padding:17px 20px}.vault-list-actions{padding-left:calc((100vw - 760px)/2 + 18px);padding-right:calc((100vw - 760px)/2 + 18px)}
@@ -2476,6 +2477,9 @@ html.vaultlix-native-android #s-landing .landing-back-btn{
 html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   padding-top:calc(14px + var(--android-safe-area-top,0px))!important;
 }
+html.vaultlix-native-android #s-vault-list .vault-list-actions{
+  padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+}
 html.vaultlix-native-android .emergency-overlay{
   padding-top:calc(16px + var(--android-safe-area-top,0px));
   padding-bottom:calc(16px + var(--android-safe-area-bottom,0px));
@@ -3220,7 +3224,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div id="s-vault-list" class="screen">
   <div class="vault-list-hdr">
     <div class="vault-list-heading">
-      <div class="vault-list-title" data-i18n="chats">Chats</div>
+      <div class="vault-list-title" id="vault-list-title" data-i18n="chats">Chats</div>
     </div>
     <div class="vault-list-nav">
       <button class="vault-list-settings" type="button" onclick="openNewConnection()" title="Add your friend" aria-label="Find a Vaultlix private number">
@@ -3235,7 +3239,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
   <div class="vault-list-actions">
-    <button class="vault-list-action primary" type="button" onclick="openNewConnection()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="new_connection">Add your friend</span></button>
+    <button class="vault-list-action" type="button" onclick="openNewConnection()" aria-label="Add your friend"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="new_connection">Add your friend</span></button>
+    <button class="vault-list-action active" id="vault-nav-chats" type="button" onclick="setVaultListMode('chats')" aria-label="Show chats"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></svg><span data-i18n="chats">Chats</span></button>
+    <button class="vault-list-action" id="vault-nav-calls" type="button" onclick="setVaultListMode('calls')" aria-label="Show calls"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg><span data-i18n="calls">Calls</span></button>
   </div>
 </div>
 
@@ -12176,14 +12182,83 @@ function vaultAvatarPalette(seed) {
   return `--avatar-bg:hsl(${hue} ${saturation}% 92%);--avatar-fg:hsl(${hue} ${Math.min(68, saturation + 20)}% 31%)`;
 }
 
+let currentVaultListMode = 'chats';
+
+function setVaultListMode(mode) {
+  currentVaultListMode = mode === 'calls' ? 'calls' : 'chats';
+  renderVaultList();
+}
+
+function syncVaultListModeControls() {
+  const callsMode = currentVaultListMode === 'calls';
+  const title = document.getElementById('vault-list-title');
+  if (title) {
+    title.dataset.i18n = callsMode ? 'calls' : 'chats';
+    title.textContent = i18n(callsMode ? 'calls' : 'chats');
+  }
+  document.getElementById('vault-nav-chats')?.classList.toggle('active', !callsMode);
+  document.getElementById('vault-nav-calls')?.classList.toggle('active', callsMode);
+}
+
+function callHistoryEntries() {
+  const entries = [];
+  for (const room of rooms.values()) {
+    for (const rec of uniqueVisibleConversationRecords(room.messages)) {
+      const family = callHistoryFamily(rec);
+      if (!family) continue;
+      const occurredAt = new Date(rec.ts || 0).getTime() || 0;
+      const text = String(rec.content || '')
+        .replace(/\s*·\s*\d{1,2}:\d{2}(?:\s*[AP]M)?\s*$/i, '')
+        .trim();
+      entries.push({ room, rec, family, occurredAt, text });
+    }
+  }
+  return entries.sort((left, right) => right.occurredAt - left.occurredAt);
+}
+
+function openVaultListRoom(code) {
+  const room = rooms.get(code);
+  if (room?.restorePending) {
+    const movedForward = prioritizeStartupRoomRestore(code);
+    toast(movedForward ? 'Opening this private conversation next…' : 'Opening this private conversation securely…');
+  } else if (room?.restoreUnavailable) {
+    toast('Retrying this preserved conversation…');
+    location.reload();
+  } else if (room && !room.everOnline) {
+    resumeWaitingScreen(room);
+  } else {
+    openConversationAfterPaint(code);
+  }
+}
+
+function renderCallHistoryList(body) {
+  const entries = callHistoryEntries();
+  if (!entries.length) {
+    body.innerHTML = '<div class="vault-list-empty"><strong>No calls yet</strong>Your encrypted call history will appear here after a call ends.</div>';
+    return;
+  }
+  body.innerHTML = entries.map(({ room, text, occurredAt }) => `<div class="vault-list-row vault-call-row" data-room="${escHtml(room.code)}">
+    <span class="vault-call-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></span>
+    <span class="vault-list-row-name">${escHtml(roomDisplayLabel(room))}</span>
+    <span class="vault-list-row-preview${/^Missed/i.test(text) ? ' alert' : ''}">${escHtml(text)}</span>
+    <span class="vault-list-row-meta">${occurredAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(occurredAt)}</span>` : ''}</span>
+  </div>`).join('');
+  body.querySelectorAll('.vault-call-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
+}
+
 // Privacy-first returning-user home. The list itself and preview preference
 // live only on this device. Decrypted preview text is read from the current
 // in-memory room log and is never added to localStorage by this feature.
 function renderVaultList() {
   const body = document.getElementById('vault-list-body');
   if (!body) return;
+  syncVaultListModeControls();
   if (!loadAccountState()) {
     body.innerHTML = '<div class="vault-list-empty"><strong>Sign in to view your private lines</strong>Your conversations stay hidden until this device is authenticated.</div>';
+    return;
+  }
+  if (currentVaultListMode === 'calls') {
+    renderCallHistoryList(body);
     return;
   }
   const previews = vaultPreviewsEnabled();
@@ -12222,19 +12297,7 @@ function renderVaultList() {
   }
   body.innerHTML = html;
   scrollToFocusedConnectionRequest();
-  body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => {
-    const room = rooms.get(el.dataset.room);
-    if (room?.restorePending) {
-      const movedForward = prioritizeStartupRoomRestore(el.dataset.room);
-      toast(movedForward ? 'Opening this private conversation next…' : 'Opening this private conversation securely…');
-    }
-    else if (room?.restoreUnavailable) {
-      toast('Retrying this preserved conversation…');
-      location.reload();
-    }
-    else if (room && !room.everOnline) resumeWaitingScreen(room);
-    else openConversationAfterPaint(el.dataset.room);
-  }; });
+  body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
 }
 
 // Startup restoration used to await every conversation from beginning to

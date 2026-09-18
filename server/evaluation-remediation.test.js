@@ -49,7 +49,7 @@ test('startup restores conversations concurrently and prioritizes the room a use
   assert.match(client, /async function restoreStartupRooms\(codes, restoreOne\)/);
   assert.match(client, /Promise\.all\(Array\.from\(\{ length:workerCount \}, \(\) => worker\(\)\)\)/);
   assert.match(client, /function prioritizeStartupRoomRestore\(code\)[\s\S]*pendingStartupRoomRestores\.unshift\(code\)/);
-  assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*prioritizeStartupRoomRestore\(el\.dataset\.room\)/);
+  assert.match(client, /function openVaultListRoom\(code\)[\s\S]*if \(room\?\.restorePending\) \{[\s\S]*prioritizeStartupRoomRestore\(code\)/);
   assert.match(client, /preferredRestoreCode[\s\S]*restoreStartupRooms\(restoreOrder, async code =>/);
 });
 
