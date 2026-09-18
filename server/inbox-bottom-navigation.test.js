@@ -5,12 +5,14 @@ const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('inbox bottom bar exposes add, chats and calls as equal navigation actions', () => {
+test('inbox bottom bar exposes compact icon-only add, chats and calls actions', () => {
   const bar = client.match(/<div class="vault-list-actions">[\s\S]*?<\/div>\s*<\/div>\s*<!-- CLOSED -->/)?.[0] || '';
-  assert.match(bar, /onclick="openNewConnection\(\)"/);
+  assert.match(bar, /onclick="openNewConnection\(\)"[^>]*aria-label="Add your friend"[^>]*data-tooltip="Add your friend"/);
   assert.match(bar, /id="vault-nav-chats"[\s\S]*setVaultListMode\('chats'\)/);
   assert.match(bar, /id="vault-nav-calls"[\s\S]*setVaultListMode\('calls'\)/);
-  assert.match(client, /\.vault-list-actions\{[\s\S]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(bar, /<span[^>]*>\s*(?:Add your friend|Chats|Calls)\s*<\/span>/);
+  assert.match(client, /\.vault-list-action\{width:46px;height:44px/);
+  assert.match(client, /\.vault-list-action\[data-tooltip\]:hover::after/);
 });
 
 test('calls view is derived only from decrypted encrypted-conversation call records', () => {

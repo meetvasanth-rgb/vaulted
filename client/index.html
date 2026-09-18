@@ -338,16 +338,18 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-row-badge.temp{background:#F4E8EC;color:#8D3C56}
 .vault-list-row-badge.perm{background:#EAF1EC;color:#557761}
 .vault-list-row-unread{background:#C87588;color:#fff;border-radius:10px;min-width:20px;height:20px;font-size:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;line-height:1;font-weight:700}
-.vault-list-actions{position:fixed;left:0;right:0;bottom:0;padding:10px 18px calc(10px + env(safe-area-inset-bottom));background:rgba(251,247,248,.96);border-top:1px solid #E8DDE1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;justify-content:center;z-index:5;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-.vault-list-action{min-height:52px;border-radius:16px;padding:6px 8px;font:700 11px/1.1 inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:0;background:#fff;color:#682C43;border:1px solid #E2D2D8}
-.vault-list-action svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-.vault-list-action.active{background:#682C43;color:#fff;border-color:#682C43;box-shadow:0 8px 18px rgba(104,44,67,.2)}
+.vault-list-actions{position:fixed;left:50%;right:auto;bottom:calc(10px + env(safe-area-inset-bottom));transform:translateX(-50%);padding:5px;background:rgba(251,247,248,.94);border:1px solid #E8DDE1;border-radius:20px;display:flex;gap:4px;justify-content:center;z-index:5;box-shadow:0 8px 24px rgba(74,45,56,.12);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.vault-list-action{width:46px;height:44px;border-radius:15px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;background:transparent;color:#682C43;border:0}
+.vault-list-action svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.vault-list-action.active{background:#682C43;color:#fff;box-shadow:0 5px 12px rgba(104,44,67,.2)}
 .vault-list-action:active{transform:scale(.97)}
+.vault-list-action[data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(3px);white-space:nowrap;padding:7px 10px;border-radius:9px;background:#2F2227;color:#fff;font:600 12px/1.2 'Inter',sans-serif;opacity:0;pointer-events:none;transition:opacity .14s ease,transform .14s ease;box-shadow:0 5px 14px rgba(47,34,39,.2)}
+.vault-list-action[data-tooltip]:hover::after,.vault-list-action[data-tooltip]:focus-visible::after{opacity:1;transform:translateX(-50%) translateY(0)}
 .vault-call-icon{grid-row:1/3;width:48px;height:48px;border-radius:50%;background:#F2E8EC;color:#8D3C56;display:flex;align-items:center;justify-content:center}
 .vault-call-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 @media(min-width:760px){
   .vault-list-hdr{padding-left:max(28px,calc((100vw - 760px)/2));padding-right:max(28px,calc((100vw - 760px)/2))}
-  .vault-list-main{padding-top:0}.vault-list-row{padding:17px 20px}.vault-list-actions{padding-left:calc((100vw - 760px)/2 + 18px);padding-right:calc((100vw - 760px)/2 + 18px)}
+  .vault-list-main{padding-top:0}.vault-list-row{padding:17px 20px}
 }
 @media(max-width:390px){.vault-list-title{font-size:24px}}
 /* -- IN-ROOM DISAPPEARING-TIMER CONTROL (+ call button) -- */
@@ -2478,7 +2480,7 @@ html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   padding-top:calc(14px + var(--android-safe-area-top,0px))!important;
 }
 html.vaultlix-native-android #s-vault-list .vault-list-actions{
-  padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+  bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
 }
 html.vaultlix-native-android .emergency-overlay{
   padding-top:calc(16px + var(--android-safe-area-top,0px));
@@ -3239,9 +3241,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="vault-list-body" id="vault-list-body"></div>
   </main>
   <div class="vault-list-actions">
-    <button class="vault-list-action" type="button" onclick="openNewConnection()" aria-label="Add your friend"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="new_connection">Add your friend</span></button>
-    <button class="vault-list-action active" id="vault-nav-chats" type="button" onclick="setVaultListMode('chats')" aria-label="Show chats"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></svg><span data-i18n="chats">Chats</span></button>
-    <button class="vault-list-action" id="vault-nav-calls" type="button" onclick="setVaultListMode('calls')" aria-label="Show calls"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg><span data-i18n="calls">Calls</span></button>
+    <button class="vault-list-action" type="button" onclick="openNewConnection()" aria-label="Add your friend" data-tooltip="Add your friend"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="vault-list-action active" id="vault-nav-chats" type="button" onclick="setVaultListMode('chats')" aria-label="Show chats" title="Chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></svg></button>
+    <button class="vault-list-action" id="vault-nav-calls" type="button" onclick="setVaultListMode('calls')" aria-label="Show calls" title="Calls"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></button>
   </div>
 </div>
 
