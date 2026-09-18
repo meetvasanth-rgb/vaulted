@@ -17,6 +17,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var socket: URLSessionWebSocketTask?
     private var peer: RTCPeerConnection?
     private var audioSource: RTCAudioSource?
+    private var muted = false
     private var audioTrack: RTCAudioTrack?
     private var pendingOffer: [String: Any]?
     private var pendingCandidates: [[String: Any]] = []
@@ -129,13 +130,25 @@ final class NativeWebRTCCallEngine: NSObject {
         }
     }
 
+    func setMuted(callID: UUID, muted: Bool, completion: @escaping (Bool) -> Void) {
+        queue.async {
+            guard self.callID == callID, self.room != nil else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            self.muted = muted
+            self.audioTrack?.isEnabled = !muted
+            DispatchQueue.main.async { completion(true) }
+        }
+    }
+
     func callKitDidActivate(_ audioSession: AVAudioSession) {
         queue.async {
             self.trace("audio activated")
             self.prepareAudioTrackLocked()
             RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
             RTCAudioSession.sharedInstance().isAudioEnabled = true
-            self.audioTrack?.isEnabled = true
+            self.audioTrack?.isEnabled = !self.muted
         }
     }
 
@@ -468,6 +481,7 @@ final class NativeWebRTCCallEngine: NSObject {
         let source = factory.audioSource(with: constraints)
         audioSource = source
         audioTrack = factory.audioTrack(with: source, trackId: "vaultlix-native-audio")
+        audioTrack?.isEnabled = !muted
     }
 
     private func sendSignalLocked(type: String, payload: [String: Any]) {
@@ -600,6 +614,7 @@ final class NativeWebRTCCallEngine: NSObject {
         audioTrack = nil
         audioSource = nil
         room = nil
+        muted = false
         callID = nil
         pendingOffer = nil
         pendingCandidates.removeAll()

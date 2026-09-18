@@ -4831,6 +4831,7 @@ let nativeVoipRegistration = null;
 const pendingNativeCallActions = new Map();
 let pendingNativeUnscopedAction = null;
 const pendingNativeMissedCallActions = new Map();
+const pendingNativeCallEnds = new Map();
 
 function replayPendingNativeMissedCalls(room) {
   for (const [key, detail] of pendingNativeMissedCallActions) {
@@ -4840,6 +4841,18 @@ function replayPendingNativeMissedCalls(room) {
     if (!matchesCode && !matchesHandle) continue;
     pendingNativeMissedCallActions.delete(key);
     queueMicrotask(() => handleNativeCallAction(detail));
+  }
+}
+
+function replayPendingNativeCallEnds(room) {
+  // A restored room enters the inbox before its E2E key has been derived.
+  // Keep the native result queued until the second addRoomToState() call,
+  // when persisting the encrypted history record can actually succeed.
+  if (!room?.sharedKey) return;
+  for (const [key, pending] of pendingNativeCallEnds) {
+    if (String(pending.roomCode || '').toLowerCase() !== String(room.code || '').toLowerCase()) continue;
+    pendingNativeCallEnds.delete(key);
+    queueMicrotask(() => window.vaultlixNativeCallEnded(pending.roomCode, pending.historyText));
   }
 }
 
@@ -4861,6 +4874,7 @@ function addRoomToState(room) {
   subscribeInboxRooms();
   registerNativeVoipForRoom(room);
   replayPendingNativeMissedCalls(room);
+  replayPendingNativeCallEnds(room);
 }
 
 function acceptNativeVoipRegistration(detail) {
@@ -4949,6 +4963,11 @@ async function handleNativeCallAction(detail) {
     setActiveRoom(room.code);
   };
   const usesDedicatedAndroidCallUi = !!window.VaultlixAndroid?.supportsNativeWebRtc?.();
+  if (detail.action === 'nativeMuted') {
+    room.callMuted = detail.muted === true;
+    renderCallOverlay(room);
+    return;
+  }
   if (detail.action === 'nativeConnected') {
     // Native CallKit/libwebrtc owns signaling and media for this incoming
     // iOS call. Mirror only its established state into the foreground page;
@@ -6491,19 +6510,23 @@ function addCallSysMsg(room, text, eventId = null, callEvent = null) {
   // · 11:42" design — a bare "Missed call" a scrollback-length later gives
   // no sense of when, and the toast that announced it in the moment is long
   // gone by then.
-  const stamped = `${text} · ${formatMsgTime(Date.now())}`;
+  const occurredAt = Date.now();
+  const stamped = `${text} · ${formatMsgTime(occurredAt)}`;
   const rec = {
     id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
-    kind:'sys', content:stamped, ts:Date.now(), callEvent,
+    kind:'sys', content:stamped, ts:occurredAt, callEvent,
     callEventViewerRole:callEvent?.authorRole || null,
   };
   if (room.messages.some(existing => existing.id === rec.id)) return;
   if (isDuplicateCallHistoryRecord(room, rec)) return;
   room.seenMsgIds?.add(rec.id);
   room.messages.push(rec);
+  room.lastMessageAt = Math.max(Number(room.lastMessageAt) || 0, occurredAt);
+  room.inboxActivityAt = Math.max(Number(room.inboxActivityAt) || 0, occurredAt);
   if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
   else if (/^Missed(?: encrypted)? call/.test(text)) room.unread++;
   renderRoomTabs();
+  persistRoomSeq(room);
   persistCallSysMsg(room, rec);
 }
 
@@ -6662,8 +6685,17 @@ function notifyLockedCallEnded(historyText = '') {
 // overlay. The normal endCall path is intentionally reused so timers, media,
 // and activeCallRoomCode are cleaned consistently.
 window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
-  const room = (roomCode && rooms.get(roomCode)) ||
-    (activeCallRoomCode && rooms.get(activeCallRoomCode));
+  const normalizedRoomCode = String(roomCode || '').toLowerCase();
+  const room = normalizedRoomCode
+    ? (rooms.get(roomCode) || Array.from(rooms.values()).find(candidate => String(candidate.code || '').toLowerCase() === normalizedRoomCode))
+    : (activeCallRoomCode && rooms.get(activeCallRoomCode));
+  if (!room && normalizedRoomCode && historyText) {
+    pendingNativeCallEnds.set(normalizedRoomCode, { roomCode, historyText });
+    while (pendingNativeCallEnds.size > 32) {
+      pendingNativeCallEnds.delete(pendingNativeCallEnds.keys().next().value);
+    }
+    return;
+  }
   if (room && room.callState !== 'idle') {
     // The dedicated Android call WebView owns the authoritative duration.
     // Prevent this hidden copy from manufacturing a second duration, then
@@ -7570,6 +7602,11 @@ function toggleMute() {
     room.callMuted = !room.callMuted;
     try { window.VaultlixAndroid.setNativeMuted(room.callMuted); } catch (e) {}
     renderCallOverlay(room);
+    return;
+  }
+  if (room.nativeCallActive && window.webkit?.messageHandlers?.vaultlixCall) {
+    try { window.webkit.messageHandlers.vaultlixCall.postMessage({action:'setMuted',code:room.code,muted:!room.callMuted}); }
+    catch (_) { toast('Could not change microphone mute.'); }
     return;
   }
   if (!room.localStream) return;

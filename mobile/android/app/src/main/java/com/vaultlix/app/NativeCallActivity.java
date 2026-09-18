@@ -322,9 +322,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         stopRingback();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(enforceRequestedAudioRoute);
-        String history = connectedAt == 0 ? pendingHistory : getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000));
-        MainActivity.notifyDedicatedCallEnded(roomCode, history);
-        showCallEndedMoment();
+        boolean wasConnected = connectedAt != 0;
+        String history = wasConnected ? getString(R.string.native_encrypted_call_duration, formatDuration((System.currentTimeMillis()-connectedAt)/1000)) : pendingHistory;
+        MainActivity.notifyDedicatedCallEnded(this, roomCode, history);
+        if (wasConnected) {
+            showCallEndedMoment();
+        } else {
+            finish();
+            overridePendingTransition(0, 0);
+        }
     }
 
     private void showCallEndedMoment() {

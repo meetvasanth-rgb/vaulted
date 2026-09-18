@@ -780,15 +780,18 @@ public class MainActivity extends BridgeActivity {
      * foreground WebView. Explicitly clear that underlying call state so its
      * incoming overlay cannot reappear after the call activity finishes.
      */
-    public static void notifyDedicatedCallEnded(String roomCode, String historyText) {
+    public static void notifyDedicatedCallEnded(Context context, String roomCode, String historyText) {
         MainActivity activity = activeInstance.get();
+        Context persistenceContext = activity != null ? activity : context;
+        if (persistenceContext != null) {
+            NativeCallActions.markPendingWebViewCallEnd(persistenceContext, roomCode, historyText);
+        }
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         // A locked-screen call surface may finish while MainActivity is
         // technically resumed but still hidden and unfocused behind the
         // keyguard. WebView can discard evaluateJavascript in that state, so
         // persist a one-shot marker and consume it only after window focus is
         // genuinely restored.
-        NativeCallActions.markPendingWebViewCallEnd(activity, roomCode, historyText);
         if (!activity.hasWindowFocus()) return;
         String[] pendingEnd = NativeCallActions.consumePendingWebViewCallEnd(activity);
         if (pendingEnd != null) activity.clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);

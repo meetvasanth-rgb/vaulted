@@ -457,6 +457,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             }
             return
         }
+        if action == "setMuted",
+           let code = body["code"] as? String,
+           let muted = body["muted"] as? Bool, code.count <= 128 {
+            VaultlixCallManager.shared.setMutedFromWeb(roomCode: code, muted: muted)
+            return
+        }
         if action == "setSpeaker",
            let enabled = body["enabled"] as? Bool {
             let success = VaultlixCallManager.shared.setSpeakerEnabled(

@@ -54,6 +54,16 @@ test('Android call-end push preserves missed-call history until the encrypted in
   assert.match(server, /isCallEnd: true,[\s\S]*missedCall: isMissedCall,[\s\S]*caller:/);
 });
 
+test('Android completed calls survive activity and encrypted-room restoration races', () => {
+  assert.match(android, /notifyDedicatedCallEnded\(this, roomCode, history\)/);
+  assert.match(androidMain, /notifyDedicatedCallEnded\(Context context, String roomCode, String historyText\)/);
+  assert.match(androidMain, /Context persistenceContext = activity != null \? activity : context;[\s\S]*markPendingWebViewCallEnd\(persistenceContext, roomCode, historyText\)[\s\S]*if \(activity == null/);
+  assert.match(client, /const pendingNativeCallEnds = new Map\(\)/);
+  assert.match(client, /function replayPendingNativeCallEnds\(room\)[\s\S]*if \(!room\?\.sharedKey\) return;[\s\S]*vaultlixNativeCallEnded/);
+  assert.match(client, /window\.vaultlixNativeCallEnded = function\(roomCode, historyText = ''\)[\s\S]*const room = normalizedRoomCode[\s\S]*: \(activeCallRoomCode && rooms\.get\(activeCallRoomCode\)\);[\s\S]*pendingNativeCallEnds\.set/);
+  assert.match(client, /function addCallSysMsg[\s\S]*room\.inboxActivityAt = Math\.max[\s\S]*persistRoomSeq\(room\)/);
+});
+
 test('opening a conversation clears its missed-call inbox alert', () => {
   assert.match(client, /function setActiveRoom\(code(?:, \{ deferMessages = false \} = \{\})?\)[\s\S]*room\.unread = 0/);
   assert.match(client, /missed_encrypted_call'\), alert: room\.unread > 0/);
@@ -81,6 +91,7 @@ test('native Android ending uses the Vaultlix sand treatment', () => {
   assert.match(android, /VANISH_BURGUNDY = Color\.rgb\(104, 44, 67\)/);
   assert.match(android, /random\.nextInt\(35\) - 17/);
   assert.match(android, /\.setDuration\(850\)/);
+  assert.match(android, /boolean wasConnected = connectedAt != 0;[\s\S]*if \(wasConnected\) \{[\s\S]*showCallEndedMoment\(\);[\s\S]*\} else \{[\s\S]*finish\(\)/);
 });
 
 test('locked Android incoming call uses the polished Vaultlix call surface', () => {

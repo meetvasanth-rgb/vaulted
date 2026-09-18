@@ -263,6 +263,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             "callId": callID.uuidString,
             "occurredAt": Date().timeIntervalSince1970 * 1000,
         ]
+        if let muted = payload["muted"] as? Bool { detail["muted"] = muted }
         if let code = payload["code"] as? String { detail["code"] = code }
         // APNs receives only this opaque device-local handle. Passing it on
         // to the already-provisioned WebView lets the foreground UI select
@@ -385,6 +386,27 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         ringbackCallID = action.callUUID
         NativeWebRTCCallEngine.shared.startOutgoing(callID: action.callUUID)
         action.fulfill()
+    }
+
+    func setMutedFromWeb(roomCode: String, muted: Bool) {
+        guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }),
+              nativeMediaCalls.contains(match.key) else { return }
+        callController.request(CXTransaction(action: CXSetMutedCallAction(call: match.key, muted: muted))) { error in
+            if error != nil { print("VXCALL mute request failed") }
+        }
+    }
+
+    func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+        guard let payload = calls[action.callUUID], nativeMediaCalls.contains(action.callUUID) else {
+            action.fail(); return
+        }
+        NativeWebRTCCallEngine.shared.setMuted(callID: action.callUUID, muted: action.isMuted) { success in
+            guard success else { action.fail(); return }
+            var detail = payload
+            detail["muted"] = action.isMuted
+            self.postAction("nativeMuted", callID: action.callUUID, payload: detail)
+            action.fulfill()
+        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
