@@ -39,17 +39,17 @@ final class NativeCallActions {
     }
 
     static void decline(Context context, String callId, Runnable completion) {
-        decline(context, callId, completion, true);
+        decline(context, callId, completion, true, "declined");
     }
 
     static void declineWhileBusy(Context context, String callId) {
         // This decline belongs to a second call. It must stop that caller's
         // ringtone without publishing a pending end event for the call that
         // is already active on this device.
-        decline(context, callId, null, false);
+        decline(context, callId, null, false, "busy");
     }
 
-    private static void decline(Context context, String callId, Runnable completion, boolean markPendingEnd) {
+    private static void decline(Context context, String callId, Runnable completion, boolean markPendingEnd, String outcome) {
         if (markPendingEnd) markPendingWebViewCallEnd(context, "", "Declined call");
         String normalizedCallId = normalize(callId);
         if (normalizedCallId.isEmpty()) {
@@ -76,7 +76,8 @@ final class NativeCallActions {
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 connection.setRequestProperty("Accept", "application/json");
                 String escapedCallId = normalizedCallId.replace("\\", "\\\\").replace("\"", "\\\"");
-                byte[] body = ("{\"callId\":\"" + escapedCallId + "\"}").getBytes(StandardCharsets.UTF_8);
+                byte[] body = ("{\"callId\":\"" + escapedCallId + "\",\"outcome\":\"" + outcome + "\"}")
+                        .getBytes(StandardCharsets.UTF_8);
                 connection.setFixedLengthStreamingMode(body.length);
                 try (OutputStream output = connection.getOutputStream()) {
                     output.write(body);

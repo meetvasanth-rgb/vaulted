@@ -21,7 +21,7 @@ test('native Android outgoing calls generate routed ringback until connection or
   assert.match(callActivity, /AudioTrack\.Builder/);
   assert.match(callActivity, /USAGE_VOICE_COMMUNICATION_SIGNALLING/);
   assert.match(callActivity, /Math\.sin\(2\.0 \* Math\.PI \* 440\.0/);
-  assert.match(callActivity, /onConnected\(\).*stopRingback\(\)/);
+  assert.match(callActivity, /onConnected\(\)[\s\S]*renderConnected[\s\S]*stopRingback\(\)/);
   assert.match(callActivity, /finishingCall = true;\s*stopRingback\(\)/);
 });
 

@@ -83,6 +83,8 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
   assert.match(nativeActivity, /native_call_vanished/);
   assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);
+  assert.match(nativeActivity, /long activeConnectedAt = engine\.connectedAtMs\(\);[\s\S]*renderConnected\(activeConnectedAt\)/);
+  assert.match(nativeActivity, /onConnected\(\)[\s\S]*engine\.connectedAtMs\(\)[\s\S]*renderConnected/);
   assert.match(nativeActivity, /"calling"\.equals\(value\)[\s\S]*native_calling/);
   assert.match(nativeActivity, /"ringing"\.equals\(value\)[\s\S]*native_ringing/);
   assert.match(nativeActivity, /requestAudioRoute\(!speakerRequested\)/);
@@ -90,5 +92,8 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /postDelayed\(enforceRequestedAudioRoute, 1_400\)/);
   assert.match(nativeActivity, /getCommunicationDevice\(\)[\s\S]*renderAudioRoute\(speakerActive\)/);
   assert.match(engine, /private volatile String currentState = "idle"/);
+  assert.match(engine, /private volatile long connectedAtMs/);
+  assert.match(engine, /if \(connectedAtMs == 0L\) connectedAtMs = System\.currentTimeMillis\(\)/);
+  assert.match(engine, /connectedAtMs = 0L/);
   assert.match(engine, /currentState = state;[\s\S]*listener\.onState\(state\)/);
 });

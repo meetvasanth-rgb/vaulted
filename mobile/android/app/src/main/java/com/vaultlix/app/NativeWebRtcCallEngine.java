@@ -92,6 +92,7 @@ final class NativeWebRtcCallEngine {
     private volatile String currentRoomCode = "";
     private volatile String preparingRoomCode = "";
     private volatile String currentState = "idle";
+    private volatile long connectedAtMs;
     private int generation;
 
     private NativeWebRtcCallEngine(Context context) {
@@ -107,6 +108,7 @@ final class NativeWebRtcCallEngine {
     void removeListener(Listener listener) { listeners.remove(listener); }
     String currentRoomCode() { return currentRoomCode; }
     String currentState() { return currentState; }
+    long connectedAtMs() { return connectedAtMs; }
 
     boolean isBusyWithAnotherRoom(String code) {
         return NativeCallRouting.isCompeting(currentRoomCode, preparingRoomCode, code);
@@ -168,7 +170,7 @@ final class NativeWebRtcCallEngine {
 
     void end(boolean notifyPeer, String requestedOutcome) {
         executor.execute(() -> {
-            if (!notifyPeer) { reset("ended"); return; }
+            if (!notifyPeer) { reset(normalizeOutcome(requestedOutcome, "ended")); return; }
             if (ending || room == null) return;
             final String callOutcome = normalizeOutcome(requestedOutcome,
                     answered ? "ended" : (outgoing ? "cancelled" : "declined"));
@@ -253,6 +255,7 @@ final class NativeWebRtcCallEngine {
             String type = wire.optString("type");
             if ("ready".equals(type)) { signalingReady = true; flushSignals(); return; }
             if ("native-call-declined".equals(type)) { reset("declined"); return; }
+            if ("native-call-busy".equals(type)) { reset("busy"); return; }
             if ("native-call-answering".equals(type)) { notifyState("connecting"); return; }
             String wireInviteId = wire.optString("inviteId");
             if ("call-hangup-ack".equals(type)) {
@@ -481,10 +484,11 @@ final class NativeWebRtcCallEngine {
         currentRoomCode = "";
         preparingRoomCode = "";
         currentState = "idle";
+        connectedAtMs = 0L;
     }
 
     private static String normalizeOutcome(String value, String fallback) {
-        return "cancelled".equals(value) || "unanswered".equals(value) || "declined".equals(value) || "ended".equals(value)
+        return "cancelled".equals(value) || "unanswered".equals(value) || "declined".equals(value) || "busy".equals(value) || "ended".equals(value)
                 ? value : fallback;
     }
 
@@ -496,7 +500,11 @@ final class NativeWebRtcCallEngine {
         @Override public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
             Log.i(TAG, "ICE " + state + " room=" + currentRoomCode);
             if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
-                executor.execute(() -> { for (Listener listener : listeners) listener.onConnected(); });
+                executor.execute(() -> {
+                    if (connectedAtMs == 0L) connectedAtMs = System.currentTimeMillis();
+                    currentState = "connected";
+                    for (Listener listener : listeners) listener.onConnected();
+                });
             } else if (state == PeerConnection.IceConnectionState.FAILED) executor.execute(() -> reset("connection-failed"));
         }
         @Override public void onSignalingChange(PeerConnection.SignalingState state) {}

@@ -915,6 +915,21 @@ function hasPushDestination(member) {
   return !!(member && (member.pushSub || member.apnsToken || member.fcmToken));
 }
 
+function membersShareNativeCallDevice(left, right) {
+  if (!left || !right) return false;
+  return ['fcmToken', 'apnsToken', 'voipToken'].some(field =>
+    typeof left[field] === 'string' && left[field] && left[field] === right[field]);
+}
+
+function memberHasAnotherActiveCall(member, excludedRoomCode) {
+  if (!member) return false;
+  for (const [roomCode, room] of rooms) {
+    if (roomCode === excludedRoomCode || !room.activeCall) continue;
+    if ([...room.members.values()].some(candidate => membersShareNativeCallDevice(member, candidate))) return true;
+  }
+  return false;
+}
+
 function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = 'push' } = {}) {
   const hasNativeDestination = !!(member && (member.apnsToken || member.fcmToken));
   // A synced vault credential can carry the same room member token from a
@@ -1002,7 +1017,7 @@ function sendNativeCallEnd(member, callId, callOutcome = 'ended') {
   // This is an ordinary background APNs notification, so use the action
   // consumed by UIApplication's remote-notification callback. Current iOS
   // builds accept both spellings to remain compatible during rolling deploys.
-  const safeOutcome = ['cancelled','unanswered','declined','ended'].includes(callOutcome) ? callOutcome : 'ended';
+  const safeOutcome = ['cancelled','unanswered','declined','busy','ended'].includes(callOutcome) ? callOutcome : 'ended';
   const body = JSON.stringify({ aps: { 'content-available': 1 }, action: 'endCall', callId, callOutcome:safeOutcome });
   return new Promise(resolve => {
     let client;
@@ -2950,13 +2965,22 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!matchedRoom) return res200(res, { ok: true });
 
     const calleeToken = matchedRoom.nativeCalleeToken;
+    const callee = matchedRoom.members.get(calleeToken);
+    // Existing native builds use this endpoint both for an explicit Decline
+    // tap and when a second call reaches a device that is already connected
+    // elsewhere. Detect the latter from the device's registered native push
+    // token so Android callers get an accurate busy result immediately,
+    // without requiring an iOS binary change during App Review.
+    const requestedOutcome = d.outcome === 'busy' ? 'busy' : 'declined';
+    const callOutcome = requestedOutcome === 'busy' || memberHasAnotherActiveCall(callee, matchedRoomCode)
+      ? 'busy' : 'declined';
     const terminalInviteId = matchedRoom.nativeInviteId;
     const nativeCallId = matchedRoom.nativeCallId;
     const now = Date.now();
     markInviteTerminated(matchedRoom, terminalInviteId, now);
     if (terminalInviteId) {
       matchedRoom.callTerminal = {
-        inviteId:terminalInviteId, endedByToken:calleeToken, endedAt:now, callOutcome:'declined',
+        inviteId:terminalInviteId, endedByToken:calleeToken, endedAt:now, callOutcome,
       };
     }
     matchedRoom.ringingUntil = 0;
@@ -2966,7 +2990,7 @@ async function api(path, method, d, p, res, ip, headers) {
     matchedRoom.lastActivity = Date.now();
     await realtimeCoordinator.setCallState(matchedRoomCode, {
       ...(sharedCall || {}), callId, inviteId:terminalInviteId,
-      status:'terminal', outcome:'declined', endedAt:now, ringingUntil:0,
+      status:'terminal', outcome:callOutcome, endedAt:now, ringingUntil:0,
       endedByTokenHash:conversationTokenHash(calleeToken),
     }, 120).catch(() => {});
 
@@ -2979,7 +3003,9 @@ async function api(path, method, d, p, res, ip, headers) {
       // Deliver to both owners when both exist. A stale native incoming-call
       // socket must not prevent the foreground WebView that placed this
       // outgoing call from receiving the terminal state.
-      await deliverSignalToMember(memberToken, { type:'native-call-declined' }, { allOwners:true });
+      await deliverSignalToMember(memberToken, {
+        type:callOutcome === 'busy' ? 'native-call-busy' : 'native-call-declined',
+      }, { allOwners:true });
       if (matchedRoom.callTerminal) {
         await deliverSignalToMember(memberToken, {
           type:'call-terminal', inviteId:matchedRoom.callTerminal.inviteId,
@@ -2990,7 +3016,7 @@ async function api(path, method, d, p, res, ip, headers) {
       const caller = matchedRoom.members.get(memberToken);
       if (caller?.fcmToken) {
         sendFcmNotification(caller, JSON.stringify({
-          isCallEnd:true, missedCall:false, callOutcome:'declined',
+          isCallEnd:true, missedCall:false, callOutcome,
           callId:nativeCallId || '', inviteId:terminalInviteId || '', code:matchedRoomCode,
         }), 30).catch(() => {});
       }
@@ -5670,7 +5696,7 @@ wss.on('connection', (ws) => {
         } else if (msg2.type === 'call-decline' || msg2.type === 'call-busy') {
           const now = Date.now();
           const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
-          const callOutcome = msg2.type === 'call-decline' ? 'declined' : 'ended';
+          const callOutcome = msg2.type === 'call-decline' ? 'declined' : 'busy';
           markInviteTerminated(room2, terminalInviteId, now);
           if (terminalInviteId) {
             room2.callTerminal = { inviteId:terminalInviteId, endedByToken:token, endedAt:now, callOutcome };
@@ -5691,9 +5717,9 @@ wss.on('connection', (ws) => {
             callerTokenHash:conversationTokenHash(tok), calleeTokenHash:conversationTokenHash(token),
             endedByTokenHash:conversationTokenHash(token),
           }, 120);
-          if (msg2.type === 'call-decline' && peerMember.fcmToken) {
+          if (peerMember.fcmToken) {
             sendFcmNotification(peerMember, JSON.stringify({
-              isCallEnd:true, missedCall:false, callOutcome:'declined',
+              isCallEnd:true, missedCall:false, callOutcome,
               callId:nativeCallId || '', inviteId:terminalInviteId || '', code:roomCode,
             }), 30).catch(() => {});
           }

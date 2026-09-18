@@ -47,7 +47,7 @@ test('Android call-end push preserves missed-call history until the encrypted in
   assert.match(androidMessaging, /isCallEnd[\s\S]*missedCall[\s\S]*markPendingWebViewCallEnd[\s\S]*"Missed call"/);
   assert.match(androidMessaging, /if \(missedCall\) showMissedCall\(data\)/);
   assert.match(androidMessaging, /showMissedCall\(Map<String, String> data\)[\s\S]*CATEGORY_CALL/);
-  assert.match(androidMessaging, /engine\.shouldHandleRemoteEnd[\s\S]*engine\.end\(false\)/);
+  assert.match(androidMessaging, /engine\.shouldHandleRemoteEnd[\s\S]*engine\.end\(false, callOutcome\)/);
   assert.match(androidMain, /pendingEnd\[1\] != null && !pendingEnd\[1\]\.isEmpty\(\)[\s\S]*postDelayed[\s\S]*5_000/);
   assert.match(androidMain, /clearUnderlyingCallState\(pendingEnd\[0\], pendingEnd\[1\]\)/);
   assert.match(server, /const wasStillRinging = Boolean\(room2\.ringingUntil\)/);

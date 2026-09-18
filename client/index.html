@@ -5863,6 +5863,13 @@ function connectSignaling(room) {
       }
       return;
     }
+    if (msg && msg.type === 'native-call-busy') {
+      if (room.callState === 'outgoing') {
+        const busyMsg = room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.';
+        endCall(room, busyMsg, null, 'busy');
+      }
+      return;
+    }
     // Android acknowledges the physical Answer tap before its dedicated,
     // encrypted call WebView has completed a cold start. Stop the caller's
     // ringtone/timeout now, but remain in the outgoing state until the real
@@ -5883,6 +5890,11 @@ function connectSignaling(room) {
     if (msg && msg.type === 'call-terminal') {
       if (room.callState !== 'idle' && room.callInviteId && room.callInviteId === msg.inviteId) {
         const isIncoming = room.callState === 'incoming';
+        if (msg.callOutcome === 'busy') {
+          const busyMsg = room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.';
+          endCall(room, busyMsg, null, 'busy', { silentPresentation:false });
+          return;
+        }
         const history = msg.callOutcome === 'declined'
           ? (isIncoming ? 'Declined call' : 'Call declined')
           : (msg.callOutcome === 'cancelled' && isIncoming ? 'Caller cancelled'

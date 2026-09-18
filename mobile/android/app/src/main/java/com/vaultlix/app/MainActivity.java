@@ -67,6 +67,7 @@ public class MainActivity extends BridgeActivity {
             if ("declined".equals(reason)) emitNativeCallAction("nativeDeclined");
             else if ("cancelled".equals(reason)) emitNativeCallAction("nativeCancelled");
             else if ("unanswered".equals(reason)) emitNativeCallAction("missed");
+            else if ("busy".equals(reason)) emitNativeCallAction("nativeBusy");
             else emitNativeCallAction("ended");
         }
     };

@@ -54,7 +54,7 @@ public class VaultlixMessagingService extends MessagingService {
             // alert; ownership only controls whether it is safe to end media.
             if (missedCall) showMissedCall(data);
             if (engine.shouldHandleRemoteEnd(safe(data.get("code")))) {
-                engine.end(false);
+                engine.end(false, callOutcome);
                 clearActiveCallNotifications(this);
                 IncomingCallActivity.finishActiveCall();
                 LockedCallActivity.finishActiveCall();

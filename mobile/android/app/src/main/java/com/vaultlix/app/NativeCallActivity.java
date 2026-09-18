@@ -29,6 +29,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import java.util.Random;
 
@@ -124,6 +125,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
                 getIntent().getStringExtra(EXTRA_CALLER),
                 getIntent().getStringExtra(EXTRA_CALLER_AVATAR_PATH)
         );
+        // Incoming WebRTC setup begins while the phone is still ringing. If
+        // ICE connects before this activity attaches its listener, restore the
+        // original connection time so the timer and call-history entry are not
+        // lost when the user later answers or opens the call screen.
+        long activeConnectedAt = engine.connectedAtMs();
+        if (activeConnectedAt > 0L) renderConnected(activeConnectedAt);
         if (outgoing) {
             try {
                 ringbackTrack = buildRingbackTrack();
@@ -294,8 +301,13 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             if (connectedAt == 0 && status != null) status.setText(statusText(value));
         });
     }
-    @Override public void onConnected() { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return;
-        connectedAt=System.currentTimeMillis();
+    @Override public void onConnected() {
+        long activeConnectedAt = engine.connectedAtMs();
+        renderConnected(activeConnectedAt > 0L ? activeConnectedAt : System.currentTimeMillis());
+    }
+
+    private void renderConnected(long connectionStartedAt) { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return;
+        connectedAt=connectionStartedAt;
         // libwebrtc/OEM audio initialization can replace a route selected
         // while the call was ringing. Reassert the user's current choice as
         // soon as the remote track becomes active.
@@ -312,6 +324,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             if ("declined".equals(reason)) pendingHistory = outgoing ? "Call declined" : "Declined call";
             else if ("cancelled".equals(reason)) pendingHistory = outgoing ? "Cancelled call" : "Caller cancelled";
             else if ("unanswered".equals(reason)) pendingHistory = outgoing ? "No answer" : "Missed encrypted call";
+            else if ("busy".equals(reason) && outgoing) {
+                Toast.makeText(this, R.string.native_peer_on_another_call, Toast.LENGTH_LONG).show();
+            }
         }
         finishCall();
     }); }

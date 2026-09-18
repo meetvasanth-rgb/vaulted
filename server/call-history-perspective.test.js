@@ -68,6 +68,22 @@ test('terminal signalling carries the outcome through web and native paths', () 
 test('declines are acknowledged and retained as reliable terminal outcomes', () => {
   const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
   assert.match(server, /msg2\.type === 'call-decline'[\s\S]*callOutcome = msg2\.type === 'call-decline' \? 'declined'/);
-  assert.match(server, /callOutcome:'declined'/);
-  assert.match(server, /isCallEnd:true, missedCall:false, callOutcome:'declined'/);
+  assert.match(server, /callOutcome,\s*\n\s*}/);
+  assert.match(server, /isCallEnd:true, missedCall:false, callOutcome,/);
+});
+
+test('a competing call is reported as busy instead of declined', () => {
+  const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  const androidActions = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActions.java'), 'utf8');
+  const androidEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeWebRtcCallEngine.java'), 'utf8');
+  const androidActivity = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActivity.java'), 'utf8');
+  const androidMessaging = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
+  assert.match(server, /memberHasAnotherActiveCall\(callee, matchedRoomCode\)[\s\S]*\? 'busy' : 'declined'/);
+  assert.match(server, /type:callOutcome === 'busy' \? 'native-call-busy' : 'native-call-declined'/);
+  assert.match(client, /msg\.type === 'native-call-busy'[\s\S]*is on another call/);
+  assert.match(client, /msg\.callOutcome === 'busy'[\s\S]*is on another call/);
+  assert.match(androidActions, /declineWhileBusy[\s\S]*"busy"/);
+  assert.match(androidEngine, /"native-call-busy"\.equals\(type\)[\s\S]*reset\("busy"\)/);
+  assert.match(androidMessaging, /engine\.end\(false, callOutcome\)/);
+  assert.match(androidActivity, /"busy"\.equals\(reason\)[\s\S]*native_peer_on_another_call/);
 });
