@@ -254,18 +254,36 @@ const RETRO_80S_LOOKS = Object.freeze([
     lighting:'Strong warm three-quarter key matching the painted sunset, restrained cool fill from the opposite side and a narrow rim on the far shoulder; keep the face photorealistic.',
   },
 ]);
-// One surprise direction per creation; successive daily generations vary the result.
+// One transformation family per successful creation. There are more families
+// than the five-look daily allowance: the account/day seed chooses the starting
+// point and the successful-generation count advances through distinct families
+// until today's allowance is exhausted. Failed attempts do not advance the
+// count, so they can be retried without silently consuming a style.
 const ENHANCER_LOOKS = Object.freeze([
-  'Natural editorial photograph in a sunlit garden, soft morning light, gentle foliage bokeh and realistic skin detail.',
-  'Cinematic photograph beside a coastal sunset, warm golden key light, soft sky fill and a softly blurred sea.',
-  'Refined studio portrait on a warm cream backdrop, broad softbox lighting, bright catchlights and subtle depth.',
-  'Premium hand-drawn cinematic anime portrait, faithful facial proportions and recognisable likeness, restrained cel shading, a pastel cherry-blossom background and soft daylight.',
-  'Modern cafe portrait with warm window light, tasteful timber details, soft background blur and fresh natural colours.',
-  'Elegant mountain-lake portrait in luminous early daylight, delicate atmospheric depth and balanced skin tones.',
-  'Cinematic city portrait at blue hour, softly glowing distant lights and a gentle neutral face light that matches the surroundings.',
-  'Painterly anime portrait with delicate linework, unchanged apparent age and facial proportions, a dreamy cloud garden and luminous soft light.',
-  'Professional editorial photograph against a muted terracotta architectural background, soft side light and clean natural colour.',
-  'Airy botanical conservatory photograph, diffused skylight, green foliage and subtle film colour with realistic facial detail.',
+  {
+    id:'fix-lighting', name:'Fix Lighting',
+    direction:`Correct the photograph's lighting while preserving its place, moment, crop, clothing and expression. Diagnose backlight, mixed colour temperature, flat indoor light, harsh flash, deep facial shadow, clipped highlights, haze and colour cast from the actual source, then repair only what is present. For a close portrait, use soft directional face light and natural catchlights. For a full-body or environmental portrait, relight the person and surroundings from the same believable sources. For a couple or group, keep every person and balance exposure across all faces. Retain realistic skin texture, scene depth and the original time-of-day mood; do not replace the background or turn the result into a studio portrait.`,
+  },
+  {
+    id:'caricature', name:'Caricature',
+    direction:`Create a premium editorial caricature with expressive hand-drawn linework, sophisticated colour and a clean illustrated background derived from the source setting. Preserve every person's recognisable identity, skin tone, apparent age, hairstyle, clothing cues and cultural markers. Exaggerate only benign expressive characteristics such as pose, smile, hair silhouette or accessories; never mock weight, disability, ethnicity, religion, age or facial difference. A close portrait becomes a polished shoulder-up character illustration, a full-body image keeps the complete gesture, and a couple or group keeps every person and their relationship. Keep anatomy intentional and hands readable.`,
+  },
+  {
+    id:'studio-headshot', name:'Studio Headshot',
+    direction:`Recompose the source as a premium contemporary studio headshot photographed by another person. For one person, use an 85mm portrait perspective, complete head and shoulders, relaxed posture, warm neutral seamless backdrop, large soft key, gentle fill, subtle hair separation and crisp natural eyes. For a couple or group, create a balanced studio group portrait without removing, merging or adding anyone. If the source is wider or full-body, derive a natural head-and-shoulders crop without enlarging the head, narrowing the face or changing posture unnaturally. Preserve clothing identity unless a small cleanup is needed; do not add formal business attire automatically.`,
+  },
+  {
+    id:'enhance-photo', name:'Enhance Photo',
+    direction:`Restore and enhance the existing photograph without redesigning it. Preserve the original composition, setting, people, pose, wardrobe and mood. Correct blur only where recoverable, reduce noise and compression artefacts, restore natural detail, improve local contrast, white balance and dynamic range, and refine distracting minor background blemishes without deleting meaningful objects. Treat a close portrait gently, retain environmental detail in wider photographs, and keep every face in a group equally natural. The result should look like the same photograph captured with an excellent modern camera and careful colour finishing, not an AI restaging.`,
+  },
+  {
+    id:'mini-me', name:'Mini Me',
+    direction:`Transform every visible person into a charming handcrafted miniature collectible displayed in a detailed tabletop diorama inspired by the source scene. This is a scale transformation, not age regression: preserve each person's exact apparent age, recognisable face, skin tone, hairstyle, clothing and cultural markers, and never turn an adult into a child or baby. Use premium sculpted materials, finely painted features, realistic fabric texture, tilt-shift depth, soft product-studio lighting and a coherent miniature environment. A close portrait becomes a complete head-and-body figurine based on visible cues; a full-body image preserves the pose; a couple or group becomes a matching set with no person omitted or added. Do not include packaging text, labels or logos.`,
+  },
+  {
+    id:'cinematic-anime', name:'Cinematic Anime',
+    direction:`Create a premium hand-drawn cinematic anime interpretation with faithful facial proportions, recognisable identity, restrained cel shading, delicate linework and luminous natural colour. Preserve exact apparent age, skin tone, hairstyle, expression, clothing and cultural markers; do not enlarge the eyes excessively, sharpen the jaw, slim the face or substitute a generic anime character. A close portrait uses a refined shoulder-up composition, a wider image preserves the pose and meaningful setting, and a couple or group retains every person with distinct likenesses. Adapt the background from the source into a coherent illustrated environment with matching light and perspective rather than defaulting to cherry blossoms or a generic fantasy scene.`,
+  },
 ]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
@@ -289,9 +307,11 @@ Lighting integration is critical. Follow the exact light sources named in the se
 Render at premium photographic quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric texture, accurate accessories and clean edges. Apply restrained authentic 1980s colour-film character—subtle organic grain, mild lens softness and gentle print colour—with only minimal physical-print wear away from the face. Do not age the person. Add no text, logos, date stamps or watermarks. The final result must feel like a real photograph from the selected 1980s Indian cinema direction, not an AI effect, a generic family snapshot or the same repeated portrait composition.`,
   },
   {
-    id:'surprise-enhancer', name:'Surprise Enhancer', note:'A fresh look every time — cinematic, natural or anime',
+    id:'surprise-enhancer', name:'Surprise Enhancer', note:'Lighting, caricature, headshot, enhancement, Mini Me or anime — without repeats',
     size:'1024x1024', quality:'high',
-    prompt:`Enhance the uploaded photograph into a polished, profile-ready portrait following the selected surprise direction. Preserve every visible person's unmistakable identity, facial geometry, skin tone, exact apparent age, expression, hairstyle, cultural markers and natural facial fullness. Fresh, youthful lighting means bright eyes, soft flattering light and healthy natural skin texture, never making the person younger or changing facial features. Do not add wrinkles, eye bags, grey hair, plastic skin, exaggerated eyes or a generic replacement face. Preserve all visible people without adding anyone. Keep anatomy accurate and head/body proportions natural. Integrate the subjects into the chosen background with consistent light direction, colour temperature and shadows. Frame the complete head and shoulders safely inside a square crop. Apply exactly one coherent visual direction, not a collage of styles. No text, logos or watermarks.`,
+    prompt:`Enhance the uploaded photograph into a polished, profile-ready image following the selected transformation family. First inspect the source and respect whether it is a close portrait, half-body or full-body photograph, couple or group, and whether the original setting is important. Apply the source-type instructions inside the selected transformation instead of forcing every image into the same portrait template.
+
+Preserve every visible person's unmistakable identity, facial geometry, skin tone, exact apparent age, expression, hairstyle, cultural markers and natural facial fullness. Fresh lighting means bright eyes, flattering exposure and healthy natural skin texture, never making the person younger or changing facial features. Do not add wrinkles, eye bags, grey hair, plastic skin, a generic replacement face or beauty-filter facial reshaping. Preserve all visible people without adding, merging or omitting anyone. Keep anatomy accurate and head/body proportions natural. Maintain consistent light direction, colour temperature, shadows, perspective and depth across the complete image. Keep important content safely inside a square crop. Apply exactly the selected transformation as one coherent visual direction, not a collage or a random background swap. No text, logos or watermarks.`,
   },
 ]);
 const FREE_NUMBER_INACTIVITY_MS = 730 * DAY_MS;
@@ -1165,7 +1185,16 @@ async function moderateDailyLookImage(imageDataUri, apiKey) {
 function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
   const day = Math.floor((now + DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000) / DAY_MS);
   const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
-  return (seed + Math.max(0, Number(generationCount) || 0)) % RETRO_80S_LOOKS.length;
+  // Keep the seed unbounded here and apply modulo only at the target style
+  // collection. Modding by the ten 1980s briefs first caused shorter style
+  // collections to repeat when the sequence crossed 9 -> 0.
+  return seed + Math.max(0, Number(generationCount) || 0);
+}
+
+function dailyLookRotationItem(items, variantIndex) {
+  if (!Array.isArray(items) || !items.length) return null;
+  const index = Math.max(0, Math.trunc(Number(variantIndex) || 0));
+  return items[index % items.length];
 }
 
 function retro80sShotBrief(look) {
@@ -1180,13 +1209,29 @@ function retro80sShotBrief(look) {
   ].join('\n');
 }
 
+function enhancerLookBrief(look) {
+  return [
+    `Transformation: ${look.name}`,
+    `Transformation ID: ${look.id}`,
+    `Source-aware direction: ${look.direction}`,
+    'This transformation is mandatory for this generation. Do not substitute another transformation family.',
+  ].join('\n');
+}
+
 async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
   const look = style.id === 'retro-80s'
-    ? RETRO_80S_LOOKS[variantIndex % RETRO_80S_LOOKS.length]
+    ? dailyLookRotationItem(RETRO_80S_LOOKS, variantIndex)
     : null;
-  const directedPrompt = look ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}` : style.id === 'surprise-enhancer' ? `${style.prompt}\n\nSelected surprise direction:\n${ENHANCER_LOOKS[variantIndex % ENHANCER_LOOKS.length]}` : style.prompt;
+  const enhancerLook = style.id === 'surprise-enhancer'
+    ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
+    : null;
+  const directedPrompt = look
+    ? `${style.prompt}\n\nSelected 1980s shot brief for this generation:\n${retro80sShotBrief(look)}`
+    : enhancerLook
+      ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
+      : style.prompt;
   form.append('prompt', `${directedPrompt}\n\nComposition requirement: keep the lower-right edge visually calm and free of the subject's face, hands and important details so a small Vaultlix signature can be added there later. Do not generate any text, logo or watermark yourself.`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');
@@ -3311,6 +3356,9 @@ async function api(path, method, d, p, res, ip, headers) {
       }
       const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
       const generatedImage = await createDailyLook(image, style, apiKey, variantIndex);
+      const enhancerLook = style.id === 'surprise-enhancer'
+        ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
+        : null;
       const completedAt = Date.now();
       const completedDay = dailyLookDayWindow(completedAt);
       const completedUsage = dailyLookUsage(account, completedAt);
@@ -3330,7 +3378,11 @@ async function api(path, method, d, p, res, ip, headers) {
           ? completedDay.nextAt : 0,
         limit:DAILY_LOOK_DAILY_LIMIT,
         remaining:Math.max(0, DAILY_LOOK_DAILY_LIMIT - account.dailyLookGenerationCount),
-        style:{ id:style.id, name:style.name },
+        style:{
+          id:style.id,
+          name:enhancerLook ? `${style.name} · ${enhancerLook.name}` : style.name,
+          transformation:enhancerLook ? enhancerLook.id : null,
+        },
       });
     } catch (error) {
       await releaseDailyLookClaim(d.accountId).catch(() => {});

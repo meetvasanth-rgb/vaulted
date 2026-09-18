@@ -87,10 +87,20 @@ test('1980s Portrait creates a high-quality profile-ready period portrait', () =
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:1/);
 });
 
-test('Daily Look offers surprise enhancement including anime and removes Neon generation', () => {
+test('Surprise Enhancer rotates source-aware transformations without repeating today', () => {
   assert.match(server, /id:'surprise-enhancer', name:'Surprise Enhancer'/);
-  assert.match(server, /ENHANCER_LOOKS\[variantIndex % ENHANCER_LOOKS.length\]/);
-  assert.match(server, /cinematic anime portrait/);
+  const lookBlock = server.match(/const ENHANCER_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+  const ids = [...lookBlock.matchAll(/id:'([^']+)'/g)].map(match => match[1]);
+  assert.deepEqual(ids, ['fix-lighting', 'caricature', 'studio-headshot', 'enhance-photo', 'mini-me', 'cinematic-anime']);
+  assert.match(lookBlock, /close portrait[\s\S]*full-body[\s\S]*(?:couple|group)/);
+  assert.match(server, /First inspect the source and respect whether it is a close portrait, half-body or full-body photograph, couple or group/);
+  assert.match(server, /function dailyLookRotationItem\(items, variantIndex\)/);
+  assert.match(server, /dailyLookRotationItem\(ENHANCER_LOOKS, variantIndex\)/);
+  for (let start = 0; start < ids.length; start++) {
+    const today = Array.from({ length:5 }, (_, offset) => ids[(start + offset) % ids.length]);
+    assert.equal(new Set(today).size, 5);
+  }
+  assert.match(server, /premium hand-drawn cinematic anime interpretation/);
   assert.match(server, /never making the person younger/);
   assert.doesNotMatch(server, /id:'neon-night'|id:'anime-portrait'/);
 });
@@ -115,8 +125,8 @@ test('1980s Portrait rotates through ten fully directed cinematic shot briefs pe
   assert.equal((lookBlock.match(/lighting:'/g) || []).length, 10);
   assert.doesNotMatch(lookBlock, /Vinayagar|Ganesh|murti|pandal|visarjan|kozhukattai/);
   assert.match(server, /function dailyLookVariantIndex\(accountId, generationCount, now = Date\.now\(\)\)/);
-  assert.match(server, /seed \+ Math\.max\(0, Number\(generationCount\) \|\| 0\)/);
-  assert.match(server, /RETRO_80S_LOOKS\[variantIndex % RETRO_80S_LOOKS\.length\]/);
+  assert.match(server, /return seed \+ Math\.max\(0, Number\(generationCount\) \|\| 0\)/);
+  assert.match(server, /dailyLookRotationItem\(RETRO_80S_LOOKS, variantIndex\)/);
   assert.match(server, /function retro80sShotBrief\(look\)/);
   assert.match(server, /Prescribed pose:/);
   assert.match(server, /Camera angle and lens:/);
