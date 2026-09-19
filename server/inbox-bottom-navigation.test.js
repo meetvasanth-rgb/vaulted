@@ -29,3 +29,11 @@ test('status thumbnails stay compact and live statuses mark matching inbox conta
   assert.match(client, /vault-list-avatar\$\{hasLiveStatus \? ' has-live-status' : ''\}/);
   assert.match(client, /\.vault-list-avatar\.has-live-status\{box-shadow:0 0 0 3px #E34B63\}/);
 });
+
+test('status composer previews content before selecting contacts', () => {
+  assert.match(client, /id="status-compose-content"[\s\S]*onclick="openStatusAudience\(\)">Next/);
+  assert.match(client, /id="status-compose-audience" hidden><h2>Select contacts<\/h2>/);
+  assert.match(client, /function openStatusAudience\(\)[\s\S]*status-compose-content'\)\.hidden = true[\s\S]*status-compose-audience'\)\.hidden = false/);
+  assert.match(client, /function backToStatusContent\(\)[\s\S]*status-compose-audience'\)\.hidden = true/);
+  assert.match(client, /\.status-media-preview\[hidden\]\{display:none\}/);
+});
