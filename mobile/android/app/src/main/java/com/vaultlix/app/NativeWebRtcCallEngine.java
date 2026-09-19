@@ -86,7 +86,7 @@ final class NativeWebRtcCallEngine {
     private int sequenceOut;
     private int sequenceIn;
     private String peerSessionId;
-    private final String sessionId = UUID.randomUUID().toString();
+    private String sessionId = UUID.randomUUID().toString();
     private String callerName = "Someone";
     private String inviteId = "";
     private volatile String currentRoomCode = "";
@@ -480,6 +480,9 @@ final class NativeWebRtcCallEngine {
         room = null; signalingReady = false; outgoing = false; answered = false; offerReceived = false; ending = false;
         inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
+        // The counter restarts every call, so the peer must see a new session
+        // too or it discards the new call's messages as replays.
+        sessionId = UUID.randomUUID().toString();
         if (reason != null) for (Listener listener : listeners) listener.onEnded(reason);
         currentRoomCode = "";
         preparingRoomCode = "";

@@ -24,7 +24,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var sequenceOut = 0
     private var sequenceIn = 0
     private var peerSessionID: String?
-    private let sessionID = UUID().uuidString
+    private var sessionID = UUID().uuidString
     private var answered = false
     private var signalingReady = false
     private var queuedSignals: [(type: String, payload: [String: Any])] = []
@@ -621,6 +621,9 @@ final class NativeWebRTCCallEngine: NSObject {
         sequenceOut = 0
         sequenceIn = 0
         peerSessionID = nil
+        // The counter restarts with every call, so the peer must see a new
+        // session too or it discards the new call's messages as replays.
+        sessionID = UUID().uuidString
         answered = false
         queuedSignals.removeAll()
         reconnectAttempt = 0

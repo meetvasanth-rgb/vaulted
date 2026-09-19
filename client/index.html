@@ -4871,7 +4871,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // (setupPeerConnection is async) — see processOffer/acceptCall.
     pendingOffer: null,
     signalWs: null, signalReconnectTimer: null, signalReconnectAttempts: 0,
-    signalSeqIn: 0, signalSeqOut: 0,
+    signalSeqIn: 0, signalTsIn: 0, signalSeqOut: 0,
     // A random ID for this room object's lifetime — i.e. it only changes on
     // a genuine page reload (a fresh makeRoom() call), never on a mere
     // socket reconnect within the same page session. Sent alongside every
@@ -5941,8 +5941,23 @@ async function decryptSignalEnvelope(room, envelope) {
   let wrapped;
   try { wrapped = JSON.parse(decrypted); } catch (e) { return null; }
   if (!wrapped || typeof wrapped.seq !== 'number' || typeof wrapped.ts !== 'number') return null;
-  if (wrapped.seq <= (room.signalSeqIn || 0)) return null; // replay or reordered — drop
+  // Replay/reorder protection: the counter must keep rising. The native call
+  // engines keep one session id for the whole app run but restart their
+  // counter at 1 for every call, so a later call's ringing/accept/answer all
+  // looked like replays and the caller sat on "Calling…" forever. A restarted
+  // counter is recognised by a timestamp newer than anything already accepted
+  // from this peer; a replayed message always carries an older one.
+  const lastTs = room.signalTsIn || 0;
+  if (wrapped.seq <= (room.signalSeqIn || 0)) {
+    if (!(wrapped.ts > lastTs)) return null;
+    // Counter restarted: everything from before this point is a previous call.
+    // Its higher-numbered messages must not slip in under the lowered counter.
+    room.signalRestartTs = wrapped.ts;
+  } else if (room.signalRestartTs && wrapped.ts < room.signalRestartTs - 1000) {
+    return null;
+  }
   room.signalSeqIn = wrapped.seq;
+  room.signalTsIn = Math.max(lastTs, wrapped.ts);
   return wrapped.payload;
 }
 
@@ -6047,6 +6062,8 @@ function connectSignaling(room) {
     if (typeof msg.sessionId === 'string' && msg.sessionId !== room.peerSignalSessionId) {
       room.peerSignalSessionId = msg.sessionId;
       room.signalSeqIn = 0;
+      room.signalTsIn = 0;
+      room.signalRestartTs = 0;
     }
     const payload = await decryptSignalEnvelope(room, msg.envelope);
     if (payload == null) return;
