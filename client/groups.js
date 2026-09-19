@@ -200,6 +200,40 @@ async function unwrapPrivateGroupKeys(serverGroup, local) {
   return keys;
 }
 
+// A device can lose its local copy of a group's keys while the encrypted
+// account backup still holds them. Members can rebuild theirs from the server,
+// but the creator generated the key locally and has no server copy, so the
+// backup is their only way back. Read-only: fetch, decrypt with this
+// account's master key, and merge in only key versions that are missing. Tried
+// once per session so a backup without the key is not re-fetched on every poll.
+let privateGroupBackupRestoreTried = false;
+
+async function restorePrivateGroupKeysFromBackup() {
+  if (privateGroupBackupRestoreTried) return false;
+  privateGroupBackupRestoreTried = true;
+  const state = loadAccountState();
+  if (!state?.masterKey) return false;
+  try {
+    const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
+    if (latest.error || !latest.bundle) return false;
+    const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
+    let restored = false;
+    for (const backedUp of bundle?.groups || []) {
+      const group = privateGroups.get(backedUp?.id);
+      if (!group || backedUp.ownerAccountId !== state.accountId || !hasPrivateGroupKeys(backedUp)) continue;
+      const merged = { ...backedUp.keys, ...(group.keys || {}) };
+      if (Object.keys(merged).length <= Object.keys(group.keys || {}).length) continue;
+      group.keys = merged; restored = true;
+      // Anything read while the key was missing was marked unavailable; read it again.
+      group.messages = []; group.messageCursor = 0;
+      if (group.encryptedName && merged[group.keyVersion]) {
+        try { group.name = await decryptPrivateGroupValue(merged[group.keyVersion], group.encryptedName); } catch (_) {}
+      }
+    }
+    return restored;
+  } catch (error) { console.warn('Private group keys could not be restored from the backup'); return false; }
+}
+
 async function refreshPrivateGroups() {
   const state = loadAccountState();
   if (!state) return;
@@ -221,6 +255,7 @@ async function refreshPrivateGroups() {
       ownerAccountId:state.accountId, messages:local?.messages || [], unread:local?.unread || 0 });
   }
   for (const id of [...privateGroups.keys()]) if (!live.has(id)) privateGroups.delete(id);
+  if ([...privateGroups.values()].some(group => !group.keys?.[group.keyVersion])) await restorePrivateGroupKeysFromBackup();
   savePrivateGroupSessions();
   if (receivedNewKey) scheduleAccountSync();
   if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
@@ -303,6 +338,10 @@ function closePrivateGroup() {
 function renderPrivateGroupMessages(group) {
   const body = document.getElementById('group-chat-body'); if (!body) return;
   const state = loadAccountState();
+  if (!hasPrivateGroupKeys(group)) {
+    body.innerHTML = '<div class="group-chat-empty">This device does not have the encryption key for this group.<br>Your messages are safe and unchanged for the other members. Reopen Vaultlix to try restoring the key from your encrypted backup.</div>';
+    return;
+  }
   if (!group.messages?.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
   body.innerHTML = group.messages.map(message => {
     let content;
@@ -502,6 +541,10 @@ async function decodePrivateGroupMessage(group, state, message) {
 async function pollPrivateGroup(render = false) {
   const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
   if (!state || !group) return;
+  // With no keys at all nothing can be read. Do not fetch, and above all do
+  // not advance the cursor past messages that will be readable once the keys
+  // are restored.
+  if (!hasPrivateGroupKeys(group)) { renderPrivateGroupMessages(group); return; }
   const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, after:group.messageCursor || 0 });
   if (result.error) return;
   const decoded = [];

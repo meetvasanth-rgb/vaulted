@@ -4648,15 +4648,43 @@ function claimLocalVaultsForAccount(accountId) {
     if (room) room.ownerAccountId = accountId;
   }
 }
+// A group record is only worth keeping if it holds at least one key. The group
+// creator generated the key on this device and has no server-side copy, so a
+// keyless record is not a harmless placeholder: saved with a fresh timestamp
+// it used to outrank the encrypted backup that still held the real key, and
+// the next sync then uploaded it over that backup.
+function hasPrivateGroupKeys(group) {
+  return !!group?.keys && typeof group.keys === 'object' && Object.keys(group.keys).length > 0;
+}
+// Key versions never change once created, so merging is always safe and
+// dropping one never is. A newer timestamp decides the metadata (name,
+// members) but must never discard a key version another copy still holds.
+function mergePrivateGroupBackup(localGroups, backedUpGroups, accountId) {
+  for (const group of backedUpGroups || []) {
+    if (!group?.id || group.ownerAccountId !== accountId || !hasPrivateGroupKeys(group)) continue;
+    const current = localGroups.get(group.id);
+    if (!current) { localGroups.set(group.id, group); continue; }
+    const newer = (group.savedAt || 0) > (current.savedAt || 0) ? group : current;
+    localGroups.set(group.id, { ...current, ...newer, keys:{ ...group.keys, ...(current.keys || {}) },
+      keyVersion:Math.max(Number(current.keyVersion) || 1, Number(group.keyVersion) || 1) });
+  }
+  return localGroups;
+}
 function loadPrivateGroupSessions() {
   try {
     const value = JSON.parse(localStorage.getItem(PRIVATE_GROUPS_KEY) || '[]');
-    return Array.isArray(value) ? value.filter(group => group?.id && group.keys && typeof group.keys === 'object') : [];
+    return Array.isArray(value) ? value.filter(group => group?.id && hasPrivateGroupKeys(group)) : [];
   } catch (e) { return []; }
 }
 function savePrivateGroupSessions(groups = [...privateGroups.values()]) {
   const accountId = loadAccountState()?.accountId;
-  const safe = groups.filter(group => group?.id && group.keys && (!accountId || group.ownerAccountId === accountId)).map(group => ({
+  // Like the room-session writes: this is a full overwrite, so it must never
+  // remove something it was not asked to. Start from the keys already stored
+  // for each group, and skip a group that still has none.
+  const stored = new Map(loadPrivateGroupSessions().map(group => [group.id, group]));
+  const safe = groups.filter(group => group?.id && (!accountId || group.ownerAccountId === accountId))
+    .map(group => ({ ...group, keys:{ ...(stored.get(group.id)?.keys || {}), ...(group.keys && typeof group.keys === 'object' ? group.keys : {}) } }))
+    .filter(hasPrivateGroupKeys).map(group => ({
     id:group.id, ownerAccountId:group.ownerAccountId || accountId, ownerId:group.ownerId, keyBinding:group.keyBinding,
     name:group.name || 'Private group', keys:group.keys, keyVersion:group.keyVersion || 1,
     members:group.members || [], requiresRekey:!!group.requiresRekey, createdAt:group.createdAt || Date.now(), updatedAt:group.updatedAt || Date.now(), savedAt:Date.now(),
@@ -4698,11 +4726,7 @@ function importAccountBundle(bundle, accountId) {
   saveRoomsIndex(sessions.map(s => s.code));
   if (bundle.activeRoomCode && merged.has(bundle.activeRoomCode)) saveActiveRoomCode(bundle.activeRoomCode);
   const localGroups = new Map(loadPrivateGroupSessions().filter(group => group.ownerAccountId === accountId).map(group => [group.id, group]));
-  for (const group of bundle.groups || []) {
-    if (!group?.id || !group.keys || group.ownerAccountId !== accountId) continue;
-    const current = localGroups.get(group.id);
-    if (!current || (group.savedAt || 0) > (current.savedAt || 0)) localGroups.set(group.id, group);
-  }
+  mergePrivateGroupBackup(localGroups, bundle.groups, accountId);
   savePrivateGroupSessions([...localGroups.values()]);
   const state = loadAccountState();
   if (state?.accountId === accountId && !state.recoveryCodeWrap && typeof bundle.recoveryCodeWrap === 'string') {
