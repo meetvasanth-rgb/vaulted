@@ -26,8 +26,14 @@ test('status thumbnails stay compact and live statuses mark matching inbox conta
   assert.match(client, /\.status-add\{position:absolute;right:2px;bottom:2px;width:19px;height:19px/);
   assert.match(client, /const liveStatusAuthors = new Set\(statusFeed[\s\S]*normalizePrivateNumber\(item\.authorPrivateNumber\)/);
   assert.match(client, /hasLiveStatus = liveStatusAuthors\.has\(normalizePrivateNumber\(room\.peerPrivateNumber\)\)/);
-  assert.match(client, /vault-list-avatar\$\{hasLiveStatus \? ' has-live-status' : ''\}/);
+  assert.match(client, /hasLiveStatus[\s\S]*vault-list-avatar has-live-status/);
   assert.match(client, /\.vault-list-avatar\.has-live-status\{box-shadow:0 0 0 3px #E34B63\}/);
+});
+
+test('tapping a red-bordered inbox avatar opens the peer status without opening chat', () => {
+  assert.match(client, /data-status-author="\$\{escHtml\(normalizePrivateNumber\(room\.peerPrivateNumber\)\)\}"/);
+  assert.match(client, /function openPeerStatusFromInbox\(privateNumber\)[\s\S]*openStatusViewer\(status\.authorPrivateNumber\)/);
+  assert.match(client, /avatar\.onclick = event => \{ event\.stopPropagation\(\); openPeerStatusFromInbox\(avatar\.dataset\.statusAuthor\); \}/);
 });
 
 test('status composer previews content before selecting contacts', () => {

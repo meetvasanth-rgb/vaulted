@@ -12572,6 +12572,17 @@ function renderCallHistoryList(body) {
   body.querySelectorAll('.vault-call-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
 }
 
+function openPeerStatusFromInbox(privateNumber) {
+  const normalized = normalizePrivateNumber(privateNumber);
+  const status = statusFeed.find(item => !item.own && normalizePrivateNumber(item.authorPrivateNumber) === normalized);
+  if (!status) {
+    toast('This status is no longer available.');
+    refreshStatusFeed({ quiet:true }).catch(() => {});
+    return;
+  }
+  openStatusViewer(status.authorPrivateNumber);
+}
+
 // Privacy-first returning-user home. The list itself and preview preference
 // live only on this device. Decrypted preview text is read from the current
 // in-memory room log and is never added to localStorage by this feature.
@@ -12618,8 +12629,11 @@ function renderVaultList() {
     const avatarContent = profileImage
       ? `<img class="profile-image-avatar" src="${escHtml(profileImage)}" alt=""/>`
       : escHtml(label.trim().charAt(0).toUpperCase() || 'V');
+    const avatar = hasLiveStatus
+      ? `<button class="vault-list-avatar has-live-status" type="button" data-status-author="${escHtml(normalizePrivateNumber(room.peerPrivateNumber))}" aria-label="View ${escHtml(label)} status" style="${avatarStyle}">${avatarContent}<span class="vault-list-row-dot${room.peerOnline ? ' online' : ''}"></span></button>`
+      : `<span class="vault-list-avatar" style="${avatarStyle}">${avatarContent}<span class="vault-list-row-dot${room.peerOnline ? ' online' : ''}"></span></span>`;
     html += `<div class="vault-list-row" data-room="${room.code}">
-      <span class="vault-list-avatar${hasLiveStatus ? ' has-live-status' : ''}" style="${avatarStyle}">${avatarContent}<span class="vault-list-row-dot${room.peerOnline ? ' online' : ''}"></span></span>
+      ${avatar}
       <span class="vault-list-row-name">${escHtml(label)}</span>
       <span class="vault-list-row-preview${preview.alert ? ' alert' : ''}">${escHtml(preview.text)}</span>
       <span class="vault-list-row-meta">
@@ -12630,6 +12644,9 @@ function renderVaultList() {
   }
   body.innerHTML = html;
   scrollToFocusedConnectionRequest();
+  body.querySelectorAll('[data-status-author]').forEach(avatar => {
+    avatar.onclick = event => { event.stopPropagation(); openPeerStatusFromInbox(avatar.dataset.statusAuthor); };
+  });
   body.querySelectorAll('.vault-list-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
 }
 
