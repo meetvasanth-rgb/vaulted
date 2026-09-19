@@ -113,12 +113,10 @@ test('the Android native call screen offers Bluetooth and no longer forces the e
   assert.doesNotMatch(nativeCall, /speakerRequested/);
 });
 
-test('a foreground Android call is answered on the web screen, which has video', () => {
+test('Android keeps native audio ownership for foreground and background answers', () => {
   const service = read('mobile/android/app/src/main/java/com/vaultlix/app/VaultlixMessagingService.java');
-  const main = read('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java');
-  assert.match(service, /!MainActivity\.isAppInForeground\(\) && engine\.prepareIncoming\(code\)/);
-  assert.match(main, /appInForeground = true/);
-  assert.match(main, /appInForeground = false/);
+  assert.match(service, /boolean nativePrepared = engine\.prepareIncoming\(code\)/);
+  assert.doesNotMatch(service, /!MainActivity\.isAppInForeground\(\) && engine\.prepareIncoming\(code\)/);
 });
 
 test('iOS "Phone" takes Bluetooth out of the session so the headset cannot keep the audio', () => {

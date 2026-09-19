@@ -139,13 +139,10 @@ public class VaultlixMessagingService extends MessagingService {
         NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
         String avatarPath = savedRoom == null ? null : savedRoom.avatarPath;
         Bitmap callerAvatar = avatarPath == null ? null : BitmapFactory.decodeFile(avatarPath);
-        // The native engine is audio-only, so its call screen has no Video
-        // button. With the app already open, answer on the web call screen
-        // instead (the call-only WebView host in LockedCallActivity), which
-        // supports video, exactly as iOS keeps foreground calls in the web
-        // layer. The native engine stays for background, closed and locked
-        // answers, where a WebView may be suspended.
-        boolean nativePrepared = !MainActivity.isAppInForeground() && engine.prepareIncoming(code);
+        // Keep one native media owner from ringing through hang-up. Handing a
+        // foreground answer to WebView WebRTC while Android still owns the
+        // communication audio route can connect silently on phone and speaker.
+        boolean nativePrepared = engine.prepareIncoming(code);
 
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;

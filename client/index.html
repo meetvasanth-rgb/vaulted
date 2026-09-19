@@ -6383,14 +6383,12 @@ async function startCallForRoom(room) {
   if (!canStartCall(room)) return;
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
   const androidNativeBridge = window.VaultlixAndroid;
-  // Foreground calls stay in the shared WebRTC engine. It owns the live
-  // microphone and camera tracks used by the controls below on both signed
-  // apps. Native WebRTC remains reserved for background/keyguard answers,
-  // where WebKit may be suspended and CallKit/full-screen calling is needed.
-  const nativeOnlySurface = document.hidden || document.body.classList.contains('native-call-only');
+  // The signed apps keep one native media owner for the complete call. Mixing
+  // a native phone/CallKit audio session with WebView WebRTC can establish the
+  // call while leaving both receiver and speaker silent.
   let androidNativeReady = false;
-  try { androidNativeReady = nativeOnlySurface && !!(room.nativeRoomHandle && androidNativeBridge?.supportsNativeWebRtc?.()); } catch (e) {}
-  const iosNativeReady = nativeOnlySurface && !!(room.nativeRoomHandle && iosBridge);
+  try { androidNativeReady = !!(room.nativeRoomHandle && androidNativeBridge?.supportsNativeWebRtc?.()); } catch (e) {}
+  const iosNativeReady = !!(room.nativeRoomHandle && iosBridge);
   if (!androidNativeReady && !iosNativeReady && !(await waitForCallSignaling(room))) {
     toast('Calling isn’t available right now.');
     return;

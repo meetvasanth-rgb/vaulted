@@ -210,12 +210,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
 
         calls[callID] = data
-        // When Vaultlix is already visible, the WebView owns foreground
-        // audio/video so its mute and camera controls operate on the actual
-        // tracks. Native media is still prepared for background/locked calls,
-        // where iOS can suspend WebKit and CallKit must own the connection.
-        if UIApplication.shared.applicationState != .active,
-           let roomHandle = data["roomHandle"] as? String,
+        // Keep CallKit and libwebrtc as the single audio owner in every app
+        // state. Splitting foreground media into WKWebView left connected
+        // calls silent on both receiver and speaker.
+        if let roomHandle = data["roomHandle"] as? String,
            NativeWebRTCCallEngine.shared.prepareIncoming(callID: callID, roomHandle: roomHandle) {
             nativeMediaCalls.insert(callID)
             print("VXCALL manager incoming native-ready")
