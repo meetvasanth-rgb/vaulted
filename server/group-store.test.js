@@ -29,4 +29,21 @@ test('private groups persist ciphertext and rotate keys after removal', async ()
 test('private group schema stores opaque JSON records', () => {
   assert.match(SCHEMA, /CREATE TABLE IF NOT EXISTS private_groups/);
   assert.match(SCHEMA, /data jsonb NOT NULL/);
+  assert.match(SCHEMA, /CREATE TABLE IF NOT EXISTS private_group_attachments/);
+  assert.match(SCHEMA, /ciphertext_size bigint NOT NULL/);
+  assert.match(SCHEMA, /group_id uuid NOT NULL REFERENCES private_groups\(id\) ON DELETE CASCADE/);
+});
+
+test('retrying a private group message id is idempotent', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vaultlix-group-retry-'));
+  const store = new GroupStore(directory);
+  await store.initialize();
+  const ownerId = 'a'.repeat(64);
+  const group = await store.create(ownerId, 'g1:encrypted-name', [
+    { accountId:ownerId, role:'owner', active:true, keyVersion:1 },
+  ], 'group-key-binding');
+  const message = { id:'stable_message_identifier', ciphertext:'g1:encrypted-payload', attachmentId:null };
+  await store.send(group.id, ownerId, message, 100);
+  await store.send(group.id, ownerId, message, 200);
+  assert.equal((await store.get(group.id)).messages.length, 1);
 });
