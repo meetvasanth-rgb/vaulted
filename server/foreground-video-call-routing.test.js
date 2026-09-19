@@ -16,3 +16,20 @@ test('foreground mobile calls keep mute and camera on the shared live WebRTC tra
   assert.match(client, /room\.pc\.addTrack\(track, videoStream\)/);
   assert.match(ios, /UIApplication\.shared\.applicationState != \.active[\s\S]*prepareIncoming/);
 });
+
+test('foreground iOS answers keep CallKit for audio while WebRTC sends the encrypted accept', () => {
+  const client = fs.readFileSync('client/index.html', 'utf8');
+  const acceptStart = client.indexOf('async function acceptCall(');
+  const acceptEnd = client.indexOf('function declineCall()', acceptStart);
+  const accept = client.slice(acceptStart, acceptEnd);
+  assert.ok(acceptStart >= 0 && acceptEnd > acceptStart);
+  assert.match(accept, /room\.iosForegroundWebCall = true/);
+  assert.match(accept, /nativeBridge\.postMessage\(\{ action: 'answer', code: room\.code \}\)/);
+  assert.match(accept, /room\.pendingCallAccept = true/);
+  assert.ok(
+    accept.indexOf("nativeBridge.postMessage({ action: 'answer', code: room.code })")
+      < accept.indexOf('room.pendingCallAccept = true'),
+    'foreground iOS must continue into encrypted WebRTC acceptance after asking CallKit to answer',
+  );
+  assert.match(client, /if \(room\.iosForegroundWebCall\) \{[\s\S]*room\.nativeCallActive = false;[\s\S]*refreshNativeCallAudio\(room\)/);
+});

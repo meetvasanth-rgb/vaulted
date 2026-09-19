@@ -4795,6 +4795,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // the human-readable vault code or either member credential.
     nativeRoomHandle: nativeRoomHandle || (crypto.randomUUID ? crypto.randomUUID() : bytesToBase64Url(crypto.getRandomValues(new Uint8Array(16)))),
     nativeAudioRefreshInFlight: false,
+    iosForegroundWebCall: false,
     // True once the FIRST offer/answer exchange has actually completed —
     // see onnegotiationneeded in setupPeerConnection() for why this has to
     // gate it separately from the signalingState check there.
@@ -5078,6 +5079,17 @@ async function handleNativeCallAction(detail) {
     // to start the duration timer or declare the media path established.
     activeCallRoomCode = room.code;
     presentNativeCallRoom();
+    if (room.iosForegroundWebCall) {
+      // CallKit activated the audio session for a foreground WebRTC call. It
+      // is not the media owner, so keep mute/camera bound to the browser
+      // tracks and only refresh the microphone under the active iOS session.
+      room.nativeCallActive = false;
+      requestNativeIOSSpeakerState(room);
+      renderCallOverlay(room);
+      refreshCallButton();
+      await refreshNativeCallAudio(room);
+      return;
+    }
     if (room.callState === 'outgoing') {
       room.nativeCallActive = true;
       requestNativeIOSSpeakerState(room);
@@ -5101,6 +5113,7 @@ async function handleNativeCallAction(detail) {
     if (audioEl) audioEl.pause();
   } else if (detail.action === 'answer' || detail.action === 'answerWhenActive') {
     if (room.callState === 'incoming') await acceptCall(true);
+    else if (room.iosForegroundWebCall && room.callState === 'active') return;
     else pendingNativeCallActions.set(room.code, 'answer');
   } else if (detail.action === 'declineOrEnd') {
     if (staleTerminalAction && room.callState !== 'idle') {
@@ -6429,38 +6442,24 @@ async function acceptCall(fromNativeCallKit = false) {
     }
     const nativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
     if (nativeBridge) {
-      // The signed iOS wrapper owns every incoming call through
-      // PushKit/CallKit and its native libwebrtc engine.  When the app is in
-      // the foreground the encrypted invite is also visible to this WebView,
-      // so answering here used to start a *second* browser RTCPeerConnection
-      // while CallKit was starting the native one.  The two media/signalling
-      // owners then raced: locked-screen answers worked, but in-app answers
-      // rang and never reached ICE connected.
-      //
-      // Ask CallKit to answer and make the page presentation-only.  The
-      // nativeConnected event is the sole point that starts the timer and
-      // marks nativeCallActive; browser/PWA/Android clients never have this
-      // bridge and continue through the existing WebRTC path below.
+      // Foreground PushKit calls are deliberately not prepared in the native
+      // libwebrtc engine (AppDelegate reserves that engine for background and
+      // locked-screen answers). CallKit still owns the system audio session,
+      // but the encrypted accept and media negotiation must continue through
+      // this WebView. Returning here strands the caller on Ringing and the
+      // receiver on Connecting securely forever.
       if (room.nativeAnswerPending) return;
       room.nativeAnswerPending = true;
-      room.callState = 'active';
-      room.callStartedAt = null;
-      room.pendingCallAccept = false;
-      renderCallOverlay(room);
-      refreshCallButton();
+      room.iosForegroundWebCall = true;
+      room.nativeCallActive = false;
       try {
         nativeBridge.postMessage({ action: 'answer', code: room.code });
-        return;
       } catch (e) {
-        // If the native bridge unexpectedly rejects the request, restore the
-        // incoming state and use the established browser fallback.
+        // The browser path below can still establish the call even if the
+        // native system-call presentation could not be updated.
         room.nativeAnswerPending = false;
-        room.callState = 'incoming';
       }
     }
-    try {
-      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action: 'answer', code: room.code });
-    } catch (e) {}
   }
   room.callState = 'active';
   room.callStartedAt = null;
@@ -7547,6 +7546,7 @@ function teardownPeerConnection(room) {
   room.reactionPickerOpen = false;
   room.callMuted = false;
   room.nativeAudioRefreshInFlight = false;
+  room.iosForegroundWebCall = false;
   room.speakerAvailable = false;
   room.speakerOn = false;
   room.speakerDeviceId = null;
