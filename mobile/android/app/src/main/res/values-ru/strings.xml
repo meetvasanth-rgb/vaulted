@@ -23,4 +23,16 @@
   <string name="native_answer">Ответить</string>
     <string name="native_end_to_end_encrypted">Сквозное шифрование</string>
     <string name="native_end_to_end_encrypted_call">Звонок со сквозным шифрованием</string>
+  <string name="native_video">Видео</string>
+  <string name="native_stop_video">Выкл. видео</string>
+  <string name="native_flip_camera">Камера</string>
+  <string name="native_video_unlock">Разблокируйте телефон, чтобы использовать видео.</string>
+  <string name="native_video_switch_title">Перейти на видеозвонок?</string>
+  <string name="native_video_switch_body">Пока %1$s не согласится, камеры не включатся.</string>
+  <string name="native_video_request_body">%1$s хочет перейти на видеозвонок.</string>
+  <string name="native_switch">Перейти</string>
+  <string name="native_cancel">Отмена</string>
+  <string name="native_not_now">Не сейчас</string>
+  <string name="native_video_declined">%1$s остаётся на аудио.</string>
+  <string name="native_video_waiting">Ожидание…</string>
 </resources>

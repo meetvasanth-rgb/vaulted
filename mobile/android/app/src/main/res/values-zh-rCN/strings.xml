@@ -23,4 +23,16 @@
   <string name="native_answer">接听</string>
     <string name="native_end_to_end_encrypted">端到端加密</string>
     <string name="native_end_to_end_encrypted_call">端到端加密通话</string>
+  <string name="native_video">视频</string>
+  <string name="native_stop_video">关闭视频</string>
+  <string name="native_flip_camera">翻转</string>
+  <string name="native_video_unlock">解锁手机后才能使用视频。</string>
+  <string name="native_video_switch_title">切换为视频通话？</string>
+  <string name="native_video_switch_body">%1$s同意后才会打开摄像头。</string>
+  <string name="native_video_request_body">%1$s想切换为视频通话。</string>
+  <string name="native_switch">切换</string>
+  <string name="native_cancel">取消</string>
+  <string name="native_not_now">暂不</string>
+  <string name="native_video_declined">%1$s选择继续语音通话。</string>
+  <string name="native_video_waiting">等待中…</string>
 </resources>

@@ -8,7 +8,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
+import org.webrtc.Camera2Enumerator;
+import org.webrtc.CameraEnumerator;
+import org.webrtc.CameraVideoCapturer;
 import org.webrtc.DataChannel;
+import org.webrtc.DefaultVideoDecoderFactory;
+import org.webrtc.DefaultVideoEncoderFactory;
+import org.webrtc.EglBase;
 import org.webrtc.IceCandidate;
 import org.webrtc.MediaConstraints;
 import org.webrtc.MediaStream;
@@ -16,7 +22,13 @@ import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpReceiver;
 import org.webrtc.SdpObserver;
+import org.webrtc.RtpTransceiver;
 import org.webrtc.SessionDescription;
+import org.webrtc.SurfaceTextureHelper;
+import org.webrtc.VideoFrame;
+import org.webrtc.VideoSink;
+import org.webrtc.VideoSource;
+import org.webrtc.VideoTrack;
 import org.webrtc.audio.JavaAudioDeviceModule;
 
 import java.nio.ByteBuffer;
@@ -47,12 +59,26 @@ import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
-/** Native, audio-only, forced-TURN WebRTC engine shared by Android call UI. */
+/** Native, forced-TURN WebRTC engine (audio, with optional video) shared by Android call UI. */
 final class NativeWebRtcCallEngine {
     interface Listener {
         void onState(String state);
         void onConnected();
         void onEnded(String reason);
+        /** Fired whenever this side's camera or the peer's video turns on or off. */
+        default void onVideoState(boolean localOn, boolean remoteOn) {}
+        /** The peer asks to switch this call to video; answer with respondVideo(). */
+        default void onVideoRequest() {}
+        /** The peer answered a request this side made. */
+        default void onVideoResponse(boolean accepted) {}
+    }
+
+    /** Forwards frames to whichever renderer the visible call screen has attached. */
+    static final class ProxySink implements VideoSink {
+        private VideoSink target;
+        synchronized void setTarget(VideoSink sink) { target = sink; }
+        synchronized void clearIf(VideoSink sink) { if (target == sink) target = null; }
+        @Override public synchronized void onFrame(VideoFrame frame) { if (target != null) target.onFrame(frame); }
     }
 
     private static final String TAG = "VXCALL";
@@ -77,6 +103,18 @@ final class NativeWebRtcCallEngine {
     private PeerConnection peer;
     private AudioSource audioSource;
     private AudioTrack audioTrack;
+    // Null when the device cannot create a GL context: calls then stay audio-only.
+    private final EglBase eglBase;
+    private final ProxySink localVideoSink = new ProxySink();
+    private final ProxySink remoteVideoSink = new ProxySink();
+    private VideoSource videoSource;
+    private VideoTrack videoTrack;
+    private VideoTrack remoteVideoTrack;
+    private CameraVideoCapturer capturer;
+    private SurfaceTextureHelper surfaceHelper;
+    private boolean cameraFront = true;
+    // Consent, camera and peer-video state (see NativeVideoState for the rules).
+    private final NativeVideoState videoState = new NativeVideoState();
     private final CopyOnWriteArraySet<Listener> listeners = new CopyOnWriteArraySet<>();
     private boolean signalingReady;
     private boolean outgoing;
@@ -100,7 +138,15 @@ final class NativeWebRtcCallEngine {
         roomStore = new NativeCallRoomStore(context);
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions());
         JavaAudioDeviceModule adm = JavaAudioDeviceModule.builder(context).createAudioDeviceModule();
-        factory = PeerConnectionFactory.builder().setAudioDeviceModule(adm).createPeerConnectionFactory();
+        EglBase egl = null;
+        try { egl = EglBase.create(); } catch (RuntimeException unavailable) { Log.w(TAG, "video unavailable: no GL context", unavailable); }
+        eglBase = egl;
+        PeerConnectionFactory.Builder builder = PeerConnectionFactory.builder().setAudioDeviceModule(adm);
+        if (egl != null) {
+            builder.setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(), true, true))
+                    .setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()));
+        }
+        factory = builder.createPeerConnectionFactory();
         adm.release();
     }
 
@@ -109,6 +155,48 @@ final class NativeWebRtcCallEngine {
     String currentRoomCode() { return currentRoomCode; }
     String currentState() { return currentState; }
     long connectedAtMs() { return connectedAtMs; }
+    boolean isCameraOn() { synchronized (videoState) { return videoState.cameraOn(); } }
+    boolean isRemoteVideoOn() { synchronized (videoState) { return videoState.remoteOn(); } }
+    boolean hasVideoConsent() { synchronized (videoState) { return videoState.consent(); } }
+
+    /** Ask the peer to switch this call to video. Nothing is sent from the camera yet. */
+    void requestVideo() {
+        executor.execute(() -> { if (room != null && peer != null) sendSignal("call-video-request", new JSONObject()); });
+    }
+
+    void respondVideo(boolean accepted) {
+        executor.execute(() -> {
+            if (room == null || peer == null) return;
+            if (accepted) synchronized (videoState) { videoState.grantConsent(); }
+            try { sendSignal("call-video-response", new JSONObject().put("accepted", accepted)); } catch (Exception ignored) {}
+        });
+    }
+    boolean videoSupported() { return eglBase != null; }
+    EglBase.Context eglContext() { return eglBase == null ? null : eglBase.getEglBaseContext(); }
+
+    /** Attach (or with nulls, detach) the renderers of the visible call screen. */
+    void setVideoSinks(VideoSink local, VideoSink remote) {
+        localVideoSink.setTarget(local);
+        remoteVideoSink.setTarget(remote);
+    }
+
+    /** Detach only if these are still the attached renderers (a newer screen may have taken over). */
+    void detachVideoSinks(VideoSink local, VideoSink remote) {
+        localVideoSink.clearIf(local);
+        remoteVideoSink.clearIf(remote);
+    }
+
+    void setCameraEnabled(boolean on) { executor.execute(() -> applyCamera(on)); }
+
+    void switchCamera() {
+        executor.execute(() -> {
+            if (capturer == null) return;
+            capturer.switchCamera(new CameraVideoCapturer.CameraSwitchHandler() {
+                @Override public void onCameraSwitchDone(boolean isFrontCamera) { cameraFront = isFrontCamera; }
+                @Override public void onCameraSwitchError(String errorDescription) { Log.w(TAG, "camera switch failed: " + errorDescription); }
+            });
+        });
+    }
 
     boolean isBusyWithAnotherRoom(String code) {
         return NativeCallRouting.isCompeting(currentRoomCode, preparingRoomCode, code);
@@ -177,9 +265,11 @@ final class NativeWebRtcCallEngine {
             ending = true;
             // End microphone/media immediately but retain the authenticated
             // signal path until the server confirms terminal-state receipt.
+            stopVideo();
             if (peer != null) { peer.close(); peer.dispose(); peer = null; }
             if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
             if (audioSource != null) { audioSource.dispose(); audioSource = null; }
+            disposeVideo();
             pendingIce.clear();
             retryHangupUntilAcknowledged(generation, 10, callOutcome);
         });
@@ -300,6 +390,21 @@ final class NativeWebRtcCallEngine {
                     break;
                 case "call-decline": reset("declined"); break;
                 case "call-busy": reset("busy"); break;
+                case "call-video-request":
+                    if (peer != null && answered) for (Listener listener : listeners) listener.onVideoRequest();
+                    break;
+                case "call-video-response": {
+                    boolean accepted = payload.optBoolean("accepted", false);
+                    if (accepted) synchronized (videoState) { videoState.grantConsent(); }
+                    for (Listener listener : listeners) listener.onVideoResponse(accepted);
+                    break;
+                }
+                case "call-video-state":
+                    // Never show a peer's video the user has not agreed to.
+                    boolean remoteChanged;
+                    synchronized (videoState) { remoteChanged = videoState.setRemote(payload.optBoolean("on", false)); }
+                    if (remoteChanged) notifyVideoState();
+                    break;
                 default: break;
             }
         } catch (Exception error) { Log.w(TAG, "signal parse failed", error); }
@@ -356,6 +461,23 @@ final class NativeWebRtcCallEngine {
             audioTrack = factory.createAudioTrack("vaultlix-native-audio", audioSource);
             audioTrack.setEnabled(answered);
             peer.addTrack(audioTrack, Collections.singletonList("vaultlix-native-stream"));
+            // The video m-line is negotiated up front (sendrecv, track off) so
+            // turning a camera on mid-call is just enabling the track: no
+            // re-offer, and the same path works whichever side is the caller.
+            if (eglBase != null) {
+                videoSource = factory.createVideoSource(false);
+                videoTrack = factory.createVideoTrack("vaultlix-native-video", videoSource);
+                videoTrack.setEnabled(false);
+                videoTrack.addSink(localVideoSink);
+                peer.addTrack(videoTrack, Collections.singletonList("vaultlix-native-stream"));
+                for (RtpTransceiver transceiver : peer.getTransceivers()) {
+                    if (transceiver.getMediaType() == org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO
+                            && transceiver.getReceiver().track() instanceof VideoTrack) {
+                        remoteVideoTrack = (VideoTrack) transceiver.getReceiver().track();
+                        remoteVideoTrack.addSink(remoteVideoSink);
+                    }
+                }
+            }
             Log.i(TAG, "native peer ready room=" + room.code);
             if (outgoing && answered) createOffer();
         } catch (Exception error) { Log.w(TAG, "TURN/peer setup failed", error); }
@@ -466,6 +588,81 @@ final class NativeWebRtcCallEngine {
         }), 1500, TimeUnit.MILLISECONDS);
     }
 
+    private void applyCamera(boolean on) {
+        if (room == null || peer == null || videoTrack == null) return;
+        synchronized (videoState) {
+            if (on == videoState.cameraOn() || (on && !videoState.canStartCamera())) return;
+        }
+        if (on) {
+            if (!startCapture()) return;
+            videoTrack.setEnabled(true);
+        } else {
+            stopCapture();
+            videoTrack.setEnabled(false);
+        }
+        synchronized (videoState) { videoState.setCamera(on); }
+        try { sendSignal("call-video-state", new JSONObject().put("on", on)); } catch (Exception ignored) {}
+        notifyVideoState();
+    }
+
+    private boolean startCapture() {
+        if (videoSource == null || eglBase == null) return false;
+        try {
+            CameraEnumerator enumerator = new Camera2Enumerator(context);
+            String chosen = null;
+            for (String name : enumerator.getDeviceNames()) {
+                if (enumerator.isFrontFacing(name) == cameraFront) { chosen = name; break; }
+            }
+            if (chosen == null) {
+                String[] names = enumerator.getDeviceNames();
+                if (names.length == 0) return false;
+                chosen = names[0];
+                cameraFront = enumerator.isFrontFacing(chosen);
+            }
+            capturer = enumerator.createCapturer(chosen, null);
+            if (capturer == null) return false;
+            surfaceHelper = SurfaceTextureHelper.create("vaultlix-capture", eglBase.getEglBaseContext());
+            capturer.initialize(surfaceHelper, context, videoSource.getCapturerObserver());
+            capturer.startCapture(960, 540, 24);
+            return true;
+        } catch (Exception error) {
+            Log.w(TAG, "camera start failed", error);
+            stopCapture();
+            return false;
+        }
+    }
+
+    private void stopCapture() {
+        if (capturer != null) {
+            try { capturer.stopCapture(); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            capturer.dispose();
+            capturer = null;
+        }
+        if (surfaceHelper != null) { surfaceHelper.dispose(); surfaceHelper = null; }
+    }
+
+    /** Stop the camera and detach every renderer. Runs before the peer connection is closed. */
+    private void stopVideo() {
+        stopCapture();
+        if (videoTrack != null) { videoTrack.setEnabled(false); videoTrack.removeSink(localVideoSink); }
+        if (remoteVideoTrack != null) { remoteVideoTrack.removeSink(remoteVideoSink); remoteVideoTrack = null; }
+    }
+
+    /** Free the local track and source once the peer connection no longer uses them. */
+    private void disposeVideo() {
+        if (videoTrack != null) { videoTrack.dispose(); videoTrack = null; }
+        if (videoSource != null) { videoSource.dispose(); videoSource = null; }
+        boolean changed;
+        synchronized (videoState) { changed = videoState.reset(); }
+        if (changed) notifyVideoState();
+    }
+
+    private void notifyVideoState() {
+        boolean local, remote;
+        synchronized (videoState) { local = videoState.cameraOn(); remote = videoState.remoteOn(); }
+        for (Listener listener : listeners) listener.onVideoState(local, remote);
+    }
+
     private void notifyState(String state) {
         currentState = state;
         for (Listener listener : listeners) listener.onState(state);
@@ -474,9 +671,11 @@ final class NativeWebRtcCallEngine {
     private void reset(String reason) {
         generation++;
         WebSocket oldSocket = socket; socket = null; if (oldSocket != null) oldSocket.cancel();
+        stopVideo();
         if (peer != null) { peer.close(); peer.dispose(); peer = null; }
         if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
         if (audioSource != null) { audioSource.dispose(); audioSource = null; }
+        disposeVideo();
         room = null; signalingReady = false; outgoing = false; answered = false; offerReceived = false; ending = false;
         inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();

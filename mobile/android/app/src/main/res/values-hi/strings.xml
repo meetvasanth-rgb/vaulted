@@ -23,4 +23,16 @@
   <string name="native_answer">जवाब दें</string>
     <string name="native_end_to_end_encrypted">एंड-टू-एंड एन्क्रिप्टेड</string>
     <string name="native_end_to_end_encrypted_call">एंड-टू-एंड एन्क्रिप्टेड कॉल</string>
+  <string name="native_video">वीडियो</string>
+  <string name="native_stop_video">वीडियो बंद करें</string>
+  <string name="native_flip_camera">पलटें</string>
+  <string name="native_video_unlock">वीडियो के लिए फ़ोन अनलॉक करें।</string>
+  <string name="native_video_switch_title">वीडियो कॉल पर स्विच करें?</string>
+  <string name="native_video_switch_body">%1$s के सहमत होने तक कोई कैमरा चालू नहीं होगा।</string>
+  <string name="native_video_request_body">%1$s वीडियो कॉल पर स्विच करना चाहते हैं।</string>
+  <string name="native_switch">स्विच करें</string>
+  <string name="native_cancel">रद्द करें</string>
+  <string name="native_not_now">अभी नहीं</string>
+  <string name="native_video_declined">%1$s ऑडियो पर ही रहे।</string>
+  <string name="native_video_waiting">प्रतीक्षा…</string>
 </resources>

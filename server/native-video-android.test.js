@@ -1,0 +1,78 @@
+'use strict';
+
+// Android native calls (in-app, background and locked all use NativeCallActivity)
+// carry video, but only after both people agree to switch the call to video.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+const java = 'mobile/android/app/src/main/java/com/vaultlix/app/';
+const res = 'mobile/android/app/src/main/res/';
+
+test('the signalling server relays the video request, response and state messages', () => {
+  const server = read('server/index.js');
+  for (const type of ['call-video-request', 'call-video-response', 'call-video-state']) {
+    assert.match(server, new RegExp(`'${type}'`), `${type} must be allowlisted or the server drops it`);
+  }
+});
+
+test('the engine negotiates video up front and gates every camera and peer picture on consent', () => {
+  const engine = read(java + 'NativeWebRtcCallEngine.java');
+  assert.match(engine, /DefaultVideoEncoderFactory/);
+  assert.match(engine, /factory\.createVideoTrack\("vaultlix-native-video"/);
+  assert.match(engine, /peer\.addTrack\(videoTrack/);
+  // consent decisions live in the unit-tested NativeVideoState
+  assert.match(engine, /videoState\.setRemote\(payload\.optBoolean\("on", false\)\)/);
+  assert.match(engine, /on && !videoState\.canStartCamera\(\)/);
+  assert.match(engine, /case "call-video-request"/);
+  assert.match(engine, /case "call-video-response"/);
+  // the camera is only started when granted, and released with the call
+  assert.match(engine, /stopVideo\(\);\s*\n\s*if \(peer != null\) \{ peer\.close\(\)/);
+  assert.match(engine, /audioSource = null; \}\s*\n\s*disposeVideo\(\);/);
+  assert.match(engine, /videoState\.reset\(\)/);
+});
+
+test('the call screen asks before switching and again on the other side', () => {
+  const screen = read(java + 'NativeCallActivity.java');
+  assert.match(screen, /if \(!engine\.hasVideoConsent\(\)\)/);
+  assert.match(screen, /engine\.requestVideo\(\)/);
+  assert.match(screen, /public void onVideoRequest\(\)/);
+  assert.match(screen, /engine\.respondVideo\(true\)/);
+  assert.match(screen, /engine\.respondVideo\(false\)/);
+  assert.match(screen, /public void onVideoResponse\(boolean accepted\)/);
+  // camera permission is requested, and asks to unlock first over the keyguard
+  assert.match(screen, /Manifest\.permission\.CAMERA/);
+  assert.match(screen, /requestDismissKeyguard/);
+});
+
+test('the camera pauses when the call screen is left and resumes on return', () => {
+  const screen = read(java + 'NativeCallActivity.java');
+  assert.match(screen, /protected void onStop\(\)[\s\S]*resumeCameraOnStart = true[\s\S]*setCameraEnabled\(false\)/);
+  assert.match(screen, /protected void onStart\(\)[\s\S]*resumeCameraOnStart[\s\S]*setCameraEnabled\(true\)/);
+});
+
+test('a newer call screen keeps its renderers when an older one is destroyed', () => {
+  const engine = read(java + 'NativeWebRtcCallEngine.java');
+  const screen = read(java + 'NativeCallActivity.java');
+  assert.match(engine, /synchronized void clearIf\(VideoSink sink\) \{ if \(target == sink\) target = null; \}/);
+  assert.match(screen, /engine\.detachVideoSinks\(localView, remoteView\)/);
+  assert.match(screen, /localView\.release\(\)/);
+  assert.match(screen, /remoteView\.release\(\)/);
+});
+
+test('every shipped language has every video string', () => {
+  const names = ['native_video', 'native_stop_video', 'native_flip_camera', 'native_video_unlock',
+    'native_video_switch_title', 'native_video_switch_body', 'native_video_request_body',
+    'native_switch', 'native_cancel', 'native_not_now', 'native_video_declined', 'native_video_waiting'];
+  for (const dir of ['values', 'values-ar', 'values-hi', 'values-hy', 'values-ru', 'values-zh-rCN']) {
+    const strings = read(`${res}${dir}/strings.xml`);
+    for (const name of names) assert.match(strings, new RegExp(`name="${name}"`), `${dir} is missing ${name}`);
+  }
+  for (const icon of ['ic_call_video.xml', 'ic_call_flip.xml']) {
+    assert.ok(fs.existsSync(path.join(root, res, 'drawable', icon)), `${icon} is missing`);
+  }
+});

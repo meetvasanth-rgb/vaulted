@@ -23,4 +23,16 @@
   <string name="native_answer">رد</string>
     <string name="native_end_to_end_encrypted">مشفّر من طرف إلى طرف</string>
     <string name="native_end_to_end_encrypted_call">مكالمة مشفّرة من طرف إلى طرف</string>
+  <string name="native_video">فيديو</string>
+  <string name="native_stop_video">إيقاف الفيديو</string>
+  <string name="native_flip_camera">قلب</string>
+  <string name="native_video_unlock">افتح قفل الهاتف لاستخدام الفيديو.</string>
+  <string name="native_video_switch_title">التحويل إلى مكالمة فيديو؟</string>
+  <string name="native_video_switch_body">لن تعمل أي كاميرا حتى يوافق %1$s.</string>
+  <string name="native_video_request_body">يريد %1$s التحويل إلى مكالمة فيديو.</string>
+  <string name="native_switch">تحويل</string>
+  <string name="native_cancel">إلغاء</string>
+  <string name="native_not_now">ليس الآن</string>
+  <string name="native_video_declined">فضّل %1$s البقاء على الصوت.</string>
+  <string name="native_video_waiting">جارٍ الانتظار…</string>
 </resources>

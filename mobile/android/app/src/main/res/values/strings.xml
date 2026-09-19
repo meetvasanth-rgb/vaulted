@@ -28,4 +28,16 @@
     <string name="native_decline">Decline</string>
     <string name="native_answer">Answer</string>
     <string name="calls_channel_description">Incoming encrypted call alerts</string>
+  <string name="native_video">Video</string>
+  <string name="native_stop_video">Stop video</string>
+  <string name="native_flip_camera">Flip</string>
+  <string name="native_video_unlock">Unlock your phone to use video.</string>
+  <string name="native_video_switch_title">Switch to video call?</string>
+  <string name="native_video_switch_body">%1$s has to agree before either camera turns on.</string>
+  <string name="native_video_request_body">%1$s wants to switch to a video call.</string>
+  <string name="native_switch">Switch</string>
+  <string name="native_cancel">Cancel</string>
+  <string name="native_not_now">Not now</string>
+  <string name="native_video_declined">%1$s stayed on audio.</string>
+  <string name="native_video_waiting">Waiting…</string>
 </resources>

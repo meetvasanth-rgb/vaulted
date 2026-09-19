@@ -1,6 +1,9 @@
 package com.vaultlix.app;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.KeyguardManager;
+import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -31,9 +34,12 @@ import android.widget.TextView;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import org.webrtc.RendererCommon;
+import org.webrtc.SurfaceViewRenderer;
+
 import java.util.Random;
 
-/** Keyguard-safe, audio-only presentation for the native Android WebRTC engine. */
+/** Keyguard-safe presentation (audio, with optional video) for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
     private static final String TAG = "VaultlixCallAudio";
     private static volatile boolean running;
@@ -62,6 +68,30 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private TextView routeLabel;
     private ImageButton muteButton;
     private ImageButton routeButton;
+    private ImageButton videoButton;
+    private TextView videoLabel;
+    private LinearLayout flipControl;
+    private LinearLayout videoControl;
+    private SurfaceViewRenderer remoteView;
+    private SurfaceViewRenderer localView;
+    private FrameLayout localFrame;
+    private TextView videoTitle;
+    private View rainView;
+    private View videoScrim;
+    private View brandRuleView;
+    private View brandView;
+    private LinearLayout identityView;
+    private String callerDisplay = "";
+    private boolean remoteVideoShown;
+    private boolean frontCamera = true;
+    private android.app.AlertDialog videoDialog;
+    // A peer on an older app never answers a video request; stop waiting.
+    private final Runnable videoRequestTimeout = () -> {
+        if (this.finishingCall || this.videoLabel == null || this.engine.hasVideoConsent()) return;
+        this.videoLabel.setText(R.string.native_video);
+        Toast.makeText(this, getString(R.string.native_video_declined, this.callerDisplay), Toast.LENGTH_SHORT).show();
+    };
+    private boolean resumeCameraOnStart;
     private long connectedAt;
     private boolean muted;
     // null until the user picks a route, then "phone", "bluetooth" or "speaker".
@@ -103,6 +133,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             if (connectedAt == 0 || timer == null) return;
             long seconds = Math.max(0, (System.currentTimeMillis() - connectedAt) / 1000);
             timer.setText(String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60));
+            updateVideoTitle();
             handler.postDelayed(this, 1000);
         }
     };
@@ -155,7 +186,24 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
                 ? getString(R.string.native_private_call) : callerValue.trim();
         FrameLayout stage = new FrameLayout(this);
         stage.setBackgroundColor(INK);
-        stage.addView(new BinaryStreamView(), new FrameLayout.LayoutParams(-1, -1));
+        rainView = new BinaryStreamView();
+        stage.addView(rainView, new FrameLayout.LayoutParams(-1, -1));
+        callerDisplay = caller;
+        remoteView = new SurfaceViewRenderer(this);
+        if (engine.videoSupported()) remoteView.init(engine.eglContext(), null);
+        remoteView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
+        remoteView.setEnableHardwareScaler(true);
+        remoteView.setVisibility(View.GONE);
+        stage.addView(remoteView, new FrameLayout.LayoutParams(-1, -1));
+        // Keeps the controls and title legible over any picture.
+        videoScrim = new View(this);
+        GradientDrawable scrim = new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                new int[] { Color.argb(190, 0, 0, 0), Color.TRANSPARENT });
+        videoScrim.setBackground(scrim);
+        videoScrim.setVisibility(View.GONE);
+        FrameLayout.LayoutParams scrimParams = new FrameLayout.LayoutParams(-1, dp(260));
+        scrimParams.gravity = Gravity.BOTTOM;
+        stage.addView(videoScrim, scrimParams);
 
         LinearLayout root = new LinearLayout(this);
         callRoot = root;
@@ -168,11 +216,13 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         root.setBackgroundColor(Color.TRANSPARENT);
 
         View brandRule = new View(this);
+        brandRuleView = brandRule;
         brandRule.setBackgroundColor(CONTROL_ACTIVE);
         root.addView(brandRule, new LinearLayout.LayoutParams(dp(50), dp(1)));
         TextView brand = label("Vaultlix", 20, IVORY);
         brand.setTypeface(identityTypeface());
         brand.setLetterSpacing(.12f);
+        brandView = brand;
         LinearLayout.LayoutParams brandText = new LinearLayout.LayoutParams(-2, -2);
         brandText.setMargins(0, dp(14), 0, 0);
         root.addView(brand, brandText);
@@ -180,6 +230,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         LinearLayout identity = new LinearLayout(this);
         identity.setOrientation(LinearLayout.VERTICAL);
         identity.setGravity(Gravity.CENTER);
+        identityView = identity;
         root.addView(identity, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         // Keep the same peer identity visible from ringing through the entire
@@ -251,14 +302,55 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             engine.end(true);
             finishCall();
         });
+        videoControl = control(R.drawable.ic_call_video, R.string.native_video, CONTROL, false);
+        videoButton = (ImageButton) videoControl.getChildAt(0);
+        videoLabel = (TextView) videoControl.getChildAt(1);
+        videoButton.setOnClickListener(v -> toggleVideo());
+        videoControl.setAlpha(.45f);
+        flipControl = control(R.drawable.ic_call_flip, R.string.native_flip_camera, CONTROL, false);
+        ((ImageButton) flipControl.getChildAt(0)).setOnClickListener(v -> {
+            engine.switchCamera();
+            frontCamera = !frontCamera;
+            if (localView != null) localView.setMirror(frontCamera);
+        });
+        flipControl.setVisibility(View.GONE);
         actions.addView(muteControl, controlParams());
         actions.addView(routeControl, controlParams());
+        actions.addView(videoControl, controlParams());
+        actions.addView(flipControl, controlParams());
         actions.addView(endControl, controlParams());
         root.addView(actions, new LinearLayout.LayoutParams(-1, dp(112)));
         root.setFocusableInTouchMode(true);
         root.requestFocus();
         stage.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        videoTitle = label(caller, 15, Color.WHITE);
+        videoTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        videoTitle.setShadowLayer(dp(4), 0, dp(1), Color.argb(160, 0, 0, 0));
+        videoTitle.setMaxLines(1);
+        videoTitle.setEllipsize(TextUtils.TruncateAt.END);
+        videoTitle.setVisibility(View.GONE);
+        FrameLayout.LayoutParams titleParams = new FrameLayout.LayoutParams(-1, -2);
+        titleParams.setMargins(dp(96), dp(50), dp(96), 0);
+        stage.addView(videoTitle, titleParams);
+        localFrame = new FrameLayout(this);
+        localFrame.setBackground(roundRect(Color.argb(200, 250, 246, 247), 10));
+        localFrame.setPadding(dp(2), dp(2), dp(2), dp(2));
+        localView = new SurfaceViewRenderer(this);
+        if (engine.videoSupported()) localView.init(engine.eglContext(), null);
+        localView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
+        localView.setMirror(true);
+        localView.setZOrderMediaOverlay(true);
+        localFrame.addView(localView, new FrameLayout.LayoutParams(-1, -1));
+        localFrame.setVisibility(View.GONE);
+        FrameLayout.LayoutParams pip = new FrameLayout.LayoutParams(dp(96), dp(136));
+        // Above the controls, like the other calling apps, so it never sits under the status bar.
+        pip.gravity = Gravity.BOTTOM | Gravity.END;
+        pip.setMargins(0, 0, dp(18), dp(176));
+        stage.addView(localFrame, pip);
         setContentView(stage);
+        if (!engine.videoSupported()) videoControl.setVisibility(View.GONE);
+        engine.setVideoSinks(localView, remoteView);
+        renderVideo(engine.isCameraOn(), engine.isRemoteVideoOn());
     }
 
     private LinearLayout control(int icon, int label, int color, boolean end) {
@@ -268,11 +360,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         ImageButton button = new ImageButton(this);
         button.setImageResource(icon);
         button.setImageTintList(ColorStateList.valueOf(Color.WHITE));
-        int iconPadding = dp(end ? 18 : 20);
+        int iconPadding = dp(end ? 15 : 16);
         button.setPadding(iconPadding, iconPadding, iconPadding, iconPadding);
         button.setBackground(circle(color));
         button.setContentDescription(getString(label));
-        wrapper.addView(button, new LinearLayout.LayoutParams(dp(68), dp(68)));
+        wrapper.addView(button, new LinearLayout.LayoutParams(dp(56), dp(56)));
         TextView text = label(getString(label), 12, end ? Color.rgb(245, 203, 211) : MUTED_TEXT);
         text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(-1, -2);
@@ -285,6 +377,136 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
         params.gravity = Gravity.CENTER;
         return params;
+    }
+
+    private void toggleVideo() {
+        if (connectedAt == 0) return;
+        if (engine.isCameraOn()) { engine.setCameraEnabled(false); return; }
+        if (!engine.hasVideoConsent()) {
+            // Video needs both people to agree, so ask first (like a phone's
+            // "switch to video call"); no camera starts until the peer accepts.
+            showVideoDialog(new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(R.string.native_video_switch_title)
+                    .setMessage(getString(R.string.native_video_switch_body, callerDisplay))
+                    .setNegativeButton(R.string.native_cancel, null)
+                    .setPositiveButton(R.string.native_switch, (dialog, which) -> {
+                        engine.requestVideo();
+                        videoLabel.setText(R.string.native_video_waiting);
+                        handler.removeCallbacks(videoRequestTimeout);
+                        handler.postDelayed(videoRequestTimeout, 20_000);
+                    })
+                    .create());
+            return;
+        }
+        startLocalCamera();
+    }
+
+    private void showVideoDialog(android.app.AlertDialog dialog) {
+        if (videoDialog != null && videoDialog.isShowing()) videoDialog.dismiss();
+        videoDialog = dialog;
+        dialog.show();
+    }
+
+    private void startLocalCamera() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            engine.setCameraEnabled(true);
+            return;
+        }
+        KeyguardManager keyguard = getSystemService(KeyguardManager.class);
+        if (keyguard != null && keyguard.isKeyguardLocked()) {
+            // A permission dialog cannot appear over the keyguard, so ask for
+            // the unlock first and then for the camera.
+            Toast.makeText(this, R.string.native_video_unlock, Toast.LENGTH_SHORT).show();
+            keyguard.requestDismissKeyguard(this, new KeyguardManager.KeyguardDismissCallback() {
+                @Override public void onDismissSucceeded() {
+                    requestPermissions(new String[] { Manifest.permission.CAMERA }, 75);
+                }
+            });
+            return;
+        }
+        requestPermissions(new String[] { Manifest.permission.CAMERA }, 75);
+    }
+
+    @Override public void onVideoRequest() {
+        runOnUiThread(() -> {
+            if (finishingCall || isFinishing()) return;
+            showVideoDialog(new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(R.string.native_video_switch_title)
+                    .setMessage(getString(R.string.native_video_request_body, callerDisplay))
+                    .setCancelable(false)
+                    .setNegativeButton(R.string.native_not_now, (dialog, which) -> engine.respondVideo(false))
+                    .setPositiveButton(R.string.native_switch, (dialog, which) -> {
+                        engine.respondVideo(true);
+                        startLocalCamera();
+                    })
+                    .create());
+        });
+    }
+
+    @Override public void onVideoResponse(boolean accepted) {
+        runOnUiThread(() -> {
+            handler.removeCallbacks(videoRequestTimeout);
+            if (finishingCall || isFinishing()) return;
+            if (accepted) startLocalCamera();
+            else {
+                videoLabel.setText(R.string.native_video);
+                Toast.makeText(this, getString(R.string.native_video_declined, callerDisplay), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 75 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            engine.setCameraEnabled(true);
+        }
+    }
+
+    @Override public void onVideoState(boolean localOn, boolean remoteOn) {
+        runOnUiThread(() -> renderVideo(localOn, remoteOn));
+    }
+
+    // Remote video takes the whole screen (the peer's identity is on it); the
+    // local camera is the small preview. Either can be on without the other.
+    private void renderVideo(boolean localOn, boolean remoteOn) {
+        if (remoteView == null || localFrame == null) return;
+        remoteVideoShown = remoteOn;
+        remoteView.setVisibility(remoteOn ? View.VISIBLE : View.GONE);
+        localFrame.setVisibility(localOn ? View.VISIBLE : View.GONE);
+        rainView.setVisibility(remoteOn ? View.GONE : View.VISIBLE);
+        videoScrim.setVisibility(remoteOn ? View.VISIBLE : View.GONE);
+        identityView.setVisibility(remoteOn ? View.INVISIBLE : View.VISIBLE);
+        brandRuleView.setVisibility(remoteOn ? View.INVISIBLE : View.VISIBLE);
+        brandView.setVisibility(remoteOn ? View.INVISIBLE : View.VISIBLE);
+        videoTitle.setVisibility(remoteOn ? View.VISIBLE : View.GONE);
+        updateVideoTitle();
+        videoButton.setBackground(circle(localOn ? CONTROL_ACTIVE : CONTROL));
+        videoLabel.setText(localOn ? R.string.native_stop_video : R.string.native_video);
+        flipControl.setVisibility(localOn ? View.VISIBLE : View.GONE);
+    }
+
+    private void updateVideoTitle() {
+        if (videoTitle == null || !remoteVideoShown) return;
+        String time = connectedAt == 0 ? "" : "  ·  " + formatDuration(Math.max(0, (System.currentTimeMillis() - connectedAt) / 1000));
+        videoTitle.setText(callerDisplay + time);
+    }
+
+    @Override protected void onStop() {
+        // Android only lets the foreground call screen use the camera, so the
+        // camera pauses when the screen is left or locked and resumes on return.
+        if (engine != null && engine.isCameraOn() && !finishingCall) {
+            resumeCameraOnStart = true;
+            engine.setCameraEnabled(false);
+        }
+        super.onStop();
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (resumeCameraOnStart && engine != null && !finishingCall) {
+            resumeCameraOnStart = false;
+            engine.setCameraEnabled(true);
+        }
     }
 
     private void toggleMute() {
@@ -386,6 +608,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     private void renderConnected(long connectionStartedAt) { runOnUiThread(() -> { clearIncomingCallBanner(); stopRingback(); if (connectedAt != 0) return;
         connectedAt=connectionStartedAt;
+        if (videoControl != null) videoControl.setAlpha(1f);
         // libwebrtc/OEM audio initialization can replace a route selected
         // while the call was ringing. Reassert the user's current choice as
         // soon as the remote track becomes active.
@@ -413,6 +636,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         if (finishingCall) return;
         finishingCall = true;
         stopRingback();
+        if (videoDialog != null && videoDialog.isShowing()) videoDialog.dismiss();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(enforceRequestedAudioRoute);
         boolean wasConnected = connectedAt != 0;
@@ -427,6 +651,10 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     private void showCallEndedMoment() {
+        if (remoteView != null) remoteView.setVisibility(View.GONE);
+        if (videoScrim != null) videoScrim.setVisibility(View.GONE);
+        if (localFrame != null) localFrame.setVisibility(View.GONE);
+        if (videoTitle != null) videoTitle.setVisibility(View.GONE);
         if (callRoot == null) { finish(); overridePendingTransition(0, 0); return; }
         getWindow().setStatusBarColor(VANISH_BACKGROUND);
         getWindow().setNavigationBarColor(VANISH_BACKGROUND);
@@ -537,10 +765,14 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     @Override protected void onDestroy() {
         running = false;
+        if (videoDialog != null && videoDialog.isShowing()) videoDialog.dismiss();
         handler.removeCallbacks(tick);
+        handler.removeCallbacks(videoRequestTimeout);
         stopRingback();
         if (ringbackTrack != null) { ringbackTrack.release(); ringbackTrack = null; }
-        if (engine != null) engine.removeListener(this);
+        if (engine != null) { engine.removeListener(this); engine.detachVideoSinks(localView, remoteView); }
+        if (localView != null) { localView.release(); localView = null; }
+        if (remoteView != null) { remoteView.release(); remoteView = null; }
         restoreAudio();
         super.onDestroy();
     }
@@ -619,7 +851,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     @SuppressWarnings("deprecation") private void restoreAudio() { handler.removeCallbacks(enforceRequestedAudioRoute); handler.removeCallbacks(audioRoutePoll); if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else { audioManager.stopBluetoothSco(); audioManager.setBluetoothScoOn(false); audioManager.setSpeakerphoneOn(false); } audioManager.setMode(AudioManager.MODE_NORMAL); } }
     private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);return v; }
     private TextView callCaption(String value, int color){ TextView v=label(value,11,color);v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));v.setAllCaps(true);v.setLetterSpacing(.12f);return v; }
-    private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(4),0,dp(4),0);return p; }
+    private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(2),0,dp(2),0);return p; }
     private GradientDrawable circle(int color){ GradientDrawable d=new GradientDrawable();d.setShape(GradientDrawable.OVAL);d.setColor(color);return d; }
     private GradientDrawable roundRect(int color,int radius){ GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d; }
     private String initialFor(String value){ String trimmed=value == null ? "" : value.trim(); return trimmed.isEmpty() ? "V" : trimmed.substring(0,1).toUpperCase(java.util.Locale.getDefault()); }
