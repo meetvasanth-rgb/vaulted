@@ -2552,25 +2552,6 @@ async function sweepAttachmentGarbage() {
       console.error('Encrypted attachment cleanup failed:', error.message);
     }
   }
-  if (groupStore) {
-    const groupGarbage = await groupStore.listAttachmentGarbage(Date.now(), 100);
-    for (const attachment of groupGarbage) {
-      try {
-        await objectStorage.delete(attachment.objectKey);
-        await groupStore.deleteAttachmentRecord(attachment.id);
-      } catch (error) {
-        console.error('Encrypted group attachment cleanup failed:', error.message);
-      }
-    }
-  }
-}
-
-async function deletePrivateGroupAttachments(groupId) {
-  if (!objectStorageEnabled || !postgresEnabled || !groupStore) return;
-  for (const attachment of await groupStore.listAttachments(groupId)) {
-    await objectStorage.delete(attachment.objectKey).catch(error =>
-      console.error('Encrypted group attachment deletion failed:', error.message));
-  }
 }
 
 async function sweepStatusMediaGarbage() {
@@ -3500,69 +3481,15 @@ async function api(path, method, d, p, res, ip, headers) {
       cursor:group.messages[group.messages.length - 1]?.createdAt || after, messages });
   }
 
-  if (path === '/api/groups/attachment/prepare' && method === 'POST') {
-    if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted attachment storage is temporarily unavailable.', 503);
-    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to attach a file.', 401);
-    const account = authenticateAccountSession(d.accountId, d.sessionToken);
-    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    const group = await groupStore.get(d.groupId);
-    if (!group?.members.some(member => member.accountId === d.accountId && member.active)) return resErr(res, 'Private group not found.', 404);
-    const messageId = typeof d.messageId === 'string' ? d.messageId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,96) : '';
-    const size = Number(d.size);
-    if (!messageId || !Number.isSafeInteger(size) || size < 1 || size > MAX_MESSAGE_CONTENT_BYTES) return resErr(res, 'Invalid encrypted attachment.', 400);
-    if (await rateLimited(`group-attachment:${d.accountId}`, 20, 10 * 1000)) return resErr(res, 'Uploading too fast — slow down a moment.', 429);
-    const attachmentId = crypto.randomUUID();
-    const objectKey = attachmentObjectKey(`group:${group.id}`, attachmentId);
-    const createdAt = Date.now();
-    const created = await groupStore.createPendingAttachment(group.id, d.accountId, {
-      id:attachmentId, messageId, objectKey, size, createdAt, expiresAt:createdAt + ATTACHMENT_UPLOAD_TTL_MS,
-    });
-    if (!created) return resErr(res, 'Could not prepare encrypted attachment.', 409);
-    try {
-      return res200(res, { attachmentId, uploadUrl:await objectStorage.createUploadUrl(objectKey), contentType:'application/octet-stream' });
-    } catch (error) {
-      await groupStore.deleteAttachmentRecord(attachmentId).catch(() => {});
-      return resErr(res, 'Could not prepare encrypted attachment.', 503);
-    }
-  }
-
-  if (path === '/api/groups/attachment/download' && method === 'POST') {
-    if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted attachment storage is temporarily unavailable.', 503);
-    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to open this file.', 401);
-    const account = authenticateAccountSession(d.accountId, d.sessionToken);
-    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    const group = await groupStore.get(d.groupId);
-    if (!group?.members.some(member => member.accountId === d.accountId && member.active)) return resErr(res, 'Private group not found.', 404);
-    if (!validAttachmentId(d.attachmentId)) return resErr(res, 'Invalid encrypted attachment.', 400);
-    const attachment = await groupStore.attachment(group.id, d.attachmentId);
-    if (!attachment || !group.messages.some(message => message.id === attachment.messageId && message.attachmentId === attachment.id)) {
-      return resErr(res, 'Encrypted attachment not found.', 404);
-    }
-    try {
-      return res200(res, { downloadUrl:await objectStorage.createDownloadUrl(attachment.objectKey), size:attachment.size });
-    } catch (error) { return resErr(res, 'Could not open encrypted attachment.', 503); }
-  }
-
   if (path === '/api/groups/send' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to send a group message.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    if (typeof d.messageId !== 'string' || !/^[a-zA-Z0-9_-]{16,96}$/.test(d.messageId) || !validEncryptedField(d.ciphertext, 131072) ||
-        (d.attachmentId != null && !validAttachmentId(d.attachmentId))) {
+    if (typeof d.messageId !== 'string' || !/^[a-zA-Z0-9_-]{16,96}$/.test(d.messageId) || !validEncryptedField(d.ciphertext, 131072)) {
       return resErr(res, 'Invalid encrypted group message.', 400);
     }
-    let pending = null;
-    if (d.attachmentId) {
-      if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted attachment storage is unavailable.', 503);
-      pending = await groupStore.pendingAttachment(d.groupId, d.accountId, d.attachmentId);
-      if (!pending || pending.messageId !== d.messageId) return resErr(res, 'Encrypted attachment is invalid or expired.', 409);
-      try {
-        if (await objectStorage.sizeOf(pending.objectKey) !== pending.size) return resErr(res, 'Encrypted attachment upload is incomplete.', 409);
-      } catch (error) { return resErr(res, 'Encrypted attachment upload is incomplete.', 409); }
-    }
-    const group = await groupStore.send(d.groupId, d.accountId, { id:d.messageId, ciphertext:d.ciphertext, attachmentId:d.attachmentId || null });
+    const group = await groupStore.send(d.groupId, d.accountId, { id:d.messageId, ciphertext:d.ciphertext });
     if (!group) return resErr(res, 'This group needs a new encryption key before messages can continue.', 409);
-    if (pending && !await groupStore.markAttachmentAttached(pending.id)) return resErr(res, 'Encrypted attachment could not be finalized.', 409);
     for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
       publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'message' });
       sendAccountPush(member.accountId, { title:'Vaultlix', body:'New encrypted group message',
@@ -3617,7 +3544,6 @@ async function api(path, method, d, p, res, ip, headers) {
     const group = await groupStore.get(d.groupId);
     if (!group || group.ownerId !== d.accountId) return resErr(res, 'Only the group owner can delete it.', 403);
     const members = group.members.filter(member => member.active && member.accountId !== d.accountId).map(member => member.accountId);
-    await deletePrivateGroupAttachments(d.groupId);
     if (!await groupStore.remove(d.groupId, d.accountId)) return resErr(res, 'Private group not found.', 404);
     for (const memberId of members) publishInboxAccount(memberId, 'group-update', { groupId:d.groupId });
     return res200(res, { ok:true });
@@ -3796,7 +3722,6 @@ async function api(path, method, d, p, res, ip, headers) {
     for (const group of await groupStore.listFor(d.accountId)) {
       if (group.ownerId === d.accountId) {
         const memberIds = group.members.filter(member => member.active && member.accountId !== d.accountId).map(member => member.accountId);
-        await deletePrivateGroupAttachments(group.id);
         await groupStore.remove(group.id, d.accountId);
         for (const memberId of memberIds) publishInboxAccount(memberId, 'group-update', { groupId:group.id });
       } else {

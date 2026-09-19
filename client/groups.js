@@ -27,159 +27,6 @@ function groupMemberLabel(group, accountId) {
   return member?.displayName || (accountId === loadAccountState()?.accountId ? 'You' : 'Member');
 }
 
-const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 19 * 1024 * 1024;
-let privateGroupVoiceRecorder = null;
-let privateGroupVoiceStream = null;
-let privateGroupVoiceChunks = [];
-let privateGroupVoiceStartedAt = 0;
-
-function updatePrivateGroupComposer() {
-  const footer = document.getElementById('group-chat-footer');
-  const input = document.getElementById('group-message-input');
-  footer?.classList.toggle('has-text', !!String(input?.value || '').trim());
-}
-
-function showPrivateGroupAttachOptions() {
-  closePrivateGroupAttachOptions();
-  const button = document.getElementById('group-attach-btn');
-  if (!button || !activePrivateGroupId) return;
-  const rect = button.getBoundingClientRect();
-  const popover = document.createElement('div');
-  popover.id = 'group-attach-popover'; popover.className = 'attach-popover';
-  popover.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-  popover.style.left = `${Math.max(8, rect.left - 4)}px`;
-  popover.innerHTML = `
-    <button type="button" class="attach-opt" data-input="group-camera-input"><span class="attach-opt-icon">📷</span><span class="attach-opt-label">Camera</span></button>
-    <button type="button" class="attach-opt" data-input="group-image-input"><span class="attach-opt-icon">▧</span><span class="attach-opt-label">Gallery</span></button>
-    <button type="button" class="attach-opt" data-input="group-file-input"><span class="attach-opt-icon">⌑</span><span class="attach-opt-label">File</span></button>
-    <button type="button" class="attach-opt" id="group-attach-gif"><span class="attach-opt-icon" style="font-weight:800;font-size:12px;color:#682C43">GIF</span><span class="attach-opt-label">GIF</span></button>`;
-  document.body.appendChild(popover);
-  for (const option of popover.querySelectorAll('[data-input]')) option.onclick = event => {
-    event.stopPropagation(); const id = option.dataset.input; closePrivateGroupAttachOptions(); document.getElementById(id)?.click();
-  };
-  popover.querySelector('#group-attach-gif').onclick = event => {
-    event.stopPropagation(); closePrivateGroupAttachOptions(); openKlipyPicker('group');
-  };
-  setTimeout(() => document.addEventListener('click', privateGroupAttachOutsideClick), 0);
-}
-
-function closePrivateGroupAttachOptions() {
-  document.getElementById('group-attach-popover')?.remove();
-  document.removeEventListener('click', privateGroupAttachOutsideClick);
-}
-
-function privateGroupAttachOutsideClick(event) {
-  const popover = document.getElementById('group-attach-popover');
-  if (popover && !popover.contains(event.target) && !event.target.closest('#group-attach-btn')) closePrivateGroupAttachOptions();
-}
-
-async function uploadPrivateGroupAttachment(state, group, messageId, ciphertext) {
-  const size = new Blob([ciphertext]).size;
-  if (size < 1 || size > MAX_PRIVATE_GROUP_ATTACHMENT_BYTES) throw new Error('Attachment is too large');
-  const prepared = await api('/api/groups/attachment/prepare', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, messageId, size });
-  if (!prepared?.attachmentId || !prepared?.uploadUrl) throw new Error(prepared?.error || 'Could not prepare attachment');
-  const url = new URL(prepared.uploadUrl, location.href);
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') throw new Error('Unsafe attachment address');
-  const response = await fetch(url.href, { method:'PUT', headers:{ 'Content-Type':prepared.contentType || 'application/octet-stream' }, body:ciphertext });
-  if (!response.ok) throw new Error('Could not upload attachment');
-  return prepared.attachmentId;
-}
-
-async function downloadPrivateGroupAttachment(state, group, attachmentId) {
-  const prepared = await api('/api/groups/attachment/download', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, attachmentId });
-  if (!prepared?.downloadUrl) throw new Error(prepared?.error || 'Could not open attachment');
-  const url = new URL(prepared.downloadUrl, location.href);
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') throw new Error('Unsafe attachment address');
-  const response = await fetch(url.href, { cache:'no-store' });
-  if (!response.ok) throw new Error('Could not open attachment');
-  const ciphertext = await response.text();
-  if (!ciphertext || new Blob([ciphertext]).size > MAX_PRIVATE_GROUP_ATTACHMENT_BYTES) throw new Error('Invalid attachment');
-  return ciphertext;
-}
-
-async function sendPrivateGroupAttachment(payload) {
-  const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
-  const key = group?.keys?.[group?.keyVersion];
-  if (!state || !group || !key) throw new Error('Group encryption key is not ready');
-  const messageId = newMsgId();
-  const encryptedPayload = await encryptPrivateGroupValue(key, payload);
-  const attachmentId = await uploadPrivateGroupAttachment(state, group, messageId, encryptedPayload);
-  const ciphertext = await encryptPrivateGroupValue(key, { type:'group-attachment', attachmentId });
-  const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, messageId, ciphertext, attachmentId });
-  if (result.error) throw new Error(result.error);
-  group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, attachmentId,
-    attachment:payload, createdAt:result.createdAt, keyVersion:result.keyVersion }];
-  group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
-}
-
-async function sendPrivateGroupGif(item, searchQuery) {
-  const url = safeKlipyMediaUrl(item?.url); if (!url) return false;
-  const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
-  const key = group?.keys?.[group?.keyVersion]; if (!state || !group || !key) return false;
-  const messageId = newMsgId();
-  const payload = { type:'group-gif', id:String(item.id || ''), title:String(item.title || 'GIF').slice(0,200), url };
-  const ciphertext = await encryptPrivateGroupValue(key, payload);
-  const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, messageId, ciphertext });
-  if (result.error) throw new Error(result.error);
-  group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, gif:payload,
-    createdAt:result.createdAt, keyVersion:result.keyVersion }];
-  group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList(); closeKlipyPicker();
-  const [locale, country] = klipyLocale();
-  fetch(`https://api.klipy.com/v2/registershare?${new URLSearchParams({ key:KLIPY_API_KEY, id:payload.id, locale, country, q:searchQuery || '' })}`).catch(() => {});
-  return true;
-}
-
-async function handlePrivateGroupFileSelect(event) {
-  const files = Array.from(event.target.files || []); event.target.value = '';
-  if (!files.length) return;
-  for (const file of files) {
-    try {
-      if (file.size > 10 * 1024 * 1024) { toast(`“${file.name}” is too large — maximum 10MB`); continue; }
-      let base64, mime = file.type || 'application/octet-stream';
-      if (mime.startsWith('image/')) {
-        toast('Preparing photo…');
-        const compressed = await compressImageFile(file); base64 = compressed.base64; mime = compressed.mime;
-        if (!await allowLocalImageSend([base64], message => toast(message), { persist:true })) continue;
-      } else base64 = await fileToBase64(file);
-      toast('Sending attachment…');
-      await sendPrivateGroupAttachment({ type:mime.startsWith('image/') ? 'group-image' : 'group-file',
-        name:String(file.name || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64 });
-      toast(mime.startsWith('image/') ? 'Photo sent' : 'File sent');
-    } catch (error) { toast(error.message || 'Attachment could not be sent'); }
-  }
-}
-
-async function togglePrivateGroupVoiceRecording() {
-  if (privateGroupVoiceRecorder?.state === 'recording') { privateGroupVoiceRecorder.stop(); return; }
-  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { toast('Voice recording is not available on this device'); return; }
-  try {
-    privateGroupVoiceStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-    privateGroupVoiceChunks = []; privateGroupVoiceStartedAt = Date.now();
-    privateGroupVoiceRecorder = new MediaRecorder(privateGroupVoiceStream);
-    privateGroupVoiceRecorder.ondataavailable = event => { if (event.data?.size) privateGroupVoiceChunks.push(event.data); };
-    privateGroupVoiceRecorder.onstop = async () => {
-      const duration = Math.max(1, Math.round((Date.now() - privateGroupVoiceStartedAt) / 1000));
-      const mime = privateGroupVoiceRecorder?.mimeType || privateGroupVoiceChunks[0]?.type || 'audio/webm';
-      const blob = new Blob(privateGroupVoiceChunks, { type:mime });
-      privateGroupVoiceStream?.getTracks().forEach(track => track.stop()); privateGroupVoiceStream = null;
-      document.querySelector('.group-mic-btn')?.classList.remove('recording');
-      try {
-        if (blob.size > 10 * 1024 * 1024) throw new Error('Voice note is too large — record a shorter note');
-        toast('Sending voice note…');
-        await sendPrivateGroupAttachment({ type:'group-voice', name:'Voice note', mime, duration, size:blob.size, data:await blobToBase64(blob) });
-        toast('Voice note sent');
-      } catch (error) { toast(error.message || 'Voice note could not be sent'); }
-    };
-    privateGroupVoiceRecorder.start(); document.querySelector('.group-mic-btn')?.classList.add('recording');
-    toast('Recording voice note — tap the microphone again to send');
-    setTimeout(() => { if (privateGroupVoiceRecorder?.state === 'recording') privateGroupVoiceRecorder.stop(); }, 5 * 60 * 1000);
-  } catch (error) { toast('Microphone permission is required for voice notes'); }
-}
-
 async function unwrapPrivateGroupKeys(serverGroup, local) {
   const keys = { ...(local?.keys || {}) };
   const room = rooms.get(serverGroup.wrapRoomCode);
@@ -272,9 +119,6 @@ async function createPrivateGroup() {
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
   activePrivateGroupId = id; group.unread = 0;
-  const input = document.getElementById('group-message-input');
-  if (input) input.value = '';
-  updatePrivateGroupComposer();
   document.getElementById('group-chat-title').textContent = group.name || 'Private group';
   document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
   document.getElementById('group-chat').classList.add('open');
@@ -284,13 +128,7 @@ async function openPrivateGroup(id) {
 }
 
 function closePrivateGroup() {
-  clearInterval(groupPollTimer); groupPollTimer = null;
-  closePrivateGroupAttachOptions();
-  if (privateGroupVoiceRecorder?.state === 'recording') {
-    privateGroupVoiceRecorder.onstop = null; privateGroupVoiceRecorder.stop();
-    privateGroupVoiceStream?.getTracks().forEach(track => track.stop()); privateGroupVoiceStream = null;
-  }
-  activePrivateGroupId = null;
+  clearInterval(groupPollTimer); groupPollTimer = null; activePrivateGroupId = null;
   document.getElementById('group-chat')?.classList.remove('open');
   document.getElementById('group-chat')?.setAttribute('aria-hidden','true'); renderVaultList();
 }
@@ -300,53 +138,11 @@ function renderPrivateGroupMessages(group) {
   const state = loadAccountState();
   if (!group.messages?.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
   body.innerHTML = group.messages.map(message => {
-    let content;
-    if (message.attachment?.type === 'group-image') {
-      const mime = /^image\/(jpeg|png|webp|gif)$/i.test(message.attachment.mime) ? message.attachment.mime : 'image/jpeg';
-      content = message.imageSafety && message.imageSafety !== 'allowed'
-        ? '<div class="group-attachment-status">Photo hidden because the on-device safety check could not approve it.</div>'
-        : `<button class="group-message-attachment" type="button" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')"><img src="data:${mime};base64,${escHtml(message.attachment.data)}" alt="${escHtml(message.attachment.name || 'Group photo')}"></button>`;
-    } else if (message.attachment?.type === 'group-voice') {
-      const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
-      content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
-    } else if (message.attachment?.type === 'group-file') {
-      content = `<button class="group-file-card" type="button" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')">⌑ <span>${escHtml(message.attachment.name || 'Attachment')}</span></button>`;
-    } else if (message.gif?.type === 'group-gif' && safeKlipyMediaUrl(message.gif.url)) {
-      content = `<div class="group-message-attachment"><img src="${escHtml(message.gif.url)}" alt="${escHtml(message.gif.title || 'GIF')}" loading="lazy"></div>`;
-    } else {
-      const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
-      const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
-      content = `<div class="group-message-text">${escHtml(visibleText)}</div>`;
-    }
-    return `<div class="group-message${message.senderId === state?.accountId ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${content}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
+    const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
+    const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
+    return `<div class="group-message${message.senderId === state?.accountId ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div><div class="group-message-text">${escHtml(visibleText)}</div><div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
   }).join('');
   body.scrollTop = body.scrollHeight;
-}
-
-function openPrivateGroupAttachment(messageId) {
-  const group = privateGroups.get(activePrivateGroupId);
-  const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
-  if (!attachment?.data) return;
-  const mime = /^[a-z]+\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(attachment.mime) ? attachment.mime : 'application/octet-stream';
-  transferDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || 'Vaultlix attachment');
-}
-
-async function decodePrivateGroupMessage(group, state, message) {
-  const plaintext = await decryptPrivateGroupValue(group.keys?.[message.keyVersion], message.ciphertext);
-  let metadata = null;
-  try { metadata = JSON.parse(plaintext); } catch (_) {}
-  if (metadata?.type === 'group-gif' && safeKlipyMediaUrl(metadata.url)) return { ...message, gif:metadata };
-  if (metadata?.type !== 'group-attachment' || !metadata.attachmentId) return { ...message, text:plaintext };
-  const encryptedPayload = await downloadPrivateGroupAttachment(state, group, metadata.attachmentId);
-  const payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
-  if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 26 * 1024 * 1024) {
-    throw new Error('Invalid group attachment');
-  }
-  const decoded = { ...message, attachmentId:metadata.attachmentId, attachment:payload };
-  if (payload.type === 'group-image' && message.senderId !== state.accountId && localImageSafetyEnabled()) {
-    decoded.imageSafety = await checkLocalImages([payload.data], undefined, { persist:true });
-  }
-  return decoded;
 }
 
 async function pollPrivateGroup(render = false) {
@@ -356,7 +152,7 @@ async function pollPrivateGroup(render = false) {
   if (result.error) return;
   const decoded = [];
   for (const message of result.messages || []) {
-    try { decoded.push(await decodePrivateGroupMessage(group, state, message)); }
+    try { decoded.push({ ...message, text:await decryptPrivateGroupValue(group.keys?.[message.keyVersion], message.ciphertext) }); }
     catch (_) { decoded.push({ ...message, text:'Encrypted message unavailable on this device.' }); }
   }
   const known = new Set((group.messages || []).map(item => item.id));
@@ -380,7 +176,7 @@ async function sendPrivateGroupMessage() {
     const messageId = newMsgId(); const ciphertext = await encryptPrivateGroupValue(key, text);
     const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, messageId, ciphertext });
     if (result.error) throw new Error(result.error);
-    input.value = ''; updatePrivateGroupComposer(); group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, text, createdAt:result.createdAt, keyVersion:result.keyVersion }];
+    input.value = ''; group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, text, createdAt:result.createdAt, keyVersion:result.keyVersion }];
     group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
   } catch (error) { toast(error.message || 'Message could not be sent'); }
   finally { input.disabled = false; input.focus(); }

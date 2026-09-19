@@ -22,13 +22,6 @@ test('KLIPY media is restricted to approved HTTPS delivery hosts', () => {
   assert.doesNotMatch(client, /\/api\/klipy|proxyKlipy|cacheKlipy/);
 });
 
-test('private groups expose the same GIF picker as direct conversations', () => {
-  const groups = readFileSync(join(__dirname, '..', 'client', 'groups.js'), 'utf8');
-  assert.match(groups, /id="group-attach-gif"/);
-  assert.match(groups, /openKlipyPicker\('group'\)/);
-  assert.match(groups, /encryptPrivateGroupValue\(key, payload\)/);
-});
-
 test('conversation opening defers offscreen KLIPY animation until after first paint', () => {
   assert.match(client, /data-klipy-src=/);
   assert.match(client, /decoding="async"/);
