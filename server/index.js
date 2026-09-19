@@ -14,6 +14,8 @@ const { PostgresStore } = require('./postgres');
 const { SafetyStore } = require('./safety-store');
 const contentSafety = require('../client/content-safety');
 let safetyStore;
+const { StatusStore } = require('./status-store');
+let statusStore;
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const { EncryptedObjectStorage } = require('./object-storage');
 const { HeadBucketCommand } = require('@aws-sdk/client-s3');
@@ -1393,6 +1395,22 @@ function compactConnectionRequests(requests, now = Date.now()) {
   // data the next time either account refreshes its inbox.
   return live.filter(request => request.status !== 'pending' || !acceptedPairs.has(connectionPairKey(request))).slice(-99);
 }
+
+function acceptedStatusRecipient(authorId, roomCode) {
+  const author = accounts.get(authorId);
+  const normalizedCode = String(roomCode || '').trim().toLowerCase();
+  if (!author || !normalizedCode) return null;
+  const relationship = (author.connectionRequests || []).find(request => {
+    if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') return false;
+    try {
+      return new URL(request.inviteUrl).pathname.split('/').filter(Boolean).pop()?.toLowerCase() === normalizedCode;
+    } catch (_) { return false; }
+  });
+  if (!relationship) return null;
+  const recipientId = relationship.senderAccountId === authorId
+    ? relationship.recipientAccountId : relationship.senderAccountId;
+  return recipientId && accounts.has(recipientId) ? recipientId : null;
+}
 function accountRetention(account, now = Date.now()) {
   const protection = account.numberProtection || 'free';
   const premiumUntil = Number(account.premiumUntil) || 0;
@@ -2645,11 +2663,13 @@ function serveStatic(req, res) {
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_PROFILE = 384 * 1024;
 const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
+const BODY_LIMIT_STATUS = 8 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 function bodyLimitFor(pathname) {
   if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
+  if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 
@@ -3520,6 +3540,79 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!found) return resErr(res, 'Vaultlix Private Number not found.', 404);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, profile:publicAccount(found.account) });
+  }
+
+  if (path === '/api/status/publish' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    if (await safetyStore.isSuspended(d.accountId)) return resErr(res, 'This account cannot publish updates.', 403);
+    if (await rateLimited(`status-publish:${d.accountId}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many updates. Try again later.', 429);
+    if (!Array.isArray(d.entries) || d.entries.length < 1 || d.entries.length > 100) return resErr(res, 'Choose at least one friend.', 400);
+    const recipients = new Set();
+    const entries = [];
+    for (const entry of d.entries) {
+      const recipientId = acceptedStatusRecipient(d.accountId, entry?.code);
+      const ciphertext = typeof entry?.ciphertext === 'string' ? entry.ciphertext : '';
+      if (!/^v:[A-Za-z0-9+/=]{20,700000}$/.test(ciphertext)) {
+        return resErr(res, 'This encrypted update is invalid.', 400);
+      }
+      if (!recipientId || recipients.has(recipientId)) continue;
+      if (await safetyStore.blocked(d.accountId, recipientId)) continue;
+      recipients.add(recipientId);
+      entries.push({ recipientId, code:String(entry.code).toLowerCase(), ciphertext });
+    }
+    if (!entries.length) return resErr(res, 'No eligible friends were selected.', 400);
+    const item = await statusStore.publish(d.accountId, entries);
+    for (const recipientId of recipients) publishInboxAccount(recipientId, 'status-update');
+    return res200(res, { ok:true, id:item.id, createdAt:item.createdAt, expiresAt:item.expiresAt });
+  }
+
+  if (path === '/api/status/feed' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    const feed = [];
+    for (const item of await statusStore.listFor(d.accountId)) {
+      const own = item.authorId === d.accountId;
+      const entry = own ? item.entries[0]
+        : item.entries.find(candidate => candidate.recipientId === d.accountId);
+      if (!entry) continue;
+      const author = accounts.get(item.authorId);
+      if (!author || (!own && await safetyStore.blocked(d.accountId, item.authorId))) continue;
+      feed.push({
+        id:item.id, own, code:entry.code, ciphertext:entry.ciphertext,
+        authorName:author.displayName, authorPrivateNumber:author.privateNumber,
+        authorProfileImage:normalizeProfileImage(author.profileImage) || null,
+        createdAt:item.createdAt, expiresAt:item.expiresAt,
+        viewers:own ? item.viewers.map(viewer => {
+          const profile = accounts.get(viewer.accountId);
+          return profile ? { displayName:profile.displayName, profileImage:normalizeProfileImage(profile.profileImage) || null, viewedAt:viewer.viewedAt } : null;
+        }).filter(Boolean) : undefined,
+      });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, feed });
+  }
+
+  if (path === '/api/status/view' && method === 'POST') {
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    if (typeof d.id !== 'string' || !/^[a-f0-9-]{36}$/i.test(d.id)) return resErr(res, 'Invalid update.', 400);
+    await statusStore.markViewed(d.id, d.accountId);
+    return res200(res, { ok:true });
+  }
+
+  if (path === '/api/status/delete' && method === 'POST') {
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    if (!await statusStore.remove(String(d.id || ''), d.accountId)) return resErr(res, 'Update not found.', 404);
+    return res200(res, { ok:true });
+  }
+
+  if (path === '/api/status/report' && method === 'POST') {
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    const item = (await statusStore.listFor(d.accountId)).find(candidate => candidate.id === d.id && candidate.authorId !== d.accountId);
+    if (!item) return resErr(res, 'Update not found.', 404);
+    const details = typeof d.details === 'string' ? d.details.trim().slice(0, 500) : '';
+    await safetyStore.add({ reason:'Status content', details, messages:[], reporterAccountId:d.accountId, reportedAccountId:item.authorId, statusId:item.id });
+    return res200(res, { ok:true });
   }
 
   if (path === '/api/connections/request' && method === 'POST') {
@@ -6194,6 +6287,9 @@ async function bootstrap() {
   await safetyStore.initialize();
   await safetyStore.prune();
   setInterval(() => safetyStore.prune().catch(error => console.error('Safety retention failed:', error.message)), 60 * 60 * 1000).unref();
+  statusStore = new StatusStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
+  await statusStore.initialize();
+  setInterval(() => statusStore.prune().catch(error => console.error('Status retention failed:', error.message)), 60 * 60 * 1000).unref();
   if (realtimeCoordinator.enabled) {
     await realtimeCoordinator.start(handleRealtimeEvent);
     console.log(`Redis realtime coordination ready (instance ${realtimeCoordinator.instanceId.slice(0, 8)}).`);
