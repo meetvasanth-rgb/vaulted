@@ -818,6 +818,8 @@ body.select-mode .chat-ftr{display:none}
 .attach-btn:hover { opacity:0.9; }
 .attach-btn svg { width:22px; height:22px; fill:none; stroke:#7A6E65; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .attach-popover { position:fixed; display:flex; gap:6px; background:#fff; border-radius:18px; padding:8px; box-shadow:0 4px 20px rgba(26,25,22,0.22); z-index:999; animation:attachPopIn 0.14s ease; }
+/* The group chat is a full-screen fixed overlay at z-index 10018, so its attach menu must sit above it (but below the KLIPY picker at 10020). */
+#group-attach-popover { z-index:10019; }
 @keyframes attachPopIn { from{ opacity:0; transform:translateY(6px) scale(0.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
 .attach-opt { display:flex; flex-direction:column; align-items:center; gap:4px; background:none; border:none; cursor:pointer; padding:6px 8px; width:60px; }
 .attach-opt-icon { width:42px; height:42px; border-radius:50%; background:#F3EEE6; display:flex; align-items:center; justify-content:center; transition:background 0.15s; }
