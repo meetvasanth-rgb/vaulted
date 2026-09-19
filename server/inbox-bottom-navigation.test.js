@@ -20,3 +20,12 @@ test('calls view is derived only from decrypted encrypted-conversation call reco
   assert.match(client, /function renderCallHistoryList\(body\)[\s\S]*callHistoryEntries\(\)[\s\S]*openVaultListRoom\(el\.dataset\.room\)/);
   assert.doesNotMatch(client, /function renderCallHistoryList\(body\)[\s\S]{0,1200}(?:api\(|fetch\()/);
 });
+
+test('status thumbnails stay compact and live statuses mark matching inbox contacts', () => {
+  assert.match(client, /\.status-ring\{display:block;width:56px;height:68px[^}]*border-radius:19px/);
+  assert.match(client, /\.status-add\{position:absolute;right:2px;bottom:2px;width:19px;height:19px/);
+  assert.match(client, /const liveStatusAuthors = new Set\(statusFeed[\s\S]*normalizePrivateNumber\(item\.authorPrivateNumber\)/);
+  assert.match(client, /hasLiveStatus = liveStatusAuthors\.has\(normalizePrivateNumber\(room\.peerPrivateNumber\)\)/);
+  assert.match(client, /vault-list-avatar\$\{hasLiveStatus \? ' has-live-status' : ''\}/);
+  assert.match(client, /\.vault-list-avatar\.has-live-status\{box-shadow:0 0 0 3px #E34B63\}/);
+});
