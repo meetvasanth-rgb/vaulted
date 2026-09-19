@@ -103,7 +103,7 @@ test('Surprise Enhancer rotates source-aware transformations without repeating t
   const ids = [...lookBlock.matchAll(/id:'([^']+)'/g)].map(match => match[1]);
   assert.deepEqual(ids, ['fix-lighting', 'caricature', 'studio-headshot', 'enhance-photo', 'mini-me', 'cinematic-anime']);
   assert.match(lookBlock, /close portrait[\s\S]*full-body[\s\S]*(?:couple|group)/);
-  assert.match(server, /First inspect the source and respect whether it is a close portrait, half-body or full-body photograph, couple or group/);
+  assert.match(server, /First inspect the source and identify whether it is a close portrait, half-body or full-body photograph, couple or group/);
   assert.match(server, /function dailyLookRotationItem\(items, variantIndex\)/);
   assert.match(server, /dailyLookRotationItem\(ENHANCER_LOOKS, variantIndex\)/);
   for (let start = 0; start < ids.length; start++) {
@@ -112,6 +112,11 @@ test('Surprise Enhancer rotates source-aware transformations without repeating t
   }
   assert.match(server, /premium hand-drawn cinematic anime interpretation/);
   assert.match(server, /never making the person younger/);
+  assert.match(lookBlock, /In a gym or fitness room[\s\S]*preserve the gym, mirrors, machines, benches and weights exactly/);
+  assert.match(lookBlock, /Preserve the exact pixel-space geometry of every person/);
+  assert.match(server, /The input photograph is authoritative for identity/);
+  assert.match(server, /For Fix Lighting and Enhance Photo, treat this as a restrained edit of the original pixels/);
+  assert.match(server, /face outline, forehead, hairline, eyebrow shape, eye shape and spacing/);
   assert.doesNotMatch(server, /id:'neon-night'|id:'anime-portrait'/);
 });
 
