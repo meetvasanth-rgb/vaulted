@@ -6442,7 +6442,7 @@ async function startCallForRoom(room) {
     }, CALL_RING_TIMEOUT_MS);
     return;
   }
-  if (iosNativeReady) {
+  if (iosBridge && room.nativeRoomHandle) {
     // The signed iOS wrapper owns outgoing media too. This gives both sides
     // the same CallKit/libwebrtc audio session and makes receiver/speaker
     // routing deterministic instead of letting WKWebView reclaim the route.
