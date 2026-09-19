@@ -10,6 +10,8 @@ test('foreground mobile calls keep mute and camera on the shared live WebRTC tra
   assert.match(client, /const nativeOnlySurface = document\.hidden \|\| document\.body\.classList\.contains\('native-call-only'\)/);
   assert.match(client, /androidNativeReady = nativeOnlySurface/);
   assert.match(client, /const iosNativeReady = nativeOnlySurface/);
+  assert.match(client, /if \(iosNativeReady\) \{[\s\S]*?action: 'startOutgoing'/);
+  assert.doesNotMatch(client, /if \(iosBridge && room\.nativeRoomHandle\) \{[\s\S]*?action: 'startOutgoing'/);
   assert.match(client, /window\.webkit\?\.messageHandlers\?\.vaultlixCall && document\.hidden/);
   assert.match(client, /\(document\.hidden \|\| document\.body\.classList\.contains\('native-call-only'\)\)[\s\S]*prepareIncomingCall/);
   assert.match(client, /room\.localStream\.getAudioTracks\(\)\.forEach/);
