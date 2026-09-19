@@ -472,6 +472,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emitSpeakerState(success: success)
             return
         }
+        if action == "setAudioRoute",
+           let route = body["route"] as? String,
+           ["bluetooth", "phone", "speaker"].contains(route) {
+            let success = VaultlixCallManager.shared.setAudioRoute(
+                route,
+                activateSession: body["activateSession"] as? Bool ?? false
+            )
+            emitSpeakerState(success: success)
+            return
+        }
         if action == "updateCaller",
            let caller = body["caller"] as? String {
             VaultlixCallManager.shared.updateCallerName(caller)

@@ -260,6 +260,32 @@ public class MainActivity extends BridgeActivity {
     }
 
     @SuppressWarnings("deprecation")
+    private boolean setCallAudioRoute(String route) {
+        configureCallAudioRoute();
+        if (audioManager == null || route == null) return false;
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            int desired;
+            if ("speaker".equals(route)) desired = AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+            else if ("bluetooth".equals(route)) desired = AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
+            else desired = AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                if (device.getType() == desired || ("bluetooth".equals(route) && isBluetoothDevice(device))) {
+                    return audioManager.setCommunicationDevice(device);
+                }
+            }
+            return false;
+        }
+        if ("bluetooth".equals(route)) {
+            audioManager.setSpeakerphoneOn(false); audioManager.startBluetoothSco(); audioManager.setBluetoothScoOn(true);
+            return audioManager.isBluetoothScoOn();
+        }
+        audioManager.stopBluetoothSco(); audioManager.setBluetoothScoOn(false);
+        audioManager.setSpeakerphoneOn("speaker".equals(route));
+        return audioManager.isSpeakerphoneOn() == "speaker".equals(route);
+    }
+
+    @SuppressWarnings("deprecation")
     private boolean isSpeakerEnabled() {
         if (audioManager == null) return false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -653,6 +679,11 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean setSpeakerEnabled(boolean enabled) {
             return MainActivity.this.setSpeakerEnabled(enabled);
+        }
+
+        @JavascriptInterface
+        public boolean setCallAudioRoute(String route) {
+            return MainActivity.this.setCallAudioRoute(route);
         }
 
         @JavascriptInterface

@@ -1253,6 +1253,7 @@ html.vaultlix-native-ios .call-data-column{font-size:11px}
    listener, which also explicitly closes it the moment chrome hides. */
 .call-overlay.has-video .call-identity,.call-overlay.has-video .call-actions,.call-overlay.has-video .call-reaction-picker{transition:opacity .22s ease}
 .call-overlay.has-video.chrome-hidden .call-identity,.call-overlay.has-video.chrome-hidden .call-actions,.call-overlay.has-video.chrome-hidden .call-reaction-picker{opacity:0;pointer-events:none}
+.call-route-picker{position:fixed;inset:0;z-index:11050;background:rgba(25,14,20,.62);display:flex;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}.call-route-card{width:min(440px,100%);background:#fff;border-radius:24px;padding:20px;box-shadow:0 22px 70px #0005}.call-route-card h2{margin:0 0 5px;font:750 21px Manrope,sans-serif;color:#2f2227}.call-route-card p{margin:0 0 15px;color:#78676f;font:500 13px/1.45 Inter,sans-serif}.call-route-options{display:grid;gap:9px}.call-route-option{height:50px;border-radius:14px;background:#f5ecef;color:#682c43;display:flex;align-items:center;gap:12px;padding:0 15px;font:700 14px Inter,sans-serif;text-align:left}.call-route-option svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.call-route-cancel{width:100%;height:44px;margin-top:10px;border-radius:13px;background:#fff;color:#78676f;font:650 13px Inter,sans-serif}
 .call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.74);letter-spacing:.08em;text-align:center;max-width:90px;text-shadow:0 1px 3px rgba(0,0,0,.22)}
 /* Reaction picker — same frosted-pill language as the video-mode button
@@ -4810,7 +4811,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // Speaker toggle — only meaningful where detectSpeakerToggle() actually
     // finds a switchable output device (mainly Android Chrome; never on iOS
     // Safari, which has no API for this at all).
-    speakerAvailable: false, speakerOn: false, speakerDeviceId: null,
+    speakerAvailable: false, speakerOn: false, speakerDeviceId: null, requestedAudioRoute: null,
     // Camera toggle — off by default on every call, on either side
     // independently. localVideoStream is separate from localStream (audio)
     // since it's grabbed later, on demand, via its own getUserMedia call.
@@ -6299,9 +6300,48 @@ function waitForCallSignaling(room, timeoutMs = 3000) {
   });
 }
 
+function chooseCallAudioRoute() {
+  const isNativeApp = !!window.VaultlixAndroid || !!window.webkit?.messageHandlers?.vaultlixCall;
+  if (!isNativeApp) return Promise.resolve('phone');
+  return new Promise(resolve => {
+    document.getElementById('call-route-picker')?.remove();
+    const picker = document.createElement('div'); picker.id = 'call-route-picker'; picker.className = 'call-route-picker';
+    picker.innerHTML = `<section class="call-route-card" role="dialog" aria-modal="true" aria-labelledby="call-route-title">
+      <h2 id="call-route-title">Call audio</h2><p>Choose where you want to hear this call.</p><div class="call-route-options">
+      <button class="call-route-option" type="button" data-route="bluetooth"><svg viewBox="0 0 24 24"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>Bluetooth</button>
+      <button class="call-route-option" type="button" data-route="phone"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>Phone</button>
+      <button class="call-route-option" type="button" data-route="speaker"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>Speaker</button></div>
+      <button class="call-route-cancel" type="button">Cancel</button></section>`;
+    const finish = value => { picker.remove(); resolve(value); };
+    for (const button of picker.querySelectorAll('[data-route]')) button.onclick = () => finish(button.dataset.route);
+    picker.querySelector('.call-route-cancel').onclick = () => finish(null);
+    document.body.appendChild(picker);
+  });
+}
+
+function applyRequestedCallAudioRoute(room, activate = true) {
+  if (!room?.requestedAudioRoute) return false;
+  const route = room.requestedAudioRoute;
+  room.speakerAvailable = true; room.speakerOn = route === 'speaker';
+  try {
+    if (window.VaultlixAndroid?.setCallAudioRoute) {
+      const success = !!window.VaultlixAndroid.setCallAudioRoute(route);
+      if (!success && route === 'bluetooth') toast('Bluetooth is not available. Select Phone or Speaker.');
+      return success;
+    }
+    const bridge = window.webkit?.messageHandlers?.vaultlixCall;
+    if (bridge) { bridge.postMessage({ action:'setAudioRoute', route, activateSession:activate }); return true; }
+  } catch (error) { toast('Couldn’t change the audio route.'); }
+  return false;
+}
+
 async function startCall() {
   const room = getActiveRoom();
   if (!canStartCall(room)) return;
+  const requestedAudioRoute = await chooseCallAudioRoute();
+  if (!requestedAudioRoute || !canStartCall(room)) return;
+  room.requestedAudioRoute = requestedAudioRoute;
+  applyRequestedCallAudioRoute(room, true);
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
   const androidNativeBridge = window.VaultlixAndroid;
   // Foreground calls stay in the shared WebRTC engine. It owns the live
@@ -6362,7 +6402,7 @@ async function startCall() {
     }, CALL_RING_TIMEOUT_MS);
     return;
   }
-  if (iosBridge && room.nativeRoomHandle) {
+  if (iosNativeReady) {
     // The signed iOS wrapper owns outgoing media too. This gives both sides
     // the same CallKit/libwebrtc audio session and makes receiver/speaker
     // routing deterministic instead of letting WKWebView reclaim the route.
@@ -6384,6 +6424,10 @@ async function startCall() {
       if (room.callState === 'outgoing') endCall(room, 'No answer.', 'No answer');
     }, CALL_RING_TIMEOUT_MS);
     return;
+  }
+  if (iosBridge) {
+    try { iosBridge.postMessage({ action:'prepareOutgoingAudio' }); } catch (e) {}
+    applyRequestedCallAudioRoute(room, true);
   }
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
@@ -7368,6 +7412,7 @@ async function setupPeerConnection(room) {
   // labels from enumerateDevices() (before that they're blank strings) —
   // so this is the earliest point detection can actually work.
   detectSpeakerToggle(room).then(() => {
+    applyRequestedCallAudioRoute(room, false);
     if (room.callState === 'active') renderCallOverlay(room);
   });
 
@@ -7558,6 +7603,7 @@ function teardownPeerConnection(room) {
   room.speakerAvailable = false;
   room.speakerOn = false;
   room.speakerDeviceId = null;
+  room.requestedAudioRoute = null;
 }
 
 function nativeAndroidAudioBridge() {
@@ -7618,6 +7664,7 @@ async function toggleSpeaker() {
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
   if (iosBridge) {
     const target = !room.speakerOn;
+    room.requestedAudioRoute = target ? 'speaker' : 'phone';
     // Render immediately; the native route event confirms or rolls this
     // state back if iOS rejects the change.
     room.speakerOn = target;
@@ -7633,6 +7680,7 @@ async function toggleSpeaker() {
   const nativeBridge = nativeAndroidAudioBridge();
   if (nativeBridge) {
     const target = !room.speakerOn;
+    room.requestedAudioRoute = target ? 'speaker' : 'phone';
     try {
       if (!nativeBridge.setSpeakerEnabled(target)) throw new Error('route unavailable');
       room.speakerOn = target;
@@ -16991,7 +17039,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 // existing encrypted message envelope; Vaultlix never proxies or re-hosts it.
 const KLIPY_API_KEY = 'rqd0c22ngDvGGVM5gPVgl7x0WAo11d2u3Bmyjajhrl3q6LWIbynGgrPHonT6n977';
 const KLIPY_LOCALES = { en:['en_US','US'], zh:['zh_CN','CN'], ru:['ru_RU','RU'], hi:['hi_IN','IN'], ar:['ar_SA','SA'], hy:['hy_AM','AM'] };
-let klipyNext = null, klipyQuery = '', klipySearchTimer = null;
+let klipyNext = null, klipyQuery = '', klipySearchTimer = null, klipyTarget = 'room';
 
 function safeKlipyMediaUrl(value) {
   try {
@@ -17006,8 +17054,9 @@ function klipyLocale() {
   return KLIPY_LOCALES[lang] || KLIPY_LOCALES.en;
 }
 
-function openKlipyPicker() {
-  if (!getActiveRoom() || document.getElementById('klipy-picker')) return;
+function openKlipyPicker(target = 'room') {
+  if ((target === 'group' ? !activePrivateGroupId : !getActiveRoom()) || document.getElementById('klipy-picker')) return;
+  klipyTarget = target;
   const picker = document.createElement('div');
   picker.id = 'klipy-picker'; picker.className = 'klipy-picker';
   picker.innerHTML = `<section class="klipy-sheet" role="dialog" aria-modal="true" aria-label="GIF picker">
@@ -17055,6 +17104,10 @@ async function loadKlipy(query, append) {
 }
 
 async function sendKlipyGif(item, searchQuery) {
+  if (klipyTarget === 'group') {
+    try { await sendPrivateGroupGif(item, searchQuery); } catch (error) { toast(error.message || 'GIF could not be sent'); }
+    return;
+  }
   const room = getActiveRoom(); const url = safeKlipyMediaUrl(item.url);
   if (!room || !url) return;
   const payload = JSON.stringify({ type:'klipy-gif', id:String(item.id || ''), title:String(item.title || 'GIF').slice(0, 200), url:url.replace(/&amp;/g, '&') });

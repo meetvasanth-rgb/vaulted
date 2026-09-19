@@ -682,6 +682,37 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
+    @discardableResult
+    func setAudioRoute(_ route: String, activateSession: Bool = false) -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            if activateSession && !outgoingWebAudioSessionActive {
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
+                outgoingWebAudioSessionActive = true
+            }
+            if route == "speaker" {
+                try session.setPreferredInput(nil)
+                try session.overrideOutputAudioPort(.speaker)
+            } else {
+                let preferred: AVAudioSessionPortDescription?
+                if route == "bluetooth" {
+                    preferred = session.availableInputs?.first { $0.portType == .bluetoothHFP }
+                    if preferred == nil { return false }
+                } else {
+                    preferred = session.availableInputs?.first { $0.portType == .builtInMic }
+                }
+                try session.setPreferredInput(preferred)
+                try session.overrideOutputAudioPort(.none)
+            }
+            restartRingbackForCurrentRoute()
+            return true
+        } catch {
+            print("VXCALL manager audio route failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     func isSpeakerEnabled() -> Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
     }

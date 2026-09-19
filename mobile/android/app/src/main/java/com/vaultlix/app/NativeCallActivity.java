@@ -490,9 +490,18 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
         boolean applied = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            int desired = useSpeaker
-                    ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                    : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            int desired = useSpeaker ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            if (!useSpeaker && isBluetoothDevice(current)) {
+                renderAudioRoute(false);
+                return true;
+            }
+            if (!useSpeaker) {
+                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                    if (isBluetoothDevice(device)) { applied = audioManager.setCommunicationDevice(device); break; }
+                }
+                if (applied) { renderAudioRoute(false); return true; }
+            }
             for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
                 if (device.getType() == desired) {
                     applied = audioManager.setCommunicationDevice(device);
@@ -514,6 +523,14 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         renderAudioRoute(audioManager.isSpeakerphoneOn());
         if (!applied) Log.w(TAG, "Legacy speaker route not yet applied; requestedSpeaker=" + useSpeaker);
         return applied;
+    }
+
+    private boolean isBluetoothDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
     }
 
     @SuppressWarnings("deprecation") private void restoreAudio() { handler.removeCallbacks(enforceRequestedAudioRoute); if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }

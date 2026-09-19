@@ -10,9 +10,27 @@ test('foreground mobile calls keep mute and camera on the shared live WebRTC tra
   assert.match(client, /const nativeOnlySurface = document\.hidden \|\| document\.body\.classList\.contains\('native-call-only'\)/);
   assert.match(client, /androidNativeReady = nativeOnlySurface/);
   assert.match(client, /const iosNativeReady = nativeOnlySurface/);
+  assert.match(client, /if \(iosNativeReady\) \{/);
+  assert.doesNotMatch(client, /if \(iosBridge && room\.nativeRoomHandle\) \{/);
   assert.match(client, /window\.webkit\?\.messageHandlers\?\.vaultlixCall && document\.hidden/);
   assert.match(client, /\(document\.hidden \|\| document\.body\.classList\.contains\('native-call-only'\)\)[\s\S]*prepareIncomingCall/);
   assert.match(client, /room\.localStream\.getAudioTracks\(\)\.forEach/);
   assert.match(client, /room\.pc\.addTrack\(track, videoStream\)/);
   assert.match(ios, /UIApplication\.shared\.applicationState != \.active[\s\S]*prepareIncoming/);
+});
+
+test('native apps ask for Bluetooth, phone, or speaker before dialing', () => {
+  const client = fs.readFileSync('client/index.html', 'utf8');
+  const android = fs.readFileSync('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java', 'utf8');
+  const androidCall = fs.readFileSync('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java', 'utf8');
+  const ios = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
+  const iosScene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
+  assert.match(client, /chooseCallAudioRoute\(\)/);
+  assert.match(client, /data-route="bluetooth"/);
+  assert.match(client, /data-route="phone"/);
+  assert.match(client, /data-route="speaker"/);
+  assert.match(android, /public boolean setCallAudioRoute\(String route\)/);
+  assert.match(androidCall, /!useSpeaker && isBluetoothDevice\(current\)/);
+  assert.match(ios, /func setAudioRoute\(_ route: String/);
+  assert.match(iosScene, /action == "setAudioRoute"/);
 });

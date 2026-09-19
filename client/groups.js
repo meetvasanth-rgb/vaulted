@@ -51,10 +51,14 @@ function showPrivateGroupAttachOptions() {
   popover.innerHTML = `
     <button type="button" class="attach-opt" data-input="group-camera-input"><span class="attach-opt-icon">📷</span><span class="attach-opt-label">Camera</span></button>
     <button type="button" class="attach-opt" data-input="group-image-input"><span class="attach-opt-icon">▧</span><span class="attach-opt-label">Gallery</span></button>
-    <button type="button" class="attach-opt" data-input="group-file-input"><span class="attach-opt-icon">⌑</span><span class="attach-opt-label">File</span></button>`;
+    <button type="button" class="attach-opt" data-input="group-file-input"><span class="attach-opt-icon">⌑</span><span class="attach-opt-label">File</span></button>
+    <button type="button" class="attach-opt" id="group-attach-gif"><span class="attach-opt-icon" style="font-weight:800;font-size:12px;color:#682C43">GIF</span><span class="attach-opt-label">GIF</span></button>`;
   document.body.appendChild(popover);
   for (const option of popover.querySelectorAll('[data-input]')) option.onclick = event => {
     event.stopPropagation(); const id = option.dataset.input; closePrivateGroupAttachOptions(); document.getElementById(id)?.click();
+  };
+  popover.querySelector('#group-attach-gif').onclick = event => {
+    event.stopPropagation(); closePrivateGroupAttachOptions(); openKlipyPicker('group');
   };
   setTimeout(() => document.addEventListener('click', privateGroupAttachOutsideClick), 0);
 }
@@ -109,6 +113,24 @@ async function sendPrivateGroupAttachment(payload) {
   group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, attachmentId,
     attachment:payload, createdAt:result.createdAt, keyVersion:result.keyVersion }];
   group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
+}
+
+async function sendPrivateGroupGif(item, searchQuery) {
+  const url = safeKlipyMediaUrl(item?.url); if (!url) return false;
+  const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
+  const key = group?.keys?.[group?.keyVersion]; if (!state || !group || !key) return false;
+  const messageId = newMsgId();
+  const payload = { type:'group-gif', id:String(item.id || ''), title:String(item.title || 'GIF').slice(0,200), url };
+  const ciphertext = await encryptPrivateGroupValue(key, payload);
+  const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
+    groupId:group.id, messageId, ciphertext });
+  if (result.error) throw new Error(result.error);
+  group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, gif:payload,
+    createdAt:result.createdAt, keyVersion:result.keyVersion }];
+  group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList(); closeKlipyPicker();
+  const [locale, country] = klipyLocale();
+  fetch(`https://api.klipy.com/v2/registershare?${new URLSearchParams({ key:KLIPY_API_KEY, id:payload.id, locale, country, q:searchQuery || '' })}`).catch(() => {});
+  return true;
 }
 
 async function handlePrivateGroupFileSelect(event) {
@@ -289,6 +311,8 @@ function renderPrivateGroupMessages(group) {
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
     } else if (message.attachment?.type === 'group-file') {
       content = `<button class="group-file-card" type="button" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')">⌑ <span>${escHtml(message.attachment.name || 'Attachment')}</span></button>`;
+    } else if (message.gif?.type === 'group-gif' && safeKlipyMediaUrl(message.gif.url)) {
+      content = `<div class="group-message-attachment"><img src="${escHtml(message.gif.url)}" alt="${escHtml(message.gif.title || 'GIF')}" loading="lazy"></div>`;
     } else {
       const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
       const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
@@ -311,6 +335,7 @@ async function decodePrivateGroupMessage(group, state, message) {
   const plaintext = await decryptPrivateGroupValue(group.keys?.[message.keyVersion], message.ciphertext);
   let metadata = null;
   try { metadata = JSON.parse(plaintext); } catch (_) {}
+  if (metadata?.type === 'group-gif' && safeKlipyMediaUrl(metadata.url)) return { ...message, gif:metadata };
   if (metadata?.type !== 'group-attachment' || !metadata.attachmentId) return { ...message, text:plaintext };
   const encryptedPayload = await downloadPrivateGroupAttachment(state, group, metadata.attachmentId);
   const payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
