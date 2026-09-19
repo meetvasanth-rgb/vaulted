@@ -2,12 +2,13 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v7';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v8';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
   '/number-card.js',
   '/content-safety.js',
+  '/groups.js',
   '/media-safety-v3.js',
   '/vendor/safety-words.js',
   '/manifest.json',
@@ -180,6 +181,8 @@ self.addEventListener('push', (event) => {
         code: data.code || null,
         connectionRequest: !!data.connectionRequest,
         requestId: data.requestId || null,
+        privateGroup: !!data.privateGroup,
+        groupId: data.groupId || null,
         sessionReplaced,
         accountId: sessionReplaced ? (data.accountId || null) : null,
       },
@@ -240,6 +243,8 @@ self.addEventListener('notificationclick', (event) => {
   const code = (event.notification.data && event.notification.data.code) || null;
   const connectionRequest = !!(event.notification.data && event.notification.data.connectionRequest);
   const requestId = (event.notification.data && event.notification.data.requestId) || null;
+  const privateGroup = !!(event.notification.data && event.notification.data.privateGroup);
+  const groupId = (event.notification.data && event.notification.data.groupId) || null;
   const sessionReplaced = !!(event.notification.data && event.notification.data.sessionReplaced);
   const accountId = (event.notification.data && event.notification.data.accountId) || null;
   event.waitUntil((async () => {
@@ -257,6 +262,7 @@ self.addEventListener('notificationclick', (event) => {
       if ('postMessage' in c) {
         if (sessionReplaced) c.postMessage({ type:'session-replaced', accountId });
         else if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
+        else if (privateGroup) c.postMessage({ type:'private-group-click', groupId });
         else if (code) c.postMessage({ type: 'notification-click', code });
       }
       return;
@@ -272,6 +278,7 @@ self.addEventListener('notificationclick', (event) => {
       if (connectionRequest) {
         return self.clients.openWindow(requestId ? `/?connectionRequest=${encodeURIComponent(requestId)}` : '/?connectionRequest=pending');
       }
+      if (privateGroup) return self.clients.openWindow(groupId ? `/?group=${encodeURIComponent(groupId)}` : '/');
       return self.clients.openWindow(code ? `/?room=${encodeURIComponent(code)}` : '/');
     }
   })());

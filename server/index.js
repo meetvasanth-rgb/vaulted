@@ -16,6 +16,8 @@ const contentSafety = require('../client/content-safety');
 let safetyStore;
 const { StatusStore } = require('./status-store');
 let statusStore;
+const { GroupStore } = require('./group-store');
+let groupStore;
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const { EncryptedObjectStorage } = require('./object-storage');
 const { HeadBucketCommand } = require('@aws-sdk/client-s3');
@@ -1418,6 +1420,32 @@ function acceptedStatusRecipient(authorId, roomCode) {
   const recipientId = relationship.senderAccountId === authorId
     ? relationship.recipientAccountId : relationship.senderAccountId;
   return recipientId && accounts.has(recipientId) ? recipientId : null;
+}
+function publicGroupFor(group, accountId) {
+  const viewer = group.members.find(member => member.accountId === accountId && member.active);
+  if (!viewer) return null;
+  const last = group.messages[group.messages.length - 1] || null;
+  return {
+    id:group.id,
+    ownerId:group.ownerId,
+    encryptedName:group.encryptedName,
+    keyBinding:group.keyBinding,
+    keyVersion:group.keyVersion,
+    wrappedKey:viewer.wrappedKey || null,
+    wrappedKeys:viewer.wrappedKeys || (viewer.wrappedKey ? { [viewer.keyVersion || group.keyVersion]:viewer.wrappedKey } : {}),
+    wrapRoomCode:viewer.wrapRoomCode || null,
+    requiresRekey:!!group.requiresRekey,
+    createdAt:group.createdAt,
+    updatedAt:group.updatedAt,
+    lastMessageAt:last?.createdAt || null,
+    members:group.members.filter(member => member.active).map(member => ({
+      accountId:member.accountId,
+      role:member.role,
+      keyVersion:member.keyVersion,
+      wrapRoomCode:(group.ownerId === accountId || member.accountId === accountId) ? (member.wrapRoomCode || null) : undefined,
+      ...(accounts.has(member.accountId) ? publicAccount(accounts.get(member.accountId)) : {}),
+    })),
+  };
 }
 function accountRetention(account, now = Date.now()) {
   const protection = account.numberProtection || 'free';
@@ -3380,6 +3408,147 @@ async function api(path, method, d, p, res, ip, headers) {
     return res200(res, { ok:true, displayName, profileImage });
   }
 
+  if (path === '/api/groups/create' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to create a private group.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!validEncryptedField(d.encryptedName, 8192) || typeof d.groupId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(d.groupId) || typeof d.keyBinding !== 'string' || !/^[A-Za-z0-9_-]{20,64}$/.test(d.keyBinding) || !Array.isArray(d.members) || d.members.length < 1 || d.members.length > 49) {
+      return resErr(res, 'Choose between 1 and 49 connected members.', 400);
+    }
+    const seen = new Set([d.accountId]);
+    const members = [{ accountId:d.accountId, role:'owner', active:true, keyVersion:1, addedAt:Date.now() }];
+    for (const entry of d.members) {
+      const roomCode = String(entry?.roomCode || '').trim().toLowerCase();
+      const recipientId = acceptedStatusRecipient(d.accountId, roomCode);
+      if (!recipientId || seen.has(recipientId) || !validEncryptedField(entry?.wrappedKey, 8192)) {
+        return resErr(res, 'Every group member must be an existing Vaultlix contact.', 400);
+      }
+      if (await safetyStore.blocked(d.accountId, recipientId)) return resErr(res, 'A blocked contact cannot be added to a group.', 403);
+      seen.add(recipientId);
+      members.push({ accountId:recipientId, role:'member', active:true, keyVersion:1,
+        wrappedKey:entry.wrappedKey, wrappedKeys:{ 1:entry.wrappedKey }, wrapRoomCode:roomCode, addedAt:Date.now() });
+    }
+    const group = await groupStore.create(d.accountId, d.encryptedName, members, d.keyBinding, d.groupId);
+    for (const member of members) if (member.accountId !== d.accountId) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'created' });
+      sendAccountPush(member.accountId, { title:'Vaultlix', body:'You were added to a private encrypted group',
+        tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group invitation');
+    }
+    return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
+  }
+
+  if (path === '/api/groups/report' && method === 'POST') {
+    if (await rateLimited(`group-report:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many safety requests — try again later.', 429);
+    if (!validAccountId(d.accountId) || !validAccountId(d.reportedAccountId) || d.accountId === d.reportedAccountId) return resErr(res, 'Invalid group report.', 400);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const group = await groupStore.get(d.groupId);
+    if (!group || !group.members.some(member => member.accountId === d.accountId && member.active) ||
+        !group.members.some(member => member.accountId === d.reportedAccountId && member.active)) return resErr(res, 'Private group not found.', 404);
+    const reasons = new Set(['spam','harassment','threats','sexual','illegal','other']);
+    if (!reasons.has(d.reason)) return resErr(res, 'Choose a valid report reason.', 400);
+    const messages = Array.isArray(d.messages) ? d.messages.slice(-5).map(message => ({
+      content:typeof message?.content === 'string' ? message.content.slice(0,500) : '',
+      isReporter:false, ts:Number.isFinite(message?.ts) ? message.ts : Date.now(),
+    })).filter(message => message.content) : [];
+    const report = await safetyStore.add({ reason:d.reason, details:'Private group report', messages,
+      reporterAccountId:d.accountId, reportedAccountId:d.reportedAccountId, groupId:d.groupId });
+    await safetyStore.block(d.accountId, d.reportedAccountId);
+    return res200(res, { ok:true, reportId:report.id });
+  }
+
+  if (path === '/api/groups/list' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to view private groups.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const groups = (await groupStore.listFor(d.accountId)).map(group => publicGroupFor(group, d.accountId)).filter(Boolean);
+    return res200(res, { ok:true, groups });
+  }
+
+  if (path === '/api/groups/messages' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to view private groups.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const group = await groupStore.get(d.groupId);
+    if (!group?.members.some(member => member.accountId === d.accountId && member.active)) return resErr(res, 'Private group not found.', 404);
+    const after = Number.isFinite(Number(d.after)) ? Number(d.after) : 0;
+    const messages = [];
+    for (const message of group.messages.filter(message => message.createdAt > after).slice(-200)) {
+      if (message.senderId !== d.accountId && await safetyStore.blocked(d.accountId, message.senderId)) continue;
+      messages.push(message);
+    }
+    return res200(res, { ok:true, keyVersion:group.keyVersion, requiresRekey:!!group.requiresRekey,
+      cursor:group.messages[group.messages.length - 1]?.createdAt || after, messages });
+  }
+
+  if (path === '/api/groups/send' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to send a group message.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (typeof d.messageId !== 'string' || !/^[a-zA-Z0-9_-]{16,96}$/.test(d.messageId) || !validEncryptedField(d.ciphertext, 131072)) {
+      return resErr(res, 'Invalid encrypted group message.', 400);
+    }
+    const group = await groupStore.send(d.groupId, d.accountId, { id:d.messageId, ciphertext:d.ciphertext });
+    if (!group) return resErr(res, 'This group needs a new encryption key before messages can continue.', 409);
+    for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'message' });
+      sendAccountPush(member.accountId, { title:'Vaultlix', body:'New encrypted group message',
+        tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group message');
+    }
+    return res200(res, { ok:true, createdAt:group.updatedAt, keyVersion:group.keyVersion });
+  }
+
+  if (path === '/api/groups/leave' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to leave a private group.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const group = await groupStore.leave(d.groupId, d.accountId);
+    if (!group) return resErr(res, 'The group owner can delete the group instead.', 400);
+    publishInboxAccount(group.ownerId, 'group-update', { groupId:group.id });
+    return res200(res, { ok:true });
+  }
+
+  if (path === '/api/groups/rekey' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to manage a private group.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!validEncryptedField(d.encryptedName, 8192) || !Array.isArray(d.envelopes) || d.envelopes.length > 49) {
+      return resErr(res, 'Invalid group encryption update.', 400);
+    }
+    const source = await groupStore.get(d.groupId);
+    if (!source || source.ownerId !== d.accountId) return resErr(res, 'Only the group owner can remove members.', 403);
+    const activeAfterRemoval = source.members.filter(member => member.active && member.accountId !== d.accountId && member.accountId !== d.removedAccountId);
+    const supplied = [];
+    for (const entry of d.envelopes) {
+      const member = activeAfterRemoval.find(candidate => candidate.accountId === entry?.accountId);
+      const roomCode = String(entry?.wrapRoomCode || '').trim().toLowerCase();
+      if (!member || member.wrapRoomCode !== roomCode || !validEncryptedField(entry?.wrappedKey, 8192)) {
+        return resErr(res, 'Could not securely update every remaining member.', 400);
+      }
+      supplied.push({ accountId:member.accountId, wrapRoomCode:roomCode, wrappedKey:entry.wrappedKey });
+    }
+    if (supplied.length !== activeAfterRemoval.length) return resErr(res, 'Could not securely update every remaining member.', 400);
+    const group = await groupStore.rekey(d.groupId, d.accountId, d.removedAccountId || null, d.encryptedName, supplied);
+    if (!group) return resErr(res, 'Private group could not be updated.', 409);
+    for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:group.id });
+    }
+    if (d.removedAccountId) publishInboxAccount(d.removedAccountId, 'group-update', { groupId:group.id });
+    return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
+  }
+
+  if (path === '/api/groups/delete' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to delete a private group.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const group = await groupStore.get(d.groupId);
+    if (!group || group.ownerId !== d.accountId) return resErr(res, 'Only the group owner can delete it.', 403);
+    const members = group.members.filter(member => member.active && member.accountId !== d.accountId).map(member => member.accountId);
+    if (!await groupStore.remove(d.groupId, d.accountId)) return resErr(res, 'Private group not found.', 404);
+    for (const memberId of members) publishInboxAccount(memberId, 'group-update', { groupId:d.groupId });
+    return res200(res, { ok:true });
+  }
+
   if (path === '/api/account/daily-look/status' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
@@ -3550,6 +3719,16 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    for (const group of await groupStore.listFor(d.accountId)) {
+      if (group.ownerId === d.accountId) {
+        const memberIds = group.members.filter(member => member.active && member.accountId !== d.accountId).map(member => member.accountId);
+        await groupStore.remove(group.id, d.accountId);
+        for (const memberId of memberIds) publishInboxAccount(memberId, 'group-update', { groupId:group.id });
+      } else {
+        await groupStore.leave(group.id, d.accountId);
+        publishInboxAccount(group.ownerId, 'group-update', { groupId:group.id });
+      }
+    }
     await releaseAccountNumber(d.accountId, account, 'account-deleted');
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true });
@@ -5211,6 +5390,15 @@ function publishInboxAccount(accountId, change, payload = null) {
   realtimeCoordinator.publish('inbox-account', { accountRouteId, change, payload }).catch(() => {});
 }
 
+function sendAccountPush(accountId, payload, label) {
+  const account = accounts.get(accountId);
+  if (!account) return;
+  const encoded = JSON.stringify(payload);
+  for (const destination of account.pushDestinations || []) {
+    sendMemberPush(destination, encoded, { urgency:'normal', TTL:3600, label });
+  }
+}
+
 function closeReplacedAccountSocketsLocal(accountId, accountRouteId, revokedTokenHashes, replacedByAnotherDevice) {
   const sockets = accountId ? inboxAccountSockets.get(accountId) : inboxAccountSocketsByRoute.get(accountRouteId);
   if (!sockets) return;
@@ -6369,6 +6557,8 @@ async function bootstrap() {
   statusStore = new StatusStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
   await statusStore.initialize();
   setInterval(() => statusStore.prune().catch(error => console.error('Status retention failed:', error.message)), 60 * 60 * 1000).unref();
+  groupStore = new GroupStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
+  await groupStore.initialize();
   if (realtimeCoordinator.enabled) {
     await realtimeCoordinator.start(handleRealtimeEvent);
     console.log(`Redis realtime coordination ready (instance ${realtimeCoordinator.instanceId.slice(0, 8)}).`);
