@@ -820,6 +820,9 @@ body.select-mode .chat-ftr{display:none}
 .attach-popover { position:fixed; display:flex; gap:6px; background:#fff; border-radius:18px; padding:8px; box-shadow:0 4px 20px rgba(26,25,22,0.22); z-index:999; animation:attachPopIn 0.14s ease; }
 /* The group chat is a full-screen fixed overlay at z-index 10018, so its attach menu must sit above it (but below the KLIPY picker at 10020). */
 #group-attach-popover { z-index:10019; }
+/* Direct-conversation file cards use fixed dark text; keep them readable inside a dark "mine" group bubble. */
+.group-message.mine .msg-file { background:#ffffff24; border-color:transparent; color:#fff; }
+.group-message.mine .msg-file svg { stroke:#fff; }
 @keyframes attachPopIn { from{ opacity:0; transform:translateY(6px) scale(0.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
 .attach-opt { display:flex; flex-direction:column; align-items:center; gap:4px; background:none; border:none; cursor:pointer; padding:6px 8px; width:60px; }
 .attach-opt-icon { width:42px; height:42px; border-radius:50%; background:#F3EEE6; display:flex; align-items:center; justify-content:center; transition:background 0.15s; }
@@ -14238,7 +14241,11 @@ function closePdfPreview() {
   pdfPreviewGeneration++;
   const current = activePdfPreview;
   activePdfPreview = null;
-  document.getElementById('pdf-preview-overlay')?.classList.remove('open');
+  const pdfOverlay = document.getElementById('pdf-preview-overlay');
+  pdfOverlay?.classList.remove('open');
+  // A private group raises this overlay above its own screen; clear that so
+  // direct conversations always open the preview at the stylesheet z-index.
+  if (pdfOverlay) pdfOverlay.style.zIndex = '';
   setDocumentPreviewRotation(false);
   resetPdfPreviewZoom();
   if (current?.pdf) current.pdf.destroy().catch(() => {});
@@ -17843,7 +17850,9 @@ function formatFileSize(bytes) {
 // whichever one happens to be showing when it closes) gets its grace-timer
 // deletion scheduled in cleanup() below.
 function viewImage(src, opts) {
-  const { onClose, hideDownload, gallery } = opts || {};
+  // zIndex lets a caller that sits above the default layer (the private-group
+  // chat overlay) raise the viewer; direct conversations keep the 999 default.
+  const { onClose, hideDownload, gallery, zIndex } = opts || {};
   let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
   let lastTouchDist = 0;
   // Swipe-to-dismiss: a vertical drag/scroll while not zoomed in closes the
@@ -17881,7 +17890,7 @@ function viewImage(src, opts) {
   // full-screen viewer an explicit boundary so album swipes are consumed by
   // the gallery and can never also send Android to its Home screen.
   overlay.className = 'image-viewer-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;overflow:hidden;touch-action:none;';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:' + (Number.isInteger(zIndex) ? zIndex : 999) + ';overflow:hidden;touch-action:none;';
 
   // Zoom is handled entirely by pinch (touch) or ctrl+wheel/trackpad-pinch
   // (desktop) — no on-screen +/− controls needed. Closing is handled by a

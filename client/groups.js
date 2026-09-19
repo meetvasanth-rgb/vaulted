@@ -49,9 +49,9 @@ function showPrivateGroupAttachOptions() {
   popover.style.bottom = `${window.innerHeight - rect.top + 8}px`;
   popover.style.left = `${Math.max(8, rect.left - 4)}px`;
   popover.innerHTML = `
-    <button type="button" class="attach-opt" data-input="group-camera-input"><span class="attach-opt-icon">📷</span><span class="attach-opt-label">Camera</span></button>
-    <button type="button" class="attach-opt" data-input="group-image-input"><span class="attach-opt-icon">▧</span><span class="attach-opt-label">Gallery</span></button>
-    <button type="button" class="attach-opt" data-input="group-file-input"><span class="attach-opt-icon">⌑</span><span class="attach-opt-label">File</span></button>
+    <button type="button" class="attach-opt" data-input="group-camera-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5l1.6-2.4c.2-.3.5-.6.9-.6h6c.4 0 .7.3.9.6L20.5 6H21a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.8"/></svg></span><span class="attach-opt-label">Camera</span></button>
+    <button type="button" class="attach-opt" data-input="group-image-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.7"/><path d="M21 15l-5.5-5.5a1.5 1.5 0 0 0-2.1 0L5 18"/></svg></span><span class="attach-opt-label">Gallery</span></button>
+    <button type="button" class="attach-opt" data-input="group-file-input"><span class="attach-opt-icon"><svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="attach-opt-label">File</span></button>
     <button type="button" class="attach-opt" id="group-attach-gif"><span class="attach-opt-icon" style="font-weight:800;font-size:12px;color:#682C43">GIF</span><span class="attach-opt-label">GIF</span></button>`;
   document.body.appendChild(popover);
   for (const option of popover.querySelectorAll('[data-input]')) option.onclick = event => {
@@ -302,15 +302,23 @@ function renderPrivateGroupMessages(group) {
   body.innerHTML = group.messages.map(message => {
     let content;
     if (message.attachment?.type === 'group-image') {
-      const mime = /^image\/(jpeg|png|webp|gif)$/i.test(message.attachment.mime) ? message.attachment.mime : 'image/jpeg';
+      // Same photo markup and in-app viewer as direct conversations: tapping
+      // opens viewImage(), and saving is an explicit action inside it.
+      const safeSrc = safeImageDataUri(message.attachment.mime, message.attachment.data);
       content = message.imageSafety && message.imageSafety !== 'allowed'
         ? '<div class="group-attachment-status">Photo hidden because the on-device safety check could not approve it.</div>'
-        : `<button class="group-message-attachment" type="button" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')"><img src="data:${mime};base64,${escHtml(message.attachment.data)}" alt="${escHtml(message.attachment.name || 'Group photo')}"></button>`;
+        : (safeSrc
+          ? `<img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/>`
+          : MEDIA_BLOCKED_HTML);
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
     } else if (message.attachment?.type === 'group-file') {
-      content = `<button class="group-file-card" type="button" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')">⌑ <span>${escHtml(message.attachment.name || 'Attachment')}</span></button>`;
+      // Same file card as direct conversations (.msg-file).
+      content = `<div class="msg-file" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')" oncontextmenu="return false">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>${escHtml(message.attachment.name || 'Attachment')}</span>
+      </div>`;
     } else if (message.gif?.type === 'group-gif' && safeKlipyMediaUrl(message.gif.url)) {
       content = `<div class="group-message-attachment"><img src="${escHtml(message.gif.url)}" alt="${escHtml(message.gif.title || 'GIF')}" loading="lazy"></div>`;
     } else {
@@ -323,12 +331,32 @@ function renderPrivateGroupMessages(group) {
   body.scrollTop = body.scrollHeight;
 }
 
+// The group chat is a full-screen overlay at z-index 10018, so the shared
+// viewers (which default to lower z-indexes) must be raised above it.
+const PRIVATE_GROUP_VIEWER_Z = 10022;
+
+function openPrivateGroupImage(messageId) {
+  const group = privateGroups.get(activePrivateGroupId);
+  const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
+  const src = attachment ? safeImageDataUri(attachment.mime, attachment.data) : null;
+  if (!src) { toast('Could not open photo'); return; }
+  viewImage(src, { zIndex:PRIVATE_GROUP_VIEWER_Z });
+}
+
+// Mirrors handleFileTap in direct conversations: PDFs open in the in-app
+// preview, every other file is saved through downloadDataUri.
 function openPrivateGroupAttachment(messageId) {
   const group = privateGroups.get(activePrivateGroupId);
   const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
   if (!attachment?.data) return;
   const mime = /^[a-z]+\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(attachment.mime) ? attachment.mime : 'application/octet-stream';
-  transferDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || 'Vaultlix attachment');
+  if (isPdfAttachment(mime, attachment.name)) {
+    openPdfPreview({ mime, base64:attachment.data, fileName:attachment.name || 'Document.pdf', pdfPreview:null, pageCount:0 });
+    const overlay = document.getElementById('pdf-preview-overlay');
+    if (overlay) overlay.style.zIndex = String(PRIVATE_GROUP_VIEWER_Z);
+    return;
+  }
+  downloadDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || 'Vaultlix attachment');
 }
 
 async function decodePrivateGroupMessage(group, state, message) {
