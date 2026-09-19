@@ -63,6 +63,16 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
+test('status creation can return a generated Daily Look into preview before audience selection', () => {
+  assert.match(client, /onclick="openDailyLookForStatus\(\)">Create Today’s Look<\/button>/);
+  assert.match(client, /function openDailyLookForStatus\(\)[\s\S]*openDailyLook\(\{ destination:'status' \}\)/);
+  assert.match(client, /id="daily-look-use-status"[^>]*onclick="useDailyLookInStatus\(\)"[^>]*hidden/);
+  assert.match(client, /async function useDailyLookInStatus\(\)[\s\S]*dailyLookProfileImage\(\)[\s\S]*allowLocalImageSend\(\[image\]/);
+  assert.match(client, /statusComposerImage = image[\s\S]*status-image-preview[\s\S]*preview\.hidden = false/);
+  assert.match(client, /dailyLookDestination === 'status'[\s\S]*status-composer/);
+  assert.match(client, /id="status-compose-audience" hidden><h2>Select contacts<\/h2>/);
+});
+
 test('1980s Portrait creates a high-quality profile-ready period portrait', () => {
   assert.match(server, /Indian cinema portrait photographed in the mid-1980s/);
   assert.match(server, /do not make a modern scene with a retro filter/);

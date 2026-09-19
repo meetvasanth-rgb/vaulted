@@ -149,6 +149,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOOK_DAILY_LIMIT = 5;
 const ATTACHMENT_UPLOAD_TTL_MS = 15 * 60 * 1000;
 const ATTACHMENT_GARBAGE_SWEEP_MS = 10 * 60 * 1000;
+const STATUS_MEDIA_UPLOAD_TTL_MS = 15 * 60 * 1000;
+const MAX_STATUS_MEDIA_BYTES = 100 * 1024 * 1024;
 // Older builds did not tag attachment ciphertext separately. Migrating any
 // retained envelope above 8KB captures even aggressively compressed images
 // and tiny documents without ever attempting to inspect/decrypt content.
@@ -2500,6 +2502,11 @@ function attachmentObjectKey(conversationId, attachmentId) {
   return `encrypted-attachments/v1/${conversationRoute}/${attachmentId}`;
 }
 
+function statusMediaObjectKey(accountId, mediaId) {
+  const ownerRoute = crypto.createHash('sha256').update(String(accountId)).digest('hex').slice(0, 32);
+  return `encrypted-status-media/v1/${ownerRoute}/${mediaId}`;
+}
+
 async function sweepAttachmentGarbage() {
   if (!objectStorageEnabled || !postgresEnabled) return;
   const garbage = await postgresStore.listAttachmentGarbage(Date.now(), 100);
@@ -2509,6 +2516,19 @@ async function sweepAttachmentGarbage() {
       await postgresStore.deleteAttachmentRecord(attachment.id);
     } catch (error) {
       console.error('Encrypted attachment cleanup failed:', error.message);
+    }
+  }
+}
+
+async function sweepStatusMediaGarbage() {
+  if (!objectStorageEnabled || !postgresEnabled) return;
+  const garbage = await postgresStore.listStatusMediaGarbage(Date.now(), 100);
+  for (const media of garbage) {
+    try {
+      await objectStorage.delete(media.objectKey);
+      await postgresStore.deleteStatusMediaRecord(media.id);
+    } catch (error) {
+      console.error('Encrypted status media cleanup failed:', error.message);
     }
   }
 }
@@ -3562,7 +3582,19 @@ async function api(path, method, d, p, res, ip, headers) {
       entries.push({ recipientId, code:String(entry.code).toLowerCase(), ciphertext });
     }
     if (!entries.length) return resErr(res, 'No eligible friends were selected.', 400);
-    const item = await statusStore.publish(d.accountId, entries);
+    let pendingMedia = null;
+    if (d.mediaId != null) {
+      if (!objectStorageEnabled || !postgresEnabled || !validAttachmentId(d.mediaId)) return resErr(res, 'This encrypted status video is invalid.', 400);
+      pendingMedia = await postgresStore.pendingStatusMedia(d.accountId, d.mediaId);
+      if (!pendingMedia) return resErr(res, 'This encrypted status video has expired. Select it again.', 400);
+      const uploadedSize = await objectStorage.sizeOf(pendingMedia.objectKey).catch(() => null);
+      if (uploadedSize !== pendingMedia.size) return resErr(res, 'The encrypted status video did not finish uploading.', 400);
+    }
+    const item = await statusStore.publish(d.accountId, entries, Date.now(), pendingMedia?.id || null);
+    if (pendingMedia && !await postgresStore.attachStatusMedia(d.accountId, pendingMedia.id, item.expiresAt)) {
+      await statusStore.remove(item.id, d.accountId).catch(() => {});
+      return resErr(res, 'Could not attach the encrypted status video.', 409);
+    }
     for (const recipientId of recipients) publishInboxAccount(recipientId, 'status-update');
     return res200(res, { ok:true, id:item.id, createdAt:item.createdAt, expiresAt:item.expiresAt });
   }
@@ -3579,7 +3611,7 @@ async function api(path, method, d, p, res, ip, headers) {
       const author = accounts.get(item.authorId);
       if (!author || (!own && await safetyStore.blocked(d.accountId, item.authorId))) continue;
       feed.push({
-        id:item.id, own, code:entry.code, ciphertext:entry.ciphertext,
+        id:item.id, own, code:entry.code, ciphertext:entry.ciphertext, mediaId:item.mediaId || null,
         authorName:author.displayName, authorPrivateNumber:author.privateNumber,
         authorProfileImage:normalizeProfileImage(author.profileImage) || null,
         createdAt:item.createdAt, expiresAt:item.expiresAt,
@@ -3602,8 +3634,49 @@ async function api(path, method, d, p, res, ip, headers) {
 
   if (path === '/api/status/delete' && method === 'POST') {
     if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    const owned = await statusStore.owned(String(d.id || ''), d.accountId);
     if (!await statusStore.remove(String(d.id || ''), d.accountId)) return resErr(res, 'Update not found.', 404);
+    if (owned?.mediaId && objectStorageEnabled && postgresEnabled) {
+      const media = await postgresStore.statusMedia(owned.mediaId).catch(() => null);
+      if (media) await objectStorage.delete(media.objectKey).catch(() => {});
+      await postgresStore.deleteStatusMediaRecord(owned.mediaId).catch(() => {});
+    }
     return res200(res, { ok:true });
+  }
+
+  if (path === '/api/status/media/prepare' && method === 'POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted status media is temporarily unavailable.', 503);
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    const size = Number(d.size);
+    if (!Number.isSafeInteger(size) || size < 1 || size > MAX_STATUS_MEDIA_BYTES) return resErr(res, 'This video is too large to encrypt and upload.', 400);
+    if (await rateLimited(`status-media:${d.accountId}`, 12, 10 * 60 * 1000)) return resErr(res, 'Uploading too many status videos. Try again shortly.', 429);
+    const mediaId = crypto.randomUUID();
+    const objectKey = statusMediaObjectKey(d.accountId, mediaId);
+    const createdAt = Date.now();
+    const created = await postgresStore.createPendingStatusMedia(d.accountId, {
+      id:mediaId, objectKey, size, createdAt, expiresAt:createdAt + STATUS_MEDIA_UPLOAD_TTL_MS,
+    });
+    if (!created) return resErr(res, 'Could not prepare encrypted status media.', 409);
+    try {
+      const uploadUrl = await objectStorage.createUploadUrl(objectKey);
+      return res200(res, { mediaId, uploadUrl, contentType:'application/octet-stream' });
+    } catch (error) {
+      await postgresStore.deleteStatusMediaRecord(mediaId).catch(() => {});
+      return resErr(res, 'Could not prepare encrypted status media.', 503);
+    }
+  }
+
+  if (path === '/api/status/media/download' && method === 'POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted status media is temporarily unavailable.', 503);
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    if (!validAttachmentId(d.mediaId) || !await statusStore.canAccessMedia(d.accountId, d.mediaId)) return resErr(res, 'Status media not found.', 404);
+    const media = await postgresStore.statusMedia(d.mediaId);
+    if (!media) return resErr(res, 'Status media not found.', 404);
+    try {
+      return res200(res, { downloadUrl:await objectStorage.createDownloadUrl(media.objectKey), size:media.size });
+    } catch (_) {
+      return resErr(res, 'Could not open encrypted status media.', 503);
+    }
   }
 
   if (path === '/api/status/report' && method === 'POST') {
@@ -6347,6 +6420,7 @@ async function bootstrap() {
     setImmediate(() => migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message)));
     const attachmentGarbageTimer = setInterval(() => {
       sweepAttachmentGarbage().catch(error => console.error('Encrypted attachment cleanup failed:', error.message));
+      sweepStatusMediaGarbage().catch(error => console.error('Encrypted status media cleanup failed:', error.message));
       migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message));
     }, ATTACHMENT_GARBAGE_SWEEP_MS);
     attachmentGarbageTimer.unref();

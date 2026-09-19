@@ -122,6 +122,19 @@ CREATE INDEX IF NOT EXISTS encrypted_attachments_conversation_idx
 CREATE INDEX IF NOT EXISTS encrypted_attachments_cleanup_idx
   ON encrypted_attachments(status, expires_at);
 
+CREATE TABLE IF NOT EXISTS encrypted_status_media (
+  media_id uuid PRIMARY KEY,
+  owner_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  object_key text NOT NULL UNIQUE,
+  ciphertext_size bigint NOT NULL CHECK (ciphertext_size > 0),
+  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'attached')),
+  created_at bigint NOT NULL,
+  expires_at bigint NOT NULL,
+  attached_at bigint
+);
+CREATE INDEX IF NOT EXISTS encrypted_status_media_cleanup_idx
+  ON encrypted_status_media(status, expires_at);
+
 CREATE TABLE IF NOT EXISTS inbox_events (
   account_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
   sequence bigint NOT NULL,
@@ -754,6 +767,53 @@ class PostgresStore {
 
   async deleteAttachmentRecord(attachmentId, client = this.pool) {
     if (this.enabled) await client.query('DELETE FROM encrypted_attachments WHERE attachment_id=$1', [attachmentId]);
+  }
+
+  async createPendingStatusMedia(ownerId, media, client = this.pool) {
+    if (!this.enabled) return false;
+    const result = await client.query(`INSERT INTO encrypted_status_media (
+      media_id,owner_id,object_key,ciphertext_size,status,created_at,expires_at
+    ) VALUES ($1,$2,$3,$4,'pending',$5,$6) ON CONFLICT (media_id) DO NOTHING`,
+    [media.id, ownerId, media.objectKey, media.size, media.createdAt, media.expiresAt]);
+    return result.rowCount === undefined ? true : result.rowCount === 1;
+  }
+
+  async pendingStatusMedia(ownerId, mediaId, now = Date.now(), client = this.pool) {
+    if (!this.enabled) return null;
+    const { rows } = await client.query(`SELECT media_id,object_key,ciphertext_size,expires_at
+      FROM encrypted_status_media WHERE media_id=$1 AND owner_id=$2
+        AND status='pending' AND expires_at>$3`, [mediaId, ownerId, now]);
+    if (!rows.length) return null;
+    return { id:rows[0].media_id, objectKey:rows[0].object_key, size:Number(rows[0].ciphertext_size), expiresAt:Number(rows[0].expires_at) };
+  }
+
+  async attachStatusMedia(ownerId, mediaId, expiresAt, now = Date.now(), client = this.pool) {
+    if (!this.enabled) return false;
+    const result = await client.query(`UPDATE encrypted_status_media SET status='attached',attached_at=$4,expires_at=$3
+      WHERE media_id=$1 AND owner_id=$2 AND status='pending' AND expires_at>$4`, [mediaId, ownerId, expiresAt, now]);
+    return result.rowCount === undefined ? true : result.rowCount === 1;
+  }
+
+  async statusMedia(mediaId, client = this.pool) {
+    if (!this.enabled) return null;
+    const { rows } = await client.query(`SELECT media_id,object_key,ciphertext_size FROM encrypted_status_media
+      WHERE media_id=$1 AND status='attached'`, [mediaId]);
+    return rows.length ? { id:rows[0].media_id, objectKey:rows[0].object_key, size:Number(rows[0].ciphertext_size) } : null;
+  }
+
+  async listStatusMediaGarbage(now = Date.now(), limit = 100, client = this.pool) {
+    if (!this.enabled) return [];
+    const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+    const { rows } = await client.query(`SELECT m.media_id,m.object_key FROM encrypted_status_media m
+      LEFT JOIN encrypted_statuses s ON s.media_id=m.media_id
+      WHERE (m.status='pending' AND m.expires_at<=$1)
+        OR (m.status='attached' AND (m.expires_at<=$1 OR s.id IS NULL))
+      ORDER BY m.created_at LIMIT $2`, [now, safeLimit]);
+    return rows.map(row => ({ id:row.media_id, objectKey:row.object_key }));
+  }
+
+  async deleteStatusMediaRecord(mediaId, client = this.pool) {
+    if (this.enabled) await client.query('DELETE FROM encrypted_status_media WHERE media_id=$1', [mediaId]);
   }
 
   async appendEncryptedMessage(conversationId, token, message, transactionClient = null) {
