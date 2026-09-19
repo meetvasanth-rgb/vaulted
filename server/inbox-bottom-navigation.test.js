@@ -37,3 +37,10 @@ test('status composer previews content before selecting contacts', () => {
   assert.match(client, /function backToStatusContent\(\)[\s\S]*status-compose-audience'\)\.hidden = true/);
   assert.match(client, /\.status-media-preview\[hidden\]\{display:none\}/);
 });
+
+test('own status viewer uses compact icon-only actions', () => {
+  assert.match(client, /aria-label="Add status update"[\s\S]*aria-label="View status viewers"[\s\S]*aria-label="Delete status"/);
+  assert.match(client, /status-view-actions\$\{item\.own\?' status-owner-actions':''\}/);
+  assert.match(client, /\.status-icon-action\{width:54px;height:54px/);
+  assert.doesNotMatch(client, />Add update<\/button>|>\$\{item\.viewers\?\.length\|\|0\} viewed<\/button>|>Delete<\/button>/);
+});
