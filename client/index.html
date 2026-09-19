@@ -5141,7 +5141,10 @@ async function handleNativeCallAction(detail) {
       return;
     }
     if (room.callState === 'outgoing') {
-      room.nativeCallActive = true;
+      // Only a call this page handed to the native engine is native-owned. A
+      // foreground call is web-owned even if CallKit activates audio for it,
+      // and marking it native would hide its Video button for the whole call.
+      room.nativeCallActive = room.iosNativeOutgoing === true;
       requestNativeIOSSpeakerState(room);
       renderCallOverlay(room);
       refreshCallButton();
@@ -6381,6 +6384,7 @@ async function startCallForRoom(room) {
   room.callRinging = false;
   room.callAnswerAcknowledged = false;
   room.nativeCallActive = false;
+  room.iosNativeOutgoing = false;
   // CallKit can snapshot WKWebView before iOS has completed its keyboard
   // dismissal animation. Mark the call busy first (preventing a second tap),
   // then wait only when an editable control really had focus before handing
@@ -6426,6 +6430,7 @@ async function startCallForRoom(room) {
     // the same CallKit/libwebrtc audio session and makes receiver/speaker
     // routing deterministic instead of letting WKWebView reclaim the route.
     room.nativeCallActive = true;
+    room.iosNativeOutgoing = true;
     disconnectSignaling(room);
     try {
       iosBridge.postMessage({

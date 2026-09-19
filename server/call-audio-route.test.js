@@ -120,3 +120,28 @@ test('a foreground Android call is answered on the web screen, which has video',
   assert.match(main, /appInForeground = true/);
   assert.match(main, /appInForeground = false/);
 });
+
+test('iOS "Phone" takes Bluetooth out of the session so the headset cannot keep the audio', () => {
+  const app = read('mobile/ios/App/App/AppDelegate.swift');
+  assert.match(app, /options: bluetoothExcludedByPhoneRoute \? \[\] : \[\.allowBluetooth\]/);
+  // Bluetooth / speaker put it back, and so does any other session setup.
+  assert.match(app, /\} else \{\s*bluetoothExcludedByPhoneRoute = false\s*\}/);
+  assert.equal((app.match(/bluetoothExcludedByPhoneRoute = false/g) || []).length >= 5, true);
+  // iOS stops listing the headset while it is excluded, so it must be remembered
+  // or the button could never return to Bluetooth.
+  assert.match(app, /if bluetoothExcludedByPhoneRoute \{ return bluetoothSeenConnected \}/);
+  assert.match(app, /bluetoothSeenConnected = liveBluetoothAudioAvailable\(\)/);
+});
+
+test('iOS reports the settled route after a request instead of a transient one', () => {
+  const scene = read('mobile/ios/App/App/SceneDelegate.swift');
+  assert.match(scene, /if let until = self\?\.audioRouteSettlesAt, Date\(\) < until \{ return \}/);
+  assert.match(scene, /audioRouteSettlesAt = Date\(\)\.addingTimeInterval\(settleDelay\)/);
+  assert.match(scene, /asyncAfter\(deadline: \.now\(\) \+ settleDelay \+ 0\.05\)[\s\S]*emitSpeakerState\(success: true\)/);
+});
+
+test('only a call handed to the native engine is treated as native (keeps Video on foreground calls)', () => {
+  assert.match(client, /room\.iosNativeOutgoing = false;/);
+  assert.match(client, /room\.iosNativeOutgoing = true;\s*disconnectSignaling\(room\);\s*try \{\s*iosBridge\.postMessage\(\{\s*action: 'startOutgoing'/);
+  assert.match(client, /room\.nativeCallActive = room\.iosNativeOutgoing === true;/);
+});

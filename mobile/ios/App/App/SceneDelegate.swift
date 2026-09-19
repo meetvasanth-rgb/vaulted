@@ -8,6 +8,7 @@ import LocalAuthentication
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate {
     var window: UIWindow?
     private var observers: [NSObjectProtocol] = []
+    private var audioRouteSettlesAt: Date?
     private var webReady = false
     private var pendingUniversalLink: URL?
     private var appSwitcherPrivacyCover: UIView?
@@ -37,6 +38,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             VaultlixCallManager.shared.audioRouteDidChange()
+            // While iOS is still applying a route the user just chose it
+            // reports transient routes (e.g. the headset again mid-switch to
+            // Phone), which made the button jump back. The settled route is
+            // reported once when the window closes.
+            if let until = self?.audioRouteSettlesAt, Date() < until { return }
             self?.emitSpeakerState(success: true)
         })
 
@@ -488,6 +494,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 activateSession: body["outgoing"] as? Bool ?? false
             )
             emitSpeakerState(success: success, routeOverride: route)
+            let settleDelay = 0.7
+            audioRouteSettlesAt = Date().addingTimeInterval(settleDelay)
+            DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay + 0.05) { [weak self] in
+                self?.emitSpeakerState(success: true)
+            }
             return
         }
         if action == "updateCaller",

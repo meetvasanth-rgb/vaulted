@@ -637,6 +637,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func prepareOutgoingWebAudio() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
+            bluetoothExcludedByPhoneRoute = false
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             try session.overrideOutputAudioPort(.none)
@@ -670,6 +671,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             // native incoming calls. Configure the same voice route here so
             // `.none` genuinely returns to the receiver/Bluetooth instead of
             // leaving WKWebView's playback route on the loudspeaker.
+            bluetoothExcludedByPhoneRoute = false
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             if activateSession && !outgoingWebAudioSessionActive {
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -705,7 +707,18 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
+    /// Set while "Phone" has taken Bluetooth out of the session's allowed
+    /// routes. iOS then stops listing the headset, so availability is
+    /// remembered from just before it was excluded.
+    private var bluetoothExcludedByPhoneRoute = false
+    private var bluetoothSeenConnected = false
+
     func isBluetoothAudioAvailable() -> Bool {
+        if bluetoothExcludedByPhoneRoute { return bluetoothSeenConnected }
+        return liveBluetoothAudioAvailable()
+    }
+
+    private func liveBluetoothAudioAvailable() -> Bool {
         bluetoothInput() != nil
             || AVAudioSession.sharedInstance().currentRoute.outputs.contains {
                 VaultlixCallManager.isBluetoothPort($0.portType)
@@ -721,14 +734,29 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     /// Choose the output for the call: "phone" (receiver), "bluetooth" or "speaker".
-    /// Bluetooth and phone are selected through the preferred input, which is
-    /// what makes iOS move the output with it; `.none` on its own would leave
-    /// the system choice (Bluetooth whenever a headset is connected).
+    /// With a headset connected, `.none` alone leaves the system choice (the
+    /// headset), and a preferred input is only a hint that iOS may ignore.
+    /// "Phone" therefore also takes Bluetooth out of the session's allowed
+    /// routes so the receiver is the only route left; "Bluetooth" and
+    /// "speaker" put it back so the headset stays selectable.
     @discardableResult
     func setAudioRoute(_ route: String, activateSession: Bool = false) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            switch route {
+            case "speaker", "bluetooth", "phone": break
+            default: return false
+            }
+            if route == "phone" {
+                if !bluetoothExcludedByPhoneRoute { bluetoothSeenConnected = liveBluetoothAudioAvailable() }
+                bluetoothExcludedByPhoneRoute = true
+            } else {
+                bluetoothExcludedByPhoneRoute = false
+            }
+            try session.setCategory(
+                .playAndRecord, mode: .voiceChat,
+                options: bluetoothExcludedByPhoneRoute ? [] : [.allowBluetooth]
+            )
             if activateSession && !outgoingWebAudioSessionActive {
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
                 outgoingWebAudioSessionActive = true
@@ -739,13 +767,11 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             case "bluetooth":
                 try session.overrideOutputAudioPort(.none)
                 if let input = bluetoothInput() { try session.setPreferredInput(input) }
-            case "phone":
+            default:
                 try session.overrideOutputAudioPort(.none)
                 if let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) {
                     try session.setPreferredInput(builtIn)
                 }
-            default:
-                return false
             }
             restartRingbackForCurrentRoute()
             return true
@@ -758,6 +784,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// A route chosen during one call must not carry into the next, which
     /// should start on the system default (Bluetooth if one is connected).
     private func clearPreferredAudioInput() {
+        bluetoothExcludedByPhoneRoute = false
+        bluetoothSeenConnected = false
         try? AVAudioSession.sharedInstance().setPreferredInput(nil)
     }
 
