@@ -145,9 +145,14 @@ async function handlePrivateGroupFileSelect(event) {
         const compressed = await compressImageFile(file); base64 = compressed.base64; mime = compressed.mime;
         if (!await allowLocalImageSend([base64], message => toast(message), { persist:true })) continue;
       } else base64 = await fileToBase64(file);
+      // Same first-page thumbnail and page count as direct conversations; both
+      // ride inside the encrypted payload, never as plaintext.
+      const pdfPreview = !mime.startsWith('image/') && isPdfAttachment(mime, file.name)
+        ? await createPdfFirstPagePreview(base64) : null;
       toast('Sending attachment…');
       await sendPrivateGroupAttachment({ type:mime.startsWith('image/') ? 'group-image' : 'group-file',
-        name:String(file.name || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64 });
+        name:String(file.name || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64,
+        ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) });
       toast(mime.startsWith('image/') ? 'Photo sent' : 'File sent');
     } catch (error) { toast(error.message || 'Attachment could not be sent'); }
   }
@@ -301,6 +306,9 @@ function renderPrivateGroupMessages(group) {
   if (!group.messages?.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
   body.innerHTML = group.messages.map(message => {
     let content;
+    // Photos and files get the same long-press action row as direct
+    // conversations (Save, Forward). Hidden or blocked media never does.
+    let actionable = false;
     if (message.attachment?.type === 'group-image') {
       // Same photo markup and in-app viewer as direct conversations: tapping
       // opens viewImage(), and saving is an explicit action inside it.
@@ -308,17 +316,22 @@ function renderPrivateGroupMessages(group) {
       content = message.imageSafety && message.imageSafety !== 'allowed'
         ? '<div class="group-attachment-status">Photo hidden because the on-device safety check could not approve it.</div>'
         : (safeSrc
-          ? `<img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/>`
+          ? `<div class="msg-media-wrap"><img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/></div>`
           : MEDIA_BLOCKED_HTML);
+      actionable = !!safeSrc && !(message.imageSafety && message.imageSafety !== 'allowed');
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
     } else if (message.attachment?.type === 'group-file') {
-      // Same file card as direct conversations (.msg-file).
-      content = `<div class="msg-file" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')" oncontextmenu="return false">
+      // Same cards as direct conversations: a first-page preview card for
+      // PDFs, the plain file card (.msg-file) for everything else.
+      actionable = true;
+      content = `<div class="msg-media-wrap">${isPdfAttachment(message.attachment.mime, message.attachment.name)
+        ? privateGroupPdfCardHtml(message)
+        : `<div class="msg-file" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')" oncontextmenu="return false">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>${escHtml(message.attachment.name || 'Attachment')}</span>
-      </div>`;
+      </div>`}</div>`;
     } else if (message.gif?.type === 'group-gif' && safeKlipyMediaUrl(message.gif.url)) {
       content = `<div class="group-message-attachment"><img src="${escHtml(message.gif.url)}" alt="${escHtml(message.gif.title || 'GIF')}" loading="lazy"></div>`;
     } else {
@@ -326,9 +339,40 @@ function renderPrivateGroupMessages(group) {
       const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
       content = `<div class="group-message-text">${escHtml(visibleText)}</div>`;
     }
-    return `<div class="group-message${message.senderId === state?.accountId ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${content}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
+    const actions = actionable
+      ? `<div class="msg-actions" id="actions-${escHtml(message.id)}">${msgActionBtn('save', 'Save')}${msgActionBtn('forward', 'Forward')}</div>` : '';
+    return `<div class="group-message${message.senderId === state?.accountId ? ' mine' : ''}"${actionable ? ` data-actionable-id="${escHtml(message.id)}"` : ''}><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${content}${actions}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
   }).join('');
+  // Same gesture as direct conversations: long-press a photo or file to open
+  // its action row. Listeners must be re-attached because the list is redrawn.
+  for (const row of body.querySelectorAll('[data-actionable-id]')) {
+    const id = row.dataset.actionableId;
+    const media = row.querySelector('.msg-image, .msg-file, .msg-pdf-card');
+    if (media) attachLongPress(media, id);
+    const save = row.querySelector('[data-action="save"]');
+    const forward = row.querySelector('[data-action="forward"]');
+    if (save) save.onclick = event => { event.stopPropagation(); savePrivateGroupAttachment(id); };
+    if (forward) forward.onclick = event => { event.stopPropagation(); forwardPrivateGroupAttachment(id); };
+  }
   body.scrollTop = body.scrollHeight;
+}
+
+// Mirrors the direct-conversation PDF card: first-page thumbnail (or a PDF
+// placeholder for files sent before thumbnails existed), page count and size.
+// pdfPreview and pageCount come from a peer, so they are validated here.
+function privateGroupPdfCardHtml(message) {
+  const attachment = message.attachment;
+  const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview);
+  const preview = thumbnail
+    ? `<img src="${thumbnail}" alt="First page of ${escHtml(attachment.name || 'PDF')}" draggable="false"/>`
+    : '<span class="msg-pdf-placeholder"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF</span>';
+  const pages = Number(attachment.pageCount) || 0;
+  const pageLabel = pages > 0 && pages < 100000 ? `${pages} page${pages === 1 ? '' : 's'} · ` : '';
+  const size = Math.ceil(String(attachment.data || '').length * 3 / 4);
+  return `<div class="msg-pdf-card" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')" oncontextmenu="return false">
+    <div class="msg-pdf-preview">${preview}</div>
+    <div class="msg-pdf-info"><span class="msg-pdf-icon">PDF</span><span class="msg-pdf-copy"><span class="msg-pdf-name">${escHtml(attachment.name || 'Document.pdf')}</span><span class="msg-pdf-meta">${pageLabel}${formatFileSize(size)} · PDF</span></span></div>
+  </div>`;
 }
 
 // The group chat is a full-screen overlay at z-index 10018, so the shared
@@ -336,6 +380,7 @@ function renderPrivateGroupMessages(group) {
 const PRIVATE_GROUP_VIEWER_Z = 10022;
 
 function openPrivateGroupImage(messageId) {
+  if (wasJustLongPressed()) return;
   const group = privateGroups.get(activePrivateGroupId);
   const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
   const src = attachment ? safeImageDataUri(attachment.mime, attachment.data) : null;
@@ -346,17 +391,54 @@ function openPrivateGroupImage(messageId) {
 // Mirrors handleFileTap in direct conversations: PDFs open in the in-app
 // preview, every other file is saved through downloadDataUri.
 function openPrivateGroupAttachment(messageId) {
+  if (wasJustLongPressed()) return;
   const group = privateGroups.get(activePrivateGroupId);
   const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
   if (!attachment?.data) return;
   const mime = /^[a-z]+\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(attachment.mime) ? attachment.mime : 'application/octet-stream';
   if (isPdfAttachment(mime, attachment.name)) {
-    openPdfPreview({ mime, base64:attachment.data, fileName:attachment.name || 'Document.pdf', pdfPreview:null, pageCount:0 });
+    const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview) ? attachment.pdfPreview : null;
+    openPdfPreview({ mime, base64:attachment.data, fileName:attachment.name || 'Document.pdf', pdfPreview:thumbnail, pageCount:Number(attachment.pageCount) || 0 });
     const overlay = document.getElementById('pdf-preview-overlay');
     if (overlay) overlay.style.zIndex = String(PRIVATE_GROUP_VIEWER_Z);
     return;
   }
   downloadDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || 'Vaultlix attachment');
+}
+
+function privateGroupAttachmentById(messageId) {
+  const group = privateGroups.get(activePrivateGroupId);
+  const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
+  if (!attachment?.data || !['group-image', 'group-file'].includes(attachment.type)) return null;
+  const mime = /^[a-z]+\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(attachment.mime) ? attachment.mime : 'application/octet-stream';
+  return { attachment, mime };
+}
+
+// The "Save" action in the long-press row, same as direct conversations.
+function savePrivateGroupAttachment(messageId) {
+  closeAllMsgActions();
+  const found = privateGroupAttachmentById(messageId); if (!found) return;
+  const { attachment, mime } = found;
+  const fallbackName = attachment.type === 'group-image' ? 'vaultlix-image' : 'Vaultlix attachment';
+  downloadDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || fallbackName);
+}
+
+// Forward reuses the direct-conversation picker and send path, exactly as a
+// forwarded 1:1 attachment does: the already-decrypted file stays on this
+// device, is re-encrypted with the chosen conversation's own key, and is sent
+// through the ordinary /api/send route. includeActiveRoom is needed because a
+// group is not one of the direct rooms, so no room is "the current one" here.
+function forwardPrivateGroupAttachment(messageId) {
+  closeAllMsgActions();
+  const found = privateGroupAttachmentById(messageId); if (!found) return;
+  const { attachment, mime } = found;
+  const isImage = attachment.type === 'group-image';
+  if (isImage ? !safeImageDataUri(mime, attachment.data) : !isValidMediaBase64(attachment.data)) { toast('Could not forward this attachment'); return; }
+  const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview) ? attachment.pdfPreview : null;
+  showForwardAttachmentPicker({
+    kind:'file', fileName:attachment.name || (isImage ? 'vaultlix-image' : 'vaultlix-file'), mime, base64:attachment.data,
+    isImage, pdfPreview:thumbnail, pageCount:Number(attachment.pageCount) || 0, viewOnce:false,
+  }, { includeActiveRoom:true });
 }
 
 async function decodePrivateGroupMessage(group, state, message) {

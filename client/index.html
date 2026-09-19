@@ -13356,11 +13356,13 @@ document.addEventListener('click', (e) => {
 // selected conversation's own key, and then uses the ordinary /api/send
 // path. View-once media is deliberately excluded: forwarding it would
 // defeat the sender's one-view choice.
-function showForwardAttachmentPicker(rec) {
+// options.includeActiveRoom: a private group forwards from outside the direct
+// rooms, so the room that happens to be "active" is a valid target there.
+function showForwardAttachmentPicker(rec, options = {}) {
   if (!rec || !['file', 'album'].includes(rec.kind)) return;
   if (rec.viewOnce) { toast('View-once photos cannot be forwarded'); return; }
   const targets = [...rooms.values()].filter(room =>
-    room.code !== activeRoomCode && room.everOnline && room.sharedKey && !room.reconnectRequired
+    (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
   );
   if (!targets.length) { toast('No other connected conversations'); return; }
 
