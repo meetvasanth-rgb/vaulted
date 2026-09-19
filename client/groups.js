@@ -355,24 +355,64 @@ function renderPrivateGroupMessages(group) {
     if (forward) forward.onclick = event => { event.stopPropagation(); forwardPrivateGroupAttachment(id); };
   }
   body.scrollTop = body.scrollHeight;
+  fillPrivateGroupPdfPreviews(group.id);
 }
 
 // Mirrors the direct-conversation PDF card: first-page thumbnail (or a PDF
 // placeholder for files sent before thumbnails existed), page count and size.
 // pdfPreview and pageCount come from a peer, so they are validated here.
-function privateGroupPdfCardHtml(message) {
-  const attachment = message.attachment;
+function privateGroupPdfPreviewHtml(attachment) {
   const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview);
-  const preview = thumbnail
+  return thumbnail
     ? `<img src="${thumbnail}" alt="First page of ${escHtml(attachment.name || 'PDF')}" draggable="false"/>`
     : '<span class="msg-pdf-placeholder"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF</span>';
+}
+
+function privateGroupPdfMeta(attachment) {
   const pages = Number(attachment.pageCount) || 0;
   const pageLabel = pages > 0 && pages < 100000 ? `${pages} page${pages === 1 ? '' : 's'} · ` : '';
-  const size = Math.ceil(String(attachment.data || '').length * 3 / 4);
+  return `${pageLabel}${formatFileSize(Math.ceil(String(attachment.data || '').length * 3 / 4))} · PDF`;
+}
+
+function privateGroupPdfCardHtml(message) {
+  const attachment = message.attachment;
+  const preview = privateGroupPdfPreviewHtml(attachment);
   return `<div class="msg-pdf-card" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')" oncontextmenu="return false">
     <div class="msg-pdf-preview">${preview}</div>
-    <div class="msg-pdf-info"><span class="msg-pdf-icon">PDF</span><span class="msg-pdf-copy"><span class="msg-pdf-name">${escHtml(attachment.name || 'Document.pdf')}</span><span class="msg-pdf-meta">${pageLabel}${formatFileSize(size)} · PDF</span></span></div>
+    <div class="msg-pdf-info"><span class="msg-pdf-icon">PDF</span><span class="msg-pdf-copy"><span class="msg-pdf-name">${escHtml(attachment.name || 'Document.pdf')}</span><span class="msg-pdf-meta">${privateGroupPdfMeta(attachment)}</span></span></div>
   </div>`;
+}
+
+// PDFs sent before thumbnails existed (or by a client that could not render
+// one) arrive without a preview. Render the first page on this device instead,
+// one PDF at a time, and patch the card in place so the list does not redraw
+// or jump. Failures are remembered so a broken PDF is not retried in a loop.
+const privateGroupPdfPreviewFailed = new Set();
+let privateGroupPdfPreviewBusy = false;
+
+async function fillPrivateGroupPdfPreviews(groupId) {
+  if (privateGroupPdfPreviewBusy) return;
+  privateGroupPdfPreviewBusy = true;
+  try {
+    while (activePrivateGroupId === groupId) {
+      const message = privateGroups.get(groupId)?.messages?.find(item => item.attachment?.type === 'group-file'
+        && isPdfAttachment(item.attachment.mime, item.attachment.name)
+        && !safeImageDataUri('image/jpeg', item.attachment.pdfPreview)
+        && !privateGroupPdfPreviewFailed.has(item.id));
+      if (!message) break;
+      const preview = await createPdfFirstPagePreview(message.attachment.data);
+      if (!preview) { privateGroupPdfPreviewFailed.add(message.id); continue; }
+      message.attachment.pdfPreview = preview.base64;
+      message.attachment.pageCount = preview.pageCount;
+      const card = [...document.querySelectorAll('#group-chat-body [data-actionable-id]')]
+        .find(row => row.dataset.actionableId === message.id)?.querySelector('.msg-pdf-card');
+      if (card) {
+        card.querySelector('.msg-pdf-preview').innerHTML = privateGroupPdfPreviewHtml(message.attachment);
+        card.querySelector('.msg-pdf-meta').textContent = privateGroupPdfMeta(message.attachment);
+      }
+    }
+  } catch (error) { console.warn('Group PDF previews could not be prepared'); }
+  finally { privateGroupPdfPreviewBusy = false; }
 }
 
 // The group chat is a full-screen overlay at z-index 10018, so the shared

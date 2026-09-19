@@ -823,6 +823,9 @@ body.select-mode .chat-ftr{display:none}
 /* Direct-conversation file cards use fixed dark text; keep them readable inside a dark "mine" group bubble. */
 .group-message.mine .msg-file { background:#ffffff24; border-color:transparent; color:#fff; }
 .group-message.mine .msg-file svg { stroke:#fff; }
+/* Compact PDF card inside group bubbles: narrower and shorter than the direct-chat card, still cropped from the top of page 1. */
+.group-message .msg-pdf-card { width:min(220px,62vw); }
+.group-message .msg-pdf-preview { height:128px; }
 @keyframes attachPopIn { from{ opacity:0; transform:translateY(6px) scale(0.96); } to{ opacity:1; transform:translateY(0) scale(1); } }
 .attach-opt { display:flex; flex-direction:column; align-items:center; gap:4px; background:none; border:none; cursor:pointer; padding:6px 8px; width:60px; }
 .attach-opt-icon { width:42px; height:42px; border-radius:50%; background:#F3EEE6; display:flex; align-items:center; justify-content:center; transition:background 0.15s; }
