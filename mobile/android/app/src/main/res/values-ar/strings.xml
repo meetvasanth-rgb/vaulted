@@ -14,6 +14,7 @@
   <string name="native_unmute">&#x625;&#x644;&#x63A;&#x627;&#x621; &#x627;&#x644;&#x643;&#x62A;&#x645;</string>
   <string name="native_speaker">&#x645;&#x643;&#x628;&#x631; &#x627;&#x644;&#x635;&#x648;&#x62A;</string>
   <string name="native_phone">&#x627;&#x644;&#x647;&#x627;&#x62A;&#x641;</string>
+  <string name="native_bluetooth">بلوتوث</string>
   <string name="native_end">&#x625;&#x646;&#x647;&#x627;&#x621;</string>
   <string name="native_encrypted_call_duration">&#x645;&#x643;&#x627;&#x644;&#x645;&#x629; &#x645;&#x634;&#x641;&#x631;&#x629; &#xB7; %1$s</string>
   <string name="native_incoming_encrypted_call">مكالمة مشفرة واردة</string>

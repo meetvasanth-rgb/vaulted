@@ -64,8 +64,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private ImageButton routeButton;
     private long connectedAt;
     private boolean muted;
-    private boolean speaker;
-    private boolean speakerRequested;
+    // null until the user picks a route, then "phone", "bluetooth" or "speaker".
+    // With no choice the system's Bluetooth headset is kept, else the earpiece.
+    private String requestedRoute;
     private AudioManager audioManager;
     private LinearLayout callRoot;
     private String roomCode;
@@ -74,7 +75,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private String pendingHistory = "";
     private AudioTrack ringbackTrack;
     private final Runnable enforceRequestedAudioRoute = () -> {
-        if (!finishingCall) applyAudioRoute(speakerRequested);
+        if (!finishingCall) applyAudioRoute(requestedRoute);
+    };
+    // A headset can connect or disconnect mid-call, so keep the button honest.
+    private final Runnable audioRoutePoll = new Runnable() {
+        @Override public void run() {
+            if (finishingCall) return;
+            renderAudioRoute(currentRouteName());
+            handler.postDelayed(this, 2_000);
+        }
     };
     private final Runnable ringback = new Runnable() {
         @Override public void run() {
@@ -120,7 +129,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(this::clearIncomingCallBanner, 750);
         handler.postDelayed(this::clearIncomingCallBanner, 1800);
         audioManager = getSystemService(AudioManager.class);
-        requestAudioRoute(false);
+        requestAudioRoute(null);
+        requestBluetoothPermissionIfUnlocked();
+        handler.postDelayed(audioRoutePoll, 2_000);
         buildUi(
                 getIntent().getStringExtra(EXTRA_CALLER),
                 getIntent().getStringExtra(EXTRA_CALLER_AVATAR_PATH)
@@ -284,16 +295,83 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         muteButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
+    // With a Bluetooth headset a tap goes Bluetooth -> Speaker -> Phone;
+    // without one it is the original Phone <-> Speaker pair.
     private void toggleSpeaker() {
-        requestAudioRoute(!speakerRequested);
+        String[] order = isBluetoothAudioAvailable()
+                ? new String[] { "bluetooth", "speaker", "phone" }
+                : new String[] { "phone", "speaker" };
+        String current = requestedRoute != null ? requestedRoute : currentRouteName();
+        int index = java.util.Arrays.asList(order).indexOf(current);
+        requestAudioRoute(order[(index + 1) % order.length]);
         routeButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
-    private void renderAudioRoute(boolean speakerActive) {
-        speaker = speakerActive;
+    // The label and icon show where audio is going now (the same as the
+    // in-app call screen), not what the next tap would do.
+    private void renderAudioRoute(String route) {
         if (routeButton == null || routeLabel == null) return;
-        routeButton.setBackground(circle(speaker ? CONTROL_ACTIVE : CONTROL));
-        routeLabel.setText(speaker ? R.string.native_phone : R.string.native_speaker);
+        routeButton.setImageResource("bluetooth".equals(route) ? R.drawable.ic_call_bluetooth : R.drawable.ic_call_speaker);
+        routeButton.setBackground(circle("phone".equals(route) ? CONTROL : CONTROL_ACTIVE));
+        routeLabel.setText("bluetooth".equals(route) ? R.string.native_bluetooth
+                : "speaker".equals(route) ? R.string.native_speaker : R.string.native_phone);
+    }
+
+    private boolean isBluetoothDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    /** A Bluetooth headset that can carry a call (SCO, or LE Audio on 12+). */
+    private boolean isBluetoothCallDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    /** Android 12+ needs BLUETOOTH_CONNECT granted at runtime to use a headset. */
+    private boolean hasBluetoothPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                || checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Ask once, and only when the screen is unlocked: never over the keyguard. */
+    private void requestBluetoothPermissionIfUnlocked() {
+        if (hasBluetoothPermission()) return;
+        android.app.KeyguardManager keyguard = getSystemService(android.app.KeyguardManager.class);
+        if (keyguard != null && keyguard.isKeyguardLocked()) return;
+        requestPermissions(new String[] { android.Manifest.permission.BLUETOOTH_CONNECT }, 74);
+    }
+
+    private boolean isBluetoothAudioAvailable() {
+        if (audioManager == null || !hasBluetoothPermission()) return false;
+        AudioDeviceInfo[] candidates = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? audioManager.getAvailableCommunicationDevices().toArray(new AudioDeviceInfo[0])
+                : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+        for (AudioDeviceInfo device : candidates) {
+            if (isBluetoothCallDevice(device)) return true;
+        }
+        return false;
+    }
+
+    private String routeNameOf(AudioDeviceInfo device) {
+        if (device != null && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) return "speaker";
+        return isBluetoothDevice(device) ? "bluetooth" : "phone";
+    }
+
+    @SuppressWarnings("deprecation")
+    private String currentRouteName() {
+        if (audioManager == null) return "phone";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return routeNameOf(audioManager.getCommunicationDevice());
+        if (audioManager.isSpeakerphoneOn()) return "speaker";
+        return audioManager.isBluetoothScoOn() ? "bluetooth" : "phone";
     }
 
     @Override public void onState(String value) {
@@ -311,7 +389,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         // libwebrtc/OEM audio initialization can replace a route selected
         // while the call was ringing. Reassert the user's current choice as
         // soon as the remote track becomes active.
-        requestAudioRoute(speakerRequested);
+        requestAudioRoute(requestedRoute);
         status.setText(getString(R.string.native_end_to_end_encrypted_call));
         security.setVisibility(View.GONE);
         timer.setVisibility(View.VISIBLE);
@@ -471,10 +549,10 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         VaultlixMessagingService.clearActiveCallNotifications(this);
     }
 
-    private void requestAudioRoute(boolean useSpeaker) {
-        speakerRequested = useSpeaker;
+    private void requestAudioRoute(String route) {
+        requestedRoute = route;
         handler.removeCallbacks(enforceRequestedAudioRoute);
-        applyAudioRoute(useSpeaker);
+        applyAudioRoute(route);
         // WebRTC creates its playout stream asynchronously. Several OEMs
         // accept setCommunicationDevice() and then restore the receiver a
         // fraction of a second later, so keep the explicit user route across
@@ -484,39 +562,61 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(enforceRequestedAudioRoute, 1_400);
     }
 
+    /** route: "phone", "bluetooth", "speaker", or null for the default (keep a connected headset, else earpiece). */
     @SuppressWarnings("deprecation")
-    private boolean applyAudioRoute(boolean useSpeaker) {
+    private boolean applyAudioRoute(String route) {
         if (audioManager == null) return false;
         audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
         boolean applied = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            int desired = useSpeaker
-                    ? AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                    : AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+            AudioDeviceInfo selected = audioManager.getCommunicationDevice();
+            if (route == null) {
+                // No explicit choice yet. Keep a headset the system already
+                // picked; forcing the earpiece here is what kept Bluetooth
+                // from ever carrying a call.
+                if (isBluetoothDevice(selected)) { renderAudioRoute("bluetooth"); return true; }
+                route = "phone";
+            }
+            if ("bluetooth".equals(route) && !hasBluetoothPermission()) {
+                renderAudioRoute(currentRouteName());
+                return false;
+            }
             for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                if (device.getType() == desired) {
+                boolean wanted = "speaker".equals(route) ? device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                        : "bluetooth".equals(route) ? isBluetoothCallDevice(device)
+                        : device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
+                if (wanted) {
                     applied = audioManager.setCommunicationDevice(device);
                     break;
                 }
             }
-            AudioDeviceInfo selected = audioManager.getCommunicationDevice();
-            boolean speakerActive = selected != null
-                    && selected.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
-            renderAudioRoute(speakerActive);
-            if (!applied || speakerActive != useSpeaker) {
-                Log.w(TAG, "Audio route not yet applied; requestedSpeaker=" + useSpeaker
+            selected = audioManager.getCommunicationDevice();
+            String actual = routeNameOf(selected);
+            renderAudioRoute(actual);
+            if (!applied || !actual.equals(route)) {
+                Log.w(TAG, "Audio route not yet applied; requested=" + route
                         + " selectedType=" + (selected == null ? "none" : selected.getType()));
             }
-            return applied && speakerActive == useSpeaker;
+            return applied && actual.equals(route);
         }
-        audioManager.setSpeakerphoneOn(useSpeaker);
-        applied = audioManager.isSpeakerphoneOn() == useSpeaker;
-        renderAudioRoute(audioManager.isSpeakerphoneOn());
-        if (!applied) Log.w(TAG, "Legacy speaker route not yet applied; requestedSpeaker=" + useSpeaker);
+        if (route == null) route = audioManager.isBluetoothScoOn() ? "bluetooth" : "phone";
+        if ("bluetooth".equals(route)) {
+            audioManager.setSpeakerphoneOn(false);
+            audioManager.startBluetoothSco();
+            audioManager.setBluetoothScoOn(true);
+            applied = true;
+        } else {
+            audioManager.stopBluetoothSco();
+            audioManager.setBluetoothScoOn(false);
+            audioManager.setSpeakerphoneOn("speaker".equals(route));
+            applied = audioManager.isSpeakerphoneOn() == "speaker".equals(route);
+        }
+        renderAudioRoute(currentRouteName());
+        if (!applied) Log.w(TAG, "Legacy audio route not yet applied; requested=" + route);
         return applied;
     }
 
-    @SuppressWarnings("deprecation") private void restoreAudio() { handler.removeCallbacks(enforceRequestedAudioRoute); if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else audioManager.setSpeakerphoneOn(false); audioManager.setMode(AudioManager.MODE_NORMAL); } }
+    @SuppressWarnings("deprecation") private void restoreAudio() { handler.removeCallbacks(enforceRequestedAudioRoute); handler.removeCallbacks(audioRoutePoll); if (audioManager != null) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice(); else { audioManager.stopBluetoothSco(); audioManager.setBluetoothScoOn(false); audioManager.setSpeakerphoneOn(false); } audioManager.setMode(AudioManager.MODE_NORMAL); } }
     private TextView label(String value,int size,int color){ TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setGravity(Gravity.CENTER);v.setIncludeFontPadding(false);return v; }
     private TextView callCaption(String value, int color){ TextView v=label(value,11,color);v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));v.setAllCaps(true);v.setLetterSpacing(.12f);return v; }
     private LinearLayout.LayoutParams controlParams(){ LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);p.setMargins(dp(4),0,dp(4),0);return p; }

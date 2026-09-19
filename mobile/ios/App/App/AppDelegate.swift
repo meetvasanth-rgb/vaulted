@@ -620,6 +620,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         callKitAudioSessionActive = false
+        clearPreferredAudioInput()
         stopRingback()
         NativeWebRTCCallEngine.shared.callKitDidDeactivate(audioSession)
         if let match = calls.first {
@@ -653,6 +654,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         do {
             let session = AVAudioSession.sharedInstance()
             try session.overrideOutputAudioPort(.none)
+            clearPreferredAudioInput()
             try session.setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
             print("VXCALL manager outgoing audio deactivation failed: \(error.localizedDescription)")
@@ -684,6 +686,79 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func isSpeakerEnabled() -> Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .builtInSpeaker }
+    }
+
+    // MARK: - Phone / Bluetooth / speaker routing for the in-call screen
+    //
+    // CallKit's own lock-screen UI already offers Bluetooth, but the
+    // WebView call screen only knew "speaker on/off". These report where
+    // audio is going and let the page choose Bluetooth explicitly.
+
+    private static func isBluetoothPort(_ port: AVAudioSession.Port) -> Bool {
+        port == .bluetoothHFP || port == .bluetoothA2DP || port == .bluetoothLE
+    }
+
+    /// The Bluetooth input the voice session can pair with, if a headset is connected.
+    private func bluetoothInput() -> AVAudioSessionPortDescription? {
+        AVAudioSession.sharedInstance().availableInputs?.first {
+            $0.portType == .bluetoothHFP || $0.portType == .bluetoothLE
+        }
+    }
+
+    func isBluetoothAudioAvailable() -> Bool {
+        bluetoothInput() != nil
+            || AVAudioSession.sharedInstance().currentRoute.outputs.contains {
+                VaultlixCallManager.isBluetoothPort($0.portType)
+            }
+    }
+
+    /// "speaker", "bluetooth" or "phone": where the system is sending audio right now.
+    func currentAudioRoute() -> String {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        if outputs.contains(where: { $0.portType == .builtInSpeaker }) { return "speaker" }
+        if outputs.contains(where: { VaultlixCallManager.isBluetoothPort($0.portType) }) { return "bluetooth" }
+        return "phone"
+    }
+
+    /// Choose the output for the call: "phone" (receiver), "bluetooth" or "speaker".
+    /// Bluetooth and phone are selected through the preferred input, which is
+    /// what makes iOS move the output with it; `.none` on its own would leave
+    /// the system choice (Bluetooth whenever a headset is connected).
+    @discardableResult
+    func setAudioRoute(_ route: String, activateSession: Bool = false) -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            if activateSession && !outgoingWebAudioSessionActive {
+                try session.setActive(true, options: .notifyOthersOnDeactivation)
+                outgoingWebAudioSessionActive = true
+            }
+            switch route {
+            case "speaker":
+                try session.overrideOutputAudioPort(.speaker)
+            case "bluetooth":
+                try session.overrideOutputAudioPort(.none)
+                if let input = bluetoothInput() { try session.setPreferredInput(input) }
+            case "phone":
+                try session.overrideOutputAudioPort(.none)
+                if let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                    try session.setPreferredInput(builtIn)
+                }
+            default:
+                return false
+            }
+            restartRingbackForCurrentRoute()
+            return true
+        } catch {
+            print("VXCALL manager audio route \(route) failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// A route chosen during one call must not carry into the next, which
+    /// should start on the system default (Bluetooth if one is connected).
+    private func clearPreferredAudioInput() {
+        try? AVAudioSession.sharedInstance().setPreferredInput(nil)
     }
 
     /// AVAudioSession replaces its output graph when the user moves between

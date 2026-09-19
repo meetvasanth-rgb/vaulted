@@ -152,6 +152,93 @@ public class LockedCallActivity extends BridgeActivity {
         return audioManager.isSpeakerphoneOn();
     }
 
+    // ── Phone / Bluetooth / speaker selection (same contract as MainActivity) ──
+
+    /** A Bluetooth headset that can carry a call (SCO, or LE Audio on 12+). */
+    private boolean isBluetoothCallDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    /**
+     * The lock-screen call only uses a Bluetooth permission the app already
+     * holds. It never asks: a permission dialog over the keyguard is not a
+     * place to introduce a new prompt. MainActivity requests it in-app.
+     */
+    private boolean hasBluetoothPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                || checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean isBluetoothAudioAvailable() {
+        if (audioManager == null || !hasBluetoothPermission()) return false;
+        AudioDeviceInfo[] candidates;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            candidates = audioManager.getAvailableCommunicationDevices().toArray(new AudioDeviceInfo[0]);
+        } else {
+            candidates = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+        }
+        for (AudioDeviceInfo device : candidates) {
+            if (isBluetoothCallDevice(device)) return true;
+        }
+        return false;
+    }
+
+    @SuppressWarnings("deprecation")
+    private String currentAudioRouteName() {
+        if (audioManager == null) return "phone";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = audioManager.getCommunicationDevice();
+            if (current != null && current.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) return "speaker";
+            return isBluetoothDevice(current) ? "bluetooth" : "phone";
+        }
+        if (audioManager.isSpeakerphoneOn()) return "speaker";
+        return audioManager.isBluetoothScoOn() ? "bluetooth" : "phone";
+    }
+
+    private String audioRouteStateJson() {
+        try {
+            org.json.JSONObject state = new org.json.JSONObject();
+            state.put("route", currentAudioRouteName());
+            state.put("bluetoothAvailable", isBluetoothAudioAvailable());
+            state.put("bluetoothPermission", hasBluetoothPermission());
+            return state.toString();
+        } catch (Exception unexpected) {
+            return "{}";
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean setCallAudioRoute(String route) {
+        if (!"phone".equals(route) && !"speaker".equals(route) && !"bluetooth".equals(route)) return false;
+        if (audioManager == null) return false;
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        if ("bluetooth".equals(route) && !hasBluetoothPermission()) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                boolean wanted = "speaker".equals(route) ? device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                        : "phone".equals(route) ? device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                        : isBluetoothCallDevice(device);
+                if (wanted) return audioManager.setCommunicationDevice(device);
+            }
+            return false;
+        }
+        if ("bluetooth".equals(route)) {
+            audioManager.setSpeakerphoneOn(false);
+            audioManager.startBluetoothSco();
+            audioManager.setBluetoothScoOn(true);
+            return true;
+        }
+        audioManager.stopBluetoothSco();
+        audioManager.setBluetoothScoOn(false);
+        audioManager.setSpeakerphoneOn("speaker".equals(route));
+        return true;
+    }
+
     private void enforceAudioRouteAfterWebRtcConnects() {
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
         enforceConnectedAudioRoute.run();
@@ -191,6 +278,9 @@ public class LockedCallActivity extends BridgeActivity {
                 audioManager.clearCommunicationDevice();
             }
         } else {
+            // Release a Bluetooth headset if setCallAudioRoute("bluetooth") held it open.
+            audioManager.stopBluetoothSco();
+            audioManager.setBluetoothScoOn(false);
             audioManager.setSpeakerphoneOn(previousSpeakerphoneOn);
         }
         audioManager.setMode(previousAudioMode);
@@ -282,6 +372,21 @@ public class LockedCallActivity extends BridgeActivity {
         public boolean setSpeakerEnabled(boolean enabled) {
             return LockedCallActivity.this.setSpeakerEnabled(enabled);
         }
+
+        /** JSON: {"route":"phone|bluetooth|speaker","bluetoothAvailable":bool,"bluetoothPermission":bool}. */
+        @JavascriptInterface
+        public String getAudioRouteState() {
+            return LockedCallActivity.this.audioRouteStateJson();
+        }
+
+        @JavascriptInterface
+        public boolean setCallAudioRoute(String route) {
+            return LockedCallActivity.this.setCallAudioRoute(route);
+        }
+
+        /** Deliberately a no-op here: never prompt over the lock screen. */
+        @JavascriptInterface
+        public void requestBluetoothPermission() { }
 
         @JavascriptInterface
         public void callReady() {

@@ -106,10 +106,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
     }
 
-    private func emitSpeakerState(success: Bool) {
+    /// `routeOverride` is the route just requested. Choosing a Bluetooth or
+    /// phone input moves the output a moment after the call returns, so the
+    /// immediate reading can still show the old one; the route-change
+    /// notification emits again with the real route once it settles.
+    private func emitSpeakerState(success: Bool, routeOverride: String? = nil) {
+        let manager = VaultlixCallManager.shared
+        let route = (success ? routeOverride : nil) ?? manager.currentAudioRoute()
         emit(name: "vaultlix:call-audio-route", detail: [
             "available": true,
-            "speakerOn": VaultlixCallManager.shared.isSpeakerEnabled(),
+            "speakerOn": route == "speaker",
+            "route": route,
+            "bluetoothAvailable": manager.isBluetoothAudioAvailable(),
             "success": success,
         ])
     }
@@ -470,6 +478,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 activateSession: body["outgoing"] as? Bool ?? false
             )
             emitSpeakerState(success: success)
+            return
+        }
+        if action == "setAudioRoute",
+           let route = body["route"] as? String,
+           ["phone", "bluetooth", "speaker"].contains(route) {
+            let success = VaultlixCallManager.shared.setAudioRoute(
+                route,
+                activateSession: body["outgoing"] as? Bool ?? false
+            )
+            emitSpeakerState(success: success, routeOverride: route)
             return
         }
         if action == "updateCaller",

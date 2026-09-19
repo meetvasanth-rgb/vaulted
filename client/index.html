@@ -4848,6 +4848,11 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // finds a switchable output device (mainly Android Chrome; never on iOS
     // Safari, which has no API for this at all).
     speakerAvailable: false, speakerOn: false, speakerDeviceId: null,
+    // Output route as reported by the native app: 'phone' | 'bluetooth' |
+    // 'speaker'. bluetoothAvailable stays false on app builds that predate
+    // Bluetooth reporting, which keeps the original two-way Phone/Speaker
+    // control for them. speakerOn is kept in sync for existing readers.
+    audioRoute: null, bluetoothAvailable: false, audioRoutePollTimer: null,
     // Camera toggle — off by default on every call, on either side
     // independently. localVideoStream is separate from localStream (audio)
     // since it's grabbed later, on demand, via its own getUserMedia call.
@@ -5014,6 +5019,7 @@ window.addEventListener('vaultlix:call-audio-route', event => {
   const detail = event.detail || {};
   room.speakerAvailable = detail.available === true;
   room.speakerOn = detail.speakerOn === true;
+  applyNativeAudioRouteDetail(room, detail);
   if (detail.success === false) toast('Couldn’t change the audio route.');
   renderCallOverlay(room);
 });
@@ -7146,13 +7152,7 @@ function renderCallOverlay(room) {
         </div>`;
 
   if (room.callState === 'outgoing') {
-    const outgoingSpeakerBtnHtml = room.speakerAvailable ? `
-        <div class="call-btn-wrap">
-          <button class="call-speaker-btn${room.speakerOn ? ' active' : ''}" onclick="toggleSpeaker()" title="${room.speakerOn ? 'Speaker on' : 'Speaker off'}">
-            <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" fill="none"/></svg>
-          </button>
-          <div class="call-btn-label">${room.speakerOn ? 'Speaker' : 'Phone'}</div>
-        </div>` : '';
+    const outgoingSpeakerBtnHtml = room.speakerAvailable ? audioRouteButtonHtml(room) : '';
     callSurface.innerHTML = `
       ${stableIosRain ? '' : callDataRainHtml()}
       ${callHeaderBlock()}
@@ -7198,13 +7198,7 @@ function renderCallOverlay(room) {
     // Only rendered at all once detectSpeakerToggle() has confirmed this
     // browser/device can actually switch output devices — see the
     // definition of that function for why this can't just always be shown.
-    const speakerBtnHtml = room.speakerAvailable ? `
-        <div class="call-btn-wrap">
-          <button class="call-speaker-btn${room.speakerOn ? ' active' : ''}" onclick="toggleSpeaker()" title="${room.speakerOn ? 'Speaker on' : 'Speaker off'}">
-            <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" fill="none"/></svg>
-          </button>
-          <div class="call-btn-label">${room.speakerOn ? 'Speaker' : 'Phone'}</div>
-        </div>` : '';
+    const speakerBtnHtml = room.speakerAvailable ? audioRouteButtonHtml(room) : '';
     const cameraIcon = room.callVideoOn
       ? '<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
@@ -7598,6 +7592,9 @@ function teardownPeerConnection(room) {
   room.speakerAvailable = false;
   room.speakerOn = false;
   room.speakerDeviceId = null;
+  room.audioRoute = null;
+  room.bluetoothAvailable = false;
+  stopAudioRoutePolling(room);
 }
 
 function nativeAndroidAudioBridge() {
@@ -7607,6 +7604,85 @@ function nativeAndroidAudioBridge() {
   } catch (e) {
     return null;
   }
+}
+
+const AUDIO_ROUTE_LABELS = { phone: 'Phone', bluetooth: 'Bluetooth', speaker: 'Speaker' };
+const AUDIO_ROUTE_SPEAKER_ICON = '<svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" fill="none"/></svg>';
+const AUDIO_ROUTE_ICONS = {
+  phone: AUDIO_ROUTE_SPEAKER_ICON,
+  speaker: AUDIO_ROUTE_SPEAKER_ICON,
+  bluetooth: '<svg viewBox="0 0 24 24"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5" fill="none"/></svg>',
+};
+
+function currentAudioRoute(room) {
+  if (room.audioRoute === 'phone' || room.audioRoute === 'bluetooth' || room.audioRoute === 'speaker') return room.audioRoute;
+  return room.speakerOn ? 'speaker' : 'phone';
+}
+
+// With a Bluetooth device connected a tap goes Bluetooth -> Speaker -> Phone.
+// Without one it is the original Phone <-> Speaker pair.
+function nextAudioRoute(room) {
+  const routes = room.bluetoothAvailable ? ['bluetooth', 'speaker', 'phone'] : ['phone', 'speaker'];
+  return routes[(routes.indexOf(currentAudioRoute(room)) + 1) % routes.length];
+}
+
+// Older app builds report neither field, so they keep the two-way control.
+function applyNativeAudioRouteDetail(room, detail) {
+  room.bluetoothAvailable = detail.bluetoothAvailable === true;
+  const route = detail.route;
+  room.audioRoute = route === 'phone' || route === 'bluetooth' || route === 'speaker' ? route : null;
+  if (room.audioRoute) room.speakerOn = room.audioRoute === 'speaker';
+}
+
+// One button for all routes: the label and icon show where audio is going now.
+function audioRouteButtonHtml(room) {
+  const route = currentAudioRoute(room);
+  const label = AUDIO_ROUTE_LABELS[route];
+  return `
+        <div class="call-btn-wrap">
+          <button class="call-speaker-btn${route === 'phone' ? '' : ' active'}" onclick="toggleSpeaker()" title="Audio: ${label}. Tap to change">
+            ${AUDIO_ROUTE_ICONS[route]}
+          </button>
+          <div class="call-btn-label">${label}</div>
+        </div>`;
+}
+
+// Android cannot push route changes to the page (a headset can connect
+// mid-call), so ask the small state call while a call is in progress.
+function refreshAndroidAudioRoute(room) {
+  const bridge = nativeAndroidAudioBridge();
+  if (!bridge || typeof bridge.getAudioRouteState !== 'function') return false;
+  try {
+    const before = `${room.audioRoute}|${room.bluetoothAvailable}`;
+    const state = JSON.parse(bridge.getAudioRouteState());
+    applyNativeAudioRouteDetail(room, state);
+    // Android 12+ cannot use a Bluetooth headset for a call until
+    // BLUETOOTH_CONNECT is granted. Ask once per app session; the lock-screen
+    // call host deliberately ignores this so nothing prompts over the keyguard.
+    if (state.bluetoothPermission === false) requestAndroidBluetoothPermissionOnce(bridge);
+    return `${room.audioRoute}|${room.bluetoothAvailable}` !== before;
+  } catch (e) { return false; }
+}
+
+let androidBluetoothPermissionAsked = false;
+function requestAndroidBluetoothPermissionOnce(bridge) {
+  if (androidBluetoothPermissionAsked || typeof bridge.requestBluetoothPermission !== 'function') return;
+  androidBluetoothPermissionAsked = true;
+  try { bridge.requestBluetoothPermission(); } catch (e) {}
+}
+
+function stopAudioRoutePolling(room) {
+  if (room.audioRoutePollTimer) { clearInterval(room.audioRoutePollTimer); room.audioRoutePollTimer = null; }
+}
+
+function startAudioRoutePolling(room) {
+  stopAudioRoutePolling(room);
+  const bridge = nativeAndroidAudioBridge();
+  if (!bridge || typeof bridge.getAudioRouteState !== 'function') return;
+  room.audioRoutePollTimer = setInterval(() => {
+    if (room.callState === 'idle') { stopAudioRoutePolling(room); return; }
+    if (refreshAndroidAudioRoute(room) && activeCallRoomCode === room.code) renderCallOverlay(room);
+  }, 2000);
 }
 
 function requestNativeIOSSpeakerState(room) {
@@ -7634,6 +7710,8 @@ async function detectSpeakerToggle(room) {
   if (nativeBridge) {
     room.speakerAvailable = true;
     try { room.speakerOn = !!nativeBridge.isSpeakerEnabled(); } catch (e) {}
+    refreshAndroidAudioRoute(room);
+    startAudioRoutePolling(room);
     return;
   }
   try {
@@ -7657,14 +7735,22 @@ async function toggleSpeaker() {
   if (!room || !room.speakerAvailable) return;
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
   if (iosBridge) {
-    const target = !room.speakerOn;
+    const previous = currentAudioRoute(room);
+    const target = nextAudioRoute(room);
     // Render immediately; the native route event confirms or rolls this
     // state back if iOS rejects the change.
-    room.speakerOn = target;
+    room.audioRoute = target;
+    room.speakerOn = target === 'speaker';
     renderCallOverlay(room);
-    try { iosBridge.postMessage({ action: 'setSpeaker', enabled: target, outgoing: !room.nativeCallActive }); }
-    catch (e) {
-      room.speakerOn = !target;
+    try {
+      // Bluetooth is only offered by app builds that can also select it;
+      // older builds keep the original speaker on/off message.
+      iosBridge.postMessage(room.bluetoothAvailable
+        ? { action: 'setAudioRoute', route: target, outgoing: !room.nativeCallActive }
+        : { action: 'setSpeaker', enabled: target === 'speaker', outgoing: !room.nativeCallActive });
+    } catch (e) {
+      room.audioRoute = previous;
+      room.speakerOn = previous === 'speaker';
       renderCallOverlay(room);
       toast('Couldn’t change the audio route.');
     }
@@ -7672,10 +7758,14 @@ async function toggleSpeaker() {
   }
   const nativeBridge = nativeAndroidAudioBridge();
   if (nativeBridge) {
-    const target = !room.speakerOn;
+    const target = nextAudioRoute(room);
     try {
-      if (!nativeBridge.setSpeakerEnabled(target)) throw new Error('route unavailable');
-      room.speakerOn = target;
+      const applied = room.bluetoothAvailable && typeof nativeBridge.setCallAudioRoute === 'function'
+        ? nativeBridge.setCallAudioRoute(target)
+        : nativeBridge.setSpeakerEnabled(target === 'speaker');
+      if (!applied) throw new Error('route unavailable');
+      room.audioRoute = target;
+      room.speakerOn = target === 'speaker';
     } catch (e) {
       toast('Couldn’t change the audio route.');
     }

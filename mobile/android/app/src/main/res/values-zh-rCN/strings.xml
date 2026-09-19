@@ -14,6 +14,7 @@
   <string name="native_unmute">&#x53D6;&#x6D88;&#x9759;&#x97F3;</string>
   <string name="native_speaker">&#x626C;&#x58F0;&#x5668;</string>
   <string name="native_phone">&#x542C;&#x7B52;</string>
+  <string name="native_bluetooth">蓝牙</string>
   <string name="native_end">&#x7ED3;&#x675F;</string>
   <string name="native_encrypted_call_duration">&#x52A0;&#x5BC6;&#x901A;&#x8BDD; &#xB7; %1$s</string>
   <string name="native_incoming_encrypted_call">加密来电</string>

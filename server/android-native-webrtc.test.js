@@ -87,10 +87,15 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /onConnected\(\)[\s\S]*engine\.connectedAtMs\(\)[\s\S]*renderConnected/);
   assert.match(nativeActivity, /"calling"\.equals\(value\)[\s\S]*native_calling/);
   assert.match(nativeActivity, /"ringing"\.equals\(value\)[\s\S]*native_ringing/);
-  assert.match(nativeActivity, /requestAudioRoute\(!speakerRequested\)/);
-  assert.match(nativeActivity, /onConnected\(\)[\s\S]*requestAudioRoute\(speakerRequested\)/);
+  // The route button now cycles phone / Bluetooth / speaker by name (see
+  // call-audio-route.test.js). The intent pinned here is unchanged: a tap
+  // requests the next route, the choice is re-asserted once media connects,
+  // the delayed re-checks stay for OEMs that revert it, and the button
+  // reflects the device the system actually selected.
+  assert.match(nativeActivity, /requestAudioRoute\(order\[\(index \+ 1\) % order\.length\]\)/);
+  assert.match(nativeActivity, /onConnected\(\)[\s\S]*requestAudioRoute\(requestedRoute\)/);
   assert.match(nativeActivity, /postDelayed\(enforceRequestedAudioRoute, 1_400\)/);
-  assert.match(nativeActivity, /getCommunicationDevice\(\)[\s\S]*renderAudioRoute\(speakerActive\)/);
+  assert.match(nativeActivity, /getCommunicationDevice\(\)[\s\S]*renderAudioRoute\(actual\)/);
   assert.match(engine, /private volatile String currentState = "idle"/);
   assert.match(engine, /private volatile long connectedAtMs/);
   assert.match(engine, /if \(connectedAtMs == 0L\) connectedAtMs = System\.currentTimeMillis\(\)/);

@@ -89,16 +89,27 @@ public class MainActivity extends BridgeActivity {
         openVaultlixInvite(getIntent());
     }
 
+    // True while the app's own screen is in front. The push service reads this
+    // when a call arrives: in the foreground the web call screen (which has
+    // video) should answer, not the audio-only native engine.
+    private static volatile boolean appInForeground;
+
+    public static boolean isAppInForeground() {
+        return appInForeground;
+    }
+
     @Override
     public void onPause() {
         showAppSwitcherPrivacyCover();
         super.onPause();
+        appInForeground = false;
     }
 
     @Override
     public void onResume() {
         super.onResume();
         hideAppSwitcherPrivacyCover();
+        appInForeground = true;
         // Share/open targets have finished reading their granted content URI
         // by the time Vaultlix resumes. Remove the decrypted staging copies;
         // a recipient app's explicit saved copy is outside our sandbox and
@@ -278,6 +289,114 @@ public class MainActivity extends BridgeActivity {
                     && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
     }
 
+    // ── Phone / Bluetooth / speaker selection for the in-call screen ────────
+
+    /** A Bluetooth headset that can carry a call (SCO, or LE Audio on 12+). */
+    private boolean isBluetoothCallDevice(AudioDeviceInfo device) {
+        if (device == null) return false;
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    /**
+     * Android 12+ will not use a Bluetooth headset for a call unless
+     * BLUETOOTH_CONNECT is granted at runtime. It is declared in the manifest
+     * but was never requested, so Bluetooth could never be selected.
+     */
+    private boolean hasBluetoothPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestBluetoothPermission() {
+        if (hasBluetoothPermission()) return;
+        requestPermissions(new String[] { Manifest.permission.BLUETOOTH_CONNECT }, 73);
+    }
+
+    private AudioManager ensureAudioManager() {
+        if (audioManager == null) audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        return audioManager;
+    }
+
+    /** True when a Bluetooth headset can actually be used for the call right now. */
+    private boolean isBluetoothAudioAvailable() {
+        AudioManager manager = ensureAudioManager();
+        if (manager == null || !hasBluetoothPermission()) return false;
+        AudioDeviceInfo[] candidates;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            java.util.List<AudioDeviceInfo> communication = manager.getAvailableCommunicationDevices();
+            candidates = communication.toArray(new AudioDeviceInfo[0]);
+        } else {
+            candidates = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+        }
+        for (AudioDeviceInfo device : candidates) {
+            if (isBluetoothCallDevice(device)) return true;
+        }
+        return false;
+    }
+
+    /** "speaker", "bluetooth" or "phone": where call audio is going right now. */
+    @SuppressWarnings("deprecation")
+    private String currentAudioRouteName() {
+        AudioManager manager = ensureAudioManager();
+        if (manager == null) return "phone";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AudioDeviceInfo current = manager.getCommunicationDevice();
+            if (current != null && current.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) return "speaker";
+            return isBluetoothDevice(current) ? "bluetooth" : "phone";
+        }
+        if (manager.isSpeakerphoneOn()) return "speaker";
+        return manager.isBluetoothScoOn() ? "bluetooth" : "phone";
+    }
+
+    private String audioRouteStateJson() {
+        try {
+            JSONObject state = new JSONObject();
+            state.put("route", currentAudioRouteName());
+            state.put("bluetoothAvailable", isBluetoothAudioAvailable());
+            state.put("bluetoothPermission", hasBluetoothPermission());
+            return state.toString();
+        } catch (Exception unexpected) {
+            return "{}";
+        }
+    }
+
+    /** Explicitly choose "phone" (earpiece), "bluetooth" or "speaker" for the call. */
+    @SuppressWarnings("deprecation")
+    private boolean setCallAudioRoute(String route) {
+        if (!"phone".equals(route) && !"speaker".equals(route) && !"bluetooth".equals(route)) return false;
+        configureCallAudioRoute();
+        if (audioManager == null) return false;
+        // A user-selected route must win over the delayed OEM/WebRTC
+        // earpiece enforcement scheduled when the call first connects.
+        audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        if ("bluetooth".equals(route) && !hasBluetoothPermission()) {
+            runOnUiThread(this::requestBluetoothPermission);
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                boolean wanted = "speaker".equals(route) ? device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                        : "phone".equals(route) ? device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                        : isBluetoothCallDevice(device);
+                if (wanted) return audioManager.setCommunicationDevice(device);
+            }
+            return false;
+        }
+        if ("bluetooth".equals(route)) {
+            audioManager.setSpeakerphoneOn(false);
+            audioManager.startBluetoothSco();
+            audioManager.setBluetoothScoOn(true);
+            return true;
+        }
+        audioManager.stopBluetoothSco();
+        audioManager.setBluetoothScoOn(false);
+        audioManager.setSpeakerphoneOn("speaker".equals(route));
+        return true;
+    }
+
     private void enforceAudioRouteAfterWebRtcConnects() {
         configureCallAudioRoute();
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
@@ -298,6 +417,9 @@ public class MainActivity extends BridgeActivity {
                 audioManager.clearCommunicationDevice();
             }
         } else {
+            // Release a Bluetooth headset if setCallAudioRoute("bluetooth") held it open.
+            audioManager.stopBluetoothSco();
+            audioManager.setBluetoothScoOn(false);
             audioManager.setSpeakerphoneOn(previousSpeakerphoneOn);
         }
         audioManager.setMode(previousAudioMode);
@@ -653,6 +775,22 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean setSpeakerEnabled(boolean enabled) {
             return MainActivity.this.setSpeakerEnabled(enabled);
+        }
+
+        /** JSON: {"route":"phone|bluetooth|speaker","bluetoothAvailable":bool,"bluetoothPermission":bool}. */
+        @JavascriptInterface
+        public String getAudioRouteState() {
+            return MainActivity.this.audioRouteStateJson();
+        }
+
+        @JavascriptInterface
+        public boolean setCallAudioRoute(String route) {
+            return MainActivity.this.setCallAudioRoute(route);
+        }
+
+        @JavascriptInterface
+        public void requestBluetoothPermission() {
+            runOnUiThread(MainActivity.this::requestBluetoothPermission);
         }
 
         @JavascriptInterface
