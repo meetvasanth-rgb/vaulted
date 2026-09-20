@@ -348,6 +348,7 @@ function renderPrivateGroupMessages(group) {
     // Photos and files get the same long-press action row as direct
     // conversations (Save, Forward). Hidden or blocked media never does.
     let actionable = false;
+    let textActionable = false;
     if (message.attachment?.type === 'group-image') {
       // Same photo markup and in-app viewer as direct conversations: tapping
       // opens viewImage(), and saving is an explicit action inside it.
@@ -377,10 +378,13 @@ function renderPrivateGroupMessages(group) {
       const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
       const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
       content = `<div class="group-message-text">${escHtml(visibleText)}</div>`;
+      // Tapping a readable text message opens Copy / Forward, like a direct chat.
+      textActionable = !unsafe && typeof message.text === 'string' && !!message.text.trim();
     }
     const actions = actionable
-      ? `<div class="msg-actions" id="actions-${escHtml(message.id)}">${msgActionBtn('save', 'Save')}${msgActionBtn('forward', 'Forward')}</div>` : '';
-    return `<div class="group-message${message.senderId === state?.accountId ? ' mine' : ''}"${actionable ? ` data-actionable-id="${escHtml(message.id)}"` : ''}><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${content}${actions}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
+      ? `<div class="msg-actions" id="actions-${escHtml(message.id)}">${msgActionBtn('save', 'Save')}${msgActionBtn('forward', 'Forward')}</div>`
+      : (textActionable ? `<div class="msg-actions" id="actions-${escHtml(message.id)}">${msgActionBtn('copy', 'Copy')}${msgActionBtn('forward', 'Forward')}</div>` : '');
+    return `<div class="group-message${message.senderId === state?.accountId ? ' mine' : ''}"${actionable ? ` data-actionable-id="${escHtml(message.id)}"` : (textActionable ? ` data-text-actionable-id="${escHtml(message.id)}"` : '')}><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${content}${actions}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
   }).join('');
   // Same gesture as direct conversations: long-press a photo or file to open
   // its action row. Listeners must be re-attached because the list is redrawn.
@@ -393,8 +397,39 @@ function renderPrivateGroupMessages(group) {
     if (save) save.onclick = event => { event.stopPropagation(); savePrivateGroupAttachment(id); };
     if (forward) forward.onclick = event => { event.stopPropagation(); forwardPrivateGroupAttachment(id); };
   }
+  for (const row of body.querySelectorAll('[data-text-actionable-id]')) {
+    const id = row.dataset.textActionableId;
+    const text = row.querySelector('.group-message-text');
+    if (text) text.onclick = () => { if (!window.getSelection()?.toString()) toggleMsgActions(id); };
+    const copy = row.querySelector('[data-action="copy"]');
+    const forward = row.querySelector('[data-action="forward"]');
+    if (copy) copy.onclick = event => { event.stopPropagation(); copyPrivateGroupText(id); };
+    if (forward) forward.onclick = event => { event.stopPropagation(); forwardPrivateGroupText(id); };
+  }
   body.scrollTop = body.scrollHeight;
   fillPrivateGroupPdfPreviews(group.id);
+}
+
+function privateGroupTextById(messageId) {
+  const group = privateGroups.get(activePrivateGroupId);
+  const text = group?.messages?.find(message => message.id === messageId)?.text;
+  return typeof text === 'string' && text.trim() ? text : null;
+}
+
+async function copyPrivateGroupText(messageId) {
+  closeAllMsgActions();
+  const text = privateGroupTextById(messageId); if (!text) return;
+  try { await navigator.clipboard.writeText(text); toast('Copied'); }
+  catch (_) { toast('Press and hold the message to copy it'); }
+}
+
+// Forward a group message into a one-to-one conversation. The text is already
+// decrypted on this device; it is sent again under the chosen conversation's
+// own key through the ordinary send route.
+function forwardPrivateGroupText(messageId) {
+  closeAllMsgActions();
+  const text = privateGroupTextById(messageId); if (!text) return;
+  showForwardAttachmentPicker({ kind:'text', text }, { includeActiveRoom:true });
 }
 
 // Mirrors the direct-conversation PDF card: first-page thumbnail (or a PDF
@@ -583,13 +618,56 @@ function openGroupMembers() {
   const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState(); if (!group || !state) return;
   const owner = group.ownerId === state.accountId;
   document.getElementById('group-members-list').innerHTML = (group.members || []).map(member => `<div class="group-member"><span><strong>${escHtml(member.displayName || 'Vaultlix member')}${member.accountId === state.accountId ? ' · You' : ''}</strong><small>${escHtml(formatPrivateNumber(member.privateNumber))}${member.role === 'owner' ? ' · Owner' : ''}</small></span>${member.accountId !== state.accountId ? `<span>${owner ? `<button type="button" onclick="removePrivateGroupMember('${escHtml(member.accountId)}')">Remove</button>` : ''}<button type="button" onclick="reportPrivateGroupMember('${escHtml(member.accountId)}')">Report / block</button></span>` : ''}</div>`).join('');
-  document.getElementById('group-members-actions').innerHTML = `${owner ? '<button class="danger" type="button" onclick="deletePrivateGroup()">Delete group</button>' : '<button class="danger" type="button" onclick="leavePrivateGroup()">Leave group</button>'}<button class="close" type="button" onclick="closeGroupMembers()">Close</button>`;
+  document.getElementById('group-members-actions').innerHTML = `${owner ? '<button class="add" type="button" onclick="openAddGroupMembers()">Add people</button><button class="danger" type="button" onclick="deletePrivateGroup()">Delete group</button>' : '<button class="danger" type="button" onclick="leavePrivateGroup()">Leave group</button>'}<button class="close" type="button" onclick="closeGroupMembers()">Close</button>`;
   document.getElementById('group-members').classList.add('open');
 }
 
 function closeGroupMembers() { document.getElementById('group-members')?.classList.remove('open'); }
 
-async function rotatePrivateGroupKey(group, removedAccountId = null) {
+// Contacts the owner could add: securely connected, on this account, and not
+// already in the group (matched by the conversation used to wrap their key, or
+// by Private Number in case the conversation was re-created).
+function groupAddCandidates(group, roomList, accountId) {
+  const inGroupRooms = new Set((group.members || []).map(member => member.wrapRoomCode).filter(Boolean));
+  const inGroupNumbers = new Set((group.members || []).map(member => String(member.privateNumber || '')).filter(Boolean));
+  return roomList.filter(room => room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === accountId
+    && !room.reconnectRequired && !inGroupRooms.has(room.code) && !inGroupNumbers.has(String(room.peerPrivateNumber)));
+}
+
+function openAddGroupMembers() {
+  const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState();
+  if (!group || !state || group.ownerId !== state.accountId) return;
+  const eligible = groupAddCandidates(group, [...rooms.values()], state.accountId);
+  const room = 49 - Math.max(0, (group.members?.length || 1) - 1);
+  document.getElementById('group-add-list').innerHTML = eligible.length
+    ? eligible.map(entry => `<label class="group-contact"><input type="checkbox" value="${escHtml(entry.code)}"><span>${escHtml(roomDisplayLabel(entry))}<small>${escHtml(formatPrivateNumber(entry.peerPrivateNumber))}</small></span></label>`).join('')
+    : '<div class="group-chat-empty" style="padding:24px">Everyone you are connected with is already in this group.</div>';
+  document.getElementById('group-add-note').textContent = room <= 0
+    ? 'This group is full.'
+    : 'New people can read messages sent after they join, not earlier ones.';
+  document.getElementById('group-add-submit').disabled = !eligible.length || room <= 0;
+  document.getElementById('group-add-overlay').classList.add('open');
+}
+
+function closeAddGroupMembers() { document.getElementById('group-add-overlay')?.classList.remove('open'); }
+
+async function addPrivateGroupMembers() {
+  const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState();
+  if (!group || !state || group.ownerId !== state.accountId) return;
+  const codes = [...document.querySelectorAll('#group-add-list input:checked')].map(input => input.value);
+  if (!codes.length) { toast('Select at least one contact'); return; }
+  const button = document.getElementById('group-add-submit');
+  button.disabled = true; button.textContent = 'Adding…';
+  try {
+    await rotatePrivateGroupKey(group, null, codes);
+    closeAddGroupMembers(); closeGroupMembers(); openGroupMembers();
+    document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
+    toast(codes.length === 1 ? 'Person added to the group' : `${codes.length} people added to the group`);
+  } catch (error) { toast(error.message || 'People could not be added'); }
+  finally { button.disabled = false; button.textContent = 'Add to group'; }
+}
+
+async function rotatePrivateGroupKey(group, removedAccountId = null, addRoomCodes = []) {
   const state = loadAccountState(); if (!state || group.ownerId !== state.accountId) return false;
   const nextVersion = Number(group.keyVersion) + 1;
   const encodedKey = bytesToBase64UrlCompact(crypto.getRandomValues(new Uint8Array(32)));
@@ -602,8 +680,20 @@ async function rotatePrivateGroupKey(group, removedAccountId = null) {
     const wrappedKey = await encryptMsg(room, JSON.stringify({ type:'private-group-key', groupKeyId:group.keyBinding, version:nextVersion, key:encodedKey }));
     envelopes.push({ accountId:member.accountId, wrapRoomCode:member.wrapRoomCode, wrappedKey });
   }
-  const result = await api('/api/groups/rekey', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, removedAccountId, encryptedName, envelopes });
+  // New people get the new key wrapped for them on their own conversation
+  // with the owner, exactly like the founding members did at creation.
+  const additions = [];
+  for (const code of addRoomCodes) {
+    const room = rooms.get(code);
+    if (!room?.sharedKey) throw new Error('One contact is not securely connected yet');
+    const wrappedKey = await encryptMsg(room, JSON.stringify({ type:'private-group-key', groupKeyId:group.keyBinding, version:nextVersion, key:encodedKey }));
+    additions.push({ roomCode:code, wrappedKey });
+  }
+  const result = additions.length
+    ? await api('/api/groups/add-members', { accountId:state.accountId, sessionToken:state.sessionToken,
+        groupId:group.id, encryptedName, envelopes, additions })
+    : await api('/api/groups/rekey', { accountId:state.accountId, sessionToken:state.sessionToken,
+        groupId:group.id, removedAccountId, encryptedName, envelopes });
   if (result.error) throw new Error(result.error);
   group.keys = { ...(group.keys || {}), [nextVersion]:encodedKey };
   group.keyVersion = nextVersion; group.requiresRekey = false; group.members = result.group.members; group.updatedAt = result.group.updatedAt;

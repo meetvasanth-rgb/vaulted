@@ -5,6 +5,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const MAX_GROUP_MESSAGES = 1000;
+// Everyone but the owner; the create endpoint accepts 1 to 49 invited members.
+const MAX_GROUP_MEMBERS = 49;
 const SCHEMA = `CREATE TABLE IF NOT EXISTS private_groups (
   id uuid PRIMARY KEY,
   data jsonb NOT NULL,
@@ -192,7 +194,10 @@ class GroupStore {
     });
   }
 
-  async rekey(id, ownerId, removedAccountId, encryptedName, envelopes, now = Date.now()) {
+  // `additions` are new members ({ accountId, wrapRoomCode, wrappedKey }) joining
+  // with this key change. They receive only the new key version, so they can
+  // never read anything sent before they joined.
+  async rekey(id, ownerId, removedAccountId, encryptedName, envelopes, now = Date.now(), additions = []) {
     return this.mutate(id, group => {
       if (group.ownerId !== ownerId) return null;
       const removed = removedAccountId
@@ -202,6 +207,13 @@ class GroupStore {
       if (removed) { removed.active = false; removed.leftAt = now; }
       const active = group.members.filter(member => member.active && member.accountId !== ownerId);
       if (envelopes.length !== active.length) return null;
+      const joining = new Set();
+      for (const addition of additions) {
+        if (!addition?.accountId || addition.accountId === ownerId || joining.has(addition.accountId)) return null;
+        if (group.members.some(member => member.accountId === addition.accountId && member.active)) return null;
+        joining.add(addition.accountId);
+      }
+      if (active.length + additions.length > MAX_GROUP_MEMBERS) return null;
       const supplied = new Map(envelopes.map(entry => [entry.accountId, entry]));
       if (active.some(member => !supplied.has(member.accountId))) return null;
       group.keyVersion += 1;
@@ -212,6 +224,13 @@ class GroupStore {
         member.wrappedKeys = { ...(member.wrappedKeys || {}), [group.keyVersion]:entry.wrappedKey };
         member.wrapRoomCode = entry.wrapRoomCode;
         member.keyVersion = group.keyVersion;
+      }
+      for (const addition of additions) {
+        const entry = { accountId:addition.accountId, role:'member', active:true, keyVersion:group.keyVersion,
+          wrappedKey:addition.wrappedKey, wrappedKeys:{ [group.keyVersion]:addition.wrappedKey },
+          wrapRoomCode:addition.wrapRoomCode, addedAt:now };
+        const previous = group.members.findIndex(member => member.accountId === addition.accountId);
+        if (previous >= 0) group.members[previous] = entry; else group.members.push(entry);
       }
       const owner = group.members.find(member => member.accountId === ownerId);
       if (owner) owner.keyVersion = group.keyVersion;
@@ -228,4 +247,4 @@ class GroupStore {
   }
 }
 
-module.exports = { GroupStore, SCHEMA, MAX_GROUP_MESSAGES };
+module.exports = { GroupStore, SCHEMA, MAX_GROUP_MESSAGES, MAX_GROUP_MEMBERS };

@@ -3491,8 +3491,10 @@ async function api(path, method, d, p, res, ip, headers) {
     const group = await groupStore.get(d.groupId);
     if (!group?.members.some(member => member.accountId === d.accountId && member.active)) return resErr(res, 'Private group not found.', 404);
     const after = Number.isFinite(Number(d.after)) ? Number(d.after) : 0;
+    // A member added later never receives what was said before they joined.
+    const joinedAt = Number(group.members.find(member => member.accountId === d.accountId && member.active)?.addedAt) || 0;
     const messages = [];
-    for (const message of group.messages.filter(message => message.createdAt > after).slice(-200)) {
+    for (const message of group.messages.filter(message => message.createdAt > after && message.createdAt >= joinedAt).slice(-200)) {
       if (message.senderId !== d.accountId && await safetyStore.blocked(d.accountId, message.senderId)) continue;
       messages.push(message);
     }
@@ -3607,6 +3609,55 @@ async function api(path, method, d, p, res, ip, headers) {
       publishInboxAccount(member.accountId, 'group-update', { groupId:group.id });
     }
     if (d.removedAccountId) publishInboxAccount(d.removedAccountId, 'group-update', { groupId:group.id });
+    return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
+  }
+
+  if (path === '/api/groups/add-members' && method === 'POST') {
+    if (await rateLimited(`group-add:${ip}`, 40, 60 * 60 * 1000)) return resErr(res, 'Too many group changes — try again later.', 429);
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to manage a private group.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!validEncryptedField(d.encryptedName, 8192) || !Array.isArray(d.envelopes) || d.envelopes.length > 49 ||
+        !Array.isArray(d.additions) || d.additions.length < 1 || d.additions.length > 49) {
+      return resErr(res, 'Invalid group encryption update.', 400);
+    }
+    const source = await groupStore.get(d.groupId);
+    if (!source || source.ownerId !== d.accountId) return resErr(res, 'Only the group owner can add members.', 403);
+    // Adding people changes the key, so every member already in the group must
+    // receive the new key too. Nobody is left on the old one.
+    const existing = source.members.filter(member => member.active && member.accountId !== d.accountId);
+    const supplied = [];
+    for (const entry of d.envelopes) {
+      const member = existing.find(candidate => candidate.accountId === entry?.accountId);
+      const roomCode = String(entry?.wrapRoomCode || '').trim().toLowerCase();
+      if (!member || member.wrapRoomCode !== roomCode || !validEncryptedField(entry?.wrappedKey, 8192)) {
+        return resErr(res, 'Could not securely update every current member.', 400);
+      }
+      supplied.push({ accountId:member.accountId, wrapRoomCode:roomCode, wrappedKey:entry.wrappedKey });
+    }
+    if (supplied.length !== existing.length) return resErr(res, 'Could not securely update every current member.', 400);
+    const additions = [];
+    const seen = new Set([d.accountId]);
+    for (const entry of d.additions) {
+      const roomCode = String(entry?.roomCode || '').trim().toLowerCase();
+      const recipientId = acceptedStatusRecipient(d.accountId, roomCode);
+      if (!recipientId || seen.has(recipientId) || !validEncryptedField(entry?.wrappedKey, 8192)) {
+        return resErr(res, 'Every new member must be an existing Vaultlix contact.', 400);
+      }
+      if (existing.some(member => member.accountId === recipientId)) return resErr(res, 'That contact is already in the group.', 409);
+      if (await safetyStore.blocked(d.accountId, recipientId)) return resErr(res, 'A blocked contact cannot be added to a group.', 403);
+      seen.add(recipientId);
+      additions.push({ accountId:recipientId, wrapRoomCode:roomCode, wrappedKey:entry.wrappedKey });
+    }
+    if (existing.length + additions.length > 49) return resErr(res, 'A private group can have up to 50 people.', 400);
+    const group = await groupStore.rekey(d.groupId, d.accountId, null, d.encryptedName, supplied, Date.now(), additions);
+    if (!group) return resErr(res, 'Private group could not be updated.', 409);
+    for (const member of additions) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'created' });
+      sendAccountPush(member.accountId, { title:'Vaultlix', body:'You were added to a private encrypted group',
+        tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group invitation');
+    }
+    for (const member of existing) publishInboxAccount(member.accountId, 'group-update', { groupId:group.id });
     return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
   }
 
