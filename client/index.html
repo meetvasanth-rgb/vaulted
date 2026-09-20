@@ -1054,20 +1054,20 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #connect-overlay.visible{opacity:1}
 #connect-overlay.hiding{opacity:0;transform:translateY(-20px);transition:opacity .4s ease,transform .4s ease}
 
-/* ── MILESTONE CARD ───────────────────────────────────────────── */
+/* ── CONNECTION ACHIEVEMENTS ──────────────────────────────────── */
 .celebration-fireworks{position:fixed;inset:0;width:100%;height:100%;z-index:601;pointer-events:none;opacity:0;transition:opacity .2s ease}
 .celebration-fireworks.active{opacity:1}
-.achievement-celebration{position:fixed;inset:0;z-index:602;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;pointer-events:none;opacity:0;visibility:hidden;text-align:center;background:radial-gradient(circle at center,rgba(10,9,8,.48),rgba(10,9,8,0) 62%);transition:opacity .3s ease,visibility 0s linear .3s}
+.achievement-celebration{position:fixed;inset:0;z-index:602;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;pointer-events:none;opacity:0;visibility:hidden;text-align:center;background:radial-gradient(circle at center,rgba(74,21,42,.76),rgba(45,12,24,.34) 46%,rgba(45,12,24,0) 72%);transition:opacity .3s ease,visibility 0s linear .3s}
 .achievement-celebration.open{opacity:1;visibility:visible;transition:opacity .3s ease}
-.achievement-kicker{color:#F3C66B;font:750 11px/1 Inter,sans-serif;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 2px 16px rgba(0,0,0,.9);transform:translateY(12px);opacity:0}
-.achievement-icon{margin:18px 0 12px;color:#F3C66B;font:300 78px/1 "Cormorant Garamond",serif;text-shadow:0 3px 22px rgba(0,0,0,.9);transform:scale(.55);opacity:0}
-.achievement-title{max-width:520px;color:#fff;font:500 clamp(30px,8vw,52px)/1.08 "Cormorant Garamond",serif;text-shadow:0 3px 24px rgba(0,0,0,.95);transform:translateY(16px);opacity:0}
+.achievement-kicker{color:#F2CBD8;font:750 11px/1 Inter,sans-serif;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 2px 16px rgba(36,7,18,.9);transform:translateY(12px);opacity:0}
+.achievement-icon{margin:18px 0 12px;color:#F2CBD8;font:300 78px/1 "Cormorant Garamond",serif;text-shadow:0 3px 22px rgba(36,7,18,.9);transform:scale(.55);opacity:0}
+.achievement-title{max-width:520px;color:#FFF8F1;font:500 clamp(30px,8vw,52px)/1.08 "Cormorant Garamond",serif;text-shadow:0 3px 24px rgba(36,7,18,.95);transform:translateY(16px);opacity:0}
 .achievement-celebration.open .achievement-kicker{animation:achievement-rise .55s .08s ease forwards}
 .achievement-celebration.open .achievement-icon{animation:achievement-pop .7s .16s cubic-bezier(.2,1.55,.45,1) forwards}
 .achievement-celebration.open .achievement-title{animation:achievement-rise .65s .28s ease forwards}
 @keyframes achievement-rise{to{transform:translateY(0);opacity:1}}
 @keyframes achievement-pop{to{transform:scale(1);opacity:1}}
-.connection-spark{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:999px;background:#F7E8C7;color:#74314A;font:750 10px/1 Inter,sans-serif;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(104,44,67,.09)}
+.connection-spark{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:999px;background:#F4E4EA;color:#682C43;font:750 10px/1 Inter,sans-serif;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(104,44,67,.12)}
 .achievements-overlay{position:fixed;inset:0;z-index:625;display:none;background:#F8F4F5;color:#30242A;overflow:hidden}
 .achievements-overlay.open{display:flex;flex-direction:column}
 .achievements-head{flex:none;display:grid;grid-template-columns:46px minmax(0,1fr) 46px;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 12px;background:#fff;border-bottom:1px solid #E9DDE1}
@@ -1078,10 +1078,10 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .achievement-group{max-width:620px;margin:0 auto 22px}.achievement-group-title{margin:0 0 10px;color:#6B2C43;font:800 12px/1.2 Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase}
 .achievement-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .achievement-badge-card{min-height:142px;padding:15px 13px 13px;border:1px solid #E6DADF;border-radius:18px;background:#fff;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:0 5px 18px rgba(67,37,49,.045)}
-.achievement-badge-card.earned{border-color:#D8B25D;background:linear-gradient(155deg,#FFF9E9,#FFF 62%);box-shadow:0 8px 24px rgba(156,112,34,.12)}
-.achievement-badge-icon{width:47px;height:47px;border-radius:16px;display:grid;place-items:center;background:#EEE8EA;color:#9A8D92;font:750 22px/1 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-icon{background:linear-gradient(145deg,#F4D680,#D8A33E);color:#4B2634;box-shadow:0 6px 16px rgba(170,120,28,.22)}
-.achievement-badge-name{margin-top:10px;color:#392C32;font:750 12.5px/1.25 Manrope,Inter,sans-serif}.achievement-badge-state{margin-top:5px;color:#95878D;font:600 10.5px/1.25 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-state{color:#8A6320}
-.achievement-progress{width:100%;height:4px;margin-top:auto;border-radius:999px;background:#EEE8EA;overflow:hidden}.achievement-progress i{display:block;height:100%;border-radius:inherit;background:#C9BBC0}.achievement-badge-card.earned .achievement-progress i{background:#D4A541}
+.achievement-badge-card.earned{border-color:#CDAEBA;background:linear-gradient(155deg,#FFF6F9,#FFF 62%);box-shadow:0 8px 24px rgba(104,44,67,.12)}
+.achievement-badge-icon{width:47px;height:47px;border-radius:16px;display:grid;place-items:center;background:#EEE8EA;color:#9A8D92;font:750 22px/1 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-icon{background:linear-gradient(145deg,#8A3A58,#682C43);color:#FFF8F1;box-shadow:0 6px 16px rgba(104,44,67,.24)}
+.achievement-badge-name{margin-top:10px;color:#392C32;font:750 12.5px/1.25 Manrope,Inter,sans-serif}.achievement-badge-state{margin-top:5px;color:#95878D;font:600 10.5px/1.25 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-state{color:#682C43}
+.achievement-progress{width:100%;height:4px;margin-top:auto;border-radius:999px;background:#EEE8EA;overflow:hidden}.achievement-progress i{display:block;height:100%;border-radius:inherit;background:#C9BBC0}.achievement-badge-card.earned .achievement-progress i{background:#8A3A58}
 @media (min-width:620px){.achievement-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.achievement-celebration{transition:opacity .15s ease}.achievement-celebration.open .achievement-kicker,.achievement-celebration.open .achievement-icon,.achievement-celebration.open .achievement-title{animation:none;transform:none;opacity:1}}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
@@ -5769,7 +5769,7 @@ function launchCelebrationFireworks() {
   canvas.style.height = `${innerHeight}px`;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  const colors = ['#F3C66B','#D76586','#FFF4D6','#9E4866','#FFFFFF'];
+  const colors = ['#F2CBD8','#D36A8B','#FFF8F1','#9E4866','#FFFFFF'];
   const particles = [];
   const burst = (x, y) => {
     for (let i = 0; i < 42; i++) {

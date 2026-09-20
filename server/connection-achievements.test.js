@@ -64,3 +64,13 @@ test('text, voice and media achievements keep independent encrypted counters', (
   assert.match(client, /ledger\.callCount = \(Number\(ledger\.callCount\) \|\| 0\) \+ 1/);
   assert.match(client, /if \(wasVideo\) ledger\.videoCallCount =/);
 });
+
+test('every achievement celebration and earned badge uses the Vaultlix palette', () => {
+  assert.match(client, /\.achievement-kicker\{color:#F2CBD8/);
+  assert.match(client, /\.achievement-title\{[^}]*color:#FFF8F1/);
+  assert.match(client, /\.achievement-badge-card\.earned\{[^}]*#FFF6F9/);
+  assert.match(client, /\.achievement-badge-card\.earned \.achievement-badge-icon\{[^}]*#8A3A58[^}]*#682C43/);
+  assert.match(client, /const colors = \['#F2CBD8','#D36A8B','#FFF8F1','#9E4866','#FFFFFF'\]/);
+  const achievementCss = client.slice(client.indexOf('/* ── CONNECTION ACHIEVEMENTS'), client.indexOf('.number-card-overlay'));
+  assert.doesNotMatch(achievementCss, /#F3C66B|#F7E8C7|#D8B25D|#F4D680|#D8A33E|#D4A541/);
+});
