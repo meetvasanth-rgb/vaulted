@@ -844,4 +844,12 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
             NotificationCenter.default.post(name: .vaultlixRemoteVideoTrack, object: track)
         }
     }
+    func peerConnection(_ peerConnection: RTCPeerConnection,
+                        didAdd rtpReceiver: RTCRtpReceiver,
+                        streams mediaStreams: [RTCMediaStream]) {
+        guard let track = rtpReceiver.track as? RTCVideoTrack else { return }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixRemoteVideoTrack, object: track)
+        }
+    }
 }

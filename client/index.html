@@ -7280,14 +7280,15 @@ function renderCallOverlay(room) {
     // end = 4), so compact sizing is effectively the normal state now,
     // not just a video-call thing; it was already built to handle that.
     const cameraAvailable = !room.nativeCallActive || window.__vaultlixNativeVideo === true;
-    const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + (cameraAvailable ? 1 : 0) + (cameraAvailable && room.callVideoOn ? 1 : 0) + 1 + 1;
-    const reactionBtnHtml = `
+    const reactionAvailable = !window.webkit?.messageHandlers?.vaultlixCall;
+    const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + (cameraAvailable ? 1 : 0) + (cameraAvailable && room.callVideoOn ? 1 : 0) + (reactionAvailable ? 1 : 0) + 1;
+    const reactionBtnHtml = reactionAvailable ? `
         <div class="call-btn-wrap">
           <button class="call-reaction-btn${room.reactionPickerOpen ? ' active' : ''}" onclick="toggleReactionPicker()" title="React">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </button>
           <div class="call-btn-label">React</div>
-        </div>`;
+        </div>` : '';
     // Gated on remoteVideoActive specifically, not callVideoOn — the
     // rationale for dropping the name/wordmark is "you can already see who
     // you're talking to," which is only actually true once the PEER's
@@ -7310,13 +7311,13 @@ function renderCallOverlay(room) {
       ${videoMode ? '' : callHeaderBlock()}
       <div class="call-identity${videoMode ? ' video-top' : ''}">${identityHtml}
       </div>
-      <div class="call-reaction-picker${room.reactionPickerOpen ? ' open' : ''}" id="call-reaction-picker">
+      ${reactionAvailable ? `<div class="call-reaction-picker${room.reactionPickerOpen ? ' open' : ''}" id="call-reaction-picker">
         <button class="call-reaction-emoji-btn" onclick="sendCallReaction('👊')">👊</button>
         <button class="call-reaction-emoji-btn" onclick="sendCallReaction('❤️')">❤️</button>
         <button class="call-reaction-emoji-btn" onclick="sendCallReaction('😢')">😢</button>
         <button class="call-reaction-emoji-btn" onclick="sendCallReaction('😊')">😊</button>
         <button class="call-reaction-emoji-btn" onclick="sendCallReaction('👍')">👍</button>
-      </div>
+      </div>` : ''}
       <div class="call-actions${videoMode ? ' video-bar' : ''}${actionsButtonCount >= 4 ? ' compact' : ''}">
         <div class="call-btn-wrap">
           <button class="call-mute-btn${room.callMuted ? ' muted' : ''}" onclick="toggleMute()" title="${room.callMuted ? 'Unmute' : 'Mute'}">${micIcon}</button>
