@@ -119,13 +119,13 @@ test('every message gets the direct-chat action row; unreadable ones only Select
   assert.match(groups, /kind === 'text' \? msgActionBtn\('copy', 'Copy'\) : \(\['image', 'file', 'voice'\]\.includes\(kind\) \? msgActionBtn\('save', 'Save'\)/);
   assert.match(groups, /\['text', 'image', 'file'\]\.includes\(kind\) \? msgActionBtn\('forward', 'Forward'\)/);
   assert.match(groups, /: \[msgActionBtn\('select', 'Select'\), msgActionBtn\('delete', 'Delete'\)\]/);
-  assert.match(groups, /attachLongPress\(row, id, \(\) => \{ if \(groupSelectMode\)/);
+  assert.match(groups, /attachLongPress\(row\.querySelector\('\.group-message'\), id, \(\) => \{ if \(groupSelectMode\)/);
 });
 
 test('long-press supports a custom handler and the outside-tap closer leaves group messages alone', () => {
   assert.match(client, /function attachLongPress\(el, msgId, onFire\)/);
   assert.match(client, /if \(onFire\) onFire\(msgId\);/);
-  assert.match(client, /!e\.target\.closest\('\.group-message'\)/);
+  assert.match(client, /!e\.target\.closest\('\.group-msg'\)/);
 });
 
 test('a reply travels as a wrapper, a plain message stays plain text', () => {
@@ -152,4 +152,16 @@ test('leaving the group or reopening it clears any half-finished reply or select
 test('a voice note can be saved but never forwarded', () => {
   assert.match(groups, /\['group-image', 'group-file', 'group-voice'\]\.includes\(attachment\.type\)/);
   assert.match(groups, /found\.attachment\.type === 'group-voice'\) return;/);
+});
+
+test('the action row and reaction strip sit under the bubble, not inside it', () => {
+  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}">[\s\S]*<div class="group-message-time">[^`]*<\/div><\/div>\$\{actions\}<\/div>`;/);
+  assert.match(client, /\.group-msg \.msg-actions\{width:max-content/);
+});
+
+test('member Remove and Report/Block are compact icon buttons with labels', () => {
+  assert.match(groups, /class="icon-btn" onclick="removePrivateGroupMember\([^"]*\)" aria-label="Remove from group" title="Remove from group"/);
+  assert.match(groups, /class="icon-btn report" onclick="reportPrivateGroupMember\([^"]*\)" aria-label="Report or block" title="Report or block"/);
+  assert.doesNotMatch(groups, />Remove<\/button>/);
+  assert.doesNotMatch(groups, />Report \/ block<\/button>/);
 });

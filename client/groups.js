@@ -462,7 +462,9 @@ function renderPrivateGroupMessages(group) {
       + (usable ? `<div class="reaction-picker" id="picker-${escHtml(message.id)}">${GROUP_REACTIONS.map(emoji => `<span data-emoji="${emoji}">${emoji}</span>`).join('')}</div>` : '');
     const quote = message.reply
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
-    return `<div class="group-message${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}${actions}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>`;
+    // The bubble is one element; the action row and reaction strip sit under it
+    // (not inside it), exactly where a direct conversation puts them.
+    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message${mine ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>${actions}</div>`;
   }).join('');
   for (const row of body.querySelectorAll('[data-group-msg-id]')) wirePrivateGroupMessage(row);
   if (groupSelectMode) refreshPrivateGroupSelection();
@@ -475,7 +477,7 @@ function renderPrivateGroupMessages(group) {
 // tick or untick the message.
 function wirePrivateGroupMessage(row) {
   const id = row.dataset.groupMsgId;
-  attachLongPress(row, id, () => { if (groupSelectMode) togglePrivateGroupSelection(id); else toggleMsgActions(id); });
+  attachLongPress(row.querySelector('.group-message'), id, () => { if (groupSelectMode) togglePrivateGroupSelection(id); else toggleMsgActions(id); });
   row.addEventListener('click', event => {
     if (groupSelectMode) { event.preventDefault(); event.stopPropagation(); togglePrivateGroupSelection(id); return; }
     if (event.target.closest('.group-message-text') && !window.getSelection()?.toString()) toggleMsgActions(id);
@@ -865,6 +867,8 @@ const GROUP_ICONS = {
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
   leave: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
   close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  remove: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/>',
+  report: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
 };
 function groupIconButton(kind, label, onclick, icon) {
   return `<button class="${kind}" type="button" onclick="${onclick}" aria-label="${label}" title="${label}"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[icon]}</svg></button>`;
@@ -875,7 +879,7 @@ function renderGroupMembersList(query = '') {
   const owner = group.ownerId === state.accountId;
   const shown = (group.members || []).filter(member => groupSearchMatches(query, member.displayName || 'Vaultlix member', member.privateNumber));
   document.getElementById('group-members-list').innerHTML = shown.length
-    ? shown.map(member => `<div class="group-member"><span><strong>${escHtml(member.displayName || 'Vaultlix member')}${member.accountId === state.accountId ? ' · You' : ''}</strong><small>${escHtml(formatPrivateNumber(member.privateNumber))}${member.role === 'owner' ? ' · Owner' : ''}</small></span>${member.accountId !== state.accountId ? `<span>${owner ? `<button type="button" onclick="removePrivateGroupMember('${escHtml(member.accountId)}')">Remove</button>` : ''}<button type="button" onclick="reportPrivateGroupMember('${escHtml(member.accountId)}')">Report / block</button></span>` : ''}</div>`).join('')
+    ? shown.map(member => `<div class="group-member"><span><strong>${escHtml(member.displayName || 'Vaultlix member')}${member.accountId === state.accountId ? ' · You' : ''}</strong><small>${escHtml(formatPrivateNumber(member.privateNumber))}${member.role === 'owner' ? ' · Owner' : ''}</small></span>${member.accountId !== state.accountId ? `<span>${owner ? `<button type="button" class="icon-btn" onclick="removePrivateGroupMember('${escHtml(member.accountId)}')" aria-label="Remove from group" title="Remove from group"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.remove}</svg></button>` : ''}<button type="button" class="icon-btn report" onclick="reportPrivateGroupMember('${escHtml(member.accountId)}')" aria-label="Report or block" title="Report or block"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.report}</svg></button></span>` : ''}</div>`).join('')
     : '<div class="group-chat-empty" style="padding:22px 0">No one in this group matches.</div>';
 }
 
