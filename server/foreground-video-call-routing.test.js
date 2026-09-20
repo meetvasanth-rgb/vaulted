@@ -20,5 +20,9 @@ test('native iOS answers do not start a second WebRTC media connection', () => {
   const client = fs.readFileSync('client/index.html', 'utf8');
   const ios = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
   assert.match(client, /if \(detail\.action === 'nativeConnected'\)[\s\S]*room\.nativeCallActive = true/);
+  assert.match(client, /const iosNativeBridge = window\.webkit\?\.messageHandlers\?\.vaultlixCall;[\s\S]*if \(iosNativeBridge && room\.nativeRoomHandle\)/);
+  assert.match(client, /iosNativeBridge\.postMessage\(\{ action: 'answer', code: room\.code \}\)/);
+  assert.match(client, /if \(iosNativeBridge && room\.nativeRoomHandle\)[\s\S]*disconnectSignaling\(room\)[\s\S]*return;/);
+  assert.doesNotMatch(client, /room\.iosForegroundWebCall = true/);
   assert.match(ios, /if !nativeMediaCalls\.contains\(action\.callUUID\) \{[\s\S]*postAction\("answer"/);
 });

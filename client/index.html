@@ -6490,6 +6490,31 @@ async function acceptCall(fromNativeCallKit = false) {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
   clearAndroidCallNotifications();
+  const iosNativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
+  if (iosNativeBridge && room.nativeRoomHandle) {
+    room.nativeAnswerPending = true;
+    room.nativeCallActive = true;
+    room.iosForegroundWebCall = false;
+    room.callState = 'active';
+    room.callStartedAt = null;
+    room.pendingCallAccept = false;
+    disconnectSignaling(room);
+    if (!fromNativeCallKit) {
+      try {
+        iosNativeBridge.postMessage({ action: 'answer', code: room.code });
+      } catch (e) {
+        room.nativeAnswerPending = false;
+        room.nativeCallActive = false;
+        room.callState = 'incoming';
+        renderCallOverlay(room);
+        return;
+      }
+    }
+    requestNativeIOSSpeakerState(room);
+    renderCallOverlay(room);
+    refreshCallButton();
+    return;
+  }
   if (!fromNativeCallKit) {
     const androidNativeBridge = window.VaultlixAndroid;
     if (androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeIncomingPrepared) {
@@ -6514,26 +6539,6 @@ async function acceptCall(fromNativeCallKit = false) {
         hideCallOverlay();
         refreshCallButton();
         return;
-      }
-    }
-    const nativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
-    if (nativeBridge) {
-      // Foreground PushKit calls are deliberately not prepared in the native
-      // libwebrtc engine (AppDelegate reserves that engine for background and
-      // locked-screen answers). CallKit still owns the system audio session,
-      // but the encrypted accept and media negotiation must continue through
-      // this WebView. Returning here strands the caller on Ringing and the
-      // receiver on Connecting securely forever.
-      if (room.nativeAnswerPending) return;
-      room.nativeAnswerPending = true;
-      room.iosForegroundWebCall = true;
-      room.nativeCallActive = false;
-      try {
-        nativeBridge.postMessage({ action: 'answer', code: room.code });
-      } catch (e) {
-        // The browser path below can still establish the call even if the
-        // native system-call presentation could not be updated.
-        room.nativeAnswerPending = false;
       }
     }
   }
