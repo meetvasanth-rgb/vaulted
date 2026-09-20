@@ -5208,6 +5208,20 @@ async function handleNativeCallAction(detail) {
 window.addEventListener('vaultlix:call-action', event => {
   handleNativeCallAction(event.detail || {});
 });
+window.addEventListener('vaultlix:native-video-state', event => {
+  const room = rooms.get(activeCallRoomCode);
+  if (!room || !room.nativeCallActive) return;
+  const detail = event.detail || {};
+  if (detail.success === false) {
+    toast('Could not access camera.');
+    return;
+  }
+  room.callVideoOn = detail.enabled === true;
+  renderCallOverlay(room);
+});
+window.addEventListener('vaultlix:native-camera-switched', event => {
+  if (event.detail?.success === false) toast('Could not switch camera.');
+});
 // Native bridges can accept tokens, call actions and universal links as soon
 // as the DOM exists. Waiting for web fonts and other load-event resources
 // made a cold native launch feel stalled even though the interface was ready.
@@ -7249,7 +7263,7 @@ function renderCallOverlay(room) {
     // video — now hits this threshold at minimum (mute+camera+reaction+
     // end = 4), so compact sizing is effectively the normal state now,
     // not just a video-call thing; it was already built to handle that.
-    const cameraAvailable = !room.nativeCallActive;
+    const cameraAvailable = !room.nativeCallActive || window.__vaultlixNativeVideo === true;
     const actionsButtonCount = 1 + (room.speakerAvailable ? 1 : 0) + (cameraAvailable ? 1 : 0) + (cameraAvailable && room.callVideoOn ? 1 : 0) + 1 + 1;
     const reactionBtnHtml = `
         <div class="call-btn-wrap">
@@ -7895,7 +7909,15 @@ function showLocalVideoPreview(room, stream) {
 // here, same as any other renegotiation.
 async function toggleCamera() {
   const room = rooms.get(activeCallRoomCode);
-  if (!room || !room.pc) return;
+  if (!room) return;
+  if (room.nativeCallActive && window.__vaultlixNativeVideo === true) {
+    const target = !room.callVideoOn;
+    try {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({action:'setVideo',code:room.code,enabled:target});
+    } catch (_) { toast('Could not change video.'); }
+    return;
+  }
+  if (!room.pc) return;
   if (!room.callVideoOn) {
     try {
       const videoStream = await navigator.mediaDevices.getUserMedia({
@@ -7956,7 +7978,16 @@ function deactivateLocalVideo(room) {
 // audio track just flips .enabled rather than re-adding it.
 async function swapCamera() {
   const room = rooms.get(activeCallRoomCode);
-  if (!room || !room.pc || !room.callVideoOn) return;
+  if (!room || !room.callVideoOn) return;
+  if (room.nativeCallActive && window.__vaultlixNativeVideo === true) {
+    try {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({action:'switchCamera',code:room.code});
+      room.callCameraFacing = room.callCameraFacing === 'user' ? 'environment' : 'user';
+      renderCallOverlay(room);
+    } catch (_) { toast('Could not switch camera.'); }
+    return;
+  }
+  if (!room.pc) return;
   const newFacing = room.callCameraFacing === 'user' ? 'environment' : 'user';
   let newStream;
   try {

@@ -4,6 +4,7 @@ import WebKit
 import AVFoundation
 import UserNotifications
 import LocalAuthentication
+import WebRTC
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate {
     var window: UIWindow?
@@ -16,6 +17,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var pendingDocumentExportURL: URL?
     private var pendingOpenFileURL: URL?
     private var documentInteractionController: UIDocumentInteractionController?
+    private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
+    private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
+    private weak var nativeRemoteVideoTrack: RTCVideoTrack?
+    private weak var nativeLocalVideoTrack: RTCVideoTrack?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -26,7 +31,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         window?.makeKeyAndVisible()
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
         bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.__vaultlixLocalImageSafety = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -45,6 +50,34 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             if let until = self?.audioRouteSettlesAt, Date() < until { return }
             self?.emitSpeakerState(success: true)
         })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .vaultlixRemoteVideoTrack, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, let track = note.object as? RTCVideoTrack else { return }
+            self.nativeRemoteVideoTrack?.remove(self.nativeRemoteVideoView)
+            self.nativeRemoteVideoTrack = track
+            track.add(self.nativeRemoteVideoView)
+            self.showNativeVideoViews(remote: true)
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .vaultlixLocalVideoTrack, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, let track = note.object as? RTCVideoTrack else { return }
+            self.nativeLocalVideoTrack?.remove(self.nativeLocalVideoView)
+            self.nativeLocalVideoTrack = track
+            track.add(self.nativeLocalVideoView)
+            self.showNativeVideoViews(remote: false)
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .vaultlixVideoState, object: nil, queue: .main
+        ) { [weak self] note in
+            let enabled = note.userInfo?["enabled"] as? Bool ?? false
+            self?.nativeLocalVideoView.isHidden = !enabled
+            self?.emit(name: "vaultlix:native-video-state", detail: ["enabled": enabled, "success": true])
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .vaultlixVideoEnded, object: nil, queue: .main
+        ) { [weak self] _ in self?.hideNativeVideoViews() })
 
         // PushKit can issue the token before the remote page finishes loading.
         // Re-emit the persisted value after the bridge has had time to attach.
@@ -83,6 +116,42 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             : ""
         let script = "\(persist)window.dispatchEvent(new CustomEvent(\(String(reflecting: name)),{detail:\(json)}));"
         webView.evaluateJavaScript(script)
+    }
+
+    private func showNativeVideoViews(remote: Bool) {
+        guard let root = window?.rootViewController?.view else { return }
+        if nativeRemoteVideoView.superview == nil {
+            nativeRemoteVideoView.videoContentMode = .scaleAspectFill
+            nativeRemoteVideoView.backgroundColor = .black
+            nativeRemoteVideoView.layer.cornerRadius = 18
+            nativeRemoteVideoView.clipsToBounds = true
+            nativeRemoteVideoView.isUserInteractionEnabled = false
+            root.addSubview(nativeRemoteVideoView)
+        }
+        if nativeLocalVideoView.superview == nil {
+            nativeLocalVideoView.videoContentMode = .scaleAspectFill
+            nativeLocalVideoView.backgroundColor = UIColor(white: 0.08, alpha: 1)
+            nativeLocalVideoView.layer.cornerRadius = 13
+            nativeLocalVideoView.clipsToBounds = true
+            nativeLocalVideoView.isUserInteractionEnabled = false
+            root.addSubview(nativeLocalVideoView)
+        }
+        let safe = root.safeAreaInsets
+        nativeRemoteVideoView.frame = CGRect(x: 16, y: safe.top + 76, width: root.bounds.width - 32, height: min(root.bounds.height * 0.48, 430))
+        nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 88, width: 88, height: 124)
+        nativeRemoteVideoView.isHidden = !remote && nativeRemoteVideoTrack == nil
+        nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
+        root.bringSubviewToFront(nativeRemoteVideoView)
+        root.bringSubviewToFront(nativeLocalVideoView)
+    }
+
+    private func hideNativeVideoViews() {
+        if let track = nativeRemoteVideoTrack { track.remove(nativeRemoteVideoView) }
+        if let track = nativeLocalVideoTrack { track.remove(nativeLocalVideoView) }
+        nativeRemoteVideoTrack = nil
+        nativeLocalVideoTrack = nil
+        nativeRemoteVideoView.removeFromSuperview()
+        nativeLocalVideoView.removeFromSuperview()
     }
 
     private func flushPendingCallActions() {
@@ -498,6 +567,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             audioRouteSettlesAt = Date().addingTimeInterval(settleDelay)
             DispatchQueue.main.asyncAfter(deadline: .now() + settleDelay + 0.05) { [weak self] in
                 self?.emitSpeakerState(success: true)
+            }
+            return
+        }
+        if action == "setVideo",
+           let code = body["code"] as? String,
+           let enabled = body["enabled"] as? Bool {
+            VaultlixCallManager.shared.setVideoFromWeb(roomCode: code, enabled: enabled) { [weak self] success in
+                self?.emit(name: "vaultlix:native-video-state", detail: ["enabled": enabled && success, "success": success])
+            }
+            return
+        }
+        if action == "switchCamera",
+           let code = body["code"] as? String {
+            VaultlixCallManager.shared.switchCameraFromWeb(roomCode: code) { [weak self] success in
+                self?.emit(name: "vaultlix:native-camera-switched", detail: ["success": success])
             }
             return
         }

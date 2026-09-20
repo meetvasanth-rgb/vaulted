@@ -4,6 +4,13 @@ import CryptoKit
 import OSLog
 import WebRTC
 
+extension Notification.Name {
+    static let vaultlixLocalVideoTrack = Notification.Name("VaultlixLocalVideoTrack")
+    static let vaultlixRemoteVideoTrack = Notification.Name("VaultlixRemoteVideoTrack")
+    static let vaultlixVideoState = Notification.Name("VaultlixVideoState")
+    static let vaultlixVideoEnded = Notification.Name("VaultlixVideoEnded")
+}
+
 /// Owns media and encrypted signaling for iOS CallKit calls. The
 /// Vaultlix server relays only AES-GCM envelopes; SDP and ICE never leave the
 /// two endpoints in plaintext. Browser/PWA calls continue using the web engine.
@@ -19,6 +26,11 @@ final class NativeWebRTCCallEngine: NSObject {
     private var audioSource: RTCAudioSource?
     private var muted = false
     private var audioTrack: RTCAudioTrack?
+    private var videoSource: RTCVideoSource?
+    private var videoTrack: RTCVideoTrack?
+    private var videoCapturer: RTCCameraVideoCapturer?
+    private var videoSender: RTCRtpSender?
+    private var frontCamera = true
     private var pendingOffer: [String: Any]?
     private var pendingCandidates: [[String: Any]] = []
     private var sequenceOut = 0
@@ -139,6 +151,80 @@ final class NativeWebRTCCallEngine: NSObject {
             self.muted = muted
             self.audioTrack?.isEnabled = !muted
             DispatchQueue.main.async { completion(true) }
+        }
+    }
+
+    func setVideo(callID: UUID, enabled: Bool, completion: @escaping (Bool) -> Void) {
+        queue.async {
+            guard self.callID == callID, self.room != nil, let peer = self.peer else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            if enabled {
+                self.startVideoLocked(peer: peer, completion: completion)
+            } else {
+                self.videoTrack?.isEnabled = false
+                self.videoCapturer?.stopCapture()
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .vaultlixVideoState, object: nil, userInfo: ["enabled": false])
+                    completion(true)
+                }
+            }
+        }
+    }
+
+    func switchCamera(callID: UUID, completion: @escaping (Bool) -> Void) {
+        queue.async {
+            guard self.callID == callID, self.videoTrack?.isEnabled == true else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            self.frontCamera.toggle()
+            self.videoCapturer?.stopCapture { [weak self] in
+                self?.queue.async { self?.startCaptureLocked(completion: completion) }
+            }
+        }
+    }
+
+    private func startVideoLocked(peer: RTCPeerConnection, completion: @escaping (Bool) -> Void) {
+        if videoTrack == nil {
+            let source = factory.videoSource()
+            let track = factory.videoTrack(with: source, trackId: "vaultlix-native-video")
+            videoSource = source
+            videoTrack = track
+            videoCapturer = RTCCameraVideoCapturer(delegate: source)
+            videoSender = peer.add(track, streamIds: ["vaultlix-native-stream"])
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .vaultlixLocalVideoTrack, object: track)
+            }
+            createAndSendOfferLocked()
+        }
+        videoTrack?.isEnabled = true
+        startCaptureLocked(completion: completion)
+    }
+
+    private func startCaptureLocked(completion: @escaping (Bool) -> Void) {
+        guard let capturer = videoCapturer else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        let position: AVCaptureDevice.Position = frontCamera ? .front : .back
+        guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == position }),
+              let format = RTCCameraVideoCapturer.supportedFormats(for: device).max(by: {
+                  let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+                  let b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
+                  return a.width * a.height < b.width * b.height
+              }) else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        let maxFPS = format.videoSupportedFrameRateRanges.map { Int($0.maxFrameRate) }.max() ?? 30
+        capturer.startCapture(with: device, format: format, fps: min(30, maxFPS)) { error in
+            DispatchQueue.main.async {
+                let success = error == nil
+                NotificationCenter.default.post(name: .vaultlixVideoState, object: nil, userInfo: ["enabled": success])
+                completion(success)
+            }
         }
     }
 
@@ -319,7 +405,7 @@ final class NativeWebRTCCallEngine: NSObject {
             if peer == nil { fetchTurnAndCreatePeerLocked() }
             else { createAndSendOfferLocked() }
         case "offer":
-            guard answered, !outgoing else { return }
+            guard answered else { return }
             offerReceived = true
             acceptRetryGeneration += 1
             if peer == nil { pendingOffer = payload; fetchTurnAndCreatePeerLocked() }
@@ -406,7 +492,7 @@ final class NativeWebRTCCallEngine: NSObject {
     }
 
     private func createAndSendOfferLocked() {
-        guard let pc = peer, outgoing else { return }
+        guard let pc = peer else { return }
         pc.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self, weak pc] offer, error in
             guard let self, let pc, let offer, error == nil else {
                 self?.trace("offer create-failed")
@@ -613,6 +699,16 @@ final class NativeWebRTCCallEngine: NSObject {
         audioTrack?.isEnabled = false
         audioTrack = nil
         audioSource = nil
+        videoCapturer?.stopCapture()
+        videoTrack?.isEnabled = false
+        videoCapturer = nil
+        videoTrack = nil
+        videoSource = nil
+        videoSender = nil
+        frontCamera = true
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixVideoEnded, object: nil)
+        }
         room = nil
         muted = false
         callID = nil
@@ -669,4 +765,11 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
     }
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+    func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceivingOn transceiver: RTCRtpTransceiver) {
+        guard transceiver.mediaType == .video,
+              let track = transceiver.receiver.track as? RTCVideoTrack else { return }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixRemoteVideoTrack, object: track)
+        }
+    }
 }
