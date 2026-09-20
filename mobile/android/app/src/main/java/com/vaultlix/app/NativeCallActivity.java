@@ -111,7 +111,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private final Runnable audioRoutePoll = new Runnable() {
         @Override public void run() {
             if (finishingCall) return;
-            renderAudioRoute(currentRouteName());
+            // Until the user explicitly chooses a route, follow the call
+            // default: Bluetooth when a call-capable headset is connected,
+            // otherwise the receiver. This also catches a headset that
+            // becomes visible just after Android finishes call setup.
+            if (requestedRoute == null) applyAudioRoute(null);
+            else renderAudioRoute(currentRouteName());
             handler.postDelayed(this, 2_000);
         }
     };
@@ -459,6 +464,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == 75 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             engine.setCameraEnabled(true);
+        } else if (requestCode == 74 && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                && requestedRoute == null) {
+            // The first route decision can run before Android 12+ returns the
+            // Bluetooth permission. Re-evaluate immediately after approval.
+            requestAudioRoute(null);
         }
     }
 
@@ -803,11 +814,10 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo selected = audioManager.getCommunicationDevice();
             if (route == null) {
-                // No explicit choice yet. Keep a headset the system already
-                // picked; forcing the earpiece here is what kept Bluetooth
-                // from ever carrying a call.
-                if (isBluetoothDevice(selected)) { renderAudioRoute("bluetooth"); return true; }
-                route = "phone";
+                // A connected call-capable headset is the default even when
+                // Android has not selected it yet. Merely preserving the
+                // current route left new calls on the receiver indefinitely.
+                route = isBluetoothAudioAvailable() ? "bluetooth" : "phone";
             }
             if ("bluetooth".equals(route) && !hasBluetoothPermission()) {
                 renderAudioRoute(currentRouteName());
@@ -831,7 +841,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             }
             return applied && actual.equals(route);
         }
-        if (route == null) route = audioManager.isBluetoothScoOn() ? "bluetooth" : "phone";
+        if (route == null) route = isBluetoothAudioAvailable() ? "bluetooth" : "phone";
         if ("bluetooth".equals(route)) {
             audioManager.setSpeakerphoneOn(false);
             audioManager.startBluetoothSco();

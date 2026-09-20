@@ -209,6 +209,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             return
         }
 
+        clearPreferredAudioInput()
         calls[callID] = data
         // Keep CallKit and libwebrtc as the single audio owner in every app
         // state. Splitting foreground media into WKWebView left connected
@@ -509,6 +510,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String, inviteID: String) -> Bool {
         dismissAppKeyboard()
+        clearPreferredAudioInput()
         let callID = UUID()
         let payload: [String: Any] = [
             "callId": callID.uuidString,
@@ -631,6 +633,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         enforceCallKeyboardGuard()
         callKitAudioSessionActive = true
         NativeWebRTCCallEngine.shared.callKitDidActivate(audioSession)
+        // `allowBluetooth` only makes the headset eligible; it does not
+        // reliably select it. Prefer the connected HFP/LE input once CallKit
+        // has activated the session, unless the user already chose a route.
+        preferBluetoothForNewCall()
         // CallKit owns the VoIP audio session. Starting a player before this
         // callback creates an apparently running engine whose route is replaced
         // during activation, producing silent ringback. Let libwebrtc attach to
@@ -669,6 +675,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             try session.overrideOutputAudioPort(.none)
+            preferBluetoothForNewCall()
             outgoingWebAudioSessionActive = true
             return true
         } catch {
@@ -740,6 +747,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// remembered from just before it was excluded.
     private var bluetoothExcludedByPhoneRoute = false
     private var bluetoothSeenConnected = false
+    private var userSelectedAudioRoute: String?
 
     func isBluetoothAudioAvailable() -> Bool {
         if bluetoothExcludedByPhoneRoute { return bluetoothSeenConnected }
@@ -775,6 +783,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             case "speaker", "bluetooth", "phone": break
             default: return false
             }
+            userSelectedAudioRoute = route
             if route == "phone" {
                 if !bluetoothExcludedByPhoneRoute { bluetoothSeenConnected = liveBluetoothAudioAvailable() }
                 bluetoothExcludedByPhoneRoute = true
@@ -814,7 +823,24 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private func clearPreferredAudioInput() {
         bluetoothExcludedByPhoneRoute = false
         bluetoothSeenConnected = false
+        userSelectedAudioRoute = nil
         try? AVAudioSession.sharedInstance().setPreferredInput(nil)
+    }
+
+    /// Use an already-connected headset for a new call. Manual selections are
+    /// never overwritten; they remain authoritative until that call ends.
+    private func preferBluetoothForNewCall() {
+        guard userSelectedAudioRoute == nil, let input = bluetoothInput() else { return }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            bluetoothExcludedByPhoneRoute = false
+            bluetoothSeenConnected = true
+            try session.overrideOutputAudioPort(.none)
+            try session.setPreferredInput(input)
+            print("VXCALL manager default audio route bluetooth")
+        } catch {
+            print("VXCALL manager default bluetooth route failed: \(error.localizedDescription)")
+        }
     }
 
     /// AVAudioSession replaces its output graph when the user moves between

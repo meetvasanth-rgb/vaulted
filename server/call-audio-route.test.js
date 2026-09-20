@@ -111,6 +111,8 @@ test('the Android native call screen offers Bluetooth and no longer forces the e
   assert.match(nativeCall, /new String\[\] \{ "bluetooth", "speaker", "phone" \}/);
   assert.match(nativeCall, /R\.string\.native_bluetooth/);
   assert.doesNotMatch(nativeCall, /speakerRequested/);
+  assert.match(nativeCall, /route = isBluetoothAudioAvailable\(\) \? "bluetooth" : "phone"/);
+  assert.match(nativeCall, /requestCode == 74[\s\S]*requestAudioRoute\(null\)/);
 });
 
 test('Android keeps native audio ownership for foreground and background answers', () => {
@@ -136,6 +138,15 @@ test('iOS reports the settled route after a request instead of a transient one',
   assert.match(scene, /if let until = self\?\.audioRouteSettlesAt, Date\(\) < until \{ return \}/);
   assert.match(scene, /audioRouteSettlesAt = Date\(\)\.addingTimeInterval\(settleDelay\)/);
   assert.match(scene, /asyncAfter\(deadline: \.now\(\) \+ settleDelay \+ 0\.05\)[\s\S]*emitSpeakerState\(success: true\)/);
+});
+
+test('new native calls actively prefer a connected Bluetooth headset', () => {
+  const app = read('mobile/ios/App/App/AppDelegate.swift');
+  const main = read('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java');
+  assert.match(app, /func provider\([^)]*didActivate[\s\S]*preferBluetoothForNewCall\(\)/);
+  assert.match(app, /guard userSelectedAudioRoute == nil, let input = bluetoothInput\(\)/);
+  assert.match(app, /try session\.setPreferredInput\(input\)/);
+  assert.match(main, /hasBluetoothPermission\(\) && isBluetoothCallDevice\(device\)[\s\S]*setCommunicationDevice\(device\)/);
 });
 
 test('only a call handed to the native engine is treated as native (keeps Video on foreground calls)', () => {

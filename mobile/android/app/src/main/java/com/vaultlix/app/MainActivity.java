@@ -235,14 +235,34 @@ public class MainActivity extends BridgeActivity {
             AudioDeviceInfo current = audioManager.getCommunicationDevice();
             if (!isBluetoothDevice(current)) {
                 for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                    if (hasBluetoothPermission() && isBluetoothCallDevice(device)) {
+                        audioManager.setCommunicationDevice(device);
+                        return;
+                    }
+                }
+                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
                     if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
                         audioManager.setCommunicationDevice(device);
-                        break;
+                        return;
                     }
                 }
             }
         } else {
             audioManager.setSpeakerphoneOn(false);
+            if (isBluetoothAudioAvailable()) {
+                audioManager.startBluetoothSco();
+                audioManager.setBluetoothScoOn(true);
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 73 && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                && audioRouteConfigured) {
+            applyPreferredCallAudioRoute();
         }
     }
 
