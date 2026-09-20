@@ -56,3 +56,19 @@ test('native iOS direct video calls notify CallKit and use a full-screen canvas'
   assert.match(server, /hasVideo: msg2\.hasVideo === true/);
   assert.doesNotMatch(scene, /root\.bounds\.height \* 0\.48/);
 });
+
+test('native iOS video calls keep controls available and label CallKit clearly', () => {
+  const scene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
+  const manager = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
+  assert.match(scene, /nativeVideoControlsView/);
+  assert.match(scene, /toggleNativeVideoMute/);
+  assert.match(scene, /cycleNativeVideoRoute/);
+  assert.match(scene, /toggleNativeVideoCamera/);
+  assert.match(scene, /flipNativeVideoCamera/);
+  assert.match(scene, /endNativeVideoCall/);
+  assert.match(scene, /bringSubviewToFront\(nativeVideoControlsView\)/);
+  assert.match(manager, /func endActiveNativeCall\(\)/);
+  assert.match(manager, /CXEndCallAction\(call: callID\)/);
+  assert.ok(manager.includes('"VIDEO CALL · \\(caller)"'));
+  assert.ok(manager.includes('"VIDEO CALL · \\(cleanName)"'));
+});

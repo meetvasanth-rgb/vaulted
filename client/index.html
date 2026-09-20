@@ -1151,6 +1151,10 @@ html.vaultlix-native-ios.vaultlix-native-video-active,
 html.vaultlix-native-ios.vaultlix-native-video-active body,
 html.vaultlix-native-ios.vaultlix-native-video-active #s-chat,
 html.vaultlix-native-ios.vaultlix-native-video-active .call-overlay{background:transparent!important}
+/* Native iOS video owns an always-available UIKit control bar. Avoid drawing
+   a second web control row underneath it when WebKit receives the video-state
+   event; background/lock-screen resumes may skip that event entirely. */
+html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:hidden;pointer-events:none}
 
 .call-hdr-block{text-align:center}
 .call-hdr-rule{width:50px;height:1px;background:#682C43;margin:0 auto 14px}

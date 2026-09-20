@@ -185,10 +185,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
 
         let caller = (data["caller"] as? String)?.prefix(80) ?? "Someone"
+        let hasVideo = data["hasVideo"] as? Bool ?? false
+        let callLabel = hasVideo ? "VIDEO CALL · \(caller)" : String(caller)
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: String(caller))
-        update.localizedCallerName = String(caller)
-        update.hasVideo = data["hasVideo"] as? Bool ?? false
+        update.localizedCallerName = callLabel
+        update.hasVideo = hasVideo
         update.supportsHolding = false
         update.supportsGrouping = false
         update.supportsUngrouping = false
@@ -481,6 +483,13 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         outgoingCalls.remove(match.key)
     }
 
+    func endActiveNativeCall() {
+        guard let callID = nativeMediaCalls.first else { return }
+        callController.request(CXTransaction(action: CXEndCallAction(call: callID))) { error in
+            if let error { print("VXCALL native end request failed: \(error.localizedDescription)") }
+        }
+    }
+
     func endAllCalls() {
         stopRingback()
         for callID in Array(calls.keys) {
@@ -555,8 +564,9 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         guard !cleanName.isEmpty else { return }
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: cleanName)
-        update.localizedCallerName = cleanName
-        update.hasVideo = calls[callID]?["hasVideo"] as? Bool ?? false
+        let hasVideo = calls[callID]?["hasVideo"] as? Bool ?? false
+        update.localizedCallerName = hasVideo ? "VIDEO CALL · \(cleanName)" : cleanName
+        update.hasVideo = hasVideo
         provider.reportCall(with: callID, updated: update)
     }
 

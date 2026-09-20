@@ -19,8 +19,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var documentInteractionController: UIDocumentInteractionController?
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
+    private let nativeVideoControlsView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let nativeMuteButton = UIButton(type: .system)
+    private let nativeRouteButton = UIButton(type: .system)
+    private let nativeCameraButton = UIButton(type: .system)
+    private let nativeFlipButton = UIButton(type: .system)
+    private let nativeEndButton = UIButton(type: .system)
     private weak var nativeRemoteVideoTrack: RTCVideoTrack?
     private weak var nativeLocalVideoTrack: RTCVideoTrack?
+    private var nativeVideoMuted = false
+    private var nativeLocalVideoEnabled = false
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -71,9 +79,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         ) { [weak self] note in
             let enabled = note.userInfo?["enabled"] as? Bool ?? false
             let remoteOn = note.userInfo?["remoteOn"] as? Bool ?? false
+            self?.nativeLocalVideoEnabled = enabled
             if enabled || remoteOn { self?.showNativeVideoViews(remote: remoteOn) }
             self?.nativeLocalVideoView.isHidden = !enabled
             self?.nativeRemoteVideoView.isHidden = !remoteOn
+            self?.updateNativeVideoControls()
             self?.emit(name: "vaultlix:native-video-state", detail: note.userInfo)
         })
         observers.append(NotificationCenter.default.addObserver(
@@ -142,6 +152,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             nativeLocalVideoView.isUserInteractionEnabled = false
             root.addSubview(nativeLocalVideoView)
         }
+        installNativeVideoControlsIfNeeded(in: root)
         let safe = root.safeAreaInsets
         // Remote video is the full call canvas. The transparent WebView stays
         // above it for the existing controls; local video remains a native PiP.
@@ -151,6 +162,107 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
         if let webView { root.bringSubviewToFront(webView) }
         root.bringSubviewToFront(nativeLocalVideoView)
+        root.bringSubviewToFront(nativeVideoControlsView)
+        updateNativeVideoControls()
+    }
+
+    private func installNativeVideoControlsIfNeeded(in root: UIView) {
+        guard nativeVideoControlsView.superview == nil else { return }
+        nativeVideoControlsView.layer.cornerRadius = 30
+        nativeVideoControlsView.clipsToBounds = true
+        nativeVideoControlsView.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
+        nativeVideoControlsView.frame = CGRect(
+            x: 14,
+            y: root.bounds.height - root.safeAreaInsets.bottom - 82,
+            width: root.bounds.width - 28,
+            height: 66
+        )
+
+        configureNativeVideoButton(nativeMuteButton, title: "Mute", symbol: "mic.fill", action: #selector(toggleNativeVideoMute))
+        configureNativeVideoButton(nativeRouteButton, title: "Audio", symbol: "speaker.wave.2.fill", action: #selector(cycleNativeVideoRoute))
+        configureNativeVideoButton(nativeCameraButton, title: "Video", symbol: "video.fill", action: #selector(toggleNativeVideoCamera))
+        configureNativeVideoButton(nativeFlipButton, title: "Flip", symbol: "arrow.triangle.2.circlepath.camera.fill", action: #selector(flipNativeVideoCamera))
+        configureNativeVideoButton(nativeEndButton, title: "End", symbol: "phone.down.fill", action: #selector(endNativeVideoCall))
+        nativeEndButton.tintColor = UIColor(red: 0.95, green: 0.30, blue: 0.40, alpha: 1)
+
+        let stack = UIStackView(arrangedSubviews: [
+            nativeMuteButton, nativeRouteButton, nativeCameraButton, nativeFlipButton, nativeEndButton,
+        ])
+        stack.axis = .horizontal
+        stack.alignment = .fill
+        stack.distribution = .fillEqually
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        nativeVideoControlsView.contentView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: nativeVideoControlsView.contentView.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: nativeVideoControlsView.contentView.trailingAnchor, constant: -6),
+            stack.topAnchor.constraint(equalTo: nativeVideoControlsView.contentView.topAnchor, constant: 4),
+            stack.bottomAnchor.constraint(equalTo: nativeVideoControlsView.contentView.bottomAnchor, constant: -4),
+        ])
+        root.addSubview(nativeVideoControlsView)
+    }
+
+    private func configureNativeVideoButton(_ button: UIButton, title: String, symbol: String, action: Selector) {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: symbol)
+        configuration.title = title
+        configuration.imagePlacement = .top
+        configuration.imagePadding = 3
+        configuration.baseForegroundColor = .white
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = .systemFont(ofSize: 10, weight: .medium)
+            return outgoing
+        }
+        button.configuration = configuration
+        button.addTarget(self, action: action, for: .touchUpInside)
+    }
+
+    private func updateNativeVideoControls() {
+        let muteSymbol = nativeVideoMuted ? "mic.slash.fill" : "mic.fill"
+        nativeMuteButton.configuration?.image = UIImage(systemName: muteSymbol)
+        nativeMuteButton.configuration?.title = nativeVideoMuted ? "Unmute" : "Mute"
+        nativeCameraButton.configuration?.image = UIImage(systemName: nativeLocalVideoEnabled ? "video.slash.fill" : "video.fill")
+        nativeCameraButton.configuration?.title = nativeLocalVideoEnabled ? "Stop" : "Video"
+        let route = VaultlixCallManager.shared.currentAudioRoute()
+        nativeRouteButton.configuration?.image = UIImage(systemName:
+            route == "bluetooth" ? "airpodspro" : (route == "speaker" ? "speaker.wave.3.fill" : "iphone"))
+        nativeRouteButton.configuration?.title = route == "bluetooth" ? "Bluetooth" : (route == "speaker" ? "Speaker" : "Phone")
+    }
+
+    @objc private func toggleNativeVideoMute() {
+        nativeVideoMuted.toggle()
+        VaultlixCallManager.shared.setMutedFromWeb(roomCode: "", muted: nativeVideoMuted)
+        updateNativeVideoControls()
+    }
+
+    @objc private func cycleNativeVideoRoute() {
+        let manager = VaultlixCallManager.shared
+        let current = manager.currentAudioRoute()
+        let next: String
+        if manager.isBluetoothAudioAvailable() {
+            next = current == "bluetooth" ? "speaker" : (current == "speaker" ? "phone" : "bluetooth")
+        } else {
+            next = current == "speaker" ? "phone" : "speaker"
+        }
+        _ = manager.setAudioRoute(next)
+        updateNativeVideoControls()
+    }
+
+    @objc private func toggleNativeVideoCamera() {
+        let desired = !nativeLocalVideoEnabled
+        // The engine publishes the authoritative state after consent and
+        // camera startup complete. Do not optimistically flip the button:
+        // a request that is still waiting for the peer is not yet live video.
+        VaultlixCallManager.shared.setVideoFromWeb(roomCode: "", enabled: desired) { _ in }
+    }
+
+    @objc private func flipNativeVideoCamera() {
+        VaultlixCallManager.shared.switchCameraFromWeb(roomCode: "") { _ in }
+    }
+
+    @objc private func endNativeVideoCall() {
+        VaultlixCallManager.shared.endActiveNativeCall()
     }
 
     private func hideNativeVideoViews() {
@@ -160,6 +272,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeLocalVideoTrack = nil
         nativeRemoteVideoView.removeFromSuperview()
         nativeLocalVideoView.removeFromSuperview()
+        nativeVideoControlsView.removeFromSuperview()
+        nativeVideoMuted = false
+        nativeLocalVideoEnabled = false
     }
 
     private func flushPendingCallActions() {
