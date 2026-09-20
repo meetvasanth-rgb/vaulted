@@ -19,6 +19,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var documentInteractionController: UIDocumentInteractionController?
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
+    private let nativeVideoPausedView = UIView(frame: .zero)
     private let nativeVideoControlsView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let nativeMuteButton = UIButton(type: .system)
     private let nativeRouteButton = UIButton(type: .system)
@@ -29,6 +30,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private weak var nativeLocalVideoTrack: RTCVideoTrack?
     private var nativeVideoMuted = false
     private var nativeLocalVideoEnabled = false
+    private var nativeVideoSessionActive = false
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -80,9 +82,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             let enabled = note.userInfo?["enabled"] as? Bool ?? false
             let remoteOn = note.userInfo?["remoteOn"] as? Bool ?? false
             self?.nativeLocalVideoEnabled = enabled
-            if enabled || remoteOn { self?.showNativeVideoViews(remote: remoteOn) }
+            if enabled || remoteOn { self?.nativeVideoSessionActive = true }
+            if self?.nativeVideoSessionActive == true { self?.showNativeVideoViews(remote: remoteOn) }
             self?.nativeLocalVideoView.isHidden = !enabled
             self?.nativeRemoteVideoView.isHidden = !remoteOn
+            self?.nativeVideoPausedView.isHidden = remoteOn || self?.nativeVideoSessionActive != true
             self?.updateNativeVideoControls()
             self?.emit(name: "vaultlix:native-video-state", detail: note.userInfo)
         })
@@ -152,6 +156,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             nativeLocalVideoView.isUserInteractionEnabled = false
             root.addSubview(nativeLocalVideoView)
         }
+        installNativeVideoPausedViewIfNeeded(in: root)
         installNativeVideoControlsIfNeeded(in: root)
         let safe = root.safeAreaInsets
         // Remote video is the full call canvas. The transparent WebView stays
@@ -161,9 +166,44 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeRemoteVideoView.isHidden = !remote
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
         if let webView { root.bringSubviewToFront(webView) }
+        nativeVideoPausedView.isHidden = remote
+        if !remote { root.bringSubviewToFront(nativeVideoPausedView) }
         root.bringSubviewToFront(nativeLocalVideoView)
         root.bringSubviewToFront(nativeVideoControlsView)
         updateNativeVideoControls()
+    }
+
+    private func installNativeVideoPausedViewIfNeeded(in root: UIView) {
+        guard nativeVideoPausedView.superview == nil else { return }
+        nativeVideoPausedView.frame = root.bounds
+        nativeVideoPausedView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        nativeVideoPausedView.backgroundColor = UIColor(red: 0.12, green: 0.06, blue: 0.09, alpha: 1)
+        nativeVideoPausedView.isUserInteractionEnabled = false
+
+        let icon = UIImageView(image: UIImage(systemName: "video.slash.fill"))
+        icon.tintColor = UIColor.white.withAlphaComponent(0.82)
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 42).isActive = true
+
+        let label = UILabel()
+        label.text = "Video paused"
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
+        label.font = .systemFont(ofSize: 17, weight: .semibold)
+        label.textAlignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [icon, label])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        nativeVideoPausedView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: nativeVideoPausedView.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: nativeVideoPausedView.centerYAnchor, constant: -20),
+        ])
+        root.addSubview(nativeVideoPausedView)
     }
 
     private func installNativeVideoControlsIfNeeded(in root: UIView) {
@@ -272,9 +312,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeLocalVideoTrack = nil
         nativeRemoteVideoView.removeFromSuperview()
         nativeLocalVideoView.removeFromSuperview()
+        nativeVideoPausedView.removeFromSuperview()
         nativeVideoControlsView.removeFromSuperview()
         nativeVideoMuted = false
         nativeLocalVideoEnabled = false
+        nativeVideoSessionActive = false
     }
 
     private func flushPendingCallActions() {

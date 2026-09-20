@@ -67,6 +67,10 @@ test('native iOS video calls keep controls available and label CallKit clearly',
   assert.match(scene, /flipNativeVideoCamera/);
   assert.match(scene, /endNativeVideoCall/);
   assert.match(scene, /bringSubviewToFront\(nativeVideoControlsView\)/);
+  assert.match(scene, /nativeVideoSessionActive/);
+  assert.match(scene, /nativeVideoPausedView/);
+  assert.ok(scene.includes('label.text = "Video paused"'));
+  assert.match(scene, /if !remote \{ root\.bringSubviewToFront\(nativeVideoPausedView\) \}/);
   assert.match(manager, /func endActiveNativeCall\(\)/);
   assert.match(manager, /CXEndCallAction\(call: callID\)/);
   assert.ok(manager.includes('"VIDEO CALL · \\(caller)"'));
