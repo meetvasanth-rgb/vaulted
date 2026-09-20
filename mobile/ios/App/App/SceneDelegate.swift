@@ -121,13 +121,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
     private func showNativeVideoViews(remote: Bool) {
         guard let root = window?.rootViewController?.view else { return }
+        let webView = (window?.rootViewController as? CAPBridgeViewController)?.webView
+        webView?.isOpaque = false
+        webView?.backgroundColor = .clear
+        webView?.scrollView.backgroundColor = .clear
         if nativeRemoteVideoView.superview == nil {
             nativeRemoteVideoView.videoContentMode = .scaleAspectFill
             nativeRemoteVideoView.backgroundColor = .black
             nativeRemoteVideoView.layer.cornerRadius = 0
             nativeRemoteVideoView.clipsToBounds = true
             nativeRemoteVideoView.isUserInteractionEnabled = false
-            root.addSubview(nativeRemoteVideoView)
+            if let webView { root.insertSubview(nativeRemoteVideoView, belowSubview: webView) }
+            else { root.addSubview(nativeRemoteVideoView) }
         }
         if nativeLocalVideoView.superview == nil {
             nativeLocalVideoView.videoContentMode = .scaleAspectFill
@@ -138,22 +143,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             root.addSubview(nativeLocalVideoView)
         }
         let safe = root.safeAreaInsets
-        // Use the available call canvas instead of presenting remote video as
-        // a floating card. The lower control zone stays uncovered so the
-        // WebView's mute/route/video/flip/end controls remain visible and
-        // tappable, while the video fills the width and most of the screen.
-        let videoTop = safe.top + 48
-        let controlsHeight: CGFloat = 214 + safe.bottom
-        nativeRemoteVideoView.frame = CGRect(
-            x: 0,
-            y: videoTop,
-            width: root.bounds.width,
-            height: max(260, root.bounds.height - videoTop - controlsHeight)
-        )
-        nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: videoTop + 16, width: 96, height: 136)
+        // Remote video is the full call canvas. The transparent WebView stays
+        // above it for the existing controls; local video remains a native PiP.
+        nativeRemoteVideoView.frame = root.bounds
+        nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 64, width: 96, height: 136)
         nativeRemoteVideoView.isHidden = !remote
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
-        root.bringSubviewToFront(nativeRemoteVideoView)
+        if let webView { root.bringSubviewToFront(webView) }
         root.bringSubviewToFront(nativeLocalVideoView)
     }
 
@@ -544,7 +540,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             (window?.rootViewController as? CAPBridgeViewController)?.webView?.endEditing(true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
                 let success = VaultlixCallManager.shared.startOutgoingCall(
-                    roomHandle: roomHandle, code: code, caller: caller, peer: peer, inviteID: inviteID
+                    roomHandle: roomHandle, code: code, caller: caller, peer: peer,
+                    inviteID: inviteID, video: body["video"] as? Bool ?? false
                 )
                 if !success {
                     self?.emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code])

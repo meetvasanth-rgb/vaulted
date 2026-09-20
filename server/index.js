@@ -5990,6 +5990,7 @@ wss.on('connection', (ws) => {
       // during a rolling deployment.
       if (msg2.inviteId !== undefined &&
           (typeof msg2.inviteId !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(msg2.inviteId))) return;
+      if (msg2.hasVideo !== undefined && typeof msg2.hasVideo !== 'boolean') return;
       // envelope is already bounded by maxPayload above (the whole frame
       // can't exceed 64KB), but checking it explicitly here too is
       // deliberate belt-and-braces: it fails on this specific field with a
@@ -6031,6 +6032,7 @@ wss.on('connection', (ws) => {
         const relayedSignal = {
           type:msg2.type, from:opaqueRouteId(token), sessionId:msg2.sessionId,
           inviteId:msg2.inviteId,
+          hasVideo:msg2.type === 'call-invite' && msg2.hasVideo === true,
           terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
             ? msg2.terminalReason : undefined,
           envelope:msg2.envelope,
@@ -6117,7 +6119,9 @@ wss.on('connection', (ws) => {
             // "the room on screen when you unlock" are often different rooms.
             const payload = JSON.stringify({
               title: 'Vaultlix',
-              body: caller && caller.name ? `${caller.name} is calling` : 'Incoming call',
+              body: caller && caller.name
+                ? `${caller.name} is ${msg2.hasVideo === true ? 'video calling' : 'calling'}`
+                : (msg2.hasVideo === true ? 'Incoming video call' : 'Incoming call'),
               tag: `vaultlix-call-${roomCode}`,
               isCall: true,
               caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
@@ -6135,7 +6139,7 @@ wss.on('connection', (ws) => {
                 callId: nativeCallId,
                 inviteId: inviteId || '',
                 caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
-                hasVideo: false,
+                hasVideo: msg2.hasVideo === true,
                 // Opaque random handle generated and stored only on the
                 // recipient device. APNs does not receive the vault code,
                 // membership token, or E2E key.

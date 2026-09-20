@@ -508,7 +508,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
-    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String, inviteID: String) -> Bool {
+    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String, inviteID: String, video: Bool = false) -> Bool {
         dismissAppKeyboard()
         clearPreferredAudioInput()
         let callID = UUID()
@@ -518,19 +518,21 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             "code": code,
             "caller": String(peer.prefix(80)),
             "inviteId": inviteID,
+            "hasVideo": video,
         ]
         guard NativeWebRTCCallEngine.shared.prepareOutgoing(
             callID: callID,
             roomHandle: roomHandle,
             caller: caller,
-            inviteID: inviteID
+            inviteID: inviteID,
+            video: video
         ) else { return false }
         calls[callID] = payload
         nativeMediaCalls.insert(callID)
         outgoingCalls.insert(callID)
         let handle = CXHandle(type: .generic, value: String(peer.prefix(80)))
         let action = CXStartCallAction(call: callID, handle: handle)
-        action.isVideo = false
+        action.isVideo = video
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
             self?.callController.request(CXTransaction(action: action)) { [weak self] error in
                 guard let error else { return }
@@ -554,7 +556,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: cleanName)
         update.localizedCallerName = cleanName
-        update.hasVideo = false
+        update.hasVideo = calls[callID]?["hasVideo"] as? Bool ?? false
         provider.reportCall(with: callID, updated: update)
     }
 

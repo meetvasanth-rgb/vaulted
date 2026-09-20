@@ -38,6 +38,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var videoConsent = false
     private var remoteVideoOn = false
     private var videoRequestPending = false
+    private var outgoingVideoCall = false
     private var pendingOffer: [String: Any]?
     private var pendingCandidates: [[String: Any]] = []
     private var sequenceOut = 0
@@ -100,7 +101,7 @@ final class NativeWebRTCCallEngine: NSObject {
     }
 
     @discardableResult
-    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String, inviteID: String) -> Bool {
+    func prepareOutgoing(callID: UUID, roomHandle: String, caller: String, inviteID: String, video: Bool = false) -> Bool {
         guard let stored = NativeCallRoomStore.shared.room(handle: roomHandle) else {
             trace("prepare-outgoing missing-room")
             return false
@@ -113,6 +114,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.outgoing = true
             self.inviteID = inviteID
             self.outgoingCaller = String(caller.prefix(80))
+            self.outgoingVideoCall = video
             self.connectSignalingLocked()
         }
         return true
@@ -744,6 +746,7 @@ final class NativeWebRTCCallEngine: NSObject {
         trace("signal sending type=\(type)")
         var wire: [String: Any] = ["type": type, "sessionId": sessionID, "envelope": envelope]
         if let inviteID { wire["inviteId"] = inviteID }
+        if type == "call-invite" { wire["hasVideo"] = outgoingVideoCall }
         if type == "call-hangup" {
             wire["terminalReason"] = normalizedOutcome(payload["reason"] as? String, fallback: "ended")
         }
@@ -875,6 +878,7 @@ final class NativeWebRTCCallEngine: NSObject {
         videoConsent = false
         remoteVideoOn = false
         videoRequestPending = false
+        outgoingVideoCall = false
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .vaultlixVideoEnded, object: nil)
         }

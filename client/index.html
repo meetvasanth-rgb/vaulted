@@ -1147,6 +1147,10 @@ html.vaultlix-native-ios .call-data-column{font-size:11px}
    with nothing left up there, there's nothing left to scrim. */
 .call-overlay.has-video{background:transparent}
 .call-overlay.has-video::before{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,0) 180px);pointer-events:none}
+html.vaultlix-native-ios.vaultlix-native-video-active,
+html.vaultlix-native-ios.vaultlix-native-video-active body,
+html.vaultlix-native-ios.vaultlix-native-video-active #s-chat,
+html.vaultlix-native-ios.vaultlix-native-video-active .call-overlay{background:transparent!important}
 
 .call-hdr-block{text-align:center}
 .call-hdr-rule{width:50px;height:1px;background:#682C43;margin:0 auto 14px}
@@ -5293,6 +5297,8 @@ window.addEventListener('vaultlix:native-video-state', event => {
     return;
   }
   room.callVideoOn = detail.enabled === true;
+  room.remoteVideoActive = detail.remoteOn === true;
+  document.documentElement.classList.toggle('vaultlix-native-video-active', room.callVideoOn || room.remoteVideoActive);
   if (room.callVideoOn) room.callHadVideo = true;
   renderCallOverlay(room);
 });
@@ -6455,7 +6461,8 @@ async function sendSignal(room, type, payload, inviteIdOverride) {
   const terminalReason = type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(payload?.reason)
     ? payload.reason
     : undefined;
-  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, terminalReason, envelope }));
+  const hasVideo = type === 'call-invite' && room.pendingVideoStart === true;
+  room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, terminalReason, hasVideo, envelope }));
   return true;
 }
 
@@ -6785,6 +6792,7 @@ async function startCallForRoom(room, options = {}) {
       iosBridge.postMessage({
         action: 'startOutgoing', roomHandle: room.nativeRoomHandle, code: room.code,
         caller: room.myName || 'Someone', peer: room.callPeerName, inviteId: room.callInviteId,
+        video: room.pendingVideoStart === true,
       });
     } catch (e) {
       endCall(room, 'Calling isn’t available right now.');
@@ -7093,6 +7101,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   room.nativeAnswerPending = false;
   room.pendingCallAccept = false;
   room.pendingVideoStart = false;
+  document.documentElement.classList.remove('vaultlix-native-video-active');
   room.callInviteReceivedAt = null;
   room.callInviteId = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;

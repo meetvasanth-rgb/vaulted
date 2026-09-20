@@ -42,10 +42,17 @@ test('privacy-preserving incoming iOS calls can resolve native media controls', 
   assert.match(manager, /respondToVideoRequestFromWeb[\s\S]*nativeMediaCall\(matching: roomCode\)/);
 });
 
-test('native iOS remote video uses the full-width call canvas', () => {
+test('native iOS direct video calls notify CallKit and use a full-screen canvas', () => {
   const scene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
+  const manager = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
+  const engine = fs.readFileSync('mobile/ios/App/App/NativeWebRTCCallEngine.swift', 'utf8');
+  const server = fs.readFileSync('server/index.js', 'utf8');
   assert.match(scene, /nativeRemoteVideoView\.layer\.cornerRadius = 0/);
-  assert.match(scene, /width: root\.bounds\.width/);
-  assert.match(scene, /controlsHeight: CGFloat = 214 \+ safe\.bottom/);
+  assert.match(scene, /nativeRemoteVideoView\.frame = root\.bounds/);
+  assert.match(scene, /insertSubview\(nativeRemoteVideoView, belowSubview: webView\)/);
+  assert.match(scene, /bringSubviewToFront\(webView\)/);
+  assert.match(manager, /action\.isVideo = video/);
+  assert.match(engine, /wire\["hasVideo"\] = outgoingVideoCall/);
+  assert.match(server, /hasVideo: msg2\.hasVideo === true/);
   assert.doesNotMatch(scene, /root\.bounds\.height \* 0\.48/);
 });
