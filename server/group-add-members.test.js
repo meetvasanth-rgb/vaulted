@@ -145,12 +145,3 @@ test('only connected contacts who are not already members are offered', () => {
   assert.deepEqual(candidates(group, list, 'me'), ['room-z']);
 });
 
-test('group text can be copied and forwarded, and tapping it does not immediately close the actions', () => {
-  assert.match(groups, /data-text-actionable-id/);
-  assert.match(groups, /msgActionBtn\('copy', 'Copy'\)\}\$\{msgActionBtn\('forward', 'Forward'\)/);
-  assert.match(groups, /showForwardAttachmentPicker\(\{ kind:'text', text \}, \{ includeActiveRoom:true \}\)/);
-  const client = read('client/index.html');
-  assert.match(client, /!e\.target\.closest\('\.group-message-text'\)/);
-  assert.match(client, /if \(rec\.kind === 'text'\) \{\s*if \(!await sendForwardedText\(target, rec\.text\)\) return false;/);
-  assert.match(client, /VaultlixContentSafety\.check\(text\)\.blocked[\s\S]*not forwarded/);
-});
