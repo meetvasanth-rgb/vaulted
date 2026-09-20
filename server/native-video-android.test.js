@@ -49,6 +49,20 @@ test('the call screen asks before switching and again on the other side', () => 
   assert.match(screen, /requestDismissKeyguard/);
 });
 
+test('direct video-call entry waits for connection and preserves peer consent', () => {
+  const client = read('client/index.html');
+  const main = read(java + 'MainActivity.java');
+  const screen = read(java + 'NativeCallActivity.java');
+  assert.match(client, /id="video-call-btn"[\s\S]*onclick="startVideoCall\(\)"/);
+  assert.match(client, /data-video-call-room=/);
+  assert.match(client, /startCallFromHistory\(button\.dataset\.videoCallRoom, true\)/);
+  assert.match(client, /startOutgoingVideoCall\([\s\S]*room\.callInviteId/);
+  assert.match(main, /startOutgoingVideoCall\([\s\S]*startOutgoingCallInternal\(roomHandle, caller, peer, inviteId, true\)/);
+  assert.match(screen, /EXTRA_START_WITH_VIDEO/);
+  assert.match(screen, /if \(startWithVideo && !engine\.isCameraOn\(\)\)[\s\S]*engine\.requestVideo\(\)/);
+  assert.doesNotMatch(screen, /if \(startWithVideo[\s\S]{0,300}setCameraEnabled\(true\)/);
+});
+
 test('the camera pauses when the call screen is left and resumes on return', () => {
   const screen = read(java + 'NativeCallActivity.java');
   assert.match(screen, /protected void onStop\(\)[\s\S]*resumeCameraOnStart = true[\s\S]*setCameraEnabled\(false\)/);

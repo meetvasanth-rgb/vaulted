@@ -48,6 +48,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
     static final String EXTRA_OUTGOING = "outgoing";
+    static final String EXTRA_START_WITH_VIDEO = "startWithVideo";
     static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
     private static final int INK = Color.rgb(39, 29, 37);
     private static final int IVORY = Color.rgb(250, 246, 247);
@@ -102,6 +103,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private String roomCode;
     private boolean finishingCall;
     private boolean outgoing;
+    private boolean startWithVideo;
     private String pendingHistory = "";
     private AudioTrack ringbackTrack;
     private final Runnable enforceRequestedAudioRoute = () -> {
@@ -154,6 +156,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         getWindow().setNavigationBarColor(INK);
         roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE);
         outgoing = getIntent().getBooleanExtra(EXTRA_OUTGOING, false);
+        startWithVideo = outgoing && getIntent().getBooleanExtra(EXTRA_START_WITH_VIDEO, false);
         engine = NativeWebRtcCallEngine.get(this);
         engine.addListener(this);
         clearIncomingCallBanner();
@@ -630,6 +633,13 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         tagline.setVisibility(View.VISIBLE);
         getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
         tick.run();
+        if (startWithVideo && !engine.isCameraOn()) {
+            startWithVideo = false;
+            engine.requestVideo();
+            if (videoLabel != null) videoLabel.setText(R.string.native_video_waiting);
+            handler.removeCallbacks(videoRequestTimeout);
+            handler.postDelayed(videoRequestTimeout, 20_000);
+        }
     }); }
     @Override public void onEnded(String reason) { runOnUiThread(() -> {
         if (connectedAt == 0) {

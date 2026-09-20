@@ -350,10 +350,14 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-action[data-tooltip]:hover::after,.vault-list-action[data-tooltip]:focus-visible::after{opacity:1;transform:translateX(-50%) translateY(0)}
 .vault-call-icon{grid-row:1/3;width:48px;height:48px;border-radius:50%;background:#F2E8EC;color:#8D3C56;display:flex;align-items:center;justify-content:center}
 .vault-call-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-/* The phone circle is a real button that starts the call; keep the circle look and give it a pressed state. */
+/* Call-history actions ring directly without opening the conversation row. */
 button.vault-call-btn{padding:0;border:0;cursor:pointer;font:inherit;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,background .12s ease}
 button.vault-call-btn:active{transform:scale(.92);background:#E9D6DD}
 button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px}
+.vault-call-video-btn{width:36px;height:36px;padding:0;border:1px solid #E4D5DA;border-radius:12px;background:#F7EEF1;color:#682C43;display:grid;place-items:center;cursor:pointer;transition:transform .12s ease,background .12s ease}
+.vault-call-video-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.vault-call-video-btn:active{transform:scale(.92);background:#E9D6DD}
+.vault-call-video-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px}
 @media(min-width:760px){
   .vault-list-hdr{padding-left:max(28px,calc((100vw - 760px)/2));padding-right:max(28px,calc((100vw - 760px)/2))}
   .vault-list-main{padding-top:0}.vault-list-row{padding:17px 20px}
@@ -2356,8 +2360,12 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .chat-hdr-presence[hidden]{display:none!important}
 #s-chat .status-dot{width:9px;height:9px;flex:none;background:#469263;box-shadow:0 0 0 3px rgba(70,146,99,.17)}
 #s-chat .status-dot.away{background:#AAA2A6;box-shadow:0 0 0 2px rgba(122,112,117,.14)}
-#s-chat .chat-hdr-actions{position:relative;margin-left:auto;gap:0!important}
-#s-chat .conversation-menu-btn{width:42px;height:42px;padding:0;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s}
+#s-chat .chat-hdr-actions{position:relative;margin-left:auto;gap:5px!important}
+#s-chat .chat-call-btn,#s-chat .conversation-menu-btn{width:42px;height:42px;padding:0;border:1px solid #E7D6DC;border-radius:13px;background:#F6EEF1;color:#682C43;display:grid;place-items:center;cursor:pointer;transition:background .15s,border-color .15s,transform .12s}
+#s-chat .chat-call-btn:hover,#s-chat .chat-call-btn:active,#s-chat .conversation-menu-btn:hover,#s-chat .conversation-menu-btn[aria-expanded="true"]{background:#EEDFE4;border-color:#DABFC8}
+#s-chat .chat-call-btn:active{transform:scale(.94)}
+#s-chat .chat-call-btn:disabled{opacity:.42;cursor:default;transform:none}
+#s-chat .chat-call-btn svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 #s-chat .conversation-menu-btn:hover,#s-chat .conversation-menu-btn[aria-expanded="true"]{background:#EEDFE4;border-color:#DABFC8}
 #s-chat .conversation-menu-btn svg{width:21px;height:21px;fill:currentColor}
 #s-chat .conversation-menu{position:absolute;z-index:40;top:calc(72px + env(safe-area-inset-top));left:12px;right:12px;width:auto;margin:8px 0 0;display:none;padding:8px;border:1px solid #E6D9DE;border-radius:17px;background:#fff;box-shadow:0 10px 28px rgba(45,25,35,.13)}
@@ -2462,7 +2470,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-chat .chat-hdr-logo{width:40px;height:40px;border-radius:13px!important}
   #s-chat .chat-peer-avatar{width:40px;height:40px;flex-basis:40px;border-radius:13px}
   #s-chat .chat-hdr-room{max-width:190px!important;font-size:16px!important}
-  #s-chat .conversation-menu-btn{width:40px;height:40px;border-radius:12px}
+  #s-chat .chat-call-btn,#s-chat .conversation-menu-btn{width:40px;height:40px;border-radius:12px}
   #s-chat .settings-btn,#s-chat .leave-btn,#s-chat .destroy-btn{width:38px!important;height:38px!important;border-radius:12px!important}
   #s-chat .chat-tools{grid-template-columns:minmax(0,1fr) auto;padding:7px 12px;gap:6px}
   #s-chat .e2e-bar{justify-content:flex-start;padding:8px 9px!important;font-size:9.8px!important}
@@ -2475,6 +2483,8 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-chat .chat-hdr-logo{display:none!important}
   #s-chat .chat-peer-avatar{display:grid!important;width:38px;height:38px;flex-basis:38px}
   #s-chat .chat-hdr-room{max-width:185px!important}
+  #s-chat .chat-hdr-actions{gap:3px!important}
+  #s-chat .chat-call-btn,#s-chat .conversation-menu-btn{width:37px;height:38px}
   #s-chat .e2e-bar{font-size:10px!important}
 }
 /* WKWebView-only legibility pass. Android's sizing is already balanced; iOS
@@ -3153,9 +3163,15 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <div class="chat-hdr-presence" id="chat-presence" hidden><span class="status-dot" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Online</span></div>
       </div>
     </div>
-    <!-- One compact menu keeps conversation actions together and gives the
-         header enough space for the participant name. -->
+    <!-- Primary call actions stay visible; secondary conversation actions
+         remain grouped in the compact menu. -->
     <div class="chat-hdr-actions">
+      <button class="chat-call-btn" id="call-btn" type="button" onclick="startCall()" title="Voice call" aria-label="Start voice call" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      </button>
+      <button class="chat-call-btn" id="video-call-btn" type="button" onclick="startVideoCall()" title="Video call" aria-label="Start video call" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg>
+      </button>
       <button class="conversation-menu-btn" id="conversation-menu-btn" type="button" onclick="toggleConversationMenu(event)" title="Conversation menu" aria-label="Open conversation menu" aria-expanded="false" aria-controls="conversation-menu">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
       </button>
@@ -3200,9 +3216,6 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
         <option value="28800" data-i18n="eight_hours">8 hours</option>
       </select>
     </div>
-    <button class="call-btn" id="call-btn" onclick="startCall()" title="Voice call" disabled>
-      <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-    </button>
   </div>
   </div>
   <div class="push-banner" id="push-banner"></div>
@@ -5149,6 +5162,7 @@ async function handleNativeCallAction(detail) {
     room.callStartedAt = Number.isFinite(detail.connectedAt) ? detail.connectedAt : Date.now();
     requestNativeIOSSpeakerState(room);
     startCallTimer(room);
+    beginPendingVideoStart(room);
     if (usesDedicatedAndroidCallUi) hideCallOverlay();
     else renderCallOverlay(room);
     refreshCallButton();
@@ -6663,12 +6677,14 @@ function canStartCall(room) {
 
 function refreshCallButton() {
   const btn = document.getElementById('call-btn');
-  if (!btn) return;
+  const videoBtn = document.getElementById('video-call-btn');
   // Transport readiness is deliberately not reflected as a disabled/grey
   // control. Opening a conversation starts signalling in the background,
   // and an early tap below briefly awaits that handshake. Native mobile
   // engines do not need the page WebSocket at all to begin an outgoing call.
-  btn.disabled = !canStartCall(getActiveRoom());
+  const disabled = !canStartCall(getActiveRoom());
+  if (btn) btn.disabled = disabled;
+  if (videoBtn) videoBtn.disabled = disabled;
 }
 
 function waitForCallSignaling(room, timeoutMs = 3000) {
@@ -6687,10 +6703,11 @@ function waitForCallSignaling(room, timeoutMs = 3000) {
 
 // The chat's own call button: rings the open conversation.
 async function startCall() { return startCallForRoom(getActiveRoom()); }
+async function startVideoCall() { return startCallForRoom(getActiveRoom(), { video: true }); }
 
 // The call itself. Shared by the chat button above and by the calls list,
 // which rings a conversation without opening its chat.
-async function startCallForRoom(room) {
+async function startCallForRoom(room, options = {}) {
   if (!canStartCall(room)) return;
   const iosBridge = window.webkit?.messageHandlers?.vaultlixCall;
   const androidNativeBridge = window.VaultlixAndroid;
@@ -6711,6 +6728,7 @@ async function startCallForRoom(room) {
   room.callAnswerAcknowledged = false;
   room.nativeCallActive = false;
   room.iosNativeOutgoing = false;
+  room.pendingVideoStart = options.video === true;
   // CallKit can snapshot WKWebView before iOS has completed its keyboard
   // dismissal animation. Mark the call busy first (preventing a second tap),
   // then wait only when an editable control really had focus before handing
@@ -6734,9 +6752,14 @@ async function startCallForRoom(room) {
     room.nativeCallActive = true;
     disconnectSignaling(room);
     try {
-      if (!androidNativeBridge.startOutgoingCall(
-        room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call', room.callInviteId
-      )) {
+      const started = room.pendingVideoStart && androidNativeBridge.startOutgoingVideoCall
+        ? androidNativeBridge.startOutgoingVideoCall(
+            room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call', room.callInviteId
+          )
+        : androidNativeBridge.startOutgoingCall(
+            room.nativeRoomHandle, room.myName || 'Someone', room.callPeerName || 'Private call', room.callInviteId
+          );
+      if (!started) {
         throw new Error('native call session unavailable');
       }
     } catch (e) {
@@ -7069,6 +7092,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   room.nativeIncomingPrepared = false;
   room.nativeAnswerPending = false;
   room.pendingCallAccept = false;
+  room.pendingVideoStart = false;
   room.callInviteReceivedAt = null;
   room.callInviteId = null;
   if (activeCallRoomCode === room.code) activeCallRoomCode = null;
@@ -7863,6 +7887,18 @@ function markWebCallMediaConnected(room) {
   room.nativeAnswerPending = false;
   startCallTimer(room);
   renderCallOverlay(room);
+  beginPendingVideoStart(room);
+}
+
+function beginPendingVideoStart(room) {
+  if (!room?.pendingVideoStart || room.callState !== 'active') return;
+  room.pendingVideoStart = false;
+  // Android's dedicated call screen consumes this intent natively. iOS and
+  // browser calls reuse the established request/accept video upgrade flow.
+  if (room.nativeCallActive && window.VaultlixAndroid?.supportsNativeWebRtc?.()) return;
+  setTimeout(() => {
+    if (activeCallRoomCode === room.code && room.callState === 'active' && !room.callVideoOn) toggleCamera();
+  }, 250);
 }
 
 // CallKit can activate its AVAudioSession after WKWebView obtained its first
@@ -13138,7 +13174,7 @@ function renderCallHistoryList(body) {
     <button type="button" class="vault-call-icon vault-call-btn" data-call-room="${escHtml(room.code)}" aria-label="Call ${escHtml(roomDisplayLabel(room))}" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></button>
     <span class="vault-list-row-name">${escHtml(roomDisplayLabel(room))}</span>
     <span class="vault-list-row-preview${/^Missed/i.test(text) ? ' alert' : ''}">${escHtml(text)}</span>
-    <span class="vault-list-row-meta">${occurredAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(occurredAt)}</span>` : ''}</span>
+    <span class="vault-list-row-meta">${occurredAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(occurredAt)}</span>` : ''}<button type="button" class="vault-call-video-btn" data-video-call-room="${escHtml(room.code)}" aria-label="Video call ${escHtml(roomDisplayLabel(room))}" title="Video call"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg></button></span>
   </div>`).join('');
   body.querySelectorAll('.vault-call-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
   // The phone button rings right away. stopPropagation keeps the tap from also
@@ -13146,18 +13182,21 @@ function renderCallHistoryList(body) {
   body.querySelectorAll('.vault-call-btn').forEach(button => {
     button.onclick = event => { event.stopPropagation(); startCallFromHistory(button.dataset.callRoom); };
   });
+  body.querySelectorAll('.vault-call-video-btn').forEach(button => {
+    button.onclick = event => { event.stopPropagation(); startCallFromHistory(button.dataset.videoCallRoom, true); };
+  });
 }
 
 // The phone button on a call-history row rings that conversation immediately,
 // without opening its chat. A conversation that is not ready to call (still
 // restoring, waiting for its peer, or needing a reconnect) keeps the old
 // behaviour of opening it, so its own restore and resume flow can run.
-function startCallFromHistory(code) {
+function startCallFromHistory(code, video = false) {
   const room = rooms.get(code);
   if (!room) return;
   if (activeCallRoomCode || room.callState !== 'idle') { toast('Finish your current call before starting another.'); return; }
   if (room.restorePending || room.restoreUnavailable || !room.everOnline || !room.sharedKey || room.reconnectRequired) { openVaultListRoom(code); return; }
-  startCallForRoom(room);
+  startCallForRoom(room, { video });
 }
 
 function openPeerStatusFromInbox(privateNumber) {

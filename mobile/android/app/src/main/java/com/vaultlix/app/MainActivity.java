@@ -870,6 +870,15 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean startOutgoingCall(String roomHandle, String caller, String peer, String inviteId) {
+            return startOutgoingCallInternal(roomHandle, caller, peer, inviteId, false);
+        }
+
+        @JavascriptInterface
+        public boolean startOutgoingVideoCall(String roomHandle, String caller, String peer, String inviteId) {
+            return startOutgoingCallInternal(roomHandle, caller, peer, inviteId, true);
+        }
+
+        private boolean startOutgoingCallInternal(String roomHandle, String caller, String peer, String inviteId, boolean startWithVideo) {
             configureCallAudioRoute();
             NativeCallRoomStore.Room saved = nativeCallRoomStore.byHandle(roomHandle);
             if (saved == null || !nativeCallEngine.prepareOutgoing(roomHandle, caller, inviteId)) return false;
@@ -881,6 +890,7 @@ public class MainActivity extends BridgeActivity {
                         .putExtra(NativeCallActivity.EXTRA_CALLER, peer)
                         .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code)
                         .putExtra(NativeCallActivity.EXTRA_CALLER_AVATAR_PATH, saved.avatarPath)
+                        .putExtra(NativeCallActivity.EXTRA_START_WITH_VIDEO, startWithVideo)
                         .putExtra(NativeCallActivity.EXTRA_OUTGOING, true);
                 startActivity(call);
                 overridePendingTransition(0, 0);
