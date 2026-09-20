@@ -6202,8 +6202,7 @@ async function handleSignalMessage(room, type, payload, inviteId) {
       // screen is ringing. Microphone access still waits for Answer.
       fetchTurnCredentials(room);
       const androidNativeBridge = window.VaultlixAndroid;
-      if ((document.hidden || document.body.classList.contains('native-call-only')) &&
-          androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeRoomHandle) {
+      if (androidNativeBridge?.supportsNativeWebRtc?.() && room.nativeRoomHandle) {
         try {
           room.nativeIncomingPrepared = !!androidNativeBridge.prepareIncomingCall(
             room.nativeRoomHandle, room.callPeerName || 'Someone'
@@ -6212,12 +6211,15 @@ async function handleSignalMessage(room, type, payload, inviteId) {
           room.nativeIncomingPrepared = false;
         }
       }
-      // Once Android's native engine owns the incoming call, do not leave the
-      // legacy WebView call sheet (and its focused composer/keyboard) visible
-      // underneath the full-screen native activity.
-      if (!room.nativeIncomingPrepared) renderCallOverlay(room);
+      // Foreground Android calls keep the incoming Answer/Decline sheet until
+      // the user answers. Answer then opens NativeCallActivity and the WebView
+      // never creates a competing RTCPeerConnection. Background and locked
+      // calls already have their dedicated native incoming surface.
+      const foregroundNativeIncoming = room.nativeIncomingPrepared &&
+        !document.hidden && !document.body.classList.contains('native-call-only');
+      if (!room.nativeIncomingPrepared || foregroundNativeIncoming) renderCallOverlay(room);
       refreshCallButton();
-      if (!room.nativeIncomingPrepared) playChime();
+      if (!room.nativeIncomingPrepared || foregroundNativeIncoming) playChime();
     }
     // Ack receipt so the caller can show "Ringing…" instead of a flat
     // "Calling…" the whole way through — same idea as WhatsApp distinguishing
@@ -6502,7 +6504,7 @@ async function acceptCall(fromNativeCallKit = false) {
       room.pendingCallAccept = false;
       disconnectSignaling(room);
       try {
-        androidNativeBridge.answerIncomingCall();
+        androidNativeBridge.answerIncomingCall(room.callPeerName || 'Someone');
       } catch (e) {
         room.nativeCallActive = false;
         room.nativeIncomingPrepared = false;

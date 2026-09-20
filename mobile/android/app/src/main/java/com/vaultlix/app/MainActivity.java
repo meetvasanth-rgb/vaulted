@@ -89,9 +89,9 @@ public class MainActivity extends BridgeActivity {
         openVaultlixInvite(getIntent());
     }
 
-    // True while the app's own screen is in front. The push service reads this
-    // when a call arrives: in the foreground the web call screen (which has
-    // video) should answer, not the audio-only native engine.
+    // True while the app's own screen is in front. Incoming calls still use
+    // the native engine in this state; the flag is retained for notification
+    // presentation and lifecycle decisions outside media ownership.
     private static volatile boolean appInForeground;
 
     public static boolean isAppInForeground() {
@@ -885,8 +885,22 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void answerIncomingCall() {
+        public void answerIncomingCall(String caller) {
             configureCallAudioRoute();
+            String code = nativeCallEngine.currentRoomCode();
+            NativeCallRoomStore.Room saved = nativeCallRoomStore.byCode(code);
+            if (saved != null && !NativeCallActivity.isRunning()) {
+                String peer = caller == null || caller.trim().isEmpty() ? "Someone" : caller.trim();
+                runOnUiThread(() -> {
+                    Intent call = new Intent(MainActivity.this, NativeCallActivity.class)
+                            .putExtra(NativeCallActivity.EXTRA_CALLER, peer)
+                            .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code)
+                            .putExtra(NativeCallActivity.EXTRA_CALLER_AVATAR_PATH, saved.avatarPath)
+                            .putExtra(NativeCallActivity.EXTRA_OUTGOING, false);
+                    startActivity(call);
+                    overridePendingTransition(0, 0);
+                });
+            }
             nativeCallEngine.answer();
         }
 

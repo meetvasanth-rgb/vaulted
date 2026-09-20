@@ -43,8 +43,12 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(main, /NativeCallActivity\.class/);
   assert.match(main, /NativeCallActivity\.EXTRA_CALLER_AVATAR_PATH, saved\.avatarPath/);
   assert.match(client, /startOutgoingCall\([\s\S]*room\.callPeerName/);
-  assert.match(client, /if \(!room\.nativeIncomingPrepared\) renderCallOverlay\(room\)/);
-  assert.match(client, /if \(!room\.nativeIncomingPrepared\) playChime\(\)/);
+  assert.match(client, /if \(androidNativeBridge\?\.supportsNativeWebRtc\?\.\(\) && room\.nativeRoomHandle\)/);
+  assert.doesNotMatch(client, /document\.hidden \|\| document\.body\.classList\.contains\('native-call-only'\)\) &&\s*androidNativeBridge\?\.supportsNativeWebRtc/);
+  assert.match(client, /const foregroundNativeIncoming = room\.nativeIncomingPrepared/);
+  assert.match(client, /answerIncomingCall\(room\.callPeerName \|\| 'Someone'\)/);
+  assert.match(main, /public void answerIncomingCall\(String caller\)/);
+  assert.match(main, /answerIncomingCall\(String caller\)[\s\S]*NativeCallActivity\.class[\s\S]*EXTRA_OUTGOING, false[\s\S]*nativeCallEngine\.answer\(\)/);
   assert.match(client, /\.call-status\.call-security\{color:rgba\(255,255,255,\.9\);font-weight:500/);
   assert.match(client, /\.call-btn-label\{[\s\S]*color:rgba\(255,255,255,\.74\)/);
   assert.match(client, /call-status call-security">End-to-end encrypted/);
