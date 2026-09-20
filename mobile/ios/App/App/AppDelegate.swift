@@ -411,6 +411,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         NativeWebRTCCallEngine.shared.switchCamera(callID: match.key, completion: completion)
     }
 
+    func respondToVideoRequestFromWeb(roomCode: String, accepted: Bool, completion: @escaping (Bool) -> Void) {
+        guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }),
+              nativeMediaCalls.contains(match.key) else { completion(false); return }
+        NativeWebRTCCallEngine.shared.respondToVideoRequest(callID: match.key, accepted: accepted, completion: completion)
+    }
+
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         guard let payload = calls[action.callUUID], nativeMediaCalls.contains(action.callUUID) else {
             action.fail(); return

@@ -31,6 +31,9 @@ final class NativeWebRTCCallEngine: NSObject {
     private var videoCapturer: RTCCameraVideoCapturer?
     private var videoSender: RTCRtpSender?
     private var frontCamera = true
+    private var videoConsent = false
+    private var remoteVideoOn = false
+    private var videoRequestPending = false
     private var pendingOffer: [String: Any]?
     private var pendingCandidates: [[String: Any]] = []
     private var sequenceOut = 0
@@ -161,15 +164,40 @@ final class NativeWebRTCCallEngine: NSObject {
                 return
             }
             if enabled {
+                guard self.videoConsent else {
+                    self.videoRequestPending = true
+                    self.sendSignalLocked(type: "call-video-request", payload: [:])
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                        userInfo: ["enabled": false, "remoteOn": self.remoteVideoOn, "waiting": true])
+                        completion(true)
+                    }
+                    return
+                }
                 self.startVideoLocked(peer: peer, completion: completion)
             } else {
                 self.videoTrack?.isEnabled = false
                 self.videoCapturer?.stopCapture()
+                self.sendSignalLocked(type: "call-video-state", payload: ["on": false])
                 DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .vaultlixVideoState, object: nil, userInfo: ["enabled": false])
+                    NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                    userInfo: ["enabled": false, "remoteOn": self.remoteVideoOn])
                     completion(true)
                 }
             }
+        }
+    }
+
+    func respondToVideoRequest(callID: UUID, accepted: Bool, completion: @escaping (Bool) -> Void) {
+        queue.async {
+            guard self.callID == callID, self.room != nil, let peer = self.peer else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            if accepted { self.videoConsent = true }
+            self.sendSignalLocked(type: "call-video-response", payload: ["accepted": accepted])
+            guard accepted else { DispatchQueue.main.async { completion(true) }; return }
+            self.startVideoLocked(peer: peer, completion: completion)
         }
     }
 
@@ -197,7 +225,6 @@ final class NativeWebRTCCallEngine: NSObject {
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .vaultlixLocalVideoTrack, object: track)
             }
-            createAndSendOfferLocked()
         }
         videoTrack?.isEnabled = true
         startCaptureLocked(completion: completion)
@@ -222,7 +249,9 @@ final class NativeWebRTCCallEngine: NSObject {
         capturer.startCapture(with: device, format: format, fps: min(30, maxFPS)) { error in
             DispatchQueue.main.async {
                 let success = error == nil
-                NotificationCenter.default.post(name: .vaultlixVideoState, object: nil, userInfo: ["enabled": success])
+                if success { self.queue.async { self.sendSignalLocked(type: "call-video-state", payload: ["on": true]) } }
+                NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                userInfo: ["enabled": success, "remoteOn": self.remoteVideoOn])
                 completion(success)
             }
         }
@@ -417,6 +446,31 @@ final class NativeWebRTCCallEngine: NSObject {
         case "answer":
             guard outgoing else { return }
             processAnswerLocked(payload)
+        case "call-video-request":
+            guard peer != nil, answered else { return }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                userInfo: ["request": true])
+            }
+        case "call-video-response":
+            let accepted = payload["accepted"] as? Bool ?? false
+            videoRequestPending = false
+            guard accepted, let peer else {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                    userInfo: ["enabled": false, "remoteOn": self.remoteVideoOn, "declined": true])
+                }
+                return
+            }
+            videoConsent = true
+            startVideoLocked(peer: peer) { _ in }
+        case "call-video-state":
+            remoteVideoOn = videoConsent && (payload["on"] as? Bool == true)
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                userInfo: ["enabled": self.videoTrack?.isEnabled == true,
+                                                           "remoteOn": self.remoteVideoOn])
+            }
         case "call-hangup", "call-decline", "call-busy":
             // CXProvider and the manager's call collections are main-thread
             // owned. A remote hang-up arrives on this engine's serial queue;
@@ -487,6 +541,7 @@ final class NativeWebRTCCallEngine: NSObject {
         peer = pc
         prepareAudioTrackLocked()
         if let audioTrack { _ = pc.add(audioTrack, streamIds: ["vaultlix-native-stream"]) }
+        prepareVideoTrackLocked(peer: pc)
         if outgoing && answered { createAndSendOfferLocked() }
         else if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
     }
@@ -568,6 +623,20 @@ final class NativeWebRTCCallEngine: NSObject {
         audioSource = source
         audioTrack = factory.audioTrack(with: source, trackId: "vaultlix-native-audio")
         audioTrack?.isEnabled = !muted
+    }
+
+    private func prepareVideoTrackLocked(peer: RTCPeerConnection) {
+        guard videoTrack == nil else { return }
+        let source = factory.videoSource()
+        let track = factory.videoTrack(with: source, trackId: "vaultlix-native-video")
+        track.isEnabled = false
+        videoSource = source
+        videoTrack = track
+        videoCapturer = RTCCameraVideoCapturer(delegate: source)
+        videoSender = peer.add(track, streamIds: ["vaultlix-native-stream"])
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixLocalVideoTrack, object: track)
+        }
     }
 
     private func sendSignalLocked(type: String, payload: [String: Any]) {
@@ -706,6 +775,9 @@ final class NativeWebRTCCallEngine: NSObject {
         videoSource = nil
         videoSender = nil
         frontCamera = true
+        videoConsent = false
+        remoteVideoOn = false
+        videoRequestPending = false
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .vaultlixVideoEnded, object: nil)
         }

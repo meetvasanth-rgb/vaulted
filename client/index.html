@@ -5212,6 +5212,22 @@ window.addEventListener('vaultlix:native-video-state', event => {
   const room = rooms.get(activeCallRoomCode);
   if (!room || !room.nativeCallActive) return;
   const detail = event.detail || {};
+  if (detail.request === true) {
+    if (room.nativeVideoPromptOpen) return;
+    room.nativeVideoPromptOpen = true;
+    const accepted = window.confirm(`${room.callPeerName || 'Your contact'} wants to switch to video. Turn on your camera?`);
+    room.nativeVideoPromptOpen = false;
+    try { window.webkit.messageHandlers.vaultlixCall.postMessage({action:'respondVideo',code:room.code,accepted}); }
+    catch (_) { toast('Could not respond to the video request.'); }
+    return;
+  }
+  if (detail.waiting === true) {
+    room.nativeVideoRequestPending = true;
+    toast('Waiting for the other person to accept video.');
+    return;
+  }
+  room.nativeVideoRequestPending = false;
+  if (detail.declined === true) { toast('Video request was declined.'); return; }
   if (detail.success === false) {
     toast('Could not access camera.');
     return;
@@ -7911,6 +7927,7 @@ async function toggleCamera() {
   const room = rooms.get(activeCallRoomCode);
   if (!room) return;
   if (room.nativeCallActive && window.__vaultlixNativeVideo === true) {
+    if (room.nativeVideoRequestPending) { toast('Waiting for the other person to accept video.'); return; }
     const target = !room.callVideoOn;
     try {
       window.webkit.messageHandlers.vaultlixCall.postMessage({action:'setVideo',code:room.code,enabled:target});

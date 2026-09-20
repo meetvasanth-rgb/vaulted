@@ -57,7 +57,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             self.nativeRemoteVideoTrack?.remove(self.nativeRemoteVideoView)
             self.nativeRemoteVideoTrack = track
             track.add(self.nativeRemoteVideoView)
-            self.showNativeVideoViews(remote: true)
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixLocalVideoTrack, object: nil, queue: .main
@@ -66,14 +65,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             self.nativeLocalVideoTrack?.remove(self.nativeLocalVideoView)
             self.nativeLocalVideoTrack = track
             track.add(self.nativeLocalVideoView)
-            self.showNativeVideoViews(remote: false)
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVideoState, object: nil, queue: .main
         ) { [weak self] note in
             let enabled = note.userInfo?["enabled"] as? Bool ?? false
+            let remoteOn = note.userInfo?["remoteOn"] as? Bool ?? false
+            if enabled || remoteOn { self?.showNativeVideoViews(remote: remoteOn) }
             self?.nativeLocalVideoView.isHidden = !enabled
-            self?.emit(name: "vaultlix:native-video-state", detail: ["enabled": enabled, "success": true])
+            self?.nativeRemoteVideoView.isHidden = !remoteOn
+            self?.emit(name: "vaultlix:native-video-state", detail: note.userInfo)
         })
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVideoEnded, object: nil, queue: .main
@@ -139,7 +140,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         let safe = root.safeAreaInsets
         nativeRemoteVideoView.frame = CGRect(x: 16, y: safe.top + 76, width: root.bounds.width - 32, height: min(root.bounds.height * 0.48, 430))
         nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 88, width: 88, height: 124)
-        nativeRemoteVideoView.isHidden = !remote && nativeRemoteVideoTrack == nil
+        nativeRemoteVideoView.isHidden = !remote
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
         root.bringSubviewToFront(nativeRemoteVideoView)
         root.bringSubviewToFront(nativeLocalVideoView)
@@ -582,6 +583,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
            let code = body["code"] as? String {
             VaultlixCallManager.shared.switchCameraFromWeb(roomCode: code) { [weak self] success in
                 self?.emit(name: "vaultlix:native-camera-switched", detail: ["success": success])
+            }
+            return
+        }
+        if action == "respondVideo",
+           let code = body["code"] as? String,
+           let accepted = body["accepted"] as? Bool {
+            VaultlixCallManager.shared.respondToVideoRequestFromWeb(roomCode: code, accepted: accepted) { [weak self] success in
+                if !success { self?.emit(name: "vaultlix:native-video-state", detail: ["success": false]) }
             }
             return
         }
