@@ -391,29 +391,41 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         action.fulfill()
     }
 
+    /// Incoming PushKit payloads intentionally omit the private conversation
+    /// code and carry only an opaque, device-local room handle. The WebView
+    /// still addresses controls with its local code, so exact code lookup is
+    /// available for outgoing/legacy calls and the sole active native call is
+    /// the safe fallback for privacy-preserving incoming calls. Competing
+    /// calls are declined before they can enter `nativeMediaCalls`.
+    private func nativeMediaCall(matching roomCode: String) -> (key: UUID, value: [String: Any])? {
+        if let exact = calls.first(where: {
+            nativeMediaCalls.contains($0.key) && ($0.value["code"] as? String) == roomCode
+        }) { return exact }
+        guard nativeMediaCalls.count == 1,
+              let callID = nativeMediaCalls.first,
+              let payload = calls[callID] else { return nil }
+        return (callID, payload)
+    }
+
     func setMutedFromWeb(roomCode: String, muted: Bool) {
-        guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }),
-              nativeMediaCalls.contains(match.key) else { return }
+        guard let match = nativeMediaCall(matching: roomCode) else { return }
         callController.request(CXTransaction(action: CXSetMutedCallAction(call: match.key, muted: muted))) { error in
             if error != nil { print("VXCALL mute request failed") }
         }
     }
 
     func setVideoFromWeb(roomCode: String, enabled: Bool, completion: @escaping (Bool) -> Void) {
-        guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }),
-              nativeMediaCalls.contains(match.key) else { completion(false); return }
+        guard let match = nativeMediaCall(matching: roomCode) else { completion(false); return }
         NativeWebRTCCallEngine.shared.setVideo(callID: match.key, enabled: enabled, completion: completion)
     }
 
     func switchCameraFromWeb(roomCode: String, completion: @escaping (Bool) -> Void) {
-        guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }),
-              nativeMediaCalls.contains(match.key) else { completion(false); return }
+        guard let match = nativeMediaCall(matching: roomCode) else { completion(false); return }
         NativeWebRTCCallEngine.shared.switchCamera(callID: match.key, completion: completion)
     }
 
     func respondToVideoRequestFromWeb(roomCode: String, accepted: Bool, completion: @escaping (Bool) -> Void) {
-        guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }),
-              nativeMediaCalls.contains(match.key) else { completion(false); return }
+        guard let match = nativeMediaCall(matching: roomCode) else { completion(false); return }
         NativeWebRTCCallEngine.shared.respondToVideoRequest(callID: match.key, accepted: accepted, completion: completion)
     }
 

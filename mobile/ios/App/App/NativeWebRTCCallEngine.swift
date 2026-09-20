@@ -30,6 +30,10 @@ final class NativeWebRTCCallEngine: NSObject {
     private var videoTrack: RTCVideoTrack?
     private var videoCapturer: RTCCameraVideoCapturer?
     private var videoSender: RTCRtpSender?
+    private var remoteVideoTrack: RTCVideoTrack?
+    private var videoCaptureRunning = false
+    private var videoCaptureStarting = false
+    private var videoCaptureCompletions: [(Bool) -> Void] = []
     private var frontCamera = true
     private var videoConsent = false
     private var remoteVideoOn = false
@@ -177,9 +181,14 @@ final class NativeWebRTCCallEngine: NSObject {
                 self.startVideoLocked(peer: peer, completion: completion)
             } else {
                 self.videoTrack?.isEnabled = false
+                self.videoCaptureRunning = false
+                self.videoCaptureStarting = false
+                let pending = self.videoCaptureCompletions
+                self.videoCaptureCompletions.removeAll()
                 self.videoCapturer?.stopCapture()
                 self.sendSignalLocked(type: "call-video-state", payload: ["on": false])
                 DispatchQueue.main.async {
+                    pending.forEach { $0(false) }
                     NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
                                                     userInfo: ["enabled": false, "remoteOn": self.remoteVideoOn])
                     completion(true)
@@ -208,6 +217,7 @@ final class NativeWebRTCCallEngine: NSObject {
                 return
             }
             self.frontCamera.toggle()
+            self.videoCaptureRunning = false
             self.videoCapturer?.stopCapture { [weak self] in
                 self?.queue.async { self?.startCaptureLocked(completion: completion) }
             }
@@ -235,25 +245,86 @@ final class NativeWebRTCCallEngine: NSObject {
             DispatchQueue.main.async { completion(false) }
             return
         }
-        let position: AVCaptureDevice.Position = frontCamera ? .front : .back
-        guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == position }),
-              let format = RTCCameraVideoCapturer.supportedFormats(for: device).max(by: {
-                  let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
-                  let b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
-                  return a.width * a.height < b.width * b.height
-              }) else {
-            DispatchQueue.main.async { completion(false) }
+        if videoCaptureRunning {
+            DispatchQueue.main.async { completion(true) }
             return
         }
-        let maxFPS = format.videoSupportedFrameRateRanges.map { Int($0.maxFrameRate) }.max() ?? 30
-        capturer.startCapture(with: device, format: format, fps: min(30, maxFPS)) { error in
-            DispatchQueue.main.async {
-                let success = error == nil
-                if success { self.queue.async { self.sendSignalLocked(type: "call-video-state", payload: ["on": true]) } }
+        videoCaptureCompletions.append(completion)
+        guard !videoCaptureStarting else { return }
+        videoCaptureStarting = true
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            beginCaptureLocked(capturer: capturer)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self, weak capturer] granted in
+                self?.queue.async {
+                    guard let self, granted, let capturer,
+                          capturer === self.videoCapturer else {
+                        self?.finishCaptureLocked(success: false, error: "camera permission denied")
+                        return
+                    }
+                    self.beginCaptureLocked(capturer: capturer)
+                }
+            }
+        default:
+            finishCaptureLocked(success: false, error: "camera permission unavailable")
+        }
+    }
+
+    private func beginCaptureLocked(capturer: RTCCameraVideoCapturer) {
+        let position: AVCaptureDevice.Position = frontCamera ? .front : .back
+        guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == position }) else {
+            finishCaptureLocked(success: false, error: "camera device unavailable")
+            return
+        }
+
+        // Prefer a widely supported 720p format whose declared frame-rate
+        // range contains 30 fps. Selecting the camera's largest format can
+        // choose a high-speed or photo-oriented mode that rejects 30 fps on
+        // otherwise supported iPhone cameras.
+        let targetWidth: Int32 = 1280
+        let targetHeight: Int32 = 720
+        let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
+        let compatible = formats.filter { format in
+            format.videoSupportedFrameRateRanges.contains { $0.minFrameRate <= 30 && $0.maxFrameRate >= 30 }
+        }
+        let candidates = compatible.isEmpty ? formats : compatible
+        guard let format = candidates.min(by: { lhs, rhs in
+            let a = CMVideoFormatDescriptionGetDimensions(lhs.formatDescription)
+            let b = CMVideoFormatDescriptionGetDimensions(rhs.formatDescription)
+            let aScore = abs(a.width - targetWidth) + abs(a.height - targetHeight)
+            let bScore = abs(b.width - targetWidth) + abs(b.height - targetHeight)
+            return aScore < bScore
+        }), let range = format.videoSupportedFrameRateRanges.min(by: {
+            abs($0.maxFrameRate - 30) < abs($1.maxFrameRate - 30)
+        }) else {
+            finishCaptureLocked(success: false, error: "camera format unavailable")
+            return
+        }
+        let fps = Int(max(range.minFrameRate, min(30, range.maxFrameRate)))
+        let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        trace("video capture starting \(dimensions.width)x\(dimensions.height)@\(fps) position=\(position.rawValue)")
+        capturer.startCapture(with: device, format: format, fps: fps) { [weak self, weak capturer] error in
+            self?.queue.async {
+                guard let self, let capturer, capturer === self.videoCapturer else { return }
+                self.finishCaptureLocked(success: error == nil,
+                                         error: error.map { String(describing: $0) })
+            }
+        }
+    }
+
+    private func finishCaptureLocked(success: Bool, error: String?) {
+        videoCaptureStarting = false
+        videoCaptureRunning = success
+        let completions = videoCaptureCompletions
+        videoCaptureCompletions.removeAll()
+        trace(success ? "video capture started" : "video capture failed \(error ?? "unknown")")
+        if success { sendSignalLocked(type: "call-video-state", payload: ["on": true]) }
+        DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
                                                 userInfo: ["enabled": success, "remoteOn": self.remoteVideoOn])
-                completion(success)
-            }
+            completions.forEach { $0(success) }
         }
     }
 
@@ -466,6 +537,7 @@ final class NativeWebRTCCallEngine: NSObject {
             startVideoLocked(peer: peer) { _ in }
         case "call-video-state":
             remoteVideoOn = videoConsent && (payload["on"] as? Bool == true)
+            if remoteVideoOn { publishRemoteVideoTrackLocked() }
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
                                                 userInfo: ["enabled": self.videoTrack?.isEnabled == true,
@@ -639,6 +711,25 @@ final class NativeWebRTCCallEngine: NSObject {
         }
     }
 
+    /// Remote tracks are often negotiated while the app is still behind
+    /// CallKit or before a UIWindowScene exists. Retain the track and replay
+    /// it whenever the peer announces that video is on so a notification
+    /// emitted before SceneDelegate installed its observer cannot leave a
+    /// permanently black renderer.
+    private func publishRemoteVideoTrackLocked(_ deliveredTrack: RTCVideoTrack? = nil) {
+        let track = deliveredTrack ?? remoteVideoTrack ?? peer?.transceivers
+            .first(where: { $0.mediaType == .video })?.receiver.track as? RTCVideoTrack
+        guard let track else {
+            trace("remote video track unavailable")
+            return
+        }
+        remoteVideoTrack = track
+        trace("remote video track publishing enabled=\(track.isEnabled)")
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixRemoteVideoTrack, object: track)
+        }
+    }
+
     private func sendSignalLocked(type: String, payload: [String: Any]) {
         guard signalingReady, socket != nil else {
             enqueueSignalLocked(type: type, payload: payload)
@@ -769,11 +860,17 @@ final class NativeWebRTCCallEngine: NSObject {
         audioTrack = nil
         audioSource = nil
         videoCapturer?.stopCapture()
+        videoCaptureRunning = false
+        videoCaptureStarting = false
+        let captureCompletions = videoCaptureCompletions
+        videoCaptureCompletions.removeAll()
+        DispatchQueue.main.async { captureCompletions.forEach { $0(false) } }
         videoTrack?.isEnabled = false
         videoCapturer = nil
         videoTrack = nil
         videoSource = nil
         videoSender = nil
+        remoteVideoTrack = nil
         frontCamera = true
         videoConsent = false
         remoteVideoOn = false
@@ -812,7 +909,10 @@ final class NativeWebRTCCallEngine: NSObject {
 
 extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
+    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
+        guard let track = stream.videoTracks.first else { return }
+        queue.async { self.publishRemoteVideoTrackLocked(track) }
+    }
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
@@ -840,16 +940,12 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceivingOn transceiver: RTCRtpTransceiver) {
         guard transceiver.mediaType == .video,
               let track = transceiver.receiver.track as? RTCVideoTrack else { return }
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .vaultlixRemoteVideoTrack, object: track)
-        }
+        queue.async { self.publishRemoteVideoTrackLocked(track) }
     }
     func peerConnection(_ peerConnection: RTCPeerConnection,
                         didAdd rtpReceiver: RTCRtpReceiver,
                         streams mediaStreams: [RTCMediaStream]) {
         guard let track = rtpReceiver.track as? RTCVideoTrack else { return }
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .vaultlixRemoteVideoTrack, object: track)
-        }
+        queue.async { self.publishRemoteVideoTrackLocked(track) }
     }
 }

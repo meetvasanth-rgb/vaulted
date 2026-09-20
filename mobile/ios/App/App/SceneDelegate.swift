@@ -124,7 +124,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if nativeRemoteVideoView.superview == nil {
             nativeRemoteVideoView.videoContentMode = .scaleAspectFill
             nativeRemoteVideoView.backgroundColor = .black
-            nativeRemoteVideoView.layer.cornerRadius = 18
+            nativeRemoteVideoView.layer.cornerRadius = 0
             nativeRemoteVideoView.clipsToBounds = true
             nativeRemoteVideoView.isUserInteractionEnabled = false
             root.addSubview(nativeRemoteVideoView)
@@ -138,8 +138,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             root.addSubview(nativeLocalVideoView)
         }
         let safe = root.safeAreaInsets
-        nativeRemoteVideoView.frame = CGRect(x: 16, y: safe.top + 76, width: root.bounds.width - 32, height: min(root.bounds.height * 0.48, 430))
-        nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 88, width: 88, height: 124)
+        // Use the available call canvas instead of presenting remote video as
+        // a floating card. The lower control zone stays uncovered so the
+        // WebView's mute/route/video/flip/end controls remain visible and
+        // tappable, while the video fills the width and most of the screen.
+        let videoTop = safe.top + 48
+        let controlsHeight: CGFloat = 214 + safe.bottom
+        nativeRemoteVideoView.frame = CGRect(
+            x: 0,
+            y: videoTop,
+            width: root.bounds.width,
+            height: max(260, root.bounds.height - videoTop - controlsHeight)
+        )
+        nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: videoTop + 16, width: 96, height: 136)
         nativeRemoteVideoView.isHidden = !remote
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
         root.bringSubviewToFront(nativeRemoteVideoView)
