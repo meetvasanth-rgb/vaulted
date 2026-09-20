@@ -38,3 +38,10 @@ test('completed calls, video, inbox badges and accessible motion are wired to ac
   assert.match(client, /prefers-reduced-motion:reduce/);
   assert.match(client, /localStorage\.getItem\(CELEBRATION_DAY_KEY\) === today/);
 });
+
+test('achievements animate as transient text without a share card', () => {
+  assert.match(client, /id="achievement-celebration"[^>]*role="status"/);
+  assert.match(client, /showAchievementCelebration\(MILESTONE_DEFS\[id\]\)/);
+  assert.match(client, /achievementCelebrationTimer = setTimeout[\s\S]{0,100}3600/);
+  assert.doesNotMatch(client, /id="milestone-canvas"|shareMilestoneCard|milestone-share-btn/);
+});

@@ -1055,18 +1055,20 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #connect-overlay.hiding{opacity:0;transform:translateY(-20px);transition:opacity .4s ease,transform .4s ease}
 
 /* ── MILESTONE CARD ───────────────────────────────────────────── */
-.milestone-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:600;opacity:0;pointer-events:none;transition:opacity .25s ease;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
-.milestone-overlay.open{opacity:1;pointer-events:all}
 .celebration-fireworks{position:fixed;inset:0;width:100%;height:100%;z-index:601;pointer-events:none;opacity:0;transition:opacity .2s ease}
 .celebration-fireworks.active{opacity:1}
-.milestone-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.94);width:min(320px,86vw);background:#0A0908;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,0.5);z-index:602;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1);padding:16px;display:flex;flex-direction:column;align-items:center}
-.milestone-modal.open{opacity:1;pointer-events:all;transform:translate(-50%,-50%) scale(1)}
-#milestone-canvas{width:100%;height:auto;border-radius:10px;display:block}
-.milestone-actions{display:flex;gap:10px;width:100%;margin-top:14px}
-.milestone-share-btn{flex:1;background:#682C43;color:#0A0908;border:none;border-radius:24px;padding:11px 0;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;cursor:pointer}
-.milestone-dismiss-btn{flex:1;background:none;color:rgba(255,255,255,0.5);border:0.5px solid rgba(255,255,255,0.2);border-radius:24px;padding:11px 0;font-family:'Inter',sans-serif;font-size:13.5px;cursor:pointer}
+.achievement-celebration{position:fixed;inset:0;z-index:602;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;pointer-events:none;opacity:0;visibility:hidden;text-align:center;background:radial-gradient(circle at center,rgba(10,9,8,.48),rgba(10,9,8,0) 62%);transition:opacity .3s ease,visibility 0s linear .3s}
+.achievement-celebration.open{opacity:1;visibility:visible;transition:opacity .3s ease}
+.achievement-kicker{color:#F3C66B;font:750 11px/1 Inter,sans-serif;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 2px 16px rgba(0,0,0,.9);transform:translateY(12px);opacity:0}
+.achievement-icon{margin:18px 0 12px;color:#F3C66B;font:300 78px/1 "Cormorant Garamond",serif;text-shadow:0 3px 22px rgba(0,0,0,.9);transform:scale(.55);opacity:0}
+.achievement-title{max-width:520px;color:#fff;font:500 clamp(30px,8vw,52px)/1.08 "Cormorant Garamond",serif;text-shadow:0 3px 24px rgba(0,0,0,.95);transform:translateY(16px);opacity:0}
+.achievement-celebration.open .achievement-kicker{animation:achievement-rise .55s .08s ease forwards}
+.achievement-celebration.open .achievement-icon{animation:achievement-pop .7s .16s cubic-bezier(.2,1.55,.45,1) forwards}
+.achievement-celebration.open .achievement-title{animation:achievement-rise .65s .28s ease forwards}
+@keyframes achievement-rise{to{transform:translateY(0);opacity:1}}
+@keyframes achievement-pop{to{transform:scale(1);opacity:1}}
 .connection-spark{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:999px;background:#F7E8C7;color:#74314A;font:750 10px/1 Inter,sans-serif;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(104,44,67,.09)}
-@media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.milestone-modal{transition:opacity .15s ease}}
+@media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.achievement-celebration{transition:opacity .15s ease}.achievement-celebration.open .achievement-kicker,.achievement-celebration.open .achievement-icon,.achievement-celebration.open .achievement-title{animation:none;transform:none;opacity:1}}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
 #number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}
@@ -1649,7 +1651,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .msg-viewonce-badge,.settings-btn:hover,.settings-btn.active svg{color:#682C43!important}
 .msg.me .msg-progress-wrap{background:rgba(104,44,67,.15)}
 .msg.me .msg-reply-quote{background:rgba(104,44,67,.10)}
-.milestone-share-btn{background:#682C43;color:#fff}
 .connect-v-mark,.vanish-v,.call-vanish-mark .v-glyph,.call-vanish-mark .v-line2{color:#682C43}
 .connect-rule,.vanish-rule,.call-hdr-rule,.ring-dot,.ring-wave,.call-live-dot{background:#682C43}
 .call-hollow-dot{border-color:#682C43}
@@ -4125,18 +4126,13 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
 </div>
 
-<!-- Milestone card — shown once per threshold, per permanent room. Dark/gold
-     aesthetic deliberately matches the connection-moment (#connect-overlay)
-     ceremony rather than the light Settings palette, since this is a
-     celebratory full-bleed moment, not a form or a setting. -->
-<div class="milestone-overlay" id="milestone-overlay" onclick="closeMilestoneCard()"></div>
+<!-- Brief, non-interactive achievement ceremony. It never interrupts with a
+     card or share decision and leaves the conversation visible underneath. -->
 <canvas class="celebration-fireworks" id="celebration-fireworks" aria-hidden="true"></canvas>
-<div class="milestone-modal" id="milestone-modal">
-  <canvas id="milestone-canvas" width="640" height="640"></canvas>
-  <div class="milestone-actions">
-    <button class="milestone-share-btn" id="milestone-share-btn" onclick="shareMilestoneCard()">Share</button>
-    <button class="milestone-dismiss-btn" onclick="closeMilestoneCard()">Not now</button>
-  </div>
+<div class="achievement-celebration" id="achievement-celebration" role="status" aria-live="polite" aria-atomic="true">
+  <div class="achievement-kicker">Vaultlix moment</div>
+  <div class="achievement-icon" id="achievement-icon">✦</div>
+  <div class="achievement-title" id="achievement-title"></div>
 </div>
 
 <div class="number-card-overlay" id="number-card-overlay" onclick="if(event.target===this)closeNumberCard()">
@@ -5444,23 +5440,23 @@ const ACHIEVEMENT_STATE_KEY = 'vaultlix_achievement_state_v1';
 const MILESTONES_SHOWN_KEY = 'vaultlix_milestones_shown'; // legacy migration
 const CELEBRATION_DAY_KEY = 'vaultlix_last_full_celebration_day';
 const MILESTONE_DEFS = {
-  conversation_started:{ id:'conversation_started', value:'✦', label:'first mutual conversation', shareText:'A private connection just began on Vaultlix.' },
-  first_voice:{ id:'first_voice', value:'◉', label:'first encrypted voice note', shareText:'Our first encrypted voice note — on Vaultlix.' },
-  first_media:{ id:'first_media', value:'◇', label:'first private media share', shareText:'Our first private media moment — on Vaultlix.' },
-  first_call:{ id:'first_call', value:'☎', label:'first secure call', shareText:'Our first secure call — on Vaultlix.' },
-  first_video:{ id:'first_video', value:'▣', label:'first secure video call', shareText:'Our first secure video call — on Vaultlix.' },
-  call60:{ id:'call60', value:'60', label:'minutes securely connected', shareText:'60 minutes of secure calls — on Vaultlix.' },
-  days7:{ id:'days7', value:'7', label:'days connected', shareText:'7 days privately connected — on Vaultlix.' },
-  days30:{ id:'days30', value:'30', label:'days connected', shareText:'30 days privately connected — on Vaultlix.' },
-  days100:{ id:'days100', value:'100', label:'days connected', shareText:'100 days privately connected — on Vaultlix.' },
-  days365:{ id:'days365', value:'1', label:'year connected', shareText:'One year privately connected — on Vaultlix.' },
-  msgs100:{ id:'msgs100', value:'100', label:'messages exchanged', shareText:'100 encrypted messages — on Vaultlix.' },
-  msgs500:{ id:'msgs500', value:'500', label:'messages exchanged', shareText:'500 encrypted messages — on Vaultlix.' },
-  spark3:{ id:'spark3', value:'3', label:'day Connection Spark', shareText:'Our Connection Spark is glowing on Vaultlix.' },
-  spark7:{ id:'spark7', value:'7', label:'day Connection Spark', shareText:'A 7-day Connection Spark — on Vaultlix.' },
-  spark14:{ id:'spark14', value:'14', label:'day Connection Spark', shareText:'A 14-day Connection Spark — on Vaultlix.' },
-  spark30:{ id:'spark30', value:'30', label:'day Connection Spark', shareText:'A 30-day Connection Spark — on Vaultlix.' },
-  spark100:{ id:'spark100', value:'100', label:'day Connection Spark', shareText:'A 100-day Connection Spark — on Vaultlix.' },
+  conversation_started:{ id:'conversation_started', value:'✦', label:'first mutual conversation' },
+  first_voice:{ id:'first_voice', value:'◉', label:'first encrypted voice note' },
+  first_media:{ id:'first_media', value:'◇', label:'first private media share' },
+  first_call:{ id:'first_call', value:'☎', label:'first secure call' },
+  first_video:{ id:'first_video', value:'▣', label:'first secure video call' },
+  call60:{ id:'call60', value:'60', label:'minutes securely connected' },
+  days7:{ id:'days7', value:'7', label:'days connected' },
+  days30:{ id:'days30', value:'30', label:'days connected' },
+  days100:{ id:'days100', value:'100', label:'days connected' },
+  days365:{ id:'days365', value:'1', label:'year connected' },
+  msgs100:{ id:'msgs100', value:'100', label:'messages exchanged' },
+  msgs500:{ id:'msgs500', value:'500', label:'messages exchanged' },
+  spark3:{ id:'spark3', value:'3', label:'day Connection Spark' },
+  spark7:{ id:'spark7', value:'7', label:'day Connection Spark' },
+  spark14:{ id:'spark14', value:'14', label:'day Connection Spark' },
+  spark30:{ id:'spark30', value:'30', label:'day Connection Spark' },
+  spark100:{ id:'spark100', value:'100', label:'day Connection Spark' },
 };
 function achievementAccountId(accountId = loadAccountState()?.accountId) { return accountId || '__guest__'; }
 function loadAchievementState() {
@@ -5568,13 +5564,13 @@ function markMilestoneShown(room, id) {
   if (!ledger.shown.includes(id)) ledger.shown.push(id);
   saveAchievementState(root);
 }
-let currentMilestone = null;
+let achievementCelebrationTimer = null;
 
 function checkMilestone(room) {
   if (!room || !room.persistent) return;
   const ledger = syncAchievementActivityFromMessages(room) || {};
   if (room.code !== activeRoomCode) return;
-  if (document.getElementById('milestone-modal').classList.contains('open')) return;
+  if (document.getElementById('achievement-celebration').classList.contains('open')) return;
   // Carry forward the old card's local-only shown state once, so upgrades do
   // not congratulate someone twice for the same 7/30/100 threshold.
   try {
@@ -5602,22 +5598,27 @@ function checkMilestone(room) {
     const index = tiers.indexOf(id);
     if (index >= 0) for (const completed of tiers.slice(0, index)) markMilestoneShown(room, completed);
   }
+  if (id === 'first_video') markMilestoneShown(room, 'first_call');
   markMilestoneShown(room, id);
-  showMilestoneCard(MILESTONE_DEFS[id]);
+  showAchievementCelebration(MILESTONE_DEFS[id]);
 }
-async function showMilestoneCard(milestone) {
-  currentMilestone = milestone;
+async function showAchievementCelebration(milestone) {
   try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
-  const canvas = document.getElementById('milestone-canvas');
-  drawMilestoneCard(canvas, milestone);
-  document.getElementById('milestone-overlay').classList.add('open');
-  document.getElementById('milestone-modal').classList.add('open');
+  const ceremony = document.getElementById('achievement-celebration');
+  const icon = document.getElementById('achievement-icon');
+  const title = document.getElementById('achievement-title');
+  if (!ceremony || !icon || !title) return;
+  const numericValue = /^\d+$/.test(String(milestone.value || ''));
+  icon.textContent = numericValue ? '✦' : String(milestone.value || '✦');
+  const label = String(milestone.label || 'private connection milestone');
+  title.textContent = numericValue ? `${milestone.value} ${label}` : label.charAt(0).toUpperCase() + label.slice(1);
+  ceremony.classList.remove('open');
+  void ceremony.offsetWidth;
+  ceremony.classList.add('open');
   launchCelebrationFireworks();
   try { navigator.vibrate?.([25, 45, 55]); } catch(e) {}
-}
-function closeMilestoneCard() {
-  document.getElementById('milestone-overlay').classList.remove('open');
-  document.getElementById('milestone-modal').classList.remove('open');
+  clearTimeout(achievementCelebrationTimer);
+  achievementCelebrationTimer = setTimeout(() => ceremony.classList.remove('open'), 3600);
 }
 function launchCelebrationFireworks() {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
@@ -5665,63 +5666,6 @@ function launchCelebrationFireworks() {
   };
   requestAnimationFrame(frame);
 }
-function drawMilestoneCard(canvas, milestone) {
-  const size = 640;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = '#0A0908';
-  ctx.fillRect(0, 0, size, size);
-  ctx.strokeStyle = 'rgba(104,44,67,0.35)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(20.5, 20.5, size - 41, size - 41);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#682C43';
-  ctx.font = `${String(milestone.value).length > 3 ? '300 112px' : '300 150px'} "Cormorant Garamond", serif`;
-  ctx.fillText(String(milestone.value), size / 2, size / 2 - 10);
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.font = '400 24px Inter, sans-serif';
-  ctx.fillText(milestone.label || 'private connection milestone', size / 2, size / 2 + 34);
-  ctx.strokeStyle = '#682C43';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(size / 2 - 30, size / 2 + 74);
-  ctx.lineTo(size / 2 + 30, size / 2 + 74);
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = '300 22px "Cormorant Garamond", serif';
-  ctx.fillText('V A U L T L I X', size / 2, size / 2 + 116);
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.font = '400 13px Inter, sans-serif';
-  ctx.fillText('End-to-end encrypted · Zero metadata', size / 2, size / 2 + 144);
-}
-async function shareMilestoneCard() {
-  const canvas = document.getElementById('milestone-canvas');
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) { closeMilestoneCard(); return; }
-  const shareText = currentMilestone?.shareText || 'Encrypted, anonymous, and still going — on Vaultlix.';
-  let shared = false;
-  try {
-    const file = new File([blob], 'vaultlix-milestone.png', { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], text: shareText });
-      shared = true;
-    }
-  } catch (e) {
-    // AbortError = they closed the share sheet — not a failure, just fall
-    // through without the download fallback below.
-    if (e && e.name === 'AbortError') { closeMilestoneCard(); return; }
-  }
-  if (!shared) {
-    // No Web Share Level 2 support (mainly desktop browsers) — save the
-    // image locally instead via the same Blob+anchor path already used for
-    // received files, then let them know where to find it.
-    const reader = new FileReader();
-    reader.onload = () => { downloadDataUri(reader.result, 'vaultlix-milestone.png'); toast('Image saved'); };
-    reader.readAsDataURL(blob);
-  }
-  closeMilestoneCard();
-}
-
 // ── CRYPTO (per room) ──────────────────────────────────────────────────
 // Export/import the ECDH keypair so it survives a page reload. Every reload
 // (iOS backgrounding a tab often kills and reloads it) used to call
@@ -13404,7 +13348,7 @@ function nativeSwipeNavigationBlocked(target) {
   if (settingsOpen || document.querySelector(
     '#conversation-menu.open, #qr-overlay, #connect-overlay, #call-overlay, ' +
     '.app-lock-overlay.open, .account-overlay.open, .safety-overlay.open, ' +
-    '.emergency-overlay.open, .milestone-overlay.open, .number-card-overlay.open, ' +
+    '.emergency-overlay.open, .achievement-celebration.open, .number-card-overlay.open, ' +
     '.pdf-preview-overlay.open, .image-viewer-overlay'
   )) return true;
   return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile');
