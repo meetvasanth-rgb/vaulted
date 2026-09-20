@@ -1057,12 +1057,16 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 /* ── MILESTONE CARD ───────────────────────────────────────────── */
 .milestone-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:600;opacity:0;pointer-events:none;transition:opacity .25s ease;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .milestone-overlay.open{opacity:1;pointer-events:all}
-.milestone-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.94);width:min(320px,86vw);background:#0A0908;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,0.5);z-index:601;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1);padding:16px;display:flex;flex-direction:column;align-items:center}
+.celebration-fireworks{position:fixed;inset:0;width:100%;height:100%;z-index:601;pointer-events:none;opacity:0;transition:opacity .2s ease}
+.celebration-fireworks.active{opacity:1}
+.milestone-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.94);width:min(320px,86vw);background:#0A0908;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,0.5);z-index:602;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1);padding:16px;display:flex;flex-direction:column;align-items:center}
 .milestone-modal.open{opacity:1;pointer-events:all;transform:translate(-50%,-50%) scale(1)}
 #milestone-canvas{width:100%;height:auto;border-radius:10px;display:block}
 .milestone-actions{display:flex;gap:10px;width:100%;margin-top:14px}
 .milestone-share-btn{flex:1;background:#682C43;color:#0A0908;border:none;border-radius:24px;padding:11px 0;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;cursor:pointer}
 .milestone-dismiss-btn{flex:1;background:none;color:rgba(255,255,255,0.5);border:0.5px solid rgba(255,255,255,0.2);border-radius:24px;padding:11px 0;font-family:'Inter',sans-serif;font-size:13.5px;cursor:pointer}
+.connection-spark{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:999px;background:#F7E8C7;color:#74314A;font:750 10px/1 Inter,sans-serif;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(104,44,67,.09)}
+@media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.milestone-modal{transition:opacity .15s ease}}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
 #number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}
@@ -4126,6 +4130,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
      ceremony rather than the light Settings palette, since this is a
      celebratory full-bleed moment, not a form or a setting. -->
 <div class="milestone-overlay" id="milestone-overlay" onclick="closeMilestoneCard()"></div>
+<canvas class="celebration-fireworks" id="celebration-fireworks" aria-hidden="true"></canvas>
 <div class="milestone-modal" id="milestone-modal">
   <canvas id="milestone-canvas" width="640" height="640"></canvas>
   <div class="milestone-actions">
@@ -4727,7 +4732,7 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   }
   const active = loadActiveRoomCode();
   const groups = loadPrivateGroupSessions().filter(group => group.ownerAccountId === accountId);
-  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, recoveryCodeWrap };
+  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
 }
 function importAccountBundle(bundle, accountId) {
   if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid conversation backup');
@@ -4752,6 +4757,7 @@ function importAccountBundle(bundle, accountId) {
   const localGroups = new Map(loadPrivateGroupSessions().filter(group => group.ownerAccountId === accountId).map(group => [group.id, group]));
   mergePrivateGroupBackup(localGroups, bundle.groups, accountId);
   savePrivateGroupSessions([...localGroups.values()]);
+  mergeAchievementBundle(bundle.achievements, accountId);
   const state = loadAccountState();
   if (state?.accountId === accountId && !state.recoveryCodeWrap && typeof bundle.recoveryCodeWrap === 'string') {
     state.recoveryCodeWrap = bundle.recoveryCodeWrap;
@@ -4881,7 +4887,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // renderCallOverlay and pc.ontrack's mute/unmute handling). Distinct
     // from callVideoOn, which is about OUR OWN camera. callCameraFacing is
     // local-only too, only meaningful while callVideoOn — see swapCamera().
-    callVideoOn: false, localVideoStream: null, remoteVideoActive: false, callCameraFacing: 'user',
+    callVideoOn: false, localVideoStream: null, remoteVideoActive: false, callHadVideo:false, callCameraFacing: 'user',
     // Whether the emoji strip is currently open — tracked here (not just a
     // DOM class) because renderCallOverlay's overlay.innerHTML replaces the
     // picker element on every render (any mute/camera/etc. change), which
@@ -5253,6 +5259,7 @@ window.addEventListener('vaultlix:native-video-state', event => {
     return;
   }
   room.callVideoOn = detail.enabled === true;
+  if (room.callVideoOn) room.callHadVideo = true;
   renderCallOverlay(room);
 });
 window.addEventListener('vaultlix:native-camera-switched', event => {
@@ -5428,47 +5435,175 @@ function loadRoomSession(code) {
   } catch(e) { return null; }
 }
 
-// ── SHAREABLE MILESTONE CARD ────────────────────────────────────────────
-// Positive-only milestone moments for permanent rooms (7/30 days connected,
-// 100 messages exchanged) — deliberately NOT a Snapchat-style streak: no
-// loss, no reset, no pressure to keep a count alive. Shown once per
-// threshold per room, tracked in its own dedicated localStorage key, same
-// isolation reasoning as NUDGE_DISMISSED_KEY above — never touches the
-// per-room session blob that holds the E2E keypair.
-const MILESTONES_SHOWN_KEY = 'vaultlix_milestones_shown';
-function loadMilestonesShownMap() {
-  try { return JSON.parse(localStorage.getItem(MILESTONES_SHOWN_KEY) || '{}'); } catch(e) { return {}; }
-}
-function markMilestoneShown(code, id) {
+// ── CONNECTION SPARKS + SHAREABLE ACHIEVEMENTS ──────────────────────────
+// The ledger deliberately lives outside the room session blob. A lightweight
+// celebration update must never risk overwriting the E2E keypair before it is
+// restored. The account-scoped ledger is included only inside the existing
+// encrypted account backup, so relationship activity is never server-readable.
+const ACHIEVEMENT_STATE_KEY = 'vaultlix_achievement_state_v1';
+const MILESTONES_SHOWN_KEY = 'vaultlix_milestones_shown'; // legacy migration
+const CELEBRATION_DAY_KEY = 'vaultlix_last_full_celebration_day';
+const MILESTONE_DEFS = {
+  conversation_started:{ id:'conversation_started', value:'✦', label:'first mutual conversation', shareText:'A private connection just began on Vaultlix.' },
+  first_voice:{ id:'first_voice', value:'◉', label:'first encrypted voice note', shareText:'Our first encrypted voice note — on Vaultlix.' },
+  first_media:{ id:'first_media', value:'◇', label:'first private media share', shareText:'Our first private media moment — on Vaultlix.' },
+  first_call:{ id:'first_call', value:'☎', label:'first secure call', shareText:'Our first secure call — on Vaultlix.' },
+  first_video:{ id:'first_video', value:'▣', label:'first secure video call', shareText:'Our first secure video call — on Vaultlix.' },
+  call60:{ id:'call60', value:'60', label:'minutes securely connected', shareText:'60 minutes of secure calls — on Vaultlix.' },
+  days7:{ id:'days7', value:'7', label:'days connected', shareText:'7 days privately connected — on Vaultlix.' },
+  days30:{ id:'days30', value:'30', label:'days connected', shareText:'30 days privately connected — on Vaultlix.' },
+  days100:{ id:'days100', value:'100', label:'days connected', shareText:'100 days privately connected — on Vaultlix.' },
+  days365:{ id:'days365', value:'1', label:'year connected', shareText:'One year privately connected — on Vaultlix.' },
+  msgs100:{ id:'msgs100', value:'100', label:'messages exchanged', shareText:'100 encrypted messages — on Vaultlix.' },
+  msgs500:{ id:'msgs500', value:'500', label:'messages exchanged', shareText:'500 encrypted messages — on Vaultlix.' },
+  spark3:{ id:'spark3', value:'3', label:'day Connection Spark', shareText:'Our Connection Spark is glowing on Vaultlix.' },
+  spark7:{ id:'spark7', value:'7', label:'day Connection Spark', shareText:'A 7-day Connection Spark — on Vaultlix.' },
+  spark14:{ id:'spark14', value:'14', label:'day Connection Spark', shareText:'A 14-day Connection Spark — on Vaultlix.' },
+  spark30:{ id:'spark30', value:'30', label:'day Connection Spark', shareText:'A 30-day Connection Spark — on Vaultlix.' },
+  spark100:{ id:'spark100', value:'100', label:'day Connection Spark', shareText:'A 100-day Connection Spark — on Vaultlix.' },
+};
+function achievementAccountId(accountId = loadAccountState()?.accountId) { return accountId || '__guest__'; }
+function loadAchievementState() {
   try {
-    const map = loadMilestonesShownMap();
-    const set = new Set(map[code] || []);
-    set.add(id);
-    map[code] = Array.from(set);
-    localStorage.setItem(MILESTONES_SHOWN_KEY, JSON.stringify(map));
+    const parsed = JSON.parse(localStorage.getItem(ACHIEVEMENT_STATE_KEY) || 'null');
+    if (parsed?.v === 1 && parsed.accounts && typeof parsed.accounts === 'object') return parsed;
   } catch(e) {}
+  return { v:1, accounts:{} };
+}
+function achievementRoomState(root, code, accountId, create = true) {
+  const key = achievementAccountId(accountId);
+  if (!root.accounts[key] && create) root.accounts[key] = { rooms:{} };
+  const account = root.accounts[key];
+  if (!account) return null;
+  if (!account.rooms || typeof account.rooms !== 'object') account.rooms = {};
+  if (!account.rooms[code] && create) account.rooms[code] = { shown:[], activeDays:{}, callSeconds:0 };
+  return account.rooms[code] || null;
+}
+function saveAchievementState(root, sync = true) {
+  try {
+    localStorage.setItem(ACHIEVEMENT_STATE_KEY, JSON.stringify(root));
+    if (sync) scheduleAccountSync();
+  } catch(e) {}
+}
+function achievementBundleSnapshot(accountId) {
+  const root = loadAchievementState();
+  const account = root.accounts[achievementAccountId(accountId)];
+  return account ? { v:1, rooms:account.rooms || {} } : { v:1, rooms:{} };
+}
+function mergeAchievementBundle(incoming, accountId) {
+  if (!incoming || incoming.v !== 1 || !incoming.rooms || typeof incoming.rooms !== 'object') return;
+  const root = loadAchievementState();
+  for (const [code, remote] of Object.entries(incoming.rooms)) {
+    if (!remote || typeof remote !== 'object') continue;
+    const local = achievementRoomState(root, code, accountId);
+    local.shown = Array.from(new Set([...(local.shown || []), ...(Array.isArray(remote.shown) ? remote.shown : [])]));
+    local.callSeconds = Math.max(Number(local.callSeconds) || 0, Number(remote.callSeconds) || 0);
+    local.firstCall = !!(local.firstCall || remote.firstCall);
+    local.firstVideo = !!(local.firstVideo || remote.firstVideo);
+    local.firstVoice = !!(local.firstVoice || remote.firstVoice);
+    local.firstMedia = !!(local.firstMedia || remote.firstMedia);
+    local.activeDays = { ...(remote.activeDays || {}), ...(local.activeDays || {}) };
+    for (const [day, activity] of Object.entries(remote.activeDays || {})) {
+      local.activeDays[day] = { me:!!(activity?.me || local.activeDays[day]?.me), peer:!!(activity?.peer || local.activeDays[day]?.peer) };
+    }
+  }
+  saveAchievementState(root, false);
+}
+function achievementDayNumber(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  return Math.floor(new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() / 86400000);
+}
+function connectionSparkFromDays(activeDays, nowDay = achievementDayNumber()) {
+  const mutual = day => !!(activeDays?.[day]?.me && activeDays?.[day]?.peer);
+  let cursor = mutual(nowDay) ? nowDay : (mutual(nowDay - 1) ? nowDay - 1 : null); // one-day grace
+  if (cursor === null) return 0;
+  let count = 0;
+  while (mutual(cursor) && count < 3660) { count++; cursor--; }
+  return count;
+}
+function pruneAchievementDays(activeDays, nowDay = achievementDayNumber()) {
+  for (const day of Object.keys(activeDays || {})) if (Number(day) < nowDay - 370) delete activeDays[day];
+}
+function syncAchievementActivityFromMessages(room) {
+  if (!room?.code || !Array.isArray(room.messages)) return null;
+  const root = loadAchievementState();
+  const ledger = achievementRoomState(root, room.code, room.ownerAccountId);
+  let changed = false;
+  for (const message of room.messages) {
+    if (!message || message.kind === 'sys' || !Number(message.ts)) continue;
+    const day = String(achievementDayNumber(message.ts));
+    const activity = ledger.activeDays[day] || { me:false, peer:false };
+    const side = message.isMe ? 'me' : 'peer';
+    if (!activity[side]) { activity[side] = true; changed = true; }
+    ledger.activeDays[day] = activity;
+    if (message.kind === 'voice' && !ledger.firstVoice) { ledger.firstVoice = true; changed = true; }
+    if (['file','album','gif'].includes(message.kind) && !ledger.firstMedia) { ledger.firstMedia = true; changed = true; }
+  }
+  pruneAchievementDays(ledger.activeDays);
+  if (changed) saveAchievementState(root);
+  return ledger;
+}
+function recordCallAchievement(room, duration, wasVideo) {
+  if (!room?.code || duration <= 0) return;
+  const root = loadAchievementState();
+  const ledger = achievementRoomState(root, room.code, room.ownerAccountId);
+  ledger.callSeconds = (Number(ledger.callSeconds) || 0) + duration;
+  ledger.firstCall = true;
+  if (wasVideo) ledger.firstVideo = true;
+  const day = String(achievementDayNumber());
+  ledger.activeDays[day] = { me:true, peer:true };
+  pruneAchievementDays(ledger.activeDays);
+  saveAchievementState(root);
+}
+function roomConnectionSpark(room) {
+  if (!room?.persistent) return 0;
+  const root = loadAchievementState();
+  const ledger = achievementRoomState(root, room.code, room.ownerAccountId, false);
+  return connectionSparkFromDays(ledger?.activeDays || {});
+}
+function markMilestoneShown(room, id) {
+  const root = loadAchievementState();
+  const ledger = achievementRoomState(root, room.code, room.ownerAccountId);
+  if (!Array.isArray(ledger.shown)) ledger.shown = [];
+  if (!ledger.shown.includes(id)) ledger.shown.push(id);
+  saveAchievementState(root);
 }
 let currentMilestone = null;
 
 function checkMilestone(room) {
-  // Only permanent rooms have a connectedSince long enough to mean
-  // anything — an ordinary room is gone in 24h-4 days, well before any of
-  // these thresholds could ever be hit honestly.
   if (!room || !room.persistent) return;
-  if (room.code !== activeRoomCode) return; // never pop up over a room that isn't on screen
-  if (document.getElementById('milestone-modal').classList.contains('open')) return; // one at a time
-  const shown = new Set((loadMilestonesShownMap())[room.code] || []);
-  const days = room.connectedSince ? Math.floor((Date.now() - room.connectedSince) / (24*60*60*1000)) : 0;
-  let milestone = null;
-  if (days >= 30 && !shown.has('days30')) milestone = { id: 'days30', kind: 'days', value: 30 };
-  else if (days >= 7 && !shown.has('days7')) milestone = { id: 'days7', kind: 'days', value: 7 };
-  else if ((room.totalMessageCount || 0) >= 100 && !shown.has('msgs100')) milestone = { id: 'msgs100', kind: 'msgs', value: 100 };
-  if (!milestone) return;
-  // Crossing the 30-day mark obviously means 7 days happened too — no need
-  // to separately congratulate that one on some later visit.
-  if (milestone.id === 'days30') markMilestoneShown(room.code, 'days7');
-  markMilestoneShown(room.code, milestone.id);
-  showMilestoneCard(milestone);
+  const ledger = syncAchievementActivityFromMessages(room) || {};
+  if (room.code !== activeRoomCode) return;
+  if (document.getElementById('milestone-modal').classList.contains('open')) return;
+  // Carry forward the old card's local-only shown state once, so upgrades do
+  // not congratulate someone twice for the same 7/30/100 threshold.
+  try {
+    const legacy = JSON.parse(localStorage.getItem(MILESTONES_SHOWN_KEY) || '{}');
+    ledger.shown = Array.from(new Set([...(ledger.shown || []), ...(legacy[room.code] || [])]));
+  } catch(e) {}
+  const shown = new Set(ledger.shown || []);
+  const days = room.connectedSince ? Math.floor((Date.now() - room.connectedSince) / 86400000) : 0;
+  const messages = Number(room.totalMessageCount) || 0;
+  const spark = connectionSparkFromDays(ledger.activeDays || {});
+  const candidates = [
+    ledger.firstVideo && 'first_video', ledger.firstCall && 'first_call',
+    ledger.firstVoice && 'first_voice', ledger.firstMedia && 'first_media',
+    spark >= 100 && 'spark100', spark >= 30 && 'spark30', spark >= 14 && 'spark14', spark >= 7 && 'spark7', spark >= 3 && 'spark3',
+    days >= 365 && 'days365', days >= 100 && 'days100', days >= 30 && 'days30', days >= 7 && 'days7',
+    messages >= 500 && 'msgs500', messages >= 100 && 'msgs100',
+    Object.values(ledger.activeDays || {}).some(day => day?.me) && Object.values(ledger.activeDays || {}).some(day => day?.peer) && 'conversation_started',
+  ].filter(Boolean);
+  const id = candidates.find(candidate => !shown.has(candidate));
+  if (!id) return;
+  // Superseded tiers are considered complete so restoring an old account
+  // does not produce a queue of smaller celebrations on consecutive opens.
+  const tierGroups = [['spark3','spark7','spark14','spark30','spark100'],['days7','days30','days100','days365'],['msgs100','msgs500']];
+  for (const tiers of tierGroups) {
+    const index = tiers.indexOf(id);
+    if (index >= 0) for (const completed of tiers.slice(0, index)) markMilestoneShown(room, completed);
+  }
+  markMilestoneShown(room, id);
+  showMilestoneCard(MILESTONE_DEFS[id]);
 }
 async function showMilestoneCard(milestone) {
   currentMilestone = milestone;
@@ -5477,10 +5612,58 @@ async function showMilestoneCard(milestone) {
   drawMilestoneCard(canvas, milestone);
   document.getElementById('milestone-overlay').classList.add('open');
   document.getElementById('milestone-modal').classList.add('open');
+  launchCelebrationFireworks();
+  try { navigator.vibrate?.([25, 45, 55]); } catch(e) {}
 }
 function closeMilestoneCard() {
   document.getElementById('milestone-overlay').classList.remove('open');
   document.getElementById('milestone-modal').classList.remove('open');
+}
+function launchCelebrationFireworks() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const today = String(achievementDayNumber());
+  try {
+    if (localStorage.getItem(CELEBRATION_DAY_KEY) === today) return;
+    localStorage.setItem(CELEBRATION_DAY_KEY, today);
+  } catch(e) {}
+  const canvas = document.getElementById('celebration-fireworks');
+  if (!canvas) return;
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(innerWidth * ratio);
+  canvas.height = Math.round(innerHeight * ratio);
+  canvas.style.width = `${innerWidth}px`;
+  canvas.style.height = `${innerHeight}px`;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const colors = ['#F3C66B','#D76586','#FFF4D6','#9E4866','#FFFFFF'];
+  const particles = [];
+  const burst = (x, y) => {
+    for (let i = 0; i < 42; i++) {
+      const angle = Math.PI * 2 * i / 42 + Math.random() * .12;
+      const speed = 2.1 + Math.random() * 4.2;
+      particles.push({ x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1.2,life:1,size:1.8+Math.random()*2.8,color:colors[i%colors.length] });
+    }
+  };
+  burst(innerWidth * .22, innerHeight * .26);
+  burst(innerWidth * .78, innerHeight * .22);
+  setTimeout(() => burst(innerWidth * .5, innerHeight * .4), 260);
+  canvas.classList.add('active');
+  const started = performance.now();
+  const frame = now => {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const particle of particles) {
+      particle.x += particle.vx; particle.y += particle.vy;
+      particle.vy += .055; particle.vx *= .992; particle.life -= .012;
+      if (particle.life <= 0) continue;
+      ctx.globalAlpha = Math.max(0, particle.life);
+      ctx.fillStyle = particle.color;
+      ctx.fillRect(particle.x, particle.y, particle.size, particle.size * 2.2);
+    }
+    ctx.globalAlpha = 1;
+    if (now - started < 1900 && particles.some(p => p.life > 0)) requestAnimationFrame(frame);
+    else { ctx.clearRect(0, 0, innerWidth, innerHeight); canvas.classList.remove('active'); }
+  };
+  requestAnimationFrame(frame);
 }
 function drawMilestoneCard(canvas, milestone) {
   const size = 640;
@@ -5493,12 +5676,11 @@ function drawMilestoneCard(canvas, milestone) {
   ctx.strokeRect(20.5, 20.5, size - 41, size - 41);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#682C43';
-  ctx.font = '300 150px "Cormorant Garamond", serif';
+  ctx.font = `${String(milestone.value).length > 3 ? '300 112px' : '300 150px'} "Cormorant Garamond", serif`;
   ctx.fillText(String(milestone.value), size / 2, size / 2 - 10);
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.font = '400 24px Inter, sans-serif';
-  const label = milestone.kind === 'days' ? 'days connected' : 'messages exchanged';
-  ctx.fillText(label, size / 2, size / 2 + 34);
+  ctx.fillText(milestone.label || 'private connection milestone', size / 2, size / 2 + 34);
   ctx.strokeStyle = '#682C43';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -5516,7 +5698,7 @@ async function shareMilestoneCard() {
   const canvas = document.getElementById('milestone-canvas');
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   if (!blob) { closeMilestoneCard(); return; }
-  const shareText = 'Encrypted, anonymous, and still going — on Vaultlix.';
+  const shareText = currentMilestone?.shareText || 'Encrypted, anonymous, and still going — on Vaultlix.';
   let shared = false;
   try {
     const file = new File([blob], 'vaultlix-milestone.png', { type: 'image/png' });
@@ -6792,6 +6974,8 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // picked up).
   const wasActive = room.callState === 'active' && !!room.callStartedAt;
   const duration = wasActive ? Math.max(0, Math.floor((Date.now() - room.callStartedAt) / 1000)) : 0;
+  const wasVideoCall = !!(room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
+  if (wasActive) recordCallAchievement(room, duration, wasVideoCall);
 
   clearCallTimeout(room);
   clearCallRingInterval(room);
@@ -7556,6 +7740,7 @@ async function setupPeerConnection(room) {
       // not set directly here — keeps a single source of truth instead of
       // this handler and the render function fighting over inline styles.
       room.remoteVideoActive = true;
+      room.callHadVideo = true;
       renderCallOverlay(room);
       // The remote peer toggling their camera off removes their sender
       // track and renegotiates, rather than ending this transceiver
@@ -7564,7 +7749,7 @@ async function setupPeerConnection(room) {
       // works without needing a fresh ontrack (same transceiver, same
       // track reused by the browser across mute/unmute).
       ev.track.onmute = () => { room.remoteVideoActive = false; renderCallOverlay(room); };
-      ev.track.onunmute = () => { room.remoteVideoActive = true; renderCallOverlay(room); };
+      ev.track.onunmute = () => { room.remoteVideoActive = true; room.callHadVideo = true; renderCallOverlay(room); };
       return;
     }
     let audioEl = document.getElementById('call-remote-audio');
@@ -7662,6 +7847,7 @@ function teardownPeerConnection(room) {
   room.callNegotiated = false;
   room.callVideoOn = false;
   room.remoteVideoActive = false;
+  room.callHadVideo = false;
   room.callCameraFacing = 'user';
   room.reactionPickerOpen = false;
   room.callMuted = false;
@@ -7978,6 +8164,7 @@ async function toggleCamera() {
         await sender.setParameters(params);
       } catch (e) {}
       room.callVideoOn = true;
+      room.callHadVideo = true;
       showLocalVideoPreview(room, videoStream);
       startCallStatsLogging(room);
     } catch (e) {
@@ -12946,6 +13133,8 @@ function renderVaultList() {
     .filter(Boolean));
   const orderedRooms = [...rooms.values()].sort((a, b) => vaultLastActivity(b) - vaultLastActivity(a));
   for (const room of orderedRooms) {
+    syncAchievementActivityFromMessages(room);
+    const connectionSpark = roomConnectionSpark(room);
     const label = roomDisplayLabel(room);
     const preview = room.restorePending
       ? { text:'Opening securely…', alert:false }
@@ -12970,6 +13159,7 @@ function renderVaultList() {
       <span class="vault-list-row-preview${preview.alert ? ' alert' : ''}">${escHtml(preview.text)}</span>
       <span class="vault-list-row-meta">
         ${activity ? `<span class="vault-list-row-time">${formatVaultInboxTime(activity)}</span>` : ''}
+        ${connectionSpark >= 3 ? `<span class="connection-spark" title="${connectionSpark}-day mutual Connection Spark" aria-label="${connectionSpark}-day Connection Spark">✦ ${connectionSpark}</span>` : ''}
         ${room.unread > 0 ? `<span class="vault-list-row-unread">${room.unread > 9 ? '9+' : room.unread}</span>` : ''}
       </span>
     </div>`;
