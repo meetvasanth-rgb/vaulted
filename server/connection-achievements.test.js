@@ -45,3 +45,22 @@ test('achievements animate as transient text without a share card', () => {
   assert.match(client, /achievementCelebrationTimer = setTimeout[\s\S]{0,100}3600/);
   assert.doesNotMatch(client, /id="milestone-canvas"|shareMilestoneCard|milestone-share-btn/);
 });
+
+test('each direct conversation exposes earned badges and upcoming progress', () => {
+  assert.match(client, /onclick="openConversationAchievements\(\)"[\s\S]{0,300}<span>Achievements<\/span>/);
+  assert.match(client, /id="achievements-overlay"[^>]*role="dialog"/);
+  assert.match(client, /300 messages[\s\S]*500 messages[\s\S]*1,000 messages/);
+  assert.match(client, /First secure call[\s\S]*60 call minutes[\s\S]*5 call hours[\s\S]*25 call hours/);
+  assert.match(client, /First video call[\s\S]*10 video calls/);
+  assert.match(client, /First voice note[\s\S]*100 voice notes[\s\S]*First media share[\s\S]*100 media shares/);
+  assert.match(client, /achievement-badge-card\$\{achieved \? ' earned' : ''\}/);
+});
+
+test('text, voice and media achievements keep independent encrypted counters', () => {
+  assert.match(client, /\['countedTextIds','text',1100\]/);
+  assert.match(client, /\['countedVoiceIds','voice',150\]/);
+  assert.match(client, /\['countedMediaIds','media',150\]/);
+  assert.match(client, /const messages = Number\(ledger\.textCount\) \|\| 0/);
+  assert.match(client, /ledger\.callCount = \(Number\(ledger\.callCount\) \|\| 0\) \+ 1/);
+  assert.match(client, /if \(wasVideo\) ledger\.videoCallCount =/);
+});

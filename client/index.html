@@ -1068,6 +1068,21 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 @keyframes achievement-rise{to{transform:translateY(0);opacity:1}}
 @keyframes achievement-pop{to{transform:scale(1);opacity:1}}
 .connection-spark{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:999px;background:#F7E8C7;color:#74314A;font:750 10px/1 Inter,sans-serif;white-space:nowrap;box-shadow:inset 0 0 0 1px rgba(104,44,67,.09)}
+.achievements-overlay{position:fixed;inset:0;z-index:625;display:none;background:#F8F4F5;color:#30242A;overflow:hidden}
+.achievements-overlay.open{display:flex;flex-direction:column}
+.achievements-head{flex:none;display:grid;grid-template-columns:46px minmax(0,1fr) 46px;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 12px;background:#fff;border-bottom:1px solid #E9DDE1}
+.achievements-close{width:44px;height:44px;border-radius:14px;background:#F4E9ED;color:#682C43;font-size:28px;line-height:1;display:grid;place-items:center}
+.achievements-heading{text-align:center;min-width:0}.achievements-heading strong{display:block;font:750 18px/1.2 Manrope,Inter,sans-serif}.achievements-heading span{display:block;margin-top:3px;color:#8A7880;font:550 11px/1.2 Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.achievements-body{flex:1;overflow:auto;padding:18px 16px calc(28px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+.achievements-intro{max-width:620px;margin:0 auto 18px;color:#725F67;font:550 13px/1.55 Inter,sans-serif;text-align:center}
+.achievement-group{max-width:620px;margin:0 auto 22px}.achievement-group-title{margin:0 0 10px;color:#6B2C43;font:800 12px/1.2 Inter,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+.achievement-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.achievement-badge-card{min-height:142px;padding:15px 13px 13px;border:1px solid #E6DADF;border-radius:18px;background:#fff;display:flex;flex-direction:column;align-items:center;text-align:center;box-shadow:0 5px 18px rgba(67,37,49,.045)}
+.achievement-badge-card.earned{border-color:#D8B25D;background:linear-gradient(155deg,#FFF9E9,#FFF 62%);box-shadow:0 8px 24px rgba(156,112,34,.12)}
+.achievement-badge-icon{width:47px;height:47px;border-radius:16px;display:grid;place-items:center;background:#EEE8EA;color:#9A8D92;font:750 22px/1 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-icon{background:linear-gradient(145deg,#F4D680,#D8A33E);color:#4B2634;box-shadow:0 6px 16px rgba(170,120,28,.22)}
+.achievement-badge-name{margin-top:10px;color:#392C32;font:750 12.5px/1.25 Manrope,Inter,sans-serif}.achievement-badge-state{margin-top:5px;color:#95878D;font:600 10.5px/1.25 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-state{color:#8A6320}
+.achievement-progress{width:100%;height:4px;margin-top:auto;border-radius:999px;background:#EEE8EA;overflow:hidden}.achievement-progress i{display:block;height:100%;border-radius:inherit;background:#C9BBC0}.achievement-badge-card.earned .achievement-progress i{background:#D4A541}
+@media (min-width:620px){.achievement-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.achievement-celebration{transition:opacity .15s ease}.achievement-celebration.open .achievement-kicker,.achievement-celebration.open .achievement-icon,.achievement-celebration.open .achievement-title{animation:none;transform:none;opacity:1}}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
@@ -3148,6 +3163,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   </div>
   <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" onclick="event.stopPropagation()">
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span>Conversation settings</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationAchievements()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 13v4M8 20h8M10 17h4"/></svg></span><span>Achievements</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="quickLockFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Quick Lock</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span>Clear chat</span></button>
     <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span>Leave conversation</span></button>
@@ -4133,6 +4149,14 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="achievement-kicker">Vaultlix moment</div>
   <div class="achievement-icon" id="achievement-icon">✦</div>
   <div class="achievement-title" id="achievement-title"></div>
+</div>
+<div class="achievements-overlay" id="achievements-overlay" role="dialog" aria-modal="true" aria-labelledby="achievements-title">
+  <div class="achievements-head">
+    <button class="achievements-close" type="button" onclick="closeConversationAchievements()" aria-label="Close achievements">‹</button>
+    <div class="achievements-heading"><strong id="achievements-title">Achievements</strong><span id="achievements-peer">Private connection</span></div>
+    <span aria-hidden="true"></span>
+  </div>
+  <div class="achievements-body" id="achievements-body"></div>
 </div>
 
 <div class="number-card-overlay" id="number-card-overlay" onclick="if(event.target===this)closeNumberCard()">
@@ -5446,12 +5470,18 @@ const MILESTONE_DEFS = {
   first_call:{ id:'first_call', value:'☎', label:'first secure call' },
   first_video:{ id:'first_video', value:'▣', label:'first secure video call' },
   call60:{ id:'call60', value:'60', label:'minutes securely connected' },
+  call300:{ id:'call300', value:'5', label:'hours securely connected' },
+  call1500:{ id:'call1500', value:'25', label:'hours securely connected' },
+  video10:{ id:'video10', value:'10', label:'secure video calls' },
+  voice100:{ id:'voice100', value:'100', label:'encrypted voice notes' },
+  media100:{ id:'media100', value:'100', label:'private media shares' },
   days7:{ id:'days7', value:'7', label:'days connected' },
   days30:{ id:'days30', value:'30', label:'days connected' },
   days100:{ id:'days100', value:'100', label:'days connected' },
   days365:{ id:'days365', value:'1', label:'year connected' },
-  msgs100:{ id:'msgs100', value:'100', label:'messages exchanged' },
+  msgs300:{ id:'msgs300', value:'300', label:'messages exchanged' },
   msgs500:{ id:'msgs500', value:'500', label:'messages exchanged' },
+  msgs1000:{ id:'msgs1000', value:'1000', label:'messages exchanged' },
   spark3:{ id:'spark3', value:'3', label:'day Connection Spark' },
   spark7:{ id:'spark7', value:'7', label:'day Connection Spark' },
   spark14:{ id:'spark14', value:'14', label:'day Connection Spark' },
@@ -5472,7 +5502,7 @@ function achievementRoomState(root, code, accountId, create = true) {
   const account = root.accounts[key];
   if (!account) return null;
   if (!account.rooms || typeof account.rooms !== 'object') account.rooms = {};
-  if (!account.rooms[code] && create) account.rooms[code] = { shown:[], activeDays:{}, callSeconds:0 };
+  if (!account.rooms[code] && create) account.rooms[code] = { shown:[], activeDays:{}, callSeconds:0, callCount:0, videoCallCount:0, textCount:0, voiceCount:0, mediaCount:0, countedTextIds:[], countedVoiceIds:[], countedMediaIds:[] };
   return account.rooms[code] || null;
 }
 function saveAchievementState(root, sync = true) {
@@ -5494,6 +5524,15 @@ function mergeAchievementBundle(incoming, accountId) {
     const local = achievementRoomState(root, code, accountId);
     local.shown = Array.from(new Set([...(local.shown || []), ...(Array.isArray(remote.shown) ? remote.shown : [])]));
     local.callSeconds = Math.max(Number(local.callSeconds) || 0, Number(remote.callSeconds) || 0);
+    for (const field of ['callCount','videoCallCount','textCount','voiceCount','mediaCount']) {
+      local[field] = Math.max(Number(local[field]) || 0, Number(remote[field]) || 0);
+    }
+    for (const [field, cap] of [['countedTextIds',1100],['countedVoiceIds',150],['countedMediaIds',150]]) {
+      local[field] = Array.from(new Set([...(Array.isArray(local[field]) ? local[field] : []), ...(Array.isArray(remote[field]) ? remote[field] : [])])).slice(-cap);
+    }
+    local.textCount = Math.max(Number(local.textCount) || 0, local.countedTextIds.length);
+    local.voiceCount = Math.max(Number(local.voiceCount) || 0, local.countedVoiceIds.length);
+    local.mediaCount = Math.max(Number(local.mediaCount) || 0, local.countedMediaIds.length);
     local.firstCall = !!(local.firstCall || remote.firstCall);
     local.firstVideo = !!(local.firstVideo || remote.firstVideo);
     local.firstVoice = !!(local.firstVoice || remote.firstVoice);
@@ -5525,6 +5564,20 @@ function syncAchievementActivityFromMessages(room) {
   const root = loadAchievementState();
   const ledger = achievementRoomState(root, room.code, room.ownerAccountId);
   let changed = false;
+  for (const [field, kind, cap] of [['countedTextIds','text',1100],['countedVoiceIds','voice',150],['countedMediaIds','media',150]]) {
+    const ids = new Set(Array.isArray(ledger[field]) ? ledger[field] : []);
+    for (const message of room.messages) {
+      const matches = kind === 'media' ? ['file','album','gif'].includes(message?.kind) : message?.kind === kind;
+      if (!matches) continue;
+      const id = String(message.id || `${message.ts || 0}:${message.isMe ? 'me' : 'peer'}:${message.kind}`);
+      if (!ids.has(id)) { ids.add(id); changed = true; }
+    }
+    ledger[field] = Array.from(ids).slice(-cap);
+  }
+  for (const [countField, idsField] of [['textCount','countedTextIds'],['voiceCount','countedVoiceIds'],['mediaCount','countedMediaIds']]) {
+    const count = Math.max(Number(ledger[countField]) || 0, ledger[idsField].length);
+    if (count !== ledger[countField]) { ledger[countField] = count; changed = true; }
+  }
   for (const message of room.messages) {
     if (!message || message.kind === 'sys' || !Number(message.ts)) continue;
     const day = String(achievementDayNumber(message.ts));
@@ -5544,6 +5597,8 @@ function recordCallAchievement(room, duration, wasVideo) {
   const root = loadAchievementState();
   const ledger = achievementRoomState(root, room.code, room.ownerAccountId);
   ledger.callSeconds = (Number(ledger.callSeconds) || 0) + duration;
+  ledger.callCount = (Number(ledger.callCount) || 0) + 1;
+  if (wasVideo) ledger.videoCallCount = (Number(ledger.videoCallCount) || 0) + 1;
   ledger.firstCall = true;
   if (wasVideo) ledger.firstVideo = true;
   const day = String(achievementDayNumber());
@@ -5556,6 +5611,82 @@ function roomConnectionSpark(room) {
   const root = loadAchievementState();
   const ledger = achievementRoomState(root, room.code, room.ownerAccountId, false);
   return connectionSparkFromDays(ledger?.activeDays || {});
+}
+function achievementBadgeHtml({ name, icon, current = 0, target = 1, unit = '', achieved = current >= target }) {
+  const safeCurrent = Math.max(0, Math.floor(Number(current) || 0));
+  const safeTarget = Math.max(1, Math.floor(Number(target) || 1));
+  const progress = achieved ? 100 : Math.min(100, Math.round(safeCurrent / safeTarget * 100));
+  const status = achieved ? 'Earned' : `${safeCurrent.toLocaleString()} / ${safeTarget.toLocaleString()}${unit ? ` ${unit}` : ''}`;
+  return `<div class="achievement-badge-card${achieved ? ' earned' : ''}">
+    <div class="achievement-badge-icon" aria-hidden="true">${escHtml(icon)}</div>
+    <div class="achievement-badge-name">${escHtml(name)}</div>
+    <div class="achievement-badge-state">${escHtml(status)}</div>
+    <div class="achievement-progress" aria-hidden="true"><i style="width:${progress}%"></i></div>
+  </div>`;
+}
+function achievementGroupHtml(title, badges) {
+  return `<section class="achievement-group"><h2 class="achievement-group-title">${escHtml(title)}</h2><div class="achievement-grid">${badges.map(achievementBadgeHtml).join('')}</div></section>`;
+}
+function openConversationAchievements() {
+  closeConversationMenu();
+  const room = rooms.get(activeRoomCode);
+  const overlay = document.getElementById('achievements-overlay');
+  const body = document.getElementById('achievements-body');
+  if (!room || !overlay || !body) return;
+  const ledger = syncAchievementActivityFromMessages(room) || {};
+  const days = room.connectedSince ? Math.max(0, Math.floor((Date.now() - room.connectedSince) / 86400000)) : 0;
+  const messages = Number(ledger.textCount) || 0;
+  const spark = connectionSparkFromDays(ledger.activeDays || {});
+  const callMinutes = Math.floor((Number(ledger.callSeconds) || 0) / 60);
+  const callCount = Number(ledger.callCount) || (ledger.firstCall ? 1 : 0);
+  const videoCount = Number(ledger.videoCallCount) || (ledger.firstVideo ? 1 : 0);
+  const voiceCount = Number(ledger.voiceCount) || (ledger.firstVoice ? 1 : 0);
+  const mediaCount = Number(ledger.mediaCount) || (ledger.firstMedia ? 1 : 0);
+  const activities = Object.values(ledger.activeDays || {});
+  const mutualConversation = activities.some(day => day?.me) && activities.some(day => day?.peer);
+  document.getElementById('achievements-peer').textContent = roomDisplayLabel(room);
+  body.innerHTML = `<p class="achievements-intro">Private milestones shared only between you and this connection. Earned badges stay here; upcoming badges show your progress.</p>${[
+    achievementGroupHtml('Messages', [
+      {name:'300 messages',icon:'300',current:messages,target:300,unit:'messages'},
+      {name:'500 messages',icon:'500',current:messages,target:500,unit:'messages'},
+      {name:'1,000 messages',icon:'1K',current:messages,target:1000,unit:'messages'},
+    ]),
+    achievementGroupHtml('Connection', [
+      {name:'First mutual conversation',icon:'✦',current:mutualConversation?1:0,target:1},
+      {name:'7 days connected',icon:'7',current:days,target:7,unit:'days'},
+      {name:'30 days connected',icon:'30',current:days,target:30,unit:'days'},
+      {name:'100 days connected',icon:'100',current:days,target:100,unit:'days'},
+      {name:'One year connected',icon:'1Y',current:days,target:365,unit:'days'},
+    ]),
+    achievementGroupHtml('Connection Sparks', [
+      {name:'3-day Spark',icon:'✦3',current:spark,target:3,unit:'days'},
+      {name:'7-day Spark',icon:'✦7',current:spark,target:7,unit:'days'},
+      {name:'14-day Spark',icon:'✦14',current:spark,target:14,unit:'days'},
+      {name:'30-day Spark',icon:'✦30',current:spark,target:30,unit:'days'},
+      {name:'100-day Spark',icon:'✦100',current:spark,target:100,unit:'days'},
+    ]),
+    achievementGroupHtml('Secure calls', [
+      {name:'First secure call',icon:'☎',current:callCount,target:1},
+      {name:'60 call minutes',icon:'60m',current:callMinutes,target:60,unit:'minutes'},
+      {name:'5 call hours',icon:'5h',current:callMinutes,target:300,unit:'minutes'},
+      {name:'25 call hours',icon:'25h',current:callMinutes,target:1500,unit:'minutes'},
+      {name:'First video call',icon:'▣',current:videoCount,target:1},
+      {name:'10 video calls',icon:'▣10',current:videoCount,target:10,unit:'calls'},
+    ]),
+    achievementGroupHtml('Shared moments', [
+      {name:'First voice note',icon:'◉',current:voiceCount,target:1},
+      {name:'100 voice notes',icon:'◉100',current:voiceCount,target:100,unit:'notes'},
+      {name:'First media share',icon:'◇',current:mediaCount,target:1},
+      {name:'100 media shares',icon:'◇100',current:mediaCount,target:100,unit:'items'},
+    ]),
+  ].join('')}`;
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  overlay.querySelector('.achievements-close')?.focus();
+}
+function closeConversationAchievements() {
+  document.getElementById('achievements-overlay')?.classList.remove('open');
+  document.body.style.overflow = '';
 }
 function markMilestoneShown(room, id) {
   const root = loadAchievementState();
@@ -5579,21 +5710,23 @@ function checkMilestone(room) {
   } catch(e) {}
   const shown = new Set(ledger.shown || []);
   const days = room.connectedSince ? Math.floor((Date.now() - room.connectedSince) / 86400000) : 0;
-  const messages = Number(room.totalMessageCount) || 0;
+  const messages = Number(ledger.textCount) || 0;
   const spark = connectionSparkFromDays(ledger.activeDays || {});
   const candidates = [
+    (Number(ledger.callSeconds) || 0) >= 1500 * 60 && 'call1500', (Number(ledger.callSeconds) || 0) >= 300 * 60 && 'call300', (Number(ledger.callSeconds) || 0) >= 60 * 60 && 'call60',
+    (Number(ledger.videoCallCount) || 0) >= 10 && 'video10', (Number(ledger.voiceCount) || 0) >= 100 && 'voice100', (Number(ledger.mediaCount) || 0) >= 100 && 'media100',
     ledger.firstVideo && 'first_video', ledger.firstCall && 'first_call',
     ledger.firstVoice && 'first_voice', ledger.firstMedia && 'first_media',
     spark >= 100 && 'spark100', spark >= 30 && 'spark30', spark >= 14 && 'spark14', spark >= 7 && 'spark7', spark >= 3 && 'spark3',
     days >= 365 && 'days365', days >= 100 && 'days100', days >= 30 && 'days30', days >= 7 && 'days7',
-    messages >= 500 && 'msgs500', messages >= 100 && 'msgs100',
+    messages >= 1000 && 'msgs1000', messages >= 500 && 'msgs500', messages >= 300 && 'msgs300',
     Object.values(ledger.activeDays || {}).some(day => day?.me) && Object.values(ledger.activeDays || {}).some(day => day?.peer) && 'conversation_started',
   ].filter(Boolean);
   const id = candidates.find(candidate => !shown.has(candidate));
   if (!id) return;
   // Superseded tiers are considered complete so restoring an old account
   // does not produce a queue of smaller celebrations on consecutive opens.
-  const tierGroups = [['spark3','spark7','spark14','spark30','spark100'],['days7','days30','days100','days365'],['msgs100','msgs500']];
+  const tierGroups = [['spark3','spark7','spark14','spark30','spark100'],['days7','days30','days100','days365'],['msgs300','msgs500','msgs1000'],['call60','call300','call1500']];
   for (const tiers of tierGroups) {
     const index = tiers.indexOf(id);
     if (index >= 0) for (const completed of tiers.slice(0, index)) markMilestoneShown(room, completed);
@@ -8547,6 +8680,7 @@ function showScreen(id) {
   // ever take it down if the app navigated away from the waiting screen
   // while it was open (e.g. the peer joins and the app moves to s-chat).
   closeQrPanel();
+  closeConversationAchievements();
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if (id === 's-setup') {
@@ -9453,6 +9587,7 @@ function closeSettings() {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   closeConversationMenu();
+  closeConversationAchievements();
   if (settingsOpen) closeSettings();
 });
 
@@ -13348,7 +13483,7 @@ function nativeSwipeNavigationBlocked(target) {
   if (settingsOpen || document.querySelector(
     '#conversation-menu.open, #qr-overlay, #connect-overlay, #call-overlay, ' +
     '.app-lock-overlay.open, .account-overlay.open, .safety-overlay.open, ' +
-    '.emergency-overlay.open, .achievement-celebration.open, .number-card-overlay.open, ' +
+    '.emergency-overlay.open, .achievement-celebration.open, .achievements-overlay.open, .number-card-overlay.open, ' +
     '.pdf-preview-overlay.open, .image-viewer-overlay'
   )) return true;
   return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile');
