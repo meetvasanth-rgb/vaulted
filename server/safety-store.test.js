@@ -35,6 +35,15 @@ test('safety lookups coalesce signaling bursts, invalidate after moderation, and
   fail=false;
   assert.equal(await store.isSuspended('account-a'),true);
 });
+test('safety checks inside a locked conversation reuse its transaction connection',async()=>{
+  const pool={query(){throw Error('Pool must not be used inside a conversation transaction');}};
+  const queries=[];
+  const transaction={async query(sql){queries.push(sql);return {rowCount:0};}};
+  const store=new SafetyStore('/tmp',pool);
+  assert.equal(await store.isSuspended('account-a',transaction),false);
+  assert.equal(await store.isRevokedRoomMember('room-a','a'.repeat(64),transaction),false);
+  assert.deepEqual(queries.map(sql=>sql.match(/FROM (\w+)/)[1]),['safety_suspensions','safety_revoked_room_members']);
+});
 test('report workflow persists, enforces stale-update protection and never resurrects expired legacy reports',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'vaultlix-safety-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   fs.writeFileSync(path.join(dir,'safety-reports.jsonl'),JSON.stringify({id:'legacy',createdAt:new Date(Date.now()-2*SLA).toISOString(),reason:'other'})+'\n');

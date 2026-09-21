@@ -2937,7 +2937,7 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
     await postgresStore.withConversationLock(roomCode, async client => {
       const room = await ensureConversationLoaded(roomCode, { force:true, client });
       if (room) room.dbClient = client;
-      await api(path, method, d, p, res, ip, headers);
+      await api(path, method, d, p, res, ip, headers, client);
       if (deferred.status() < 400) {
         const current = rooms.get(roomCode);
         if (current) {
@@ -2963,16 +2963,16 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
   }
 }
 
-async function api(path, method, d, p, res, ip, headers) {
+async function api(path, method, d, p, res, ip, headers, transactionClient = null) {
   // A moderator restriction covers existing sessions and room bearer tokens,
   // not only new friend requests.
   if (validAccountId(d.accountId) &&
       typeof d.sessionToken === 'string' &&
-      await safetyStore.isSuspended(d.accountId)) {
+      await safetyStore.isSuspended(d.accountId, transactionClient)) {
     return resErr(res, 'This account has been suspended.', 403);
   }
   if (typeof d.code === 'string' && typeof d.token === 'string' &&
-      await safetyStore.isRevokedRoomMember(d.code.toLowerCase().trim(), conversationTokenHash(d.token))) {
+      await safetyStore.isRevokedRoomMember(d.code.toLowerCase().trim(), conversationTokenHash(d.token), transactionClient)) {
     return resErr(res, 'This conversation is unavailable.', 403);
   }
 

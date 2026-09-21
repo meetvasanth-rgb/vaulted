@@ -153,7 +153,8 @@ class SafetyStore {
     else {const had=this.suspensions.has(accountId);if(suspended)this.suspensions.add(accountId);else this.suspensions.delete(accountId);try{this.flush();}catch(error){if(had)this.suspensions.add(accountId);else this.suspensions.delete(accountId);throw error;}}
     if(!client) this.invalidateAccountRestrictionCache(accountId);
   }
-  async isSuspended(accountId) {
+  async isSuspended(accountId,client=null) {
+    if(client) return !!(await client.query('SELECT 1 FROM safety_suspensions WHERE account_id=$1',[accountId])).rowCount;
     if(this.pool) return this.cachedRestrictionLookup(this.suspensionLookups,accountId,
       async () => !!(await this.pool.query('SELECT 1 FROM safety_suspensions WHERE account_id=$1',[accountId])).rowCount);
     return this.suspensions.has(accountId);
@@ -181,7 +182,8 @@ class SafetyStore {
     }
     if(!client) this.revocationLookups.clear();
   }
-  async isRevokedRoomMember(roomCode, tokenHash) {
+  async isRevokedRoomMember(roomCode, tokenHash,client=null) {
+    if(client) return !!(await client.query('SELECT 1 FROM safety_revoked_room_members WHERE room_code=$1 AND token_hash=$2',[roomCode,tokenHash])).rowCount;
     if(this.pool) return this.cachedRestrictionLookup(this.revocationLookups,`${roomCode}:${tokenHash}`,
       async () => !!(await this.pool.query('SELECT 1 FROM safety_revoked_room_members WHERE room_code=$1 AND token_hash=$2',[roomCode,tokenHash])).rowCount);
     return this.revokedRoomMembers.has(`${roomCode}:${tokenHash}`);
