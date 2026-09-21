@@ -8,9 +8,11 @@ const SLA = 86400000;
 const SCHEMA = `CREATE TABLE IF NOT EXISTS safety_reports (id text PRIMARY KEY, data jsonb NOT NULL);
 CREATE TABLE IF NOT EXISTS safety_blocks (blocker text NOT NULL, blocked text NOT NULL, created_at bigint NOT NULL, PRIMARY KEY(blocker,blocked));
 CREATE TABLE IF NOT EXISTS safety_suspensions (account_id text PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS safety_revoked_room_members (account_id text NOT NULL, room_code text NOT NULL, token_hash char(64) NOT NULL, PRIMARY KEY(room_code, token_hash));
+CREATE INDEX IF NOT EXISTS safety_revoked_room_members_account_idx ON safety_revoked_room_members(account_id);
 CREATE TABLE IF NOT EXISTS safety_migrations (id text PRIMARY KEY);`;
 class SafetyStore {
-  constructor(directory, pool = null) { this.directory=directory; this.pool=pool; this.reports=new Map(); this.blocks=new Map(); this.suspensions=new Set(); }
+  constructor(directory, pool = null) { this.directory=directory; this.pool=pool; this.reports=new Map(); this.blocks=new Map(); this.suspensions=new Set(); this.revokedRoomMembers=new Map(); }
   async initialize() {
     const file=path.join(this.directory,'safety-workflow.json');
     const legacy=path.join(this.directory,'safety-reports.jsonl');
@@ -25,6 +27,7 @@ class SafetyStore {
     const data=fileText===null?{}:JSON.parse(fileText);
     const legacyReports=legacyText===null?[]:legacyText.split('\n').filter(Boolean).map(line=>JSON.parse(line));
     this.suspensions=new Set(data.suspensions || []);
+    for(const entry of data.revokedRoomMembers || []) this.revokedRoomMembers.set(`${entry.roomCode}:${entry.tokenHash}`,entry);
     for(const r of data.reports || []) this.reports.set(r.id,r);
     for(const b of data.blocks || []) this.blocks.set(`${b.blocker}:${b.blocked}`,b);
     if(!data.legacyMigrated && !databaseMigrated) for(const r of legacyReports) {
@@ -34,6 +37,7 @@ class SafetyStore {
       for(const r of this.reports.values()) await this.pool.query('INSERT INTO safety_reports(id,data) VALUES($1,$2) ON CONFLICT DO NOTHING',[r.id,r]);
       for(const b of this.blocks.values()) await this.pool.query('INSERT INTO safety_blocks VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[b.blocker,b.blocked,b.createdAt]);
       for(const id of this.suspensions) await this.pool.query('INSERT INTO safety_suspensions VALUES($1) ON CONFLICT DO NOTHING',[id]);
+      for(const entry of this.revokedRoomMembers.values()) await this.pool.query('INSERT INTO safety_revoked_room_members VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[entry.accountId,entry.roomCode,entry.tokenHash]);
     } else if(!this.pool) this.flush();
 
     // Read back durable copies before removing any source file. A conflict,
@@ -67,7 +71,7 @@ class SafetyStore {
   flush() {
     fs.mkdirSync(this.directory,{recursive:true,mode:0o700});
     const file=path.join(this.directory,'safety-workflow.json'), temp=file+'.tmp';
-    fs.writeFileSync(temp,JSON.stringify({legacyMigrated:true,suspensions:[...this.suspensions],reports:[...this.reports.values()],blocks:[...this.blocks.values()]}),{mode:0o600});
+    fs.writeFileSync(temp,JSON.stringify({legacyMigrated:true,suspensions:[...this.suspensions],revokedRoomMembers:[...this.revokedRoomMembers.values()],reports:[...this.reports.values()],blocks:[...this.blocks.values()]}),{mode:0o600});
     fs.renameSync(temp,file); fs.chmodSync(file,0o600);
   }
   async add(data) {
@@ -136,6 +140,31 @@ class SafetyStore {
   async isSuspended(accountId) {
     if(this.pool) return !!(await this.pool.query('SELECT 1 FROM safety_suspensions WHERE account_id=$1',[accountId])).rowCount;
     return this.suspensions.has(accountId);
+  }
+  async listSuspended() {
+    if(this.pool) return (await this.pool.query('SELECT account_id FROM safety_suspensions')).rows.map(row=>row.account_id);
+    return [...this.suspensions];
+  }
+  async revokeRoomMembers(accountId, members, client=null) {
+    if(this.pool) {
+      const db=client || this.pool;
+      for(const member of members) await db.query('INSERT INTO safety_revoked_room_members VALUES($1,$2,$3) ON CONFLICT (room_code,token_hash) DO UPDATE SET account_id=EXCLUDED.account_id',
+        [accountId,member.roomCode,member.tokenHash]);
+    } else {
+      for(const member of members) this.revokedRoomMembers.set(`${member.roomCode}:${member.tokenHash}`,{accountId,...member});
+      this.flush();
+    }
+  }
+  async restoreRoomMembers(accountId, client=null) {
+    if(this.pool) await (client || this.pool).query('DELETE FROM safety_revoked_room_members WHERE account_id=$1',[accountId]);
+    else {
+      for(const [key,entry] of this.revokedRoomMembers) if(entry.accountId===accountId) this.revokedRoomMembers.delete(key);
+      this.flush();
+    }
+  }
+  async isRevokedRoomMember(roomCode, tokenHash) {
+    if(this.pool) return !!(await this.pool.query('SELECT 1 FROM safety_revoked_room_members WHERE room_code=$1 AND token_hash=$2',[roomCode,tokenHash])).rowCount;
+    return this.revokedRoomMembers.has(`${roomCode}:${tokenHash}`);
   }
   async blocked(a,b) {
     if(this.pool) return !!(await this.pool.query('SELECT 1 FROM safety_blocks WHERE (blocker=$1 AND blocked=$2) OR (blocker=$2 AND blocked=$1) LIMIT 1',[a,b])).rowCount;

@@ -1509,6 +1509,29 @@ async function persistAccount(accountId) {
   else saveAccounts();
 }
 
+async function acceptedRoomMembersForAccount(accountId) {
+  const slots = new Map();
+  // The account list is compacted for the inbox; a peer may still retain an
+  // older accepted link. Include both sides so none of those tokens survive.
+  for (const owner of accounts.values()) for (const request of owner.connectionRequests || []) {
+    if (request.status !== 'accepted' || typeof request.inviteUrl !== 'string') continue;
+    if (request.senderAccountId !== accountId && request.recipientAccountId !== accountId) continue;
+    const roomCode = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i)?.[1]?.toLowerCase();
+    const slot = request.recipientAccountId === accountId ? 1 : request.senderAccountId === accountId ? 2 : null;
+    if (roomCode && slot) slots.set(roomCode, slot);
+  }
+  const members = [];
+  for (const [roomCode, slot] of slots) {
+    const room = await ensureConversationLoaded(roomCode);
+    if (!room) continue;
+    for (const [token, member] of room.members) if (member.slot === slot) {
+      members.push({roomCode, tokenHash:conversationTokenHash(token)});
+      break;
+    }
+  }
+  return members;
+}
+
 function allocateLocalAccountCreationOrder() {
   let highest = 0;
   for (const account of accounts.values()) highest = Math.max(highest, Number(account.creationOrder) || 0);
@@ -2940,6 +2963,17 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
 }
 
 async function api(path, method, d, p, res, ip, headers) {
+  // A moderator restriction covers existing sessions and room bearer tokens,
+  // not only new friend requests.
+  if (validAccountId(d.accountId) &&
+      typeof d.sessionToken === 'string' &&
+      await safetyStore.isSuspended(d.accountId)) {
+    return resErr(res, 'This account has been suspended.', 403);
+  }
+  if (typeof d.code === 'string' && typeof d.token === 'string' &&
+      await safetyStore.isRevokedRoomMember(d.code.toLowerCase().trim(), conversationTokenHash(d.token))) {
+    return resErr(res, 'This conversation is unavailable.', 403);
+  }
 
   if ((path === '/api/report' || path === '/api/connections/block') && method === 'POST') {
     if (await rateLimited(`safety-report:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many safety requests — try again later.', 429);
@@ -3013,6 +3047,10 @@ async function api(path, method, d, p, res, ip, headers) {
       }
     }
     if (!matchedRoom) return res200(res, { ok: true });
+    if (await safetyStore.isRevokedRoomMember(matchedRoomCode,
+      conversationTokenHash(matchedRoom.nativeCalleeToken || sharedCall?.calleeTokenHash))) {
+      return resErr(res, 'This call is unavailable.', 403);
+    }
 
     const wasRinging = matchedRoom.ringingUntil && matchedRoom.ringingUntil > Date.now();
     if (wasRinging) {
@@ -3065,6 +3103,10 @@ async function api(path, method, d, p, res, ip, headers) {
     // Deliberately return the same result for an expired/already-declined ID:
     // native retries stay idempotent and this is not a call-ID oracle.
     if (!matchedRoom) return res200(res, { ok: true });
+    if (await safetyStore.isRevokedRoomMember(matchedRoomCode,
+      conversationTokenHash(matchedRoom.nativeCalleeToken || sharedCall?.calleeTokenHash))) {
+      return resErr(res, 'This call is unavailable.', 403);
+    }
 
     const calleeToken = matchedRoom.nativeCalleeToken;
     const callee = matchedRoom.members.get(calleeToken);
@@ -3186,6 +3228,7 @@ async function api(path, method, d, p, res, ip, headers) {
       if (!(await verifyAccountSecret(d.authSecret, existing.authVerifier))) {
         return resErr(res, 'That Vaultlix Private Number is unavailable.', 409);
       }
+      if (await safetyStore.isSuspended(d.accountId)) return resErr(res, 'This account has been suspended.', 403);
       const sessionToken = await replaceAccountLoginSession(d.accountId, existing, accountDeviceHash(d.deviceId));
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
@@ -3270,6 +3313,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const verifier = account ? account.authVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.authSecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
+    if (await safetyStore.isSuspended(found.accountId)) return resErr(res, 'This account has been suspended.', 403);
     const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
@@ -3338,6 +3382,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.recoverySecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or recovery code is incorrect.', 403);
+    if (await safetyStore.isSuspended(found.accountId)) return resErr(res, 'This account has been suspended.', 403);
     if (!validAccountSecret(d.newAuthSecret) || !validEncryptedField(d.passwordWrap, 4096)) return resErr(res, 'Invalid recovery update.', 400);
     account.authVerifier = await hashAccountSecret(d.newAuthSecret);
     account.passwordWrap = d.passwordWrap;
@@ -3359,6 +3404,7 @@ async function api(path, method, d, p, res, ip, headers) {
     const verifier = account ? account.recoveryVerifier : DUMMY_ACCOUNT_VERIFIER;
     const valid = await verifyAccountSecret(d.recoverySecret, verifier);
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or recovery code is incorrect.', 403);
+    if (await safetyStore.isSuspended(found.accountId)) return resErr(res, 'This account has been suspended.', 403);
     account.lastActiveAt = Date.now();
     account.reclaimWarnings = [];
     await persistAccount(found.accountId);
@@ -3452,6 +3498,7 @@ async function api(path, method, d, p, res, ip, headers) {
         return resErr(res, 'Every group member must be an existing Vaultlix contact.', 400);
       }
       if (await safetyStore.blocked(d.accountId, recipientId)) return resErr(res, 'A blocked contact cannot be added to a group.', 403);
+      if (await safetyStore.isSuspended(recipientId)) return resErr(res, 'This contact cannot be added to a group.', 403);
       seen.add(recipientId);
       members.push({ accountId:recipientId, role:'member', active:true, keyVersion:1,
         wrappedKey:entry.wrappedKey, wrappedKeys:{ 1:entry.wrappedKey }, wrapRoomCode:roomCode, addedAt:Date.now() });
@@ -3655,6 +3702,7 @@ async function api(path, method, d, p, res, ip, headers) {
       }
       if (existing.some(member => member.accountId === recipientId)) return resErr(res, 'That contact is already in the group.', 409);
       if (await safetyStore.blocked(d.accountId, recipientId)) return resErr(res, 'A blocked contact cannot be added to a group.', 403);
+      if (await safetyStore.isSuspended(recipientId)) return resErr(res, 'This contact cannot be added to a group.', 403);
       seen.add(recipientId);
       additions.push({ accountId:recipientId, wrapRoomCode:roomCode, wrappedKey:entry.wrappedKey });
     }
@@ -3929,7 +3977,8 @@ async function api(path, method, d, p, res, ip, headers) {
         : item.entries.find(candidate => candidate.recipientId === d.accountId);
       if (!entry) continue;
       const author = accounts.get(item.authorId);
-      if (!author || (!own && await safetyStore.blocked(d.accountId, item.authorId))) continue;
+      if (!author || (!own && (await safetyStore.isSuspended(item.authorId) ||
+          await safetyStore.blocked(d.accountId, item.authorId)))) continue;
       feed.push({
         id:item.id, own, code:entry.code, ciphertext:entry.ciphertext, mediaId:item.mediaId || null,
         authorName:author.displayName, authorPrivateNumber:author.privateNumber,
@@ -5258,6 +5307,11 @@ async function api(path, method, d, p, res, ip, headers) {
       }
       if(typeof d.note !== 'string') return resErr(res,'A review note is required.',400);
       const closedCodes = new Set();
+      let moderatedAccount = null;
+      let moderatedAccountId = null;
+      let revokedMembers = [];
+      let revokedSessionHashes = [];
+      let removedStatusRecipients = [];
       try {
         await safetyStore.review(d.id,d.status,`${d.note || ''}${d.accountAction && d.accountAction !== 'none' ? ' [Account: '+d.accountAction+']' : ''}`,d.expectedUpdatedAt, async (report,client) => {
           const codes = new Set();
@@ -5266,7 +5320,18 @@ async function api(path, method, d, p, res, ip, headers) {
             if(!report.reportedAccountId || d.status !== 'resolved') throw Error('Resolve the report with a note before changing account access.');
             await safetyStore.setSuspended(report.reportedAccountId,d.accountAction==='suspend',client);
             if(d.accountAction==='suspend') {
+              const account = accounts.get(report.reportedAccountId);
+              if (!account) throw Error('Reported account no longer exists.');
+              revokedMembers = await acceptedRoomMembersForAccount(report.reportedAccountId);
+              await safetyStore.revokeRoomMembers(report.reportedAccountId, revokedMembers, client);
+              removedStatusRecipients = await statusStore.removeAllByAuthor(report.reportedAccountId, client);
+              revokedSessionHashes = (account.sessions || []).map(session => session.tokenHash);
+              moderatedAccount = {...account, sessions:[], pushDestinations:[]};
+              moderatedAccountId = report.reportedAccountId;
+              if (client) await postgresStore.saveAccount(report.reportedAccountId, moderatedAccount, client);
               if(report.roomCode) codes.add(report.roomCode);
+            } else {
+              await safetyStore.restoreRoomMembers(report.reportedAccountId, client);
             }
           }
           if (d.closeConversation === true) {
@@ -5282,6 +5347,16 @@ async function api(path, method, d, p, res, ip, headers) {
           }
         });
       } catch(error) { return resErr(res,error.message,409); }
+      if (moderatedAccount) {
+        accounts.set(moderatedAccountId, moderatedAccount);
+        if (!postgresEnabled) saveAccounts();
+        closeReplacedAccountSockets(moderatedAccountId, new Set(revokedSessionHashes), false);
+        const tokenRoutes = revokedMembers.map(member => conversationTokenRoute(member.tokenHash));
+        closeModeratedSocketsLocal(opaqueRouteId(moderatedAccountId), tokenRoutes);
+        realtimeCoordinator.publish('safety-account-suspended', { accountRouteId:opaqueRouteId(moderatedAccountId), tokenRoutes }).catch(() => {});
+        for (const recipientId of removedStatusRecipients) publishInboxAccount(recipientId, 'status-update');
+        sweepStatusMediaGarbage().catch(error => console.error('Status cleanup failed:', error.message));
+      }
       if (postgresEnabled) for(const code of closedCodes) destroyRoom(code,true);
       return res200(res,{ok:true});
     }
@@ -5561,6 +5636,18 @@ function closeReplacedAccountSockets(accountId, revokedTokenHashes, replacedByAn
   }).catch(() => {});
 }
 
+function closeModeratedSocketsLocal(accountRouteId, tokenRoutes) {
+  for (const ws of [...(inboxAccountSocketsByRoute.get(accountRouteId) || [])]) {
+    try { ws.close(4003, 'Account suspended'); } catch (_) {}
+  }
+  for (const routeId of tokenRoutes) {
+    for (const registry of [signalingSocketsByRoute, nativeCallSignalingSocketsByRoute]) {
+      const ws = registry.get(routeId);
+      if (ws) try { ws.close(4001, 'Account suspended'); } catch (_) {}
+    }
+  }
+}
+
 async function clearAccountRoomPushDestinations(accountId, account) {
   const affected = new Map();
   for (const request of account.connectionRequests || []) {
@@ -5711,6 +5798,10 @@ async function deliverSignalToMember(tokenOrHash, signal, { allOwners = false } 
 }
 
 function handleRealtimeEvent(event) {
+  if (event.type === 'safety-account-suspended' && event.accountRouteId && Array.isArray(event.tokenRoutes)) {
+    closeModeratedSocketsLocal(event.accountRouteId, event.tokenRoutes);
+    return;
+  }
   if (event.type === 'conversation-invalidated' && typeof event.roomCode === 'string') {
     evictConversationCache(event.roomCode);
     return;
@@ -5800,7 +5891,8 @@ inboxWss.on('connection', (ws) => {
     try { msg = JSON.parse(raw); } catch (e) { msg = null; }
     if (!ws.authenticated) {
       if (!msg || msg.type !== 'auth' || !validAccountId(msg.accountId) ||
-          !authenticateAccountSession(msg.accountId, msg.sessionToken)) {
+          !authenticateAccountSession(msg.accountId, msg.sessionToken) ||
+          await safetyStore.isSuspended(msg.accountId)) {
         clearTimeout(authTimer);
         try { ws.close(4001, 'Unauthorized'); } catch (e) {}
         return;
@@ -5820,13 +5912,18 @@ inboxWss.on('connection', (ws) => {
       try { ws.send(JSON.stringify({ type:'ready', sequence:sharedSequence ?? inboxSequenceByAccount.get(msg.accountId) ?? 0 })); } catch (e) {}
       return;
     }
+    if (await safetyStore.isSuspended(ws.accountId)) {
+      try { ws.close(4003, 'Account suspended'); } catch (_) {}
+      return;
+    }
     if (!msg || msg.type !== 'subscribe' || !Array.isArray(msg.conversations)) return;
     const subscriptions = new Map();
     for (const item of msg.conversations.slice(0, 20)) {
       if (!item || typeof item.code !== 'string' || typeof item.token !== 'string') continue;
       const code = item.code.toLowerCase().trim();
       const room = await ensureConversationLoaded(code);
-      if (room?.members.has(item.token)) subscriptions.set(code, item.token);
+      if (room?.members.has(item.token) &&
+          !await safetyStore.isRevokedRoomMember(code, conversationTokenHash(item.token))) subscriptions.set(code, item.token);
     }
     const previousSubscriptions = new Map(ws.inboxSubscriptions);
     replaceInboxSubscriptions(ws, subscriptions);
@@ -5917,7 +6014,8 @@ wss.on('connection', (ws) => {
     const roomCode = msg.code.toLowerCase().trim();
     const token = msg.token;
     const room = await ensureConversationLoaded(roomCode);
-    if (!room || !room.members.has(token)) {
+    if (!room || !room.members.has(token) ||
+        await safetyStore.isRevokedRoomMember(roomCode, conversationTokenHash(token))) {
       try { ws.close(4001, 'Unauthorized'); } catch(e) {}
       return;
     }
@@ -6014,7 +6112,10 @@ wss.on('connection', (ws) => {
       if (await rateLimited(`sig:${token}`, 60, 10 * 1000)) return;
 
       const room2 = await ensureConversationLoaded(roomCode);
-      if (!room2 || !room2.members.has(token)) { try { ws.close(4001, 'No longer in room'); } catch(e) {} return; }
+      if (!room2 || !room2.members.has(token) ||
+          await safetyStore.isRevokedRoomMember(roomCode, conversationTokenHash(token))) {
+        try { ws.close(4001, 'No longer in room'); } catch(e) {} return;
+      }
       const sharedCallState = await realtimeCoordinator.getCallState(roomCode);
       if (sharedCallState) {
         room2.nativeCallId = room2.nativeCallId || sharedCallState.callId || null;
@@ -6692,10 +6793,25 @@ async function bootstrap() {
   }
   safetyStore = new SafetyStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
   await safetyStore.initialize();
+  // Earlier deployments only blocked new connections. Backfill existing
+  // suspensions before accepting traffic, including their old room tokens.
+  for (const accountId of await safetyStore.listSuspended()) {
+    const account = accounts.get(accountId);
+    if (!account) continue;
+    await safetyStore.revokeRoomMembers(accountId, await acceptedRoomMembersForAccount(accountId));
+    if ((account.sessions || []).length || (account.pushDestinations || []).length) {
+      account.sessions = [];
+      account.pushDestinations = [];
+      await persistAccount(accountId);
+    }
+  }
   await safetyStore.prune();
   setInterval(() => safetyStore.prune().catch(error => console.error('Safety retention failed:', error.message)), 60 * 60 * 1000).unref();
   statusStore = new StatusStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
   await statusStore.initialize();
+  for (const accountId of await safetyStore.listSuspended()) {
+    await statusStore.removeAllByAuthor(accountId);
+  }
   setInterval(() => statusStore.prune().catch(error => console.error('Status retention failed:', error.message)), 60 * 60 * 1000).unref();
   groupStore = new GroupStore(SNAPSHOT_DIR, postgresEnabled ? postgresStore.pool : null);
   await groupStore.initialize();

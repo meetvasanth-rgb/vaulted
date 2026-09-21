@@ -98,6 +98,21 @@ class StatusStore {
     this.items.delete(id); this.flush(); return true;
   }
 
+  async removeAllByAuthor(authorId, client = null) {
+    if (this.pool) {
+      const result = await (client || this.pool).query('DELETE FROM encrypted_statuses WHERE author_id=$1 RETURNING entries', [authorId]);
+      return [...new Set(result.rows.flatMap(row => (row.entries || []).map(entry => entry.recipientId)).filter(Boolean))];
+    }
+    const recipients = new Set();
+    let removed = false;
+    for (const [id,item] of this.items) if (item.authorId === authorId) {
+      for (const entry of item.entries || []) if (entry.recipientId) recipients.add(entry.recipientId);
+      this.items.delete(id); removed = true;
+    }
+    if (removed) this.flush();
+    return [...recipients];
+  }
+
   async owned(id, authorId) {
     if (this.pool) {
       const { rows } = await this.pool.query('SELECT id,media_id FROM encrypted_statuses WHERE id=$1 AND author_id=$2', [id, authorId]);

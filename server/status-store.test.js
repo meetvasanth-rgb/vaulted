@@ -33,3 +33,22 @@ test('status schema stores only encrypted entries and viewer metadata', () => {
   assert.match(SCHEMA, /entries jsonb NOT NULL/);
   assert.doesNotMatch(SCHEMA, /plaintext|status_text|status_image/);
 });
+
+test('moderator removal clears a suspended author’s status from every recipient feed', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vaultlix-moderated-status-'));
+  t.after(() => fs.rmSync(directory, {recursive:true,force:true}));
+  let store = new StatusStore(directory);
+  await store.initialize();
+  const item = await store.publish('reported', [
+    {recipientId:'friend-a',code:'room-a',ciphertext:'v:one'},
+    {recipientId:'friend-b',code:'room-b',ciphertext:'v:two'},
+  ]);
+  await store.publish('other', [{recipientId:'friend-a',code:'room-c',ciphertext:'v:three'}]);
+  assert.deepEqual(await store.removeAllByAuthor('reported'), ['friend-a','friend-b']);
+  assert.equal((await store.listFor('friend-b')).length,0);
+  assert.equal((await store.listFor('friend-a')).length,1);
+  assert.equal(await store.owned(item.id,'reported'),null);
+  store = new StatusStore(directory);
+  await store.initialize();
+  assert.equal((await store.listFor('friend-b')).length,0);
+});

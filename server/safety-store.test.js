@@ -23,9 +23,15 @@ test('report workflow persists, enforces stale-update protection and never resur
   await assert.rejects(()=>store.review(report.id,'resolved','',reviewed.updatedAt),/note/);
   await store.block('account-a','account-b');
   await store.setSuspended('account-b',true);
+  const revoked={roomCode:'private-room',tokenHash:'a'.repeat(64)};
+  await store.revokeRoomMembers('account-b',[revoked]);
   store=new SafetyStore(dir);await store.initialize();
   assert.equal(await store.blocked('account-b','account-a'),true);
   assert.equal(await store.isSuspended('account-b'),true);
+  assert.deepEqual(await store.listSuspended(),['account-b']);
+  assert.equal(await store.isRevokedRoomMember(revoked.roomCode,revoked.tokenHash),true);
+  await store.restoreRoomMembers('account-b');
+  assert.equal(await store.isRevokedRoomMember(revoked.roomCode,revoked.tokenHash),false);
   await store.setSuspended('account-b',false);
   assert.equal(await store.isSuspended('account-b'),false);
   assert.equal(await store.blocked('account-a','account-c'),false);

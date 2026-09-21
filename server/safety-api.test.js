@@ -9,6 +9,7 @@ const { readFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const webpush = require('web-push');
+const {WebSocket} = require('ws');
 
 async function freePort() {
   const server = createServer();
@@ -94,15 +95,60 @@ test('Safety reports require account membership and consent; blocks prevent both
   assert.equal(blockReport.status,'open');
   assert.equal((await post(base,'/api/connections/request',{...auth(alice),privateNumber:'3456789012',replaceExisting:true})).status,403);
   assert.equal((await post(base,'/api/connections/request',{...auth(bob),privateNumber:'2345678901',replaceExisting:true})).status,403);
+  const survivingRoom=(await post(base,'/api/create',{name:'Bob',pubKey:'bob-key',persistent:true})).data;
+  const survivingPeer=(await post(base,'/api/join',{name:'Stranger',pubKey:'stranger-key',code:survivingRoom.code})).data;
+  const otherRequest=await post(base,'/api/connections/request',{...auth(stranger),privateNumber:'3456789012'});
+  assert.equal(otherRequest.status,200);
+  assert.equal((await post(base,'/api/connections/respond',{...auth(bob),requestId:otherRequest.data.requestId,
+    action:'accepted',inviteUrl:`https://vaultlix.com/join/${survivingRoom.code}#k=AAAAAAAAAAAAAAAAAAAAAA`})).status,200);
+  const group=await post(base,'/api/groups/create',{...auth(bob),groupId:'86f315a3-3333-4333-8333-123456789abc',
+    encryptedName:'n'.repeat(24),keyBinding:'k'.repeat(32),members:[{roomCode:survivingRoom.code,wrappedKey:'w'.repeat(24)}]});
+  assert.equal(group.status,200);
+  assert.equal((await post(base,'/api/poll',{code:survivingRoom.code,token:survivingRoom.token,lastSeq:0})).status,200);
+  const signal = new WebSocket(`ws://127.0.0.1:${port}/ws/signal`);
+  t.after(() => signal.terminate());
+  await new Promise((resolve,reject) => { signal.once('open',resolve); signal.once('error',reject); });
+  signal.send(JSON.stringify({type:'auth',code:survivingRoom.code,token:survivingRoom.token}));
+  await new Promise((resolve,reject) => {
+    const timer=setTimeout(()=>reject(new Error('signal auth timed out')),3000);
+    signal.on('message',function ready(raw) {
+      if (JSON.parse(raw).type !== 'ready') return;
+      clearTimeout(timer);signal.off('message',ready);resolve();
+    });
+  });
+  const signalClosed=new Promise((resolve,reject) => {
+    const timer=setTimeout(()=>reject(new Error('suspended signal remained open')),3000);
+    signal.once('close',code=>{clearTimeout(timer);resolve(code);});
+  });
   let latest=(await (await fetch(base+'/api/admin/safety',{headers})).json()).reports.find(r=>r.id===report.id);
   response=await fetch(base+'/api/admin/safety',{method:'POST',headers,body:JSON.stringify({id:latest.id,status:'resolved',note:'Synthetic suspension',expectedUpdatedAt:latest.updatedAt,accountAction:'suspend'})});
   assert.equal(response.status,200);
+  assert.equal(await signalClosed,4001);
+  const reconnect=new WebSocket(`ws://127.0.0.1:${port}/ws/signal`);
+  t.after(()=>reconnect.terminate());
+  await new Promise((resolve,reject)=>{reconnect.once('open',resolve);reconnect.once('error',reject);});
+  reconnect.send(JSON.stringify({type:'auth',code:survivingRoom.code,token:survivingRoom.token}));
+  assert.equal(await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('suspended signal reconnected')),3000);
+    reconnect.once('close',code=>{clearTimeout(timer);resolve(code);});
+  }),4001);
+  assert.equal((await post(base,'/api/connections/list',auth(bob))).status,403);
+  assert.equal((await post(base,'/api/groups/list',auth(bob))).status,403);
+  assert.equal((await post(base,'/api/groups/list',auth(stranger))).status,200);
+  assert.equal((await post(base,'/api/account/login',{privateNumber:'3456789012',authSecret:'auth-b'.padEnd(48,'b')})).status,403);
+  assert.equal((await post(base,'/api/account/recovery-bundle',{privateNumber:'3456789012',recoverySecret:'recovery-b'.padEnd(48,'b')})).status,403);
+  assert.equal((await post(base,'/api/poll',{code:survivingRoom.code,token:survivingRoom.token,lastSeq:0})).status,403);
+  assert.equal((await post(base,'/api/poll',{code:survivingRoom.code,token:survivingPeer.token,lastSeq:0})).status,200);
   assert.equal((await post(base,'/api/connections/request',{...auth(stranger),privateNumber:'3456789012'})).status,403);
   assert.equal((await post(base,'/api/connections/request',{...auth(bob),privateNumber:'4567890123'})).status,403);
   latest=(await (await fetch(base+'/api/admin/safety',{headers})).json()).reports.find(r=>r.id===report.id);
   assert.match(latest.history.at(-1).note,/Account: suspend/);
   response=await fetch(base+'/api/admin/safety',{method:'POST',headers,body:JSON.stringify({id:latest.id,status:'resolved',note:'Synthetic appeal accepted',expectedUpdatedAt:latest.updatedAt,accountAction:'restore'})});
   assert.equal(response.status,200);
+  assert.equal((await post(base,'/api/connections/list',auth(bob))).status,401);
+  assert.equal((await post(base,'/api/poll',{code:survivingRoom.code,token:survivingRoom.token,lastSeq:0})).status,200);
+  const restored=await post(base,'/api/account/login',{privateNumber:'3456789012',authSecret:'auth-b'.padEnd(48,'b')});
+  assert.equal(restored.status,200);
   assert.equal((await post(base,'/api/connections/request',{...auth(stranger),privateNumber:'3456789012'})).status,200);
 
 });
