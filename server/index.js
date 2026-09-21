@@ -5182,7 +5182,11 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (postgresEnabled && m.slot) await postgresStore.deleteConversationMember(d.code, m.slot, room.dbClient || postgresStore.pool);
     room.lastActivity = Date.now();
     publishInboxRoom(d.code, 'membership', { excludeToken:d.token });
-    if (room.members.size===0) destroyRoom(d.code);
+    // Leaving releases a member slot; it is not consent to erase a permanent
+    // conversation. Automatic cleanup (including key-verification teardown)
+    // can make both devices leave during an outage. Only Close & erase or an
+    // explicit moderation action may destroy a persistent conversation.
+    if (room.members.size===0 && !room.persistent) destroyRoom(d.code);
     return res204(res);
   }
 
