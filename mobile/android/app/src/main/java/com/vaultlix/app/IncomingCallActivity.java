@@ -48,6 +48,7 @@ public class IncomingCallActivity extends Activity {
     public static final String EXTRA_AUTO_ANSWER = "autoAnswer";
     public static final String EXTRA_CALL_ID = "callId";
     public static final String EXTRA_NATIVE_PREPARED = "nativePrepared";
+    public static final String EXTRA_VIDEO_CALL = "videoCall";
     public static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
 
     private String inviteUri;
@@ -55,6 +56,7 @@ public class IncomingCallActivity extends Activity {
     private String callId;
     private boolean answerInProgress;
     private boolean nativePrepared;
+    private boolean videoCall;
     private String caller;
     private String callerAvatarPath;
     private final Handler ringtoneHandler = new Handler(Looper.getMainLooper());
@@ -130,6 +132,7 @@ public class IncomingCallActivity extends Activity {
         caller = intent.getStringExtra(EXTRA_CALLER);
         callerAvatarPath = intent.getStringExtra(EXTRA_CALLER_AVATAR_PATH);
         nativePrepared = intent.getBooleanExtra(EXTRA_NATIVE_PREPARED, false);
+        videoCall = intent.getBooleanExtra(EXTRA_VIDEO_CALL, false);
         notificationId = intent.getIntExtra(
                 VaultlixMessagingService.EXTRA_CALL_NOTIFICATION_ID,
                 Integer.MIN_VALUE
@@ -203,7 +206,9 @@ public class IncomingCallActivity extends Activity {
         nameParams.setMargins(0, dp(28), 0, dp(9));
         root.addView(name, nameParams);
 
-        TextView subtitle = text(getString(R.string.native_incoming_encrypted_call), 11, IVORY);
+        TextView subtitle = text(getString(videoCall
+                ? R.string.native_incoming_encrypted_video_call
+                : R.string.native_incoming_encrypted_call), 11, IVORY);
         subtitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         subtitle.setAllCaps(true);
         subtitle.setLetterSpacing(.12f);

@@ -131,6 +131,8 @@ public class VaultlixMessagingService extends MessagingService {
         }
         String caller = safe(data.get("caller"));
         String body = safe(data.get("body"));
+        boolean isVideoCall = "true".equalsIgnoreCase(data.get("hasVideo"))
+                || body.toLowerCase(java.util.Locale.ROOT).contains("video call");
         if (caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
             caller = body.substring(0, body.length() - " is calling".length()).trim();
         }
@@ -174,7 +176,7 @@ public class VaultlixMessagingService extends MessagingService {
                 .appendQueryParameter("nativeCallAction", "answer")
                 .build();
         int requestCode = code.hashCode();
-        Intent displayIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, false, nativePrepared, avatarPath);
+        Intent displayIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, false, nativePrepared, avatarPath, isVideoCall);
 
         PendingIntent displayCall = PendingIntent.getActivity(
                 this,
@@ -183,7 +185,7 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Intent answerIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, true, nativePrepared, avatarPath);
+        Intent answerIntent = incomingCallIntent(inviteUri, caller, callId, requestCode, true, nativePrepared, avatarPath, isVideoCall);
         PendingIntent answerCall = PendingIntent.getActivity(
                 this,
                 requestCode + 1,
@@ -202,15 +204,16 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Person.Builder callerBuilder = new Person.Builder().setName(caller).setImportant(true);
+        String notificationCaller = isVideoCall ? caller + " · Video call" : caller;
+        Person.Builder callerBuilder = new Person.Builder().setName(notificationCaller).setImportant(true);
         if (callerAvatar != null) callerBuilder.setIcon(IconCompat.createWithBitmap(callerAvatar));
         Person callerPerson = callerBuilder.build();
 
         NotificationCompat.Builder notification = new NotificationCompat.Builder(this, callChannelId)
                 .setSmallIcon(R.drawable.ic_stat_vaultlix)
                 .setColor(Color.rgb(104, 44, 67))
-                .setContentTitle(caller)
-                .setContentText(body)
+                .setContentTitle(isVideoCall ? "Incoming video call" : caller)
+                .setContentText(isVideoCall ? "Video call · Tap to answer" : body)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -226,7 +229,7 @@ public class VaultlixMessagingService extends MessagingService {
         manager.notify(requestCode, notification.build());
     }
 
-    private Intent incomingCallIntent(Uri inviteUri, String caller, String callId, int notificationId, boolean autoAnswer, boolean nativePrepared, String avatarPath) {
+    private Intent incomingCallIntent(Uri inviteUri, String caller, String callId, int notificationId, boolean autoAnswer, boolean nativePrepared, String avatarPath, boolean isVideoCall) {
         Intent intent = new Intent(this, IncomingCallActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra(IncomingCallActivity.EXTRA_INVITE_URI, inviteUri.toString());
@@ -234,6 +237,7 @@ public class VaultlixMessagingService extends MessagingService {
         intent.putExtra(IncomingCallActivity.EXTRA_CALL_ID, callId);
         intent.putExtra(IncomingCallActivity.EXTRA_AUTO_ANSWER, autoAnswer);
         intent.putExtra(IncomingCallActivity.EXTRA_NATIVE_PREPARED, nativePrepared);
+        intent.putExtra(IncomingCallActivity.EXTRA_VIDEO_CALL, isVideoCall);
         if (avatarPath != null) intent.putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_PATH, avatarPath);
         intent.putExtra(EXTRA_CALL_NOTIFICATION_ID, notificationId);
         return intent;

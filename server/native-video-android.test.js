@@ -20,6 +20,21 @@ test('the signalling server relays the video request, response and state message
   }
 });
 
+test('an incoming direct video call is identified before Android answers it', () => {
+  const server = read('server/index.js');
+  const messaging = read(java + 'VaultlixMessagingService.java');
+  const incoming = read(java + 'IncomingCallActivity.java');
+  const strings = read(res + 'values/strings.xml');
+  assert.match(server, /hasVideo: msg2\.hasVideo === true/);
+  assert.match(server, /hasVideo: parsed\.hasVideo \? 'true' : 'false'/);
+  assert.match(messaging, /data\.get\("hasVideo"\)/);
+  assert.match(messaging, /caller \+ " · Video call"/);
+  assert.match(messaging, /IncomingCallActivity\.EXTRA_VIDEO_CALL/);
+  assert.match(incoming, /EXTRA_VIDEO_CALL/);
+  assert.match(incoming, /native_incoming_encrypted_video_call/);
+  assert.match(strings, /name="native_incoming_encrypted_video_call">Incoming encrypted video call/);
+});
+
 test('the engine negotiates video up front and gates every camera and peer picture on consent', () => {
   const engine = read(java + 'NativeWebRtcCallEngine.java');
   assert.match(engine, /DefaultVideoEncoderFactory/);

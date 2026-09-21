@@ -878,6 +878,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
       data: {
         code: String(parsed.code || ''),
         isCall: parsed.isCall ? 'true' : 'false',
+        hasVideo: parsed.hasVideo ? 'true' : 'false',
         isCallEnd: parsed.isCallEnd ? 'true' : 'false',
         missedCall: parsed.missedCall ? 'true' : 'false',
         callOutcome: String(parsed.callOutcome || ''),
@@ -6124,6 +6125,7 @@ wss.on('connection', (ws) => {
                 : (msg2.hasVideo === true ? 'Incoming video call' : 'Incoming call'),
               tag: `vaultlix-call-${roomCode}`,
               isCall: true,
+              hasVideo: msg2.hasVideo === true,
               caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
               callId: nativeCallId,
               inviteId: inviteId || '',
