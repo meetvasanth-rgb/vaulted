@@ -142,13 +142,14 @@
         const close=document.createElement('input'); close.type='checkbox'; close.disabled=!r.canClose;
         const closeLabel=document.createElement('label');closeLabel.append(close,document.createTextNode(' Close the reported conversation for both participants (irreversible).'));
         const accountAction=document.createElement('select');accountAction.setAttribute('aria-label','Reported account action');accountAction.disabled=!r.canModerateAccount;
-        for(const [value,label] of [['none','No account change'],['suspend','Suspend new connections and close reported conversation'],['restore','Restore reported account after appeal']]){const option=document.createElement('option');option.value=value;option.textContent=label;accountAction.append(option);}
+        for(const [value,label] of [['none','No account change'],['suspend','Suspend account, remove statuses and close reported conversation'],['restore','Restore reported account after appeal']]){const option=document.createElement('option');option.value=value;option.textContent=label;accountAction.append(option);}
         const save=document.createElement('button');save.type='submit';save.textContent='Save review';
         form.append(note,select,accountAction,closeLabel,save);
         form.addEventListener('submit',async event=>{
           event.preventDefault();
           if((close.checked || accountAction.value!=='none') && select.value!=='resolved'){ $('safety-error').textContent='Select Resolved when closing the reported conversation.';return; }
-          if((close.checked || accountAction.value==='suspend') && !confirm('This closes conversations permanently. Suspension prevents new connections until restored. Continue?'))return;
+          if(accountAction.value==='suspend' && !confirm('Suspend this account now? Its sessions and existing chat access will end, its statuses will be removed, and the reported conversation will close permanently for both participants.'))return;
+          if(close.checked && accountAction.value!=='suspend' && !confirm('Close the reported conversation permanently for both participants?'))return;
           save.disabled=true;
           try{
             const response=await fetch('/api/admin/safety',{method:'POST',headers:{Authorization:`Bearer ${adminKey}`,'Content-Type':'application/json'},body:JSON.stringify({id:r.id,status:select.value,note:note.value,expectedUpdatedAt:r.updatedAt,closeConversation:close.checked,accountAction:accountAction.value})});
