@@ -12,6 +12,7 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
 const { SafetyStore } = require('./safety-store');
+const { guardedSocketTask } = require('./socket-task');
 const contentSafety = require('../client/content-safety');
 let safetyStore;
 const { StatusStore } = require('./status-store');
@@ -5312,6 +5313,7 @@ async function api(path, method, d, p, res, ip, headers) {
       let revokedMembers = [];
       let revokedSessionHashes = [];
       let removedStatusRecipients = [];
+      let restrictionChangedAccountId = null;
       try {
         await safetyStore.review(d.id,d.status,`${d.note || ''}${d.accountAction && d.accountAction !== 'none' ? ' [Account: '+d.accountAction+']' : ''}`,d.expectedUpdatedAt, async (report,client) => {
           const codes = new Set();
@@ -5319,6 +5321,7 @@ async function api(path, method, d, p, res, ip, headers) {
           if (d.accountAction && d.accountAction !== 'none') {
             if(!report.reportedAccountId || d.status !== 'resolved') throw Error('Resolve the report with a note before changing account access.');
             await safetyStore.setSuspended(report.reportedAccountId,d.accountAction==='suspend',client);
+            restrictionChangedAccountId = report.reportedAccountId;
             if(d.accountAction==='suspend') {
               const account = accounts.get(report.reportedAccountId);
               if (!account) throw Error('Reported account no longer exists.');
@@ -5347,6 +5350,11 @@ async function api(path, method, d, p, res, ip, headers) {
           }
         });
       } catch(error) { return resErr(res,error.message,409); }
+      if (restrictionChangedAccountId) {
+        safetyStore.invalidateAccountRestrictionCache(restrictionChangedAccountId);
+        if (d.accountAction === 'suspend') safetyStore.invalidateRoomRestrictionCache(revokedMembers);
+        else safetyStore.revocationLookups.clear();
+      }
       if (moderatedAccount) {
         accounts.set(moderatedAccountId, moderatedAccount);
         if (!postgresEnabled) saveAccounts();
@@ -5886,7 +5894,7 @@ inboxWss.on('connection', (ws) => {
   }, 5000);
   authTimer.unref();
 
-  ws.on('message', async (raw) => {
+  ws.on('message', guardedSocketTask(ws, 'Inbox socket message failed', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { msg = null; }
     if (!ws.authenticated) {
@@ -5938,9 +5946,9 @@ inboxWss.on('connection', (ws) => {
       publishInboxRoom(code, 'presence', { excludeToken:token, payload:{ online:true } });
     }
     try { ws.send(JSON.stringify({ type:'subscribed', count:subscriptions.size })); } catch (e) {}
-  });
+  }));
 
-  ws.on('close', async () => {
+  ws.on('close', guardedSocketTask(ws, 'Inbox socket cleanup failed', async () => {
     if (!ws.accountId) return;
     const sockets = inboxAccountSockets.get(ws.accountId);
     if (!sockets) return;
@@ -5960,7 +5968,7 @@ inboxWss.on('connection', (ws) => {
       if (member) member.lastSeen = 0;
       publishInboxRoom(code, 'presence', { excludeToken:token, payload:{ online:false } });
     }
-  });
+  }));
 });
 
 wss.on('connection', (ws) => {
@@ -6003,7 +6011,7 @@ wss.on('connection', (ws) => {
     if (!ws.authenticated) { try { ws.close(4003, 'Auth timeout'); } catch(e) {} }
   }, 5000);
 
-  ws.once('message', async (raw) => {
+  ws.once('message', guardedSocketTask(ws, 'Signal socket authentication failed', async (raw) => {
     clearTimeout(authTimer);
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { msg = null; }
@@ -6073,7 +6081,7 @@ wss.on('connection', (ws) => {
     // authenticated — everything below is unchanged from before, it's just
     // registered here (post-auth) instead of unconditionally at connection
     // time.
-    ws.on('message', async (raw2) => {
+    ws.on('message', guardedSocketTask(ws, 'Signal socket message failed', async (raw2) => {
       let msg2;
       try { msg2 = JSON.parse(raw2); } catch (e) { return; }
       if (!msg2 || typeof msg2.type !== 'string' || typeof msg2.envelope !== 'string') return;
@@ -6406,8 +6414,8 @@ wss.on('connection', (ws) => {
         }
         break;
       }
-    });
-  });
+    }));
+  }));
 });
 
 // Railway's proxy (and mobile carriers) will silently drop an idle

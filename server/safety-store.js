@@ -12,7 +12,22 @@ CREATE TABLE IF NOT EXISTS safety_revoked_room_members (account_id text NOT NULL
 CREATE INDEX IF NOT EXISTS safety_revoked_room_members_account_idx ON safety_revoked_room_members(account_id);
 CREATE TABLE IF NOT EXISTS safety_migrations (id text PRIMARY KEY);`;
 class SafetyStore {
-  constructor(directory, pool = null) { this.directory=directory; this.pool=pool; this.reports=new Map(); this.blocks=new Map(); this.suspensions=new Set(); this.revokedRoomMembers=new Map(); }
+  constructor(directory, pool = null) { this.directory=directory; this.pool=pool; this.reports=new Map(); this.blocks=new Map(); this.suspensions=new Set(); this.revokedRoomMembers=new Map(); this.suspensionLookups=new Map(); this.revocationLookups=new Map(); }
+  async cachedRestrictionLookup(cache,key,query) {
+    const now=Date.now();
+    const cached=cache.get(key);
+    if(cached && cached.expiresAt>now) return cached.promise;
+    const promise=Promise.resolve().then(query);
+    cache.set(key,{promise,expiresAt:now+5000});
+    // Bound memory even if a client sends many distinct credentials.
+    if(cache.size>5000) cache.delete(cache.keys().next().value);
+    try {return await promise;}
+    catch(error) {if(cache.get(key)?.promise===promise) cache.delete(key);throw error;}
+  }
+  invalidateAccountRestrictionCache(accountId) { this.suspensionLookups.delete(accountId); }
+  invalidateRoomRestrictionCache(members) {
+    for(const member of members) this.revocationLookups.delete(`${member.roomCode}:${member.tokenHash}`);
+  }
   async initialize() {
     const file=path.join(this.directory,'safety-workflow.json');
     const legacy=path.join(this.directory,'safety-reports.jsonl');
@@ -136,9 +151,11 @@ class SafetyStore {
   async setSuspended(accountId,suspended,client=null) {
     if(this.pool) await (client || this.pool).query(suspended ? 'INSERT INTO safety_suspensions VALUES($1) ON CONFLICT DO NOTHING' : 'DELETE FROM safety_suspensions WHERE account_id=$1',[accountId]);
     else {const had=this.suspensions.has(accountId);if(suspended)this.suspensions.add(accountId);else this.suspensions.delete(accountId);try{this.flush();}catch(error){if(had)this.suspensions.add(accountId);else this.suspensions.delete(accountId);throw error;}}
+    if(!client) this.invalidateAccountRestrictionCache(accountId);
   }
   async isSuspended(accountId) {
-    if(this.pool) return !!(await this.pool.query('SELECT 1 FROM safety_suspensions WHERE account_id=$1',[accountId])).rowCount;
+    if(this.pool) return this.cachedRestrictionLookup(this.suspensionLookups,accountId,
+      async () => !!(await this.pool.query('SELECT 1 FROM safety_suspensions WHERE account_id=$1',[accountId])).rowCount);
     return this.suspensions.has(accountId);
   }
   async listSuspended() {
@@ -154,6 +171,7 @@ class SafetyStore {
       for(const member of members) this.revokedRoomMembers.set(`${member.roomCode}:${member.tokenHash}`,{accountId,...member});
       this.flush();
     }
+    if(!client) this.invalidateRoomRestrictionCache(members);
   }
   async restoreRoomMembers(accountId, client=null) {
     if(this.pool) await (client || this.pool).query('DELETE FROM safety_revoked_room_members WHERE account_id=$1',[accountId]);
@@ -161,9 +179,11 @@ class SafetyStore {
       for(const [key,entry] of this.revokedRoomMembers) if(entry.accountId===accountId) this.revokedRoomMembers.delete(key);
       this.flush();
     }
+    if(!client) this.revocationLookups.clear();
   }
   async isRevokedRoomMember(roomCode, tokenHash) {
-    if(this.pool) return !!(await this.pool.query('SELECT 1 FROM safety_revoked_room_members WHERE room_code=$1 AND token_hash=$2',[roomCode,tokenHash])).rowCount;
+    if(this.pool) return this.cachedRestrictionLookup(this.revocationLookups,`${roomCode}:${tokenHash}`,
+      async () => !!(await this.pool.query('SELECT 1 FROM safety_revoked_room_members WHERE room_code=$1 AND token_hash=$2',[roomCode,tokenHash])).rowCount);
     return this.revokedRoomMembers.has(`${roomCode}:${tokenHash}`);
   }
   async blocked(a,b) {

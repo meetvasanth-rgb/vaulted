@@ -10,6 +10,31 @@ test('local checks normalize abuse without matching harmless substrings',()=>{
   for(const text of ['I WILL KILL YOU','I will ki\u200bll you','Ｉ ｗｉｌｌ ｋｉｌｌ ｙｏｕ','je vais te tuer','child pornography','f@ggot','connard','scheiße']) assert.equal(check(text).blocked,true,text);
   for(const text of ['Hello there','User b','Scunthorpe','The killer whale is beautiful','I will call you']) assert.equal(check(text).blocked,false,text);
 });
+test('safety lookups coalesce signaling bursts, invalidate after moderation, and retry database errors',async()=>{
+  let suspended=false,revoked=false,queries=0,fail=false;
+  const pool={async query(sql){
+    queries++;
+    if(fail) throw Error('Synthetic database timeout');
+    if(sql.includes('safety_suspensions')) return {rowCount:Number(suspended)};
+    if(sql.includes('safety_revoked_room_members')) return {rowCount:Number(revoked)};
+    throw Error('Unexpected query');
+  }};
+  const store=new SafetyStore('/tmp',pool);
+  assert.deepEqual(await Promise.all(Array.from({length:40},()=>store.isSuspended('account-a'))),Array(40).fill(false));
+  assert.equal(queries,1);
+  const member={roomCode:'room-a',tokenHash:'a'.repeat(64)};
+  assert.deepEqual(await Promise.all(Array.from({length:40},()=>store.isRevokedRoomMember(member.roomCode,member.tokenHash))),Array(40).fill(false));
+  assert.equal(queries,2);
+  suspended=true;revoked=true;
+  store.invalidateAccountRestrictionCache('account-a');
+  store.invalidateRoomRestrictionCache([member]);
+  assert.equal(await store.isSuspended('account-a'),true);
+  assert.equal(await store.isRevokedRoomMember(member.roomCode,member.tokenHash),true);
+  fail=true;store.invalidateAccountRestrictionCache('account-a');
+  await assert.rejects(()=>store.isSuspended('account-a'),/database timeout/);
+  fail=false;
+  assert.equal(await store.isSuspended('account-a'),true);
+});
 test('report workflow persists, enforces stale-update protection and never resurrects expired legacy reports',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'vaultlix-safety-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   fs.writeFileSync(path.join(dir,'safety-reports.jsonl'),JSON.stringify({id:'legacy',createdAt:new Date(Date.now()-2*SLA).toISOString(),reason:'other'})+'\n');
