@@ -2955,6 +2955,14 @@ async function api(path, method, d, p, res, ip, headers) {
     if (!relationship) return resErr(res, 'Conversation does not belong to this account.', 403);
     const peerAccountId = relationship.senderAccountId === d.accountId ? relationship.recipientAccountId : relationship.senderAccountId;
     if (path === '/api/connections/block') {
+      // Blocking always alerts the safety queue. A preceding Report and block
+      // request supplies its report ID so one user action creates one case.
+      const previousReport = await safetyStore.get(d.reportId);
+      const report = previousReport && previousReport.reporterAccountId === d.accountId &&
+        previousReport.reportedAccountId === peerAccountId && previousReport.roomCode === d.code
+        ? previousReport
+        : await safetyStore.add({reason:'other',details:'Participant blocked; review for abuse.',messages:[],
+          reporterAccountId:d.accountId,reportedAccountId:peerAccountId,roomCode:d.code});
       await safetyStore.block(d.accountId, peerAccountId);
       // Persist the account-level block before closing any room. New requests
       // in either direction are denied, including after sign-in on a new device.
@@ -2962,7 +2970,7 @@ async function api(path, method, d, p, res, ip, headers) {
         await postgresStore.deleteConversation(d.code, client);
       });
       destroyRoom(d.code, postgresEnabled);
-      return res200(res, {ok:true});
+      return res200(res, {ok:true,reportId:report.id});
     }
     const reasons = new Set(['spam','harassment','threats','sexual','illegal','other']);
     if (!reasons.has(d.reason)) return resErr(res, 'Choose a valid report reason.', 400);

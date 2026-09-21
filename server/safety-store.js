@@ -77,6 +77,12 @@ class SafetyStore {
     else { this.reports.set(report.id,report); try {this.flush();} catch(e) {this.reports.delete(report.id);throw e;} }
     return report;
   }
+  async get(id) {
+    if (typeof id !== 'string' || !id) return null;
+    return this.pool
+      ? (await this.pool.query('SELECT data FROM safety_reports WHERE id=$1',[id])).rows[0]?.data || null
+      : this.reports.get(id) || null;
+  }
   async prune() {
     const cutoff=Date.now()-RETENTION;
     if(this.pool) await this.pool.query("DELETE FROM safety_reports WHERE data->>'status' IN ('resolved','dismissed') AND (data->>'updatedAt')::timestamptz < $1::timestamptz",[new Date(cutoff).toISOString()]);

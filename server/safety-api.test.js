@@ -86,7 +86,12 @@ test('Safety reports require account membership and consent; blocks prevent both
   assert.equal(response.status,200);
   response=await fetch(base+'/api/admin/safety',{method:'POST',headers,body:JSON.stringify({id:report.id,status:'resolved',note:'Stale update',expectedUpdatedAt:report.updatedAt})});
   assert.equal(response.status,409);
-  assert.equal((await post(base,'/api/connections/block',body)).status,200);
+  const blocked=await post(base,'/api/connections/block',body);
+  assert.equal(blocked.status,200);
+  assert.ok(blocked.data.reportId);
+  const blockReport=(await (await fetch(base+'/api/admin/safety',{headers})).json()).reports.find(r=>r.id===blocked.data.reportId);
+  assert.equal(blockReport.reason,'other');
+  assert.equal(blockReport.status,'open');
   assert.equal((await post(base,'/api/connections/request',{...auth(alice),privateNumber:'3456789012',replaceExisting:true})).status,403);
   assert.equal((await post(base,'/api/connections/request',{...auth(bob),privateNumber:'2345678901',replaceExisting:true})).status,403);
   let latest=(await (await fetch(base+'/api/admin/safety',{headers})).json()).reports.find(r=>r.id===report.id);
