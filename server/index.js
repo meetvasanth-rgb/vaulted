@@ -344,16 +344,16 @@ const RECLAIM_WARNING_WINDOWS = [
 // These were measured against the client's actual code, not guessed. A
 // file/GIF attachment never gets client-side compression (compressImageFile
 // in client/index.html only touches non-GIF images; the generic "File"
-// attach option never compresses anything), so a full MAX_FILE_SIZE (10MB,
+// attach option never compresses anything), so a full MAX_FILE_SIZE (25MB,
 // client/index.html) attachment is a real, legitimate send. That raw file
 // goes through base64 -> JSON-wrap -> AES-GCM encrypt -> base64 AGAIN
-// (encryptMsg in client/index.html), which measured out to ~17.78MB for a
-// 10MB input — a naive "base64 inflates ~33%" estimate (~13.3MB) misses the
+// (encryptMsg in client/index.html), which comes out to about 44.45MB for a
+// 25MB input — a naive "base64 inflates ~33%" estimate (~33.3MB) misses the
 // second base64 layer encryptMsg adds and would reject real attachments. A
 // full 5-minute voice note, measured from this app's actual MediaRecorder
 // default bitrate (~129kbps, no explicit bitrate is ever set), came out far
 // smaller (~8.17MB) and isn't the binding constraint.
-const MAX_MESSAGE_CONTENT_BYTES = 19 * 1024 * 1024; // ~1.2MB headroom above the measured ~17.78MB ceiling
+const MAX_MESSAGE_CONTENT_BYTES = 48 * 1024 * 1024; // headroom above the ~44.45MB double-base64 ceiling
 
 // A per-room budget can never bound total memory on its own — room
 // creation is attacker-controlled (rate-limited, but not capped), so
@@ -2735,13 +2735,9 @@ function serveStatic(req, res) {
 }
 
 // Per-endpoint request body caps. /api/send is the one legitimate exception
-// — MAX_MESSAGE_CONTENT_BYTES above (19MB) already measured the real
-// worst-case: a full 10MB file attachment, base64'd, JSON-wrapped, AES-GCM
-// encrypted, then base64'd again by encryptMsg, comes out to ~17.78MB.
-// BODY_LIMIT_SEND has to stay at least that big plus the small JSON wrapper
-// (code, token, msgId — a few hundred bytes) or real attachments would get
-// rejected; 20MB (unchanged from the previous single blanket cap) keeps
-// that same ~1.2MB+ of headroom without moving the actual ceiling.
+// — MAX_MESSAGE_CONTENT_BYTES above (48MB) covers the encrypted object that
+// is uploaded directly to private storage. /api/send carries only its opaque
+// attachment reference, so its request cap does not need to grow with files.
 //
 // Profile updates are the other bounded exception: the client converts a
 // selected photo to a small JPEG data URI before upload. Its validator caps

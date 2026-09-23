@@ -985,6 +985,19 @@ body.select-mode .chat-ftr{display:none}
 .msg.me .msg-reply-quote { background:rgba(104,44,67,0.08); }
 .msg-reply-quote-photo { display:flex; align-items:center; gap:6px; }
 .msg-reply-quote-thumb { width:26px; height:26px; object-fit:cover; border-radius:4px; flex-shrink:0; }
+.msg-status-reply {
+  width:min(230px,62vw); min-height:50px; display:grid; grid-template-columns:42px minmax(0,1fr) 16px;
+  align-items:center; gap:8px; border:0; border-left:3px solid #C87588; border-radius:8px;
+  padding:6px; margin:0 0 5px; background:#F5ECEF; color:#4A3F35; text-align:left; cursor:pointer;
+}
+.msg.me .msg-status-reply { background:rgba(255,255,255,.16); color:#fff; border-left-color:#F2CCD8; }
+.msg-status-reply-thumb { width:42px; height:42px; border-radius:7px; object-fit:cover; background:#DCCDD3; }
+.msg-status-reply-placeholder { width:42px; height:42px; border-radius:7px; display:grid; place-items:center; background:#E7DADF; color:#682C43; }
+.msg-status-reply-placeholder svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; }
+.msg-status-reply-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.msg-status-reply-copy strong { font:700 11px/1.2 Inter,sans-serif; color:inherit; }
+.msg-status-reply-copy span { font:500 10px/1.3 Inter,sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.78; }
+.msg-status-reply-arrow { font-size:18px; opacity:.62; }
 
 /* ── PRIVACY COVER ─────────────────────────────────────────────────── */
 #privacy-cover{
@@ -4550,7 +4563,7 @@ let mode = 'create';               // setup screen flow: create | named | join
 let tabFocused = true;
 let lastInteractionTime = Date.now();
 let activeActionMsgId = null;      // message currently showing its Reply/React row
-let replyTo = null;                // { msgId, text, isImage } — composer reply state
+let replyTo = null;                // encrypted message or status snapshot attached to the next text
 let pendingRoomCode = null;        // room code currently on s-waiting (not yet confirmed)
 // VLX-01: the #k=... commitment captured from the invite link's URL
 // fragment at page-load time (see parseKeyCommitmentFromHash), carried from
@@ -4580,7 +4593,7 @@ let accountSyncTimer = null;
 // be generously long, not a safety mechanism in itself.
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB attachment limit
 
 function normalizePrivateNumber(value) {
   const privateNumber = String(value || '').replace(/\D/g, '');
@@ -8667,7 +8680,9 @@ async function api(path, data = null) {
 }
 
 const ENCRYPTED_ATTACHMENT_PREFIX = 'obj:v1:';
-const MAX_ENCRYPTED_ATTACHMENT_BYTES = 19 * 1024 * 1024;
+// A 25 MiB source grows to about 44.45 MiB after file base64 plus the
+// encrypted envelope's base64. Keep a small allowance for JSON metadata.
+const MAX_ENCRYPTED_ATTACHMENT_BYTES = 48 * 1024 * 1024;
 
 async function uploadEncryptedAttachment(room, msgId, ciphertext) {
   const size = new Blob([ciphertext]).size;
@@ -13249,7 +13264,51 @@ function renderStatusViewer() {
 }
 function showStatusViewers(){const item=statusViewerItems[statusViewerIndex];const names=(item?.viewers||[]).map(viewer=>viewer.displayName).join(', ');toast(names?`Viewed by ${names}`:'No views yet.');}
 async function deleteCurrentStatus(){const item=statusViewerItems[statusViewerIndex],state=loadAccountState();if(!item||!state)return;const result=await api('/api/status/delete',{accountId:state.accountId,sessionToken:state.sessionToken,id:item.id});if(result.error){toast(result.error);return;}if(item.payload?.videoUrl)URL.revokeObjectURL(item.payload.videoUrl);statusFeed=statusFeed.filter(candidate=>candidate.id!==item.id);closeStatusViewer();renderStatusRail();}
-function replyToCurrentStatus(){const item=statusViewerItems[statusViewerIndex];if(!item)return;closeStatusViewer();if(!openConversationAfterPaint(item.roomCode))return;const input=document.getElementById('msg-input');if(input){input.value=`Replying to your status: `;input.focus();}}
+function statusReplyThumbnail(item) {
+  if (item?.payload?.type === 'image') {
+    const match = String(item.payload.image || '').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/);
+    return match ? makeTinyThumbnail(match[2], match[1]) : Promise.resolve(null);
+  }
+  if (item?.payload?.type === 'video') {
+    const video = document.querySelector('#status-viewer .status-video-player');
+    if (!video?.videoWidth || !video?.videoHeight) return Promise.resolve(null);
+    try {
+      const scale = Math.min(1, 64 / Math.max(video.videoWidth, video.videoHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      return Promise.resolve(canvas.toDataURL('image/jpeg', .55).split(',')[1] || null);
+    } catch (_) { return Promise.resolve(null); }
+  }
+  return Promise.resolve(null);
+}
+function replyToCurrentStatus() {
+  const item = statusViewerItems[statusViewerIndex]; if (!item) return;
+  const thumbPromise = statusReplyThumbnail(item);
+  const statusType = item.payload?.type === 'video' ? 'video' : item.payload?.type === 'image' ? 'image' : 'text';
+  const fallback = statusType === 'video' ? 'Video status' : statusType === 'image' ? 'Photo status' : 'Text status';
+  const summary = String(item.payload?.text || fallback).trim().slice(0,160) || fallback;
+  closeStatusViewer();
+  if (!openConversationAfterPaint(item.roomCode)) return;
+  replyTo = { type:'status', statusId:item.id, statusType, text:summary, createdAt:Number(item.createdAt) || Date.now(),
+    isImage:statusType !== 'text', thumbMime:'image/jpeg', thumbPromise };
+  const preview = document.getElementById('reply-preview');
+  const thumb = document.getElementById('reply-thumb');
+  const text = document.getElementById('reply-text');
+  const name = document.getElementById('reply-name');
+  if (name) name.textContent = 'Status reply';
+  if (text) text.textContent = summary;
+  if (thumb) { thumb.removeAttribute('src'); thumb.style.display = 'none'; }
+  preview?.classList.add('show');
+  thumbPromise.then(base64 => {
+    if (!base64 || replyTo?.statusId !== item.id || !thumb) return;
+    const src = safeImageDataUri('image/jpeg', base64);
+    if (src) { thumb.src = src; thumb.style.display = 'block'; }
+  });
+  const input = document.getElementById('msg-input');
+  if (input) { input.value = ''; input.focus(); updateComposerButtons(); }
+}
 async function reportCurrentStatus(){const item=statusViewerItems[statusViewerIndex],state=loadAccountState();if(!item||!state)return;const result=await api('/api/status/report',{accountId:state.accountId,sessionToken:state.sessionToken,id:item.id,details:'Reported from the Status viewer'});if(result.error)toast(result.error);else{toast('Status reported for review.');closeStatusViewer();}}
 async function blockCurrentStatusAuthor(){
   const item=statusViewerItems[statusViewerIndex],room=item&&statusRoomForCode(item.roomCode);
@@ -14406,6 +14465,47 @@ function buildReplyQuotePhotoHtml(replyData) {
   return `<div class="msg-reply-quote msg-reply-quote-photo">${thumbHtml}<span>📷 ${escHtml(replyData.text || 'Photo')}</span></div>`;
 }
 
+function sanitizeStatusReplyData(value) {
+  if (!value || value.type !== 'status' || !/^[a-f0-9-]{36}$/i.test(String(value.statusId || ''))) return null;
+  const statusType = ['text','image','video'].includes(value.statusType) ? value.statusType : 'text';
+  const thumbMime = value.thumbMime === 'image/jpeg' ? value.thumbMime : null;
+  const thumb = thumbMime && typeof value.thumb === 'string' && value.thumb.length <= 32768 && isValidMediaBase64(value.thumb)
+    ? value.thumb : null;
+  return {
+    type:'status', statusId:String(value.statusId), statusType,
+    text:String(value.text || '').slice(0,160), thumb, thumbMime,
+    createdAt:Number.isFinite(Number(value.createdAt)) ? Number(value.createdAt) : 0,
+  };
+}
+
+function buildStatusReplyQuoteHtml(replyData) {
+  const status = sanitizeStatusReplyData(replyData);
+  if (!status) return '';
+  const safeSrc = status.thumb ? safeImageDataUri(status.thumbMime, status.thumb) : null;
+  const mediaLabel = status.statusType === 'video' ? 'Video status' : status.statusType === 'image' ? 'Photo status' : 'Text status';
+  const visual = safeSrc
+    ? `<img class="msg-status-reply-thumb" src="${safeSrc}" alt="Status preview"/>`
+    : `<span class="msg-status-reply-placeholder"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 15 3-3 3 3 2-2 3 3"/></svg></span>`;
+  const summary = status.text || `${mediaLabel} · View original`;
+  return `<button type="button" class="msg-status-reply" data-status-reply-id="${escHtml(status.statusId)}" aria-label="Open original status">${visual}<span class="msg-status-reply-copy"><strong>Status reply</strong><span>${escHtml(summary)}</span></span><span class="msg-status-reply-arrow" aria-hidden="true">›</span></button>`;
+}
+
+async function openStatusReply(statusId) {
+  const find = () => statusFeed.find(item => item.id === statusId && Number(item.expiresAt) > Date.now());
+  let item = find();
+  if (!item) {
+    await refreshStatusFeed({ quiet:true });
+    item = find();
+  }
+  if (!item) { toast('This status is no longer available.'); return; }
+  statusViewerItems = item.own
+    ? statusFeed.filter(candidate => candidate.own)
+    : statusFeed.filter(candidate => !candidate.own && candidate.authorPrivateNumber === item.authorPrivateNumber);
+  statusViewerIndex = statusViewerItems.findIndex(candidate => candidate.id === statusId);
+  if (statusViewerIndex < 0) { toast('This status is no longer available.'); return; }
+  renderStatusViewer();
+}
+
 // animate=true is passed only from genuinely live arrivals (a message you
 // just sent, or one just landing via poll) — NOT from renderChatBody's bulk
 // repaint when opening/switching to a room, which would otherwise replay
@@ -14447,7 +14547,8 @@ function needsAttachmentReveal(rec) {
   // voice/video message's reply thumbnail. Keep the latter opt-in.
   const isPhoto = rec.kind === 'file' && rec.isImage && !!rec.base64;
   const isAlbum = rec.kind === 'album' && rec.images?.length > 0 && rec.images.every(image => !!image.base64);
-  return !((isPhoto || isAlbum) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
+  const isScreenedStatusPreview = rec.replyData?.type === 'status' && !!rec.replyData.thumb;
+  return !((isPhoto || isAlbum || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
 }
 function renderMessageRecord(room, rec, animate) {
   const body = document.getElementById('chat-body');
@@ -14568,9 +14669,11 @@ function renderMessageRecord(room, rec, animate) {
     // label if that thumbnail didn't make it (an older message, or
     // generation failed).
     const replyHtml = rec.replyData
-      ? (rec.replyData.isImage
-          ? buildReplyQuotePhotoHtml(rec.replyData)
-          : `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>`)
+      ? (rec.replyData.type === 'status'
+          ? buildStatusReplyQuoteHtml(rec.replyData)
+          : rec.replyData.isImage
+            ? buildReplyQuotePhotoHtml(rec.replyData)
+            : `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>`)
       : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
   }
@@ -14589,6 +14692,11 @@ function renderMessageRecord(room, rec, animate) {
     ${progressHtml}
     ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
+
+  div.querySelector('[data-status-reply-id]')?.addEventListener('click', event => {
+    event.stopPropagation();
+    openStatusReply(event.currentTarget.dataset.statusReplyId).catch(() => toast('This status is no longer available.'));
+  });
 
   wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') ? '' : rec.content)), rec.isMe, rec);
   body.insertBefore(div, typing);
@@ -15200,7 +15308,13 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       return isDuplicateCallHistoryRecord(room, callRecord) ? null : callRecord;
     }
     if (parsed.text && parsed.reply) {
-      return { ...base, kind: 'text', content: parsed.text, replyData: parsed.reply, jumbo: isSingleEmoji(parsed.text) };
+      const statusReply = sanitizeStatusReplyData(parsed.reply);
+      const replyData = statusReply || {
+        text:String(parsed.reply.text || '').slice(0,100), isImage:!!parsed.reply.isImage,
+        thumb:typeof parsed.reply.thumb === 'string' && parsed.reply.thumb.length <= 32768 ? parsed.reply.thumb : null,
+        thumbMime:parsed.reply.thumbMime === 'image/jpeg' ? 'image/jpeg' : null,
+      };
+      return { ...base, kind: 'text', content: parsed.text, replyData, jumbo: isSingleEmoji(parsed.text) };
     }
   } catch (e) {}
 
@@ -15759,7 +15873,10 @@ async function sendMsg() {
   if (replyTo) {
     let thumb = null;
     if (replyTo.isImage && replyTo.thumbPromise) { try { thumb = await replyTo.thumbPromise; } catch (e) {} }
-    replySnapshot = { text: replyTo.text, isImage: !!replyTo.isImage, thumb, thumbMime: replyTo.thumbMime || null };
+    replySnapshot = replyTo.type === 'status'
+      ? { type:'status', statusId:replyTo.statusId, statusType:replyTo.statusType, text:replyTo.text,
+          createdAt:replyTo.createdAt, isImage:!!thumb, thumb, thumbMime:thumb ? 'image/jpeg' : null }
+      : { text: replyTo.text, isImage: !!replyTo.isImage, thumb, thumbMime: replyTo.thumbMime || null };
   }
 
   const msgData = replySnapshot
@@ -15797,6 +15914,10 @@ async function sendMsg() {
     receiptState: null, timerStarted: false,
     reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
+  // This thumbnail was derived locally from the status that was already
+  // displayed on this device. The receiving device still performs its own
+  // independent on-device check before rendering the encrypted preview.
+  if (replySnapshot?.type === 'status' && replySnapshot.thumb) localRecordChecks.set(rec, 'allowed');
   room.messages.push(rec);
   renderMessageRecord(room, rec, true);
   if (rec.jumbo) triggerEmojiEffect(rec.content);
@@ -17403,8 +17524,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   const startupAccount = loadAccountState();
   if (startupAccount) {
     for (const group of loadPrivateGroupSessions()) {
-      if (group.ownerAccountId === startupAccount.accountId) privateGroups.set(group.id, { ...group, messages:[], unread:0 });
+      if (group.ownerAccountId === startupAccount.accountId) privateGroups.set(group.id, { ...group, messages:[], unread:0, historyHydrated:false });
     }
+    if (privateGroups.size) preloadPrivateGroupsInBackground();
   }
   // Never hydrate conversation metadata or encryption credentials into the
   // logged-out UI. Explicit sign-out erases them; this gate also protects
@@ -17897,7 +18019,7 @@ async function handleFileSelect(event) {
     if (file.size > MAX_FILE_SIZE) tooLarge.push(file.name); else valid.push(file);
   }
   if (tooLarge.length) {
-    toast(tooLarge.length === 1 ? `"${tooLarge[0]}" too large — maximum 10MB` : `${tooLarge.length} files skipped — maximum 10MB each`);
+    toast(tooLarge.length === 1 ? `“${tooLarge[0]}” too large — maximum 25MB` : `${tooLarge.length} files skipped — maximum 25MB each`);
   }
   if (!valid.length) return;
 

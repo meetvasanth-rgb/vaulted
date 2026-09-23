@@ -27,13 +27,58 @@ function groupMemberLabel(group, accountId) {
   return member?.displayName || (accountId === loadAccountState()?.accountId ? 'You' : 'Member');
 }
 
-const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 19 * 1024 * 1024;
+const MAX_PRIVATE_GROUP_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 48 * 1024 * 1024;
 let privateGroupVoiceRecorder = null;
 let privateGroupVoiceStream = null;
 let privateGroupVoiceChunks = [];
 let privateGroupVoiceStartedAt = 0;
 let openingPrivateGroupId = null;
 let privateGroupOpenRequestId = 0;
+const PRIVATE_GROUP_PRELOAD_CONCURRENCY = 3;
+const privateGroupPreloadTasks = new Map();
+const privateGroupPreloadQueue = [];
+let privateGroupPreloadActive = 0;
+
+function pumpPrivateGroupPreloads() {
+  while (privateGroupPreloadActive < PRIVATE_GROUP_PRELOAD_CONCURRENCY && privateGroupPreloadQueue.length) {
+    const entry = privateGroupPreloadQueue.shift();
+    if (!entry || privateGroupPreloadTasks.get(entry.id) !== entry) continue;
+    privateGroupPreloadActive++;
+    pollPrivateGroup(false, entry.id).then(entry.resolve, () => entry.resolve(false)).finally(() => {
+      if (privateGroupPreloadTasks.get(entry.id) === entry) privateGroupPreloadTasks.delete(entry.id);
+      privateGroupPreloadActive--;
+      pumpPrivateGroupPreloads();
+    });
+  }
+}
+
+function preloadPrivateGroup(id, { priority = false } = {}) {
+  const group = privateGroups.get(id);
+  if (!group || !hasPrivateGroupKeys(group)) return Promise.resolve(false);
+  const existing = privateGroupPreloadTasks.get(id);
+  if (existing) {
+    if (priority) {
+      const index = privateGroupPreloadQueue.indexOf(existing);
+      if (index > 0) {
+        privateGroupPreloadQueue.splice(index, 1);
+        privateGroupPreloadQueue.unshift(existing);
+      }
+    }
+    return existing.promise;
+  }
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  const entry = { id, promise, resolve };
+  privateGroupPreloadTasks.set(id, entry);
+  if (priority) privateGroupPreloadQueue.unshift(entry); else privateGroupPreloadQueue.push(entry);
+  pumpPrivateGroupPreloads();
+  return promise;
+}
+
+function preloadPrivateGroupsInBackground() {
+  for (const group of privateGroups.values()) preloadPrivateGroup(group.id).catch(() => {});
+}
 
 function updatePrivateGroupComposer() {
   const footer = document.getElementById('group-chat-footer');
@@ -140,7 +185,7 @@ async function handlePrivateGroupFileSelect(event) {
   if (!files.length) return;
   for (const file of files) {
     try {
-      if (file.size > 10 * 1024 * 1024) { toast(`“${file.name}” is too large — maximum 10MB`); continue; }
+      if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
       let base64, mime = file.type || 'application/octet-stream';
       if (mime.startsWith('image/')) {
         toast('Preparing photo…');
@@ -175,7 +220,7 @@ async function togglePrivateGroupVoiceRecording() {
       privateGroupVoiceStream?.getTracks().forEach(track => track.stop()); privateGroupVoiceStream = null;
       document.querySelector('.group-mic-btn')?.classList.remove('recording');
       try {
-        if (blob.size > 10 * 1024 * 1024) throw new Error('Voice note is too large — record a shorter note');
+        if (blob.size > MAX_PRIVATE_GROUP_FILE_BYTES) throw new Error('Voice note is too large — record a shorter note');
         toast('Sending voice note…');
         await sendPrivateGroupAttachment({ type:'group-voice', name:'Voice note', mime, duration, size:blob.size, data:await blobToBase64(blob) });
         toast('Voice note sent');
@@ -227,7 +272,7 @@ async function restorePrivateGroupKeysFromBackup() {
       if (Object.keys(merged).length <= Object.keys(group.keys || {}).length) continue;
       group.keys = merged; restored = true;
       // Anything read while the key was missing was marked unavailable; read it again.
-      group.messages = []; group.messageCursor = 0;
+      group.messages = []; group.messageCursor = 0; group.historyHydrated = false;
       if (group.encryptedName && merged[group.keyVersion]) {
         try { group.name = await decryptPrivateGroupValue(merged[group.keyVersion], group.encryptedName); } catch (_) {}
       }
@@ -261,7 +306,11 @@ async function refreshPrivateGroups() {
   savePrivateGroupSessions();
   if (receivedNewKey) scheduleAccountSync();
   if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
-  if (activePrivateGroupId && privateGroups.has(activePrivateGroupId)) await pollPrivateGroup(true);
+  preloadPrivateGroupsInBackground();
+  if (activePrivateGroupId && privateGroups.has(activePrivateGroupId)) {
+    await preloadPrivateGroup(activePrivateGroupId, { priority:true });
+    renderPrivateGroupMessages(privateGroups.get(activePrivateGroupId));
+  }
   for (const group of privateGroups.values()) {
     if (group.ownerId === state.accountId && group.requiresRekey) rotatePrivateGroupKey(group).catch(error => console.error('Group rekey failed', error));
   }
@@ -304,7 +353,7 @@ async function createPrivateGroup() {
     const result = await api('/api/groups/create', { accountId:state.accountId, sessionToken:state.sessionToken,
       groupId, encryptedName, members, keyBinding:groupKeyId });
     if (result.error) throw new Error(result.error);
-    privateGroups.set(result.group.id, { ...result.group, name, keys:{ 1:encodedKey }, ownerAccountId:state.accountId, messages:[], unread:0 });
+    privateGroups.set(result.group.id, { ...result.group, name, keys:{ 1:encodedKey }, ownerAccountId:state.accountId, messages:[], unread:0, historyHydrated:true });
     savePrivateGroupSessions(); scheduleAccountSync(); closeCreateGroup(); renderVaultList();
     toast('Private group created'); openPrivateGroup(result.group.id);
   } catch (error) { toast(error.message || 'Could not create the private group'); }
@@ -314,15 +363,9 @@ async function createPrivateGroup() {
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
   const requestId = ++privateGroupOpenRequestId;
-  openingPrivateGroupId = id;
+  openingPrivateGroupId = group.historyHydrated ? null : id;
   renderVaultList();
   try {
-    // Download, decrypt and hydrate attachments while the inbox remains on
-    // screen. Opening first briefly presents an existing group as empty.
-    const ready = await pollPrivateGroup(false, id);
-    if (requestId !== privateGroupOpenRequestId) return;
-    if (!ready) { toast('Could not open this encrypted group. Try again.'); return; }
-
     activePrivateGroupId = id; group.unread = 0;
     const input = document.getElementById('group-message-input');
     if (input) input.value = '';
@@ -333,6 +376,15 @@ async function openPrivateGroup(id) {
     document.getElementById('group-chat').classList.add('open');
     document.getElementById('group-chat').setAttribute('aria-hidden','false');
     clearInterval(groupPollTimer); groupPollTimer = setInterval(() => pollPrivateGroup(false), 3000);
+    // The normal path is already hydrated by the inbox preloader. If the
+    // user taps during a cold launch, open the group shell immediately and
+    // promote its queued preload instead of leaving them on the inbox.
+    if (!group.historyHydrated) {
+      const ready = await preloadPrivateGroup(id, { priority:true });
+      if (requestId !== privateGroupOpenRequestId) return;
+      if (!ready) { toast('Could not load this encrypted group. Try again.'); return; }
+      renderPrivateGroupMessages(group);
+    }
   } catch (_) {
     if (requestId === privateGroupOpenRequestId) toast('Could not open this encrypted group. Try again.');
   } finally {
@@ -433,6 +485,10 @@ function renderPrivateGroupMessages(group) {
   const state = loadAccountState();
   if (!hasPrivateGroupKeys(group)) {
     body.innerHTML = '<div class="group-chat-empty">This device does not have the encryption key for this group.<br>Your messages are safe and unchanged for the other members. Reopen Vaultlix to try restoring the key from your encrypted backup.</div>';
+    return;
+  }
+  if (!group.historyHydrated) {
+    body.innerHTML = '<div class="group-chat-empty">Loading encrypted messages…</div>';
     return;
   }
   const { visible, reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
@@ -835,7 +891,7 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
   // are restored.
   if (!hasPrivateGroupKeys(group)) {
     if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
-    return true;
+    return false;
   }
   const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, after:group.messageCursor || 0 });
   if (result.error) return false;
@@ -850,6 +906,7 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
   group.messages = [...(group.messages || []), ...incoming].sort((a,b) => a.createdAt - b.createdAt).slice(-200);
   group.messageCursor = Math.max(group.messageCursor || 0, Number(result.cursor) || 0);
   group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;
+  group.historyHydrated = true;
   if ((render || changed) && group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
   return true;
 }

@@ -7,18 +7,21 @@ const root = path.join(__dirname, '..');
 const groups = fs.readFileSync(path.join(root, 'client', 'groups.js'), 'utf8');
 const client = fs.readFileSync(path.join(root, 'client', 'index.html'), 'utf8');
 
-test('an existing encrypted group finishes loading before its screen opens', () => {
+test('saved encrypted groups preload in the inbox and their screen opens immediately', () => {
   const start = groups.indexOf('async function openPrivateGroup(id)');
   const end = groups.indexOf('\nfunction closePrivateGroup()', start);
   const source = groups.slice(start, end);
-  const preload = source.indexOf('await pollPrivateGroup(false, id)');
+  const preload = source.indexOf('await preloadPrivateGroup(id, { priority:true })');
   const render = source.indexOf('renderPrivateGroupMessages(group)');
   const open = source.indexOf("classList.add('open')");
-  assert.ok(preload >= 0, 'group history should be preloaded explicitly');
-  assert.ok(render > preload, 'messages must render only after preload');
-  assert.ok(open > render, 'the group overlay must open only after messages render');
+  assert.ok(open > render, 'the group shell should render before it opens');
+  assert.ok(preload > open, 'an unfinished preload must continue after the group screen opens');
   assert.match(source, /requestId !== privateGroupOpenRequestId/);
-  assert.match(client, /opening \? 'Opening encrypted group…'/);
+  assert.match(groups, /PRIVATE_GROUP_PRELOAD_CONCURRENCY = 3/);
+  assert.match(groups, /function preloadPrivateGroupsInBackground\(\)/);
+  assert.match(client, /historyHydrated:false[\s\S]*preloadPrivateGroupsInBackground\(\)/);
+  assert.match(groups, /Loading encrypted messages…/);
+  assert.match(groups, /group\.historyHydrated = true/);
 });
 
 test('status media fills its stage and encrypted video uses a visual loader', () => {
