@@ -50,3 +50,11 @@ test('status video hides native playback chrome until its first frame starts', (
   assert.match(client, /function revealStatusViewerVideo\(video, allowManualPlayback = false\)[\s\S]*video\.controls = true/);
   assert.doesNotMatch(client, /class="status-video-player"[^>]* controls/);
 });
+
+test('cold start prioritizes status conversations and refreshes as soon as their key is ready', () => {
+  assert.match(client, /if \(statusFeedLoading\) \{[\s\S]*statusFeedRefreshQueued = true/);
+  assert.match(client, /if \(!room\?\.sharedKey\) \{[\s\S]*prioritizeStartupRoomRestore\(room\.code\)/);
+  assert.match(client, /startupRoomRestorePriorityCodes\.add\(code\)[\s\S]*uniqueCodes\.filter\(code => startupRoomRestorePriorityCodes\.has\(code\)\)/);
+  assert.match(client, /statusFeedRefreshedAt = waitingForRoomKeys \? 0 : Date\.now\(\)/);
+  assert.match(client, /const statusKeyWasAwaited = statusFeedWaitingRoomCodes\.delete\(room\.code\);[\s\S]*if \(canRestoreHistory && \(statusKeyWasAwaited \|\| statusFeedLoading\)\) \{[\s\S]*statusFeedRefreshedAt = 0;[\s\S]*refreshStatusFeed\(\{ quiet:true \}\)/);
+});

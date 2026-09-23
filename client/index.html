@@ -12885,6 +12885,8 @@ function vaultAvatarPalette(seed) {
 let currentVaultListMode = 'chats';
 let statusFeed = [];
 let statusFeedLoading = false;
+let statusFeedRefreshQueued = false;
+let statusFeedWaitingRoomCodes = new Set();
 let statusFeedRefreshedAt = 0;
 let statusViewerItems = [];
 let statusViewerIndex = 0;
@@ -12908,16 +12910,35 @@ function statusRoomForCode(code) { return rooms.get(String(code || '').toLowerCa
 
 async function refreshStatusFeed({ quiet = false } = {}) {
   const state = loadAccountState();
-  if (!state || statusFeedLoading) return;
+  if (!state) return;
+  if (statusFeedLoading) {
+    // A room key may have become available while an earlier feed request
+    // was still decrypting. Run once more afterward instead of losing the
+    // key-ready refresh behind the in-flight guard.
+    statusFeedRefreshQueued = true;
+    return;
+  }
   statusFeedLoading = true;
   try {
     const result = await api('/api/status/feed', { accountId:state.accountId, sessionToken:state.sessionToken });
     if (result.error) { if (!quiet) toast(result.error); return; }
     const previousById = new Map(statusFeed.map(item => [item.id, item]));
     const decrypted = [];
+    let waitingForRoomKeys = false;
+    const waitingRoomCodes = new Set();
     for (const item of result.feed || []) {
       const room = statusRoomForCode(item.code);
-      if (!room?.sharedKey) continue;
+      if (!room?.sharedKey) {
+        if (room) {
+          waitingForRoomKeys = true;
+          waitingRoomCodes.add(room.code);
+          // Status relationships are the visible top rail on launch. Move
+          // their already-saved conversations ahead of ordinary background
+          // restores so their verified key becomes available promptly.
+          prioritizeStartupRoomRestore(room.code);
+        }
+        continue;
+      }
       try {
         let payload = JSON.parse(await decryptMsg(room, item.ciphertext));
         if (!payload || !['text','image','video'].includes(payload.type)) continue;
@@ -12942,11 +12963,20 @@ async function refreshStatusFeed({ quiet = false } = {}) {
     for (const previous of statusFeed) {
       if (previous.payload?.videoUrl && !retainedVideoUrls.has(previous.payload.videoUrl)) URL.revokeObjectURL(previous.payload.videoUrl);
     }
+    statusFeedWaitingRoomCodes = waitingRoomCodes;
     statusFeed = decrypted;
-    statusFeedRefreshedAt = Date.now();
+    // An empty/partial result caused only by locked startup keys is not a
+    // fresh feed. The corresponding room restore will request it again.
+    statusFeedRefreshedAt = waitingForRoomKeys ? 0 : Date.now();
     renderStatusRail();
     scheduleStatusVideoPreload();
-  } finally { statusFeedLoading = false; }
+  } finally {
+    statusFeedLoading = false;
+    if (statusFeedRefreshQueued) {
+      statusFeedRefreshQueued = false;
+      setTimeout(() => refreshStatusFeed({ quiet:true }).catch(() => {}), 0);
+    }
+  }
 }
 
 function scheduleStatusVideoPreload() {
@@ -13415,8 +13445,10 @@ function renderVaultList() {
 // reconnect burst overwhelming either the device crypto provider or server.
 const STARTUP_ROOM_RESTORE_CONCURRENCY = 3;
 let pendingStartupRoomRestores = [];
+let startupRoomRestorePriorityCodes = new Set();
 
 function prioritizeStartupRoomRestore(code) {
+  if (code) startupRoomRestorePriorityCodes.add(code);
   const index = pendingStartupRoomRestores.indexOf(code);
   if (index < 1) return false;
   pendingStartupRoomRestores.splice(index, 1);
@@ -13425,7 +13457,11 @@ function prioritizeStartupRoomRestore(code) {
 }
 
 async function restoreStartupRooms(codes, restoreOne) {
-  pendingStartupRoomRestores = [...new Set(codes.filter(Boolean))];
+  const uniqueCodes = [...new Set(codes.filter(Boolean))];
+  pendingStartupRoomRestores = [
+    ...uniqueCodes.filter(code => startupRoomRestorePriorityCodes.has(code)),
+    ...uniqueCodes.filter(code => !startupRoomRestorePriorityCodes.has(code)),
+  ];
   const worker = async () => {
     while (pendingStartupRoomRestores.length) {
       const code = pendingStartupRoomRestores.shift();
@@ -13438,6 +13474,7 @@ async function restoreStartupRooms(codes, restoreOne) {
     await Promise.all(Array.from({ length:workerCount }, () => worker()));
   } finally {
     pendingStartupRoomRestores = [];
+    startupRoomRestorePriorityCodes.clear();
   }
 }
 
@@ -17573,6 +17610,14 @@ window.addEventListener('DOMContentLoaded', async () => {
       addRoomToState(room);
       room.restorePending = false;
       restoredAny = true;
+      const statusKeyWasAwaited = statusFeedWaitingRoomCodes.delete(room.code);
+      if (canRestoreHistory && (statusKeyWasAwaited || statusFeedLoading)) {
+        // Do not wait for every saved conversation to finish reconnecting.
+        // Status feed ciphertext can be decrypted as soon as this room's
+        // verified shared key is ready, and in-flight refreshes coalesce.
+        statusFeedRefreshedAt = 0;
+        refreshStatusFeed({ quiet:true }).catch(() => {});
+      }
       if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
       if (canRestoreHistory) restoreRoomHistoryInBackground(room);
     } catch(e) {
