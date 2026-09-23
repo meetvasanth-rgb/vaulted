@@ -4087,6 +4087,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         const senderMirror = (sender.connectionRequests || []).find(r => r.id === acceptedRelationship.id);
         if (senderMirror) { senderMirror.status = 'replaced'; senderMirror.respondedAt = now; }
       } else {
+        let conversationAvailable = false;
+        try {
+          const invitePath = new URL(acceptedRelationship.inviteUrl || '').pathname;
+          const inviteCode = invitePath.match(/^\/join\/([a-z0-9-]+)\/?$/i)?.[1]?.toLowerCase() || null;
+          conversationAvailable = !!inviteCode && (
+            rooms.has(inviteCode) || await postgresStore.conversationExists(inviteCode)
+          );
+        } catch (_) {}
         return res200(res, {
           ok:true,
           requestId:acceptedRelationship.id,
@@ -4096,6 +4104,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           // device locate the matching session inside its client-encrypted
           // account backup without exposing room membership credentials.
           inviteUrl:acceptedRelationship.inviteUrl || null,
+          // An accepted account relationship can outlive its encrypted room
+          // after an explicit erase or a failed legacy deployment. Clients
+          // must not restore stale credentials and then present the roomGone
+          // response as a fresh deletion; they should request a new,
+          // consent-based secure connection instead.
+          conversationAvailable,
         });
       }
     }

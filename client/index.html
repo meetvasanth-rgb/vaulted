@@ -16058,7 +16058,13 @@ async function requestPrivateVault(authenticationMode = 'create') {
     const peerName = activePublicProfile.displayName;
     clearQuickConnectTarget();
     closePublicProfile();
-    if (await restoreConnectedConversationFromBackup(result, peerNumber)) return;
+    // Older servers omit conversationAvailable, so retain the previous
+    // restore behavior for compatibility. A current server explicitly says
+    // false when the accepted relationship points at a room that no longer
+    // exists; restoring that stale backup would reload once, immediately get
+    // roomGone, and incorrectly show "Conversation erased" again.
+    if (result.conversationAvailable !== false &&
+        await restoreConnectedConversationFromBackup(result, peerNumber)) return;
 
     // The relationship still exists but this installation no longer holds
     // its room token and E2EE keypair (for example, an older account backup
