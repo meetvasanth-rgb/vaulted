@@ -12889,6 +12889,7 @@ let statusFeedRefreshedAt = 0;
 let statusViewerItems = [];
 let statusViewerIndex = 0;
 let statusViewerTimer = null;
+let statusVideoPreloadTimer = null;
 let statusComposerImage = null;
 let statusComposerVideo = null;
 let statusComposerVideoPreviewUrl = '';
@@ -12912,6 +12913,7 @@ async function refreshStatusFeed({ quiet = false } = {}) {
   try {
     const result = await api('/api/status/feed', { accountId:state.accountId, sessionToken:state.sessionToken });
     if (result.error) { if (!quiet) toast(result.error); return; }
+    const previousById = new Map(statusFeed.map(item => [item.id, item]));
     const decrypted = [];
     for (const item of result.feed || []) {
       const room = statusRoomForCode(item.code);
@@ -12921,6 +12923,14 @@ async function refreshStatusFeed({ quiet = false } = {}) {
         if (!payload || !['text','image','video'].includes(payload.type)) continue;
         const videoDuration = Number(payload.duration);
         if (payload.type === 'video' && (payload.mediaId !== item.mediaId || !/^[A-Za-z0-9_-]{40,60}$/.test(payload.key || '') || !/^[A-Za-z0-9_-]{12,24}$/.test(payload.iv || '') || !/^video\/[a-zA-Z0-9.+-]{1,80}$/.test(payload.mime || '') || !Number.isFinite(videoDuration) || videoDuration <= 0 || videoDuration > MAX_STATUS_VIDEO_SECONDS + 0.05)) continue;
+        const previous = previousById.get(item.id);
+        if (payload.type === 'video' && previous?.mediaId === item.mediaId && previous.payload?.type === 'video'
+            && previous.payload.key === payload.key && previous.payload.iv === payload.iv && previous.payload.mime === payload.mime) {
+          // Statuses are immutable. Keep the in-memory decrypted Blob URL (or
+          // an in-flight preload) across the 30-second feed refresh instead
+          // of downloading and decrypting the same video again every time.
+          payload = previous.payload;
+        }
         if (payload.type === 'image' && localImageSafetyEnabled()) {
           const verdict = await checkLocalImages([payload.image], null, { quick:true });
           if (verdict !== 'allowed') payload = { type:'text', text:verdict === 'blocked' ? 'Status photo hidden by on-device safety.' : 'Status photo unavailable because the on-device check could not finish.' };
@@ -12928,11 +12938,37 @@ async function refreshStatusFeed({ quiet = false } = {}) {
         decrypted.push({ ...item, payload, roomCode:room.code });
       } catch (_) {}
     }
-    for (const previous of statusFeed) if (previous.payload?.videoUrl) URL.revokeObjectURL(previous.payload.videoUrl);
+    const retainedVideoUrls = new Set(decrypted.map(item => item.payload?.videoUrl).filter(Boolean));
+    for (const previous of statusFeed) {
+      if (previous.payload?.videoUrl && !retainedVideoUrls.has(previous.payload.videoUrl)) URL.revokeObjectURL(previous.payload.videoUrl);
+    }
     statusFeed = decrypted;
     statusFeedRefreshedAt = Date.now();
     renderStatusRail();
+    scheduleStatusVideoPreload();
   } finally { statusFeedLoading = false; }
+}
+
+function scheduleStatusVideoPreload() {
+  clearTimeout(statusVideoPreloadTimer);
+  statusVideoPreloadTimer = setTimeout(() => {
+    const seen = statusSeenIds();
+    const candidates = statusFeed
+      .filter(item => item.payload?.type === 'video' && !item.payload.videoUrl && !item.payload.videoError && !item.payload.videoLoading)
+      .sort((a, b) => Number(seen.has(a.id)) - Number(seen.has(b.id)) || Number(b.createdAt) - Number(a.createdAt));
+    const selected = [];
+    const authors = new Set();
+    for (const item of candidates) {
+      const author = item.own ? 'own' : item.authorPrivateNumber;
+      if (authors.has(author)) continue;
+      authors.add(author); selected.push(item);
+      if (selected.length === 2) break;
+    }
+    // Keep background work deliberately small: at most the next two status
+    // videos, one per person. Ciphertext and decrypted Blob URLs stay only in
+    // memory and are discarded when the status leaves the feed.
+    selected.forEach(item => hydrateStatusVideo(item));
+  }, 150);
 }
 
 function statusAvatar(item, own = false) {
@@ -13116,6 +13152,13 @@ async function hydrateStatusVideo(item) {
     const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:base64UrlToBytes(item.payload.iv) }, key, encrypted);
     item.payload.videoUrl = URL.createObjectURL(new Blob([plain], { type:item.payload.mime }));
     item.payload.videoLoading = false;
+    const retained = statusFeed.some(candidate => candidate.id === item.id && candidate.payload === item.payload)
+      || statusViewerItems.some(candidate => candidate.id === item.id && candidate.payload === item.payload);
+    if (!retained) {
+      URL.revokeObjectURL(item.payload.videoUrl);
+      delete item.payload.videoUrl;
+      return;
+    }
     if (statusViewerItems[statusViewerIndex]?.id === item.id) renderStatusViewer();
   } catch (error) {
     item.payload.videoLoading = false;
@@ -13165,7 +13208,7 @@ function renderStatusViewer() {
   } else statusViewerTimer=setTimeout(()=>statusViewerStep(1),6000);
 }
 function showStatusViewers(){const item=statusViewerItems[statusViewerIndex];const names=(item?.viewers||[]).map(viewer=>viewer.displayName).join(', ');toast(names?`Viewed by ${names}`:'No views yet.');}
-async function deleteCurrentStatus(){const item=statusViewerItems[statusViewerIndex],state=loadAccountState();if(!item||!state)return;const result=await api('/api/status/delete',{accountId:state.accountId,sessionToken:state.sessionToken,id:item.id});if(result.error){toast(result.error);return;}statusFeed=statusFeed.filter(candidate=>candidate.id!==item.id);closeStatusViewer();renderStatusRail();}
+async function deleteCurrentStatus(){const item=statusViewerItems[statusViewerIndex],state=loadAccountState();if(!item||!state)return;const result=await api('/api/status/delete',{accountId:state.accountId,sessionToken:state.sessionToken,id:item.id});if(result.error){toast(result.error);return;}if(item.payload?.videoUrl)URL.revokeObjectURL(item.payload.videoUrl);statusFeed=statusFeed.filter(candidate=>candidate.id!==item.id);closeStatusViewer();renderStatusRail();}
 function replyToCurrentStatus(){const item=statusViewerItems[statusViewerIndex];if(!item)return;closeStatusViewer();if(!openConversationAfterPaint(item.roomCode))return;const input=document.getElementById('msg-input');if(input){input.value=`Replying to your status: `;input.focus();}}
 async function reportCurrentStatus(){const item=statusViewerItems[statusViewerIndex],state=loadAccountState();if(!item||!state)return;const result=await api('/api/status/report',{accountId:state.accountId,sessionToken:state.sessionToken,id:item.id,details:'Reported from the Status viewer'});if(result.error)toast(result.error);else{toast('Status reported for review.');closeStatusViewer();}}
 async function blockCurrentStatusAuthor(){

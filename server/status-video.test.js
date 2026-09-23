@@ -36,3 +36,10 @@ test('authorized viewers download and decrypt status videos locally', () => {
   assert.match(client, /function retryStatusVideo\(\)/);
   assert.match(client, /<video src=/);
 });
+
+test('decrypted status videos survive feed refresh and upcoming videos preload in memory', () => {
+  assert.match(client, /const previousById = new Map\(statusFeed\.map/);
+  assert.match(client, /payload = previous\.payload/);
+  assert.match(client, /retainedVideoUrls[\s\S]*URL\.revokeObjectURL/);
+  assert.match(client, /function scheduleStatusVideoPreload\(\)[\s\S]*selected\.length === 2[\s\S]*hydrateStatusVideo\(item\)/);
+});
