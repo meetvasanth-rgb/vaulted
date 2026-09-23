@@ -28,4 +28,5 @@ test('signed URLs are scoped to one private object and expire', async () => {
   assert.equal(signed[0].input.Key, 'encrypted/object');
   assert.equal(signed[0].options.expiresIn, 600);
   assert.equal(await store.sizeOf('encrypted/object'), 321);
+  assert.equal((await store.open('encrypted/object')).ContentLength, 321);
 });

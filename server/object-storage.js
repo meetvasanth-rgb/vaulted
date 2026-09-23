@@ -69,6 +69,10 @@ class EncryptedObjectStorage {
     return this.signer(this.client, command, { expiresIn:SIGNED_URL_TTL_SECONDS });
   }
 
+  async open(key) {
+    return this.client.send(new GetObjectCommand({ Bucket:this.bucket, Key:key }));
+  }
+
   async sizeOf(key) {
     const result = await this.client.send(new HeadObjectCommand({ Bucket:this.bucket, Key:key }));
     return Number(result.ContentLength || 0);

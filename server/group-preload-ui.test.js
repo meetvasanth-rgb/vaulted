@@ -22,7 +22,7 @@ test('an existing encrypted group finishes loading before its screen opens', () 
 });
 
 test('status media fills its stage and encrypted video uses a visual loader', () => {
-  assert.match(client, /\.status-stage>img,\.status-stage>video\{[^}]*width:100%;height:100%;[^}]*object-fit:cover;border-radius:0/);
+  assert.match(client, /\.status-stage>img,\.status-stage>video\{[^}]*width:100%;height:100%;[^}]*object-fit:contain;border-radius:0/);
   assert.match(client, /status-video-spinner/);
   assert.doesNotMatch(client, /Opening encrypted video…/);
 });

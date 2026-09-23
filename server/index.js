@@ -4049,6 +4049,39 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
   }
 
+  // Same-origin encrypted streaming avoids WebView/browser CORS failures on
+  // private signed bucket URLs. Authorization is rechecked before every
+  // stream, and the server relays ciphertext only; decryption stays local.
+  if (path === '/api/status/media/content' && method === 'POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted status media is temporarily unavailable.', 503);
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
+    if (!validAttachmentId(d.mediaId) || !await statusStore.canAccessMedia(d.accountId, d.mediaId)) return resErr(res, 'Status media not found.', 404);
+    const media = await postgresStore.statusMedia(d.mediaId);
+    if (!media || !Number.isSafeInteger(media.size) || media.size < 1 || media.size > MAX_STATUS_MEDIA_BYTES) return resErr(res, 'Status media not found.', 404);
+    try {
+      const object = await objectStorage.open(media.objectKey);
+      const size = Number(object.ContentLength);
+      const body = object.Body;
+      if (!Number.isSafeInteger(size) || size !== media.size || !body || typeof body.pipe !== 'function') {
+        body?.destroy?.();
+        return resErr(res, 'Encrypted status media is incomplete.', 409);
+      }
+      res.writeHead(200, {
+        'Content-Type':'application/octet-stream',
+        'Content-Length':String(size),
+        'Cache-Control':'private, no-store',
+      });
+      body.once('error', () => res.destroy());
+      res.once('close', () => body.destroy?.());
+      body.pipe(res);
+      return;
+    } catch (_) {
+      if (!res.headersSent) return resErr(res, 'Could not open encrypted status media.', 503);
+      res.destroy();
+      return;
+    }
+  }
+
   if (path === '/api/status/report' && method === 'POST') {
     if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your session has expired.', 401);
     const item = (await statusStore.listFor(d.accountId)).find(candidate => candidate.id === d.id && candidate.authorId !== d.accountId);

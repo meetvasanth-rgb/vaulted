@@ -30,6 +30,9 @@ test('status videos are encrypted locally and stored once outside recipient enve
 
 test('authorized viewers download and decrypt status videos locally', () => {
   assert.match(server, /statusStore\.canAccessMedia\(d\.accountId, d\.mediaId\)/);
-  assert.match(client, /status\/media\/download[\s\S]*crypto\.subtle\.decrypt/);
+  assert.match(server, /status\/media\/content[\s\S]*objectStorage\.open\(media\.objectKey\)[\s\S]*body\.pipe\(res\)/);
+  assert.match(client, /status\/media\/content[\s\S]*crypto\.subtle\.decrypt/);
+  assert.match(client, /controller\.abort\(\), 30000/);
+  assert.match(client, /function retryStatusVideo\(\)/);
   assert.match(client, /<video src=/);
 });
