@@ -134,14 +134,16 @@ async function uploadPrivateGroupAttachment(state, group, messageId, ciphertext)
 }
 
 async function downloadPrivateGroupAttachment(state, group, attachmentId) {
-  const prepared = await api('/api/groups/attachment/download', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, attachmentId });
-  if (!prepared?.downloadUrl) throw new Error(prepared?.error || 'Could not open attachment');
-  const url = new URL(prepared.downloadUrl, location.href);
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') throw new Error('Unsafe attachment address');
-  const response = await fetch(url.href, { cache:'no-store' });
-  if (!response.ok) throw new Error('Could not open attachment');
-  const ciphertext = await response.text();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  let ciphertext;
+  try {
+    const response = await fetch('/api/groups/attachment/content', { method:'POST', headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify({ accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, attachmentId }),
+      cache:'no-store', signal:controller.signal });
+    if (!response.ok) throw new Error('Could not open attachment');
+    ciphertext = await response.text();
+  } finally { clearTimeout(timeout); }
   if (!ciphertext || new Blob([ciphertext]).size > MAX_PRIVATE_GROUP_ATTACHMENT_BYTES) throw new Error('Invalid attachment');
   return ciphertext;
 }

@@ -3598,6 +3598,43 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     } catch (error) { return resErr(res, 'Could not open encrypted attachment.', 503); }
   }
 
+  // Android WebViews do not consistently allow the second, cross-origin
+  // fetch to a signed private-bucket URL. Relay the opaque ciphertext over
+  // the already-authenticated Vaultlix origin, exactly as status videos do.
+  // The server never receives the group key or plaintext attachment.
+  if (path === '/api/groups/attachment/content' && method === 'POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted attachment storage is temporarily unavailable.', 503);
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to open this file.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const group = await groupStore.get(d.groupId);
+    if (!group?.members.some(member => member.accountId === d.accountId && member.active)) return resErr(res, 'Private group not found.', 404);
+    if (!validAttachmentId(d.attachmentId)) return resErr(res, 'Invalid encrypted attachment.', 400);
+    const attachment = await groupStore.attachment(group.id, d.attachmentId);
+    if (!attachment || !group.messages.some(message => message.id === attachment.messageId && message.attachmentId === attachment.id) ||
+        !Number.isSafeInteger(attachment.size) || attachment.size < 1 || attachment.size > MAX_MESSAGE_CONTENT_BYTES) {
+      return resErr(res, 'Encrypted attachment not found.', 404);
+    }
+    try {
+      const object = await objectStorage.open(attachment.objectKey);
+      const size = Number(object.ContentLength);
+      const body = object.Body;
+      if (!Number.isSafeInteger(size) || size !== attachment.size || !body || typeof body.pipe !== 'function') {
+        body?.destroy?.();
+        return resErr(res, 'Encrypted attachment is incomplete.', 409);
+      }
+      res.writeHead(200, { 'Content-Type':'application/octet-stream', 'Content-Length':String(size), 'Cache-Control':'private, no-store' });
+      body.once('error', () => res.destroy());
+      res.once('close', () => body.destroy?.());
+      body.pipe(res);
+      return;
+    } catch (_) {
+      if (!res.headersSent) return resErr(res, 'Could not open encrypted attachment.', 503);
+      res.destroy();
+      return;
+    }
+  }
+
   if (path === '/api/groups/send' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to send a group message.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
@@ -4590,6 +4627,39 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     } catch (error) {
       console.error('Encrypted attachment download signing failed:', error.message);
       return resErr(res,'Could not open encrypted attachment.',503);
+    }
+  }
+
+  // Same-origin encrypted streaming avoids signed-bucket CORS failures in
+  // Android WebViews. Membership and message ownership are rechecked before
+  // every stream; only E2E ciphertext passes through this process.
+  if (path==='/api/attachment/content' && method==='POST') {
+    if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
+    const room = rooms.get(d.code);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (!validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
+    const attachment = await postgresStore.attachmentForMessage(d.code, d.attachmentId);
+    if (!attachment || !Number.isSafeInteger(attachment.size) || attachment.size < 1 || attachment.size > MAX_MESSAGE_CONTENT_BYTES) {
+      return resErr(res,'Encrypted attachment not found.',404);
+    }
+    try {
+      const object = await objectStorage.open(attachment.objectKey);
+      const size = Number(object.ContentLength);
+      const body = object.Body;
+      if (!Number.isSafeInteger(size) || size !== attachment.size || !body || typeof body.pipe !== 'function') {
+        body?.destroy?.();
+        return resErr(res,'Encrypted attachment is incomplete.',409);
+      }
+      res.writeHead(200, { 'Content-Type':'application/octet-stream', 'Content-Length':String(size), 'Cache-Control':'private, no-store' });
+      body.once('error', () => res.destroy());
+      res.once('close', () => body.destroy?.());
+      body.pipe(res);
+      return;
+    } catch (_) {
+      if (!res.headersSent) return resErr(res,'Could not open encrypted attachment.',503);
+      res.destroy();
+      return;
     }
   }
 

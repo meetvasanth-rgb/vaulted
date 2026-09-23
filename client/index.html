@@ -8714,17 +8714,18 @@ async function uploadEncryptedAttachment(room, msgId, ciphertext) {
 async function resolveEncryptedAttachment(room, content) {
   if (typeof content !== 'string' || !content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX)) return content;
   const attachmentId = content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length);
-  const prepared = await api('/api/attachment/download', {
-    code:room.code, token:room.token, attachmentId,
-  });
-  if (!prepared?.downloadUrl) throw new Error(prepared?.error || 'ATTACHMENT_DOWNLOAD');
-  const downloadUrl = new URL(prepared.downloadUrl, location.href);
-  if (downloadUrl.protocol !== 'https:' && downloadUrl.hostname !== 'localhost' && downloadUrl.hostname !== '127.0.0.1') {
-    throw new Error('ATTACHMENT_URL');
-  }
-  const response = await fetch(downloadUrl.href, { cache:'no-store' });
-  if (!response.ok) throw new Error('ATTACHMENT_DOWNLOAD');
-  const ciphertext = await response.text();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  let ciphertext;
+  try {
+    const response = await fetch('/api/attachment/content', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify({ code:room.code, token:room.token, attachmentId }),
+      cache:'no-store', signal:controller.signal,
+    });
+    if (!response.ok) throw new Error('ATTACHMENT_DOWNLOAD');
+    ciphertext = await response.text();
+  } finally { clearTimeout(timeout); }
   if (!ciphertext || new Blob([ciphertext]).size > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
   return ciphertext;
 }
@@ -8949,7 +8950,7 @@ const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment cou
 // payload in the first place (see processIncomingContent), so there is
 // nothing here that could ever leak it even by accident.
 const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
-const ATTACHMENT_UNAVAILABLE_HTML = `<div class="msg-blocked">Attachment unavailable — tap the conversation again to retry</div>`;
+const ATTACHMENT_UNAVAILABLE_HTML = `<div class="msg-blocked attachment-retry" role="button" tabindex="0">Attachment unavailable — tap to retry</div>`;
 
 function setStatus(online, name) {
   const presence = document.getElementById('chat-presence');
@@ -14757,6 +14758,16 @@ function renderMessageRecord(room, rec, animate) {
     event.stopPropagation();
     openStatusReply(event.currentTarget.dataset.statusReplyId).catch(() => toast('This status is no longer available.'));
   });
+  const retryAttachment = div.querySelector('.attachment-retry');
+  if (retryAttachment) {
+    const retry = event => {
+      if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault(); event.stopPropagation();
+      retryUnavailableAttachment(room, rec.id, retryAttachment);
+    };
+    retryAttachment.addEventListener('click', retry);
+    retryAttachment.addEventListener('keydown', retry);
+  }
 
   wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') ? '' : rec.content)), rec.isMe, rec);
   body.insertBefore(div, typing);
@@ -15300,6 +15311,32 @@ function callEventForViewer(callEvent, fromMe) {
   return { viewerRole, text:text.trim().slice(0, 120) };
 }
 
+async function retryUnavailableAttachment(room, msgId, element) {
+  const index = room?.messages?.findIndex(message => message.id === msgId);
+  const current = index >= 0 ? room.messages[index] : null;
+  if (!current || current.kind !== 'attachment-unavailable' || !current.encryptedAttachmentRef || current.attachmentRetrying) return;
+  current.attachmentRetrying = true;
+  if (element) element.textContent = 'Retrying encrypted attachment…';
+  try {
+    const restored = await processIncomingContent(room, current.encryptedAttachmentRef, current.name, current.time,
+      current.id, current.ts, current.fromToken, current.deleteTimerSeconds || 0, current.readAt);
+    if (!restored || restored.kind === 'attachment-unavailable' || restored.pending) throw new Error('ATTACHMENT_RETRY');
+    restored.isMe = current.isMe;
+    restored.receiptState = current.receiptState;
+    restored.reactionMine = current.reactionMine;
+    restored.reactionTheirs = current.reactionTheirs;
+    restored.deleteAt = current.deleteAt;
+    restored.timerStarted = current.timerStarted;
+    room.messages[index] = restored;
+    if (isRoomVisible(room)) renderChatBody(room);
+    scheduleSecureNativeHistoryCache(room, room.messages);
+  } catch (_) {
+    current.attachmentRetrying = false;
+    if (element?.isConnected) element.textContent = 'Attachment unavailable — tap to retry';
+    toast('Attachment is still unavailable. Please try again.');
+  }
+}
+
 async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null) {
   if (!content) return null;
   const base = { deleteTimerSeconds, readAt, id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
@@ -15307,7 +15344,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     content = await resolveEncryptedAttachment(room, content);
   } catch (error) {
     console.warn('E2E: encrypted attachment could not be loaded', msgId);
-    return { ...base, kind:'attachment-unavailable' };
+    return { ...base, kind:'attachment-unavailable', encryptedAttachmentRef:content, fromToken };
   }
   let decrypted;
   try {
