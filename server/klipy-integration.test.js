@@ -20,6 +20,7 @@ test('KLIPY media is restricted to approved HTTPS delivery hosts', () => {
   assert.match(client, /\['static\.klipy\.com', 'static1\.klipy\.com', 'static2\.klipy\.com'\]/);
   assert.match(client, /Vaultlix does not send your private number to KLIPY/);
   assert.doesNotMatch(client, /\/api\/klipy|proxyKlipy|cacheKlipy/);
+  assert.match(client, /if \(rec\.kind === 'gif'\) return false/);
 });
 
 test('private groups expose the same GIF picker as direct conversations', () => {

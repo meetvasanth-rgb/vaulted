@@ -28,11 +28,16 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
   assert.match(client, /video\.onplaying = revealPlayingVideo/);
   assert.match(client, /className = 'video-attachment-viewer loading'/);
   assert.match(client, /function handleVideoTap/);
+  assert.match(client, /function handleVideoActionsTap/);
+  assert.match(client, /class="msg-video-play"[^>]*onclick="event\.stopPropagation\(\);/);
+  assert.match(client, /\.msg-video-card'\)/);
+  assert.match(client, /isVideoReply/);
+  assert.match(client, /mediaType:replyTo\.mediaType/);
   assert.match(groups, /function openPrivateGroupVideo/);
   assert.match(groups, /videoThumb:safeImageDataUri/);
   assert.match(groups, /payload\.data\.length > 36 \* 1024 \* 1024/);
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v48/);
+  assert.match(sw, /vaultlix-app-shell-v49/);
 });

@@ -844,7 +844,7 @@ body.select-mode .chat-ftr{display:none}
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
 .msg-video-card{position:relative;width:min(260px,70vw);height:180px;overflow:hidden;border-radius:12px;background:linear-gradient(145deg,#3B2831,#171216);cursor:pointer;color:#fff;margin-top:4px}
 .msg-video-card img{display:block;width:100%;height:100%;object-fit:cover}.msg-video-card::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,#0009)}
-.msg-video-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:#682C43E8;box-shadow:0 4px 18px #0006}
+.msg-video-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border:0;padding:0;border-radius:50%;display:grid;place-items:center;background:#682C43E8;color:#fff;cursor:pointer;box-shadow:0 4px 18px #0006}
 .msg-video-play svg{width:22px;height:22px;fill:#fff;stroke:none;margin-left:3px}.msg-video-name{position:absolute;z-index:2;left:10px;right:10px;bottom:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:600 11px/1.2 Inter,sans-serif}
 .msg-upload-pending{position:relative}.msg-upload-animation{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:12px;background:linear-gradient(145deg,#35101FDE,#171216E8);color:#fff;font:700 11px/1.2 Inter,sans-serif;letter-spacing:.02em;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .vault-upload-orbit{position:relative;width:48px;height:48px;display:grid;place-items:center}.vault-upload-orbit svg{width:21px;height:21px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;animation:vault-upload-lock 1.4s ease-in-out infinite}
@@ -13999,7 +13999,7 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // message as a whole, same as it would for a single photo; a quick tap
   // on an individual tile (handleAlbumImageTap) is a separate gesture that
   // opens just that one photo.
-  const media = div.querySelector('.msg-image, .msg-file, .msg-pdf-card, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif');
+  const media = div.querySelector('.msg-image, .msg-file, .msg-pdf-card, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif, .msg-video-card');
   if (media) attachLongPress(media, msgId);
   // Ordinary text bubbles previously only had the short-tap recognizer
   // below. Holding past its 400ms cutoff therefore did nothing at all,
@@ -14471,7 +14471,8 @@ function buildAlbumGridHtml(rec) {
 function buildReplyQuotePhotoHtml(replyData) {
   const safeSrc = replyData.thumb ? safeImageDataUri(replyData.thumbMime || 'image/jpeg', replyData.thumb) : null;
   const thumbHtml = safeSrc ? `<img class="msg-reply-quote-thumb" src="${safeSrc}" alt=""/>` : '';
-  return `<div class="msg-reply-quote msg-reply-quote-photo">${thumbHtml}<span>📷 ${escHtml(replyData.text || 'Photo')}</span></div>`;
+  const isVideo = replyData.mediaType === 'video';
+  return `<div class="msg-reply-quote msg-reply-quote-photo">${thumbHtml}<span>${isVideo ? '▶' : '📷'} ${escHtml(replyData.text || (isVideo ? 'Video' : 'Photo'))}</span></div>`;
 }
 
 function attachmentUploadAnimationHtml(label = 'Encrypting & sending…') {
@@ -14482,7 +14483,8 @@ function buildVideoAttachmentHtml({ id, name, thumb, pending = false, group = fa
   const safeThumb = thumb ? safeImageDataUri('image/jpeg', thumb) : null;
   const preview = safeThumb ? `<img src="${safeThumb}" alt="Video preview"/>` : '';
   const handler = group ? `openPrivateGroupVideo('${escHtml(id)}')` : `handleVideoTap('${escHtml(id)}')`;
-  return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card" onclick="${handler}" oncontextmenu="return false">${preview}<span class="msg-video-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml() : ''}</div>`;
+  const cardHandler = group ? ` onclick="${handler}"` : ` onclick="handleVideoActionsTap(event, '${escHtml(id)}')"`;
+  return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card"${cardHandler} oncontextmenu="return false">${preview}<button type="button" class="msg-video-play" aria-label="Play video" onclick="event.stopPropagation();${handler}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button><span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml() : ''}</div>`;
 }
 
 function openVideoAttachmentViewer(mime, base64, name) {
@@ -14519,6 +14521,13 @@ function handleVideoTap(msgId) {
   if (selectMode) { toggleMessageSelection(msgId); return; }
   const rec = findMessageRec(msgId); if (!rec || !String(rec.mime || '').startsWith('video/')) return;
   openVideoAttachmentViewer(rec.mime, rec.base64, rec.fileName);
+}
+
+function handleVideoActionsTap(event, msgId) {
+  event?.stopPropagation?.();
+  if (wasJustLongPressed()) return;
+  if (selectMode) { toggleMessageSelection(msgId); return; }
+  toggleMsgActions(msgId);
 }
 
 function sanitizeStatusReplyData(value) {
@@ -14599,6 +14608,10 @@ const safetyRevealedRecords = new WeakSet();
 function needsAttachmentReveal(rec) {
   const isAttachment = ['file','album','voice','gif','image'].includes(rec.kind) || !!rec.replyData?.isImage;
   if (!isAttachment) return false;
+  // A GIF record is created only after safeKlipyMediaUrl has accepted its
+  // HTTPS delivery host. Treating it like an arbitrary peer-uploaded file
+  // made every received KLIPY result show the attachment-hidden warning.
+  if (rec.kind === 'gif') return false;
   // Approval covers the complete photo/album, not a document's preview or a
   // voice/video message's reply thumbnail. Keep the latter opt-in.
   const isPhoto = rec.kind === 'file' && rec.isImage && !!rec.base64;
@@ -15410,6 +15423,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       const statusReply = sanitizeStatusReplyData(parsed.reply);
       const replyData = statusReply || {
         text:String(parsed.reply.text || '').slice(0,100), isImage:!!parsed.reply.isImage,
+        mediaType:parsed.reply.mediaType === 'video' ? 'video' : 'image',
         thumb:typeof parsed.reply.thumb === 'string' && parsed.reply.thumb.length <= 32768 ? parsed.reply.thumb : null,
         thumbMime:parsed.reply.thumbMime === 'image/jpeg' ? 'image/jpeg' : null,
       };
@@ -15981,7 +15995,7 @@ async function sendMsg() {
     replySnapshot = replyTo.type === 'status'
       ? { type:'status', statusId:replyTo.statusId, statusType:replyTo.statusType, text:replyTo.text,
           createdAt:replyTo.createdAt, isImage:!!thumb, thumb, thumbMime:thumb ? 'image/jpeg' : null }
-      : { text: replyTo.text, isImage: !!replyTo.isImage, thumb, thumbMime: replyTo.thumbMime || null };
+      : { text: replyTo.text, isImage: !!replyTo.isImage, mediaType:replyTo.mediaType || null, thumb, thumbMime: replyTo.thumbMime || null };
   }
 
   const msgData = replySnapshot
@@ -19228,6 +19242,7 @@ function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
 // carrying the whole original photo.
 function startReply(rec, msgId, replyText) {
   const isImageReply = !!(rec && rec.kind === 'file' && rec.isImage);
+  const isVideoReply = !!(rec && rec.kind === 'file' && String(rec.mime || '').startsWith('video/'));
   // Replying to an album shows the first photo as the representative
   // thumbnail and labels it with the count ("3 photos") rather than a
   // single filename, which doesn't really apply to a grouped send.
@@ -19238,26 +19253,29 @@ function startReply(rec, msgId, replyText) {
   const text = (replyText || '').substring(0, 100);
   replyTo = {
     msgId,
-    text: isAlbumReply ? albumLabel : (isImageReply ? (rec.fileName || 'Photo') : (isVoiceReply ? 'Voice note' : text)),
-    isImage: isImageReply || isAlbumReply,
+    text: isAlbumReply ? albumLabel : (isImageReply ? (rec.fileName || 'Photo') : (isVideoReply ? (rec.fileName || 'Video') : (isVoiceReply ? 'Voice note' : text))),
+    isImage: isImageReply || isAlbumReply || isVideoReply,
+    mediaType:isVideoReply ? 'video' : 'image',
     thumbMime: 'image/jpeg',
-    thumbPromise: (isImageReply || isAlbumReply) ? makeTinyThumbnail(thumbSrc.base64, thumbSrc.mime) : null,
+    thumbPromise: isVideoReply
+      ? Promise.resolve(safeImageDataUri('image/jpeg', rec.videoThumb) ? rec.videoThumb : null)
+      : ((isImageReply || isAlbumReply) ? makeTinyThumbnail(thumbSrc.base64, thumbSrc.mime) : null),
   };
 
   const thumbEl = document.getElementById('reply-thumb');
   const textEl = document.getElementById('reply-text');
   document.getElementById('reply-name').textContent = '';
-  if (isImageReply || isAlbumReply) {
+  if (isImageReply || isAlbumReply || isVideoReply) {
     // thumbSrc is rec (or rec.images[0]) — a message that could be the
     // PEER's, so its mime/base64 are just as untrusted as anywhere else;
     // an invalid pair just hides the thumbnail, same as the text-only case
     // below, rather than ever assigning an unvalidated value to .src.
-    const safeSrc = safeImageDataUri(thumbSrc.mime, thumbSrc.base64);
+    const safeSrc = isVideoReply ? safeImageDataUri('image/jpeg', rec.videoThumb) : safeImageDataUri(thumbSrc.mime, thumbSrc.base64);
     if (thumbEl) {
       if (safeSrc) { thumbEl.src = safeSrc; thumbEl.style.display = 'block'; }
       else { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
     }
-    if (textEl) textEl.textContent = isAlbumReply ? `📷 ${albumLabel}` : '📷 Photo';
+    if (textEl) textEl.textContent = isVideoReply ? '▶ Video' : (isAlbumReply ? `📷 ${albumLabel}` : '📷 Photo');
   } else if (isVoiceReply) {
     if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
     if (textEl) textEl.textContent = '🎤 Voice note';

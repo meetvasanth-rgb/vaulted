@@ -100,10 +100,11 @@ test('approved native photos avoid the second reveal gate, but other attachments
     assert.equal(context.needsAttachmentReveal(rec),true);
     context.localImageSafetyEnabled=()=>true;
   }
-  for(const rec of [{kind:'file',pdfPreview:'preview'}, {kind:'voice',replyData:{isImage:true,thumb:'photo'}}, {kind:'gif'}, {kind:'album',images:[]}]) {
+  for(const rec of [{kind:'file',pdfPreview:'preview'}, {kind:'voice',replyData:{isImage:true,thumb:'photo'}}, {kind:'album',images:[]}]) {
     context.localRecordChecks.set(rec,'allowed');
     assert.equal(context.needsAttachmentReveal(rec),true);
   }
+  assert.equal(context.needsAttachmentReveal({kind:'gif'}),false);
 });
 test('photo checking reports each image and stops at a failed check',async()=>{
   const messages=[],checked=[];

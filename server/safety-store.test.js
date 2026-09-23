@@ -89,7 +89,7 @@ test('hidden incoming content and inbox previews do not render unscreened text o
   context.renderMessageRecord({},malicious,false);
   assert.equal(body.last.children[0].children[0].textContent,'Potentially harmful message hidden by on-device safety checks.');
   assert.equal(context.vaultInboxPreview({messages:[malicious]},true).text,'Potentially harmful message hidden');
-  for(const kind of ['file','album','voice','gif','image']){
+  for(const kind of ['file','album','voice','image']){
     context.renderMessageRecord({},{kind,isMe:false,id:kind},false);
     assert.match(body.last.children[0].children[0].textContent,/Attachment hidden/);
   }
