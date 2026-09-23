@@ -15410,56 +15410,61 @@ async function restoreRoomHistory(room) {
         unseen.push(msg);
       }
 
-      // WebCrypto decryption is asynchronous, but awaiting every record in
-      // series made text-heavy conversations unnecessarily slow. Process a
-      // bounded batch concurrently, then apply records in server order so
-      // message ordering, timers and receipt semantics remain unchanged.
-      const processed = new Array(unseen.length);
-      let nextIndex = 0;
-      const decryptWorker = async () => {
-        while (nextIndex < unseen.length) {
-          const index = nextIndex++;
-          const msg = unseen[index];
-          let rec = null;
-          if (msg.type === 'message') {
-            rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
-            if (rec && rec.pending) {
-              room.pendingHistoryRestore = true;
-              rec = null;
-            } else if (rec) {
-              rec.isMe = msg.from === room.token;
+      // Restore inline ciphertext first. Object-backed photos/videos can be
+      // tens of megabytes each and require a second network round-trip; making
+      // text wait behind all of them left an opened conversation blank for
+      // minutes after a deploy/reload. Each phase is still bounded and applied
+      // in server order, while live polling is allowed to continue below.
+      const restoreBatch = async batch => {
+        const processed = new Array(batch.length);
+        let nextIndex = 0;
+        const decryptWorker = async () => {
+          while (nextIndex < batch.length) {
+            const index = nextIndex++;
+            const msg = batch[index];
+            let rec = null;
+            if (msg.type === 'message') {
+              rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
+              if (rec && rec.pending) {
+                // Do not strand this envelope behind seenMsgIds. The ordinary
+                // pending queue replays it as soon as the verified key exists.
+                room.pendingDecrypt.push({ msgId:msg.id, content:msg.content, name:msg.name, time:formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt });
+                room.pendingHistoryRestore = true;
+                rec = null;
+              } else if (rec) {
+                rec.isMe = msg.from === room.token;
+              }
             }
+            processed[index] = rec;
           }
-          processed[index] = rec;
+        };
+        const decryptWorkerCount = Math.min(8, batch.length);
+        await Promise.all(Array.from({ length:decryptWorkerCount }, () => decryptWorker()));
+
+        for (let index = 0; index < batch.length; index++) {
+          const msg = batch[index];
+          const rec = processed[index];
+          if (!rec || room.messages.some(existing => existing.id === msg.id)) continue;
+          const ledgerDeleteAt = room.deleteLedger.get(msg.id);
+          if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) continue;
+          room.messages.push(rec);
+          if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
+            rec.deleteAt = ledgerDeleteAt;
+            rec.timerStarted = true;
+            const handle = setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs);
+            room.msgTimers.set(msg.id, handle);
+          } else if (!rec.isMe && msg.type === 'message') {
+            room.readConfirmIds.push(msg.id);
+          }
         }
+        room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
       };
-      const decryptWorkerCount = Math.min(8, unseen.length);
-      await Promise.all(Array.from({ length:decryptWorkerCount }, () => decryptWorker()));
 
-      for (let index = 0; index < unseen.length; index++) {
-        const msg = unseen[index];
-        const rec = processed[index];
-        if (!rec) continue;
-
-        const ledgerDeleteAt = room.deleteLedger.get(msg.id);
-        if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) continue; // already expired before this reload — stays gone
-
-        room.messages.push(rec);
-        if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
-          // Timer was already counting down when the app last closed —
-          // resume with the time actually left instead of restarting it.
-          rec.deleteAt = ledgerDeleteAt;
-          rec.timerStarted = true; // stop handleReadReceipts below from restarting it fresh
-          const handle = setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs);
-          room.msgTimers.set(msg.id, handle);
-        } else if (!rec.isMe && msg.type === 'message') {
-          // Never read/confirmed before the reload — queue it the same way
-          // a freshly-arrived message would be, so it still gets marked
-          // read (and its receiver-side timer, if any, still starts) the
-          // normal way once this room is actually looked at.
-          room.readConfirmIds.push(msg.id);
-        }
-      }
+      const inlineMessages = unseen.filter(msg => typeof msg.content !== 'string' || !msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
+      const attachmentMessages = unseen.filter(msg => typeof msg.content === 'string' && msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
+      await restoreBatch(inlineMessages);
+      if (inlineMessages.length && isRoomVisible(room)) renderChatBody(room);
+      await restoreBatch(attachmentMessages);
     }
 
     if (data.readReceipts && data.readReceipts.length > 0) {
@@ -15509,10 +15514,7 @@ function restoreRoomHistoryInBackground(room) {
     } else if (document.getElementById('s-vault-list')?.classList.contains('active')) {
       renderVaultList();
     }
-    if (room.pollAfterHistoryRestore) {
-      room.pollAfterHistoryRestore = false;
-      doPoll(room);
-    }
+    if (room.pollAfterHistoryRestore) { room.pollAfterHistoryRestore = false; doPoll(room); }
   });
   return job;
 }
@@ -15668,11 +15670,11 @@ function startRoomPolling(room) {
 
 async function doPoll(room) {
   if (!room.code || !room.token) return;
-  if (room.historyRestorePromise) {
-    room.pollAfterHistoryRestore = true;
-    return;
-  }
-  if (room.isPollRunning) return; // skip if previous poll for this room still in progress
+  // Full history restoration can spend a long time fetching old encrypted
+  // media. It must never gate the live delta stream: seenMsgIds makes an
+  // overlapping bootstrap/poll response idempotent, and lastSeq is advanced
+  // before the slow media work starts. This keeps new text visible at once.
+  if (room.isPollRunning) { room.pollAfterHistoryRestore = true; return; }
   room.isPollRunning = true;
   try {
     const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq });
@@ -15912,6 +15914,10 @@ async function doPoll(room) {
     console.error('POLL ERROR', room.code, e.message);
   } finally {
     room.isPollRunning = false;
+    if (room.pollAfterHistoryRestore) {
+      room.pollAfterHistoryRestore = false;
+      queueMicrotask(() => doPoll(room));
+    }
   }
 }
 

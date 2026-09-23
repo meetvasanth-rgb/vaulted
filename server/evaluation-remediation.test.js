@@ -54,10 +54,10 @@ test('startup restores conversations concurrently and prioritizes the room a use
 });
 
 test('text-heavy encrypted history decrypts in bounded parallel batches without reordering', () => {
-  assert.match(client, /const decryptWorkerCount = Math\.min\(8, unseen\.length\)/);
+  assert.match(client, /const decryptWorkerCount = Math\.min\(8, batch\.length\)/);
   assert.match(client, /Promise\.all\(Array\.from\(\{ length:decryptWorkerCount \}, \(\) => decryptWorker\(\)\)\)/);
-  const parallelAt = client.indexOf('const decryptWorkerCount = Math.min(8, unseen.length)');
-  const orderedAt = client.indexOf('for (let index = 0; index < unseen.length; index++)', parallelAt);
+  const parallelAt = client.indexOf('const decryptWorkerCount = Math.min(8, batch.length)');
+  const orderedAt = client.indexOf('for (let index = 0; index < batch.length; index++)', parallelAt);
   assert.ok(parallelAt > -1 && orderedAt > parallelAt,
     'decrypted records must be applied in their original server order');
 });
@@ -65,12 +65,23 @@ test('text-heavy encrypted history decrypts in bounded parallel batches without 
 test('a restored conversation unlocks before its encrypted history rebuild finishes', () => {
   assert.match(client, /function restoreRoomHistoryInBackground\(room\)/);
   assert.match(client, /historyRestorePromise: null/);
-  assert.match(client, /if \(room\.historyRestorePromise\) \{[\s\S]*room\.pollAfterHistoryRestore = true;[\s\S]*return;/);
+  assert.doesNotMatch(client, /if \(room\.historyRestorePromise\) \{[\s\S]{0,160}return;/);
   const restoreReadyAt = client.indexOf('room.restorePending = false;', client.indexOf('const canRestoreHistory'));
   const backgroundAt = client.indexOf('restoreRoomHistoryInBackground(room)', restoreReadyAt);
   assert.ok(restoreReadyAt > -1 && backgroundAt > restoreReadyAt,
     'the inbox row must unlock before history restoration begins');
   assert.doesNotMatch(client.slice(client.indexOf('const canRestoreHistory'), backgroundAt), /await restoreRoomHistory\(room\)/);
+});
+
+test('live polling continues while old media restores and inline history paints first', () => {
+  assert.match(client, /const inlineMessages = unseen\.filter/);
+  assert.match(client, /const attachmentMessages = unseen\.filter/);
+  const inlineAt = client.indexOf('await restoreBatch(inlineMessages)');
+  const attachmentAt = client.indexOf('await restoreBatch(attachmentMessages)');
+  assert.ok(inlineAt > -1 && attachmentAt > inlineAt,
+    'inline ciphertext must restore before object-backed attachments');
+  assert.match(client, /if \(room\.isPollRunning\) \{ room\.pollAfterHistoryRestore = true; return; \}/);
+  assert.match(client, /queueMicrotask\(\(\) => doPoll\(room\)\)/);
 });
 
 test('messages sent while history restores retain timestamps for chronological merging', () => {
