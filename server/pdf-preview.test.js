@@ -14,7 +14,7 @@ const ios = fs.readFileSync(path.join(root, 'mobile/ios/App/App/SceneDelegate.sw
 test('PDF previews render only on-device and travel inside the encrypted file payload', () => {
   assert.match(client, /import\('\/vendor\/pdf\.min\.mjs'\)/);
   assert.match(client, /getDocument\(\{ data:bytes, isEvalSupported:false \}\)/);
-  assert.match(client, /pdfPreview, pageCount:Number\(pageCount\)/);
+  assert.match(client, /pdfPreview,[\s\S]{0,100}pageCount:Number\(pageCount\)/);
   assert.match(client, /safeImageDataUri\('image\/jpeg', parsed\.pdfPreview\)/);
   assert.doesNotMatch(client, /cdnjs|unpkg|jsdelivr/);
 });

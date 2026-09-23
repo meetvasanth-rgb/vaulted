@@ -132,12 +132,12 @@ test('selection shows progress before compression and waits for every photo befo
   vm.createContext(context);vm.runInContext('async '+extract('handleFileSelect'),context);
   const pending=context.handleFileSelect({target:{files:[{name:'a',size:10,type:'image/jpeg'},{name:'b',size:10,type:'image/jpeg'}]}});
   await Promise.resolve();
-  assert.deepEqual(events,['visible','Preparing photo 1 of 2…','compress-a']);
+  assert.deepEqual(events,['visible','Encrypting image 1 of 2…','compress-a']);
   release();await pending;
-  assert.deepEqual(events.slice(3),['Preparing photo 2 of 2…','compress-b','closed','options-2']);
+  assert.deepEqual(events.slice(3),['Encrypting image 2 of 2…','compress-b','closed','options-2']);
   events.length=0;context.compressImageFile=async()=>{throw Error('read failed');};
   await context.handleFileSelect({target:{files:[{name:'c',size:10,type:'image/jpeg'}]}});
-  assert.deepEqual(events,['visible','Preparing photo 1 of 1…','error','closed']);
+  assert.deepEqual(events,['visible','Encrypting image 1 of 1…','error','closed']);
 });
 
 function approvalStorage() {

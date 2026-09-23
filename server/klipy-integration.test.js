@@ -47,6 +47,6 @@ test('inbox navigation paints the chat shell before rendering GIF history', () =
 test('native history caching is sliced outside the foreground render path', () => {
   assert.match(client, /function scheduleSecureNativeHistoryCache\(room, records\)/);
   assert.match(client, /requestIdleCallback\(runOne, \{ timeout:1000 \}\)/);
-  assert.match(client, /if \(animate\) secureNativeStoreMessage\(room, rec\)/);
+  assert.match(client, /if \(animate && !rec\.pending\) secureNativeStoreMessage\(room, rec\)/);
   assert.match(client, /scheduleSecureNativeHistoryCache\(room, room\.messages\)/);
 });

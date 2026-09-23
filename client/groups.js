@@ -146,20 +146,29 @@ async function downloadPrivateGroupAttachment(state, group, attachmentId) {
   return ciphertext;
 }
 
-async function sendPrivateGroupAttachment(payload) {
+async function sendPrivateGroupAttachment(payload, onProgress) {
   const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
   const key = group?.keys?.[group?.keyVersion];
   if (!state || !group || !key) throw new Error('Group encryption key is not ready');
   const messageId = newMsgId();
-  const encryptedPayload = await encryptPrivateGroupValue(key, payload);
-  const attachmentId = await uploadPrivateGroupAttachment(state, group, messageId, encryptedPayload);
-  const ciphertext = await encryptPrivateGroupValue(key, { type:'group-attachment', attachmentId });
-  const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
-    groupId:group.id, messageId, ciphertext, attachmentId });
-  if (result.error) throw new Error(result.error);
-  group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, attachmentId,
-    attachment:payload, createdAt:result.createdAt, keyVersion:result.keyVersion }];
-  group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
+  const pending = { id:messageId, senderId:state.accountId, attachmentId:null, attachment:payload,
+    createdAt:Date.now(), keyVersion:group.keyVersion, pending:true };
+  group.messages = [...(group.messages || []), pending]; renderPrivateGroupMessages(group);
+  try {
+    onProgress?.('Encrypting attachment…');
+    const encryptedPayload = await encryptPrivateGroupValue(key, payload);
+    onProgress?.('Sending securely…');
+    const attachmentId = await uploadPrivateGroupAttachment(state, group, messageId, encryptedPayload);
+    const ciphertext = await encryptPrivateGroupValue(key, { type:'group-attachment', attachmentId });
+    const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
+      groupId:group.id, messageId, ciphertext, attachmentId });
+    if (result.error) throw new Error(result.error);
+    pending.attachmentId = attachmentId; pending.createdAt = result.createdAt; pending.keyVersion = result.keyVersion; pending.pending = false;
+    group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
+  } catch (error) {
+    group.messages = (group.messages || []).filter(message => message !== pending);
+    renderPrivateGroupMessages(group); throw error;
+  }
 }
 
 async function sendPrivateGroupGif(item, searchQuery) {
@@ -184,24 +193,33 @@ async function handlePrivateGroupFileSelect(event) {
   const files = Array.from(event.target.files || []); event.target.value = '';
   if (!files.length) return;
   for (const file of files) {
+    const isVideo = String(file.type || '').startsWith('video/');
+    const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : (String(file.type || '').startsWith('image/') ? 'Encrypting image…' : 'Encrypting attachment…'));
     try {
       if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
       let base64, mime = file.type || 'application/octet-stream';
       if (mime.startsWith('image/')) {
-        toast('Preparing photo…');
+        progress.update('Encrypting image…');
+        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const compressed = await compressImageFile(file); base64 = compressed.base64; mime = compressed.mime;
-        if (!await allowLocalImageSend([base64], message => toast(message), { persist:true })) continue;
-      } else base64 = await fileToBase64(file);
+        if (!await allowLocalImageSend([base64], progress.update, { persist:true })) continue;
+      } else {
+        progress.update(isVideo ? 'Encrypting video…' : 'Encrypting attachment…');
+        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        base64 = await fileToBase64(file);
+      }
+      const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
       // Same first-page thumbnail and page count as direct conversations; both
       // ride inside the encrypted payload, never as plaintext.
       const pdfPreview = !mime.startsWith('image/') && isPdfAttachment(mime, file.name)
         ? await createPdfFirstPagePreview(base64) : null;
-      toast('Sending attachment…');
       await sendPrivateGroupAttachment({ type:mime.startsWith('image/') ? 'group-image' : 'group-file',
         name:String(file.name || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64,
-        ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) });
-      toast(mime.startsWith('image/') ? 'Photo sent' : 'File sent');
+        ...(videoThumb && safeImageDataUri('image/jpeg', videoThumb) ? { videoThumb } : {}),
+        ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) }, progress.update);
+      toast(mime.startsWith('image/') ? 'Photo sent' : (isVideo ? 'Video sent' : 'File sent'));
     } catch (error) { toast(error.message || 'Attachment could not be sent'); }
+    finally { progress.close(); }
   }
 }
 
@@ -509,18 +527,25 @@ function renderPrivateGroupMessages(group) {
           ? `<div class="msg-media-wrap"><img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/></div>`
           : MEDIA_BLOCKED_HTML);
       usable = !!safeSrc && !(message.imageSafety && message.imageSafety !== 'allowed');
+      if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
     } else if (message.attachment?.type === 'group-file') {
       // Same cards as direct conversations: a first-page preview card for
       // PDFs, the plain file card (.msg-file) for everything else.
-      content = `<div class="msg-media-wrap">${isPdfAttachment(message.attachment.mime, message.attachment.name)
+      const isVideo = String(message.attachment.mime || '').startsWith('video/');
+      const card = isVideo
+        ? buildVideoAttachmentHtml({ id:message.id, name:message.attachment.name, thumb:message.attachment.videoThumb, pending:!!message.pending, group:true })
+        : isPdfAttachment(message.attachment.mime, message.attachment.name)
         ? privateGroupPdfCardHtml(message)
         : `<div class="msg-file" onclick="openPrivateGroupAttachment('${escHtml(message.id)}')" oncontextmenu="return false">
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>${escHtml(message.attachment.name || 'Attachment')}</span>
-      </div>`}</div>`;
+      </div>`;
+      content = `<div class="msg-media-wrap">${message.pending && !isVideo
+        ? `<div class="msg-upload-pending">${card}${attachmentUploadAnimationHtml()}</div>`
+        : card}</div>`;
     } else if (message.gif?.type === 'group-gif' && safeKlipyMediaUrl(message.gif.url)) {
       content = `<div class="group-message-attachment"><img src="${escHtml(message.gif.url)}" alt="${escHtml(message.gif.title || 'GIF')}" loading="lazy"></div>`;
     } else {
@@ -797,6 +822,14 @@ function openPrivateGroupImage(messageId) {
   viewImage(src, { zIndex:PRIVATE_GROUP_VIEWER_Z });
 }
 
+function openPrivateGroupVideo(messageId) {
+  if (wasJustLongPressed()) return;
+  const group = privateGroups.get(activePrivateGroupId);
+  const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
+  if (!attachment?.data || !String(attachment.mime || '').startsWith('video/')) { toast('Could not open video'); return; }
+  openVideoAttachmentViewer(attachment.mime, attachment.data, attachment.name || 'Video');
+}
+
 // Mirrors handleFileTap in direct conversations: PDFs open in the in-app
 // preview, every other file is saved through downloadDataUri.
 function openPrivateGroupAttachment(messageId) {
@@ -848,7 +881,8 @@ function forwardPrivateGroupAttachment(messageId) {
   const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview) ? attachment.pdfPreview : null;
   showForwardAttachmentPicker({
     kind:'file', fileName:attachment.name || (isImage ? 'vaultlix-image' : 'vaultlix-file'), mime, base64:attachment.data,
-    isImage, pdfPreview:thumbnail, pageCount:Number(attachment.pageCount) || 0, viewOnce:false,
+    isImage, pdfPreview:thumbnail, videoThumb:safeImageDataUri('image/jpeg', attachment.videoThumb) ? attachment.videoThumb : null,
+    pageCount:Number(attachment.pageCount) || 0, viewOnce:false,
   }, { includeActiveRoom:true });
 }
 
@@ -873,12 +907,20 @@ async function decodePrivateGroupMessage(group, state, message) {
   if (metadata?.type !== 'group-attachment' || !metadata.attachmentId) return { ...message, text:plaintext };
   const encryptedPayload = await downloadPrivateGroupAttachment(state, group, metadata.attachmentId);
   const payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
-  if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 26 * 1024 * 1024) {
+  if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 36 * 1024 * 1024) {
     throw new Error('Invalid group attachment');
+  }
+  if (payload.type === 'group-file') {
+    payload.videoThumb = String(payload.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', payload.videoThumb)
+      ? payload.videoThumb : null;
   }
   const decoded = { ...message, attachmentId:metadata.attachmentId, attachment:payload };
   if (payload.type === 'group-image' && message.senderId !== state.accountId && localImageSafetyEnabled()) {
     decoded.imageSafety = await checkLocalImages([payload.data], undefined, { persist:true });
+  }
+  if (payload.videoThumb && message.senderId !== state.accountId && localImageSafetyEnabled()) {
+    decoded.videoSafety = await checkLocalImages([payload.videoThumb], undefined, { persist:true });
+    if (decoded.videoSafety !== 'allowed') payload.videoThumb = null;
   }
   return decoded;
 }

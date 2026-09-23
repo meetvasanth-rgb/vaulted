@@ -831,6 +831,7 @@ body.select-mode .chat-ftr{display:none}
 /* Direct-conversation file cards use fixed dark text; keep them readable inside a dark "mine" group bubble. */
 .group-message.mine .msg-file { background:#ffffff24; border-color:transparent; color:#fff; }
 .group-message.mine .msg-file svg { stroke:#fff; }
+.group-message .msg-video-card{width:min(240px,64vw)}
 /* Compact PDF card inside group bubbles: narrower and shorter than the direct-chat card, still cropped from the top of page 1. */
 .group-message .msg-pdf-card { width:min(220px,62vw); }
 .group-message .msg-pdf-preview { height:128px; }
@@ -841,6 +842,16 @@ body.select-mode .chat-ftr{display:none}
 .attach-opt-icon svg { width:20px; height:20px; fill:none; stroke:#4A4038; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .attach-opt-label { font-size:10px; color:#8A7F72; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
+.msg-video-card{position:relative;width:min(260px,70vw);height:180px;overflow:hidden;border-radius:12px;background:linear-gradient(145deg,#3B2831,#171216);cursor:pointer;color:#fff;margin-top:4px}
+.msg-video-card img{display:block;width:100%;height:100%;object-fit:cover}.msg-video-card::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,#0009)}
+.msg-video-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:#682C43E8;box-shadow:0 4px 18px #0006}
+.msg-video-play svg{width:22px;height:22px;fill:#fff;stroke:none;margin-left:3px}.msg-video-name{position:absolute;z-index:2;left:10px;right:10px;bottom:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:600 11px/1.2 Inter,sans-serif}
+.msg-upload-pending{position:relative}.msg-upload-animation{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:12px;background:linear-gradient(145deg,#35101FDE,#171216E8);color:#fff;font:700 11px/1.2 Inter,sans-serif;letter-spacing:.02em;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.vault-upload-orbit{position:relative;width:48px;height:48px;display:grid;place-items:center}.vault-upload-orbit svg{width:21px;height:21px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;animation:vault-upload-lock 1.4s ease-in-out infinite}
+.vault-upload-orbit i{position:absolute;width:7px;height:7px;border-radius:50%;background:#C87588;box-shadow:0 0 12px #C87588}.vault-upload-orbit i:nth-child(1){animation:vault-upload-dot-a 1.7s linear infinite}.vault-upload-orbit i:nth-child(2){animation:vault-upload-dot-b 1.7s linear infinite}.vault-upload-orbit i:nth-child(3){animation:vault-upload-dot-c 1.7s linear infinite}
+@keyframes vault-upload-dot-a{from{transform:rotate(0) translateX(22px) rotate(0)}to{transform:rotate(360deg) translateX(22px) rotate(-360deg)}}@keyframes vault-upload-dot-b{from{transform:rotate(120deg) translateX(22px) rotate(-120deg)}to{transform:rotate(480deg) translateX(22px) rotate(-480deg)}}@keyframes vault-upload-dot-c{from{transform:rotate(240deg) translateX(22px) rotate(-240deg)}to{transform:rotate(600deg) translateX(22px) rotate(-600deg)}}@keyframes vault-upload-lock{50%{transform:scale(1.12);stroke:#F2CCD8}}
+.video-attachment-viewer{position:fixed;inset:0;z-index:10045;background:#080607;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));box-sizing:border-box}
+.video-attachment-viewer video{display:block;width:100%;height:100%;max-width:900px;max-height:calc(100dvh - 80px);object-fit:contain;background:#000}.video-attachment-close{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;z-index:2;width:42px;height:42px;border-radius:50%;background:#0009;color:#fff;font-size:27px;border:1px solid #ffffff33}
 .msg-gif{display:block;width:min(240px,70vw);min-height:120px;max-height:280px;object-fit:contain;border-radius:12px;background:#F3EEE6;cursor:pointer;content-visibility:auto}
 .klipy-picker{position:fixed;inset:0;z-index:10020;background:rgba(20,15,18,.52);display:flex;align-items:flex-end;justify-content:center}
 .klipy-sheet{width:min(620px,100%);height:min(72vh,650px);background:#fff;border-radius:24px 24px 0 0;padding:14px;display:flex;flex-direction:column;box-shadow:0 -14px 45px rgba(0,0,0,.2)}
@@ -1074,13 +1085,12 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 /* ── CONNECTION ACHIEVEMENTS ──────────────────────────────────── */
 .celebration-fireworks{position:fixed;inset:0;width:100%;height:100%;z-index:601;pointer-events:none;opacity:0;transition:opacity .2s ease}
 .celebration-fireworks.active{opacity:1}
-.achievement-celebration{position:fixed;inset:0;z-index:602;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;pointer-events:none;opacity:0;visibility:hidden;text-align:center;background:radial-gradient(circle at center,rgba(74,21,42,.76),rgba(45,12,24,.34) 46%,rgba(45,12,24,0) 72%);transition:opacity .3s ease,visibility 0s linear .3s}
+.achievement-celebration{position:fixed;inset:0;z-index:602;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;pointer-events:none;opacity:0;visibility:hidden;text-align:center;background:radial-gradient(circle at center,rgba(0,0,0,.34),rgba(0,0,0,.08) 50%,transparent 74%);transition:opacity .3s ease,visibility 0s linear .3s}
 .achievement-celebration.open{opacity:1;visibility:visible;transition:opacity .3s ease}
-.achievement-kicker{color:#F2CBD8;font:750 11px/1 Inter,sans-serif;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 2px 16px rgba(36,7,18,.9);transform:translateY(12px);opacity:0}
-.achievement-icon{margin:18px 0 12px;color:#F2CBD8;font:300 78px/1 "Cormorant Garamond",serif;text-shadow:0 3px 22px rgba(36,7,18,.9);transform:scale(.55);opacity:0}
-.achievement-title{max-width:520px;color:#FFF8F1;font:500 clamp(30px,8vw,52px)/1.08 "Cormorant Garamond",serif;text-shadow:0 3px 24px rgba(36,7,18,.95);transform:translateY(16px);opacity:0}
+.achievement-kicker{color:#fff;font:800 11px/1 Inter,sans-serif;letter-spacing:.24em;text-transform:uppercase;text-shadow:0 2px 14px #000;transform:translateY(12px);opacity:0}
+.achievement-icon{display:none}
+.achievement-title{max-width:520px;margin-top:15px;padding:15px 21px;border:1px solid rgba(255,255,255,.38);border-radius:22px;background:rgba(8,8,12,.66);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#fff;font:650 clamp(28px,7.5vw,48px)/1.08 "Cormorant Garamond",serif;text-shadow:0 2px 10px #000;box-shadow:0 0 0 2px rgba(255,80,150,.12),0 12px 42px rgba(0,0,0,.36);transform:translateY(16px);opacity:0}
 .achievement-celebration.open .achievement-kicker{animation:achievement-rise .55s .08s ease forwards}
-.achievement-celebration.open .achievement-icon{animation:achievement-pop .7s .16s cubic-bezier(.2,1.55,.45,1) forwards}
 .achievement-celebration.open .achievement-title{animation:achievement-rise .65s .28s ease forwards}
 @keyframes achievement-rise{to{transform:translateY(0);opacity:1}}
 @keyframes achievement-pop{to{transform:scale(1);opacity:1}}
@@ -1100,7 +1110,7 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .achievement-badge-name{margin-top:10px;color:#392C32;font:750 12.5px/1.25 Manrope,Inter,sans-serif}.achievement-badge-state{margin-top:5px;color:#95878D;font:600 10.5px/1.25 Inter,sans-serif}.achievement-badge-card.earned .achievement-badge-state{color:#682C43}
 .achievement-progress{width:100%;height:4px;margin-top:auto;border-radius:999px;background:#EEE8EA;overflow:hidden}.achievement-progress i{display:block;height:100%;border-radius:inherit;background:#C9BBC0}.achievement-badge-card.earned .achievement-progress i{background:#8A3A58}
 @media (min-width:620px){.achievement-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.achievement-celebration{transition:opacity .15s ease}.achievement-celebration.open .achievement-kicker,.achievement-celebration.open .achievement-icon,.achievement-celebration.open .achievement-title{animation:none;transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.celebration-fireworks{display:none}.achievement-celebration{transition:opacity .15s ease}.achievement-celebration.open .achievement-kicker,.achievement-celebration.open .achievement-title{animation:none;transform:none;opacity:1}}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
 #number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}
@@ -5501,13 +5511,12 @@ function loadRoomSession(code) {
 // encrypted account backup, so relationship activity is never server-readable.
 const ACHIEVEMENT_STATE_KEY = 'vaultlix_achievement_state_v1';
 const MILESTONES_SHOWN_KEY = 'vaultlix_milestones_shown'; // legacy migration
-const CELEBRATION_DAY_KEY = 'vaultlix_last_full_celebration_day';
 const MILESTONE_DEFS = {
   conversation_started:{ id:'conversation_started', value:'✦', label:'first mutual conversation' },
   first_voice:{ id:'first_voice', value:'◉', label:'first encrypted voice note' },
   first_media:{ id:'first_media', value:'◇', label:'first private media share' },
-  first_call:{ id:'first_call', value:'☎', label:'first secure call' },
-  first_video:{ id:'first_video', value:'▣', label:'first secure video call' },
+  first_call:{ id:'first_call', value:'✦', label:'first secure call' },
+  first_video:{ id:'first_video', value:'✦', label:'first secure video call' },
   call60:{ id:'call60', value:'60', label:'minutes securely connected' },
   call300:{ id:'call300', value:'5', label:'hours securely connected' },
   call1500:{ id:'call1500', value:'25', label:'hours securely connected' },
@@ -5705,12 +5714,12 @@ function openConversationAchievements() {
       {name:'100-day Spark',icon:'✦100',current:spark,target:100,unit:'days'},
     ]),
     achievementGroupHtml('Secure calls', [
-      {name:'First secure call',icon:'☎',current:callCount,target:1},
+      {name:'First secure call',icon:'✦',current:callCount,target:1},
       {name:'60 call minutes',icon:'60m',current:callMinutes,target:60,unit:'minutes'},
       {name:'5 call hours',icon:'5h',current:callMinutes,target:300,unit:'minutes'},
       {name:'25 call hours',icon:'25h',current:callMinutes,target:1500,unit:'minutes'},
-      {name:'First video call',icon:'▣',current:videoCount,target:1},
-      {name:'10 video calls',icon:'▣10',current:videoCount,target:10,unit:'calls'},
+      {name:'First video call',icon:'✦',current:videoCount,target:1},
+      {name:'10 video calls',icon:'10',current:videoCount,target:10,unit:'calls'},
     ]),
     achievementGroupHtml('Shared moments', [
       {name:'First voice note',icon:'◉',current:voiceCount,target:1},
@@ -5781,7 +5790,7 @@ async function showAchievementCelebration(milestone) {
   const title = document.getElementById('achievement-title');
   if (!ceremony || !icon || !title) return;
   const numericValue = /^\d+$/.test(String(milestone.value || ''));
-  icon.textContent = numericValue ? '✦' : String(milestone.value || '✦');
+  icon.textContent = '✦';
   const label = String(milestone.label || 'private connection milestone');
   title.textContent = numericValue ? `${milestone.value} ${label}` : label.charAt(0).toUpperCase() + label.slice(1);
   ceremony.classList.remove('open');
@@ -5794,11 +5803,6 @@ async function showAchievementCelebration(milestone) {
 }
 function launchCelebrationFireworks() {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const today = String(achievementDayNumber());
-  try {
-    if (localStorage.getItem(CELEBRATION_DAY_KEY) === today) return;
-    localStorage.setItem(CELEBRATION_DAY_KEY, today);
-  } catch(e) {}
   const canvas = document.getElementById('celebration-fireworks');
   if (!canvas) return;
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -5808,18 +5812,21 @@ function launchCelebrationFireworks() {
   canvas.style.height = `${innerHeight}px`;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  const colors = ['#F2CBD8','#D36A8B','#FFF8F1','#9E4866','#FFFFFF'];
+  const colors = ['#FF3B6B','#FFB800','#33D17A','#2EC5FF','#8B5CF6','#FF70C9','#FFFFFF'];
   const particles = [];
   const burst = (x, y) => {
-    for (let i = 0; i < 42; i++) {
-      const angle = Math.PI * 2 * i / 42 + Math.random() * .12;
-      const speed = 2.1 + Math.random() * 4.2;
-      particles.push({ x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1.2,life:1,size:1.8+Math.random()*2.8,color:colors[i%colors.length] });
+    for (let i = 0; i < 58; i++) {
+      const angle = Math.PI * 2 * i / 58 + Math.random() * .14;
+      const speed = 2.4 + Math.random() * 5.2;
+      particles.push({ x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1.4,life:1,size:1.8+Math.random()*3.2,color:colors[(i + Math.floor(Math.random()*colors.length))%colors.length] });
     }
   };
   burst(innerWidth * .22, innerHeight * .26);
   burst(innerWidth * .78, innerHeight * .22);
-  setTimeout(() => burst(innerWidth * .5, innerHeight * .4), 260);
+  setTimeout(() => burst(innerWidth * .5, innerHeight * .36), 220);
+  setTimeout(() => burst(innerWidth * .16, innerHeight * .55), 560);
+  setTimeout(() => burst(innerWidth * .84, innerHeight * .52), 760);
+  setTimeout(() => burst(innerWidth * .5, innerHeight * .18), 1050);
   canvas.classList.add('active');
   const started = performance.now();
   const frame = now => {
@@ -5833,7 +5840,7 @@ function launchCelebrationFireworks() {
       ctx.fillRect(particle.x, particle.y, particle.size, particle.size * 2.2);
     }
     ctx.globalAlpha = 1;
-    if (now - started < 1900 && particles.some(p => p.life > 0)) requestAnimationFrame(frame);
+    if (now - started < 3000 && particles.some(p => p.life > 0)) requestAnimationFrame(frame);
     else { ctx.clearRect(0, 0, innerWidth, innerHeight); canvas.classList.remove('active'); }
   };
   requestAnimationFrame(frame);
@@ -9739,6 +9746,7 @@ function recordImagesForLocalCheck(rec) {
   if (rec.kind === 'file' && (rec.isImage || String(rec.mime || '').startsWith('image/'))) images.push(rec.base64);
   if (rec.kind === 'album') for (const item of rec.images || []) images.push(item.base64);
   if (rec.pdfPreview) images.push(rec.pdfPreview);
+  if (rec.videoThumb) images.push(rec.videoThumb);
   if (rec.replyData?.thumb) images.push(rec.replyData.thumb);
   return images;
 }
@@ -14219,7 +14227,7 @@ async function forwardAttachmentToRoom(target, rec) {
       if (!await sendAlbumMessage(target, items, false)) return false;
     } else {
       const file = { name: rec.fileName || 'vaultlix-file', type: rec.mime || 'application/octet-stream' };
-      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime, rec.pdfPreview, rec.pageCount)) return false;
+      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime, rec.pdfPreview, rec.pageCount, undefined, rec.videoThumb)) return false;
     }
     renderRoomTabs();
     toast(`Forwarded to ${roomDisplayLabel(target)}`);
@@ -14465,6 +14473,42 @@ function buildReplyQuotePhotoHtml(replyData) {
   return `<div class="msg-reply-quote msg-reply-quote-photo">${thumbHtml}<span>📷 ${escHtml(replyData.text || 'Photo')}</span></div>`;
 }
 
+function attachmentUploadAnimationHtml(label = 'Encrypting & sending…') {
+  return `<span class="msg-upload-animation" role="status"><span class="vault-upload-orbit" aria-hidden="true"><i></i><i></i><i></i><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>${escHtml(label)}</span></span>`;
+}
+
+function buildVideoAttachmentHtml({ id, name, thumb, pending = false, group = false }) {
+  const safeThumb = thumb ? safeImageDataUri('image/jpeg', thumb) : null;
+  const preview = safeThumb ? `<img src="${safeThumb}" alt="Video preview"/>` : '';
+  const handler = group ? `openPrivateGroupVideo('${escHtml(id)}')` : `handleVideoTap('${escHtml(id)}')`;
+  return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card" onclick="${handler}" oncontextmenu="return false">${preview}<span class="msg-video-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span><span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml() : ''}</div>`;
+}
+
+function openVideoAttachmentViewer(mime, base64, name) {
+  if (!/^video\/[a-zA-Z0-9.+-]{1,80}$/.test(String(mime || '')) || !isValidMediaBase64(base64)) {
+    toast('This video is unavailable.'); return;
+  }
+  closeVideoAttachmentViewer();
+  const overlay = document.createElement('div'); overlay.id = 'video-attachment-viewer'; overlay.className = 'video-attachment-viewer';
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'video-attachment-close'; close.setAttribute('aria-label','Close video'); close.textContent = '×'; close.onclick = closeVideoAttachmentViewer;
+  const video = document.createElement('video'); video.controls = true; video.autoplay = true; video.playsInline = true; video.preload = 'metadata'; video.setAttribute('aria-label', name || 'Video attachment');
+  video.src = `data:${mime};base64,${base64}`;
+  overlay.append(close, video); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
+  document.body.appendChild(overlay); video.play().catch(() => {});
+}
+function closeVideoAttachmentViewer() {
+  const overlay = document.getElementById('video-attachment-viewer');
+  const video = overlay?.querySelector('video'); if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+  overlay?.remove();
+}
+
+function handleVideoTap(msgId) {
+  if (wasJustLongPressed()) return;
+  if (selectMode) { toggleMessageSelection(msgId); return; }
+  const rec = findMessageRec(msgId); if (!rec || !String(rec.mime || '').startsWith('video/')) return;
+  openVideoAttachmentViewer(rec.mime, rec.base64, rec.fileName);
+}
+
 function sanitizeStatusReplyData(value) {
   if (!value || value.type !== 'status' || !/^[a-f0-9-]{36}$/i.test(String(value.statusId || ''))) return null;
   const statusType = ['text','image','video'].includes(value.statusType) ? value.statusType : 'text';
@@ -14547,8 +14591,9 @@ function needsAttachmentReveal(rec) {
   // voice/video message's reply thumbnail. Keep the latter opt-in.
   const isPhoto = rec.kind === 'file' && rec.isImage && !!rec.base64;
   const isAlbum = rec.kind === 'album' && rec.images?.length > 0 && rec.images.every(image => !!image.base64);
+  const isScreenedVideoPreview = rec.kind === 'file' && String(rec.mime || '').startsWith('video/') && !!rec.videoThumb;
   const isScreenedStatusPreview = rec.replyData?.type === 'status' && !!rec.replyData.thumb;
-  return !((isPhoto || isAlbum || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
+  return !((isPhoto || isAlbum || isScreenedVideoPreview || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
 }
 function renderMessageRecord(room, rec, animate) {
   const body = document.getElementById('chat-body');
@@ -14570,7 +14615,7 @@ function renderMessageRecord(room, rec, animate) {
   // deletion can destroy that key before cleaning up the SQLCipher row.
   // Live arrivals are cached immediately. Bulk history is queued by
   // renderChatBody after first paint so opening a room never waits on disk.
-  if (animate) secureNativeStoreMessage(room, rec);
+  if (animate && !rec.pending) secureNativeStoreMessage(room, rec);
 
   const div = document.createElement('div');
   div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
@@ -14598,7 +14643,10 @@ function renderMessageRecord(room, rec, animate) {
   let contentHtml;
   if (rec.kind === 'file') {
     let mediaHtml;
-    if (rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed) {
+    const isVideo = String(rec.mime || '').startsWith('video/');
+    if (isVideo) {
+      mediaHtml = buildVideoAttachmentHtml({ id:rec.id, name:rec.fileName, thumb:rec.videoThumb, pending:!!rec.pending });
+    } else if (rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed) {
       // Hidden by default — this is the entire point of view-once: unlike
       // the regular disappearing timer, which leaves an image sitting
       // visible in the scroll for its whole countdown, this never renders
@@ -14640,6 +14688,7 @@ function renderMessageRecord(room, rec, animate) {
     // Reply/React/Select/Delete are reached via long-press (attachLongPress
     // below) or the thin timestamp row underneath, same as the bubble tap
     // does for text.
+    if (rec.pending && !isVideo) mediaHtml = `<div class="msg-upload-pending">${mediaHtml}${attachmentUploadAnimationHtml()}</div>`;
     contentHtml = `<div class="msg-media-wrap">${mediaHtml}</div>`;
   } else if (rec.kind === 'album') {
     // Several photos sent together — one grid bubble, not a wall of
@@ -15098,6 +15147,7 @@ function handleFileTap(msgId) {
   if (selectMode) { toggleMessageSelection(msgId); return; }
   const rec = findMessageRec(msgId);
   if (!rec) return;
+  if (String(rec.mime || '').startsWith('video/')) { handleVideoTap(msgId); return; }
   if (isPdfAttachment(rec.mime, rec.fileName)) { openPdfPreview(rec); return; }
   downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
 }
@@ -15270,7 +15320,8 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
       const pdfPreview = safeImageDataUri('image/jpeg', parsed.pdfPreview) ? parsed.pdfPreview : null;
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, pdfPreview, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false };
+      const videoThumb = String(parsed.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', parsed.videoThumb) ? parsed.videoThumb : null;
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false };
     }
     // Several photos picked together arrive as ONE message with an
     // images[] array (see sendAlbumMessage) rather than one message per
@@ -18026,32 +18077,39 @@ async function handleFileSelect(event) {
   const images = [];
   const others = [];
   const photoCount = valid.filter(file => file.type.startsWith('image/')).length;
-  const progress = photoCount ? beginPhotoSendProgress(photoCount) : null;
+  const videoCount = valid.filter(file => String(file.type || '').startsWith('video/')).length;
+  const progress = valid.length ? beginPhotoSendProgress(valid.length, photoCount ? `Encrypting ${photoCount === 1 ? 'image' : photoCount + ' images'}…` : (videoCount ? `Encrypting ${videoCount === 1 ? 'video' : videoCount + ' videos'}…` : 'Encrypting attachment…')) : null;
   let photoIndex = 0;
+  let videoIndex = 0;
   try {
     for (const file of valid) {
       if (file.type.startsWith('image/')) {
         // Compressed here, before anything else touches it — base64/encrypt/
         // send all work on the already-shrunk bytes, and so does the picker
         // preview below.
-        progress?.update(`Preparing photo ${++photoIndex} of ${photoCount}…`);
+        progress?.update(`Encrypting image ${++photoIndex} of ${photoCount}…`);
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const { base64, mime } = await compressImageFile(file);
         images.push({ file, base64, mime });
       } else {
+        const isVideo = String(file.type || '').startsWith('video/');
+        if (isVideo) progress?.update(`Encrypting video ${++videoIndex} of ${videoCount}…`);
+        else progress?.update('Encrypting attachment…');
+        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+        const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
         const base64 = await fileToBase64(file);
         const pdfPreview = isPdfAttachment(file.type, file.name)
           ? await createPdfFirstPagePreview(base64)
           : null;
-        others.push({ file, base64, pdfPreview });
+        others.push({ file, base64, pdfPreview, videoThumb });
       }
     }
 
     // Non-image files send immediately, one after another — view-once isn't a
     // meaningful concept for a PDF or a zip, so no picker needed for these.
-    for (const { file, base64, pdfPreview } of others) {
-      progress?.update('Sending attachments…');
-      await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount);
+    for (const { file, base64, pdfPreview, videoThumb } of others) {
+      progress?.update('Sending securely…');
+      await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount, progress?.update, videoThumb);
     }
   } catch (error) {
     toast('Could not prepare the selected attachments. Please select them again.');
@@ -18073,7 +18131,7 @@ async function handleFileSelect(event) {
 // its real post-compression type instead of the original file's — and size
 // is always derived from the base64 actually being sent rather than
 // file.size, since compression means those two routinely no longer match.
-async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress) {
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
@@ -18091,41 +18149,41 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // request actually targets a view-once message. Dropping the plaintext
   // copy because "it's already in here" reintroduces the bug that check was
   // added to fix — any member could delete any message for everyone.
-  const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview, pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce });
+  const safeVideoThumb = String(mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', videoThumb) ? videoThumb : null;
+  const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview,
+    videoThumb:safeVideoThumb,
+    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce });
+  const rec = {
+    id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
+    fileName: file.name, mime, base64, isImage, pdfPreview, videoThumb:safeVideoThumb,
+    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, viewed: false, pending:true,
+    receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
+  };
+  if (rec.videoThumb) localRecordChecks.set(rec, 'allowed');
+  room.messages.push(rec); room.lastMessageAt = sentAt;
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+  const discardPending = () => {
+    const index = room.messages.indexOf(rec); if (index >= 0) room.messages.splice(index, 1);
+    if (room.code === activeRoomCode) renderChatBody(room);
+  };
   let encryptedPayload;
   try {
-    onProgress?.('Encrypting photos…');
+    onProgress?.(String(mime || '').startsWith('video/') ? 'Encrypting video…' : (isImage ? 'Encrypting image…' : 'Encrypting attachment…'));
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
+    discardPending();
     toast("Couldn't encrypt — message not sent");
     return false;
   }
   let attachmentId;
   try {
-    onProgress?.('Sending photos…');
+    onProgress?.('Sending securely…');
     attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
   } catch (error) {
+    discardPending();
     toast('Could not securely upload file');
     return false;
   }
-
-  // Same fix as text messages: generate the real id up front and send it to
-  // the server instead of a temp-id-then-rename. File sends previously kept
-  // the old temp-id pattern — if a read receipt for this message came back
-  // on our own next poll before the /api/send response (and its rename) had
-  // landed, handleReadReceipts looked it up by the real server id, found no
-  // matching record (still tagged with the temp id), and silently dropped
-  // it. The server never re-sends a receipt once reported, so that message's
-  // disappearing timer would never start — it just sat on screen forever.
-  const rec = {
-    id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
-    fileName: file.name, mime, base64, isImage, pdfPreview, pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, viewed: false,
-    receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
-  };
-  room.messages.push(rec);
-  room.lastMessageAt = sentAt;
-  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
-  else secureNativeStoreMessage(room, rec);
 
   try {
     // viewOnce also rides along as a plain top-level field, alongside (not
@@ -18139,8 +18197,12 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
       attachmentId, msgId, viewOnce:!!viewOnce,
     });
     if (result?.error) throw new Error(result.error);
+    rec.pending = false;
+    if (room.code === activeRoomCode) renderChatBody(room);
+    else secureNativeStoreMessage(room, rec);
     return true;
   } catch(e) {
+    discardPending();
     toast('Failed to send file');
     return false;
   }
@@ -18454,7 +18516,7 @@ function seekVoice(e, msgId) {
 // only the recipient's side is gated.
 // items: array of { file, base64, mime } — one photo or several from a
 // multi-select all share the single choice made here.
-function beginPhotoSendProgress(count) {
+function beginPhotoSendProgress(count, initialMessage = '') {
   let host = document.getElementById('photo-send-progress');
   if (!host) {
     host = document.createElement('div'); host.id = 'photo-send-progress';
@@ -18463,7 +18525,7 @@ function beginPhotoSendProgress(count) {
   const notice = document.createElement('div'); notice.className = 'photo-send-status';
   notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
   const spinner = document.createElement('span'); spinner.className = 'photo-send-spinner'; spinner.setAttribute('aria-hidden', 'true');
-  const label = document.createElement('span'); label.textContent = `Preparing ${count === 1 ? 'photo' : count + ' photos'}…`;
+  const label = document.createElement('span'); label.textContent = initialMessage || `Encrypting ${count === 1 ? 'image' : count + ' images'}…`;
   notice.append(spinner, label); host.appendChild(notice);
   return {
     update(message) { label.textContent = message; },
@@ -18597,11 +18659,42 @@ function blobToBase64(blob) {
   });
 }
 
+function createVideoAttachmentThumbnail(file, maxDim = 480) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    let settled = false;
+    const finish = value => { if (settled) return; settled = true; clearTimeout(timeout); URL.revokeObjectURL(url); video.removeAttribute('src'); video.load(); resolve(value); };
+    const capture = () => {
+      if (!video.videoWidth || !video.videoHeight) { finish(null); return; }
+      try {
+        const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', .68).split(',')[1] || null);
+      } catch (_) { finish(null); }
+    };
+    const timeout = setTimeout(() => finish(null), 8000);
+    video.muted = true; video.playsInline = true; video.preload = 'metadata';
+    video.onerror = () => finish(null);
+    video.onloadeddata = capture;
+    video.onloadedmetadata = () => {
+      if (video.duration > .2) {
+        video.onseeked = capture;
+        try { video.currentTime = Math.min(.25, video.duration / 3); } catch (_) { capture(); }
+      }
+    };
+    video.src = url; video.load();
+  });
+}
+
 // Compress a photo before it's ever encrypted/sent — same idea as
 // WhatsApp's default "send with compression": resize to a sane max
 // dimension and re-encode as JPEG at a moderate quality, which is what
 // actually drives the size down (camera photos routinely run 3-8MB; a
-// 1600px-wide JPEG at 75% quality is typically a few hundred KB with no
+// 1280px-wide JPEG at 72% quality is typically a few hundred KB with no
 // visible difference on a phone screen). GIFs are left untouched entirely —
 // a canvas re-encode only ever captures a single frame, which would
 // silently kill the animation. Small files aren't worth re-encoding at all
@@ -18609,8 +18702,8 @@ function blobToBase64(blob) {
 // no real size win). Falls back to the original bytes if anything about
 // the compression path fails, or if it didn't actually end up smaller.
 async function compressImageFile(file) {
-  const MAX_DIM = 1600;
-  const QUALITY = 0.75;
+  const MAX_DIM = 1280;
+  const QUALITY = 0.72;
   const MIN_SIZE_TO_BOTHER = 150 * 1024;
   if (file.type === 'image/gif' || file.size < MIN_SIZE_TO_BOTHER) {
     return { base64: await fileToBase64(file), mime: file.type };

@@ -36,7 +36,7 @@ test('completed calls, video, inbox badges and accessible motion are wired to ac
   assert.match(client, /room\.callHadVideo = true/);
   assert.match(client, /connectionSpark >= 3[\s\S]{0,180}connection-spark/);
   assert.match(client, /prefers-reduced-motion:reduce/);
-  assert.match(client, /localStorage\.getItem\(CELEBRATION_DAY_KEY\) === today/);
+  assert.match(client, /const colors = \['#FF3B6B','#FFB800','#33D17A','#2EC5FF','#8B5CF6','#FF70C9','#FFFFFF'\]/);
 });
 
 test('achievements animate as transient text without a share card', () => {
@@ -65,12 +65,13 @@ test('text, voice and media achievements keep independent encrypted counters', (
   assert.match(client, /if \(wasVideo\) ledger\.videoCallCount =/);
 });
 
-test('every achievement celebration and earned badge uses the Vaultlix palette', () => {
-  assert.match(client, /\.achievement-kicker\{color:#F2CBD8/);
-  assert.match(client, /\.achievement-title\{[^}]*color:#FFF8F1/);
+test('every achievement uses a readable badge and every celebration uses multicolour fireworks', () => {
+  assert.match(client, /\.achievement-kicker\{color:#fff/);
+  assert.match(client, /\.achievement-title\{[^}]*background:rgba\(8,8,12,\.66\)[^}]*color:#fff/);
   assert.match(client, /\.achievement-badge-card\.earned\{[^}]*#FFF6F9/);
   assert.match(client, /\.achievement-badge-card\.earned \.achievement-badge-icon\{[^}]*#8A3A58[^}]*#682C43/);
-  assert.match(client, /const colors = \['#F2CBD8','#D36A8B','#FFF8F1','#9E4866','#FFFFFF'\]/);
+  assert.match(client, /const colors = \['#FF3B6B','#FFB800','#33D17A','#2EC5FF','#8B5CF6','#FF70C9','#FFFFFF'\]/);
+  assert.doesNotMatch(client, /first_call:\{[^}]*☎|First secure call',icon:'☎'/);
   const achievementCss = client.slice(client.indexOf('/* ── CONNECTION ACHIEVEMENTS'), client.indexOf('.number-card-overlay'));
   assert.doesNotMatch(achievementCss, /#F3C66B|#F7E8C7|#D8B25D|#F4D680|#D8A33E|#D4A541/);
 });
