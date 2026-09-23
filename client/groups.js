@@ -32,6 +32,8 @@ let privateGroupVoiceRecorder = null;
 let privateGroupVoiceStream = null;
 let privateGroupVoiceChunks = [];
 let privateGroupVoiceStartedAt = 0;
+let openingPrivateGroupId = null;
+let privateGroupOpenRequestId = 0;
 
 function updatePrivateGroupComposer() {
   const footer = document.getElementById('group-chat-footer');
@@ -311,19 +313,39 @@ async function createPrivateGroup() {
 
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
-  activePrivateGroupId = id; group.unread = 0;
-  const input = document.getElementById('group-message-input');
-  if (input) input.value = '';
-  updatePrivateGroupComposer();
-  document.getElementById('group-chat-title').textContent = group.name || 'Private group';
-  document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
-  document.getElementById('group-chat').classList.add('open');
-  document.getElementById('group-chat').setAttribute('aria-hidden','false');
-  renderPrivateGroupMessages(group); await pollPrivateGroup(true);
-  clearInterval(groupPollTimer); groupPollTimer = setInterval(() => pollPrivateGroup(false), 3000);
+  const requestId = ++privateGroupOpenRequestId;
+  openingPrivateGroupId = id;
+  renderVaultList();
+  try {
+    // Download, decrypt and hydrate attachments while the inbox remains on
+    // screen. Opening first briefly presents an existing group as empty.
+    const ready = await pollPrivateGroup(false, id);
+    if (requestId !== privateGroupOpenRequestId) return;
+    if (!ready) { toast('Could not open this encrypted group. Try again.'); return; }
+
+    activePrivateGroupId = id; group.unread = 0;
+    const input = document.getElementById('group-message-input');
+    if (input) input.value = '';
+    updatePrivateGroupComposer();
+    document.getElementById('group-chat-title').textContent = group.name || 'Private group';
+    document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
+    renderPrivateGroupMessages(group);
+    document.getElementById('group-chat').classList.add('open');
+    document.getElementById('group-chat').setAttribute('aria-hidden','false');
+    clearInterval(groupPollTimer); groupPollTimer = setInterval(() => pollPrivateGroup(false), 3000);
+  } catch (_) {
+    if (requestId === privateGroupOpenRequestId) toast('Could not open this encrypted group. Try again.');
+  } finally {
+    if (requestId === privateGroupOpenRequestId) {
+      openingPrivateGroupId = null;
+      if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+    }
+  }
 }
 
 function closePrivateGroup() {
+  privateGroupOpenRequestId++;
+  openingPrivateGroupId = null;
   clearInterval(groupPollTimer); groupPollTimer = null;
   closePrivateGroupAttachOptions();
   if (privateGroupVoiceRecorder?.state === 'recording') {
@@ -805,15 +827,18 @@ async function decodePrivateGroupMessage(group, state, message) {
   return decoded;
 }
 
-async function pollPrivateGroup(render = false) {
-  const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
-  if (!state || !group) return;
+async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) {
+  const state = loadAccountState(); const group = privateGroups.get(groupId);
+  if (!state || !group) return false;
   // With no keys at all nothing can be read. Do not fetch, and above all do
   // not advance the cursor past messages that will be readable once the keys
   // are restored.
-  if (!hasPrivateGroupKeys(group)) { renderPrivateGroupMessages(group); return; }
+  if (!hasPrivateGroupKeys(group)) {
+    if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+    return true;
+  }
   const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, after:group.messageCursor || 0 });
-  if (result.error) return;
+  if (result.error) return false;
   const decoded = [];
   for (const message of result.messages || []) {
     try { decoded.push(await decodePrivateGroupMessage(group, state, message)); }
@@ -825,7 +850,8 @@ async function pollPrivateGroup(render = false) {
   group.messages = [...(group.messages || []), ...incoming].sort((a,b) => a.createdAt - b.createdAt).slice(-200);
   group.messageCursor = Math.max(group.messageCursor || 0, Number(result.cursor) || 0);
   group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;
-  if (render || changed) renderPrivateGroupMessages(group);
+  if ((render || changed) && group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+  return true;
 }
 
 async function sendPrivateGroupMessage() {
