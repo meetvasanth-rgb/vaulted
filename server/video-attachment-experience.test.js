@@ -18,9 +18,15 @@ test('direct and group attachment sends remain visible with encrypted upload ani
 
 test('video attachments carry an encrypted thumbnail and open in the in-app player', () => {
   assert.match(client, /function createVideoAttachmentThumbnail/);
+  assert.match(client, /document\.body\.appendChild\(video\)/);
+  assert.match(client, /requestVideoFrameCallback/);
+  assert.match(client, /video\.currentTime = Math\.min\(1, Math\.max\(\.12, duration \* \.1\)\)/);
   assert.match(client, /videoThumb:safeVideoThumb/);
   assert.match(client, /function buildVideoAttachmentHtml/);
   assert.match(client, /function openVideoAttachmentViewer/);
+  assert.match(client, /video\.controls = false/);
+  assert.match(client, /video\.onplaying = revealPlayingVideo/);
+  assert.match(client, /className = 'video-attachment-viewer loading'/);
   assert.match(client, /function handleVideoTap/);
   assert.match(groups, /function openPrivateGroupVideo/);
   assert.match(groups, /videoThumb:safeImageDataUri/);
@@ -28,5 +34,5 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v44/);
+  assert.match(sw, /vaultlix-app-shell-v46/);
 });

@@ -851,7 +851,7 @@ body.select-mode .chat-ftr{display:none}
 .vault-upload-orbit i{position:absolute;width:7px;height:7px;border-radius:50%;background:#C87588;box-shadow:0 0 12px #C87588}.vault-upload-orbit i:nth-child(1){animation:vault-upload-dot-a 1.7s linear infinite}.vault-upload-orbit i:nth-child(2){animation:vault-upload-dot-b 1.7s linear infinite}.vault-upload-orbit i:nth-child(3){animation:vault-upload-dot-c 1.7s linear infinite}
 @keyframes vault-upload-dot-a{from{transform:rotate(0) translateX(22px) rotate(0)}to{transform:rotate(360deg) translateX(22px) rotate(-360deg)}}@keyframes vault-upload-dot-b{from{transform:rotate(120deg) translateX(22px) rotate(-120deg)}to{transform:rotate(480deg) translateX(22px) rotate(-480deg)}}@keyframes vault-upload-dot-c{from{transform:rotate(240deg) translateX(22px) rotate(-240deg)}to{transform:rotate(600deg) translateX(22px) rotate(-600deg)}}@keyframes vault-upload-lock{50%{transform:scale(1.12);stroke:#F2CCD8}}
 .video-attachment-viewer{position:fixed;inset:0;z-index:10045;background:#080607;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));box-sizing:border-box}
-.video-attachment-viewer video{display:block;width:100%;height:100%;max-width:900px;max-height:calc(100dvh - 80px);object-fit:contain;background:#000}.video-attachment-close{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;z-index:2;width:42px;height:42px;border-radius:50%;background:#0009;color:#fff;font-size:27px;border:1px solid #ffffff33}
+.video-attachment-viewer video{display:block;width:100%;height:100%;max-width:900px;max-height:calc(100dvh - 80px);object-fit:contain;background:#000;opacity:1;transition:opacity .16s ease}.video-attachment-viewer.loading video{opacity:0}.video-attachment-loader{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:13px;color:#fff;font:700 12px/1.2 Inter,sans-serif;letter-spacing:.03em;background:#080607}.video-attachment-viewer.loading .video-attachment-loader{display:flex}.video-attachment-loader .vault-upload-orbit i:nth-child(1){background:#FF3B6B}.video-attachment-loader .vault-upload-orbit i:nth-child(2){background:#2EC5FF}.video-attachment-loader .vault-upload-orbit i:nth-child(3){background:#FFB800}.video-attachment-tap{display:none;min-height:44px;padding:0 18px;border-radius:999px;background:#fff;color:#281F23;font:750 13px Inter,sans-serif}.video-attachment-loader.awaiting-tap .video-attachment-tap{display:block}.video-attachment-close{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;z-index:3;width:42px;height:42px;border-radius:50%;background:#0009;color:#fff;font-size:27px;border:1px solid #ffffff33}
 .msg-gif{display:block;width:min(240px,70vw);min-height:120px;max-height:280px;object-fit:contain;border-radius:12px;background:#F3EEE6;cursor:pointer;content-visibility:auto}
 .klipy-picker{position:fixed;inset:0;z-index:10020;background:rgba(20,15,18,.52);display:flex;align-items:flex-end;justify-content:center}
 .klipy-sheet{width:min(620px,100%);height:min(72vh,650px);background:#fff;border-radius:24px 24px 0 0;padding:14px;display:flex;flex-direction:column;box-shadow:0 -14px 45px rgba(0,0,0,.2)}
@@ -14489,12 +14489,23 @@ function openVideoAttachmentViewer(mime, base64, name) {
     toast('This video is unavailable.'); return;
   }
   closeVideoAttachmentViewer();
-  const overlay = document.createElement('div'); overlay.id = 'video-attachment-viewer'; overlay.className = 'video-attachment-viewer';
+  const overlay = document.createElement('div'); overlay.id = 'video-attachment-viewer'; overlay.className = 'video-attachment-viewer loading';
   const close = document.createElement('button'); close.type = 'button'; close.className = 'video-attachment-close'; close.setAttribute('aria-label','Close video'); close.textContent = '×'; close.onclick = closeVideoAttachmentViewer;
-  const video = document.createElement('video'); video.controls = true; video.autoplay = true; video.playsInline = true; video.preload = 'metadata'; video.setAttribute('aria-label', name || 'Video attachment');
+  const loader = document.createElement('div'); loader.className = 'video-attachment-loader'; loader.setAttribute('role','status');
+  loader.innerHTML = `<span class="vault-upload-orbit" aria-hidden="true"><i></i><i></i><i></i><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Loading secure video…</span><button type="button" class="video-attachment-tap">Play video</button>`;
+  const video = document.createElement('video'); video.controls = false; video.autoplay = true; video.playsInline = true; video.preload = 'auto'; video.setAttribute('aria-label', name || 'Video attachment');
   video.src = `data:${mime};base64,${base64}`;
-  overlay.append(close, video); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
-  document.body.appendChild(overlay); video.play().catch(() => {});
+  const revealPlayingVideo = () => { video.controls = true; overlay.classList.remove('loading'); };
+  const startPlayback = () => {
+    loader.classList.remove('awaiting-tap');
+    video.play().catch(() => loader.classList.add('awaiting-tap'));
+  };
+  video.onplaying = revealPlayingVideo;
+  video.onerror = () => { loader.querySelector('span:last-of-type').textContent = 'This video could not be opened.'; loader.classList.add('awaiting-tap'); };
+  loader.querySelector('.video-attachment-tap').onclick = startPlayback;
+  overlay.append(close, loader, video); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
+  document.body.appendChild(overlay); startPlayback();
+  setTimeout(() => { if (overlay.classList.contains('loading') && video.readyState >= 2) loader.classList.add('awaiting-tap'); }, 900);
 }
 function closeVideoAttachmentViewer() {
   const overlay = document.getElementById('video-attachment-viewer');
@@ -18664,29 +18675,59 @@ function createVideoAttachmentThumbnail(file, maxDim = 480) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
     let settled = false;
-    const finish = value => { if (settled) return; settled = true; clearTimeout(timeout); URL.revokeObjectURL(url); video.removeAttribute('src'); video.load(); resolve(value); };
+    let captureQueued = false;
+    let seekRequested = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true; clearTimeout(timeout); URL.revokeObjectURL(url);
+      try { video.pause(); } catch (_) {}
+      video.removeAttribute('src'); video.load(); video.remove(); resolve(value);
+    };
     const capture = () => {
+      if (settled) return;
       if (!video.videoWidth || !video.videoHeight) { finish(null); return; }
       try {
         const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
         canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
-        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const context = canvas.getContext('2d', { alpha:false });
+        context.fillStyle = '#111111'; context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
         finish(canvas.toDataURL('image/jpeg', .68).split(',')[1] || null);
       } catch (_) { finish(null); }
     };
-    const timeout = setTimeout(() => finish(null), 8000);
-    video.muted = true; video.playsInline = true; video.preload = 'metadata';
-    video.onerror = () => finish(null);
-    video.onloadeddata = capture;
-    video.onloadedmetadata = () => {
-      if (video.duration > .2) {
-        video.onseeked = capture;
-        try { video.currentTime = Math.min(.25, video.duration / 3); } catch (_) { capture(); }
-      }
+    // iOS WKWebView and some Android WebViews do not paint a seeked frame
+    // for a detached <video>. Keep it invisibly attached until the browser
+    // confirms a decoded frame, then capture on the video-frame callback.
+    const queueCapture = () => {
+      if (captureQueued || settled) return;
+      captureQueued = true;
+      const run = () => requestAnimationFrame(() => setTimeout(capture, 40));
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        const fallback = setTimeout(run, 700);
+        video.requestVideoFrameCallback(() => { clearTimeout(fallback); run(); });
+      } else run();
     };
-    video.src = url; video.load();
+    const timeout = setTimeout(() => finish(null), 12000);
+    video.muted = true; video.defaultMuted = true; video.playsInline = true; video.preload = 'auto';
+    video.setAttribute('muted', ''); video.setAttribute('playsinline', '');
+    video.style.cssText = 'position:fixed;left:-2px;bottom:-2px;width:1px;height:1px;opacity:.001;pointer-events:none';
+    video.onerror = () => finish(null);
+    video.onseeked = queueCapture;
+    video.onloadeddata = () => { if (!seekRequested) queueCapture(); };
+    video.oncanplay = () => { if (!seekRequested) queueCapture(); };
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= .12) return;
+      seekRequested = true;
+      // Avoid the commonly black first encoded frame. Ten percent in, capped
+      // at one second, remains representative even for a very short clip.
+      try { video.currentTime = Math.min(1, Math.max(.12, duration * .1)); }
+      catch (_) { seekRequested = false; queueCapture(); }
+      setTimeout(queueCapture, 1800);
+    };
+    document.body.appendChild(video); video.src = url; video.load();
   });
 }
 
