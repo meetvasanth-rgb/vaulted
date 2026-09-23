@@ -34,7 +34,7 @@ test('authorized viewers download and decrypt status videos locally', () => {
   assert.match(client, /status\/media\/content[\s\S]*crypto\.subtle\.decrypt/);
   assert.match(client, /controller\.abort\(\), 30000/);
   assert.match(client, /function retryStatusVideo\(\)/);
-  assert.match(client, /<video src=/);
+  assert.match(client, /<video class="status-video-player" src=/);
 });
 
 test('decrypted status videos survive feed refresh and upcoming videos preload in memory', () => {
@@ -42,4 +42,11 @@ test('decrypted status videos survive feed refresh and upcoming videos preload i
   assert.match(client, /payload = previous\.payload/);
   assert.match(client, /retainedVideoUrls[\s\S]*URL\.revokeObjectURL/);
   assert.match(client, /function scheduleStatusVideoPreload\(\)[\s\S]*selected\.length === 2[\s\S]*hydrateStatusVideo\(item\)/);
+});
+
+test('status video hides native playback chrome until its first frame starts', () => {
+  assert.match(client, /class="status-video-player"[\s\S]*onplaying="revealStatusViewerVideo\(this\)"/);
+  assert.match(client, /class="status-video-startup"/);
+  assert.match(client, /function revealStatusViewerVideo\(video, allowManualPlayback = false\)[\s\S]*video\.controls = true/);
+  assert.doesNotMatch(client, /class="status-video-player"[^>]* controls/);
 });
