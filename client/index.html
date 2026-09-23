@@ -3247,12 +3247,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <button class="attach-btn" onclick="showAttachOptions()" id="attach-btn" title="Attach file">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
-    <!-- Two separate inputs, not one with a mixed accept list — Android's
-         file chooser only offers the Gallery/Photos app as a direct option
-         when it can tell the request is image-only; a mixed
-         "image/*,application/pdf,..." accept tends to fall back to a
-         generic Files browser instead. -->
-    <input type="file" id="image-input" multiple style="display:none" accept="image/*" onchange="handleFileSelect(event)"/>
+    <!-- Keep device media separate from documents. Android can then open its
+         media picker directly with both locally stored photos and videos,
+         while the File action continues to use the document picker. -->
+    <input type="file" id="image-input" multiple style="display:none" accept="image/*,video/*" onchange="handleFileSelect(event)"/>
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" data-i18n-placeholder="message_placeholder" rows="1" disabled></textarea>
@@ -3334,7 +3332,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   <div class="group-reply-preview" id="group-reply-preview"><div class="group-reply-body"><strong class="group-reply-name"></strong><span class="group-reply-snippet"></span></div><button type="button" onclick="cancelPrivateGroupReply()" aria-label="Cancel reply">✕</button></div>
   <footer class="group-chat-footer" id="group-chat-footer">
     <button class="group-attach-btn" id="group-attach-btn" type="button" onclick="showPrivateGroupAttachOptions()" aria-label="Attach photo or file">+</button>
-    <input type="file" id="group-image-input" multiple hidden accept="image/*" onchange="handlePrivateGroupFileSelect(event)"/>
+    <input type="file" id="group-image-input" multiple hidden accept="image/*,video/*" onchange="handlePrivateGroupFileSelect(event)"/>
     <input type="file" id="group-file-input" multiple hidden accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handlePrivateGroupFileSelect(event)"/>
     <input type="file" id="group-camera-input" hidden accept="image/*" capture="environment" onchange="handlePrivateGroupFileSelect(event)"/>
     <textarea id="group-message-input" maxlength="4000" rows="1" placeholder="Message the group…" oninput="updatePrivateGroupComposer()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPrivateGroupMessage()}"></textarea>
@@ -17837,10 +17835,9 @@ async function sendKlipyGif(item, searchQuery) {
 // ── FILE ATTACHMENTS ─────────────────────────────────────────────────────
 // Small icon popover anchored right above the + button (no full-screen
 // overlay). Three dedicated inputs sit behind this (see the HTML): a
-// camera-capture input, an image-only input, and a document-only input —
-// kept separate (rather than one input with every accept type mixed
-// together) since that mix is what stopped Android's chooser from
-// offering the Gallery/Photos app directly.
+// camera-capture input, a photo/video media input, and a document-only input.
+// Keeping documents separate lets Android open its device media picker for
+// Gallery instead of falling back to the generic Files browser.
 function showAttachOptions() {
   if (document.getElementById('msg-input').disabled) return;
   closeAttachOptions();
