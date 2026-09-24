@@ -47,7 +47,7 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v53/);
+  assert.match(sw, /vaultlix-app-shell-v54/);
 });
 
 test('media-heavy Android chats release hidden decoders and avoid identical inbox rebuilds', () => {
@@ -56,4 +56,11 @@ test('media-heavy Android chats release hidden decoders and avoid identical inbo
   assert.match(client, /else unloadDeferredKlipyGif\(entry\.target\)/);
   assert.match(client, /if \(body\._vaultlixChatListHtml === html\) return;/);
   assert.match(client, /loading="lazy" decoding="async"/);
+  assert.match(client, /function scheduleMessageImagePreviews/);
+  assert.match(client, /makeTinyThumbnail\(target\.base64, target\.mime, 640, 0\.76\)/);
+  assert.match(client, /const safeSrc = safeMessageImagePreview\(rec\.imagePreview\)/);
+  assert.match(client, /const safeSrc = hidden \? null : safeMessageImagePreview\(img\.imagePreview\)/);
+  assert.match(client, /imagePreview:safeImagePreview/);
+  assert.match(client, /imagePreview:safeMessageImagePreview\(img\.preview\)/);
+  assert.match(client, /const MAX_MESSAGE_IMAGE_PREVIEW_BASE64 = 1024 \* 1024/);
 });

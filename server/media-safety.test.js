@@ -117,7 +117,7 @@ test('photo checking reports each image and stops at a failed check',async()=>{
 test('photo send shows feedback before starting and removes it on failure without duplicate sends',async()=>{
   const buttons={},events=[];
   let finish;
-  const context={document:{createElement:()=>({style:{},querySelector:key=>buttons[key] ||= {},addEventListener(){},remove(){events.push('overlay-closed');}}),body:{appendChild(){}}},safeImageDataUri:()=>'',MEDIA_BLOCKED_HTML:'',beginPhotoSendProgress:()=>{events.push('progress-visible');return {update(){},close(){events.push('progress-closed');}};},requestAnimationFrame:fn=>fn(),setTimeout:fn=>fn(),sendAlbumMessage:()=>{events.push('send-started');return new Promise((_,reject)=>{finish=()=>reject(Error('test'));});},toast:()=>events.push('error-shown')};
+  const context={document:{createElement:()=>({style:{},querySelector:key=>buttons[key] ||= {},addEventListener(){},remove(){events.push('overlay-closed');}}),body:{appendChild(){}}},safeMessageImagePreview:()=>'',safeImageDataUri:()=>'',MEDIA_BLOCKED_HTML:'',beginPhotoSendProgress:()=>{events.push('progress-visible');return {update(){},close(){events.push('progress-closed');}};},requestAnimationFrame:fn=>fn(),setTimeout:fn=>fn(),sendAlbumMessage:()=>{events.push('send-started');return new Promise((_,reject)=>{finish=()=>reject(Error('test'));});},toast:()=>events.push('error-shown')};
   vm.createContext(context);vm.runInContext(extract('showSendImageOptions'),context);
   context.showSendImageOptions({},[{file:{type:'image/jpeg'},base64:'a'},{file:{},base64:'b'}]);
   const pending=buttons['#send-img-normal'].onclick();
@@ -129,7 +129,7 @@ test('photo send shows feedback before starting and removes it on failure withou
 });
 test('selection shows progress before compression and waits for every photo before send options',async()=>{
   const events=[];let release;
-  const context={getActiveRoom:()=>({}),MAX_FILE_SIZE:1000,beginPhotoSendProgress:()=>{events.push('visible');return{update:s=>events.push(s),close:()=>events.push('closed')};},requestAnimationFrame:fn=>fn(),setTimeout:fn=>fn(),compressImageFile:async file=>{events.push('compress-'+file.name);if(file.name==='a')await new Promise(resolve=>release=resolve);return{base64:'data',mime:'image/jpeg'};},showSendImageOptions:(_,images)=>events.push('options-'+images.length),toast:()=>events.push('error')};
+  const context={getActiveRoom:()=>({}),MAX_FILE_SIZE:1000,beginPhotoSendProgress:()=>{events.push('visible');return{update:s=>events.push(s),close:()=>events.push('closed')};},requestAnimationFrame:fn=>fn(),setTimeout:fn=>fn(),compressImageFile:async file=>{events.push('compress-'+file.name);if(file.name==='a')await new Promise(resolve=>release=resolve);return{base64:'data',mime:'image/jpeg'};},makeTinyThumbnail:async()=> 'preview',showSendImageOptions:(_,images)=>events.push('options-'+images.length),toast:()=>events.push('error')};
   vm.createContext(context);vm.runInContext('async '+extract('handleFileSelect'),context);
   const pending=context.handleFileSelect({target:{files:[{name:'a',size:10,type:'image/jpeg'},{name:'b',size:10,type:'image/jpeg'}]}});
   await Promise.resolve();

@@ -845,6 +845,9 @@ body.select-mode .chat-ftr{display:none}
 .attach-opt-icon svg { width:20px; height:20px; fill:none; stroke:#4A4038; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .attach-opt-label { font-size:10px; color:#8A7F72; }
 .msg-image { max-width:200px; max-height:200px; border-radius:6px; display:block; margin-top:4px; cursor:pointer; }
+.msg-image-preview-loading{width:200px;height:150px;max-width:100%;border-radius:8px;margin-top:4px;background:linear-gradient(110deg,#eee7e9 8%,#f8f4f5 18%,#eee7e9 33%);background-size:200% 100%;animation:imagePreviewPulse 1.3s linear infinite;display:flex;align-items:center;justify-content:center;color:#7d5965;font-size:12px}
+.msg-album-tile .msg-image-preview-loading{width:100%;height:100%;margin:0;border-radius:0}
+@keyframes imagePreviewPulse{to{background-position-x:-200%}}
 .msg-video-card{position:relative;width:min(260px,70vw);height:180px;overflow:hidden;border-radius:12px;background:linear-gradient(145deg,#3B2831,#171216);cursor:pointer;color:#fff;margin-top:4px}
 .msg-video-card img{display:block;width:100%;height:100%;object-fit:cover}.msg-video-card::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,#0009)}
 .msg-video-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border:0;padding:0;border-radius:50%;display:grid;place-items:center;background:#682C43E8;color:#fff;cursor:pointer;box-shadow:0 4px 18px #0006}
@@ -8968,6 +8971,11 @@ function safeImageDataUri(mime, base64) {
   if (!isAllowedImageMime(mime) || !isValidMediaBase64(base64)) return null;
   return `data:${mime};base64,${base64}`;
 }
+const MAX_MESSAGE_IMAGE_PREVIEW_BASE64 = 1024 * 1024;
+function safeMessageImagePreview(base64) {
+  if (typeof base64 !== 'string' || base64.length > MAX_MESSAGE_IMAGE_PREVIEW_BASE64) return null;
+  return safeImageDataUri('image/jpeg', base64);
+}
 function safeVoiceDataUri(mime, base64) {
   if (!isAllowedVoiceMime(mime) || !isValidMediaBase64(base64)) return null;
   return `data:${mime};base64,${base64}`;
@@ -13866,6 +13874,69 @@ async function changeRoomTimer(value) {
   }
 }
 
+let messageImagePreviewObserver = null;
+let messageImagePreviewQueue = Promise.resolve();
+const pendingMessageImagePreviews = new WeakSet();
+
+function messageImagePreviewTarget(room, node) {
+  const rec = room.messages.find(message => message.id === node.dataset.imagePreviewMsg);
+  if (!rec) return null;
+  if (!node.dataset.imagePreviewItem) return rec.kind === 'file' && rec.isImage ? rec : null;
+  return rec.kind === 'album' ? rec.images?.find(image => image.id === node.dataset.imagePreviewItem) || null : null;
+}
+
+function paintMessageImagePreview(target) {
+  const src = safeMessageImagePreview(target.imagePreview);
+  if (!src) return;
+  document.querySelectorAll('.msg-image-preview-loading').forEach(node => {
+    const room = getActiveRoom();
+    if (!room || messageImagePreviewTarget(room, node) !== target) return;
+    const image = document.createElement('img');
+    image.className = 'msg-image'; image.src = src; image.alt = '';
+    image.loading = 'lazy'; image.decoding = 'async'; image.draggable = false;
+    image.oncontextmenu = () => false;
+    if (!node.dataset.imagePreviewItem) {
+      const msgId = node.dataset.imagePreviewMsg;
+      image.onclick = () => handleImageTap(image.src, msgId);
+    }
+    node.replaceWith(image);
+  });
+}
+
+function queueMessageImagePreview(target) {
+  if (!target || target.imagePreview || pendingMessageImagePreviews.has(target)) return;
+  pendingMessageImagePreviews.add(target);
+  messageImagePreviewQueue = messageImagePreviewQueue.then(async () => {
+    // Decode at most one legacy original at a time. Previously every full
+    // resolution image in the chat was installed as an <img> source, which
+    // made Android WebView retain hundreds of MB of decoded pixels.
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    const preview = await makeTinyThumbnail(target.base64, target.mime, 640, 0.76);
+    if (preview) {
+      target.imagePreview = preview;
+      paintMessageImagePreview(target);
+    }
+  }).catch(() => {}).finally(() => pendingMessageImagePreviews.delete(target));
+}
+
+function scheduleMessageImagePreviews(body, room) {
+  if (messageImagePreviewObserver) messageImagePreviewObserver.disconnect();
+  const placeholders = body.querySelectorAll('.msg-image-preview-loading');
+  if (!placeholders.length) return;
+  if (!('IntersectionObserver' in window)) {
+    placeholders.forEach(node => queueMessageImagePreview(messageImagePreviewTarget(room, node)));
+    return;
+  }
+  messageImagePreviewObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      messageImagePreviewObserver.unobserve(entry.target);
+      queueMessageImagePreview(messageImagePreviewTarget(room, entry.target));
+    }
+  }, { root:body, rootMargin:'300px 0px' });
+  placeholders.forEach(node => messageImagePreviewObserver.observe(node));
+}
+
 function renderChatBody(room) {
   const body = document.getElementById('chat-body');
   if (klipyGifObserver) klipyGifObserver.disconnect();
@@ -13884,6 +13955,7 @@ function renderChatBody(room) {
     if (activeRoomCode === room.code) body.scrollTop = body.scrollHeight;
   });
   scheduleDeferredKlipyGifs(body);
+  scheduleMessageImagePreviews(body, room);
 }
 
 function addRoomFlow() {
@@ -14405,11 +14477,12 @@ async function forwardAttachmentToRoom(target, rec) {
         file: { name: img.fileName || 'vaultlix-image.jpg', type: img.mime || 'image/jpeg' },
         base64: img.base64,
         mime: img.mime || 'image/jpeg',
+        imagePreview: img.imagePreview || null,
       }));
       if (!await sendAlbumMessage(target, items, false)) return false;
     } else {
       const file = { name: rec.fileName || 'vaultlix-file', type: rec.mime || 'application/octet-stream' };
-      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime, rec.pdfPreview, rec.pageCount, undefined, rec.videoThumb)) return false;
+      if (!await sendFileMessage(target, file, rec.base64, !!rec.isImage, false, rec.mime, rec.pdfPreview, rec.pageCount, undefined, rec.videoThumb, rec.imagePreview)) return false;
     }
     renderRoomTabs();
     toast(`Forwarded to ${roomDisplayLabel(target)}`);
@@ -14626,10 +14699,10 @@ function buildAlbumGridHtml(rec) {
     const img = rec.images[i];
     const overlay = (i === visibleCount - 1 && remaining > 0) ? `<div class="msg-album-more">+${remaining}</div>` : '';
     const hidden = img.viewOnce && !rec.isMe && !img.viewed;
-    const safeSrc = hidden ? null : safeImageDataUri(img.mime, img.base64);
+    const safeSrc = hidden ? null : safeMessageImagePreview(img.imagePreview);
     const inner = hidden
       ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
-      : (safeSrc ? `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>` : MEDIA_BLOCKED_HTML);
+      : (safeSrc ? `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>` : `<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" data-image-preview-item="${escHtml(img.id)}" role="status">Opening encrypted image…</div>`);
     // Keyed off img.id (a stable local id), not the loop position i —
     // opening two view-once photos in the same album close together would
     // otherwise let the first one's later array splice shift which photo
@@ -14897,10 +14970,10 @@ function renderMessageRecord(room, rec, animate) {
       </div>`;
     } else if (rec.isImage) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
-      const safeSrc = safeImageDataUri(rec.mime, rec.base64);
+      const safeSrc = safeMessageImagePreview(rec.imagePreview);
       mediaHtml = safeSrc
         ? `${badge}<img class="msg-image" src="${safeSrc}" alt="${escHtml(rec.fileName)}" loading="lazy" decoding="async" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
-        : `${badge}${MEDIA_BLOCKED_HTML}`;
+        : `${badge}<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" role="status">Opening encrypted image…</div>`;
     } else if (isPdfAttachment(rec.mime, rec.fileName)) {
       const thumbnail = safeImageDataUri('image/jpeg', rec.pdfPreview);
       const preview = thumbnail
@@ -15137,7 +15210,9 @@ function formatDuration(s) {
 function handleImageTap(src, msgId) {
   if (wasJustLongPressed()) return;
   if (selectMode) { toggleMessageSelection(msgId); return; }
-  viewImage(src);
+  const rec = findMessageRec(msgId);
+  const original = rec?.isImage ? safeImageDataUri(rec.mime, rec.base64) : null;
+  viewImage(original || src);
 }
 // Looks a message record up by id across every open room — used from inline
 // onclick handlers (file tap, view-once) that only have the id to go on.
@@ -15595,9 +15670,10 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     }
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
+      const imagePreview = isImage && safeMessageImagePreview(parsed.imagePreview) ? parsed.imagePreview : null;
       const pdfPreview = safeImageDataUri('image/jpeg', parsed.pdfPreview) ? parsed.pdfPreview : null;
       const videoThumb = String(parsed.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', parsed.videoThumb) ? parsed.videoThumb : null;
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false };
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false };
     }
     // Several photos picked together arrive as ONE message with an
     // images[] array (see sendAlbumMessage) rather than one message per
@@ -15613,7 +15689,9 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
         // each other's pending timers.
         images: parsed.images.map((img, i) => ({
           id: 'ai' + i + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-          fileName: img.name, mime: img.mime, base64: img.data, viewOnce: !!parsed.viewOnce, viewed: false,
+          fileName: img.name, mime: img.mime, base64: img.data,
+          imagePreview:safeMessageImagePreview(img.preview) ? img.preview : null,
+          viewOnce: !!parsed.viewOnce, viewed: false,
         })),
       };
     }
@@ -18441,7 +18519,8 @@ async function handleFileSelect(event) {
         progress?.update(`Encrypting image ${++photoIndex} of ${photoCount}…`);
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const { base64, mime } = await compressImageFile(file);
-        images.push({ file, base64, mime });
+        const imagePreview = await makeTinyThumbnail(base64, mime, 640, 0.76);
+        images.push({ file, base64, mime, imagePreview });
       } else {
         const isVideo = String(file.type || '').startsWith('video/');
         if (isVideo) progress?.update(`Encrypting video ${++videoIndex} of ${videoCount}…`);
@@ -18482,7 +18561,7 @@ async function handleFileSelect(event) {
 // its real post-compression type instead of the original file's — and size
 // is always derived from the base64 actually being sent rather than
 // file.size, since compression means those two routinely no longer match.
-async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null) {
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null, imagePreview = null) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
@@ -18501,12 +18580,14 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // copy because "it's already in here" reintroduces the bug that check was
   // added to fix — any member could delete any message for everyone.
   const safeVideoThumb = String(mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', videoThumb) ? videoThumb : null;
+  const safeImagePreview = isImage && safeMessageImagePreview(imagePreview) ? imagePreview : null;
   const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview,
     videoThumb:safeVideoThumb,
+    imagePreview:safeImagePreview,
     pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce });
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
-    fileName: file.name, mime, base64, isImage, pdfPreview, videoThumb:safeVideoThumb,
+    fileName: file.name, mime, base64, isImage, imagePreview:safeImagePreview, pdfPreview, videoThumb:safeVideoThumb,
     pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, viewed: false, pending:true,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
@@ -18582,8 +18663,9 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress) {
   const payload = JSON.stringify({
     type: 'album',
     viewOnce: !!viewOnce,
-    images: items.map(({ file, base64, mime }) => ({
+    images: items.map(({ file, base64, mime, imagePreview }) => ({
       name: file.name, mime, size: Math.ceil(base64.length * 3 / 4), data: base64,
+      preview:safeMessageImagePreview(imagePreview) ? imagePreview : null,
     })),
   });
   let encryptedPayload;
@@ -18605,9 +18687,11 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress) {
 
   const rec = {
     id: msgId, kind: 'album', isMe: true, name: room.myName, time, ts: sentAt, viewOnce: !!viewOnce,
-    images: items.map(({ file, base64, mime }, i) => ({
+    images: items.map(({ file, base64, mime, imagePreview }, i) => ({
       id: 'ai' + i + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-      fileName: file.name, mime, base64, viewOnce: !!viewOnce, viewed: false,
+      fileName: file.name, mime, base64,
+      imagePreview:safeMessageImagePreview(imagePreview) ? imagePreview : null,
+      viewOnce: !!viewOnce, viewed: false,
     })),
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
@@ -18897,7 +18981,7 @@ function showSendImageOptions(room, items) {
   // is now checked centrally rather than trusting each call site: one
   // consistent gate is easier to reason about than "this one's fine because
   // it's local".
-  const previewSafeSrc = safeImageDataUri(first.mime || first.file.type, first.base64);
+  const previewSafeSrc = safeMessageImagePreview(first.imagePreview) || safeImageDataUri(first.mime || first.file.type, first.base64);
   const previewHtml = previewSafeSrc
     ? `<img src="${previewSafeSrc}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>`
     : MEDIA_BLOCKED_HTML;
@@ -18928,8 +19012,8 @@ function showSendImageOptions(room, items) {
       if (items.length > 1) {
         await sendAlbumMessage(room, items, viewOnce, progress.update);
       } else {
-        const { file, base64, mime } = items[0];
-        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, progress.update);
+        const { file, base64, mime, imagePreview } = items[0];
+        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, progress.update, null, imagePreview);
       }
     } catch (error) {
       toast('Could not send photos. Please try again.');
@@ -19508,6 +19592,13 @@ function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
         ctx.drawImage(img, 0, 0, w, h);
         try { resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]); }
         catch (e) { resolve(null); } // e.g. a tainted canvas — fall back to no thumbnail
+        finally {
+          // Release the decoded original immediately. On Android these
+          // temporary pixel buffers otherwise survive long enough to stack
+          // up during a media-heavy chat restore.
+          img.onload = null; img.onerror = null; img.src = '';
+          canvas.width = 1; canvas.height = 1;
+        }
       };
       img.onerror = () => resolve(null);
       img.src = safeSrc;
