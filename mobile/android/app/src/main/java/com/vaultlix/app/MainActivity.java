@@ -40,6 +40,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends BridgeActivity {
     private static final int SAVE_MEDIA_REQUEST = 4107;
@@ -55,6 +59,12 @@ public class MainActivity extends BridgeActivity {
     private NativeWebRtcCallEngine nativeCallEngine;
     private volatile Uri preparedNumberCardUri;
     private volatile File pendingSaveMediaFile;
+    private final ExecutorService mediaCacheCleanupExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "vaultlix-media-cache-cleanup");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final AtomicBoolean mediaCacheCleanupScheduled = new AtomicBoolean(false);
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
@@ -85,7 +95,7 @@ public class MainActivity extends BridgeActivity {
         nativeCallEngine = NativeWebRtcCallEngine.get(this);
         nativeCallEngine.addListener(nativeCallListener);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
-        purgeDecryptedMediaCache();
+        scheduleDecryptedMediaCacheCleanup();
         openVaultlixInvite(getIntent());
     }
 
@@ -114,10 +124,25 @@ public class MainActivity extends BridgeActivity {
         // by the time Vaultlix resumes. Remove the decrypted staging copies;
         // a recipient app's explicit saved copy is outside our sandbox and
         // intentionally remains under that user's control.
-        purgeDecryptedMediaCache();
+        scheduleDecryptedMediaCacheCleanup();
     }
 
-    private void purgeDecryptedMediaCache() {
+    private void scheduleDecryptedMediaCacheCleanup() {
+        if (!mediaCacheCleanupScheduled.compareAndSet(false, true)) return;
+        try {
+            mediaCacheCleanupExecutor.execute(() -> {
+                try {
+                    purgeDecryptedMediaCacheNow();
+                } finally {
+                    mediaCacheCleanupScheduled.set(false);
+                }
+            });
+        } catch (RejectedExecutionException ignored) {
+            mediaCacheCleanupScheduled.set(false);
+        }
+    }
+
+    private void purgeDecryptedMediaCacheNow() {
         String[] directories = { "shared-media", "open-media", "saved-media" };
         for (String name : directories) {
             File directory = new File(getCacheDir(), name);
@@ -180,6 +205,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onDestroy() {
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        mediaCacheCleanupExecutor.shutdownNow();
         restoreAudioRoute();
         if (activeInstance.get() == this) activeInstance.clear();
         if (nativeCallEngine != null) nativeCallEngine.removeListener(nativeCallListener);
@@ -769,7 +795,7 @@ public class MainActivity extends BridgeActivity {
                 nativeCallEngine.end(false);
                 nativeCallRoomStore.clear();
                 secureMessageStore.clearAll();
-                purgeDecryptedMediaCache();
+                purgeDecryptedMediaCacheNow();
                 restoreAudioRoute();
             });
         }

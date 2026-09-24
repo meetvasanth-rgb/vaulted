@@ -51,7 +51,9 @@ test('message records and rendered media references are scrubbed during deletion
 });
 
 test('decrypted native share/open staging files are cleaned after use', () => {
-  assert.match(androidActivity, /void onResume\(\)[\s\S]*purgeDecryptedMediaCache\(\)/);
+  assert.match(androidActivity, /void onResume\(\)[\s\S]*scheduleDecryptedMediaCacheCleanup\(\)/);
+  assert.match(androidActivity, /scheduleDecryptedMediaCacheCleanup\(\)[\s\S]*mediaCacheCleanupExecutor\.execute/);
+  assert.match(androidActivity, /void purgeDecryptedMediaCacheNow\(\)[\s\S]*file\.delete\(\)/);
   assert.match(androidActivity, /"shared-media", "open-media", "saved-media"/);
   assert.match(iosScene, /completionWithItemsHandler[\s\S]*removeItem\(at: fileURL\)/);
 });

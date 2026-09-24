@@ -7307,6 +7307,32 @@ function releaseCallWakeLock() {
   callWakeLock = null;
 }
 
+let foregroundResumeTimer = null;
+function resumeForegroundWork() {
+  if (quickLockActive) { renderQuickLock(); return; }
+  hidePrivacyCover();
+  tabFocused = true;
+  lastInteractionTime = Date.now();
+  const active = getActiveRoom();
+  if (isRoomVisible(active)) { active.unread = 0; flushPendingReads(active); }
+  updateDocumentTitle();
+
+  // Android dispatches both visibilitychange and focus when its WebView is
+  // restored. Running the full inbox, push and signaling refresh from both
+  // events makes large inboxes decrypt and reconnect twice while the first
+  // frame is trying to accept taps. Coalesce that burst, while keeping the
+  // privacy cover and read state responsive synchronously above.
+  clearTimeout(foregroundResumeTimer);
+  foregroundResumeTimer = setTimeout(() => {
+    foregroundResumeTimer = null;
+    if (document.hidden || quickLockActive) return;
+    catchUpPoll();
+    checkStaleIncomingCalls();
+    refreshPushForAllRooms();
+    reconnectSignalingForAllRooms();
+  }, 100);
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && activeCallRoomCode && !callWakeLock) acquireCallWakeLock();
 });
@@ -12247,35 +12273,13 @@ document.addEventListener('visibilitychange', () => {
         if (room.callState === 'idle') disconnectSignaling(room);
       }
     }
-  } else if (!quickLockActive) {
-    hidePrivacyCover();
-    tabFocused = true;
-    lastInteractionTime = Date.now();
-    const active = getActiveRoom();
-    if (isRoomVisible(active)) { active.unread = 0; flushPendingReads(active); }
-    updateDocumentTitle();
-    catchUpPoll();
-    checkStaleIncomingCalls();
-    refreshPushForAllRooms();
-    reconnectSignalingForAllRooms();
-  }
+  } else resumeForegroundWork();
 });
-window.addEventListener('focus', () => {
-  if (quickLockActive) { renderQuickLock(); return; }
-  hidePrivacyCover();
-  tabFocused = true; lastInteractionTime = Date.now();
-  const active = getActiveRoom();
-  if (isRoomVisible(active)) { active.unread = 0; flushPendingReads(active); }
-  updateDocumentTitle();
-  catchUpPoll();
-  checkStaleIncomingCalls();
-  refreshPushForAllRooms();
-  reconnectSignalingForAllRooms();
-});
+window.addEventListener('focus', resumeForegroundWork);
 window.addEventListener('blur', () => { tabFocused = false; });
 // iOS/WebKit restores a backgrounded tab from its page cache without firing
 // 'load' — pageshow (with persisted:true) is the reliable signal for that.
-window.addEventListener('pageshow', (e) => { if (quickLockActive) { renderQuickLock(); return; } if (e.persisted) { catchUpPoll(); checkStaleIncomingCalls(); refreshPushForAllRooms(); reconnectSignalingForAllRooms(); } });
+window.addEventListener('pageshow', (e) => { if (e.persisted) resumeForegroundWork(); });
 
 ['click','keydown','touchstart','mousemove'].forEach(evt => {
   document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });

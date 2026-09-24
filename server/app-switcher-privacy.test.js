@@ -23,3 +23,12 @@ test('iOS covers the scene while inactive and removes the cover when active', ()
   assert.match(source, /func sceneWillResignActive\([^)]*\)\s*\{\s*showAppSwitcherPrivacyCover\(\)/s);
   assert.match(source, /func sceneDidBecomeActive\([^)]*\)\s*\{\s*hideAppSwitcherPrivacyCover\(\)/s);
 });
+
+test('foreground lifecycle events coalesce expensive reconnect work', () => {
+  const source = fs.readFileSync(path.join(root, 'client/index.html'), 'utf8');
+  const handler = source.match(/function resumeForegroundWork\(\)[\s\S]*?\n}/)?.[0] || '';
+  assert.match(handler, /clearTimeout\(foregroundResumeTimer\)/);
+  assert.match(handler, /foregroundResumeTimer = setTimeout/);
+  assert.match(handler, /catchUpPoll\(\)[\s\S]*refreshPushForAllRooms\(\)[\s\S]*reconnectSignalingForAllRooms\(\)/);
+  assert.match(source, /window\.addEventListener\('focus', resumeForegroundWork\)/);
+});
