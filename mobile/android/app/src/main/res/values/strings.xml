@@ -28,6 +28,7 @@
     <string name="native_private_identity_protected">Private identity protected</string>
     <string name="native_decline">Decline</string>
     <string name="native_answer">Answer</string>
+    <string name="native_answer_video">Answer video</string>
     <string name="calls_channel_description">Incoming encrypted call alerts</string>
   <string name="native_video">Video</string>
   <string name="native_stop_video">Stop video</string>

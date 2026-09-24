@@ -21,6 +21,7 @@
   <string name="native_private_identity_protected">Приватная личность защищена</string>
   <string name="native_decline">Отклонить</string>
   <string name="native_answer">Ответить</string>
+  <string name="native_answer_video">Ответить с видео</string>
     <string name="native_end_to_end_encrypted">Сквозное шифрование</string>
     <string name="native_end_to_end_encrypted_call">Звонок со сквозным шифрованием</string>
   <string name="native_video">Видео</string>

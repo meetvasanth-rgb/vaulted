@@ -118,6 +118,7 @@ final class NativeWebRtcCallEngine {
     private final CopyOnWriteArraySet<Listener> listeners = new CopyOnWriteArraySet<>();
     private boolean signalingReady;
     private boolean outgoing;
+    private boolean outgoingVideoCall;
     private boolean answered;
     private boolean offerReceived;
     private boolean ending;
@@ -229,11 +230,12 @@ final class NativeWebRtcCallEngine {
         return true;
     }
 
-    boolean prepareOutgoing(String handle, String caller, String requestedInviteId) {
+    boolean prepareOutgoing(String handle, String caller, String requestedInviteId, boolean videoCall) {
         NativeCallRoomStore.Room saved = roomStore.byHandle(handle);
         if (saved == null) return false;
         executor.execute(() -> {
             prepare(saved, true, caller, requestedInviteId);
+            outgoingVideoCall = videoCall;
             sendInvite();
             scheduleInviteRetry(generation, 9);
         });
@@ -535,6 +537,7 @@ final class NativeWebRtcCallEngine {
         try {
             JSONObject wire = new JSONObject().put("type", type).put("sessionId", sessionId).put("envelope", encrypt(payload));
             if (!inviteId.isEmpty()) wire.put("inviteId", inviteId);
+            if ("call-invite".equals(type)) wire.put("hasVideo", outgoingVideoCall);
             if ("call-hangup".equals(type)) {
                 String outcome = normalizeOutcome(payload.optString("reason"), "ended");
                 wire.put("terminalReason", outcome);
@@ -676,7 +679,7 @@ final class NativeWebRtcCallEngine {
         if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
         if (audioSource != null) { audioSource.dispose(); audioSource = null; }
         disposeVideo();
-        room = null; signalingReady = false; outgoing = false; answered = false; offerReceived = false; ending = false;
+        room = null; signalingReady = false; outgoing = false; outgoingVideoCall = false; answered = false; offerReceived = false; ending = false;
         inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
         // The counter restarts every call, so the peer must see a new session

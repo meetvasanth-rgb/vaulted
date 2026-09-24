@@ -204,7 +204,7 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        String notificationCaller = isVideoCall ? caller + " · Video call" : caller;
+        String notificationCaller = isVideoCall ? "VIDEO CALL · " + caller : caller;
         Person.Builder callerBuilder = new Person.Builder().setName(notificationCaller).setImportant(true);
         if (callerAvatar != null) callerBuilder.setIcon(IconCompat.createWithBitmap(callerAvatar));
         Person callerPerson = callerBuilder.build();

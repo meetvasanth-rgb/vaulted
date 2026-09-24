@@ -19,6 +19,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var documentInteractionController: UIDocumentInteractionController?
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
+    private let nativeVideoBackdropView = UIView(frame: .zero)
     private let nativeVideoPausedView = UIView(frame: .zero)
     private let nativeVideoControlsView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let nativeMuteButton = UIButton(type: .system)
@@ -135,18 +136,22 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
     private func showNativeVideoViews(remote: Bool) {
         guard let root = window?.rootViewController?.view else { return }
-        let webView = (window?.rootViewController as? CAPBridgeViewController)?.webView
-        webView?.isOpaque = false
-        webView?.backgroundColor = .clear
-        webView?.scrollView.backgroundColor = .clear
+        // Video owns an opaque native canvas. A transparent WebView above the
+        // renderer exposed the chat and matrix while video started or paused.
+        if nativeVideoBackdropView.superview == nil {
+            nativeVideoBackdropView.frame = root.bounds
+            nativeVideoBackdropView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            nativeVideoBackdropView.backgroundColor = UIColor(red: 0.12, green: 0.06, blue: 0.09, alpha: 1)
+            nativeVideoBackdropView.isUserInteractionEnabled = false
+            root.addSubview(nativeVideoBackdropView)
+        }
         if nativeRemoteVideoView.superview == nil {
             nativeRemoteVideoView.videoContentMode = .scaleAspectFill
             nativeRemoteVideoView.backgroundColor = .black
             nativeRemoteVideoView.layer.cornerRadius = 0
             nativeRemoteVideoView.clipsToBounds = true
             nativeRemoteVideoView.isUserInteractionEnabled = false
-            if let webView { root.insertSubview(nativeRemoteVideoView, belowSubview: webView) }
-            else { root.addSubview(nativeRemoteVideoView) }
+            root.addSubview(nativeRemoteVideoView)
         }
         if nativeLocalVideoView.superview == nil {
             nativeLocalVideoView.videoContentMode = .scaleAspectFill
@@ -159,13 +164,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         installNativeVideoPausedViewIfNeeded(in: root)
         installNativeVideoControlsIfNeeded(in: root)
         let safe = root.safeAreaInsets
-        // Remote video is the full call canvas. The transparent WebView stays
-        // above it for the existing controls; local video remains a native PiP.
+        // Remote video is the full call canvas; local video remains a native PiP.
         nativeRemoteVideoView.frame = root.bounds
         nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 64, width: 96, height: 136)
         nativeRemoteVideoView.isHidden = !remote
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
-        if let webView { root.bringSubviewToFront(webView) }
+        root.bringSubviewToFront(nativeVideoBackdropView)
+        root.bringSubviewToFront(nativeRemoteVideoView)
         nativeVideoPausedView.isHidden = remote
         if !remote { root.bringSubviewToFront(nativeVideoPausedView) }
         root.bringSubviewToFront(nativeLocalVideoView)
@@ -312,6 +317,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeLocalVideoTrack = nil
         nativeRemoteVideoView.removeFromSuperview()
         nativeLocalVideoView.removeFromSuperview()
+        nativeVideoBackdropView.removeFromSuperview()
         nativeVideoPausedView.removeFromSuperview()
         nativeVideoControlsView.removeFromSuperview()
         nativeVideoMuted = false

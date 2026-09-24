@@ -21,6 +21,7 @@
   <string name="native_private_identity_protected">निजी पहचान सुरक्षित है</string>
   <string name="native_decline">अस्वीकार करें</string>
   <string name="native_answer">जवाब दें</string>
+  <string name="native_answer_video">वीडियो पर जवाब दें</string>
     <string name="native_end_to_end_encrypted">एंड-टू-एंड एन्क्रिप्टेड</string>
     <string name="native_end_to_end_encrypted_call">एंड-टू-एंड एन्क्रिप्टेड कॉल</string>
   <string name="native_video">वीडियो</string>

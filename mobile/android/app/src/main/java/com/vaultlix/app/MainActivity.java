@@ -881,7 +881,7 @@ public class MainActivity extends BridgeActivity {
         private boolean startOutgoingCallInternal(String roomHandle, String caller, String peer, String inviteId, boolean startWithVideo) {
             configureCallAudioRoute();
             NativeCallRoomStore.Room saved = nativeCallRoomStore.byHandle(roomHandle);
-            if (saved == null || !nativeCallEngine.prepareOutgoing(roomHandle, caller, inviteId)) return false;
+            if (saved == null || !nativeCallEngine.prepareOutgoing(roomHandle, caller, inviteId, startWithVideo)) return false;
             runOnUiThread(() -> {
                 View focused = getCurrentFocus();
                 InputMethodManager keyboard = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);

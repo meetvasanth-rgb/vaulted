@@ -49,8 +49,10 @@ test('native iOS direct video calls notify CallKit and use a full-screen canvas'
   const server = fs.readFileSync('server/index.js', 'utf8');
   assert.match(scene, /nativeRemoteVideoView\.layer\.cornerRadius = 0/);
   assert.match(scene, /nativeRemoteVideoView\.frame = root\.bounds/);
-  assert.match(scene, /insertSubview\(nativeRemoteVideoView, belowSubview: webView\)/);
-  assert.match(scene, /bringSubviewToFront\(webView\)/);
+  assert.match(scene, /nativeVideoBackdropView\.backgroundColor/);
+  assert.match(scene, /root\.bringSubviewToFront\(nativeVideoBackdropView\)/);
+  assert.match(scene, /root\.bringSubviewToFront\(nativeRemoteVideoView\)/);
+  assert.doesNotMatch(scene, /webView\?\.backgroundColor = \.clear/);
   assert.match(manager, /action\.isVideo = video/);
   assert.match(engine, /wire\["hasVideo"\] = outgoingVideoCall/);
   assert.match(server, /hasVideo: msg2\.hasVideo === true/);

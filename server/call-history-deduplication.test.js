@@ -72,7 +72,7 @@ test('web, iOS and Android reuse the same outgoing invitation ID', () => {
   assert.match(iosScene, /inviteID: inviteID/);
   assert.match(iosManager, /prepareOutgoing\([\s\S]*?inviteID: inviteID/);
   assert.match(iosEngine, /self\.inviteID = inviteID/);
-  assert.match(androidMain, /prepareOutgoing\(roomHandle, caller, inviteId\)/);
+  assert.match(androidMain, /prepareOutgoing\(roomHandle, caller, inviteId, startWithVideo\)/);
   assert.match(androidEngine, /prepare\(saved, true, caller, requestedInviteId\)/);
 });
 

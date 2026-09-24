@@ -28,11 +28,29 @@ test('an incoming direct video call is identified before Android answers it', ()
   assert.match(server, /hasVideo: msg2\.hasVideo === true/);
   assert.match(server, /hasVideo: parsed\.hasVideo \? 'true' : 'false'/);
   assert.match(messaging, /data\.get\("hasVideo"\)/);
-  assert.match(messaging, /caller \+ " · Video call"/);
+  assert.match(messaging, /"VIDEO CALL · " \+ caller/);
   assert.match(messaging, /IncomingCallActivity\.EXTRA_VIDEO_CALL/);
   assert.match(incoming, /EXTRA_VIDEO_CALL/);
   assert.match(incoming, /native_incoming_encrypted_video_call/);
   assert.match(strings, /name="native_incoming_encrypted_video_call">Incoming encrypted video call/);
+  assert.match(incoming, /videoCall \? R\.drawable\.ic_call_video : R\.drawable\.ic_call_end/);
+  assert.match(incoming, /videoCall \? R\.string\.native_answer_video : R\.string\.native_answer/);
+});
+
+test('the web incoming screen keeps video identity and answer affordance', () => {
+  const client = read('client/index.html');
+  assert.match(client, /handleSignalMessage\(room, msg\.type, payload, msg\.inviteId, msg\.hasVideo === true\)/);
+  assert.match(client, /room\.incomingVideoCall = hasVideo === true/);
+  assert.match(client, /Incoming encrypted video call/);
+  assert.match(client, /room\.incomingVideoCall \? CALL_VIDEO_ICON : CALL_PHONE_ICON/);
+});
+
+test('native Android carries the video-call intent through the signalling envelope', () => {
+  const engine = read(java + 'NativeWebRtcCallEngine.java');
+  const main = read(java + 'MainActivity.java');
+  assert.match(main, /prepareOutgoing\(roomHandle, caller, inviteId, startWithVideo\)/);
+  assert.match(engine, /outgoingVideoCall = videoCall/);
+  assert.match(engine, /"call-invite"\.equals\(type\)\) wire\.put\("hasVideo", outgoingVideoCall\)/);
 });
 
 test('the engine negotiates video up front and gates every camera and peer picture on consent', () => {
@@ -96,7 +114,8 @@ test('a newer call screen keeps its renderers when an older one is destroyed', (
 test('every shipped language has every video string', () => {
   const names = ['native_video', 'native_stop_video', 'native_flip_camera', 'native_video_unlock',
     'native_video_switch_title', 'native_video_switch_body', 'native_video_request_body',
-    'native_switch', 'native_cancel', 'native_not_now', 'native_video_declined', 'native_video_waiting'];
+    'native_switch', 'native_cancel', 'native_not_now', 'native_video_declined', 'native_video_waiting',
+    'native_answer_video'];
   for (const dir of ['values', 'values-ar', 'values-hi', 'values-hy', 'values-ru', 'values-zh-rCN']) {
     const strings = read(`${res}${dir}/strings.xml`);
     for (const name of names) assert.match(strings, new RegExp(`name="${name}"`), `${dir} is missing ${name}`);

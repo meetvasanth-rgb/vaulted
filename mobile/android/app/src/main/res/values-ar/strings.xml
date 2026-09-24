@@ -21,6 +21,7 @@
   <string name="native_private_identity_protected">هويتك الخاصة محمية</string>
   <string name="native_decline">رفض</string>
   <string name="native_answer">رد</string>
+  <string name="native_answer_video">رد بالفيديو</string>
     <string name="native_end_to_end_encrypted">مشفّر من طرف إلى طرف</string>
     <string name="native_end_to_end_encrypted_call">مكالمة مشفّرة من طرف إلى طرف</string>
   <string name="native_video">فيديو</string>

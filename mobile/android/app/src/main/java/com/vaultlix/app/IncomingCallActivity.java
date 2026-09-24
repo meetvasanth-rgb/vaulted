@@ -223,9 +223,14 @@ public class IncomingCallActivity extends Activity {
         actionButton(decline).setOnClickListener(view -> declineCall());
         actions.addView(decline, new LinearLayout.LayoutParams(0, dp(114), 1));
 
-        LinearLayout answer = callAction(R.drawable.ic_call_end, R.string.native_answer, ANSWER, true);
+        LinearLayout answer = callAction(
+                videoCall ? R.drawable.ic_call_video : R.drawable.ic_call_end,
+                videoCall ? R.string.native_answer_video : R.string.native_answer,
+                ANSWER,
+                true
+        );
         ImageButton answerButton = actionButton(answer);
-        answerButton.setRotation(180f);
+        if (!videoCall) answerButton.setRotation(180f);
         answerButton.setOnClickListener(view -> answerCall());
         actions.addView(answer, new LinearLayout.LayoutParams(0, dp(114), 1));
 
