@@ -17,6 +17,7 @@ let package = Package(
         .package(url: "https://github.com/stasel/WebRTC.git", exact: "150.0.0"),
         .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.18.0"),
         .package(name: "CapacitorApp", path: "../../../node_modules/@capacitor/app"),
+        .package(name: "CapacitorKeyboard", path: "../../../node_modules/@capacitor/keyboard"),
         .package(name: "CapacitorPushNotifications", path: "../../../node_modules/@capacitor/push-notifications")
     ],
     targets: [
@@ -28,6 +29,7 @@ let package = Package(
                 .product(name: "WebRTC", package: "WebRTC"),
                 .product(name: "SQLCipher", package: "SQLCipher.swift"),
                 .product(name: "CapacitorApp", package: "CapacitorApp"),
+                .product(name: "CapacitorKeyboard", package: "CapacitorKeyboard"),
                 .product(name: "CapacitorPushNotifications", package: "CapacitorPushNotifications")
             ]
         )

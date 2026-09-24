@@ -65,9 +65,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             self?.emitSpeakerState(success: true)
         })
         observers.append(NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.hideWebInputAssistantBar() })
-        observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixRemoteVideoTrack, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, let track = note.object as? RTCVideoTrack else { return }
@@ -129,13 +126,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
 
-        // WKWebView adds previous/next and Done controls above the system
-        // keyboard for HTML fields. Vaultlix has its own composer controls,
-        // so remove those public input-assistant groups and let the keyboard
-        // sit directly below the composer like a native messaging app.
-        hideWebInputAssistantBar()
-        DispatchQueue.main.async { [weak self] in self?.hideWebInputAssistantBar() }
-
         if let activity = connectionOptions.userActivities.first(where: {
             $0.activityType == NSUserActivityTypeBrowsingWeb
         }), let url = activity.webpageURL, isVaultlixLink(url) {
@@ -161,16 +151,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             : ""
         let script = "\(persist)window.dispatchEvent(new CustomEvent(\(String(reflecting: name)),{detail:\(json)}));"
         webView.evaluateJavaScript(script)
-    }
-
-    private func hideWebInputAssistantBar() {
-        guard let webView = (window?.rootViewController as? CAPBridgeViewController)?.webView else { return }
-        func clearAssistantGroups(in view: UIView) {
-            view.inputAssistantItem.leadingBarButtonGroups = []
-            view.inputAssistantItem.trailingBarButtonGroups = []
-            view.subviews.forEach { clearAssistantGroups(in: $0) }
-        }
-        clearAssistantGroups(in: webView)
     }
 
     private func showNativeVideoViews(remote: Bool) {

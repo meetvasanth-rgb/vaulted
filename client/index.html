@@ -3277,7 +3277,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" data-i18n-placeholder="message_placeholder" rows="1" disabled></textarea>
-    <button class="send-btn" id="send-btn" onclick="sendMsg()" disabled style="display:none">
+    <button class="send-btn" id="send-btn" onclick="sendMsg();keepIOSComposerFocused('msg-input')" disabled style="display:none">
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
     <button class="mic-btn" id="mic-btn" onclick="startVoiceRecording()" disabled title="Record voice note">
@@ -3360,7 +3360,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <input type="file" id="group-camera-input" hidden accept="image/*" capture="environment" onchange="handlePrivateGroupFileSelect(event)"/>
     <textarea id="group-message-input" maxlength="4000" rows="1" placeholder="Message the group…" oninput="updatePrivateGroupComposer()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPrivateGroupMessage()}"></textarea>
     <button class="group-mic-btn" type="button" onclick="togglePrivateGroupVoiceRecording()" aria-label="Record voice note"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
-    <button class="group-send-btn" type="button" onclick="sendPrivateGroupMessage()" aria-label="Send"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+    <button class="group-send-btn" type="button" onclick="sendPrivateGroupMessage();keepIOSComposerFocused('group-message-input')" aria-label="Send"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
   </footer>
 </div>
 
@@ -17568,7 +17568,26 @@ function initializeHomepageMotionDemo() {
 document.addEventListener('DOMContentLoaded', initializeHomepageMotionDemo, { once:true });
 
 // ── KEYBOARD ─────────────────────────────────────────────────────────────
+function isNativeIOS() {
+  return window.Capacitor?.isNativePlatform?.() === true
+    && window.Capacitor?.getPlatform?.() === 'ios';
+}
+
+function keepIOSComposerFocused(inputId) {
+  if (isNativeIOS()) document.getElementById(inputId)?.focus({ preventScroll:true });
+}
+
+async function configureNativeIOSKeyboard() {
+  if (!isNativeIOS()) return;
+  try {
+    await window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible({ isVisible:false });
+  } catch (error) {
+    console.warn('Could not hide the iOS keyboard accessory bar', error);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  configureNativeIOSKeyboard();
   document.getElementById('name-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('code-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('msg-input')?.addEventListener('keydown', e => {
