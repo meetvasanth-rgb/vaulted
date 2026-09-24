@@ -520,7 +520,10 @@ final class NativeWebRTCCallEngine: NSObject {
             inviteRetryGeneration += 1
             answered = true
             if peer == nil { fetchTurnAndCreatePeerLocked() }
-            else { createAndSendOfferLocked() }
+            else {
+                createAndSendOfferLocked()
+                requestDirectVideoIfReadyLocked()
+            }
         case "offer":
             guard answered else { return }
             offerReceived = true
@@ -631,8 +634,30 @@ final class NativeWebRTCCallEngine: NSObject {
         prepareAudioTrackLocked()
         if let audioTrack { _ = pc.add(audioTrack, streamIds: ["vaultlix-native-stream"]) }
         prepareVideoTrackLocked(peer: pc)
-        if outgoing && answered { createAndSendOfferLocked() }
+        if outgoing && answered {
+            createAndSendOfferLocked()
+            requestDirectVideoIfReadyLocked()
+        }
         else if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
+    }
+
+    /// A dedicated video call has already been selected by the caller, but
+    /// camera consent still belongs to the receiver. Once the accepted call
+    /// has a peer connection, send the same encrypted request used by the
+    /// in-call video button. `videoRequestPending` prevents duplicate prompts
+    /// when accept or TURN setup is retried.
+    private func requestDirectVideoIfReadyLocked() {
+        guard directVideoCall, outgoing, answered, peer != nil,
+              !videoConsent, !videoRequestPending else { return }
+        videoRequestPending = true
+        trace("direct-video requesting-consent")
+        sendSignalLocked(type: "call-video-request", payload: [:])
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                            userInfo: ["enabled": false,
+                                                       "remoteOn": self.remoteVideoOn,
+                                                       "waiting": true])
+        }
     }
 
     private func createAndSendOfferLocked() {

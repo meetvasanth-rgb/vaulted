@@ -34,6 +34,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var nativeVideoMuted = false
     private var nativeLocalVideoEnabled = false
     private var nativeVideoSessionActive = false
+    private weak var nativeVideoConsentAlert: UIAlertController?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -92,9 +93,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 self?.emit(name: "vaultlix:native-video-state", detail: note.userInfo)
                 return
             }
+            if requested {
+                self?.nativeVideoSessionActive = true
+                self?.updateNativeVideoPlaceholder(waiting: true)
+                self?.showNativeVideoViews(remote: false)
+                self?.presentNativeVideoConsentPrompt()
+                return
+            }
             self?.nativeLocalVideoEnabled = enabled
-            if enabled || remoteOn || waiting || requested { self?.nativeVideoSessionActive = true }
-            self?.updateNativeVideoPlaceholder(waiting: waiting || requested)
+            if enabled || remoteOn || waiting { self?.nativeVideoSessionActive = true }
+            self?.updateNativeVideoPlaceholder(waiting: waiting)
             if self?.nativeVideoSessionActive == true { self?.showNativeVideoViews(remote: remoteOn) }
             self?.nativeLocalVideoView.isHidden = !enabled
             self?.nativeRemoteVideoView.isHidden = !remoteOn
@@ -226,6 +234,33 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeVideoPausedLabel.text = waiting ? "Connecting video…" : "Video paused"
     }
 
+    private func presentNativeVideoConsentPrompt() {
+        guard nativeVideoConsentAlert == nil,
+              let root = window?.rootViewController else { return }
+        let alert = UIAlertController(
+            title: "Switch to video?",
+            message: "Your contact wants to turn on video. Turn on your camera?",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Not now", style: .cancel) { [weak self] _ in
+            self?.nativeVideoConsentAlert = nil
+            VaultlixCallManager.shared.respondToVideoRequestFromWeb(roomCode: "", accepted: false) { _ in }
+            self?.hideNativeVideoViews()
+        })
+        alert.addAction(UIAlertAction(title: "Turn on camera", style: .default) { [weak self] _ in
+            self?.nativeVideoConsentAlert = nil
+            VaultlixCallManager.shared.respondToVideoRequestFromWeb(roomCode: "", accepted: true) { success in
+                guard !success else { return }
+                self?.hideNativeVideoViews()
+                self?.emit(name: "vaultlix:native-video-state", detail: ["success": false])
+            }
+        })
+        nativeVideoConsentAlert = alert
+        var presenter = root
+        while let presented = presenter.presentedViewController { presenter = presented }
+        presenter.present(alert, animated: true)
+    }
+
     private func installNativeVideoControlsIfNeeded(in root: UIView) {
         guard nativeVideoControlsView.superview == nil else { return }
         nativeVideoControlsView.layer.cornerRadius = 30
@@ -326,6 +361,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func hideNativeVideoViews() {
+        nativeVideoConsentAlert?.dismiss(animated: false)
+        nativeVideoConsentAlert = nil
         if let track = nativeRemoteVideoTrack { track.remove(nativeRemoteVideoView) }
         if let track = nativeLocalVideoTrack { track.remove(nativeLocalVideoView) }
         nativeRemoteVideoTrack = nil
