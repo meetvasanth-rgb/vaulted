@@ -4395,20 +4395,37 @@ function scheduleSecureNativeHistoryCache(room, records) {
   }
   if (secureNativeCacheScheduled || !secureNativeCacheQueue.length) return;
   secureNativeCacheScheduled = true;
+  const scheduleNext = (callback, delay = 0) => {
+    if (delay > 0) {
+      setTimeout(callback, delay);
+    } else if ('requestIdleCallback' in window) {
+      requestIdleCallback(callback, { timeout:1000 });
+    } else {
+      setTimeout(callback, 32);
+    }
+  };
   const runOne = () => {
     secureNativeCacheScheduled = false;
+    // The Android bridge call below is synchronous and media records can be
+    // several megabytes. Never start one while the user is opening a chat,
+    // pressing Back, or scrolling after a cold resume. The queue remains
+    // intact and resumes once touch/scroll input has been quiet long enough.
+    const quietFor = Date.now() - lastInteractionTime;
+    if (quietFor < 1800) {
+      secureNativeCacheScheduled = true;
+      scheduleNext(runOne, Math.max(120, 1800 - quietFor));
+      return;
+    }
     const item = secureNativeCacheQueue.shift();
     if (!item) return;
     secureNativeCacheKeys.delete(item.key);
     if (!item.rec.deleted) secureNativeStoreMessage(item.room, item.rec);
     if (secureNativeCacheQueue.length) {
       secureNativeCacheScheduled = true;
-      if ('requestIdleCallback' in window) requestIdleCallback(runOne, { timeout:1000 });
-      else setTimeout(runOne, 32);
+      scheduleNext(runOne);
     }
   };
-  if ('requestIdleCallback' in window) requestIdleCallback(runOne, { timeout:1000 });
-  else setTimeout(runOne, 32);
+  scheduleNext(runOne);
 }
 function secureNativeDeleteMessage(conversationId, messageId) {
   if (!conversationId || !messageId) return;
@@ -12299,7 +12316,7 @@ window.addEventListener('blur', () => { tabFocused = false; });
 // 'load' — pageshow (with persisted:true) is the reliable signal for that.
 window.addEventListener('pageshow', (e) => { if (e.persisted) resumeForegroundWork(); });
 
-['click','keydown','touchstart','mousemove'].forEach(evt => {
+['click','keydown','pointerdown','touchstart','touchmove','wheel','scroll'].forEach(evt => {
   document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
 });
 

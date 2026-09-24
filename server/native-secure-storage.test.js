@@ -42,6 +42,14 @@ test('a deleted record cannot be recreated by a queued native history-cache writ
   assert.match(client, /function clearRoomChatLocally[\s\S]*cancelAndScrubConversationCache\(room\)[\s\S]*secureNativeClearConversation/);
 });
 
+test('restored native history caching yields to opening, back and scroll input', () => {
+  const body = client.match(/function scheduleSecureNativeHistoryCache\(room, records\)[\s\S]*?\n}/)[0];
+  assert.match(body, /Date\.now\(\) - lastInteractionTime/);
+  assert.match(body, /quietFor < 1800/);
+  assert.ok(body.indexOf('quietFor < 1800') < body.indexOf('secureNativeCacheQueue.shift()'));
+  assert.match(client, /\['click','keydown','pointerdown','touchstart','touchmove','wheel','scroll'\]/);
+});
+
 test('message records and rendered media references are scrubbed during deletion', () => {
   assert.match(client, /function scrubMessageRecord[\s\S]*record\[field\] = ''/);
   const body = client.match(/function removeMessageRecord\(room, msgId\)[\s\S]*?\n}/)[0];
