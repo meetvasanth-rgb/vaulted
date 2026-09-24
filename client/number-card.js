@@ -39,8 +39,9 @@
     return path;
   }
 
-  function createNumberCardSvg({ number, username, tier = 'standard', qrMatrix = [] }) {
+  function createNumberCardSvg({ number, shareCode, username, tier = 'standard', qrMatrix = [] }) {
     const safeNumber = escapeXml(formatNumber(number));
+    const safeSharePath = shareCode ? `p/${escapeXml(shareCode)}` : safeNumber;
     const safeUsername = escapeXml(username || 'Vaultlix identity');
     const badge = tier === 'reserve' ? 'RESERVE' : (tier === 'founding' ? 'FOUNDING MEMBER' : '');
     const badgeMarkup = badge
@@ -70,7 +71,7 @@
     <tspan x="540">Scan to request a private, encrypted chat with</tspan>
     <tspan x="540" dy="31">${safeUsername} — no phone number needed</tspan>
   </text>
-  <text x="540" y="1257" text-anchor="middle" class="fallback">vaultlix.com/${safeNumber}</text>
+  <text x="540" y="1257" text-anchor="middle" class="fallback">vaultlix.com/${safeSharePath}</text>
   <text x="540" y="1300" text-anchor="middle" class="small">NO SIM · NO PHONE NUMBER · YOUR CHOICE</text>
 </svg>`;
   }

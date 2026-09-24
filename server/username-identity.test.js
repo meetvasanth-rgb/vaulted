@@ -11,7 +11,7 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 test('public Private Number is separate from the private random account id', () => {
   assert.match(client, /function randomAccountId\(\)/);
   assert.match(server, /const privateNumbers = new Map\(\)/);
-  assert.match(server, /version: 2, privateNumber, displayName/);
+  assert.match(server, /version: 2, privateNumber, profileShareCode:generateProfileShareCode\(\), displayName/);
   assert.match(server, /function generatePrivateNumberCandidate\(category = 'standard', preferredSuffix = ''\)/);
   assert.match(server, /normalizePrivateNumberPolicy/);
 });
@@ -101,7 +101,7 @@ test('registration uses a reserved system-generated ten-digit Private Number', (
   assert.match(client, /Password policy:<\/strong> Minimum 8 characters/);
   assert.match(client, /password\.length < 8/);
   assert.match(client, /This is not a cellular phone number/);
-  assert.match(client, /vaultlix\.com\/\$\{result\.profile\.privateNumber\}/);
+  assert.match(client, /vaultlix\.com\/p\/\$\{result\.profile\.profileShareCode\}/);
   assert.match(client, /<span>Username<\/span><input id="account-create-display-name"/);
   assert.doesNotMatch(client, /Your permanent name or pseudonym/);
 });

@@ -9316,22 +9316,23 @@ function beginNumberCardShare() {
   return true;
 }
 
-function quickConnectQrMatrix(privateNumber) {
+function quickConnectQrMatrix(privateNumber, profileShareCode) {
   const qr = qrcode(0, 'M');
-  qr.addData(quickConnectQrUrl(privateNumber));
+  qr.addData(quickConnectQrUrl(privateNumber, profileShareCode));
   qr.make();
   return Array.from({ length:qr.getModuleCount() }, (_, row) =>
     Array.from({ length:qr.getModuleCount() }, (_, column) => qr.isDark(row, column)));
 }
 
-function quickConnectQrUrl(privateNumber) {
-  return `https://vaultlix.com/${privateNumber}?ref=qr`;
+function quickConnectQrUrl(privateNumber, profileShareCode = loadAccountState()?.profileShareCode) {
+  const code = normalizeProfileShareCode(profileShareCode);
+  return code ? `https://vaultlix.com/p/${code}?ref=qr` : `https://vaultlix.com/${privateNumber}?ref=qr`;
 }
 
 let numberCardPrewarmScheduled = false;
 function scheduleNumberCardPrewarm(state = loadAccountState()) {
   if (!state?.privateNumber || numberCardPrewarmScheduled) return;
-  const assetKey = `${state.privateNumber}|${state.displayName || ''}|${state.tier || ''}|${state.isFounding ? 1 : 0}`;
+  const assetKey = `${state.privateNumber}|${state.profileShareCode || ''}|${state.displayName || ''}|${state.tier || ''}|${state.isFounding ? 1 : 0}`;
   if (numberCardAssetKey === assetKey && numberCardAssetPromise) return;
   numberCardPrewarmScheduled = true;
   const work = () => {
@@ -9344,13 +9345,14 @@ function scheduleNumberCardPrewarm(state = loadAccountState()) {
 
 async function renderNumberCard(state = loadAccountState()) {
   if (!state?.privateNumber) throw new Error('Private Number unavailable');
-  const assetKey = `${state.privateNumber}|${state.displayName || ''}|${state.tier || ''}|${state.isFounding ? 1 : 0}`;
+  const assetKey = `${state.privateNumber}|${state.profileShareCode || ''}|${state.displayName || ''}|${state.tier || ''}|${state.isFounding ? 1 : 0}`;
   if (numberCardAssetKey === assetKey && numberCardAssetPromise) return numberCardAssetPromise;
   const svg = VaultlixNumberCard.createNumberCardSvg({
     number:state.privateNumber,
+    shareCode:state.profileShareCode,
     username:state.displayName,
     tier:state.tier || (state.isFounding ? 'founding' : 'standard'),
-    qrMatrix:quickConnectQrMatrix(state.privateNumber),
+    qrMatrix:quickConnectQrMatrix(state.privateNumber, state.profileShareCode),
   });
   const blob = new Blob([svg], { type:'image/svg+xml' });
   const objectUrl = URL.createObjectURL(blob);
@@ -9452,7 +9454,7 @@ async function showOwnPrivateNumberQr() {
   const state = loadAccountState();
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
   closeQrPanel();
-  const link = quickConnectQrUrl(state.privateNumber);
+  const link = quickConnectQrUrl(state.privateNumber, state.profileShareCode);
   const overlay = document.createElement('div');
   overlay.id = 'qr-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
@@ -9824,9 +9826,11 @@ async function refreshOwnProfileFromServer() {
   const profileImage = safeProfileImageUri(latest.profileImage);
   const displayName = typeof latest.displayName === 'string' && latest.displayName.trim()
     ? latest.displayName.trim().slice(0, 40) : state.displayName;
-  if (state.profileImage !== profileImage || state.displayName !== displayName) {
+  const profileShareCode = normalizeProfileShareCode(latest.profileShareCode) || state.profileShareCode;
+  if (state.profileImage !== profileImage || state.displayName !== displayName || state.profileShareCode !== profileShareCode) {
     state.profileImage = profileImage;
     state.displayName = displayName;
+    state.profileShareCode = profileShareCode;
     saveAccountState(state);
   }
   populateAccountProfileSettings(state);
@@ -11271,7 +11275,7 @@ async function createAnonymousAccount(event) {
     // were included in the successful encrypted registration bundle.
     claimLocalVaultsForAccount(accountId);
     const accountCreatedAt = Date.now();
-    saveAccountState({ v:4, privateNumber, displayName, profileImage:safeProfileImageUri(result.profileImage), accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap, recoveryBackupConfirmedAt:0, accountCreatedAt, recoveryReminderDueAt:accountCreatedAt + RECOVERY_FIRST_REMINDER_MS, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    saveAccountState({ v:4, privateNumber, profileShareCode:result.profileShareCode, displayName, profileImage:safeProfileImageUri(result.profileImage), accountId, sessionToken:result.sessionToken, masterKey:masterKeyEncoded, revision:result.revision, recoveryCodeWrap, recoveryBackupConfirmedAt:0, accountCreatedAt, recoveryReminderDueAt:accountCreatedAt + RECOVERY_FIRST_REMINDER_MS, numberCategory:pendingPrivateNumberCategory, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'pending');
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     document.getElementById('account-guest-view').style.display = 'none';
@@ -11309,7 +11313,7 @@ async function loginAnonymousAccount(event) {
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
     accountReauthenticationActive = false;
-    saveAccountState({ v:4, privateNumber, displayName:result.displayName, profileImage:safeProfileImageUri(result.profileImage), accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision, recoveryCodeWrap:typeof bundle.recoveryCodeWrap === 'string' ? bundle.recoveryCodeWrap : null, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    saveAccountState({ v:4, privateNumber, profileShareCode:result.profileShareCode, displayName:result.displayName, profileImage:safeProfileImageUri(result.profileImage), accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision, recoveryCodeWrap:typeof bundle.recoveryCodeWrap === 'string' ? bundle.recoveryCodeWrap : null, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Signed in'); setTimeout(() => location.reload(), 350);
   } catch (e) {
@@ -11342,7 +11346,7 @@ async function recoverAnonymousAccount(event) {
     const recoveredBundle = await aesDecryptJson(masterKey, existing.bundle);
     importAccountBundle(recoveredBundle, result.accountId);
     const recoveryCodeWrap = await aesEncryptJson(masterKey, { recoveryCode:code.trim() });
-    saveAccountState({ v:4, privateNumber, displayName:result.displayName, profileImage:safeProfileImageUri(result.profileImage), accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap, tier:result.tier || 'standard', isFounding:!!result.isFounding });
+    saveAccountState({ v:4, privateNumber, profileShareCode:result.profileShareCode, displayName:result.displayName, profileImage:safeProfileImageUri(result.profileImage), accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     await syncAnonymousAccount(false);
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
     toast('Password changed and conversations restored'); setTimeout(() => location.reload(), 350);
@@ -16232,16 +16236,26 @@ function parsePublicPrivateNumber() {
   const match = location.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
   return match ? match[1] : null;
 }
-function attemptAndroidQrAppHandoff(privateNumber) {
+function normalizeProfileShareCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return /^[A-HJ-NP-Z2-9]{6}$/.test(code) ? code : '';
+}
+function parseProfileShareCode(pathname = location.pathname) {
+  const match = String(pathname || '').match(/^\/p\/([a-hj-np-z2-9]{6})\/?$/i);
+  return match ? normalizeProfileShareCode(match[1]) : null;
+}
+function attemptAndroidQrAppHandoff(target) {
   const params = new URLSearchParams(location.search);
-  if (!privateNumber || params.get('ref') !== 'qr' || params.get('appAttempted') === '1' || isNativeApp() || !/android/i.test(navigator.userAgent)) return;
+  if (!target || params.get('ref') !== 'qr' || params.get('appAttempted') === '1' || isNativeApp() || !/android/i.test(navigator.userAgent)) return;
   // Android camera apps consistently recognize the HTTPS QR. Normally the
   // verified App Link opens Vaultlix before a browser appears; this explicit
   // package-targeted handoff covers devices whose domain preference was reset
   // or whose scanner deliberately opened Chrome. If Vaultlix is not installed,
   // Chrome returns to the same invitation page without retrying the handoff.
-  const fallback = `https://vaultlix.com/${privateNumber}?ref=qr&appAttempted=1`;
-  const intent = `intent://connect/${privateNumber}#Intent;scheme=vaultlix;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+  const code = normalizeProfileShareCode(target);
+  const path = code ? `p/${code}` : String(target);
+  const fallback = `https://vaultlix.com/${path}?ref=qr&appAttempted=1`;
+  const intent = `intent://vaultlix.com/${path}#Intent;scheme=https;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
   setTimeout(() => { location.href = intent; }, 120);
 }
 function parseRecoveryLink(rawURL = location.href) {
@@ -16358,10 +16372,21 @@ async function openPublicProfile(privateNumber, options = {}) {
   publicProfileLookup = { privateNumber:normalized, promise };
   return promise;
 }
-async function performPublicProfileLookup(privateNumber, options = {}) {
+async function openPublicProfileShareCode(profileShareCode, options = {}) {
+  const normalized = normalizeProfileShareCode(profileShareCode);
+  if (!normalized) return false;
+  const key = `share:${normalized}`;
+  if (publicProfileLookup?.privateNumber === key) return publicProfileLookup.promise;
+  const promise = performPublicProfileLookup(normalized, options, true).finally(() => {
+    if (publicProfileLookup?.promise === promise) publicProfileLookup = null;
+  });
+  publicProfileLookup = { privateNumber:key, promise };
+  return promise;
+}
+async function performPublicProfileLookup(privateNumber, options = {}, byShareCode = false) {
   activePublicProfile = null;
   try {
-    const response = await fetch(`/api/profile/${encodeURIComponent(privateNumber)}`, {
+    const response = await fetch(`${byShareCode ? '/api/profile-share/' : '/api/profile/'}${encodeURIComponent(privateNumber)}`, {
       headers:{ Accept:'application/json', 'X-Vaultlix-Lookup-Key':privateLookupKey() },
     });
     const result = await response.json();
@@ -16390,7 +16415,7 @@ async function performPublicProfileLookup(privateNumber, options = {}) {
     invitationCopy.textContent = signedIn
       ? ''
       : 'Create your Vaultlix Private Number to connect. No phone number, email or contacts required.';
-    document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/${result.profile.privateNumber}`;
+    document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/p/${result.profile.profileShareCode}`;
     const openApp = document.getElementById('public-profile-open-app');
     if (openApp) {
       openApp.href = `vaultlix://connect/${encodeURIComponent(result.profile.privateNumber)}`;
@@ -16622,6 +16647,10 @@ window.vaultlixOpenInviteURL = function(rawURL) {
     }
     const profile = url.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
     if (profile) openPublicProfile(profile[1]);
+    else {
+      const shareCode = parseProfileShareCode(url.pathname);
+      if (shareCode) openPublicProfileShareCode(shareCode);
+    }
   } catch (e) {}
 };
 
@@ -17666,6 +17695,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // here since restoring saved rooms below doesn't otherwise depend on it.
   const joinLinkCode = parseJoinLinkCode();
   const publicPrivateNumber = parsePublicPrivateNumber();
+  const publicProfileShareCode = parseProfileShareCode();
   const startupRecovery = parseRecoveryLink();
   // Android's native incoming-call surface has already collected the user's
   // Answer decision. Preserve it across WebView startup/room restoration and
@@ -18026,6 +18056,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     await openConnectionRequest(startupConnectionRequestId);
   } else if (startupCreateNumber && !loadAccountState()) {
     openCreateAccount();
+  } else if (publicProfileShareCode) {
+    await openPublicProfileShareCode(publicProfileShareCode);
+    attemptAndroidQrAppHandoff(publicProfileShareCode);
   } else if (publicPrivateNumber) {
     await openPublicProfile(publicPrivateNumber);
     attemptAndroidQrAppHandoff(publicPrivateNumber);

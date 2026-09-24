@@ -104,6 +104,7 @@ const { markInviteTerminated, isInviteTerminated } = require('./call-invite-stat
 const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notification');
 const accounts = new Map();
 const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
+const profileShareCodes = new Map(); // short public link code -> private random account id
 const privateNumberReservations = new Map();
 const privateNumberLifecycle = new Map();
 const profileLookupBuckets = new Map();
@@ -1383,12 +1384,32 @@ function accountByPrivateNumber(value) {
   const accountId = privateNumber ? privateNumbers.get(privateNumber) : null;
   return accountId ? { accountId, account:accounts.get(accountId) } : null;
 }
+const PROFILE_SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function normalizeProfileShareCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return /^[A-HJ-NP-Z2-9]{6}$/.test(code) ? code : '';
+}
+function generateProfileShareCode() {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let code = '';
+    for (const byte of bytes) code += PROFILE_SHARE_ALPHABET[byte % PROFILE_SHARE_ALPHABET.length];
+    if (!profileShareCodes.has(code)) return code;
+  }
+  throw new Error('Could not allocate a profile share code');
+}
+function accountByProfileShareCode(value) {
+  const code = normalizeProfileShareCode(value);
+  const accountId = code ? profileShareCodes.get(code) : null;
+  return accountId ? { accountId, account:accounts.get(accountId) } : null;
+}
 function publicAccount(account) {
   return {
     privateNumber:account.privateNumber,
+    profileShareCode:account.profileShareCode,
     displayName:account.displayName,
     profileImage:normalizeProfileImage(account.profileImage) || null,
-    address:`https://vaultlix.com/${account.privateNumber}`,
+    address:`https://vaultlix.com/p/${account.profileShareCode}`,
     tier:account.tier || NUMBER_TIERS.STANDARD,
     isFounding:!!account.isFounding,
   };
@@ -3267,7 +3288,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       : NUMBER_TIERS.RESERVE;
     const { tier, isFounding } = assignAccountTier({ creationOrder, reservationTier });
     const account = {
-      version: 2, privateNumber, displayName, profileImage:null,
+      version: 2, privateNumber, profileShareCode:generateProfileShareCode(), displayName, profileImage:null,
       authVerifier,
       recoveryVerifier,
       passwordWrap: d.passwordWrap,
@@ -3296,6 +3317,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     accounts.set(d.accountId, account);
     privateNumbers.set(privateNumber, d.accountId);
+    profileShareCodes.set(account.profileShareCode, d.accountId);
     if (!postgresEnabled) await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:d.accountId, ...publicAccount(account), sessionToken, revision: account.revision, retention:accountRetention(account) });
@@ -3960,6 +3982,19 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     const found = accountByPrivateNumber(decodeURIComponent(path.slice('/api/profile/'.length)));
     if (!found) return resErr(res, 'Vaultlix Private Number not found.', 404);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, profile:publicAccount(found.account) });
+  }
+
+  if (path.startsWith('/api/profile-share/') && method === 'GET') {
+    const retryAfter = await profileLookupRetryAfter(headers, ip);
+    if (retryAfter) {
+      res.setHeader('Retry-After', String(retryAfter));
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Too many lookups. Please wait before trying again.', 429);
+    }
+    const found = accountByProfileShareCode(decodeURIComponent(path.slice('/api/profile-share/'.length)));
+    if (!found) return resErr(res, 'Vaultlix profile link not found.', 404);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, profile:publicAccount(found.account) });
   }
@@ -6611,6 +6646,7 @@ function hydrateAccounts(entries, source) {
   if (!Array.isArray(entries)) throw new Error(`invalid ${source} account records`);
   accounts.clear();
   privateNumbers.clear();
+  profileShareCodes.clear();
   let fallbackCreationOrder = 0;
   for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2 || !validAccountId(entry[0])) continue;
@@ -6642,6 +6678,10 @@ function hydrateAccounts(entries, source) {
       record.dailyLookGeneratedAt = Number(record.dailyLookGeneratedAt) || null;
       record.dailyLookWindowStartedAt = Number(record.dailyLookWindowStartedAt) || null;
       record.dailyLookGenerationCount = Math.max(0, Number(record.dailyLookGenerationCount) || 0);
+      const storedProfileShareCode = normalizeProfileShareCode(record.profileShareCode);
+      record.profileShareCode = storedProfileShareCode && !profileShareCodes.has(storedProfileShareCode)
+        ? storedProfileShareCode
+        : generateProfileShareCode();
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
@@ -6658,6 +6698,7 @@ function hydrateAccounts(entries, source) {
       }).slice(-10);
       accounts.set(entry[0], record);
       privateNumbers.set(record.privateNumber, entry[0]);
+      profileShareCodes.set(record.profileShareCode, entry[0]);
   }
   console.log(`Anonymous accounts loaded from ${source}: ${accounts.size}.`);
 }

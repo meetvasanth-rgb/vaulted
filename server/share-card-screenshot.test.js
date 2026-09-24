@@ -25,18 +25,19 @@ test('share-card screenshot remains visually stable at 1080 by 1350', () => {
 });
 
 test('number-card QR uses the cross-platform verified app-link route', () => {
-  assert.match(client, /qr\.addData\(quickConnectQrUrl\(privateNumber\)\)/);
-  assert.match(client, /quickConnectQrMatrix[\s\S]{0,500}quickConnectQrUrl\(privateNumber\)/);
+  assert.match(client, /qr\.addData\(quickConnectQrUrl\(privateNumber, profileShareCode\)\)/);
+  assert.match(client, /quickConnectQrMatrix[\s\S]{0,500}quickConnectQrUrl\(privateNumber, profileShareCode\)/);
   assert.doesNotMatch(client, /console\.(?:info|log)\([^\n]*number-card/);
 });
 
 test('number card explains the scan and includes a readable connection fallback', () => {
   const svg = createNumberCardSvg({
-    number:'2480599999', username:'Vasanthkumar', tier:'founding', qrMatrix:[[true]],
+    number:'2480599999', shareCode:'ABC234', username:'Vasanthkumar', tier:'founding', qrMatrix:[[true]],
   });
   assert.match(svg, /Scan to request a private, encrypted chat with/);
   assert.match(svg, /Vasanthkumar — no phone number needed/);
-  assert.match(svg, /vaultlix\.com\/24-8059-9999/);
+  assert.match(svg, /vaultlix\.com\/p\/ABC234/);
+  assert.doesNotMatch(svg, /vaultlix\.com\/24-8059-9999/);
   assert.doesNotMatch(svg, /Scan to extend a private line/);
 });
 

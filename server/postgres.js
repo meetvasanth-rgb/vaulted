@@ -19,6 +19,7 @@ CREATE SEQUENCE IF NOT EXISTS account_creation_order_seq;
 CREATE TABLE IF NOT EXISTS accounts (
   account_id char(64) PRIMARY KEY,
   private_number varchar(10) NOT NULL UNIQUE,
+  profile_share_code char(6) UNIQUE,
   display_name varchar(40) NOT NULL,
   profile_image text,
   auth_verifier text NOT NULL,
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_share_code char(6);
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_profile_share_code_idx
+  ON accounts(profile_share_code) WHERE profile_share_code IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS private_number_lifecycle (
   private_number varchar(10) PRIMARY KEY,
@@ -275,9 +280,25 @@ class PostgresStore {
 
   async loadAccounts() {
     if (!this.enabled) return [];
+    const missing = await this.pool.query('SELECT account_id FROM accounts WHERE profile_share_code IS NULL ORDER BY created_at');
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for (const row of missing.rows) {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const bytes = crypto.randomBytes(6);
+        let code = '';
+        for (const byte of bytes) code += alphabet[byte % alphabet.length];
+        try {
+          await this.pool.query('UPDATE accounts SET profile_share_code=$2 WHERE account_id=$1 AND profile_share_code IS NULL', [row.account_id, code]);
+          break;
+        } catch (error) {
+          if (error?.code !== '23505' || attempt === 99) throw error;
+        }
+      }
+    }
     const { rows } = await this.pool.query('SELECT * FROM accounts ORDER BY created_at');
     return rows.map(row => [row.account_id, {
-      version:2, privateNumber:row.private_number, displayName:row.display_name, profileImage:row.profile_image || null,
+      version:2, privateNumber:row.private_number, profileShareCode:row.profile_share_code || null,
+      displayName:row.display_name, profileImage:row.profile_image || null,
       authVerifier:row.auth_verifier, recoveryVerifier:row.recovery_verifier,
       passwordWrap:row.password_wrap, recoveryWrap:row.recovery_wrap,
       bundle:row.encrypted_bundle, revision:Number(row.revision),
@@ -298,15 +319,16 @@ class PostgresStore {
   async saveAccount(accountId, account, queryClient = this.pool) {
     if (!this.enabled) return;
     await queryClient.query(`INSERT INTO accounts (
-      account_id, private_number, display_name, profile_image, auth_verifier, recovery_verifier,
+      account_id, private_number, profile_share_code, display_name, profile_image, auth_verifier, recovery_verifier,
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
       connection_requests, push_destinations, last_active_at, number_category,
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
       creation_order, daily_look_generated_at, daily_look_window_started_at,
       daily_look_generation_count, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,$20,$21,$22,$23,$24,$25,$26)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27)
     ON CONFLICT (account_id) DO UPDATE SET
-      private_number=EXCLUDED.private_number, display_name=EXCLUDED.display_name,
+      private_number=EXCLUDED.private_number, profile_share_code=EXCLUDED.profile_share_code,
+      display_name=EXCLUDED.display_name,
       profile_image=EXCLUDED.profile_image,
       auth_verifier=EXCLUDED.auth_verifier, recovery_verifier=EXCLUDED.recovery_verifier,
       password_wrap=EXCLUDED.password_wrap, recovery_wrap=EXCLUDED.recovery_wrap,
@@ -322,7 +344,7 @@ class PostgresStore {
       daily_look_window_started_at=EXCLUDED.daily_look_window_started_at,
       daily_look_generation_count=EXCLUDED.daily_look_generation_count,
       updated_at=EXCLUDED.updated_at`, [
-      accountId, account.privateNumber, account.displayName, account.profileImage || null, account.authVerifier,
+      accountId, account.privateNumber, account.profileShareCode || null, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
       account.bundle, account.revision, JSON.stringify(account.sessions || []),
       JSON.stringify(account.connectionRequests || []), JSON.stringify(account.pushDestinations || []),

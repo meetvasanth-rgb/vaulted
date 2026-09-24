@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v51';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v52';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
@@ -46,6 +46,7 @@ self.addEventListener('activate', (event) => {
 function isAppShellNavigation(pathname) {
   return pathname === '/' || pathname === '/index.html'
     || /^\/join\/[a-z0-9-]+\/?$/i.test(pathname)
+    || /^\/p\/[a-hj-np-z2-9]{6}\/?$/i.test(pathname)
     || /^\/[2-9][0-9]{5,9}\/?$/.test(pathname);
 }
 

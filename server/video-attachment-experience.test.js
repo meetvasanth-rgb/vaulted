@@ -47,5 +47,5 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v51/);
+  assert.match(sw, /vaultlix-app-shell-v52/);
 });

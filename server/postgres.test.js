@@ -20,6 +20,7 @@ test('v2 schema stores only ciphertext and supports deletion synchronization', (
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS private_number_lifecycle/);
   assert.match(SCHEMA_SQL, /last_active_at bigint/);
   assert.match(SCHEMA_SQL, /number_protection varchar/);
+  assert.match(SCHEMA_SQL, /profile_share_code char\(6\)/);
   assert.match(SCHEMA_SQL, /ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status/);
   assert.match(SCHEMA_SQL, /ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash/);
   assert.doesNotMatch(SCHEMA_SQL, /message_plaintext|plaintext_message|decrypted_content/);
@@ -103,6 +104,8 @@ test('account persistence uses parameterized upserts', async () => {
   });
   assert.equal(calls.length, 2);
   assert.match(calls[1][0], /ON CONFLICT \(account_id\) DO UPDATE/);
+  assert.match(calls[1][0], /profile_share_code=EXCLUDED\.profile_share_code/);
+  assert.equal(calls[1][1].length, 27);
   assert.equal(calls[1][1][0], 'a'.repeat(64));
 });
 
