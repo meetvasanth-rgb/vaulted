@@ -60,15 +60,33 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
+      const cache = await caches.open(APP_SHELL_CACHE);
+      const nativeAndroid = /Android/i.test(self.navigator.userAgent || '')
+        && /VaultlixImageSafety/i.test(self.navigator.userAgent || '');
+      const cachedShell = isAppShellNavigation(url.pathname)
+        ? ((await cache.match('/index.html')) || (await cache.match('/')))
+        : null;
+
+      // The native Android wrapper always opens the same hosted shell. Use
+      // its verified cached copy immediately instead of holding the first
+      // interactive frame behind a slow radio/TLS round trip, then refresh
+      // that static shell in the background for the following launch.
+      if (nativeAndroid && cachedShell) {
+        event.waitUntil((async () => {
+          try {
+            const response = await fetch(request);
+            if (response.ok) await cache.put('/index.html', response.clone());
+          } catch (error) {}
+        })());
+        return cachedShell;
+      }
       try {
         const response = await fetch(request);
         if (response.ok && isAppShellNavigation(url.pathname)) {
-          const cache = await caches.open(APP_SHELL_CACHE);
           await cache.put('/index.html', response.clone());
         }
         return response;
       } catch (error) {
-        const cache = await caches.open(APP_SHELL_CACHE);
         return (await cache.match('/index.html')) || (await cache.match('/')) || Response.error();
       }
     })());

@@ -490,6 +490,8 @@ body.select-mode .chat-ftr{display:none}
 .sys-msg-link{color:var(--gold);text-decoration:underline;text-underline-offset:2px;cursor:pointer;font-style:normal}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
 .typing-indicator.show{display:flex}
+.chat-restore-pending{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#8A747C;font:600 12px/1.4 Inter,sans-serif;letter-spacing:.01em}
+.chat-restore-pending .typing-indicator{align-self:center;margin:0}
 .t-dot{width:5px;height:5px;border-radius:50%;background:#AAA;animation:typing-bounce .9s infinite}
 .t-dot:nth-child(2){animation-delay:.15s}.t-dot:nth-child(3){animation-delay:.3s}
 @keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
@@ -13512,8 +13514,12 @@ function callHistoryEntries() {
 function openVaultListRoom(code) {
   const room = rooms.get(code);
   if (room?.restorePending) {
-    const movedForward = prioritizeStartupRoomRestore(code);
-    toast(movedForward ? 'Opening this private conversation next…' : 'Opening this private conversation securely…');
+    prioritizeStartupRoomRestore(code);
+    // The locally authenticated inbox is already visible, so a tap must
+    // navigate immediately even while this room's key and ciphertext are
+    // reconnecting. The composer remains disabled and no message content is
+    // exposed until restoration completes.
+    openConversationAfterPaint(code);
   } else if (room?.restoreUnavailable) {
     toast('Retrying this preserved conversation…');
     location.reload();
@@ -13699,6 +13705,11 @@ function prepareChatBodyForFirstPaint() {
   const body = document.getElementById('chat-body');
   if (!body) return;
   if (klipyGifObserver) klipyGifObserver.disconnect();
+  const room = rooms.get(activeRoomCode);
+  if (room?.restorePending) {
+    body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span>Opening encrypted conversation…</span></div>';
+    return;
+  }
   body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
 }
 
@@ -18090,6 +18101,13 @@ window.addEventListener('DOMContentLoaded', async () => {
       addRoomToState(room);
       room.restorePending = false;
       restoredAny = true;
+      if (room.code === activeRoomCode && document.getElementById('s-chat')?.classList.contains('active')) {
+        updateHeaderRoomLabel(room);
+        setStatus(room.peerOnline, room.peerName);
+        enableInput(!!(room.everOnline && room.sharedKey && !room.reconnectRequired), false);
+        updateSecureReconnectBanner(room);
+        updateE2EBar(room);
+      }
       const statusKeyWasAwaited = statusFeedWaitingRoomCodes.delete(room.code);
       if (canRestoreHistory && (statusKeyWasAwaited || statusFeedLoading)) {
         // Do not wait for every saved conversation to finish reconnecting.

@@ -21,6 +21,8 @@ test('service worker caches only static app-shell routes for offline navigation'
   assert.match(worker, /APP_SHELL_CACHE/);
   assert.match(worker, /request\.mode === 'navigate'/);
   assert.match(worker, /cache\.match\('\/index\.html'\)/);
+  assert.match(worker, /nativeAndroid && cachedShell/);
+  assert.match(worker, /event\.waitUntil/);
   assert.match(worker, /url\.pathname\.startsWith\('\/api\/'\)/);
   assert.doesNotMatch(worker, /cache\.put\([^\n]*(?:api|message|cipher|account|key)/i);
   assert.match(client, /registerServiceWorker\(\)\.catch/);

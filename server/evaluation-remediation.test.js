@@ -41,7 +41,8 @@ test('authenticated launch paints the local inbox before network restoration', (
   const joinAt = client.indexOf("const result = await api('/api/join'", hydrateAt);
   assert.ok(hydrateAt > -1 && revealAt > hydrateAt && joinAt > revealAt,
     'local room metadata must be visible before the first server join');
-  assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*Opening this private conversation securely/);
+  assert.match(client, /if \(room\?\.restorePending\) \{[\s\S]*openConversationAfterPaint\(code\)/);
+  assert.match(client, /room\?\.restorePending[\s\S]*Opening encrypted conversation/);
 });
 
 test('startup restores conversations concurrently and prioritizes the room a user taps', () => {
@@ -50,6 +51,7 @@ test('startup restores conversations concurrently and prioritizes the room a use
   assert.match(client, /Promise\.all\(Array\.from\(\{ length:workerCount \}, \(\) => worker\(\)\)\)/);
   assert.match(client, /function prioritizeStartupRoomRestore\(code\)[\s\S]*pendingStartupRoomRestores\.unshift\(code\)/);
   assert.match(client, /function openVaultListRoom\(code\)[\s\S]*if \(room\?\.restorePending\) \{[\s\S]*prioritizeStartupRoomRestore\(code\)/);
+  assert.match(client, /function openVaultListRoom\(code\)[\s\S]*if \(room\?\.restorePending\) \{[\s\S]*openConversationAfterPaint\(code\)/);
   assert.match(client, /preferredRestoreCode[\s\S]*restoreStartupRooms\(restoreOrder, async code =>/);
 });
 
