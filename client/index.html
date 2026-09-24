@@ -16077,6 +16077,11 @@ async function sendMsg() {
 
   input.value = '';
   updateComposerButtons();
+  // Keep the active conversation ready for the next message. Hiding the
+  // send button after clearing used to move focus away from the textarea,
+  // which collapsed the software keyboard after every message on both
+  // Android and iOS.
+  input.focus({ preventScroll:true });
 
   const now = new Date();
   const sentAt = now.getTime();
@@ -17570,6 +17575,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
   });
   document.getElementById('msg-input')?.addEventListener('input', onTyping);
+  document.getElementById('chat-body')?.addEventListener('pointerdown', () => {
+    const input = document.getElementById('msg-input');
+    if (document.activeElement === input) input.blur();
+  });
+  document.getElementById('group-chat-body')?.addEventListener('pointerdown', () => {
+    const input = document.getElementById('group-message-input');
+    if (document.activeElement === input) input.blur();
+  });
 });
 
 // ── iOS KEYBOARD FIX ─────────────────────────────────────────────────────

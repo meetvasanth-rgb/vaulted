@@ -959,10 +959,13 @@ async function sendPrivateGroupMessage() {
   const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
   const input = document.getElementById('group-message-input'); const text = String(input?.value || '').trim();
   if (!state || !group || !text) return;
+  if (input.dataset.sending === '1') return;
   if (!window.VaultlixContentSafety) { toast('Safety checks could not load. Reopen Vaultlix before sending.'); return; }
   if (window.VaultlixContentSafety.check(text).blocked) { toast('This text cannot be shared. Edit it and try again.'); return; }
   const key = group.keys?.[group.keyVersion]; if (!key) { toast('Group encryption key is not ready'); return; }
-  input.disabled = true;
+  // Disabling a focused textarea dismisses the software keyboard. Keep it
+  // active and use an in-flight marker to prevent duplicate sends instead.
+  input.dataset.sending = '1';
   try {
     const messageId = newMsgId();
     // A plain message stays plain text; only a reply needs the wrapper.
@@ -973,8 +976,9 @@ async function sendPrivateGroupMessage() {
     input.value = ''; updatePrivateGroupComposer(); cancelPrivateGroupReply();
     group.messages = [...(group.messages || []), { id:messageId, senderId:state.accountId, text, reply:reply || undefined, createdAt:result.createdAt, keyVersion:result.keyVersion }];
     group.updatedAt = result.createdAt; renderPrivateGroupMessages(group); renderVaultList();
+    input.focus({ preventScroll:true });
   } catch (error) { toast(error.message || 'Message could not be sent'); }
-  finally { input.disabled = false; input.focus(); }
+  finally { delete input.dataset.sending; input.focus({ preventScroll:true }); }
 }
 
 // Search matches a name or any part of a Private Number (digits only, so
