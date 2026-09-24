@@ -39,6 +39,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var remoteVideoOn = false
     private var videoRequestPending = false
     private var outgoingVideoCall = false
+    private var directVideoCall = false
     private var pendingOffer: [String: Any]?
     private var pendingCandidates: [[String: Any]] = []
     private var sequenceOut = 0
@@ -81,7 +82,7 @@ final class NativeWebRTCCallEngine: NSObject {
     }
 
     @discardableResult
-    func prepareIncoming(callID: UUID, roomHandle: String) -> Bool {
+    func prepareIncoming(callID: UUID, roomHandle: String, video: Bool = false) -> Bool {
         guard let stored = NativeCallRoomStore.shared.room(handle: roomHandle) else {
             trace("prepare missing-room")
             return false
@@ -91,6 +92,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.resetLocked()
             self.room = stored
             self.callID = callID
+            self.directVideoCall = video
             self.connectSignalingLocked()
             // PushKit wakes us before the user answers. Use that ring time to
             // prepare TURN/RTCPeerConnection; CallKit keeps media disabled and
@@ -115,6 +117,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.inviteID = inviteID
             self.outgoingCaller = String(caller.prefix(80))
             self.outgoingVideoCall = video
+            self.directVideoCall = video
             self.connectSignalingLocked()
         }
         return true
@@ -127,6 +130,12 @@ final class NativeWebRTCCallEngine: NSObject {
                 return
             }
             self.trace("start-outgoing accepted-state")
+            if self.directVideoCall {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                    userInfo: ["enabled": false, "remoteOn": false, "waiting": true])
+                }
+            }
             // Prepare the relay and peer while CallKit is ringing. Media is
             // still disabled by CallKit and no offer is sent until the
             // encrypted call-accept arrives, but this removes TURN setup
@@ -145,6 +154,12 @@ final class NativeWebRTCCallEngine: NSObject {
             }
             self.trace("answer accepted-state")
             self.answered = true
+            if self.directVideoCall {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                                    userInfo: ["enabled": false, "remoteOn": false, "waiting": true])
+                }
+            }
             self.sendSignalLocked(type: "call-accept", payload: [:])
             self.scheduleAcceptRetryLocked()
             self.fetchTurnAndCreatePeerLocked()
@@ -879,6 +894,7 @@ final class NativeWebRTCCallEngine: NSObject {
         remoteVideoOn = false
         videoRequestPending = false
         outgoingVideoCall = false
+        directVideoCall = false
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .vaultlixVideoEnded, object: nil)
         }

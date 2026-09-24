@@ -21,6 +21,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeVideoBackdropView = UIView(frame: .zero)
     private let nativeVideoPausedView = UIView(frame: .zero)
+    private let nativeVideoPausedIcon = UIImageView(frame: .zero)
+    private let nativeVideoPausedLabel = UILabel(frame: .zero)
     private let nativeVideoControlsView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let nativeMuteButton = UIButton(type: .system)
     private let nativeRouteButton = UIButton(type: .system)
@@ -82,8 +84,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         ) { [weak self] note in
             let enabled = note.userInfo?["enabled"] as? Bool ?? false
             let remoteOn = note.userInfo?["remoteOn"] as? Bool ?? false
+            let waiting = note.userInfo?["waiting"] as? Bool ?? false
+            let requested = note.userInfo?["request"] as? Bool ?? false
+            let declined = note.userInfo?["declined"] as? Bool ?? false
+            if declined {
+                self?.hideNativeVideoViews()
+                self?.emit(name: "vaultlix:native-video-state", detail: note.userInfo)
+                return
+            }
             self?.nativeLocalVideoEnabled = enabled
-            if enabled || remoteOn { self?.nativeVideoSessionActive = true }
+            if enabled || remoteOn || waiting || requested { self?.nativeVideoSessionActive = true }
+            self?.updateNativeVideoPlaceholder(waiting: waiting || requested)
             if self?.nativeVideoSessionActive == true { self?.showNativeVideoViews(remote: remoteOn) }
             self?.nativeLocalVideoView.isHidden = !enabled
             self?.nativeRemoteVideoView.isHidden = !remoteOn
@@ -185,20 +196,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeVideoPausedView.backgroundColor = UIColor(red: 0.12, green: 0.06, blue: 0.09, alpha: 1)
         nativeVideoPausedView.isUserInteractionEnabled = false
 
-        let icon = UIImageView(image: UIImage(systemName: "video.slash.fill"))
-        icon.tintColor = UIColor.white.withAlphaComponent(0.82)
-        icon.contentMode = .scaleAspectFit
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 42).isActive = true
-        icon.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        nativeVideoPausedIcon.image = UIImage(systemName: "video.slash.fill")
+        nativeVideoPausedIcon.tintColor = UIColor.white.withAlphaComponent(0.82)
+        nativeVideoPausedIcon.contentMode = .scaleAspectFit
+        nativeVideoPausedIcon.translatesAutoresizingMaskIntoConstraints = false
+        nativeVideoPausedIcon.widthAnchor.constraint(equalToConstant: 42).isActive = true
+        nativeVideoPausedIcon.heightAnchor.constraint(equalToConstant: 42).isActive = true
 
-        let label = UILabel()
-        label.text = "Video paused"
-        label.textColor = UIColor.white.withAlphaComponent(0.9)
-        label.font = .systemFont(ofSize: 17, weight: .semibold)
-        label.textAlignment = .center
+        nativeVideoPausedLabel.text = "Video paused"
+        nativeVideoPausedLabel.textColor = UIColor.white.withAlphaComponent(0.9)
+        nativeVideoPausedLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+        nativeVideoPausedLabel.textAlignment = .center
 
-        let stack = UIStackView(arrangedSubviews: [icon, label])
+        let stack = UIStackView(arrangedSubviews: [nativeVideoPausedIcon, nativeVideoPausedLabel])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 12
@@ -209,6 +219,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             stack.centerYAnchor.constraint(equalTo: nativeVideoPausedView.centerYAnchor, constant: -20),
         ])
         root.addSubview(nativeVideoPausedView)
+    }
+
+    private func updateNativeVideoPlaceholder(waiting: Bool) {
+        nativeVideoPausedIcon.image = UIImage(systemName: waiting ? "video.fill" : "video.slash.fill")
+        nativeVideoPausedLabel.text = waiting ? "Connecting video…" : "Video paused"
     }
 
     private func installNativeVideoControlsIfNeeded(in root: UIView) {

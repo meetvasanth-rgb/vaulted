@@ -217,7 +217,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // state. Splitting foreground media into WKWebView left connected
         // calls silent on both receiver and speaker.
         if let roomHandle = data["roomHandle"] as? String,
-           NativeWebRTCCallEngine.shared.prepareIncoming(callID: callID, roomHandle: roomHandle) {
+           NativeWebRTCCallEngine.shared.prepareIncoming(callID: callID, roomHandle: roomHandle, video: hasVideo) {
             nativeMediaCalls.insert(callID)
             print("VXCALL manager incoming native-ready")
         } else {
