@@ -36,7 +36,8 @@ test('conversation opening defers offscreen KLIPY animation until after first pa
   assert.match(client, /fetchpriority="low"/);
   assert.match(client, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
   assert.match(client, /new IntersectionObserver/);
-  assert.match(client, /rootMargin:'320px 0px'/);
+  assert.match(client, /rootMargin:'160px 0px'/);
+  assert.match(client, /else unloadDeferredKlipyGif\(entry\.target\)/);
 });
 
 test('inbox navigation paints the chat shell before rendering GIF history', () => {

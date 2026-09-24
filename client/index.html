@@ -8789,6 +8789,14 @@ function showScreen(id) {
   // while it was open (e.g. the peer joins and the app moves to s-chat).
   closeQrPanel();
   closeConversationAchievements();
+  const leavingChat = id !== 's-chat' && document.getElementById('s-chat')?.classList.contains('active');
+  if (leavingChat) {
+    // Do not retain decoded photos and running GIFs behind the Android inbox.
+    if (klipyGifObserver) klipyGifObserver.disconnect();
+    klipyGifObserver = null;
+    const chatBody = document.getElementById('chat-body');
+    if (chatBody) chatBody.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+  }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if (id === 's-setup') {
@@ -13586,10 +13594,12 @@ function renderVaultList() {
   renderStatusRail();
   if (Date.now() - statusFeedRefreshedAt > 30000) refreshStatusFeed({ quiet:true }).catch(() => {});
   if (!loadAccountState()) {
+    body._vaultlixChatListHtml = null;
     body.innerHTML = '<div class="vault-list-empty"><strong>Sign in to view your private lines</strong>Your conversations stay hidden until this device is authenticated.</div>';
     return;
   }
   if (currentVaultListMode === 'calls') {
+    body._vaultlixChatListHtml = null;
     renderCallHistoryList(body);
     return;
   }
@@ -13597,6 +13607,7 @@ function renderVaultList() {
   const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
   const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (rooms.size === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
+    body._vaultlixChatListHtml = null;
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
   }
@@ -13650,7 +13661,15 @@ function renderVaultList() {
       </span>
     </div>`;
   }
+  // Polling, presence and status refreshes may request the same inbox frame.
+  // Replacing identical rows cancels an in-progress Android touch gesture.
+  if (body._vaultlixChatListHtml === html) return;
+  const previousScrollTop = body.scrollTop;
+  body._vaultlixChatListHtml = html;
   body.innerHTML = html;
+  if (!pendingConnectionFocusId && previousScrollTop > 0) {
+    body.scrollTop = Math.min(previousScrollTop, Math.max(0, body.scrollHeight - body.clientHeight));
+  }
   scrollToFocusedConnectionRequest();
   body.querySelectorAll('[data-status-author]').forEach(avatar => {
     avatar.onclick = event => { event.stopPropagation(); openPeerStatusFromInbox(avatar.dataset.statusAuthor); };
@@ -14610,7 +14629,7 @@ function buildAlbumGridHtml(rec) {
     const safeSrc = hidden ? null : safeImageDataUri(img.mime, img.base64);
     const inner = hidden
       ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
-      : (safeSrc ? `<img class="msg-image" src="${safeSrc}" alt="" draggable="false"/>` : MEDIA_BLOCKED_HTML);
+      : (safeSrc ? `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>` : MEDIA_BLOCKED_HTML);
     // Keyed off img.id (a stable local id), not the loop position i —
     // opening two view-once photos in the same album close together would
     // otherwise let the first one's later array splice shift which photo
@@ -14771,9 +14790,12 @@ async function openStatusReply(statusId) {
 // the settle-in for the entire scrollback every time you switch tabs.
 let klipyGifObserver = null;
 function loadDeferredKlipyGif(img) {
-  if (!img || img.src || !img.dataset.klipySrc) return;
+  if (!img || img.getAttribute('src') || !img.dataset.klipySrc) return;
   img.src = img.dataset.klipySrc;
-  delete img.dataset.klipySrc;
+}
+function unloadDeferredKlipyGif(img) {
+  if (!img?.getAttribute('src') || !img.dataset.klipySrc) return;
+  img.removeAttribute('src');
 }
 function scheduleDeferredKlipyGifs(body) {
   const images = [...body.querySelectorAll('img.msg-gif[data-klipy-src]')];
@@ -14789,11 +14811,10 @@ function scheduleDeferredKlipyGifs(body) {
     }
     const observer = new IntersectionObserver(entries => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        loadDeferredKlipyGif(entry.target);
-        observer.unobserve(entry.target);
+        if (entry.isIntersecting) loadDeferredKlipyGif(entry.target);
+        else unloadDeferredKlipyGif(entry.target);
       }
-    }, { root:body, rootMargin:'320px 0px' });
+    }, { root:body, rootMargin:'160px 0px' });
     klipyGifObserver = observer;
     images.forEach(img => observer.observe(img));
   }));
@@ -14878,12 +14899,12 @@ function renderMessageRecord(room, rec, animate) {
       const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once${rec.isMe ? '' : ' · Opened'}</div>` : '';
       const safeSrc = safeImageDataUri(rec.mime, rec.base64);
       mediaHtml = safeSrc
-        ? `${badge}<img class="msg-image" src="${safeSrc}" alt="${escHtml(rec.fileName)}" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
+        ? `${badge}<img class="msg-image" src="${safeSrc}" alt="${escHtml(rec.fileName)}" loading="lazy" decoding="async" onclick="handleImageTap(this.src, '${rec.id}')" oncontextmenu="return false" draggable="false"/>`
         : `${badge}${MEDIA_BLOCKED_HTML}`;
     } else if (isPdfAttachment(rec.mime, rec.fileName)) {
       const thumbnail = safeImageDataUri('image/jpeg', rec.pdfPreview);
       const preview = thumbnail
-        ? `<img src="${thumbnail}" alt="First page of ${escHtml(rec.fileName)}" draggable="false"/>`
+        ? `<img src="${thumbnail}" alt="First page of ${escHtml(rec.fileName)}" loading="lazy" decoding="async" draggable="false"/>`
         : `<span class="msg-pdf-placeholder"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>PDF</span>`;
       const pages = Number(rec.pageCount) || 0;
       const pageLabel = pages > 0 ? `${pages} page${pages === 1 ? '' : 's'} · ` : '';
