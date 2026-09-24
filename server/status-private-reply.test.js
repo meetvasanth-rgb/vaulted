@@ -6,7 +6,7 @@ const path = require('node:path');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
 test('private status replies carry an encrypted reference and compact preview', () => {
-  assert.match(client, /function replyToCurrentStatus\(\)[\s\S]*type:'status'[\s\S]*statusId:item\.id[\s\S]*thumbPromise/);
+  assert.match(client, /function beginStatusReply\(item\)[\s\S]*type:'status'[\s\S]*statusId:item\.id[\s\S]*thumbPromise/);
   assert.match(client, /replyTo\.type === 'status'[\s\S]*statusId:replyTo\.statusId[\s\S]*thumb/);
   assert.match(client, /function buildStatusReplyQuoteHtml\(replyData\)/);
   assert.match(client, /class="msg-status-reply" data-status-reply-id=/);
@@ -26,4 +26,14 @@ test('received status reply metadata is bounded before rendering', () => {
   assert.match(client, /\^\[a-f0-9-\]\{36\}\$/i);
   assert.match(client, /value\.thumb\.length <= 32768/);
   assert.match(client, /text:String\(value\.text \|\| ''\)\.slice\(0,160\)/);
+});
+
+test('peer status viewer offers reply reactions, media tools and contact actions', () => {
+  for (const label of ['Message', 'Voice call', 'Video call', 'View contact', 'Get notifications', 'Hide', 'Report']) {
+    assert.match(client, new RegExp(`>${label}<\\/button>`));
+  }
+  for (const emoji of ['😍', '😂', '😮', '😢', '🙏', '👏', '🥳', '💯']) assert.match(client, new RegExp(emoji));
+  assert.match(client, /function sendQuickStatusReply\(emoji\)[\s\S]*beginStatusReply\(item\)[\s\S]*sendMsg\(\)/);
+  assert.match(client, /function continueStatusReplyWith\(kind\)[\s\S]*camera-input[\s\S]*image-input[\s\S]*startVoiceRecording/);
+  assert.match(client, /function hideCurrentStatus\(\)[\s\S]*rememberStatusesHidden\(ids\)/);
 });
