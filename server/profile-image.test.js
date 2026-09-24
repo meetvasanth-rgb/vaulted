@@ -49,6 +49,9 @@ test('profile image controls support add, replace and remove', () => {
   assert.match(client, /saveProfileImageUpdate\('replace', image\)/);
   assert.match(client, /saveProfileImageUpdate\('remove'\)/);
   assert.match(client, /id="public-profile-photo"/);
+  assert.match(client, /function refreshOwnProfileFromServer/);
+  assert.match(client, /refreshOwnProfileFromServer\(\)\.catch/);
+  assert.match(client, /function renderAccountProfilePhoto[\s\S]{0,700}safeProfileImageUri\(state\?\.profileImage\)/);
 });
 
 test('incoming calls show the peer profile photo with an initial fallback', () => {

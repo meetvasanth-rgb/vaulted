@@ -24,6 +24,14 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
   assert.match(client, /videoThumb:safeVideoThumb/);
   assert.match(client, /function buildVideoAttachmentHtml/);
   assert.match(client, /function openVideoAttachmentViewer/);
+  assert.match(client, /function encryptedMediaObjectUrl/);
+  assert.match(client, /new Blob\(chunks, \{ type:mime \}\)/);
+  assert.match(client, /video\.src = objectUrl/);
+  assert.match(client, /URL\.revokeObjectURL\(objectUrl\)/);
+  assert.doesNotMatch(client, /video\.src = `data:\$\{mime\};base64,\$\{base64\}`/);
+  assert.doesNotMatch(client, /video\.onerror\s*=\s*\(\)\s*=>\s*\{[^}]*removeMessageRecord/);
+  assert.match(client, /The encrypted video is still available/);
+  assert.match(client, /action\.textContent = 'Save video'/);
   assert.match(client, /video\.controls = false/);
   assert.match(client, /video\.onplaying = revealPlayingVideo/);
   assert.match(client, /className = 'video-attachment-viewer loading'/);
@@ -39,5 +47,5 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v49/);
+  assert.match(sw, /vaultlix-app-shell-v50/);
 });

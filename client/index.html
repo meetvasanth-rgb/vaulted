@@ -9166,6 +9166,7 @@ function openSettingsCategory(category) {
     populateAccountProfileSettings();
     const accountState = loadAccountState();
     if (accountState?.privateNumber) renderNumberCard(accountState).catch(() => {});
+    refreshOwnProfileFromServer().catch(() => {});
   }
   // Blocking and reporting belong to the active conversation only. Global
   // Privacy & Security must never silently target whichever chat is first.
@@ -9795,7 +9796,11 @@ function renderAccountProfilePhoto(state = loadAccountState()) {
   const change = document.getElementById('account-profile-photo-change');
   const remove = document.getElementById('account-profile-photo-remove');
   if (!preview) return;
-  const image = displayProfileImageUri(state?.profileImage);
+  // The signed-in user's own image already passed the local safety check
+  // before /api/account/profile accepted it. Re-screening it on every page
+  // process made the editor temporarily (and sometimes indefinitely) show
+  // only an initial while the in-memory checker warmed up.
+  const image = safeProfileImageUri(state?.profileImage);
   preview.replaceChildren();
   if (image) {
     const img = document.createElement('img');
@@ -9807,6 +9812,23 @@ function renderAccountProfilePhoto(state = loadAccountState()) {
   }
   if (change) change.textContent = image ? 'Change image' : 'Add image';
   if (remove) remove.hidden = !image;
+}
+async function refreshOwnProfileFromServer() {
+  const state = loadAccountState();
+  if (!state?.accountId || !state?.sessionToken) return false;
+  const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
+  if (latest?.error) return false;
+  const profileImage = safeProfileImageUri(latest.profileImage);
+  const displayName = typeof latest.displayName === 'string' && latest.displayName.trim()
+    ? latest.displayName.trim().slice(0, 40) : state.displayName;
+  if (state.profileImage !== profileImage || state.displayName !== displayName) {
+    state.profileImage = profileImage;
+    state.displayName = displayName;
+    saveAccountState(state);
+  }
+  populateAccountProfileSettings(state);
+  updateAccountSettingsStatus();
+  return true;
 }
 function populateAccountProfileSettings(state = loadAccountState()) {
   const controls = document.getElementById('settings-profile-controls');
@@ -14487,24 +14509,51 @@ function buildVideoAttachmentHtml({ id, name, thumb, pending = false, group = fa
   return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card"${cardHandler} oncontextmenu="return false">${preview}<button type="button" class="msg-video-play" aria-label="Play video" onclick="event.stopPropagation();${handler}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button><span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml() : ''}</div>`;
 }
 
+function encryptedMediaObjectUrl(mime, base64) {
+  if (!/^video\/[a-zA-Z0-9.+-]{1,80}$/.test(String(mime || '')) || !isValidMediaBase64(base64)) return null;
+  try {
+    // Large data: URLs are unreliable in Android WebView media elements and
+    // duplicate the complete video inside the URL parser. Decode in bounded,
+    // base64-aligned chunks and let the media stack read a Blob URL instead.
+    const chunks = [];
+    const encodedChunkSize = 1024 * 1024; // divisible by four
+    for (let offset = 0; offset < base64.length; offset += encodedChunkSize) {
+      const binary = atob(base64.slice(offset, offset + encodedChunkSize));
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      chunks.push(bytes);
+    }
+    return URL.createObjectURL(new Blob(chunks, { type:mime }));
+  } catch (_) { return null; }
+}
+
 function openVideoAttachmentViewer(mime, base64, name) {
   if (!/^video\/[a-zA-Z0-9.+-]{1,80}$/.test(String(mime || '')) || !isValidMediaBase64(base64)) {
     toast('This video is unavailable.'); return;
   }
+  const objectUrl = encryptedMediaObjectUrl(mime, base64);
+  if (!objectUrl) { toast('This video could not be prepared.'); return; }
   closeVideoAttachmentViewer();
   const overlay = document.createElement('div'); overlay.id = 'video-attachment-viewer'; overlay.className = 'video-attachment-viewer loading';
   const close = document.createElement('button'); close.type = 'button'; close.className = 'video-attachment-close'; close.setAttribute('aria-label','Close video'); close.textContent = '×'; close.onclick = closeVideoAttachmentViewer;
   const loader = document.createElement('div'); loader.className = 'video-attachment-loader'; loader.setAttribute('role','status');
   loader.innerHTML = `<span class="vault-upload-orbit" aria-hidden="true"><i></i><i></i><i></i><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Loading secure video…</span><button type="button" class="video-attachment-tap">Play video</button>`;
   const video = document.createElement('video'); video.controls = false; video.autoplay = true; video.playsInline = true; video.preload = 'auto'; video.setAttribute('aria-label', name || 'Video attachment');
-  video.src = `data:${mime};base64,${base64}`;
+  video.src = objectUrl;
+  video.dataset.vaultlixObjectUrl = objectUrl;
   const revealPlayingVideo = () => { video.controls = true; overlay.classList.remove('loading'); };
   const startPlayback = () => {
     loader.classList.remove('awaiting-tap');
     video.play().catch(() => loader.classList.add('awaiting-tap'));
   };
   video.onplaying = revealPlayingVideo;
-  video.onerror = () => { loader.querySelector('span:last-of-type').textContent = 'This video could not be opened.'; loader.classList.add('awaiting-tap'); };
+  video.onerror = () => {
+    loader.querySelector('span:last-of-type').textContent = 'This recording format cannot play on this device. The encrypted video is still available.';
+    const action = loader.querySelector('.video-attachment-tap');
+    action.textContent = 'Save video';
+    action.onclick = () => downloadDataUri(`data:${mime};base64,${base64}`, name || 'vaultlix-video');
+    loader.classList.add('awaiting-tap');
+  };
   loader.querySelector('.video-attachment-tap').onclick = startPlayback;
   overlay.append(close, loader, video); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
   document.body.appendChild(overlay); startPlayback();
@@ -14512,7 +14561,12 @@ function openVideoAttachmentViewer(mime, base64, name) {
 }
 function closeVideoAttachmentViewer() {
   const overlay = document.getElementById('video-attachment-viewer');
-  const video = overlay?.querySelector('video'); if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+  const video = overlay?.querySelector('video');
+  if (video) {
+    const objectUrl = video.dataset.vaultlixObjectUrl;
+    video.pause(); video.removeAttribute('src'); video.load();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
   overlay?.remove();
 }
 
