@@ -71,10 +71,30 @@ test('native iOS video calls keep controls available and label CallKit clearly',
   assert.match(scene, /bringSubviewToFront\(nativeVideoControlsView\)/);
   assert.match(scene, /nativeVideoSessionActive/);
   assert.match(scene, /nativeVideoPausedView/);
-  assert.ok(scene.includes('label.text = "Video paused"'));
+  assert.ok(scene.includes('nativeVideoPausedLabel.text = "Video paused"'));
   assert.match(scene, /if !remote \{ root\.bringSubviewToFront\(nativeVideoPausedView\) \}/);
   assert.match(manager, /func endActiveNativeCall\(\)/);
   assert.match(manager, /CXEndCallAction\(call: callID\)/);
   assert.ok(manager.includes('"VIDEO CALL · \\(caller)"'));
   assert.ok(manager.includes('"VIDEO CALL · \\(cleanName)"'));
+});
+
+test('native iOS and Apple-silicon Mac calls gate signaling on microphone permission', () => {
+  const manager = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
+  const client = fs.readFileSync('client/index.html', 'utf8');
+  assert.match(manager, /AVAudioApplication\.shared\.recordPermission/);
+  assert.match(manager, /AVAudioApplication\.requestRecordPermission/);
+  assert.match(manager, /switch microphonePermission\(\)[\s\S]*completeAnswer/);
+  assert.match(manager, /startOutgoingCall[\s\S]*requestMicrophonePermission/);
+  assert.match(manager, /postAction\("microphoneDenied"/);
+  assert.match(client, /microphoneDenied/);
+  assert.match(client, /Allow microphone access in Settings/);
+});
+
+test('native iOS call setup cannot remain connecting forever', () => {
+  const engine = fs.readFileSync('mobile/ios/App/App/NativeWebRTCCallEngine.swift', 'utf8');
+  assert.match(engine, /scheduleConnectionWatchdogLocked\(\)/);
+  assert.match(engine, /asyncAfter\(deadline: \.now\(\) \+ 20\)/);
+  assert.match(engine, /nativeCallDidEnd\(callID: callID, action: "nativeFailed"\)/);
+  assert.match(engine, /connectionWatchdogGeneration \+= 1/);
 });

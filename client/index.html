@@ -5124,7 +5124,7 @@ acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
-  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeCancelled','nativeBusy','nativeFailed']);
+  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeCancelled','nativeBusy','nativeFailed','microphoneDenied']);
   const occurredAt = Number(detail.occurredAt || 0);
   const staleTerminalAction = terminalNativeActions.has(detail.action) && occurredAt > 0 && Date.now() - occurredAt > 5000;
   const nativeRoomCode = typeof detail.code === 'string' ? detail.code : '';
@@ -5282,6 +5282,8 @@ async function handleNativeCallAction(detail) {
     endCall(room, room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.', null, 'busy');
   } else if (detail.action === 'nativeFailed' && room.callState !== 'idle') {
     endCall(room, 'Could not start the call.');
+  } else if (detail.action === 'microphoneDenied' && room.callState !== 'idle') {
+    endCall(room, 'Allow microphone access in Settings, then try the call again.');
   } else if (detail.action === 'missed') {
     // The signaling invitation ID is shared by both participants. CallKit's
     // call ID names only this device's native surface, so it cannot safely

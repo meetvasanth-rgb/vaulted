@@ -60,6 +60,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var inviteRetryGeneration = 0
     private var acceptRetryGeneration = 0
     private var hangupRetryGeneration = 0
+    private var connectionWatchdogGeneration = 0
     private var ending = false
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
 
@@ -163,6 +164,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.sendSignalLocked(type: "call-accept", payload: [:])
             self.scheduleAcceptRetryLocked()
             self.fetchTurnAndCreatePeerLocked()
+            self.scheduleConnectionWatchdogLocked()
         }
     }
 
@@ -519,6 +521,7 @@ final class NativeWebRTCCallEngine: NSObject {
             guard outgoing else { return }
             inviteRetryGeneration += 1
             answered = true
+            scheduleConnectionWatchdogLocked()
             if peer == nil { fetchTurnAndCreatePeerLocked() }
             else {
                 createAndSendOfferLocked()
@@ -728,6 +731,25 @@ final class NativeWebRTCCallEngine: NSObject {
         pc.add(RTCIceCandidate(sdp: sdp, sdpMLineIndex: index, sdpMid: mid))
     }
 
+    /// ICE may remain in `.checking` indefinitely when a relay, route, or
+    /// platform audio setup fails without producing `.failed`. Never leave
+    /// both participants on an endless "Connecting securely" screen.
+    private func scheduleConnectionWatchdogLocked() {
+        connectionWatchdogGeneration += 1
+        let generation = connectionWatchdogGeneration
+        queue.asyncAfter(deadline: .now() + 20) {
+            guard generation == self.connectionWatchdogGeneration,
+                  self.answered,
+                  let callID = self.callID else { return }
+            let state = self.peer?.iceConnectionState
+            guard state != .connected && state != .completed else { return }
+            self.trace("connection timeout ice=\(state?.rawValue ?? -1)")
+            DispatchQueue.main.async {
+                VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: "nativeFailed")
+            }
+        }
+    }
+
     private func prepareAudioTrackLocked() {
         guard audioTrack == nil else { return }
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: [
@@ -894,6 +916,7 @@ final class NativeWebRTCCallEngine: NSObject {
         acceptRetryGeneration += 1
         inviteRetryGeneration += 1
         hangupRetryGeneration += 1
+        connectionWatchdogGeneration += 1
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
@@ -965,6 +988,7 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
         if newState == .connected || newState == .completed {
             queue.async {
                 guard self.peer === peerConnection, let callID = self.callID else { return }
+                self.connectionWatchdogGeneration += 1
                 VaultlixCallManager.shared.nativeCallDidConnect(callID: callID)
             }
             return

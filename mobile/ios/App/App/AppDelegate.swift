@@ -33,6 +33,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var pendingActions: [[String: Any]] = []
     private(set) var voIPToken: String?
 
+    private enum MicrophonePermission {
+        case granted
+        case denied
+        case undetermined
+    }
+
     private override init() {
         let configuration = CXProviderConfiguration(localizedName: NSLocalizedString("call_service_name", comment: "CallKit service name"))
         configuration.supportsVideo = true
@@ -43,6 +49,47 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         provider = CXProvider(configuration: configuration)
         super.init()
         provider.setDelegate(self, queue: nil)
+    }
+
+    /// Native CallKit calls bypass WKWebView's `getUserMedia` permission
+    /// prompt. Check the app-level recording permission before starting the
+    /// encrypted media engine so a first call on iPhone, iPad, or an iOS app
+    /// running on Apple silicon cannot remain at "Connecting securely" with
+    /// no usable microphone input.
+    private func microphonePermission() -> MicrophonePermission {
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted: return .granted
+            case .denied: return .denied
+            case .undetermined: return .undetermined
+            @unknown default: return .denied
+            }
+        }
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted: return .granted
+        case .denied: return .denied
+        case .undetermined: return .undetermined
+        @unknown default: return .denied
+        }
+    }
+
+    private func requestMicrophonePermission(_ completion: @escaping (Bool) -> Void) {
+        switch microphonePermission() {
+        case .granted:
+            completion(true)
+        case .denied:
+            completion(false)
+        case .undetermined:
+            if #available(iOS 17.0, *) {
+                AVAudioApplication.requestRecordPermission { granted in
+                    DispatchQueue.main.async { completion(granted) }
+                }
+            } else {
+                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                    DispatchQueue.main.async { completion(granted) }
+                }
+            }
+        }
     }
 
     /// CallKit presents above Vaultlix but does not automatically clear a
@@ -285,6 +332,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // the same call; the encrypted call-history message remains canonical.
         let terminalActions: Set<String> = [
             "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeCancelled", "nativeBusy", "nativeFailed",
+            "microphoneDenied",
         ]
         if terminalActions.contains(action) {
             pendingActions.removeAll { ($0["callId"] as? String) == callID.uuidString }
@@ -341,6 +389,34 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         print("VXCALL manager answer requested")
         guard let payload = calls[action.callUUID] else { action.fail(); return }
         enforceCallKeyboardGuard()
+        switch microphonePermission() {
+        case .granted:
+            completeAnswer(action: action, payload: payload, alreadyFulfilled: false)
+        case .denied:
+            rejectCallForMicrophone(callID: action.callUUID, payload: payload, action: action)
+        case .undetermined:
+            // Permission alerts wait for a human response, while CallKit
+            // actions have a short system deadline. The user has explicitly
+            // tapped Answer, so complete the UI action now and start encrypted
+            // signaling only after recording access is granted.
+            action.fulfill()
+            requestMicrophonePermission { [weak self] granted in
+                guard let self,
+                      let currentPayload = self.calls[action.callUUID] else { return }
+                if granted {
+                    self.completeAnswer(action: action, payload: currentPayload, alreadyFulfilled: true)
+                } else {
+                    self.rejectCallForMicrophone(callID: action.callUUID,
+                                                 payload: currentPayload,
+                                                 action: nil)
+                }
+            }
+        }
+    }
+
+    private func completeAnswer(action: CXAnswerCallAction,
+                                payload: [String: Any],
+                                alreadyFulfilled: Bool) {
         do {
             // CallKit owns activation/deactivation, but the application must
             // still describe the session it needs. Without playAndRecord +
@@ -352,7 +428,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 options: [.allowBluetooth]
             )
         } catch {
-            action.fail()
+            if !alreadyFulfilled { action.fail() }
+            rejectCallForMicrophone(callID: action.callUUID, payload: payload, action: nil)
             return
         }
         answeredCalls.insert(action.callUUID)
@@ -372,7 +449,22 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         if !nativeMediaCalls.contains(action.callUUID) {
             postAction("answer", callID: action.callUUID, payload: payload)
         }
-        action.fulfill()
+        if !alreadyFulfilled { action.fulfill() }
+    }
+
+    private func rejectCallForMicrophone(callID: UUID,
+                                         payload: [String: Any],
+                                         action: CXAnswerCallAction?) {
+        action?.fail()
+        NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: true, outcome: "declined")
+        provider.reportCall(with: callID, endedAt: Date(), reason: .failed)
+        calls.removeValue(forKey: callID)
+        answeredCalls.remove(callID)
+        nativeMediaCalls.remove(callID)
+        connectedCalls.remove(callID)
+        outgoingCalls.remove(callID)
+        postAction("microphoneDenied", callID: callID, payload: payload)
+        releaseAppKeyboardIfIdle()
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
@@ -517,9 +609,24 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
-    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String, inviteID: String, video: Bool = false) -> Bool {
+    func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String,
+                           inviteID: String, video: Bool = false,
+                           completion: @escaping (Bool) -> Void) {
         dismissAppKeyboard()
         clearPreferredAudioInput()
+        requestMicrophonePermission { [weak self] granted in
+            guard let self, granted else {
+                completion(false)
+                return
+            }
+            completion(self.beginOutgoingCall(roomHandle: roomHandle, code: code,
+                                              caller: caller, peer: peer,
+                                              inviteID: inviteID, video: video))
+        }
+    }
+
+    private func beginOutgoingCall(roomHandle: String, code: String, caller: String, peer: String,
+                                   inviteID: String, video: Bool) -> Bool {
         let callID = UUID()
         let payload: [String: Any] = [
             "callId": callID.uuidString,

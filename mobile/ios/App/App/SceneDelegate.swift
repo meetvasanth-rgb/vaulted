@@ -754,12 +754,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             window?.endEditing(true)
             (window?.rootViewController as? CAPBridgeViewController)?.webView?.endEditing(true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                let success = VaultlixCallManager.shared.startOutgoingCall(
+                VaultlixCallManager.shared.startOutgoingCall(
                     roomHandle: roomHandle, code: code, caller: caller, peer: peer,
                     inviteID: inviteID, video: body["video"] as? Bool ?? false
-                )
-                if !success {
-                    self?.emit(name: "vaultlix:call-action", detail: ["action": "nativeFailed", "code": code])
+                ) { success in
+                    if !success {
+                        self?.emit(name: "vaultlix:call-action", detail: [
+                            "action": "microphoneDenied", "code": code,
+                        ])
+                    }
                 }
             }
             return
