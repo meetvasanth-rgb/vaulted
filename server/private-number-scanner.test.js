@@ -14,6 +14,9 @@ test('New Connection opens a local rear-camera QR scanner', () => {
   assert.match(html, /facingMode:\{ ideal:'environment' \}/);
   assert.match(html, /window\.jsQR\(pixels\.data, pixels\.width, pixels\.height/);
   assert.match(html, /await openQuickConnectURL\(raw\)/);
+  assert.match(html, /video\.controls = false/);
+  assert.match(html, /video\.classList\.add\('ready'\)/);
+  assert.match(html, /qr-scanner-stage video\{[^}]*opacity:0/);
 });
 
 test('scanner camera is stopped on close and when the app is backgrounded', () => {
@@ -26,7 +29,7 @@ test('QR decoder ships in the offline app shell', () => {
   assert.ok(fs.statSync(path.join(root, 'client', 'vendor', 'jsQR.js')).size > 200_000);
   assert.ok(fs.statSync(path.join(root, 'client', 'vendor', 'jsQR.LICENSE.txt')).size > 1_000);
   assert.match(html, /<script src="\/vendor\/jsQR\.js"><\/script>/);
-  assert.match(sw, /vaultlix-app-shell-v58/);
+  assert.match(sw, /vaultlix-app-shell-v59/);
   assert.match(sw, /'\/vendor\/jsQR\.js'/);
 });
 

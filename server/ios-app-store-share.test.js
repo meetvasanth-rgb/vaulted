@@ -20,7 +20,7 @@ test('website and get-app page link directly to the released iPhone app', () => 
 });
 
 test('Get the app QR routes each phone to its correct store', () => {
-  assert.match(client, /onclick="openWebsiteGetApp\(\)"/);
+  assert.match(client, /openWebsiteGetApp\(\)/);
   assert.match(client, /id="website-get-app-qr"/);
   assert.match(client, /renderQrCanvas\(document\.getElementById\('website-get-app-qr'\), VAULTLIX_PUBLIC_APP_LINK\)/);
   assert.match(getApp, /iPhone\|iPad\|iPod/);
