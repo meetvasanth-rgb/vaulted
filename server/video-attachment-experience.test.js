@@ -13,7 +13,17 @@ test('direct and group attachment sends remain visible with encrypted upload ani
   assert.match(client, /pending:true[\s\S]{0,700}room\.messages\.push\(rec\)[\s\S]{0,900}await encryptMsg/);
   assert.match(groups, /pending:true[\s\S]{0,300}group\.messages = [\s\S]{0,500}await encryptPrivateGroupValue/);
   assert.match(client, /Encrypting image/);
+  assert.match(client, /if \(others\.length\) progress\?\.close\(\)/);
+  assert.doesNotMatch(client.slice(client.indexOf('async function handleFileSelect'), client.indexOf('async function sendFileMessage')), /Sending securely/);
   assert.doesNotMatch(client.slice(client.indexOf('async function handleFileSelect'), client.indexOf('async function sendAlbumMessage')), /Preparing photo/);
+});
+
+test('temporary encrypted attachment fetch failures retry before showing unavailable', () => {
+  assert.match(client, /const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = \[0, 350, 1000\]/);
+  assert.match(client, /attempt < ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS\.length/);
+  assert.match(client, /status === 404 \|\| status === 408 \|\| status === 409/);
+  assert.match(client, /status === 425 \|\| status === 429 \|\| status >= 500/);
+  assert.match(client, /if \(!retryable \|\| attempt === ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS\.length - 1\) break/);
 });
 
 test('video attachments carry an encrypted thumbnail and open in the in-app player', () => {
@@ -32,6 +42,16 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
   assert.doesNotMatch(client, /video\.onerror\s*=\s*\(\)\s*=>\s*\{[^}]*removeMessageRecord/);
   assert.match(client, /The encrypted video is still available/);
   assert.match(client, /action\.textContent = 'Save video'/);
+  assert.match(client, /className = 'video-attachment-download'/);
+  assert.match(client, /downloadDataUri\(`data:\$\{mime\};base64,\$\{base64\}`/);
+  assert.match(client, /className = 'video-attachment-share'/);
+  assert.match(client, /shareDataUri\(`data:\$\{mime\};base64,\$\{base64\}`/);
+  assert.match(client, /className = 'video-attachment-controls'/);
+  assert.match(client, /className = 'video-attachment-seek'/);
+  assert.match(client, /const playbackRates = \[1, 1\.5, 2, \.5\]/);
+  assert.match(client, /if \(video\.paused\) startPlayback\(\); else video\.pause\(\)/);
+  assert.match(client, /function attachVideoViewerSwipeDown/);
+  assert.match(client, /deltaY >= 90/);
   assert.match(client, /video\.controls = false/);
   assert.match(client, /video\.onplaying = revealPlayingVideo/);
   assert.match(client, /className = 'video-attachment-viewer loading'/);
@@ -47,7 +67,7 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v59/);
+  assert.match(sw, /vaultlix-app-shell-v61/);
 });
 
 test('media-heavy Android chats release hidden decoders and avoid identical inbox rebuilds', () => {

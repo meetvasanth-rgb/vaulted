@@ -856,8 +856,10 @@ body.select-mode .chat-ftr{display:none}
 .vault-upload-orbit{position:relative;width:48px;height:48px;display:grid;place-items:center}.vault-upload-orbit svg{width:21px;height:21px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;animation:vault-upload-lock 1.4s ease-in-out infinite}
 .vault-upload-orbit i{position:absolute;width:7px;height:7px;border-radius:50%;background:#C87588;box-shadow:0 0 12px #C87588}.vault-upload-orbit i:nth-child(1){animation:vault-upload-dot-a 1.7s linear infinite}.vault-upload-orbit i:nth-child(2){animation:vault-upload-dot-b 1.7s linear infinite}.vault-upload-orbit i:nth-child(3){animation:vault-upload-dot-c 1.7s linear infinite}
 @keyframes vault-upload-dot-a{from{transform:rotate(0) translateX(22px) rotate(0)}to{transform:rotate(360deg) translateX(22px) rotate(-360deg)}}@keyframes vault-upload-dot-b{from{transform:rotate(120deg) translateX(22px) rotate(-120deg)}to{transform:rotate(480deg) translateX(22px) rotate(-480deg)}}@keyframes vault-upload-dot-c{from{transform:rotate(240deg) translateX(22px) rotate(-240deg)}to{transform:rotate(600deg) translateX(22px) rotate(-600deg)}}@keyframes vault-upload-lock{50%{transform:scale(1.12);stroke:#F2CCD8}}
-.video-attachment-viewer{position:fixed;inset:0;z-index:10045;background:#080607;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));box-sizing:border-box}
-.video-attachment-viewer video{display:block;width:100%;height:100%;max-width:900px;max-height:calc(100dvh - 80px);object-fit:contain;background:#000;opacity:1;transition:opacity .16s ease}.video-attachment-viewer.loading video{opacity:0}.video-attachment-loader{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:13px;color:#fff;font:700 12px/1.2 Inter,sans-serif;letter-spacing:.03em;background:#080607}.video-attachment-viewer.loading .video-attachment-loader{display:flex}.video-attachment-loader .vault-upload-orbit i:nth-child(1){background:#FF3B6B}.video-attachment-loader .vault-upload-orbit i:nth-child(2){background:#2EC5FF}.video-attachment-loader .vault-upload-orbit i:nth-child(3){background:#FFB800}.video-attachment-tap{display:none;min-height:44px;padding:0 18px;border-radius:999px;background:#fff;color:#281F23;font:750 13px Inter,sans-serif}.video-attachment-loader.awaiting-tap .video-attachment-tap{display:block}.video-attachment-close{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;z-index:3;width:42px;height:42px;border-radius:50%;background:#0009;color:#fff;font-size:27px;border:1px solid #ffffff33}
+.video-attachment-viewer{position:fixed;inset:0;z-index:10045;background:#080607;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;box-sizing:border-box;touch-action:none;will-change:transform}
+.video-attachment-viewer video{display:block;width:100%;height:100%;object-fit:contain;background:#000;opacity:1;transition:opacity .16s ease}.video-attachment-viewer.loading video{opacity:0}.video-attachment-loader{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:13px;color:#fff;font:700 12px/1.2 Inter,sans-serif;letter-spacing:.03em;background:#080607}.video-attachment-viewer.loading .video-attachment-loader{display:flex}.video-attachment-loader .vault-upload-orbit i:nth-child(1){background:#FF3B6B}.video-attachment-loader .vault-upload-orbit i:nth-child(2){background:#2EC5FF}.video-attachment-loader .vault-upload-orbit i:nth-child(3){background:#FFB800}.video-attachment-tap{display:none;min-height:44px;padding:0 18px;border-radius:999px;background:#fff;color:#281F23;font:750 13px Inter,sans-serif}.video-attachment-loader.awaiting-tap .video-attachment-tap{display:block}
+.video-attachment-close,.video-attachment-download,.video-attachment-share{position:absolute;top:calc(12px + env(safe-area-inset-top));z-index:5;width:42px;height:42px;border-radius:50%;background:#0009;color:#fff;border:1px solid #ffffff33;display:grid;place-items:center}.video-attachment-close{left:14px}.video-attachment-share{right:14px}.video-attachment-download{right:62px}.video-attachment-close svg,.video-attachment-download svg,.video-attachment-share svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.video-attachment-controls{position:absolute;z-index:5;left:18px;right:18px;bottom:calc(16px + env(safe-area-inset-bottom));display:grid;grid-template-columns:auto auto minmax(80px,1fr) auto auto;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:#121013d9;color:#fff;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:opacity .16s ease}.video-attachment-viewer.loading .video-attachment-controls{opacity:0;pointer-events:none}.video-attachment-play{width:40px;height:40px;border:0;border-radius:50%;display:grid;place-items:center;background:#fff;color:#281F23}.video-attachment-play svg{width:20px;height:20px;fill:currentColor}.video-attachment-time{min-width:36px;color:#fff;font:600 11px/1 Inter,sans-serif;font-variant-numeric:tabular-nums}.video-attachment-seek{width:100%;min-width:70px;accent-color:#C87588}.video-attachment-speed{height:38px;min-width:48px;border:0;border-radius:999px;background:#ffffff20;color:#fff;font:700 12px/1 Inter,sans-serif}.video-attachment-viewer:after{content:'Swipe down to return to chat';position:absolute;z-index:4;left:50%;top:calc(27px + env(safe-area-inset-top));transform:translateX(-50%);color:#ffffffaa;font:600 10px/1 Inter,sans-serif;pointer-events:none;white-space:nowrap}@media(max-width:430px){.video-attachment-controls{left:10px;right:10px;gap:7px;padding:8px}.video-attachment-time{font-size:10px;min-width:31px}.video-attachment-speed{min-width:44px}}
 .msg-gif{display:block;width:min(240px,70vw);min-height:120px;max-height:280px;object-fit:contain;border-radius:12px;background:#F3EEE6;cursor:pointer;content-visibility:auto}
 .klipy-picker{position:fixed;inset:0;z-index:10020;background:rgba(20,15,18,.52);display:flex;align-items:flex-end;justify-content:center}
 .klipy-sheet{width:min(620px,100%);height:min(72vh,650px);background:#fff;border-radius:24px 24px 0 0;padding:14px;display:flex;flex-direction:column;box-shadow:0 -14px 45px rgba(0,0,0,.2)}
@@ -8786,6 +8788,7 @@ const ENCRYPTED_ATTACHMENT_PREFIX = 'obj:v1:';
 // A 25 MiB source grows to about 44.45 MiB after file base64 plus the
 // encrypted envelope's base64. Keep a small allowance for JSON metadata.
 const MAX_ENCRYPTED_ATTACHMENT_BYTES = 48 * 1024 * 1024;
+const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = [0, 350, 1000];
 
 async function uploadEncryptedAttachment(room, msgId, ciphertext) {
   const size = new Blob([ciphertext]).size;
@@ -8810,20 +8813,36 @@ async function uploadEncryptedAttachment(room, msgId, ciphertext) {
 async function resolveEncryptedAttachment(room, content) {
   if (typeof content !== 'string' || !content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX)) return content;
   const attachmentId = content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  let ciphertext;
-  try {
-    const response = await fetch('/api/attachment/content', {
-      method:'POST', headers:{ 'Content-Type':'application/json' },
-      body:JSON.stringify({ code:room.code, token:room.token, attachmentId }),
-      cache:'no-store', signal:controller.signal,
-    });
-    if (!response.ok) throw new Error('ATTACHMENT_DOWNLOAD');
-    ciphertext = await response.text();
-  } finally { clearTimeout(timeout); }
-  if (!ciphertext || new Blob([ciphertext]).size > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
-  return ciphertext;
+  let lastError = new Error('ATTACHMENT_DOWNLOAD');
+  for (let attempt = 0; attempt < ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS.length; attempt++) {
+    const delay = ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS[attempt];
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch('/api/attachment/content', {
+        method:'POST', headers:{ 'Content-Type':'application/json' },
+        body:JSON.stringify({ code:room.code, token:room.token, attachmentId }),
+        cache:'no-store', signal:controller.signal,
+      });
+      if (!response.ok) {
+        const error = new Error('ATTACHMENT_DOWNLOAD');
+        error.status = response.status;
+        throw error;
+      }
+      const ciphertext = await response.text();
+      if (!ciphertext || new Blob([ciphertext]).size > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
+      return ciphertext;
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.status || 0);
+      const retryable = !status || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+      if (!retryable || attempt === ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS.length - 1) break;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw lastError;
 }
 
 const REGISTRATION_DIAGNOSTIC_KEY = 'vaultlix.registration.diagnostics.v1';
@@ -14911,18 +14930,67 @@ function openVideoAttachmentViewer(mime, base64, name) {
   if (!objectUrl) { toast('This video could not be prepared.'); return; }
   closeVideoAttachmentViewer();
   const overlay = document.createElement('div'); overlay.id = 'video-attachment-viewer'; overlay.className = 'video-attachment-viewer loading';
-  const close = document.createElement('button'); close.type = 'button'; close.className = 'video-attachment-close'; close.setAttribute('aria-label','Close video'); close.textContent = '×'; close.onclick = closeVideoAttachmentViewer;
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'video-attachment-close'; close.setAttribute('aria-label','Back to chat'); close.title = 'Back to chat';
+  close.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
+  close.onclick = closeVideoAttachmentViewer;
+  const download = document.createElement('button'); download.type = 'button'; download.className = 'video-attachment-download'; download.setAttribute('aria-label','Download video'); download.title = 'Download video';
+  download.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>';
+  download.onclick = event => { event.stopPropagation(); downloadDataUri(`data:${mime};base64,${base64}`, name || 'vaultlix-video'); };
+  const share = document.createElement('button'); share.type = 'button'; share.className = 'video-attachment-share'; share.setAttribute('aria-label','Share video'); share.title = 'Share video';
+  share.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5"/><path d="m19 5-9 9"/><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
+  share.onclick = event => { event.stopPropagation(); shareDataUri(`data:${mime};base64,${base64}`, name || 'vaultlix-video'); };
   const loader = document.createElement('div'); loader.className = 'video-attachment-loader'; loader.setAttribute('role','status');
   loader.innerHTML = `<span class="vault-upload-orbit" aria-hidden="true"><i></i><i></i><i></i><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Loading secure video…</span><button type="button" class="video-attachment-tap">Play video</button>`;
   const video = document.createElement('video'); video.controls = false; video.autoplay = true; video.playsInline = true; video.preload = 'auto'; video.setAttribute('aria-label', name || 'Video attachment');
   video.src = objectUrl;
   video.dataset.vaultlixObjectUrl = objectUrl;
-  const revealPlayingVideo = () => { video.controls = true; overlay.classList.remove('loading'); };
+  const controls = document.createElement('div'); controls.className = 'video-attachment-controls'; controls.setAttribute('aria-label','Video controls');
+  const play = document.createElement('button'); play.type = 'button'; play.className = 'video-attachment-play'; play.setAttribute('aria-label','Pause video');
+  const elapsed = document.createElement('span'); elapsed.className = 'video-attachment-time'; elapsed.textContent = '0:00';
+  const seek = document.createElement('input'); seek.type = 'range'; seek.className = 'video-attachment-seek'; seek.min = '0'; seek.max = '1000'; seek.value = '0'; seek.setAttribute('aria-label','Video position');
+  const duration = document.createElement('span'); duration.className = 'video-attachment-time'; duration.textContent = '0:00';
+  const speed = document.createElement('button'); speed.type = 'button'; speed.className = 'video-attachment-speed'; speed.textContent = '1.0×'; speed.setAttribute('aria-label','Playback speed 1 times');
+  controls.append(play, elapsed, seek, duration, speed);
+  const videoTime = seconds => {
+    const safe = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
+    return `${Math.floor(safe / 60)}:${String(Math.floor(safe % 60)).padStart(2,'0')}`;
+  };
+  const setPlayIcon = playing => {
+    play.setAttribute('aria-label', playing ? 'Pause video' : 'Play video');
+    play.innerHTML = playing
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+  };
+  setPlayIcon(true);
+  const updateTimeline = () => {
+    elapsed.textContent = videoTime(video.currentTime);
+    duration.textContent = videoTime(video.duration);
+    seek.value = Number.isFinite(video.duration) && video.duration > 0 ? String(Math.round(video.currentTime / video.duration * 1000)) : '0';
+  };
+  const revealPlayingVideo = () => { video.controls = false; overlay.classList.remove('loading'); setPlayIcon(true); updateTimeline(); };
   const startPlayback = () => {
     loader.classList.remove('awaiting-tap');
     video.play().catch(() => loader.classList.add('awaiting-tap'));
   };
   video.onplaying = revealPlayingVideo;
+  video.onpause = () => setPlayIcon(false);
+  video.ontimeupdate = updateTimeline;
+  video.ondurationchange = updateTimeline;
+  video.onclick = event => { event.stopPropagation(); if (video.paused) startPlayback(); else video.pause(); };
+  play.onclick = event => { event.stopPropagation(); if (video.paused) startPlayback(); else video.pause(); };
+  seek.oninput = event => {
+    event.stopPropagation();
+    if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Number(seek.value) / 1000 * video.duration;
+  };
+  const playbackRates = [1, 1.5, 2, .5];
+  speed.onclick = event => {
+    event.stopPropagation();
+    const currentIndex = playbackRates.indexOf(video.playbackRate);
+    const nextRate = playbackRates[(currentIndex + 1) % playbackRates.length];
+    video.playbackRate = nextRate;
+    speed.textContent = `${nextRate.toFixed(1)}×`;
+    speed.setAttribute('aria-label', `Playback speed ${nextRate} times`);
+  };
   video.onerror = () => {
     loader.querySelector('span:last-of-type').textContent = 'This recording format cannot play on this device. The encrypted video is still available.';
     const action = loader.querySelector('.video-attachment-tap');
@@ -14931,9 +14999,44 @@ function openVideoAttachmentViewer(mime, base64, name) {
     loader.classList.add('awaiting-tap');
   };
   loader.querySelector('.video-attachment-tap').onclick = startPlayback;
-  overlay.append(close, loader, video); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
+  overlay.append(close, download, share, loader, video, controls); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
+  attachVideoViewerSwipeDown(overlay);
   document.body.appendChild(overlay); startPlayback();
   setTimeout(() => { if (overlay.classList.contains('loading') && video.readyState >= 2) loader.classList.add('awaiting-tap'); }, 900);
+}
+function attachVideoViewerSwipeDown(overlay) {
+  let startX = 0, startY = 0, deltaY = 0, tracking = false, claimed = false;
+  const reset = () => {
+    tracking = false; claimed = false; deltaY = 0;
+    overlay.style.transition = 'transform .18s ease, opacity .18s ease';
+    overlay.style.transform = '';
+    overlay.style.opacity = '';
+    setTimeout(() => { if (overlay.isConnected) overlay.style.transition = ''; }, 190);
+  };
+  overlay.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1 || event.target.closest?.('button, input, .video-attachment-controls')) return;
+    const touch = event.touches[0];
+    startX = touch.clientX; startY = touch.clientY; deltaY = 0; tracking = true; claimed = false;
+    overlay.style.transition = 'none';
+  }, { passive:true, capture:true });
+  overlay.addEventListener('touchmove', event => {
+    if (!tracking || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - startX;
+    deltaY = Math.max(0, touch.clientY - startY);
+    if (!claimed && deltaY > 10 && deltaY > Math.abs(dx) * 1.2) claimed = true;
+    if (!claimed) return;
+    event.preventDefault(); event.stopPropagation();
+    overlay.style.transform = `translateY(${deltaY}px)`;
+    overlay.style.opacity = String(Math.max(.35, 1 - deltaY / 420));
+  }, { passive:false, capture:true });
+  overlay.addEventListener('touchend', event => {
+    if (!tracking) return;
+    if (claimed) event.stopPropagation();
+    if (claimed && deltaY >= 90) { closeVideoAttachmentViewer(); return; }
+    reset();
+  }, { passive:true, capture:true });
+  overlay.addEventListener('touchcancel', reset, { passive:true, capture:true });
 }
 function closeVideoAttachmentViewer() {
   const overlay = document.getElementById('video-attachment-viewer');
@@ -18815,9 +18918,12 @@ async function handleFileSelect(event) {
 
     // Non-image files send immediately, one after another — view-once isn't a
     // meaningful concept for a PDF or a zip, so no picker needed for these.
+    // Their optimistic chat bubble has its own encrypted-upload animation, so
+    // close the preparation notice before the bubble appears instead of
+    // showing two progress indicators for the same upload.
+    if (others.length) progress?.close();
     for (const { file, base64, pdfPreview, videoThumb } of others) {
-      progress?.update('Sending securely…');
-      await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount, progress?.update, videoThumb);
+      await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount, undefined, videoThumb);
     }
   } catch (error) {
     toast('Could not prepare the selected attachments. Please select them again.');
