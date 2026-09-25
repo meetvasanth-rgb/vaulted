@@ -2647,6 +2647,8 @@ html.vaultlix-native-android .native-onboarding-shell{padding-top:calc(28px + va
 html.vaultlix-native-android #new-connection-overlay .account-card{max-height:calc(100dvh - var(--android-safe-area-top,0px) - 12px);padding-bottom:calc(24px + var(--android-safe-area-bottom,0px))}
 html.vaultlix-native-android #new-connection-overlay .account-head{margin-bottom:12px}
 html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26px}
+.private-number-scan{display:flex;align-items:center;justify-content:center;gap:9px}.private-number-scan svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.qr-scanner-overlay{position:fixed;inset:0;z-index:12030;display:none;flex-direction:column;background:#130e12;color:#fff}.qr-scanner-overlay.open{display:flex}.qr-scanner-head{display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top)) 16px 14px}.qr-scanner-head button{width:42px;height:42px;border:1px solid #ffffff2e;border-radius:14px;background:#ffffff16;color:#fff;font-size:25px}.qr-scanner-title{font:750 18px Manrope,sans-serif}.qr-scanner-stage{position:relative;flex:1;min-height:0;overflow:hidden;background:#000}.qr-scanner-stage video{width:100%;height:100%;object-fit:cover}.qr-scanner-shade{position:absolute;inset:0;background:linear-gradient(#0008,#0000 24%,#0000 76%,#0008);pointer-events:none}.qr-scanner-frame{position:absolute;left:50%;top:50%;width:min(68vw,320px);aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid #fff;border-radius:26px;box-shadow:0 0 0 9999px #0004}.qr-scanner-frame:before{content:'';position:absolute;left:12%;right:12%;top:14%;height:2px;background:#ef98b3;box-shadow:0 0 12px #ef98b3;animation:qr-scan-line 2.1s ease-in-out infinite}@keyframes qr-scan-line{0%,100%{transform:translateY(0)}50%{transform:translateY(min(48vw,220px))}}.qr-scanner-help{padding:17px 20px calc(19px + env(safe-area-inset-bottom));text-align:center;font:600 13px/1.5 Inter,sans-serif;color:#eadfe4;background:#1d141a}.qr-scanner-error{color:#ffb8c7}
+.website-get-app{position:fixed;inset:0;z-index:12020;display:none;align-items:center;justify-content:center;padding:20px;background:#24191f99;backdrop-filter:blur(8px)}.website-get-app.open{display:flex}.website-get-app-card{position:relative;width:min(420px,100%);max-height:calc(100dvh - 40px);overflow:auto;padding:30px 26px 24px;border-radius:28px;background:#fff;text-align:center;box-shadow:0 28px 90px #1d0d1645}.website-get-app-close{position:absolute;top:14px;right:14px;width:38px;height:38px;border:0;border-radius:13px;background:#f3e8ec;color:#682c43;font-size:22px}.website-get-app-card h2{margin:5px 36px 8px;font:750 30px/1.12 Manrope,sans-serif;color:#271d25}.website-get-app-card p{margin:0 0 18px;font:500 13px/1.55 Inter,sans-serif;color:#756a72}.website-get-app-qr{display:block;width:min(270px,76vw);height:auto;margin:0 auto 18px}.website-store-links{display:grid;grid-template-columns:1fr 1fr;gap:9px}.website-store-links a{display:flex;align-items:center;justify-content:center;min-height:48px;padding:7px 10px;border-radius:13px;text-decoration:none;font:700 12px/1.25 Inter,sans-serif}.website-store-links .apple{background:#171416;color:#fff}.website-store-links .google{background:#f4e9ed;color:#682c43;border:1px solid #dfcbd3}@media(max-width:430px){.website-store-links{grid-template-columns:1fr}}
 @media(min-width:700px){.account-overlay{align-items:center;padding:24px}.account-card{border-radius:26px;padding-bottom:25px}}
 
 /* Mobile reading scale
@@ -2802,6 +2804,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       </div>
       <div class="landing-header-actions">
         <div class="landing-trust-pill"><span></span> Encrypted</div>
+        <button class="landing-account-btn" type="button" onclick="openWebsiteGetApp()" aria-label="Get the Vaultlix app"><span class="landing-account-label">Get the app</span></button>
         <details class="landing-menu">
           <summary aria-label="Open website menu">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -2835,7 +2838,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="landing-hero-actions">
         <button class="landing-hero-action" type="button" onclick="openCreateAccount()">Create my number <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
         <button class="landing-hero-action landing-hero-action-secondary" type="button" onclick="openLoginOrInbox()">Sign in</button>
-        <a class="landing-hero-action landing-hero-app-store" href="https://apps.apple.com/in/app/vaultlix/id6798266989" aria-label="Download Vaultlix on the Apple App Store">Download for iPhone</a>
+        <button class="landing-hero-action landing-hero-app-store" type="button" onclick="openWebsiteGetApp()" aria-label="Get the Vaultlix app">Get the app</button>
       </div>
       <div class="identity-proof" aria-label="Vaultlix account benefits"><span>No SIM</span><span>No phone number</span><span>No email</span><span>No contact upload</span></div>
       <div class="identity-signal" aria-label="A Vaultlix line is ready when you choose to share it">
@@ -3287,7 +3290,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <input type="file" id="file-input" multiple style="display:none" accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handleFileSelect(event)"/>
     <input type="file" id="camera-input" style="display:none" accept="image/*" capture="environment" onchange="handleFileSelect(event)"/>
     <textarea id="msg-input" placeholder="Type a message…" data-i18n-placeholder="message_placeholder" rows="1" disabled></textarea>
-    <button class="send-btn" id="send-btn" onclick="sendMsg();keepIOSComposerFocused('msg-input')" disabled style="display:none">
+    <button class="send-btn" id="send-btn" type="button" onpointerdown="event.preventDefault()" onclick="sendMsg()" disabled style="display:none">
       <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
     <button class="mic-btn" id="mic-btn" onclick="startVoiceRecording()" disabled title="Record voice note">
@@ -3368,9 +3371,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <input type="file" id="group-image-input" multiple hidden accept="image/*,video/*" onchange="handlePrivateGroupFileSelect(event)"/>
     <input type="file" id="group-file-input" multiple hidden accept="application/pdf,.doc,.docx,.txt,.zip" onchange="handlePrivateGroupFileSelect(event)"/>
     <input type="file" id="group-camera-input" hidden accept="image/*" capture="environment" onchange="handlePrivateGroupFileSelect(event)"/>
-    <textarea id="group-message-input" maxlength="4000" rows="1" placeholder="Message the group…" oninput="updatePrivateGroupComposer()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPrivateGroupMessage()}"></textarea>
+    <textarea id="group-message-input" maxlength="4000" rows="1" placeholder="Message the group…" oninput="updatePrivateGroupComposer()"></textarea>
     <button class="group-mic-btn" type="button" onclick="togglePrivateGroupVoiceRecording()" aria-label="Record voice note"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
-    <button class="group-send-btn" type="button" onclick="sendPrivateGroupMessage();keepIOSComposerFocused('group-message-input')" aria-label="Send"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+    <button class="group-send-btn" type="button" onpointerdown="event.preventDefault()" onclick="sendPrivateGroupMessage()" aria-label="Send"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
   </footer>
 </div>
 
@@ -3670,6 +3673,16 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <div class="app-lock-copy"><strong>Important:</strong> Vaultlix cannot recover this passcode. Resetting it erases local conversation credentials; conversations stored only on this device may be permanently lost.</div>
     <div class="app-lock-actions"><button class="danger" id="app-lock-disable" type="button" onclick="disableAppLock()" style="display:none">Disable App Lock</button><button type="button" onclick="closeAppLockSettings()">Cancel</button><button class="primary" type="submit">Save</button></div>
   </form>
+</div>
+
+<div class="website-get-app" id="website-get-app" onclick="if(event.target===this)closeWebsiteGetApp()" role="dialog" aria-modal="true" aria-labelledby="website-get-app-title">
+  <div class="website-get-app-card">
+    <button class="website-get-app-close" type="button" onclick="closeWebsiteGetApp()" aria-label="Close">×</button>
+    <h2 id="website-get-app-title">Get the Vaultlix app</h2>
+    <p>Scan once. Vaultlix will send the phone to the correct store.</p>
+    <canvas class="website-get-app-qr" id="website-get-app-qr" width="540" height="540" role="img" aria-label="QR code to download Vaultlix"></canvas>
+    <div class="website-store-links"><a class="apple" href="https://apps.apple.com/in/app/vaultlix/id6798266989">Download on the App Store</a><a class="google" href="https://play.google.com/store/apps/details?id=com.vaultlix.app">Get it on Google Play</a></div>
+  </div>
 </div>
 
 <div class="account-overlay" id="share-vaultlix-overlay" onclick="if(event.target===this)closeShareVaultlix()">
@@ -4207,9 +4220,16 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <label class="account-field"><span data-i18n="private_number">Vaultlix private number</span><input id="new-connection-private-number" inputmode="numeric" autocomplete="off" required/></label>
       <div class="account-error" id="new-connection-error" role="alert" aria-live="assertive" hidden></div>
       <button class="account-primary" id="new-connection-submit" type="submit" data-i18n="find_person">Find person</button>
+      <button class="account-secondary private-number-scan" type="button" onclick="openPrivateNumberScanner()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><path d="M8 8h3v3H8zM14 8h2v2h-2zM8 14h2v2H8zM13 13h3v3h-3z"/></svg><span>Scan QR with camera</span></button>
       <button class="account-secondary" type="button" onclick="pasteQuickConnectLink()">Paste Vaultlix link or number</button>
     </form>
   </div>
+</div>
+
+<div class="qr-scanner-overlay" id="private-number-scanner" role="dialog" aria-modal="true" aria-labelledby="private-number-scanner-title">
+  <div class="qr-scanner-head"><button type="button" onclick="closePrivateNumberScanner()" aria-label="Close scanner">×</button><div class="qr-scanner-title" id="private-number-scanner-title">Scan Vaultlix QR</div></div>
+  <div class="qr-scanner-stage"><video id="private-number-scanner-video" playsinline muted autoplay></video><div class="qr-scanner-shade"></div><div class="qr-scanner-frame" aria-hidden="true"></div><canvas id="private-number-scanner-canvas" hidden></canvas></div>
+  <div class="qr-scanner-help" id="private-number-scanner-help" role="status" aria-live="polite">Point the camera at your friend’s Vaultlix QR card.</div>
 </div>
 
 <!-- Brief, non-interactive achievement ceremony. It never interrupts with a
@@ -4264,6 +4284,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <script src="/vendor/safety-words.js"></script>
 <script src="/content-safety.js"></script>
 <script src="/media-safety-v3.js"></script>
+<!-- jsQR 1.4.0 (MIT) decodes camera frames locally. QR images never leave
+     this device and no external scanning service is contacted. -->
+<script src="/vendor/jsQR.js"></script>
 <script>
 var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),T.exports}catch(N){throw T=0,N}};var vr=or((W,V)=>{var $=(function(){var L=function(x,w){var g=236,l=17,n=x,s=N[w],t=null,r=0,h=null,i=[],v={},_=function(a,f){r=n*4+17,t=(function(e){for(var u=new Array(e),o=0;o<e;o+=1){u[o]=new Array(e);for(var d=0;d<e;d+=1)u[o][d]=null}return u})(r),B(0,0),B(r-7,0),B(0,r-7),E(),C(),m(a,f),n>=7&&O(a),h==null&&(h=ir(n,s,i)),U(h,f)},B=function(a,f){for(var e=-1;e<=7;e+=1)if(!(a+e<=-1||r<=a+e))for(var u=-1;u<=7;u+=1)f+u<=-1||r<=f+u||(0<=e&&e<=6&&(u==0||u==6)||0<=u&&u<=6&&(e==0||e==6)||2<=e&&e<=4&&2<=u&&u<=4?t[a+e][f+u]=!0:t[a+e][f+u]=!1)},y=function(){for(var a=0,f=0,e=0;e<8;e+=1){_(!0,e);var u=P.getLostPoint(v);(e==0||a>u)&&(a=u,f=e)}return f},C=function(){for(var a=8;a<r-8;a+=1)t[a][6]==null&&(t[a][6]=a%2==0);for(var f=8;f<r-8;f+=1)t[6][f]==null&&(t[6][f]=f%2==0)},E=function(){for(var a=P.getPatternPosition(n),f=0;f<a.length;f+=1)for(var e=0;e<a.length;e+=1){var u=a[f],o=a[e];if(t[u][o]==null)for(var d=-2;d<=2;d+=1)for(var c=-2;c<=2;c+=1)d==-2||d==2||c==-2||c==2||d==0&&c==0?t[u+d][o+c]=!0:t[u+d][o+c]=!1}},O=function(a){for(var f=P.getBCHTypeNumber(n),e=0;e<18;e+=1){var u=!a&&(f>>e&1)==1;t[Math.floor(e/3)][e%3+r-8-3]=u}for(var e=0;e<18;e+=1){var u=!a&&(f>>e&1)==1;t[e%3+r-8-3][Math.floor(e/3)]=u}},m=function(a,f){for(var e=s<<3|f,u=P.getBCHTypeInfo(e),o=0;o<15;o+=1){var d=!a&&(u>>o&1)==1;o<6?t[o][8]=d:o<8?t[o+1][8]=d:t[r-15+o][8]=d}for(var o=0;o<15;o+=1){var d=!a&&(u>>o&1)==1;o<8?t[8][r-o-1]=d:o<9?t[8][15-o-1+1]=d:t[8][15-o-1]=d}t[r-8][8]=!a},U=function(a,f){for(var e=-1,u=r-1,o=7,d=0,c=P.getMaskFunction(f),p=r-1;p>0;p-=2)for(p==6&&(p-=1);;){for(var b=0;b<2;b+=1)if(t[u][p-b]==null){var D=!1;d<a.length&&(D=(a[d]>>>o&1)==1);var A=c(u,p-b);A&&(D=!D),t[u][p-b]=D,o-=1,o==-1&&(d+=1,o=7)}if(u+=e,u<0||r<=u){u-=e,e=-e;break}}},H=function(a,f){for(var e=0,u=0,o=0,d=new Array(f.length),c=new Array(f.length),p=0;p<f.length;p+=1){var b=f[p].dataCount,D=f[p].totalCount-b;u=Math.max(u,b),o=Math.max(o,D),d[p]=new Array(b);for(var A=0;A<d[p].length;A+=1)d[p][A]=255&a.getBuffer()[A+e];e+=b;var R=P.getErrorCorrectPolynomial(D),I=K(d[p],R.getLength()-1),S=I.mod(R);c[p]=new Array(R.getLength()-1);for(var A=0;A<c[p].length;A+=1){var X=A+S.getLength()-c[p].length;c[p][A]=X>=0?S.getAt(X):0}}for(var Z=0,A=0;A<f.length;A+=1)Z+=f[A].totalCount;for(var J=new Array(Z),Q=0,A=0;A<u;A+=1)for(var p=0;p<f.length;p+=1)A<d[p].length&&(J[Q]=d[p][A],Q+=1);for(var A=0;A<o;A+=1)for(var p=0;p<f.length;p+=1)A<c[p].length&&(J[Q]=c[p][A],Q+=1);return J},ir=function(a,f,e){for(var u=Y.getRSBlocks(a,f),o=G(),d=0;d<e.length;d+=1){var c=e[d];o.put(c.getMode(),4),o.put(c.getLength(),P.getLengthInBits(c.getMode(),a)),c.write(o)}for(var p=0,d=0;d<u.length;d+=1)p+=u[d].dataCount;if(o.getLengthInBits()>p*8)throw"code length overflow. ("+o.getLengthInBits()+">"+p*8+")";for(o.getLengthInBits()+4<=p*8&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=p*8||(o.put(g,8),o.getLengthInBits()>=p*8));)o.put(l,8);return H(o,u)};v.addData=function(a,f){f=f||"Byte";var e=null;switch(f){case"Numeric":e=q(a);break;case"Alphanumeric":e=z(a);break;case"Byte":e=rr(a);break;case"Kanji":e=tr(a);break;default:throw"mode:"+f}i.push(e),h=null},v.isDark=function(a,f){if(a<0||r<=a||f<0||r<=f)throw a+","+f;return t[a][f]},v.getModuleCount=function(){return r},v.make=function(){if(n<1){for(var a=1;a<40;a++){for(var f=Y.getRSBlocks(a,s),e=G(),u=0;u<i.length;u++){var o=i[u];e.put(o.getMode(),4),e.put(o.getLength(),P.getLengthInBits(o.getMode(),a)),o.write(e)}for(var d=0,u=0;u<f.length;u++)d+=f[u].dataCount;if(e.getLengthInBits()<=d*8)break}n=a}_(!1,y())},v.createTableTag=function(a,f){a=a||2,f=typeof f>"u"?a*4:f;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+f+"px;",e+='">',e+="<tbody>";for(var u=0;u<v.getModuleCount();u+=1){e+="<tr>";for(var o=0;o<v.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+a+"px;",e+=" height: "+a+"px;",e+=" background-color: ",e+=v.isDark(u,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>",e},v.createSvgTag=function(a,f,e,u){var o={};typeof arguments[0]=="object"&&(o=arguments[0],a=o.cellSize,f=o.margin,e=o.alt,u=o.title),a=a||2,f=typeof f>"u"?a*4:f,e=typeof e=="string"?{text:e}:e||{},e.text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,u=typeof u=="string"?{text:u}:u||{},u.text=u.text||null,u.id=u.text?u.id||"qrcode-title":null;var d=v.getModuleCount()*a+f*2,c,p,b,D,A="",R;for(R="l"+a+",0 0,"+a+" -"+a+",0 0,-"+a+"z ",A+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',A+=o.scalable?"":' width="'+d+'px" height="'+d+'px"',A+=' viewBox="0 0 '+d+" "+d+'" ',A+=' preserveAspectRatio="xMinYMin meet"',A+=u.text||e.text?' role="img" aria-labelledby="'+F([u.id,e.id].join(" ").trim())+'"':"",A+=">",A+=u.text?'<title id="'+F(u.id)+'">'+F(u.text)+"</title>":"",A+=e.text?'<description id="'+F(e.id)+'">'+F(e.text)+"</description>":"",A+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',A+='<path d="',b=0;b<v.getModuleCount();b+=1)for(D=b*a+f,c=0;c<v.getModuleCount();c+=1)v.isDark(b,c)&&(p=c*a+f,A+="M"+p+","+D+R);return A+='" stroke="transparent" fill="black"/>',A+="</svg>",A},v.createDataURL=function(a,f){a=a||2,f=typeof f>"u"?a*4:f;var e=v.getModuleCount()*a+f*2,u=f,o=e-f;return fr(e,e,function(d,c){if(u<=d&&d<o&&u<=c&&c<o){var p=Math.floor((d-u)/a),b=Math.floor((c-u)/a);return v.isDark(b,p)?0:1}else return 1})},v.createImgTag=function(a,f,e){a=a||2,f=typeof f>"u"?a*4:f;var u=v.getModuleCount()*a+f*2,o="";return o+="<img",o+=' src="',o+=v.createDataURL(a,f),o+='"',o+=' width="',o+=u,o+='"',o+=' height="',o+=u,o+='"',e&&(o+=' alt="',o+=F(e),o+='"'),o+="/>",o};var F=function(a){for(var f="",e=0;e<a.length;e+=1){var u=a.charAt(e);switch(u){case"<":f+="&lt;";break;case">":f+="&gt;";break;case"&":f+="&amp;";break;case'"':f+="&quot;";break;default:f+=u;break}}return f},ur=function(a){var f=1;a=typeof a>"u"?f*2:a;var e=v.getModuleCount()*f+a*2,u=a,o=e-a,d,c,p,b,D,A={"\u2588\u2588":"\u2588","\u2588 ":"\u2580"," \u2588":"\u2584","  ":" "},R={"\u2588\u2588":"\u2580","\u2588 ":"\u2580"," \u2588":" ","  ":" "},I="";for(d=0;d<e;d+=2){for(p=Math.floor((d-u)/f),b=Math.floor((d+1-u)/f),c=0;c<e;c+=1)D="\u2588",u<=c&&c<o&&u<=d&&d<o&&v.isDark(p,Math.floor((c-u)/f))&&(D=" "),u<=c&&c<o&&u<=d+1&&d+1<o&&v.isDark(b,Math.floor((c-u)/f))?D+=" ":D+="\u2588",I+=a<1&&d+1>=o?R[D]:A[D];I+=`
 `}return e%2&&a>0?I.substring(0,I.length-e-1)+Array(e+1).join("\u2580"):I.substring(0,I.length-1)};return v.createASCII=function(a,f){if(a=a||1,a<2)return ur(f);a-=1,f=typeof f>"u"?a*2:f;var e=v.getModuleCount()*a+f*2,u=f,o=e-f,d,c,p,b,D=Array(a+1).join("\u2588\u2588"),A=Array(a+1).join("  "),R="",I="";for(d=0;d<e;d+=1){for(p=Math.floor((d-u)/a),I="",c=0;c<e;c+=1)b=1,u<=c&&c<o&&u<=d&&d<o&&v.isDark(p,Math.floor((c-u)/a))&&(b=0),I+=b?D:A;for(p=0;p<a;p+=1)R+=I+`
@@ -12393,8 +12416,17 @@ function isNativeIosApp() { return nativePlatform() === 'ios'; }
 
 const VAULTLIX_PUBLIC_APP_LINK = 'https://vaultlix.com/get-app';
 const VAULTLIX_IOS_APP_STORE_LINK = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
+const VAULTLIX_GOOGLE_PLAY_LINK = 'https://play.google.com/store/apps/details?id=com.vaultlix.app';
 const VAULTLIX_IOS_APP_STORE_CARD = '/media/vaultlix-ios-app-store-card.png';
 let shareVaultlixReturnFocus = null;
+function openWebsiteGetApp() {
+  renderQrCanvas(document.getElementById('website-get-app-qr'), VAULTLIX_PUBLIC_APP_LINK);
+  document.getElementById('website-get-app')?.classList.add('open');
+  document.querySelector('#website-get-app .website-get-app-close')?.focus();
+}
+function closeWebsiteGetApp() {
+  document.getElementById('website-get-app')?.classList.remove('open');
+}
 function openShareVaultlix() {
   shareVaultlixReturnFocus = document.activeElement;
   renderQrCanvas(document.getElementById('share-vaultlix-qr'), VAULTLIX_PUBLIC_APP_LINK);
@@ -16690,8 +16722,100 @@ function openNewConnection() {
   setTimeout(() => input?.focus(), 120);
 }
 function closeNewConnection() {
+  closePrivateNumberScanner();
   document.getElementById('new-connection-overlay').classList.remove('open');
 }
+let privateNumberScannerStream = null;
+let privateNumberScannerFrame = 0;
+let privateNumberScannerBusy = false;
+let privateNumberScannerLastScan = 0;
+function stopPrivateNumberScannerCamera() {
+  cancelAnimationFrame(privateNumberScannerFrame);
+  privateNumberScannerFrame = 0;
+  privateNumberScannerBusy = false;
+  privateNumberScannerLastScan = 0;
+  if (privateNumberScannerStream) privateNumberScannerStream.getTracks().forEach(track => track.stop());
+  privateNumberScannerStream = null;
+  const video = document.getElementById('private-number-scanner-video');
+  if (video) { video.pause(); video.srcObject = null; }
+}
+function closePrivateNumberScanner() {
+  stopPrivateNumberScannerCamera();
+  document.getElementById('private-number-scanner')?.classList.remove('open');
+}
+async function acceptPrivateNumberScan(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw || privateNumberScannerBusy) return false;
+  const privateNumber = privateNumberFromQuickConnectText(raw);
+  let isVaultlixURL = false;
+  try {
+    const url = new URL(raw);
+    isVaultlixURL = url.protocol === 'https:' && url.hostname.toLowerCase() === 'vaultlix.com';
+  } catch (_) {}
+  if (!isVaultlixURL && !privateNumber) return false;
+  privateNumberScannerBusy = true;
+  stopPrivateNumberScannerCamera();
+  document.getElementById('private-number-scanner')?.classList.remove('open');
+  document.getElementById('new-connection-overlay')?.classList.remove('open');
+  if (isVaultlixURL) {
+    const opened = await openQuickConnectURL(raw);
+    if (!opened) toast('This is not a valid Vaultlix profile QR');
+    return !!opened;
+  }
+  return openPublicProfile(privateNumber);
+}
+function scanPrivateNumberCameraFrame(timestamp = 0) {
+  const video = document.getElementById('private-number-scanner-video');
+  const canvas = document.getElementById('private-number-scanner-canvas');
+  if (!privateNumberScannerStream || !video || !canvas) return;
+  if (timestamp - privateNumberScannerLastScan < 140) {
+    privateNumberScannerFrame = requestAnimationFrame(scanPrivateNumberCameraFrame);
+    return;
+  }
+  privateNumberScannerLastScan = timestamp;
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && window.jsQR) {
+    const longest = Math.max(video.videoWidth, video.videoHeight);
+    const scale = Math.min(1, 720 / longest);
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext('2d', { willReadFrequently:true });
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const result = window.jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts:'attemptBoth' });
+    if (result?.data) { acceptPrivateNumberScan(result.data); return; }
+  }
+  privateNumberScannerFrame = requestAnimationFrame(scanPrivateNumberCameraFrame);
+}
+async function openPrivateNumberScanner() {
+  const scanner = document.getElementById('private-number-scanner');
+  const help = document.getElementById('private-number-scanner-help');
+  if (!scanner || !navigator.mediaDevices?.getUserMedia) {
+    toast('Camera scanning is unavailable on this device');
+    return;
+  }
+  stopPrivateNumberScannerCamera();
+  scanner.classList.add('open');
+  help.classList.remove('qr-scanner-error');
+  help.textContent = 'Opening the rear camera…';
+  try {
+    privateNumberScannerStream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:1280 } },
+    });
+    const video = document.getElementById('private-number-scanner-video');
+    video.srcObject = privateNumberScannerStream;
+    await video.play();
+    help.textContent = 'Point the camera at your friend’s Vaultlix QR card.';
+    privateNumberScannerFrame = requestAnimationFrame(scanPrivateNumberCameraFrame);
+  } catch (error) {
+    stopPrivateNumberScannerCamera();
+    help.classList.add('qr-scanner-error');
+    help.textContent = 'Camera access is needed to scan. Allow camera access in device settings, then try again.';
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && document.getElementById('private-number-scanner')?.classList.contains('open')) closePrivateNumberScanner();
+});
 async function pasteQuickConnectLink() {
   try {
     const value = await navigator.clipboard.readText();
@@ -17961,9 +18085,6 @@ document.addEventListener('DOMContentLoaded', () => {
   configureNativeIOSKeyboard();
   document.getElementById('name-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('code-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
-  document.getElementById('msg-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
-  });
   document.getElementById('msg-input')?.addEventListener('input', onTyping);
   document.getElementById('chat-body')?.addEventListener('pointerdown', () => {
     const input = document.getElementById('msg-input');

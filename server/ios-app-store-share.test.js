@@ -19,6 +19,16 @@ test('website and get-app page link directly to the released iPhone app', () => 
   assert.doesNotMatch(getApp, /Coming soon|submitted for App Store review/);
 });
 
+test('Get the app QR routes each phone to its correct store', () => {
+  assert.match(client, /onclick="openWebsiteGetApp\(\)"/);
+  assert.match(client, /id="website-get-app-qr"/);
+  assert.match(client, /renderQrCanvas\(document\.getElementById\('website-get-app-qr'\), VAULTLIX_PUBLIC_APP_LINK\)/);
+  assert.match(getApp, /iPhone\|iPad\|iPod/);
+  assert.match(getApp, /Android/);
+  assert.match(getApp, /https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.vaultlix\.app/);
+  assert.match(getApp, /location\.replace/);
+});
+
 test('iPhone share card QR contains only the public App Store destination', () => {
   assert.match(generator, new RegExp(`APP_STORE_URL = '${APP_STORE_URL.replaceAll('/', '\\/')}'`));
   assert.match(generator, /correctLevel: sandbox\.QRCode\.CorrectLevel\.H/);
