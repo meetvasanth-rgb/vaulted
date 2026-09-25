@@ -37,5 +37,5 @@ test('Apple-silicon Mac calls use web media while CallKit remains the incoming s
   assert.match(ios, /if !isRunningOnAppleSiliconMac,[\s\S]*prepareIncoming/);
   assert.match(client, /document\.hidden &&[\s\S]*window\.__vaultlixIOSAppOnMac !== true/);
   assert.match(client, /traceMacCall\('invite-handled'/);
-  assert.match(iosScene, /action == "debugMacCall"[\s\S]*category: "MacCall"/);
+  assert.match(iosScene, /action == "debugMacCall"[\s\S]*category: "MacCall"[\s\S]*\.notice\(/);
 });

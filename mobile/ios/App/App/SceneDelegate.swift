@@ -660,7 +660,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             let socketState = (body["socketState"] as? NSNumber)?.intValue ?? -1
             let hidden = (body["hidden"] as? Bool) ?? false
             let extra = (body["extra"] as? String) ?? ""
-            Logger(subsystem: "com.vaultlix.app", category: "MacCall").debug(
+            // `notice` is persisted by unified logging. Debug-level entries
+            // are commonly memory-only on macOS, which made a completed
+            // physical-device test leave no diagnostics to inspect afterward.
+            Logger(subsystem: "com.vaultlix.app", category: "MacCall").notice(
                 "stage=\(stage, privacy: .public) call=\(callState, privacy: .public) socket=\(socketState, privacy: .public) hidden=\(hidden, privacy: .public) extra=\(extra, privacy: .public)"
             )
             return
