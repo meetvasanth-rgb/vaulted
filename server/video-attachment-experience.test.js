@@ -47,7 +47,7 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v55/);
+  assert.match(sw, /vaultlix-app-shell-v56/);
 });
 
 test('media-heavy Android chats release hidden decoders and avoid identical inbox rebuilds', () => {
