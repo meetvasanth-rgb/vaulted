@@ -196,6 +196,7 @@ async function handlePrivateGroupFileSelect(event) {
   if (!files.length) return;
   for (const file of files) {
     const isVideo = String(file.type || '').startsWith('video/');
+    let attachmentName = file.name;
     const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : (String(file.type || '').startsWith('image/') ? 'Encrypting image…' : 'Encrypting attachment…'));
     try {
       if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
@@ -206,17 +207,19 @@ async function handlePrivateGroupFileSelect(event) {
         const compressed = await compressImageFile(file); base64 = compressed.base64; mime = compressed.mime;
         if (!await allowLocalImageSend([base64], progress.update, { persist:true })) continue;
       } else {
-        progress.update(isVideo ? 'Encrypting video…' : 'Encrypting attachment…');
+        progress.update(isVideo ? 'Optimising video…' : 'Encrypting attachment…');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        base64 = await fileToBase64(file);
+        const compressedVideo = isVideo ? await compressVideoFile(file) : null;
+        base64 = compressedVideo?.base64 || await fileToBase64(file);
+        if (compressedVideo) { attachmentName = compressedVideo.name; mime = compressedVideo.mime; }
       }
       const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
       // Same first-page thumbnail and page count as direct conversations; both
       // ride inside the encrypted payload, never as plaintext.
-      const pdfPreview = !mime.startsWith('image/') && isPdfAttachment(mime, file.name)
+      const pdfPreview = !mime.startsWith('image/') && isPdfAttachment(mime, attachmentName)
         ? await createPdfFirstPagePreview(base64) : null;
       await sendPrivateGroupAttachment({ type:mime.startsWith('image/') ? 'group-image' : 'group-file',
-        name:String(file.name || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64,
+        name:String(attachmentName || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64,
         ...(videoThumb && safeImageDataUri('image/jpeg', videoThumb) ? { videoThumb } : {}),
         ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) }, progress.update);
       toast(mime.startsWith('image/') ? 'Photo sent' : (isVideo ? 'Video sent' : 'File sent'));

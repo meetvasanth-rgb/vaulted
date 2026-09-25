@@ -45,7 +45,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         window?.makeKeyAndVisible()
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
         bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixNativeMediaCompression = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -151,6 +151,67 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             : ""
         let script = "\(persist)window.dispatchEvent(new CustomEvent(\(String(reflecting: name)),{detail:\(json)}));"
         webView.evaluateJavaScript(script)
+    }
+
+    private func emitVideoCompression(requestId: String, data: Data? = nil, mime: String? = nil) {
+        DispatchQueue.main.async { [weak self] in
+            var detail: [String: Any] = ["requestId": requestId, "ok": data != nil]
+            if let data, let mime {
+                detail["base64"] = data.base64EncodedString()
+                detail["mime"] = mime
+            }
+            self?.emit(name: "vaultlix:video-compression-result", detail: detail)
+        }
+    }
+
+    private func compressVideoForMessaging(requestId: String, dataURL: String, filename: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self,
+                  dataURL.count <= 36_000_000,
+                  dataURL.hasPrefix("data:video/"),
+                  let marker = dataURL.range(of: ";base64,"),
+                  let sourceData = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+                  !sourceData.isEmpty, sourceData.count <= 25 * 1024 * 1024 else {
+                self?.emitVideoCompression(requestId: requestId)
+                return
+            }
+            let extensionSource = (filename as NSString).pathExtension.lowercased()
+            let inputExtension = ["mov", "mp4", "m4v"].contains(extensionSource) ? extensionSource : "mov"
+            let inputURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-compress-\(UUID().uuidString).\(inputExtension)")
+            let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-compress-\(UUID().uuidString).mp4")
+            do { try sourceData.write(to: inputURL, options: .atomic) }
+            catch { self.emitVideoCompression(requestId: requestId); return }
+
+            let asset = AVURLAsset(url: inputURL)
+            let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
+            let preset = compatible.contains(AVAssetExportPreset1280x720)
+                ? AVAssetExportPreset1280x720
+                : AVAssetExportPresetMediumQuality
+            guard let exporter = AVAssetExportSession(asset: asset, presetName: preset),
+                  exporter.supportedFileTypes.contains(.mp4) else {
+                try? FileManager.default.removeItem(at: inputURL)
+                self.emitVideoCompression(requestId: requestId)
+                return
+            }
+            exporter.outputURL = outputURL
+            exporter.outputFileType = .mp4
+            exporter.shouldOptimizeForNetworkUse = true
+            exporter.exportAsynchronously { [weak self] in
+                defer {
+                    try? FileManager.default.removeItem(at: inputURL)
+                    try? FileManager.default.removeItem(at: outputURL)
+                }
+                guard exporter.status == .completed,
+                      let compressed = try? Data(contentsOf: outputURL),
+                      !compressed.isEmpty,
+                      compressed.count < sourceData.count,
+                      compressed.count <= 25 * 1024 * 1024 else {
+                    self?.emitVideoCompression(requestId: requestId)
+                    return
+                }
+                self?.emitVideoCompression(requestId: requestId, data: compressed, mime: "video/mp4")
+            }
+        }
     }
 
     private func showNativeVideoViews(remote: Bool) {
@@ -563,6 +624,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             setDocumentPreviewOpen(body["open"] as? Bool ?? false)
             return
         }
+        if action == "compressVideo" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com",
+                  let requestId = body["requestId"] as? String,
+                  requestId.count <= 80,
+                  let dataURL = body["dataUrl"] as? String else { return }
+            compressVideoForMessaging(
+                requestId: requestId,
+                dataURL: dataURL,
+                filename: (body["filename"] as? String) ?? "vaultlix-video.mov"
+            )
+            return
+        }
         if action == "authenticateSensitiveAction" {
             // Acknowledge support before LocalAuthentication presents its
             // system sheet. The web UI uses this to distinguish a real
@@ -634,11 +708,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "shareMedia" {
             guard let dataURL = body["dataUrl"] as? String,
                   dataURL.hasPrefix("data:"),
-                  dataURL.count <= 16_000_000,
+                  dataURL.count <= 36_000_000,
                   let marker = dataURL.range(of: ";base64,"),
                   marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
                   let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !data.isEmpty, data.count <= 10_500_000 else {
+                  !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
@@ -657,11 +731,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "saveMedia" {
             guard let dataURL = body["dataUrl"] as? String,
                   dataURL.hasPrefix("data:"),
-                  dataURL.count <= 16_000_000,
+                  dataURL.count <= 36_000_000,
                   let marker = dataURL.range(of: ";base64,"),
                   marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
                   let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !data.isEmpty, data.count <= 10_500_000 else {
+                  !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
@@ -680,11 +754,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "openMedia" {
             guard let dataURL = body["dataUrl"] as? String,
                   dataURL.hasPrefix("data:"),
-                  dataURL.count <= 16_000_000,
+                  dataURL.count <= 36_000_000,
                   let marker = dataURL.range(of: ";base64,"),
                   marker.lowerBound > dataURL.index(dataURL.startIndex, offsetBy: 5),
                   let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !data.isEmpty, data.count <= 10_500_000 else {
+                  !data.isEmpty, data.count <= 25 * 1024 * 1024 else {
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }

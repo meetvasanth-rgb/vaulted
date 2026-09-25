@@ -19,11 +19,14 @@ test('direct and group attachment sends remain visible with encrypted upload ani
 });
 
 test('temporary encrypted attachment fetch failures retry before showing unavailable', () => {
-  assert.match(client, /const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = \[0, 350, 1000\]/);
+  assert.match(client, /const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = \[0, 500, 1500, 4000\]/);
   assert.match(client, /attempt < ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS\.length/);
   assert.match(client, /status === 404 \|\| status === 408 \|\| status === 409/);
   assert.match(client, /status === 425 \|\| status === 429 \|\| status >= 500/);
   assert.match(client, /if \(!retryable \|\| attempt === ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS\.length - 1\) break/);
+  assert.match(client, /kind:'attachment-loading'/);
+  assert.match(client, /Loading encrypted attachment/);
+  assert.match(client, /room\.messages\[existingIndex\] = rec/);
 });
 
 test('video attachments carry an encrypted thumbnail and open in the in-app player', () => {
@@ -67,7 +70,7 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v61/);
+  assert.match(sw, /vaultlix-app-shell-v62/);
 });
 
 test('media-heavy Android chats release hidden decoders and avoid identical inbox rebuilds', () => {
@@ -83,4 +86,9 @@ test('media-heavy Android chats release hidden decoders and avoid identical inbo
   assert.match(client, /imagePreview:safeImagePreview/);
   assert.match(client, /imagePreview:safeMessageImagePreview\(img\.preview\)/);
   assert.match(client, /const MAX_MESSAGE_IMAGE_PREVIEW_BASE64 = 1024 \* 1024/);
+  assert.match(client, /plaintext\.length > 256 \* 1024/);
+  assert.match(client, /if \(!room\.historyLoaded && !uniqueVisibleConversationRecords\(room\.messages\)\.length\)/);
+  assert.match(client, /Could not load encrypted messages/);
+  assert.match(client, /function retryChatHistory\(\)/);
+  assert.match(client, /if \(canRestoreHistory && room\.code === preferredRestoreCode\) restoreRoomHistoryInBackground\(room\)/);
 });

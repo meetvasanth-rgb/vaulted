@@ -802,7 +802,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   const body = JSON.stringify({
     aps: {
       alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
-      sound: 'default',
+      sound: 'vault_chime.caf',
       'thread-id': parsed.code || 'vaultlix',
     },
     // No message text, encrypted payload, room credential, or member token is
@@ -908,10 +908,10 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         body: parsed.body || 'New activity',
       };
       message.android.notification = {
-        channelId: 'vaultlix_messages_system',
+        channelId: 'vaultlix_messages_bright_v1',
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
-        sound: 'default',
+        sound: 'vault_chime',
       };
     }
     await firebaseMessaging.send(message);

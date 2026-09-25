@@ -13,7 +13,7 @@ android {
         applicationId "com.vaultlix.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 81
+        versionCode 82
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -68,6 +68,8 @@ dependencies {
     implementation 'io.github.webrtc-sdk:android:144.7559.09'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.ai.edge.litert:litert:1.4.2'
+    implementation 'androidx.media3:media3-transformer:1.11.1'
+    implementation 'androidx.media3:media3-effect:1.11.1'
 }
 
 apply from: 'capacitor.build.gradle'

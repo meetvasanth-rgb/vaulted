@@ -26,7 +26,7 @@ import java.util.Map;
 
 public class VaultlixMessagingService extends MessagingService {
     public static final String CALL_CHANNEL_PREFIX = "vaultlix_calls_";
-    private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_system";
+    private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_bright_v1";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
     @Override
@@ -65,29 +65,32 @@ public class VaultlixMessagingService extends MessagingService {
             showIncomingCall(data);
             return;
         }
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) ensureMessageChannel(manager);
         super.onMessageReceived(remoteMessage);
+    }
+
+    private void ensureMessageChannel(NotificationManager manager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationChannel channel = new NotificationChannel(
+                MESSAGE_CHANNEL_ID,
+                "Messages and missed calls",
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.enableVibration(true);
+        Uri sound = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.vault_chime);
+        channel.setSound(sound, new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
+        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(channel);
     }
 
     private void showMissedCall(Map<String, String> data) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    MESSAGE_CHANNEL_ID,
-                    "Messages and missed calls",
-                    NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.enableVibration(true);
-            channel.setSound(
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
-                    new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-            );
-            channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-            manager.createNotificationChannel(channel);
-        }
+        ensureMessageChannel(manager);
 
         String code = safe(data.get("code"));
         String callId = safe(data.get("callId"));

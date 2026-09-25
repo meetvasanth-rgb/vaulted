@@ -32,6 +32,18 @@ import android.widget.TextView;
 
 import com.getcapacitor.BridgeActivity;
 import androidx.core.content.FileProvider;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.effect.Presentation;
+import androidx.media3.transformer.Composition;
+import androidx.media3.transformer.DefaultEncoderFactory;
+import androidx.media3.transformer.EditedMediaItem;
+import androidx.media3.transformer.Effects;
+import androidx.media3.transformer.ExportException;
+import androidx.media3.transformer.ExportResult;
+import androidx.media3.transformer.Transformer;
+import androidx.media3.transformer.VideoEncoderSettings;
 
 import org.json.JSONObject;
 
@@ -44,6 +56,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Collections;
 
 public class MainActivity extends BridgeActivity {
     private static final int SAVE_MEDIA_REQUEST = 4107;
@@ -61,6 +74,11 @@ public class MainActivity extends BridgeActivity {
     private volatile File pendingSaveMediaFile;
     private final ExecutorService mediaCacheCleanupExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "vaultlix-media-cache-cleanup");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private final ExecutorService mediaCompressionExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "vaultlix-media-compression");
         thread.setDaemon(true);
         return thread;
     });
@@ -143,7 +161,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void purgeDecryptedMediaCacheNow() {
-        String[] directories = { "shared-media", "open-media", "saved-media" };
+        String[] directories = { "shared-media", "open-media", "saved-media", "media-compression" };
         for (String name : directories) {
             File directory = new File(getCacheDir(), name);
             File[] files = directory.listFiles();
@@ -206,6 +224,7 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
         mediaCacheCleanupExecutor.shutdownNow();
+        mediaCompressionExecutor.shutdownNow();
         restoreAudioRoute();
         if (activeInstance.get() == this) activeInstance.clear();
         if (nativeCallEngine != null) nativeCallEngine.removeListener(nativeCallListener);
@@ -551,6 +570,113 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean supportsNativeMediaCompression() { return true; }
+
+        private void emitVideoCompression(String requestId, byte[] output) {
+            mediaCompressionExecutor.execute(() -> {
+                String detail = "{requestId:" + JSONObject.quote(requestId) + ",ok:" + (output != null);
+                if (output != null) {
+                    detail += ",mime:'video/mp4',base64:" + JSONObject.quote(Base64.encodeToString(output, Base64.NO_WRAP));
+                }
+                detail += "}";
+                String script = "window.dispatchEvent(new CustomEvent('vaultlix:video-compression-result',{detail:" + detail + "}));";
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    String current = getBridge().getWebView().getUrl();
+                    if (current == null || !current.startsWith("https://vaultlix.com/")) return;
+                    getBridge().getWebView().evaluateJavascript(script, null);
+                });
+            });
+        }
+
+        @UnstableApi
+        @JavascriptInterface
+        public boolean compressVideo(String requestId, String dataUrl, String requestedName, String quality) {
+            if (requestId == null || requestId.length() > 80 || dataUrl == null
+                    || !dataUrl.startsWith("data:video/") || dataUrl.length() > 36_000_000) return false;
+            int marker = dataUrl.indexOf(";base64,");
+            if (marker < 11) return false;
+            try {
+                mediaCompressionExecutor.execute(() -> {
+                    File inputFile = null;
+                    File outputFile = null;
+                    try {
+                        byte[] input = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
+                        if (input.length == 0 || input.length > 25 * 1024 * 1024) {
+                            emitVideoCompression(requestId, null); return;
+                        }
+                        File directory = new File(getCacheDir(), "media-compression");
+                        if (!directory.exists() && !directory.mkdirs()) {
+                            emitVideoCompression(requestId, null); return;
+                        }
+                        String extension = "mp4";
+                        String candidate = requestedName == null ? "" : requestedName.toLowerCase(java.util.Locale.ROOT);
+                        int dot = candidate.lastIndexOf('.');
+                        if (dot >= 0) {
+                            String requestedExtension = candidate.substring(dot + 1);
+                            if (requestedExtension.matches("mp4|mov|m4v|3gp|mkv|webm")) extension = requestedExtension;
+                        }
+                        inputFile = new File(directory, "input-" + System.nanoTime() + "." + extension);
+                        outputFile = new File(directory, "output-" + System.nanoTime() + ".mp4");
+                        try (FileOutputStream output = new FileOutputStream(inputFile, false)) { output.write(input); }
+                        File finalInputFile = inputFile;
+                        File finalOutputFile = outputFile;
+                        int originalSize = input.length;
+                        runOnUiThread(() -> startVideoCompression(requestId, finalInputFile, finalOutputFile, originalSize));
+                    } catch (Exception ignored) {
+                        if (inputFile != null) inputFile.delete();
+                        if (outputFile != null) outputFile.delete();
+                        emitVideoCompression(requestId, null);
+                    }
+                });
+                return true;
+            } catch (RejectedExecutionException unavailable) { return false; }
+        }
+
+        @UnstableApi
+        private void startVideoCompression(String requestId, File inputFile, File outputFile, int originalSize) {
+            try {
+                VideoEncoderSettings encoderSettings = new VideoEncoderSettings.Builder()
+                        .setBitrate(2_500_000)
+                        .build();
+                DefaultEncoderFactory encoderFactory = new DefaultEncoderFactory.Builder(MainActivity.this)
+                        .setRequestedVideoEncoderSettings(encoderSettings)
+                        .build();
+                EditedMediaItem item = new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(inputFile)))
+                        .setEffects(new Effects(
+                                Collections.emptyList(),
+                                Collections.singletonList(Presentation.createForHeight(720))))
+                        .build();
+                Transformer transformer = new Transformer.Builder(MainActivity.this)
+                        .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                        .setVideoMimeType(MimeTypes.VIDEO_H264)
+                        .setEncoderFactory(encoderFactory)
+                        .addListener(new Transformer.Listener() {
+                            private void finish(byte[] output) {
+                                inputFile.delete(); outputFile.delete();
+                                emitVideoCompression(requestId, output);
+                            }
+                            @Override public void onCompleted(Composition composition, ExportResult result) {
+                                mediaCompressionExecutor.execute(() -> {
+                                    try (FileInputStream input = new FileInputStream(outputFile)) {
+                                        byte[] bytes = input.readAllBytes();
+                                        finish(bytes.length > 0 && bytes.length < originalSize && bytes.length <= 25 * 1024 * 1024 ? bytes : null);
+                                    } catch (Exception ignored) { finish(null); }
+                                });
+                            }
+                            @Override public void onError(Composition composition, ExportResult result, ExportException exception) {
+                                finish(null);
+                            }
+                        })
+                        .build();
+                transformer.start(item, outputFile.getAbsolutePath());
+            } catch (Exception ignored) {
+                inputFile.delete(); outputFile.delete();
+                emitVideoCompression(requestId, null);
+            }
+        }
+
+        @JavascriptInterface
         public double statusBarInsetCssPx() {
             WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
             if (insets == null) return 0;
@@ -670,14 +796,14 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean shareMedia(String dataUrl, String requestedName) {
-            if (dataUrl == null || dataUrl.length() > 16_000_000) return false;
+            if (dataUrl == null || dataUrl.length() > 36_000_000) return false;
             int marker = dataUrl.indexOf(";base64,");
             if (!dataUrl.startsWith("data:") || marker < 6) return false;
             String mime = dataUrl.substring(5, marker);
             if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
             try {
                 byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                if (bytes.length == 0 || bytes.length > 10_500_000) return false;
+                if (bytes.length == 0 || bytes.length > 25 * 1024 * 1024) return false;
                 String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
                 if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
                 File directory = new File(getCacheDir(), "shared-media");
@@ -700,14 +826,14 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean saveMedia(String dataUrl, String requestedName) {
-            if (dataUrl == null || dataUrl.length() > 16_000_000) return false;
+            if (dataUrl == null || dataUrl.length() > 36_000_000) return false;
             int marker = dataUrl.indexOf(";base64,");
             if (!dataUrl.startsWith("data:") || marker < 6) return false;
             String mime = dataUrl.substring(5, marker);
             if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
             try {
                 byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                if (bytes.length == 0 || bytes.length > 10_500_000) return false;
+                if (bytes.length == 0 || bytes.length > 25 * 1024 * 1024) return false;
                 String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
                 if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
                 File directory = new File(getCacheDir(), "saved-media");
@@ -735,14 +861,14 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean openMedia(String dataUrl, String requestedName) {
-            if (dataUrl == null || dataUrl.length() > 16_000_000) return false;
+            if (dataUrl == null || dataUrl.length() > 36_000_000) return false;
             int marker = dataUrl.indexOf(";base64,");
             if (!dataUrl.startsWith("data:") || marker < 6) return false;
             String mime = dataUrl.substring(5, marker);
             if (!mime.matches("[A-Za-z0-9][A-Za-z0-9.+-]*/[A-Za-z0-9][A-Za-z0-9.+;=_-]*")) return false;
             try {
                 byte[] bytes = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                if (bytes.length == 0 || bytes.length > 10_500_000) return false;
+                if (bytes.length == 0 || bytes.length > 25 * 1024 * 1024) return false;
                 String safeName = requestedName == null ? "vaultlix-file" : requestedName.replaceAll("[^A-Za-z0-9._ -]", "_");
                 if (safeName.trim().isEmpty()) safeName = "vaultlix-file";
                 File directory = new File(getCacheDir(), "open-media");

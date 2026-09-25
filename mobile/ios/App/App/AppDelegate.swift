@@ -359,7 +359,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         let content = UNMutableNotificationContent()
         content.title = "Vaultlix"
         content.body = caller.isEmpty ? "Missed call" : "Missed call from \(String(caller.prefix(80)))"
-        content.sound = .default
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("vault_chime.caf"))
         if let code = payload["code"] as? String, !code.isEmpty {
             content.threadIdentifier = code
             content.userInfo["code"] = code

@@ -490,7 +490,7 @@ body.select-mode .chat-ftr{display:none}
 .sys-msg-link{color:var(--gold);text-decoration:underline;text-underline-offset:2px;cursor:pointer;font-style:normal}
 .typing-indicator{align-self:flex-start;display:none;align-items:center;gap:4px;padding:12px 16px;background:#F0F0F0;border-radius:18px;border-bottom-left-radius:4px;margin-top:4px}
 .typing-indicator.show{display:flex}
-.chat-restore-pending{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#8A747C;font:600 12px/1.4 Inter,sans-serif;letter-spacing:.01em}
+.chat-restore-pending{width:100%;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:0;background:transparent;color:#8A747C;font:600 12px/1.4 Inter,sans-serif;letter-spacing:.01em}
 .chat-restore-pending .typing-indicator{align-self:center;margin:0}
 .t-dot{width:5px;height:5px;border-radius:50%;background:#AAA;animation:typing-bounce .9s infinite}
 .t-dot:nth-child(2){animation-delay:.15s}.t-dot:nth-child(3){animation-delay:.3s}
@@ -4406,10 +4406,16 @@ const secureNativeCacheKeys = new Set();
 let secureNativeCacheScheduled = false;
 
 function secureNativeStoreMessage(room, rec) {
-  if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') return;
+  if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked'
+      || rec.kind === 'attachment-unavailable' || rec.kind === 'attachment-loading') return;
   if (secureNativeCachedRecords.has(rec)) return;
   let plaintext;
   try { plaintext = JSON.stringify(rec); } catch (e) { return; }
+  // Android's JavaScript bridge is synchronous. Passing a multi-megabyte
+  // photo/video through it duplicates the media in Java, SQLCipher and the
+  // JS heap while also freezing touch input. Cache compact history only;
+  // object-backed media remains recoverable from its encrypted object.
+  if (plaintext.length > 256 * 1024) return;
   try {
     if (typeof window.VaultlixAndroid?.secureStoreMessage === 'function') {
       if (window.VaultlixAndroid.secureStoreMessage(room.code, rec.id, plaintext, Date.now()) === false) return;
@@ -4431,7 +4437,8 @@ function secureNativeStoreMessage(room, rec) {
 function scheduleSecureNativeHistoryCache(room, records) {
   if (!isNativeApp() || !room?.code) return;
   for (const rec of records) {
-    if (!rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable' || secureNativeCachedRecords.has(rec)) continue;
+    if (!rec?.id || rec.kind === 'sys' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable'
+        || rec.kind === 'attachment-loading' || secureNativeCachedRecords.has(rec)) continue;
     const key = `${room.code}:${rec.id}`;
     if (secureNativeCacheKeys.has(key)) continue;
     secureNativeCacheKeys.add(key);
@@ -5076,6 +5083,8 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // Membership/key restoration unlocks the conversation first; its older
     // ciphertext history may continue rebuilding behind the visible chat.
     historyRestorePromise: null,
+    historyLoaded: true,
+    historyLoadFailed: false,
     pollAfterHistoryRestore: false,
     // Live-polled messages that arrived before room.sharedKey existed yet —
     // see flushPendingDecrypt/doPoll. { msgId, content, name, time }[].
@@ -8788,7 +8797,7 @@ const ENCRYPTED_ATTACHMENT_PREFIX = 'obj:v1:';
 // A 25 MiB source grows to about 44.45 MiB after file base64 plus the
 // encrypted envelope's base64. Keep a small allowance for JSON metadata.
 const MAX_ENCRYPTED_ATTACHMENT_BYTES = 48 * 1024 * 1024;
-const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = [0, 350, 1000];
+const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = [0, 500, 1500, 4000];
 
 async function uploadEncryptedAttachment(room, msgId, ciphertext) {
   const size = new Blob([ciphertext]).size;
@@ -8818,7 +8827,7 @@ async function resolveEncryptedAttachment(room, content) {
     const delay = ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS[attempt];
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
     try {
       const response = await fetch('/api/attachment/content', {
         method:'POST', headers:{ 'Content-Type':'application/json' },
@@ -9079,6 +9088,7 @@ const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment cou
 // nothing here that could ever leak it even by accident.
 const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
 const ATTACHMENT_UNAVAILABLE_HTML = `<div class="msg-blocked attachment-retry" role="button" tabindex="0">Attachment unavailable — tap to retry</div>`;
+const ATTACHMENT_LOADING_HTML = `<div class="msg-image-preview-loading attachment-loading" role="status">Loading encrypted attachment…</div>`;
 
 function setStatus(online, name) {
   const presence = document.getElementById('chat-presence');
@@ -11818,15 +11828,13 @@ function playChime() {
     const ctx = _audioCtx;
     const doPlay = () => {
       [
-        { freq:660, start:0,    dur:0.14, vol:0.13 },
-        { freq:780, start:0.08, dur:0.14, vol:0.13 },
-        { freq:880, start:0.16, dur:0.14, vol:0.13 },
-        { freq:990, start:0.24, dur:0.14, vol:0.13 },
+        { freq:880,  start:0,    dur:0.18, vol:0.12 },
+        { freq:1320, start:0.105, dur:0.24, vol:0.10 },
       ].forEach(({ freq, start, dur, vol }) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'triangle';
+        osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
         gain.gain.setValueAtTime(0, ctx.currentTime + start);
         gain.gain.linearRampToValueAtTime(vol, ctx.currentTime + start + 0.02);
@@ -13896,7 +13904,7 @@ function prepareChatBodyForFirstPaint() {
   if (!body) return;
   if (klipyGifObserver) klipyGifObserver.disconnect();
   const room = rooms.get(activeRoomCode);
-  if (room?.restorePending) {
+  if (room?.restorePending || (room && !room.historyLoaded)) {
     body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span>Opening encrypted conversation…</span></div>';
     return;
   }
@@ -13940,10 +13948,12 @@ function openConversationAfterPaint(code) {
   if (!code || !rooms.has(code)) return false;
   setActiveRoom(code, { deferMessages:true });
   showScreen('s-chat');
+  const room = rooms.get(code);
+  if (room && !room.historyLoaded && !room.historyRestorePromise) restoreRoomHistoryInBackground(room);
   requestAnimationFrame(() => setTimeout(() => {
     if (activeRoomCode !== code || !document.getElementById('s-chat')?.classList.contains('active')) return;
-    const room = rooms.get(code);
-    if (room) renderChatBody(room);
+    const currentRoom = rooms.get(code);
+    if (currentRoom) renderChatBody(currentRoom);
   }, 0));
   return true;
 }
@@ -14103,6 +14113,18 @@ function scheduleMessageImagePreviews(body, room) {
 function renderChatBody(room) {
   const body = document.getElementById('chat-body');
   if (klipyGifObserver) klipyGifObserver.disconnect();
+  // A room restored from the encrypted session list may not have its message
+  // history yet. Keep the explicit loading state on screen until text records
+  // arrive instead of replacing it one frame later with an apparently blank
+  // conversation. Locally cached records can still paint immediately.
+  if (!room.historyLoaded && !uniqueVisibleConversationRecords(room.messages).length) {
+    if (room.historyLoadFailed) {
+      body.innerHTML = '<button class="chat-restore-pending" type="button" onclick="retryChatHistory()"><span>Could not load encrypted messages</span><strong>Tap to retry</strong></button>';
+    } else {
+      body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span>Opening encrypted conversation…</span></div>';
+    }
+    return;
+  }
   body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
   for (const rec of uniqueVisibleConversationRecords(room.messages)) {
     if (rec.deleted || rec.verifyNudge) continue;
@@ -14119,6 +14141,14 @@ function renderChatBody(room) {
   });
   scheduleDeferredKlipyGifs(body);
   scheduleMessageImagePreviews(body, room);
+}
+
+function retryChatHistory() {
+  const room = getActiveRoom();
+  if (!room || room.historyRestorePromise) return;
+  room.historyLoadFailed = false;
+  renderChatBody(room);
+  restoreRoomHistoryInBackground(room);
 }
 
 function addRoomFlow() {
@@ -15263,6 +15293,8 @@ function renderMessageRecord(room, rec, animate) {
       : MEDIA_BLOCKED_HTML;
   } else if (rec.kind === 'attachment-unavailable') {
     contentHtml = ATTACHMENT_UNAVAILABLE_HTML;
+  } else if (rec.kind === 'attachment-loading') {
+    contentHtml = ATTACHMENT_LOADING_HTML;
   } else if (rec.kind === 'blocked') {
     // decryptMsg's E2E_DOWNGRADE case — see DOWNGRADE_BLOCKED_HTML above.
     // rec deliberately has no .content field for this kind, so there is
@@ -15890,6 +15922,7 @@ async function retryUnavailableAttachment(room, msgId, element) {
 async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null) {
   if (!content) return null;
   const base = { deleteTimerSeconds, readAt, id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
+  const encryptedAttachmentRef = typeof content === 'string' && content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX) ? content : null;
   try {
     content = await resolveEncryptedAttachment(room, content);
   } catch (error) {
@@ -15920,7 +15953,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       const imagePreview = isImage && safeMessageImagePreview(parsed.imagePreview) ? parsed.imagePreview : null;
       const pdfPreview = safeImageDataUri('image/jpeg', parsed.pdfPreview) ? parsed.pdfPreview : null;
       const videoThumb = String(parsed.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', parsed.videoThumb) ? parsed.videoThumb : null;
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false };
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false, encryptedAttachmentRef };
     }
     // Several photos picked together arrive as ONE message with an
     // images[] array (see sendAlbumMessage) rather than one message per
@@ -15928,7 +15961,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     // grid bubble instead of a wall of separate image messages.
     if (parsed.type === 'album' && Array.isArray(parsed.images)) {
       return {
-        ...base, kind: 'album', viewOnce: !!parsed.viewOnce,
+        ...base, kind: 'album', viewOnce: !!parsed.viewOnce, encryptedAttachmentRef,
         // id here is a local-only lookup key (never sent over the wire) —
         // see handleAlbumImageTap/removeAlbumImage, which key off it
         // instead of array position so opening two view-once photos in the
@@ -15943,7 +15976,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       };
     }
     if (parsed.type === 'voice' && parsed.data) {
-      return { ...base, kind: 'voice', mime: parsed.mime, base64: parsed.data, duration: parsed.duration || 0 };
+      return { ...base, kind: 'voice', mime: parsed.mime, base64: parsed.data, duration: parsed.duration || 0, encryptedAttachmentRef };
     }
     if (parsed.type === 'klipy-gif' && safeKlipyMediaUrl(parsed.url)) {
       return { ...base, kind: 'gif', klipyId: String(parsed.id || ''), title: String(parsed.title || 'GIF').slice(0, 200), url: parsed.url };
@@ -15987,6 +16020,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 // while still letting anything that's still genuinely live come back and
 // resume its countdown from wherever it actually was.
 async function restoreRoomHistory(room) {
+  room.historyLoadFailed = false;
   try {
     const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
     if (!data || data.roomGone) return;
@@ -16035,10 +16069,18 @@ async function restoreRoomHistory(room) {
         for (let index = 0; index < batch.length; index++) {
           const msg = batch[index];
           const rec = processed[index];
-          if (!rec || room.messages.some(existing => existing.id === msg.id)) continue;
+          if (!rec) continue;
           const ledgerDeleteAt = room.deleteLedger.get(msg.id);
-          if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) continue;
-          room.messages.push(rec);
+          if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) {
+            const staleIndex = room.messages.findIndex(existing => existing.id === msg.id && existing.kind === 'attachment-loading');
+            if (staleIndex >= 0) room.messages.splice(staleIndex, 1);
+            continue;
+          }
+          const existingIndex = room.messages.findIndex(existing => existing.id === msg.id);
+          if (existingIndex >= 0 && room.messages[existingIndex].kind === 'attachment-loading') {
+            room.messages[existingIndex] = rec;
+          } else if (existingIndex >= 0) continue;
+          if (existingIndex < 0) room.messages.push(rec);
           if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
             rec.deleteAt = ledgerDeleteAt;
             rec.timerStarted = true;
@@ -16055,6 +16097,19 @@ async function restoreRoomHistory(room) {
       const attachmentMessages = unseen.filter(msg => typeof msg.content === 'string' && msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
       await restoreBatch(inlineMessages);
       if (inlineMessages.length && isRoomVisible(room)) renderChatBody(room);
+      // A slow object store must not hold the whole chat on a blank screen.
+      // Paint stable placeholders first, then replace each one after its
+      // encrypted object has downloaded and decrypted.
+      for (const msg of attachmentMessages) {
+        if (room.messages.some(existing => existing.id === msg.id)) continue;
+        room.messages.push({ id:msg.id, isMe:msg.from === room.token, name:msg.name,
+          time:formatMsgTime(msg.ts), ts:Number(msg.ts) || 0, kind:'attachment-loading',
+          encryptedAttachmentRef:msg.content, fromToken:msg.from,
+          deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt,
+          receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null });
+      }
+      room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
+      if (attachmentMessages.length && isRoomVisible(room)) renderChatBody(room);
       await restoreBatch(attachmentMessages);
     }
 
@@ -16089,7 +16144,11 @@ async function restoreRoomHistory(room) {
     // the chat is repainted.
     room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
     persistRoomSeq(room);
-  } catch(e) { console.error('E2E: restoreRoomHistory failed:', e.message); }
+    room.historyLoaded = true;
+  } catch(e) {
+    room.historyLoadFailed = true;
+    console.error('E2E: restoreRoomHistory failed:', e.message);
+  }
 }
 
 function restoreRoomHistoryInBackground(room) {
@@ -18388,6 +18447,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
       room.nickname = session.nickname || null;
       room.restorePending = true;
+      room.historyLoaded = false;
       addRoomToState(room);
     }
     showScreen('s-vault-list');
@@ -18585,7 +18645,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         refreshStatusFeed({ quiet:true }).catch(() => {});
       }
       if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
-      if (canRestoreHistory) restoreRoomHistoryInBackground(room);
+      // Preload only the conversation the user is most likely to open next.
+      // Restoring every room at launch decrypted every photo/video into the
+      // WebView and caused the measured ~500 MB Android working set. Other
+      // rooms load on tap through openConversationAfterPaint().
+      if (canRestoreHistory && room.code === preferredRestoreCode) restoreRoomHistoryInBackground(room);
     } catch(e) {
       // Keep the locally known entry visible and retryable without holding
       // the entire launch screen hostage to one unavailable conversation.
@@ -18904,15 +18968,19 @@ async function handleFileSelect(event) {
         images.push({ file, base64, mime, imagePreview });
       } else {
         const isVideo = String(file.type || '').startsWith('video/');
-        if (isVideo) progress?.update(`Encrypting video ${++videoIndex} of ${videoCount}…`);
+        if (isVideo) progress?.update(`Optimising video ${++videoIndex} of ${videoCount}…`);
         else progress?.update('Encrypting attachment…');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
-        const base64 = await fileToBase64(file);
+        const compressedVideo = isVideo ? await compressVideoFile(file) : null;
+        const preparedFile = compressedVideo
+          ? { name:compressedVideo.name, type:compressedVideo.mime }
+          : file;
+        const base64 = compressedVideo?.base64 || await fileToBase64(file);
         const pdfPreview = isPdfAttachment(file.type, file.name)
           ? await createPdfFirstPagePreview(base64)
           : null;
-        others.push({ file, base64, pdfPreview, videoThumb });
+        others.push({ file:preparedFile, base64, pdfPreview, videoThumb });
       }
     }
 
@@ -19478,6 +19546,66 @@ function blobToBase64(blob) {
   });
 }
 
+const nativeVideoCompressionRequests = new Map();
+window.addEventListener('vaultlix:video-compression-result', event => {
+  const detail = event?.detail || {};
+  const pending = nativeVideoCompressionRequests.get(String(detail.requestId || ''));
+  if (!pending) return;
+  nativeVideoCompressionRequests.delete(String(detail.requestId));
+  pending(detail);
+});
+
+function nativeVideoCompressionResult(requestId, timeoutMs = 150000) {
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => {
+      nativeVideoCompressionRequests.delete(requestId);
+      resolve(null);
+    }, timeoutMs);
+    nativeVideoCompressionRequests.set(requestId, detail => {
+      clearTimeout(timeout);
+      resolve(detail);
+    });
+  });
+}
+
+async function compressVideoFile(file) {
+  const originalBase64 = await fileToBase64(file);
+  // Re-encoding tiny clips costs more battery than it saves. Native mobile
+  // HD compression is used for meaningful files; older app builds and the
+  // browser safely retain the original until their native bridge supports it.
+  if (file.size < 1024 * 1024) return { base64:originalBase64, mime:file.type, name:file.name };
+  const requestId = `video-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`;
+  const resultPromise = nativeVideoCompressionResult(requestId);
+  let requested = false;
+  try {
+    const dataUrl = `data:${file.type};base64,${originalBase64}`;
+    if (typeof window.VaultlixAndroid?.supportsNativeMediaCompression === 'function'
+        && window.VaultlixAndroid.supportsNativeMediaCompression() === true
+        && typeof window.VaultlixAndroid.compressVideo === 'function') {
+      requested = window.VaultlixAndroid.compressVideo(requestId, dataUrl, file.name, 'hd') === true;
+    } else if (window.__vaultlixNativeMediaCompression === true && window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'compressVideo', requestId, dataUrl, filename:file.name, quality:'hd' });
+      requested = true;
+    }
+  } catch (_) {}
+  if (!requested) {
+    const cancelPending = nativeVideoCompressionRequests.get(requestId);
+    nativeVideoCompressionRequests.delete(requestId);
+    cancelPending?.(null);
+    return { base64:originalBase64, mime:file.type, name:file.name };
+  }
+  const result = await resultPromise;
+  const compressed = typeof result?.base64 === 'string' ? result.base64 : '';
+  if (result?.ok !== true || !isValidMediaBase64(compressed)
+      || compressed.length >= originalBase64.length
+      || Math.ceil(compressed.length * 3 / 4) > MAX_FILE_SIZE) {
+    return { base64:originalBase64, mime:file.type, name:file.name };
+  }
+  const baseName = String(file.name || 'vaultlix-video').replace(/\.[^.]+$/, '').slice(0, 120) || 'vaultlix-video';
+  const outputMime = result?.mime === 'video/mp4' ? result.mime : 'video/mp4';
+  return { base64:compressed, mime:outputMime, name:`${baseName}.mp4` };
+}
+
 function createVideoAttachmentThumbnail(file, maxDim = 480) {
   return new Promise(resolve => {
     const url = URL.createObjectURL(file);
@@ -19543,16 +19671,16 @@ function createVideoAttachmentThumbnail(file, maxDim = 480) {
 // WhatsApp's default "send with compression": resize to a sane max
 // dimension and re-encode as JPEG at a moderate quality, which is what
 // actually drives the size down (camera photos routinely run 3-8MB; a
-// 1280px-wide JPEG at 72% quality is typically a few hundred KB with no
-// visible difference on a phone screen). GIFs are left untouched entirely —
+// 1600px-wide JPEG at 82% quality is typically far smaller than the camera
+// original while remaining crisp on a high-density phone screen). GIFs are left untouched entirely —
 // a canvas re-encode only ever captures a single frame, which would
 // silently kill the animation. Small files aren't worth re-encoding at all
 // (re-compressing an already-small screenshot just adds JPEG artifacts for
 // no real size win). Falls back to the original bytes if anything about
 // the compression path fails, or if it didn't actually end up smaller.
 async function compressImageFile(file) {
-  const MAX_DIM = 1280;
-  const QUALITY = 0.72;
+  const MAX_DIM = 1600;
+  const QUALITY = 0.82;
   const MIN_SIZE_TO_BOTHER = 150 * 1024;
   if (file.type === 'image/gif' || file.size < MIN_SIZE_TO_BOTHER) {
     return { base64: await fileToBase64(file), mime: file.type };
