@@ -7016,6 +7016,16 @@ async function acceptCall(fromNativeCallKit = false) {
   }
   if (iosAppOnMac && iosNativeBridge) {
     room.iosForegroundWebCall = true;
+    // The Mac uses WKWebView for WebRTC media, but an incoming PushKit call
+    // is still represented by CallKit. Answer that native surface first so
+    // macOS activates the app's play-and-record audio session. Previously the
+    // web overlay sent call-accept without fulfilling CallKit; getUserMedia
+    // then waited behind the still-ringing system call and no SDP answer was
+    // ever produced.
+    if (!fromNativeCallKit) {
+      try { iosNativeBridge.postMessage({ action: 'answer', code: room.code }); }
+      catch (_) { traceMacCall('callkit-answer-failed', room); }
+    }
   }
   if (!fromNativeCallKit) {
     const androidNativeBridge = window.VaultlixAndroid;
@@ -7949,13 +7959,18 @@ async function fetchTurnCredentials(room) {
 // denied, no TURN credentials available, etc.) — callers should treat null
 // as "end the call," not retry silently.
 async function setupPeerConnection(room) {
+  traceMacCall('peer-setup-start', room);
   // Both operations are required but independent. Running them in parallel
   // removes a full serial network/media round-trip from answer-to-connect.
   const [iceServers, stream] = await Promise.all([
     fetchTurnCredentials(room),
     navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null),
   ]);
-  if (!iceServers || !stream) return null;
+  if (!iceServers || !stream) {
+    traceMacCall('peer-setup-failed', room, !iceServers ? 'turn' : 'microphone');
+    return null;
+  }
+  traceMacCall('peer-media-ready', room);
   room.localStream = stream;
   room.callMuted = false;
 
@@ -7968,6 +7983,7 @@ async function setupPeerConnection(room) {
 
   const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: 'relay' });
   room.pc = pc;
+  traceMacCall('peer-created', room);
 
   pc.onnegotiationneeded = async () => {
     // addTrack() below fires this immediately, on BOTH sides, before the
@@ -8071,6 +8087,7 @@ async function setupPeerConnection(room) {
   // on its own — only actually end the call on 'failed', which means ICE
   // genuinely gave up.
   pc.oniceconnectionstatechange = () => {
+    traceMacCall('ice-state', room, pc.iceConnectionState);
     if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
       markWebCallMediaConnected(room);
     }
@@ -8369,15 +8386,19 @@ async function toggleSpeaker() {
 // (acceptCall, once room.pc actually exists) run the exact same logic.
 async function processOffer(room, payload) {
   if (!room.pc) return;
+  traceMacCall('offer-processing', room);
   try {
     await room.pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
+    traceMacCall('offer-remote-set', room);
     await flushPendingIceCandidates(room);
     const answer = await room.pc.createAnswer();
     await room.pc.setLocalDescription(answer);
+    traceMacCall('answer-local-set', room);
     const sent = await sendSignal(room, 'answer', { sdp: answer.sdp, type: answer.type });
     if (!sent) { queueReliableCallHangup(room); endCall(room, 'Could not connect the call.'); return; }
     room.callNegotiated = true; // callee's initial offer/answer exchange is done
   } catch (e) {
+    traceMacCall('offer-processing-failed', room, e?.name || 'error');
     queueReliableCallHangup(room);
     endCall(room, 'Could not connect the call.');
   }
