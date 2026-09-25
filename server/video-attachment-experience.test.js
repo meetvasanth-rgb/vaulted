@@ -6,6 +6,7 @@ const path = require('node:path');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 const groups = fs.readFileSync(path.join(__dirname, '..', 'client', 'groups.js'), 'utf8');
 const sw = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
+const iosScene = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
 
 test('direct and group attachment sends remain visible with encrypted upload animation', () => {
   assert.match(client, /function attachmentUploadAnimationHtml/);
@@ -71,6 +72,20 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
   assert.match(sw, /vaultlix-app-shell-v63/);
+});
+
+test('iOS-on-Mac videos use native AVPlayer and web playback cannot spin forever', () => {
+  assert.match(client, /window\.__vaultlixIOSAppOnMac === true/);
+  assert.match(client, /action:'playVideoOnMac'/);
+  assert.match(client, /This video is taking too long to open\./);
+  assert.match(client, /setTimeout\([\s\S]{0,500}Save video[\s\S]{0,300}10000\)/);
+  assert.match(iosScene, /import AVKit/);
+  assert.ok(iosScene.includes('window.__vaultlixIOSAppOnMac = \\(runsOnMac ? "true" : "false");'));
+  assert.match(iosScene, /action == "playVideoOnMac"/);
+  assert.match(iosScene, /message\.frameInfo\.isMainFrame/);
+  assert.match(iosScene, /securityOrigin\.host == "vaultlix\.com"/);
+  assert.match(iosScene, /AVPlayerViewController\(\)/);
+  assert.match(iosScene, /data\.count <= 25 \* 1024 \* 1024/);
 });
 
 test('media-heavy Android chats release hidden decoders and avoid identical inbox rebuilds', () => {

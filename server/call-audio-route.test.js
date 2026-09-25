@@ -149,6 +149,15 @@ test('new native calls actively prefer a connected Bluetooth headset', () => {
   assert.match(main, /hasBluetoothPermission\(\) && isBluetoothCallDevice\(device\)[\s\S]*setCommunicationDevice\(device\)/);
 });
 
+test('iOS-on-Mac reactivates CallKit audio after first-use microphone permission', () => {
+  const app = read('mobile/ios/App/App/AppDelegate.swift');
+  assert.match(app, /ProcessInfo\.processInfo\.isiOSAppOnMac/);
+  const answer = app.slice(app.indexOf('private func completeAnswer'), app.indexOf('func provider(_ provider: CXProvider, perform action: CXEndCallAction)'));
+  assert.match(answer, /if isRunningOnAppleSiliconMac[\s\S]*session\.setActive\(true\)[\s\S]*callKitDidActivate\(session\)/);
+  const outgoing = app.slice(app.indexOf('perform action: CXStartCallAction'), app.indexOf('perform action: CXSetMutedCallAction'));
+  assert.match(outgoing, /if isRunningOnAppleSiliconMac[\s\S]*session\.setActive\(true\)[\s\S]*callKitDidActivate\(session\)/);
+});
+
 test('only a call handed to the native engine is treated as native (keeps Video on foreground calls)', () => {
   assert.match(client, /room\.iosNativeOutgoing = false;/);
   assert.match(client, /room\.iosNativeOutgoing = true;\s*disconnectSignaling\(room\);\s*try \{\s*iosBridge\.postMessage\(\{\s*action: 'startOutgoing'/);

@@ -2,11 +2,12 @@ import UIKit
 import Capacitor
 import WebKit
 import AVFoundation
+import AVKit
 import UserNotifications
 import LocalAuthentication
 import WebRTC
 
-class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate {
+class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate, UIAdaptivePresentationControllerDelegate {
     var window: UIWindow?
     private var observers: [NSObjectProtocol] = []
     private var audioRouteSettlesAt: Date?
@@ -16,6 +17,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var preparedShareImageURL: URL?
     private var pendingDocumentExportURL: URL?
     private var pendingOpenFileURL: URL?
+    private var nativeMediaPlayer: AVPlayerViewController?
+    private var pendingNativePlaybackURL: URL?
     private var documentInteractionController: UIDocumentInteractionController?
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
@@ -44,8 +47,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         window?.rootViewController = bridgeController
         window?.makeKeyAndVisible()
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
+        let runsOnMac: Bool
+        if #available(iOS 14.0, *) { runsOnMac = ProcessInfo.processInfo.isiOSAppOnMac }
+        else { runsOnMac = false }
         bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixNativeMediaCompression = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixNativeMediaCompression = true; window.__vaultlixIOSAppOnMac = \(runsOnMac ? "true" : "false");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -574,6 +580,55 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         documentInteractionController = nil
     }
 
+    private func presentNativeVideo(dataURL: String, filename: String) {
+        guard dataURL.hasPrefix("data:video/"),
+              dataURL.count <= 36_000_000,
+              let marker = dataURL.range(of: ";base64,"),
+              let data = Data(base64Encoded: String(dataURL[marker.upperBound...])),
+              !data.isEmpty, data.count <= 25 * 1024 * 1024,
+              let presenter = topViewController(from: window?.rootViewController),
+              presenter.viewIfLoaded?.window != nil else {
+            emit(name: "vaultlix:native-media-failed", detail: [:])
+            return
+        }
+        nativeMediaPlayer?.player?.pause()
+        nativeMediaPlayer?.dismiss(animated: false)
+        if let oldURL = pendingNativePlaybackURL { try? FileManager.default.removeItem(at: oldURL) }
+
+        let requestedExtension = (filename as NSString).pathExtension.lowercased()
+        let fileExtension = ["mp4", "mov", "m4v"].contains(requestedExtension) ? requestedExtension : "mp4"
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vaultlix-play-\(UUID().uuidString).\(fileExtension)")
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            let controller = AVPlayerViewController()
+            controller.player = AVPlayer(url: fileURL)
+            controller.showsPlaybackControls = true
+            controller.presentationController?.delegate = self
+            nativeMediaPlayer = controller
+            pendingNativePlaybackURL = fileURL
+            presenter.present(controller, animated: true) { [weak self, weak controller] in
+                controller?.player?.play()
+                self?.emit(name: "vaultlix:native-media-opened", detail: [:])
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: fileURL)
+            emit(name: "vaultlix:native-media-failed", detail: [:])
+        }
+    }
+
+    private func clearNativeMediaPlayer() {
+        nativeMediaPlayer?.player?.pause()
+        nativeMediaPlayer = nil
+        if let fileURL = pendingNativePlaybackURL { try? FileManager.default.removeItem(at: fileURL) }
+        pendingNativePlaybackURL = nil
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        guard presentationController.presentedViewController === nativeMediaPlayer else { return }
+        clearNativeMediaPlayer()
+    }
+
     private func setDocumentPreviewOpen(_ open: Bool) {
         AppDelegate.allowsDocumentRotation = open
         guard let windowScene = window?.windowScene else { return }
@@ -634,6 +689,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 requestId: requestId,
                 dataURL: dataURL,
                 filename: (body["filename"] as? String) ?? "vaultlix-video.mov"
+            )
+            return
+        }
+        if action == "playVideoOnMac",
+           message.frameInfo.isMainFrame,
+           message.frameInfo.securityOrigin.host == "vaultlix.com",
+           let dataURL = body["dataUrl"] as? String {
+            presentNativeVideo(
+                dataURL: dataURL,
+                filename: (body["filename"] as? String) ?? "vaultlix-video.mp4"
             )
             return
         }
@@ -781,6 +846,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             _ = SecureMessageStore.shared.clearAll()
             clearPendingDocumentExport()
             clearPendingOpenFile()
+            clearNativeMediaPlayer()
             return
         }
         if action == "secureStoreMessage",

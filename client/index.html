@@ -14969,6 +14969,19 @@ function openVideoAttachmentViewer(mime, base64, name) {
   if (!/^video\/[a-zA-Z0-9.+-]{1,80}$/.test(String(mime || '')) || !isValidMediaBase64(base64)) {
     toast('This video is unavailable.'); return;
   }
+  // An iOS app running on Apple silicon uses WKWebView's macOS media stack.
+  // Large in-memory Blob URLs can remain stalled forever there without
+  // emitting either `playing` or `error`. Hand the decrypted bytes to
+  // AVPlayer instead; the file remains in Vaultlix's private temporary
+  // directory and is removed by the native bridge.
+  if (window.__vaultlixIOSAppOnMac === true
+      && window.webkit?.messageHandlers?.vaultlixCall) {
+    window.webkit.messageHandlers.vaultlixCall.postMessage({
+      action:'playVideoOnMac', dataUrl:`data:${mime};base64,${base64}`,
+      filename:name || 'vaultlix-video.mp4',
+    });
+    return;
+  }
   const objectUrl = encryptedMediaObjectUrl(mime, base64);
   if (!objectUrl) { toast('This video could not be prepared.'); return; }
   closeVideoAttachmentViewer();
@@ -15045,7 +15058,21 @@ function openVideoAttachmentViewer(mime, base64, name) {
   overlay.append(close, download, share, loader, video, controls); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
   attachVideoViewerSwipeDown(overlay);
   document.body.appendChild(overlay); startPlayback();
-  setTimeout(() => { if (overlay.classList.contains('loading') && video.readyState >= 2) loader.classList.add('awaiting-tap'); }, 900);
+  // `play()` is allowed to remain pending by WebKit. Always offer a manual
+  // action after a short grace period, and turn an indefinite stall into an
+  // actionable save option rather than an endless spinner.
+  setTimeout(() => {
+    if (!overlay.isConnected || !overlay.classList.contains('loading')) return;
+    loader.classList.add('awaiting-tap');
+  }, 1200);
+  setTimeout(() => {
+    if (!overlay.isConnected || !overlay.classList.contains('loading')) return;
+    loader.querySelector('span:last-of-type').textContent = 'This video is taking too long to open.';
+    const action = loader.querySelector('.video-attachment-tap');
+    action.textContent = 'Save video';
+    action.onclick = () => downloadDataUri(`data:${mime};base64,${base64}`, name || 'vaultlix-video');
+    loader.classList.add('awaiting-tap');
+  }, 10000);
 }
 function attachVideoViewerSwipeDown(overlay) {
   let startX = 0, startY = 0, deltaY = 0, tracking = false, claimed = false;

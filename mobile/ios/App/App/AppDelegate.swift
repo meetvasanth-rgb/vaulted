@@ -39,6 +39,11 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         case undetermined
     }
 
+    private var isRunningOnAppleSiliconMac: Bool {
+        if #available(iOS 14.0, *) { return ProcessInfo.processInfo.isiOSAppOnMac }
+        return false
+    }
+
     private override init() {
         let configuration = CXProviderConfiguration(localizedName: NSLocalizedString("call_service_name", comment: "CallKit service name"))
         configuration.supportsVideo = true
@@ -427,6 +432,18 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 mode: .voiceChat,
                 options: [.allowBluetooth]
             )
+            // On an Apple-silicon Mac, fulfilling the CallKit answer while
+            // the first microphone permission sheet is still visible can
+            // activate AVAudioSession before permission is granted. Changing
+            // the category after that does not reliably rebuild libwebrtc's
+            // capture graph, leaving both peers at "Connecting securely".
+            // Re-activate and re-bind WebRTC after the permission callback.
+            if isRunningOnAppleSiliconMac {
+                let session = AVAudioSession.sharedInstance()
+                try session.setActive(true)
+                callKitAudioSessionActive = true
+                NativeWebRTCCallEngine.shared.callKitDidActivate(session)
+            }
         } catch {
             if !alreadyFulfilled { action.fail() }
             rejectCallForMicrophone(callID: action.callUUID, payload: payload, action: nil)
@@ -476,6 +493,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 mode: .voiceChat,
                 options: [.allowBluetooth]
             )
+            if isRunningOnAppleSiliconMac {
+                let session = AVAudioSession.sharedInstance()
+                try session.setActive(true)
+                callKitAudioSessionActive = true
+                NativeWebRTCCallEngine.shared.callKitDidActivate(session)
+            }
         } catch {
             action.fail()
             return
