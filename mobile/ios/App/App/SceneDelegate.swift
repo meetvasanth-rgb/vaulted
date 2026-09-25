@@ -898,6 +898,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emitSpeakerState(success: success)
             return
         }
+        if action == "handoffIncomingToWeb",
+           let code = body["code"] as? String,
+           code.count <= 128 {
+            VaultlixCallManager.shared.handoffIncomingCallToWeb(roomCode: code)
+            return
+        }
         if action == "startOutgoing",
            let roomHandle = body["roomHandle"] as? String,
            let code = body["code"] as? String,

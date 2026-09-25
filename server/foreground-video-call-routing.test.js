@@ -32,12 +32,14 @@ test('Apple-silicon Mac calls use web media while CallKit remains the incoming s
   const ios = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
   const iosScene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
   assert.match(client, /const iosAppOnMac = window\.__vaultlixIOSAppOnMac === true/);
-  assert.match(client, /action:'prepareOutgoingAudio'/);
+  assert.doesNotMatch(client, /iosAppOnMac && iosBridge\) \{[\s\S]{0,160}action:'prepareOutgoingAudio'/);
   assert.match(client, /iosNativeReady = !!\(room\.nativeRoomHandle && iosBridge && !iosAppOnMac\)/);
   assert.match(ios, /if !isRunningOnAppleSiliconMac,[\s\S]*prepareIncoming/);
   assert.match(client, /document\.hidden &&[\s\S]*window\.__vaultlixIOSAppOnMac !== true/);
   assert.match(client, /traceMacCall\('invite-handled'/);
-  assert.match(client, /if \(!fromNativeCallKit\) \{[\s\S]*postMessage\(\{ action: 'answer', code: room\.code \}\)/);
+  assert.match(client, /action: 'handoffIncomingToWeb', code: room\.code/);
+  assert.match(ios, /func handoffIncomingCallToWeb\(roomCode: String\)[\s\S]*setActive\(false/);
+  assert.match(iosScene, /action == "handoffIncomingToWeb"/);
   assert.match(client, /traceMacCall\('peer-setup-start'/);
   assert.match(client, /traceMacCall\('answer-local-set'/);
   assert.match(iosScene, /action == "debugMacCall"[\s\S]*category: "MacCall"[\s\S]*\.notice\(/);

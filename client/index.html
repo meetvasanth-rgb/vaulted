@@ -6961,7 +6961,6 @@ async function startCallForRoom(room, options = {}) {
   }
   if (iosAppOnMac && iosBridge) {
     room.iosForegroundWebCall = true;
-    try { iosBridge.postMessage({ action:'prepareOutgoingAudio' }); } catch (e) {}
   }
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
@@ -7022,10 +7021,13 @@ async function acceptCall(fromNativeCallKit = false) {
     // web overlay sent call-accept without fulfilling CallKit; getUserMedia
     // then waited behind the still-ringing system call and no SDP answer was
     // ever produced.
-    if (!fromNativeCallKit) {
-      try { iosNativeBridge.postMessage({ action: 'answer', code: room.code }); }
-      catch (_) { traceMacCall('callkit-answer-failed', room); }
-    }
+    // CallKit is used to make the incoming call visible, but WKWebView owns
+    // media on an Apple-silicon Mac. Dismiss the system call and wait for its
+    // AVAudioSession to deactivate before asking WebKit for the microphone;
+    // otherwise getUserMedia remains pending forever behind CallKit.
+    try { iosNativeBridge.postMessage({ action: 'handoffIncomingToWeb', code: room.code }); }
+    catch (_) { traceMacCall('callkit-handoff-failed', room); }
+    await new Promise(resolve => setTimeout(resolve, 450));
   }
   if (!fromNativeCallKit) {
     const androidNativeBridge = window.VaultlixAndroid;
