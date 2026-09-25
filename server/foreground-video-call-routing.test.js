@@ -30,8 +30,12 @@ test('native iOS answers do not start a second WebRTC media connection', () => {
 test('Apple-silicon Mac calls use web media while CallKit remains the incoming surface', () => {
   const client = fs.readFileSync('client/index.html', 'utf8');
   const ios = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
+  const iosScene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
   assert.match(client, /const iosAppOnMac = window\.__vaultlixIOSAppOnMac === true/);
   assert.match(client, /action:'prepareOutgoingAudio'/);
   assert.match(client, /iosNativeReady = !!\(room\.nativeRoomHandle && iosBridge && !iosAppOnMac\)/);
   assert.match(ios, /if !isRunningOnAppleSiliconMac,[\s\S]*prepareIncoming/);
+  assert.match(client, /document\.hidden &&[\s\S]*window\.__vaultlixIOSAppOnMac !== true/);
+  assert.match(client, /traceMacCall\('invite-handled'/);
+  assert.match(iosScene, /action == "debugMacCall"[\s\S]*category: "MacCall"/);
 });

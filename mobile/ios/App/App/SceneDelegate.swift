@@ -6,6 +6,9 @@ import AVKit
 import UserNotifications
 import LocalAuthentication
 import WebRTC
+#if DEBUG
+import OSLog
+#endif
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate, UIAdaptivePresentationControllerDelegate {
     var window: UIWindow?
@@ -648,6 +651,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         guard message.name == "vaultlixCall",
               let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
+#if DEBUG
+        if action == "debugMacCall",
+           ProcessInfo.processInfo.isiOSAppOnMac,
+           let stage = body["stage"] as? String,
+           stage.range(of: "^[a-z0-9-]{1,48}$", options: .regularExpression) != nil {
+            let callState = (body["callState"] as? String) ?? "none"
+            let socketState = (body["socketState"] as? NSNumber)?.intValue ?? -1
+            let hidden = (body["hidden"] as? Bool) ?? false
+            let extra = (body["extra"] as? String) ?? ""
+            Logger(subsystem: "com.vaultlix.app", category: "MacCall").debug(
+                "stage=\(stage, privacy: .public) call=\(callState, privacy: .public) socket=\(socketState, privacy: .public) hidden=\(hidden, privacy: .public) extra=\(extra, privacy: .public)"
+            )
+            return
+        }
+#endif
         if action == "screenImage" {
             guard message.frameInfo.isMainFrame,
                   message.frameInfo.securityOrigin.host == "vaultlix.com",

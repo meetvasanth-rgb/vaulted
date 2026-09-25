@@ -6364,6 +6364,24 @@ function signalingUrl() {
   return `${proto}//${location.host}/ws/signal`;
 }
 
+// Development diagnostics for the iOS app running on Apple-silicon Macs.
+// The native handler exists only in DEBUG builds and accepts a fixed stage
+// label plus transport state; no room identifiers, names, tokens, SDP, ICE,
+// or message content cross this boundary.
+function traceMacCall(stage, room, extra = '') {
+  if (window.__vaultlixIOSAppOnMac !== true) return;
+  try {
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
+      action: 'debugMacCall',
+      stage: String(stage || '').slice(0, 48),
+      callState: String(room?.callState || 'none').slice(0, 16),
+      socketState: Number.isInteger(room?.signalWs?.readyState) ? room.signalWs.readyState : -1,
+      hidden: document.hidden === true,
+      extra: String(extra || '').slice(0, 48),
+    });
+  } catch (_) {}
+}
+
 async function encryptSignalPayload(room, payload) {
   room.signalSeqOut = (room.signalSeqOut || 0) + 1;
   const wrapped = { seq: room.signalSeqOut, ts: Date.now(), payload };
@@ -6432,6 +6450,7 @@ function connectSignaling(room) {
     // sockets continuously replacing one another on reconnect.
     const nativeCallOwner = document.body.classList.contains('native-call-only');
     try { ws.send(JSON.stringify({ type: 'auth', code: room.code, token: room.token, nativeCall: nativeCallOwner })); } catch (e) {}
+    traceMacCall('signal-open', room);
     room.signalReconnectAttempts = 0;
     refreshCallButton();
     // CallKit may have been answered while this socket was still closed.
@@ -6448,6 +6467,7 @@ function connectSignaling(room) {
   ws.onmessage = async (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    traceMacCall('signal-received', room, typeof msg?.type === 'string' ? msg.type : 'invalid');
     // Android may reject from its native notification/activity before its
     // encrypted WebView signalling socket exists. The server sends this
     // content-free control only to the authenticated peer socket for the
@@ -6512,7 +6532,8 @@ function connectSignaling(room) {
       room.signalRestartTs = 0;
     }
     const payload = await decryptSignalEnvelope(room, msg.envelope);
-    if (payload == null) return;
+    if (payload == null) { traceMacCall('signal-decrypt-failed', room, msg.type); return; }
+    traceMacCall('signal-decrypted', room, msg.type);
     handleSignalMessage(room, msg.type, payload, msg.inviteId, msg.hasVideo === true);
   };
 
@@ -6548,8 +6569,8 @@ function disconnectSignaling(room) {
 // to encrypt with — callers should treat that as "calling unavailable right
 // now" rather than silently failing later.
 async function sendSignal(room, type, payload, inviteIdOverride) {
-  if (!room.signalWs || room.signalWs.readyState !== WebSocket.OPEN) return false;
-  if (!room.sharedKey) return false;
+  if (!room.signalWs || room.signalWs.readyState !== WebSocket.OPEN) { traceMacCall('signal-send-no-socket', room, type); return false; }
+  if (!room.sharedKey) { traceMacCall('signal-send-no-key', room, type); return false; }
   // Capture before encryption yields. endCall() clears room.callInviteId
   // immediately, but the terminal frame still needs the original ID.
   const inviteId = typeof inviteIdOverride === 'string'
@@ -6580,6 +6601,7 @@ async function sendSignal(room, type, payload, inviteIdOverride) {
     : undefined;
   const hasVideo = type === 'call-invite' && room.pendingVideoStart === true;
   room.signalWs.send(JSON.stringify({ type, sessionId: room.mySignalSessionId, inviteId, terminalReason, hasVideo, envelope }));
+  traceMacCall('signal-sent', room, type);
   return true;
 }
 
@@ -6624,7 +6646,14 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
     // same invitation too: two peer connections and two call state machines
     // caused duplicate overlays, stale CXCalls, and "End & Accept" on the
     // next call. Browser/PWA behavior is unchanged.
-    if (window.webkit?.messageHandlers?.vaultlixCall && document.hidden) return;
+    // iPhone/iPad hand background invitations to their native WebRTC engine.
+    // On Apple-silicon Macs that engine is intentionally disabled because the
+    // host closes its peer before SDP negotiation. The WKWebView is therefore
+    // the sole signaling/media owner and must retain the invitation even while
+    // CallKit temporarily makes the document hidden.
+    if (window.webkit?.messageHandlers?.vaultlixCall && document.hidden &&
+        window.__vaultlixIOSAppOnMac !== true) return;
+    traceMacCall('invite-handled', room, hasVideo ? 'video' : 'audio');
     // Already mid-call somewhere else (this app only ever handles one call
     // at a time, same as a phone) — tell the caller we're busy rather than
     // silently ignoring them.
@@ -6846,6 +6875,7 @@ async function startCallForRoom(room, options = {}) {
   // before SDP negotiation begins. Keep iPhone/iPad on the native engine and
   // use WKWebView's established WebRTC path for Mac media.
   const iosAppOnMac = window.__vaultlixIOSAppOnMac === true;
+  traceMacCall('outgoing-start', room, options.video === true ? 'video' : 'audio');
   const iosNativeReady = !!(room.nativeRoomHandle && iosBridge && !iosAppOnMac);
   if (!androidNativeReady && !iosNativeReady && !(await waitForCallSignaling(room))) {
     toast('Calling isn’t available right now.');
@@ -6956,6 +6986,7 @@ async function startCallForRoom(room, options = {}) {
 async function acceptCall(fromNativeCallKit = false) {
   const room = rooms.get(activeCallRoomCode);
   if (!room || room.callState !== 'incoming') return;
+  traceMacCall('accept-start', room, fromNativeCallKit ? 'callkit' : 'app');
   clearAndroidCallNotifications();
   const iosNativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
   const iosAppOnMac = window.__vaultlixIOSAppOnMac === true;
