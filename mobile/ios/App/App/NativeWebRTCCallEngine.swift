@@ -920,8 +920,13 @@ final class NativeWebRTCCallEngine: NSObject {
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
-        peer?.close()
+        // Detach before close. libwebrtc can synchronously emit `.closed`
+        // from close(); while `self.peer` still pointed at this object, the
+        // delegate treated an intentional reset as a live-call failure and
+        // told CallKit to end the call that was just being prepared.
+        let closingPeer = peer
         peer = nil
+        closingPeer?.close()
         audioTrack?.isEnabled = false
         audioTrack = nil
         audioSource = nil

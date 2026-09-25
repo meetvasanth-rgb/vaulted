@@ -6651,8 +6651,7 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
     // host closes its peer before SDP negotiation. The WKWebView is therefore
     // the sole signaling/media owner and must retain the invitation even while
     // CallKit temporarily makes the document hidden.
-    if (window.webkit?.messageHandlers?.vaultlixCall && document.hidden &&
-        window.__vaultlixIOSAppOnMac !== true) return;
+    if (window.webkit?.messageHandlers?.vaultlixCall && document.hidden) return;
     traceMacCall('invite-handled', room, hasVideo ? 'video' : 'audio');
     // Already mid-call somewhere else (this app only ever handles one call
     // at a time, same as a phone) — tell the caller we're busy rather than
@@ -6870,13 +6869,11 @@ async function startCallForRoom(room, options = {}) {
   // call while leaving both receiver and speaker silent.
   let androidNativeReady = false;
   try { androidNativeReady = !!(room.nativeRoomHandle && androidNativeBridge?.supportsNativeWebRtc?.()); } catch (e) {}
-  // CallKit can present incoming calls for an iOS app running on an
-  // Apple-silicon Mac, but its native libwebrtc peer is closed by the host
-  // before SDP negotiation begins. Keep iPhone/iPad on the native engine and
-  // use WKWebView's established WebRTC path for Mac media.
-  const iosAppOnMac = window.__vaultlixIOSAppOnMac === true;
+  // The native engine owns media on every signed Apple platform. WKWebView
+  // microphone capture does not reliably resolve for an iOS app running on
+  // Apple silicon, so Mac calls use the same CallKit/libwebrtc path as iPhone.
   traceMacCall('outgoing-start', room, options.video === true ? 'video' : 'audio');
-  const iosNativeReady = !!(room.nativeRoomHandle && iosBridge && !iosAppOnMac);
+  const iosNativeReady = !!(room.nativeRoomHandle && iosBridge);
   if (!androidNativeReady && !iosNativeReady && !(await waitForCallSignaling(room))) {
     toast('Calling isn’t available right now.');
     return;
@@ -6959,9 +6956,6 @@ async function startCallForRoom(room, options = {}) {
     }, CALL_RING_TIMEOUT_MS);
     return;
   }
-  if (iosAppOnMac && iosBridge) {
-    room.iosForegroundWebCall = true;
-  }
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
   renderCallOverlay(room);
@@ -6989,7 +6983,7 @@ async function acceptCall(fromNativeCallKit = false) {
   clearAndroidCallNotifications();
   const iosNativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
   const iosAppOnMac = window.__vaultlixIOSAppOnMac === true;
-  if (iosNativeBridge && room.nativeRoomHandle && !iosAppOnMac) {
+  if (iosNativeBridge && room.nativeRoomHandle) {
     room.nativeAnswerPending = true;
     room.nativeCallActive = true;
     room.iosForegroundWebCall = false;
@@ -7012,22 +7006,6 @@ async function acceptCall(fromNativeCallKit = false) {
     renderCallOverlay(room);
     refreshCallButton();
     return;
-  }
-  if (iosAppOnMac && iosNativeBridge) {
-    room.iosForegroundWebCall = true;
-    // The Mac uses WKWebView for WebRTC media, but an incoming PushKit call
-    // is still represented by CallKit. Answer that native surface first so
-    // macOS activates the app's play-and-record audio session. Previously the
-    // web overlay sent call-accept without fulfilling CallKit; getUserMedia
-    // then waited behind the still-ringing system call and no SDP answer was
-    // ever produced.
-    // CallKit is used to make the incoming call visible, but WKWebView owns
-    // media on an Apple-silicon Mac. Dismiss the system call and wait for its
-    // AVAudioSession to deactivate before asking WebKit for the microphone;
-    // otherwise getUserMedia remains pending forever behind CallKit.
-    try { iosNativeBridge.postMessage({ action: 'handoffIncomingToWeb', code: room.code }); }
-    catch (_) { traceMacCall('callkit-handoff-failed', room); }
-    await new Promise(resolve => setTimeout(resolve, 450));
   }
   if (!fromNativeCallKit) {
     const androidNativeBridge = window.VaultlixAndroid;

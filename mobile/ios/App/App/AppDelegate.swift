@@ -268,8 +268,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // Keep CallKit and libwebrtc as the single audio owner in every app
         // state. Splitting foreground media into WKWebView left connected
         // calls silent on both receiver and speaker.
-        if !isRunningOnAppleSiliconMac,
-           let roomHandle = data["roomHandle"] as? String,
+        if let roomHandle = data["roomHandle"] as? String,
            NativeWebRTCCallEngine.shared.prepareIncoming(callID: callID, roomHandle: roomHandle, video: hasVideo) {
             nativeMediaCalls.insert(callID)
             print("VXCALL manager incoming native-ready")
@@ -838,27 +837,6 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         } catch {
             print("VXCALL manager outgoing audio deactivation failed: \(error.localizedDescription)")
         }
-    }
-
-    /// On Apple-silicon Macs, CallKit remains the incoming-call surface but
-    /// WKWebView owns WebRTC media. End the local system call without sending
-    /// a decline/hang-up to the peer, then release its AVAudioSession so
-    /// WebKit can acquire the microphone for the already accepted call.
-    func handoffIncomingCallToWeb(roomCode: String) {
-        guard isRunningOnAppleSiliconMac,
-              let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first else { return }
-        provider.reportCall(with: match.key, endedAt: Date(), reason: .answeredElsewhere)
-        calls.removeValue(forKey: match.key)
-        answeredCalls.remove(match.key)
-        nativeMediaCalls.remove(match.key)
-        connectedCalls.remove(match.key)
-        outgoingCalls.remove(match.key)
-        stopRingback()
-        clearPreferredAudioInput()
-        callKitAudioSessionActive = false
-        do { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
-        catch { print("VXCALL manager Mac web handoff deactivation failed: \(error.localizedDescription)") }
-        releaseAppKeyboardIfIdle()
     }
 
     @discardableResult
