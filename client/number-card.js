@@ -41,7 +41,7 @@
 
   function createNumberCardSvg({ number, shareCode, username, tier = 'standard', qrMatrix = [] }) {
     const safeNumber = escapeXml(formatNumber(number));
-    const safeSharePath = shareCode ? `p/${escapeXml(shareCode)}` : safeNumber;
+    const safeSharePath = shareCode ? `p-${escapeXml(shareCode)}` : safeNumber;
     const safeUsername = escapeXml(username || 'Vaultlix identity');
     const badge = tier === 'reserve' ? 'RESERVE' : (tier === 'founding' ? 'FOUNDING MEMBER' : '');
     const badgeMarkup = badge

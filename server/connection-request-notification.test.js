@@ -7,6 +7,7 @@ const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const postgres = fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8');
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
+const iosScene = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
 
 test('connection requests use account-level native notifications', () => {
   assert.match(server, /\/api\/account\/native-push-subscribe/);
@@ -67,13 +68,17 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /rememberQuickConnectTarget\(activePublicProfile\.privateNumber\)/);
   assert.match(client, /resumeQuickConnectAfterAuthentication/);
   assert.match(client, /await requestPrivateVault\(\)/);
-  assert.match(client, /Show my Quick Connect QR/);
+  assert.match(client, /Share my Vaultlix number/);
   assert.match(client, /new URLSearchParams\(location\.search\)\.get\('ref'\) === 'qr'/);
   assert.match(client, /quickConnectQrUrl\(privateNumber, profileShareCode\)/);
-  assert.match(client, /\/p\/\$\{code\}\?ref=qr/);
+  assert.match(client, /\/p-\$\{code\}\?ref=qr/);
   assert.match(client, /package=com\.vaultlix\.app/);
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);
+  assert.match(client, /if \(opened && fromQr && loadAccountState\(\)\) await requestPrivateVault\(\)/);
+  assert.match(client, /if \(\(profile \|\| shareCode\) && quickLockActive\)[\s\S]*deferQuickConnectURL\(url\.href\)/);
+  assert.match(client, /resumeDeferredQuickConnectURL\(\)\.catch/);
+  assert.ok(iosScene.includes('^/p/[A-HJ-NP-Za-hj-np-z2-9]{6}/?$'));
 });
 
 test('logged-out Quick Connect is invitation-aware and creation-first', () => {

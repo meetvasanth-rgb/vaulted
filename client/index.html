@@ -9413,7 +9413,10 @@ function quickConnectQrMatrix(privateNumber, profileShareCode) {
 
 function quickConnectQrUrl(privateNumber, profileShareCode = loadAccountState()?.profileShareCode) {
   const code = normalizeProfileShareCode(profileShareCode);
-  return code ? `https://vaultlix.com/p/${code}?ref=qr` : `https://vaultlix.com/${privateNumber}?ref=qr`;
+  // Keep the six-character public token while using a single path segment.
+  // Existing store builds already accept single-segment Universal/App Links;
+  // older iOS builds rejected the newer /p/CODE form after launching the app.
+  return code ? `https://vaultlix.com/p-${code}?ref=qr` : `https://vaultlix.com/${privateNumber}?ref=qr`;
 }
 
 let numberCardPrewarmScheduled = false;
@@ -12057,6 +12060,7 @@ function completeQuickUnlock() {
   checkStaleIncomingCalls();
   refreshPushForAllRooms();
   reconnectSignalingForAllRooms();
+  resumeDeferredQuickConnectURL().catch(() => toast('Could not resume the scanned Vaultlix request'));
 }
 
 function updateAppLockStatus() {
@@ -16585,7 +16589,7 @@ function normalizeProfileShareCode(value) {
   return /^[A-HJ-NP-Z2-9]{6}$/.test(code) ? code : '';
 }
 function parseProfileShareCode(pathname = location.pathname) {
-  const match = String(pathname || '').match(/^\/p\/([a-hj-np-z2-9]{6})\/?$/i);
+  const match = String(pathname || '').match(/^\/(?:p\/|p-)([a-hj-np-z2-9]{6})\/?$/i);
   return match ? normalizeProfileShareCode(match[1]) : null;
 }
 function attemptAndroidQrAppHandoff(target) {
@@ -16597,7 +16601,7 @@ function attemptAndroidQrAppHandoff(target) {
   // or whose scanner deliberately opened Chrome. If Vaultlix is not installed,
   // Chrome returns to the same invitation page without retrying the handoff.
   const code = normalizeProfileShareCode(target);
-  const path = code ? `p/${code}` : String(target);
+  const path = code ? `p-${code}` : String(target);
   const fallback = `https://vaultlix.com/${path}?ref=qr&appAttempted=1`;
   const intent = `intent://vaultlix.com/${path}#Intent;scheme=https;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
   setTimeout(() => { location.href = intent; }, 120);
@@ -16623,6 +16627,7 @@ function openRecoveryFromLink(recovery) {
   return true;
 }
 const QUICK_CONNECT_TARGET_KEY = 'vaultlix_quick_connect_target_v1';
+const PENDING_QUICK_CONNECT_URL_KEY = 'vaultlix_pending_quick_connect_url_v1';
 let quickConnectHandshakePending = new URLSearchParams(location.search).get('ref') === 'qr' || sessionStorage.getItem('vaultlix:qr-handshake') === '1';
 function rememberQuickConnectTarget(privateNumber) {
   const normalized = normalizePrivateNumber(privateNumber);
@@ -16632,6 +16637,20 @@ function loadQuickConnectTarget() {
   return normalizePrivateNumber(localStorage.getItem(QUICK_CONNECT_TARGET_KEY));
 }
 function clearQuickConnectTarget() { localStorage.removeItem(QUICK_CONNECT_TARGET_KEY); }
+function deferQuickConnectURL(rawURL) {
+  try { sessionStorage.setItem(PENDING_QUICK_CONNECT_URL_KEY, String(rawURL || '')); } catch (_) {}
+}
+async function resumeDeferredQuickConnectURL() {
+  if (quickLockActive) return false;
+  let rawURL = '';
+  try {
+    rawURL = sessionStorage.getItem(PENDING_QUICK_CONNECT_URL_KEY) || '';
+    if (rawURL) sessionStorage.removeItem(PENDING_QUICK_CONNECT_URL_KEY);
+  } catch (_) {}
+  if (!rawURL) return false;
+  await openQuickConnectURL(rawURL);
+  return true;
+}
 async function restoreQuickConnectInvitationAfterReload() {
   const target = loadQuickConnectTarget();
   if (!target || loadAccountState()) return false;
@@ -16759,7 +16778,7 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
     invitationCopy.textContent = signedIn
       ? ''
       : 'Create your Vaultlix Private Number to connect. No phone number, email or contacts required.';
-    document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/p/${result.profile.profileShareCode}`;
+    document.getElementById('public-profile-private-number').textContent = `${formatPrivateNumber(result.profile.privateNumber)} · vaultlix.com/p-${result.profile.profileShareCode}`;
     const openApp = document.getElementById('public-profile-open-app');
     if (openApp) {
       openApp.href = `vaultlix://connect/${encodeURIComponent(result.profile.privateNumber)}`;
@@ -16822,6 +16841,7 @@ async function requestPrivateVault(authenticationMode = 'create') {
     toast('Opened your existing private conversation');
     return;
   }
+  if (quickConnectHandshakePending) await triggerSecureHandshake();
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
@@ -16880,7 +16900,6 @@ async function requestPrivateVault(authenticationMode = 'create') {
       });
   }
   clearQuickConnectTarget();
-  if (quickConnectHandshakePending && result.status !== 'pending') await triggerSecureHandshake();
   toast(`Request sent to ${requestedProfile.displayName}. We’ll notify you when they accept.`);
   closePublicProfile();
   showScreen('s-vault-list');
@@ -16976,10 +16995,21 @@ async function openJoinFromLink(code, connectImmediately = false) {
 // already running. Route them without reloading the WebView: a reload would
 // unnecessarily discard the current in-memory conversation view. Preserve
 // the URL-fragment commitment exactly as the ordinary cold-start path does.
-window.vaultlixOpenInviteURL = function(rawURL) {
+async function openQuickConnectURL(rawURL) {
   try {
     const url = new URL(rawURL);
-    if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return;
+    if (url.protocol !== 'https:' || url.hostname !== 'vaultlix.com') return false;
+    const fromQr = url.searchParams.get('ref') === 'qr';
+    if (fromQr) {
+      quickConnectHandshakePending = true;
+      sessionStorage.setItem('vaultlix:qr-handshake', '1');
+    }
+    const profile = url.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
+    const shareCode = parseProfileShareCode(url.pathname);
+    if ((profile || shareCode) && quickLockActive) {
+      deferQuickConnectURL(url.href);
+      return true;
+    }
     if (receiveNumberGiftURL(url.href)) return;
     const recovery = parseRecoveryLink(url.href);
     if (recovery) { openRecoveryFromLink(recovery); return; }
@@ -16989,13 +17019,15 @@ window.vaultlixOpenInviteURL = function(rawURL) {
       openJoinFromLink(decodeURIComponent(match[1]).toLowerCase());
       return;
     }
-    const profile = url.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
-    if (profile) openPublicProfile(profile[1]);
-    else {
-      const shareCode = parseProfileShareCode(url.pathname);
-      if (shareCode) openPublicProfileShareCode(shareCode);
-    }
-  } catch (e) {}
+    const opened = profile
+      ? await openPublicProfile(profile[1])
+      : shareCode ? await openPublicProfileShareCode(shareCode) : false;
+    if (opened && fromQr && loadAccountState()) await requestPrivateVault();
+    return opened;
+  } catch (e) { return false; }
+}
+window.vaultlixOpenInviteURL = function(rawURL) {
+  openQuickConnectURL(rawURL).catch(() => {});
 };
 
 // Puts the waiting screen back on-screen for a room that's saved locally
@@ -18435,11 +18467,23 @@ window.addEventListener('DOMContentLoaded', async () => {
   } else if (startupCreateNumber && !loadAccountState()) {
     openCreateAccount();
   } else if (publicProfileShareCode) {
-    await openPublicProfileShareCode(publicProfileShareCode);
+    const opened = await openPublicProfileShareCode(publicProfileShareCode);
     attemptAndroidQrAppHandoff(publicProfileShareCode);
+    if (opened && startupParams.get('ref') === 'qr') {
+      quickConnectHandshakePending = true;
+      sessionStorage.setItem('vaultlix:qr-handshake', '1');
+      if (quickLockActive) deferQuickConnectURL(location.href);
+      else if (loadAccountState()) await requestPrivateVault();
+    }
   } else if (publicPrivateNumber) {
-    await openPublicProfile(publicPrivateNumber);
+    const opened = await openPublicProfile(publicPrivateNumber);
     attemptAndroidQrAppHandoff(publicPrivateNumber);
+    if (opened && startupParams.get('ref') === 'qr') {
+      quickConnectHandshakePending = true;
+      sessionStorage.setItem('vaultlix:qr-handshake', '1');
+      if (quickLockActive) deferQuickConnectURL(location.href);
+      else if (loadAccountState()) await requestPrivateVault();
+    }
   } else if (loadQuickConnectTarget()) {
     if (loadAccountState()) await resumeQuickConnectAfterAuthentication();
     else await restoreQuickConnectInvitationAfterReload();

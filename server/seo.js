@@ -29,12 +29,15 @@ const APP_SHELL_ROUTES = [
   /^\/$/,
   /^\/index\.html$/,
   /^\/join\/[a-z0-9-]+\/?$/i,
+  /^\/p\/[a-hj-np-z2-9]{6}\/?$/i,
+  /^\/p-[a-hj-np-z2-9]{6}\/?$/i,
   /^\/[2-9][0-9]{5,9}\/?$/,
 ];
 
 // Private by nature: must never be indexed, even though they return the app.
 const NOINDEX_ROUTES = [
   /^\/join\//i,
+  /^\/p(?:\/|-)/i,
   /^\/[2-9][0-9]{5,9}\/?$/,
   /^\/admin(\.html|\.js|\.css)?$/,
 ];

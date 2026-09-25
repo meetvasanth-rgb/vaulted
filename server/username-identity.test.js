@@ -101,7 +101,7 @@ test('registration uses a reserved system-generated ten-digit Private Number', (
   assert.match(client, /Password policy:<\/strong> Minimum 8 characters/);
   assert.match(client, /password\.length < 8/);
   assert.match(client, /This is not a cellular phone number/);
-  assert.match(client, /vaultlix\.com\/p\/\$\{result\.profile\.profileShareCode\}/);
+  assert.match(client, /vaultlix\.com\/p-\$\{result\.profile\.profileShareCode\}/);
   assert.match(client, /<span>Username<\/span><input id="account-create-display-name"/);
   assert.doesNotMatch(client, /Your permanent name or pseudonym/);
 });

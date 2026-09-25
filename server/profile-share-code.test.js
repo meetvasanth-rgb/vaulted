@@ -12,10 +12,12 @@ const appleAssociation = readFileSync(join(__dirname, '..', 'client', '.well-kno
 
 test('profile cards use a server-issued six-character link instead of exposing the Private Number in the URL', () => {
   assert.match(server, /PROFILE_SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'/);
-  assert.match(server, /address:`https:\/\/vaultlix\.com\/p\/\$\{account\.profileShareCode\}`/);
+  assert.match(server, /address:`https:\/\/vaultlix\.com\/p-\$\{account\.profileShareCode\}`/);
   assert.match(server, /path\.startsWith\('\/api\/profile-share\/'\)/);
-  assert.match(client, /https:\/\/vaultlix\.com\/p\/\$\{code\}\?ref=qr/);
+  assert.match(client, /https:\/\/vaultlix\.com\/p-\$\{code\}\?ref=qr/);
   assert.match(client, /openPublicProfileShareCode\(publicProfileShareCode\)/);
   assert.ok(worker.includes("/^\\/p\\/[a-hj-np-z2-9]{6}\\/?$/i.test(pathname)"));
+  assert.ok(worker.includes("/^\\/p-[a-hj-np-z2-9]{6}\\/?$/i.test(pathname)"));
   assert.match(appleAssociation, /"\/p\/\*"/);
+  assert.match(appleAssociation, /"\/p-\*"/);
 });

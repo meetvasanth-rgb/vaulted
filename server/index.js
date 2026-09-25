@@ -1409,7 +1409,7 @@ function publicAccount(account) {
     profileShareCode:account.profileShareCode,
     displayName:account.displayName,
     profileImage:normalizeProfileImage(account.profileImage) || null,
-    address:`https://vaultlix.com/p/${account.profileShareCode}`,
+    address:`https://vaultlix.com/p-${account.profileShareCode}`,
     tier:account.tier || NUMBER_TIERS.STANDARD,
     isFounding:!!account.isFounding,
   };

@@ -36,7 +36,7 @@ test('number card explains the scan and includes a readable connection fallback'
   });
   assert.match(svg, /Scan to request a private, encrypted chat with/);
   assert.match(svg, /Vasanthkumar — no phone number needed/);
-  assert.match(svg, /vaultlix\.com\/p\/ABC234/);
+  assert.match(svg, /vaultlix\.com\/p-ABC234/);
   assert.doesNotMatch(svg, /vaultlix\.com\/24-8059-9999/);
   assert.doesNotMatch(svg, /Scan to extend a private line/);
 });

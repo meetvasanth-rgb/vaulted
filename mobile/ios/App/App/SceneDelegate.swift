@@ -885,6 +885,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         guard url.scheme?.lowercased() == "https",
               url.host?.lowercased() == "vaultlix.com" else { return false }
         return url.path.range(of: "^/join/[A-Za-z0-9-]+/?$", options: .regularExpression) != nil
+            || url.path.range(of: "^/p/[A-HJ-NP-Za-hj-np-z2-9]{6}/?$", options: .regularExpression) != nil
             || url.path.range(of: "^/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?$", options: .regularExpression) != nil
     }
 
