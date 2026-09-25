@@ -6841,7 +6841,12 @@ async function startCallForRoom(room, options = {}) {
   // call while leaving both receiver and speaker silent.
   let androidNativeReady = false;
   try { androidNativeReady = !!(room.nativeRoomHandle && androidNativeBridge?.supportsNativeWebRtc?.()); } catch (e) {}
-  const iosNativeReady = !!(room.nativeRoomHandle && iosBridge);
+  // CallKit can present incoming calls for an iOS app running on an
+  // Apple-silicon Mac, but its native libwebrtc peer is closed by the host
+  // before SDP negotiation begins. Keep iPhone/iPad on the native engine and
+  // use WKWebView's established WebRTC path for Mac media.
+  const iosAppOnMac = window.__vaultlixIOSAppOnMac === true;
+  const iosNativeReady = !!(room.nativeRoomHandle && iosBridge && !iosAppOnMac);
   if (!androidNativeReady && !iosNativeReady && !(await waitForCallSignaling(room))) {
     toast('Calling isn’t available right now.');
     return;
@@ -6899,7 +6904,7 @@ async function startCallForRoom(room, options = {}) {
     }, CALL_RING_TIMEOUT_MS);
     return;
   }
-  if (iosBridge && room.nativeRoomHandle) {
+  if (iosNativeReady) {
     // The signed iOS wrapper owns outgoing media too. This gives both sides
     // the same CallKit/libwebrtc audio session and makes receiver/speaker
     // routing deterministic instead of letting WKWebView reclaim the route.
@@ -6923,6 +6928,10 @@ async function startCallForRoom(room, options = {}) {
       if (room.callState === 'outgoing') endCall(room, 'No answer.', 'No answer');
     }, CALL_RING_TIMEOUT_MS);
     return;
+  }
+  if (iosAppOnMac && iosBridge) {
+    room.iosForegroundWebCall = true;
+    try { iosBridge.postMessage({ action:'prepareOutgoingAudio' }); } catch (e) {}
   }
   const sent = await sendSignal(room, 'call-invite', { from: room.myName });
   if (!sent) { endCall(room, 'Calling isn’t available right now.'); return; }
@@ -6949,7 +6958,8 @@ async function acceptCall(fromNativeCallKit = false) {
   if (!room || room.callState !== 'incoming') return;
   clearAndroidCallNotifications();
   const iosNativeBridge = window.webkit?.messageHandlers?.vaultlixCall;
-  if (iosNativeBridge && room.nativeRoomHandle) {
+  const iosAppOnMac = window.__vaultlixIOSAppOnMac === true;
+  if (iosNativeBridge && room.nativeRoomHandle && !iosAppOnMac) {
     room.nativeAnswerPending = true;
     room.nativeCallActive = true;
     room.iosForegroundWebCall = false;
@@ -6972,6 +6982,9 @@ async function acceptCall(fromNativeCallKit = false) {
     renderCallOverlay(room);
     refreshCallButton();
     return;
+  }
+  if (iosAppOnMac && iosNativeBridge) {
+    room.iosForegroundWebCall = true;
   }
   if (!fromNativeCallKit) {
     const androidNativeBridge = window.VaultlixAndroid;
