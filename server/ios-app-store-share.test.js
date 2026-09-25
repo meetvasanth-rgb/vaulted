@@ -10,6 +10,8 @@ const client = fs.readFileSync(path.join(root, 'client', 'index.html'), 'utf8');
 const getApp = fs.readFileSync(path.join(root, 'client', 'get-app.html'), 'utf8');
 const generator = fs.readFileSync(path.join(root, 'scripts', 'generate-ios-app-store-card.js'), 'utf8');
 const png = fs.readFileSync(path.join(root, 'client', 'media', 'vaultlix-ios-app-store-card.png'));
+const appStoreBadge = fs.readFileSync(path.join(root, 'client', 'media', 'download-on-the-app-store.svg'), 'utf8');
+const playStoreBadge = fs.readFileSync(path.join(root, 'client', 'media', 'get-it-on-google-play.png'));
 
 const APP_STORE_URL = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
 
@@ -27,6 +29,19 @@ test('Get the app QR routes each phone to its correct store', () => {
   assert.match(getApp, /Android/);
   assert.match(getApp, /https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.vaultlix\.app/);
   assert.match(getApp, /location\.replace/);
+});
+
+test('website uses official black store badge artwork at matching visual sizes', () => {
+  assert.match(appStoreBadge, /Download_on_the_App_Store_Badge/);
+  assert.equal(playStoreBadge.subarray(1, 4).toString(), 'PNG');
+  for (const page of [client, getApp]) {
+    assert.match(page, /\/media\/download-on-the-app-store\.svg/);
+    assert.match(page, /\/media\/get-it-on-google-play\.png/);
+    assert.match(page, /apps\.apple\.com\/in\/app\/vaultlix\/id6798266989/);
+    assert.match(page, /play\.google\.com\/store\/apps\/details\?id=com\.vaultlix\.app/);
+  }
+  assert.match(client, /official-store-badge apple/);
+  assert.match(client, /official-store-badge google/);
 });
 
 test('iPhone share card QR contains only the public App Store destination', () => {
