@@ -23,7 +23,7 @@ test('conversation header uses a back control and removes the repeated subtitle'
 });
 
 test('conversation header shows presence only while the peer is online', () => {
-  assert.match(chatHeader, /class="chat-hdr-presence" id="chat-presence" hidden/);
+  assert.match(chatHeader, /class="chat-hdr-presence" id="chat-presence" title="Online" aria-label="Online" hidden/);
   assert.match(chatHeader, /id="status-dot"/);
   assert.match(chatHeader, /id="chat-presence-label">Online<\/span>/);
   assert.match(client, /if \(presence\) presence\.hidden = !online/);

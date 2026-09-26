@@ -378,5 +378,5 @@ test('wiring: Send keeps focus in the message box on touch screens', () => {
 
 test('the iOS app asks for the light keyboard, and any exposed page area is white', () => {
   assert.match(client, /Keyboard\?\.setStyle\(\{ style:'LIGHT' \}\)/);
-  assert.match(client, /\nhtml\{background:#fff\}\n<\/style>/);
+  assert.match(client, /\nhtml\{background:#fff\}\n/);
 });

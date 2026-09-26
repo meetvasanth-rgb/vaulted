@@ -67,3 +67,13 @@ test('the chip is refreshed whenever the timer is read or changed', () => {
   assert.match(extract('updateTimerBar'), /showTimerChip\(Number\(value\)\)/);
   assert.match(client, /room\.deleteTimerSeconds = seconds; \/\/ optimistic[^\n]*\n\s*showTimerChip\(seconds\);/);
 });
+
+test('the line under the name never draws its items over each other', () => {
+  const block = client.slice(client.lastIndexOf('<style>'));
+  assert.match(block, /#s-chat \.chat-hdr-sub\{overflow:hidden\}/);
+  // On a phone the green dot alone says "online"; the word only returns where there is room.
+  assert.match(block, /#s-chat \.chat-hdr-sub #chat-presence-label\{display:none\}/);
+  assert.match(block, /@media\(min-width:560px\)\{#s-chat \.chat-hdr-sub #chat-presence-label\{display:inline/);
+  assert.match(block, /#s-chat \.chat-hdr-sub \.e2e-bar,#s-chat \.chat-hdr-sub \.timer-bar\{flex:0 0 auto\}/);
+  assert.match(chat, /id="chat-presence" title="Online" aria-label="Online" hidden/);
+});
