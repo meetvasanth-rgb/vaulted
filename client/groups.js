@@ -149,15 +149,15 @@ function forgetPrivateGroupData(groupId) {
 // The encrypted attachment text, from this device when it is already there.
 // messageId ties the saved copy to its message, so deleting the message
 // deletes the copy too.
-function downloadPrivateGroupAttachment(state, group, attachmentId, messageId = '') {
+function downloadPrivateGroupAttachment(state, group, attachmentId, messageId = '', options = {}) {
   const key = `${group.id}:${attachmentId}`;
   if (privateGroupDownloads.has(key)) return privateGroupDownloads.get(key);
-  const job = fetchPrivateGroupAttachment(state, group, attachmentId, messageId).finally(() => privateGroupDownloads.delete(key));
+  const job = fetchPrivateGroupAttachment(state, group, attachmentId, messageId, options).finally(() => privateGroupDownloads.delete(key));
   privateGroupDownloads.set(key, job);
   return job;
 }
 
-async function fetchPrivateGroupAttachment(state, group, attachmentId, messageId) {
+async function fetchPrivateGroupAttachment(state, group, attachmentId, messageId, options = {}) {
   const cacheCode = privateGroupCacheCode(group.id);
   const cached = await attachmentCacheGet(cacheCode, attachmentId);
   if (cached) return cached;
@@ -174,7 +174,7 @@ async function fetchPrivateGroupAttachment(state, group, attachmentId, messageId
         body:JSON.stringify({ accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, attachmentId }),
         cache:'no-store', signal:controller.signal });
       if (!response.ok) { const error = new Error('Could not open attachment'); error.status = response.status; throw error; }
-      const ciphertext = await readAttachmentBody(response, armStall);
+      const ciphertext = await readAttachmentBody(response, (received, total) => { armStall(); options.onProgress?.(received, total); });
       if (!ciphertext || new Blob([ciphertext]).size > MAX_PRIVATE_GROUP_ATTACHMENT_BYTES) throw Object.assign(new Error('Invalid attachment'), { status:422 });
       attachmentCachePut(cacheCode, attachmentId, messageId, ciphertext).catch(() => {});
       return ciphertext;
@@ -438,6 +438,7 @@ async function openPrivateGroup(id) {
     document.getElementById('group-chat-title').textContent = group.name || 'Private group';
     document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
     renderPrivateGroupMessages(group);
+    retryTransientPrivateGroupAttachments(group);
     document.getElementById('group-chat').classList.add('open');
     document.getElementById('group-chat').setAttribute('aria-hidden','false');
     clearInterval(groupPollTimer); groupPollTimer = setInterval(() => pollPrivateGroup(false), 3000);
@@ -498,6 +499,7 @@ function groupMessageKind(message) {
   if (message.attachment?.type === 'group-voice') return 'voice';
   if (message.attachment?.type === 'group-file') return 'file';
   if (message.gif) return 'gif';
+  if (message.attachmentState) return 'attachment';
   return 'text';
 }
 
@@ -506,6 +508,7 @@ function groupMessagePreview(message) {
     case 'image': return 'Photo';
     case 'voice': return 'Voice note';
     case 'gif': return 'GIF';
+    case 'attachment': return 'Attachment';
     case 'file': return message.attachment?.name || 'File';
     default: return String(message.text || '').slice(0, 160);
   }
@@ -555,29 +558,17 @@ function groupReactionChipsHtml(reactionMap, myId) {
     `<span class="msg-reaction-badge${emoji === mine ? ' mine' : ''}">${emoji}${count > 1 ? `<small>${count}</small>` : ''}</span>`).join('')}</div>`;
 }
 
-function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {}) {
-  const body = document.getElementById('group-chat-body'); if (!body) return;
-  const state = loadAccountState();
-  if (!hasPrivateGroupKeys(group)) {
-    body.innerHTML = '<div class="group-chat-empty">This device does not have the encryption key for this group.<br>Your messages are safe and unchanged for the other members. Reopen Vaultlix to try restoring the key from your encrypted backup.</div>';
-    return;
-  }
-  if (!group.historyHydrated) {
-    body.innerHTML = '<div class="group-chat-empty">Loading encrypted messages…</div>';
-    return;
-  }
-  const { visible, reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
-  if (!visible.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
-  let previousDay = '';
-  const earlier = privateGroupCanLoadEarlier(group)
-    ? '<div class="load-earlier"><button type="button" class="load-earlier-btn" onclick="loadEarlierPrivateGroupMessages()">Load earlier messages</button></div>' : '';
-  body.innerHTML = earlier + visible.map(message => {
+function privateGroupRowHtml(group, message, reactions, state) {
     let content;
     const kind = groupMessageKind(message);
     // Same long-press action row as a direct conversation. Hidden, blocked or
     // unreadable content only offers Select and Delete.
     let usable = true;
-    if (message.attachment?.type === 'group-image') {
+    if (message.attachmentState === 'loading') {
+      content = ATTACHMENT_LOADING_HTML; usable = false;
+    } else if (message.attachmentState === 'unavailable') {
+      content = attachmentUnavailableHtml({ unavailableReason:message.unavailableReason }); usable = false;
+    } else if (message.attachment?.type === 'group-image') {
       // Same photo markup and in-app viewer as direct conversations: tapping
       // opens viewImage(), and saving is an explicit action inside it.
       const safeSrc = safeImageDataUri(message.attachment.mime, message.attachment.data);
@@ -627,17 +618,38 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
     // The bubble is one element; the action row and reaction strip sit under it
     // (not inside it), exactly where a direct conversation puts them.
+    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>${actions}</div>`;
+}
+
+function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {}) {
+  const body = document.getElementById('group-chat-body'); if (!body) return;
+  const state = loadAccountState();
+  if (!hasPrivateGroupKeys(group)) {
+    body.innerHTML = '<div class="group-chat-empty">This device does not have the encryption key for this group.<br>Your messages are safe and unchanged for the other members. Reopen Vaultlix to try restoring the key from your encrypted backup.</div>';
+    return;
+  }
+  if (!group.historyHydrated) {
+    body.innerHTML = '<div class="group-chat-empty">Loading encrypted messages…</div>';
+    return;
+  }
+  const { visible, reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
+  if (!visible.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
+  let previousDay = '';
+  const earlier = privateGroupCanLoadEarlier(group)
+    ? '<div class="load-earlier"><button type="button" class="load-earlier-btn" onclick="loadEarlierPrivateGroupMessages()">Load earlier messages</button></div>' : '';
+  body.innerHTML = earlier + visible.map(message => {
     const day = dayKey(message.createdAt);
     const separator = day !== previousDay ? daySeparatorHtml(message.createdAt) : '';
     previousDay = day;
-    return `${separator}<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message${mine ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>${actions}</div>`;
+    return separator + privateGroupRowHtml(group, message, reactions, state);
   }).join('');
-  for (const row of body.querySelectorAll('[data-group-msg-id]')) wirePrivateGroupMessage(row);
+  for (const row of body.querySelectorAll('[data-group-msg-id]')) { wirePrivateGroupMessage(row); wirePrivateGroupAttachmentRetry(row, group); }
   if (groupSelectMode) refreshPrivateGroupSelection();
   // Older messages added above the reader must not move what they are looking at.
   body.scrollTop = typeof keepDistanceFromBottom === 'number'
     ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
   fillPrivateGroupPdfPreviews(group.id);
+  schedulePrivateGroupAttachmentLoads(body, group);
 }
 
 // Long-press anywhere on a message opens its action row (a tap on text does
@@ -976,11 +988,18 @@ async function decodePrivateGroupEnvelope(group, message) {
   return { pending:{ message, attachmentId:metadata.attachmentId } };
 }
 
-async function decodePrivateGroupAttachment(group, state, message, attachmentId) {
-  const encryptedPayload = await downloadPrivateGroupAttachment(state, group, attachmentId, message.id);
-  const payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
-  if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 36 * 1024 * 1024) {
-    throw new Error('Invalid group attachment');
+async function decodePrivateGroupAttachment(group, state, message, attachmentId, options = {}) {
+  const encryptedPayload = await downloadPrivateGroupAttachment(state, group, attachmentId, message.id, options);
+  let payload;
+  try {
+    payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
+    if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 36 * 1024 * 1024) {
+      throw new Error('Invalid group attachment');
+    }
+  } catch (error) {
+    // Downloaded fine but unreadable: trying again would only fail the same way.
+    error.corrupt = true;
+    throw error;
   }
   if (payload.type === 'group-file') {
     payload.videoThumb = String(payload.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', payload.videoThumb)
@@ -1002,10 +1021,8 @@ async function decodePrivateGroupMessage(group, state, message) {
   return decoded || decodePrivateGroupAttachment(group, state, pending.message, pending.attachmentId);
 }
 
-const PRIVATE_GROUP_ATTACHMENT_CONCURRENCY = 3;
-
-// Text first, then only the attachments somebody still wants: one that was
-// deleted, for everyone or just here, is never downloaded (or saved) again.
+// Reads a batch of server messages. An attachment that was deleted, for
+// everyone or just here, is dropped and never fetched or saved again.
 async function decodePrivateGroupBatch(group, state, messages) {
   const decoded = [], pending = [];
   for (const message of messages) {
@@ -1021,18 +1038,143 @@ async function decodePrivateGroupBatch(group, state, messages) {
   const touched = new Set([...decoded.map(item => item.id), ...pending.map(item => item.message.id),
     ...decoded.filter(item => item.control?.type === 'delete').map(item => item.control.target)]);
   for (const id of deleted) if (touched.has(id)) historyStoreDelete(privateGroupCacheCode(group.id), id);
-  const wanted = pending.filter(item => !deleted.has(item.message.id));
-  let next = 0;
-  const worker = async () => {
-    while (next < wanted.length) {
-      const item = wanted[next++];
-      try { decoded.push(await decodePrivateGroupAttachment(group, state, item.message, item.attachmentId)); }
-      catch (_) { decoded.push({ ...item.message, text:'Encrypted message unavailable on this device.', unavailable:true }); }
-    }
-  };
-  await Promise.all(Array.from({ length:Math.min(PRIVATE_GROUP_ATTACHMENT_CONCURRENCY, wanted.length) }, worker));
+  // An attachment is only a placeholder until it scrolls into view; its download
+  // (or saved copy) is read then, by loadPrivateGroupAttachment.
+  for (const item of pending) {
+    if (!deleted.has(item.message.id)) decoded.push({ ...item.message, attachmentId:item.attachmentId, attachmentState:'loading' });
+  }
   return decoded;
 }
+
+// ---- attachments load as they scroll into view --------------------------------
+// Like a direct chat: a photo, video or file is a placeholder until it is near
+// the screen. Then it is read from this device if saved there, downloaded
+// otherwise, and swapped in place without moving the reader.
+const privateGroupLoadQueue = [];
+const privateGroupLoadKeys = new Set();
+let privateGroupLoadsRunning = 0;
+let privateGroupLoadObserver = null;
+
+function queuePrivateGroupAttachmentLoad(groupId, messageId) {
+  const key = `${groupId}:${messageId}`;
+  if (privateGroupLoadKeys.has(key)) return;
+  privateGroupLoadKeys.add(key);
+  privateGroupLoadQueue.push({ groupId, messageId, key });
+  pumpPrivateGroupAttachmentLoads();
+}
+
+function pumpPrivateGroupAttachmentLoads() {
+  while (privateGroupLoadsRunning < ATTACHMENT_LOAD_CONCURRENCY && privateGroupLoadQueue.length) {
+    const job = privateGroupLoadQueue.pop(); // newest first: what the reader is looking at
+    privateGroupLoadsRunning++;
+    loadPrivateGroupAttachment(job.groupId, job.messageId).catch(() => {}).finally(() => {
+      privateGroupLoadsRunning--;
+      privateGroupLoadKeys.delete(job.key);
+      pumpPrivateGroupAttachmentLoads();
+    });
+  }
+}
+
+async function loadPrivateGroupAttachment(groupId, messageId) {
+  const state = loadAccountState(); const group = privateGroups.get(groupId);
+  const current = group?.messages?.find(message => message.id === messageId);
+  if (!state || !current?.attachmentState || !current.attachmentId || current.attachmentLoading) return null;
+  current.attachmentLoading = true;
+  const { attachmentState, attachmentLoading, unavailableReason, autoRetries, ...clean } = current;
+  let next;
+  const showProgress = (received, total) => {
+    const node = document.querySelector(`#group-chat-body [data-group-msg-id="${CSS.escape(messageId)}"] .attachment-loading`);
+    if (node && total > 0) node.textContent = `Downloading… ${Math.min(99, Math.round(received / total * 100))}%`;
+  };
+  try {
+    next = await decodePrivateGroupAttachment(group, state, clean, current.attachmentId, { onProgress:showProgress });
+  } catch (error) {
+    next = { ...clean, attachmentState:'unavailable', unavailableReason:error?.corrupt ? 'failed' : attachmentFailureReason(error),
+      autoRetries:error?.corrupt ? ATTACHMENT_AUTO_RETRIES : (autoRetries || 0) };
+  } finally { current.attachmentLoading = false; }
+  const index = group.messages.indexOf(current);
+  if (index < 0) return null; // deleted or replaced meanwhile
+  group.messages[index] = next;
+  if (group.id === activePrivateGroupId) replacePrivateGroupRow(group, next);
+  return next;
+}
+
+// Swaps one drawn message for its new content without touching the rest of the
+// chat or moving the reader's place.
+function replacePrivateGroupRow(group, message) {
+  const body = document.getElementById('group-chat-body');
+  const old = body?.querySelector(`[data-group-msg-id="${CSS.escape(message.id)}"]`);
+  if (!old) return;
+  const state = loadAccountState();
+  const { reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
+  const holder = document.createElement('div');
+  holder.innerHTML = privateGroupRowHtml(group, message, reactions, state);
+  const row = holder.firstElementChild;
+  if (!row) return;
+  const previousTop = body.scrollTop;
+  const wasAtBottom = body.scrollHeight - previousTop - body.clientHeight <= 96;
+  const oldRect = old.getBoundingClientRect();
+  const oldAbove = oldRect.bottom <= body.getBoundingClientRect().top;
+  old.replaceWith(row);
+  wirePrivateGroupMessage(row);
+  wirePrivateGroupAttachmentRetry(row, group);
+  if (groupSelectMode) refreshPrivateGroupSelection();
+  fillPrivateGroupPdfPreviews(group.id);
+  if (wasAtBottom) body.scrollTop = body.scrollHeight;
+  else if (oldAbove) body.scrollTop = previousTop + (row.getBoundingClientRect().height - oldRect.height);
+}
+
+function wirePrivateGroupAttachmentRetry(row, group) {
+  const retry = row.querySelector('.attachment-retry');
+  if (!retry) return;
+  const id = row.dataset.groupMsgId;
+  const run = event => {
+    if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault(); event.stopPropagation();
+    if (groupSelectMode) return;
+    const message = group.messages.find(item => item.id === id);
+    if (!message || message.attachmentState !== 'unavailable') return;
+    message.attachmentState = 'loading'; message.autoRetries = 0;
+    replacePrivateGroupRow(group, message);
+    queuePrivateGroupAttachmentLoad(group.id, id);
+  };
+  retry.addEventListener('click', run);
+  retry.addEventListener('keydown', run);
+}
+
+function schedulePrivateGroupAttachmentLoads(body, group) {
+  if (privateGroupLoadObserver) privateGroupLoadObserver.disconnect();
+  const placeholders = [...body.querySelectorAll('.group-msg .attachment-loading')];
+  if (!placeholders.length) return;
+  const request = node => {
+    const id = node.closest('.group-msg')?.dataset.groupMsgId;
+    if (id) queuePrivateGroupAttachmentLoad(group.id, id);
+  };
+  if (!('IntersectionObserver' in window)) { placeholders.slice(-6).forEach(request); return; }
+  privateGroupLoadObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      privateGroupLoadObserver.unobserve(entry.target);
+      request(entry.target);
+    }
+  }, { root:body, rootMargin:'400px 0px' });
+  placeholders.forEach(node => privateGroupLoadObserver.observe(node));
+}
+
+// The connection is back or the app is open again: try transient failures once more.
+function retryTransientPrivateGroupAttachments(group) {
+  if (!group) return;
+  for (const message of group.messages || []) {
+    if (message.attachmentState !== 'unavailable' || !ATTACHMENT_TRANSIENT_REASONS.has(message.unavailableReason)) continue;
+    if ((message.autoRetries || 0) >= ATTACHMENT_AUTO_RETRIES) continue;
+    message.autoRetries = (message.autoRetries || 0) + 1;
+    message.attachmentState = 'loading';
+    if (group.id === activePrivateGroupId) replacePrivateGroupRow(group, message);
+    queuePrivateGroupAttachmentLoad(group.id, message.id);
+  }
+}
+window.addEventListener('online', () => retryTransientPrivateGroupAttachments(privateGroups.get(activePrivateGroupId)));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) retryTransientPrivateGroupAttachments(privateGroups.get(activePrivateGroupId)); });
 
 // ---- message history on this device -----------------------------------------
 // The server sends the newest 200 messages and keeps 1000. The messages it

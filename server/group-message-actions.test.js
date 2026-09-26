@@ -155,7 +155,7 @@ test('a voice note can be saved but never forwarded', () => {
 });
 
 test('the action row and reaction strip sit under the bubble, not inside it', () => {
-  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}">[\s\S]*<div class="group-message-time"[^>]*>[^`]*<\/div><\/div>\$\{actions\}<\/div>`;/);
+  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}[^"]*">[\s\S]*<div class="group-message-time"[^>]*>[^`]*<\/div><\/div>\$\{actions\}<\/div>`;/);
   assert.match(client, /\.group-msg \.msg-actions\{width:max-content/);
 });
 
@@ -164,4 +164,12 @@ test('member Remove and Report/Block are compact icon buttons with labels', () =
   assert.match(groups, /class="icon-btn report" onclick="reportPrivateGroupMember\([^"]*\)" aria-label="Report or block" title="Report or block"/);
   assert.doesNotMatch(groups, />Remove<\/button>/);
   assert.doesNotMatch(groups, />Report \/ block<\/button>/);
+});
+
+test('your own attachments sit in a white bubble with burgundy text', () => {
+  assert.match(groups, /\$\{message\.attachment \|\| message\.gif \|\| message\.attachmentState \? ' has-attachment' : ''\}/);
+  assert.match(client, /\.group-message\.mine\.has-attachment\{background:#fff;color:#682c43\}/);
+  assert.match(client, /\.group-message\.mine\.has-attachment \.group-message-time\{color:#682c43/);
+  // Text-only messages of your own keep the burgundy bubble.
+  assert.match(client, /\.group-message\.mine\{align-self:flex-end;background:#682c43;color:#fff\}/);
 });

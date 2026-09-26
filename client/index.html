@@ -834,6 +834,14 @@ body.select-mode .chat-ftr{display:none}
 /* Direct-conversation file cards use fixed dark text; keep them readable inside a dark "mine" group bubble. */
 .group-message.mine .msg-file { background:#ffffff24; border-color:transparent; color:#fff; }
 .group-message.mine .msg-file svg { stroke:#fff; }
+/* Your own attachments sit in a white bubble with burgundy text, like everyone else's. */
+.group-message.mine.has-attachment{background:#fff;color:#682c43}
+.group-message.mine.has-attachment .group-message-name{color:#682c43}
+.group-message.mine.has-attachment .group-message-time{color:#682c43;opacity:.7}
+.group-message.mine.has-attachment .group-reply-quote{background:#682c4312;color:#682c43;border-left-color:#682c43}
+.group-message.mine.has-attachment .group-reply-quote strong{color:#682c43}
+.group-message.mine.has-attachment .msg-file,.group-message.mine.has-attachment .group-file-card{background:#f6eef1;border-color:#e6d3db;color:#682c43}
+.group-message.mine.has-attachment .msg-file svg{stroke:#682c43}
 .group-message .msg-video-card{width:min(240px,64vw)}
 /* Compact PDF card inside group bubbles: narrower and shorter than the direct-chat card, still cropped from the top of page 1. */
 .group-message .msg-pdf-card { width:min(220px,62vw); }
