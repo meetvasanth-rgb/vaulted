@@ -71,7 +71,8 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
-  assert.match(sw, /vaultlix-app-shell-v67/);
+  // Shipped in v67; any newer shell cache still includes it.
+  assert.match(sw, /vaultlix-app-shell-v(6[7-9]|[7-9]\d|\d{3,})'/);
 });
 
 test('iOS-on-Mac videos use native AVPlayer and web playback cannot spin forever', () => {

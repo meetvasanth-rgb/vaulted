@@ -18350,16 +18350,95 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── iOS KEYBOARD FIX ─────────────────────────────────────────────────────
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => {
-    const chat = document.getElementById('s-chat');
-    if (chat && chat.classList.contains('active')) {
-      chat.style.height = window.visualViewport.height + 'px';
-      const body = document.getElementById('chat-body');
-      if (body) body.scrollTop = body.scrollHeight;
+// Keeps the composer directly above the keyboard and the newest message in view.
+// On iPhone the keyboard shrinks the *visual* viewport and WebKit pans the page
+// to reveal the field, and the keyboard changes height again as soon as the
+// suggestion strip appears on the first keystroke. Reacting once, instantly,
+// left the list scrolled to a stale spot and made the screen jump. Instead:
+//  - the chat shell is sized to the visual viewport and its top follows it;
+//  - the list follows the newest message after each change settles (also after
+//    the keyboard animation ends), but only if the reader was at the bottom or
+//    has just focused the composer, so scrolling up to read is never yanked.
+// `env` is injected so the rules can be tested without a browser.
+function createChatKeyboardLayout(env) {
+  const { vv, win, doc, schedule, cancel } = env;
+  const NEAR_BOTTOM_PX = 96;
+  const SETTLE_DELAYS_MS = [0, 120, 320, 650];
+  let pinned = true;
+  let lastList = null;
+  let timers = [];
+
+  function activeChat() {
+    const chat = doc.getElementById('s-chat');
+    if (chat && chat.classList.contains('active')) return { shell:chat, list:doc.getElementById('chat-body'), fixed:false };
+    const group = doc.getElementById('group-chat');
+    if (group && group.classList.contains('open')) return { shell:group, list:doc.getElementById('group-chat-body'), fixed:true };
+    return null;
+  }
+
+  function layout() {
+    const chat = activeChat();
+    if (!chat || !vv) return null;
+    if (chat.list !== lastList) { lastList = chat.list; pinned = true; } // a different conversation starts at its newest message
+    const keyboardUp = vv.height < win.innerHeight - 1; // false when the web view itself was resized natively
+    const { shell } = chat;
+    if (keyboardUp) {
+      // .screen has min-height:100dvh, which would keep the shell full height.
+      shell.style.height = `${Math.round(vv.height)}px`;
+      shell.style.minHeight = shell.style.height;
+      const top = typeof vv.pageTop === 'number' ? vv.pageTop : (vv.offsetTop || 0) + (win.scrollY || 0);
+      if (chat.fixed) { shell.style.top = `${Math.round(vv.offsetTop || 0)}px`; shell.style.bottom = 'auto'; }
+      else shell.style.transform = top > 0 ? `translateY(${Math.round(top)}px)` : '';
+    } else {
+      shell.style.height = '';
+      shell.style.minHeight = '';
+      shell.style.transform = '';
+      if (chat.fixed) { shell.style.top = ''; shell.style.bottom = ''; }
     }
-  });
+    return chat;
+  }
+
+  function pin() {
+    const chat = layout();
+    if (chat && pinned && chat.list) chat.list.scrollTop = chat.list.scrollHeight;
+  }
+
+  function settle() {
+    timers.forEach(cancel);
+    timers = SETTLE_DELAYS_MS.map(ms => schedule(pin, ms));
+  }
+
+  function onListScroll(event) {
+    const chat = activeChat();
+    if (!chat || event.target !== chat.list) return;
+    lastList = chat.list; // a scroll here is the reader's own, so this list is already known
+    pinned = chat.list.scrollHeight - chat.list.scrollTop - chat.list.clientHeight <= NEAR_BOTTOM_PX;
+  }
+
+  function onFocusIn(event) {
+    const target = event.target;
+    if (!target || (target.id !== 'msg-input' && target.id !== 'group-message-input')) return;
+    pinned = true; // starting to type always shows the latest message
+    settle();
+  }
+
+  function start() {
+    if (!vv) return;
+    vv.addEventListener('resize', settle);
+    vv.addEventListener('scroll', layout);
+    win.addEventListener('resize', settle);
+    doc.addEventListener('scroll', onListScroll, { capture:true, passive:true });
+    doc.addEventListener('focusin', onFocusIn);
+    doc.addEventListener('focusout', settle);
+  }
+
+  return { start, settle, pin, layout, onListScroll, onFocusIn, isPinned: () => pinned };
 }
+
+createChatKeyboardLayout({
+  vv: window.visualViewport, win: window, doc: document,
+  schedule: (fn, ms) => setTimeout(() => requestAnimationFrame(fn), ms), cancel: clearTimeout,
+}).start();
 
 // ── LANDING ANIMATION ────────────────────────────────────────────────────
 // Keep the landing promise concise and stable. The supporting copy and

@@ -29,7 +29,8 @@ test('QR decoder ships in the offline app shell', () => {
   assert.ok(fs.statSync(path.join(root, 'client', 'vendor', 'jsQR.js')).size > 200_000);
   assert.ok(fs.statSync(path.join(root, 'client', 'vendor', 'jsQR.LICENSE.txt')).size > 1_000);
   assert.match(html, /<script src="\/vendor\/jsQR\.js"><\/script>/);
-  assert.match(sw, /vaultlix-app-shell-v63/);
+  // Shipped in v63; any newer shell cache still includes it.
+  assert.match(sw, /vaultlix-app-shell-v(6[3-9]|[7-9]\d|\d{3,})'/);
   assert.match(sw, /'\/vendor\/jsQR\.js'/);
 });
 
