@@ -70,6 +70,8 @@ dependencies {
     implementation 'com.google.ai.edge.litert:litert:1.4.2'
     implementation 'androidx.media3:media3-transformer:1.11.1'
     implementation 'androidx.media3:media3-effect:1.11.1'
+    // Carries a friend's invitation through the Play Store install (see InstallInvite).
+    implementation 'com.android.installreferrer:installreferrer:2.2'
 }
 
 apply from: 'capacitor.build.gradle'

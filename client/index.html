@@ -2860,6 +2860,9 @@ html{background:#fff}
 .viewer-reply{flex:1;height:44px;padding:0 18px;border:0;border-radius:22px;background:rgba(255,255,255,.18);color:rgba(255,255,255,.88);font:500 15px Inter,sans-serif;text-align:left;-webkit-tap-highlight-color:transparent}
 .viewer-react{width:44px;height:44px;flex:none;padding:0;border:0;border-radius:50%;background:none;font-size:26px;line-height:1;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
 .viewer-react.mine{background:rgba(255,255,255,.22)}
+/* Invitations: the "Have an invite code?" link and the store button on a friend's page. */
+.landing-invite-link{display:block;margin:12px 0 0;padding:6px 2px;border:0;background:none;color:#682C43;font:650 13px/1.3 'Manrope',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.public-profile-get-app .account-copy{margin-top:-4px;font-size:12.5px}
 </style>
 <script type="application/ld+json">
 {
@@ -2965,6 +2968,7 @@ html{background:#fff}
         <button class="landing-hero-action" type="button" onclick="openCreateAccount()">Create my number <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
         <button class="landing-hero-action landing-hero-action-secondary" type="button" onclick="openLoginOrInbox()">Sign in</button>
       </div>
+      <button class="landing-invite-link" type="button" onclick="openInviteCodePrompt()">Have an invite code?</button>
       <div class="landing-store-badges" aria-label="Download Vaultlix">
         <a class="official-store-badge apple" href="https://apps.apple.com/in/app/vaultlix/id6798266989" aria-label="Download Vaultlix on the App Store"><img src="/media/download-on-the-app-store.svg" alt="Download on the App Store"/></a>
         <a class="official-store-badge google" href="https://play.google.com/store/apps/details?id=com.vaultlix.app" aria-label="Get Vaultlix on Google Play"><img src="/media/get-it-on-google-play.png" alt="Get it on Google Play"/></a>
@@ -3214,6 +3218,7 @@ html{background:#fff}
     <div class="native-onboarding-actions" id="native-onboarding-actions">
       <button class="native-onboarding-primary" id="native-onboarding-primary" type="button" onclick="advanceNativeOnboarding()">Continue</button>
       <button class="native-onboarding-secondary" id="native-onboarding-secondary" type="button" onclick="nativeOnboardingSecondary()" style="display:none">Sign in</button>
+      <button class="native-onboarding-secondary" id="native-onboarding-invite" type="button" onclick="openInviteCodePrompt()" style="display:none">Have an invite code?</button>
       <div class="native-onboarding-note" id="native-onboarding-note">You can change notification access later in Settings.</div>
     </div>
   </main>
@@ -4340,9 +4345,25 @@ html{background:#fff}
     <div class="account-copy" id="public-profile-invitation-copy" hidden></div>
     <div class="account-copy" id="public-profile-private-number">—</div>
     <a class="account-secondary" id="public-profile-open-app" href="#" hidden style="display:block;text-align:center;text-decoration:none">Open in Vaultlix app</a>
+    <div class="public-profile-get-app" id="public-profile-get-app" hidden>
+      <a class="account-secondary" id="public-profile-get-app-link" href="#" style="display:block;text-align:center;text-decoration:none">Get the Vaultlix app</a>
+      <div class="account-copy" id="public-profile-get-app-copy"></div>
+    </div>
     <button class="account-primary" id="public-profile-request" onclick="requestPrivateVault()">Connect privately</button>
     <button class="account-secondary" id="public-profile-sign-in" type="button" onclick="requestPrivateVault('login')" hidden>Already have a Vaultlix number? Sign in</button>
     <button class="account-secondary" onclick="closePublicProfile()">Not now</button>
+  </div>
+</div>
+
+<div class="account-overlay" id="invite-code-overlay" onclick="if(event.target===this)closeInviteCodePrompt()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="invite-code-title">
+    <div class="account-head"><div><div class="account-kicker">Invitation</div><div class="account-title" id="invite-code-title">Enter your invite code</div></div><button class="account-close" type="button" onclick="closeInviteCodePrompt()" aria-label="Close">×</button></div>
+    <div class="account-copy">Enter the six-character code from the Vaultlix card or link you were sent. It looks like ABC234.</div>
+    <form class="account-form active" onsubmit="submitInviteCode(event)">
+      <label class="account-field"><span>Invite code</span><input id="invite-code-input" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="60" placeholder="ABC234" required/></label>
+      <div class="account-error" id="invite-code-error" role="alert" aria-live="assertive" hidden></div>
+      <button class="account-primary" id="invite-code-submit" type="submit">Continue</button>
+    </form>
   </div>
 </div>
 
@@ -4356,6 +4377,7 @@ html{background:#fff}
       <button class="account-primary" id="new-connection-submit" type="submit" data-i18n="find_person">Find person</button>
       <button class="account-secondary private-number-scan" type="button" onclick="openPrivateNumberScanner()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><path d="M8 8h3v3H8zM14 8h2v2h-2zM8 14h2v2H8zM13 13h3v3h-3z"/></svg><span>Scan QR with camera</span></button>
       <button class="account-secondary" type="button" onclick="pasteQuickConnectLink()">Paste Vaultlix link or number</button>
+      <button class="account-secondary" type="button" onclick="closeNewConnection();openInviteCodePrompt()">Have an invite code?</button>
     </form>
   </div>
 </div>
@@ -11116,6 +11138,8 @@ function renderNativeOnboarding(page) {
   const secondary = document.getElementById('native-onboarding-secondary');
   const note = document.getElementById('native-onboarding-note');
   primary.textContent = page === 'welcome' ? 'Get started' : page === 'identity' ? 'Create my Private Number' : page === 'notifications' ? 'Enable notifications' : 'Open Android Settings';
+  const inviteButton = document.getElementById('native-onboarding-invite');
+  if (inviteButton) inviteButton.style.display = page === 'welcome' || page === 'identity' ? '' : 'none';
   secondary.style.display = '';
   secondary.textContent = page === 'notifications' ? 'Not now' : page === 'fullscreen-calls' ? 'Continue without full-screen calls' : 'Sign in';
   note.style.display = page === 'notifications' || page === 'fullscreen-calls' ? '' : 'none';
@@ -18117,6 +18141,108 @@ function setNewConnectionError(message) {
   error.hidden = !message;
 }
 let publicProfileLookup = null;
+// ── INVITATIONS THAT SURVIVE THE INSTALL ─────────────────────────────────
+// Someone without the app who opens a friend's link is offered the store.
+// On Android the Play link carries the friend's public profile code
+// (referrer=vaultlix_invite=CODE), which the app reads on first launch. iPhone
+// gives an app nothing through an ordinary install, so the code is shown to be
+// typed into "Have an invite code?" afterwards. Either way the new person sees
+// who invited them and chooses whether to connect; nothing is sent for them.
+function inviteStoreTarget(code, ua = navigator.userAgent || '', platform = navigator.platform, touchPoints = navigator.maxTouchPoints) {
+  if (!code) return null;
+  if (/android/i.test(ua)) {
+    return { platform:'android', href:`${VAULTLIX_GOOGLE_PLAY_LINK}&referrer=${encodeURIComponent(`vaultlix_invite=${code}`)}` };
+  }
+  if (/iphone|ipad|ipod/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1)) {
+    return { platform:'ios', href:VAULTLIX_IOS_APP_STORE_LINK };
+  }
+  return null;
+}
+
+function showInviteGetApp(profile) {
+  const box = document.getElementById('public-profile-get-app');
+  if (!box) return;
+  const code = normalizeProfileShareCode(profile?.profileShareCode);
+  const target = isNativeApp() ? null : inviteStoreTarget(code);
+  box.hidden = !target;
+  if (!target) return;
+  document.getElementById('public-profile-get-app-link').href = target.href;
+  document.getElementById('public-profile-get-app-copy').textContent = target.platform === 'android'
+    ? 'Installing from here brings this invitation straight into the app.'
+    : `After installing, tap “Have an invite code?” and enter ${code}.`;
+}
+
+// The six-character code out of what someone typed or pasted: the code itself,
+// "P-ABC234", or a whole vaultlix.com link.
+function inviteCodeFromText(value) {
+  const text = String(value || '').trim();
+  const link = text.match(/vaultlix\.com\/(?:p\/|p-)([A-Za-z0-9]{6})(?![A-Za-z0-9])/i);
+  let cleaned = (link ? link[1] : text.replace(/[\s-]/g, '')).toUpperCase();
+  if (!link && cleaned.length === 7 && cleaned[0] === 'P') cleaned = cleaned.slice(1);
+  return normalizeProfileShareCode(cleaned);
+}
+
+function setInviteCodeError(message) {
+  const el = document.getElementById('invite-code-error');
+  if (!el) return;
+  el.textContent = message || '';
+  el.hidden = !message;
+}
+
+function openInviteCodePrompt() {
+  setInviteCodeError('');
+  const input = document.getElementById('invite-code-input');
+  if (input) input.value = '';
+  document.getElementById('invite-code-overlay')?.classList.add('open');
+  setTimeout(() => input?.focus(), 120);
+}
+
+function closeInviteCodePrompt() {
+  document.getElementById('invite-code-overlay')?.classList.remove('open');
+}
+
+async function submitInviteCode(event) {
+  event?.preventDefault();
+  const code = inviteCodeFromText(document.getElementById('invite-code-input')?.value);
+  if (!code) { setInviteCodeError('That is not a Vaultlix invite code. Codes have six letters or digits, like ABC234.'); return; }
+  const submit = document.getElementById('invite-code-submit');
+  if (submit) submit.disabled = true;
+  setInviteCodeError('');
+  try {
+    const opened = await openPublicProfileShareCode(code, { onError:setInviteCodeError });
+    if (opened) closeInviteCodePrompt();
+  } finally { if (submit) submit.disabled = false; }
+}
+
+// Android hands the app the invitation that came through the Play install. It is
+// asked for after startup (Google Play can take a moment on first launch), shown
+// once, and dropped after a few failed lookups so a bad code cannot nag forever.
+const INSTALL_INVITE_ATTEMPTS_KEY = 'vaultlix_install_invite_attempts_v1';
+const INSTALL_INVITE_MAX_ATTEMPTS = 3;
+async function checkInstallInvite({ waitMs = 6000, pollMs = 400 } = {}) {
+  const bridge = window.VaultlixAndroid;
+  if (!isNativeApp() || typeof bridge?.pendingInstallInvite !== 'function') return false;
+  const deadline = Date.now() + waitMs;
+  let code = '';
+  for (;;) {
+    try { code = normalizeProfileShareCode(bridge.pendingInstallInvite()); } catch (error) { return false; }
+    if (code) break;
+    let checked = true;
+    try { checked = !!bridge.installInviteChecked?.(); } catch (error) {}
+    if (checked || Date.now() >= deadline) return false;
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+  }
+  let attempts = 0;
+  try { attempts = Number(localStorage.getItem(INSTALL_INVITE_ATTEMPTS_KEY)) || 0; } catch (error) {}
+  if (attempts >= INSTALL_INVITE_MAX_ATTEMPTS) { try { bridge.clearInstallInvite?.(); } catch (error) {} return false; }
+  try { localStorage.setItem(INSTALL_INVITE_ATTEMPTS_KEY, String(attempts + 1)); } catch (error) {}
+  const opened = await openPublicProfileShareCode(code);
+  if (opened) {
+    try { bridge.clearInstallInvite?.(); localStorage.removeItem(INSTALL_INVITE_ATTEMPTS_KEY); } catch (error) {}
+  }
+  return opened;
+}
+
 async function openPublicProfile(privateNumber, options = {}) {
   const normalized = normalizePrivateNumber(privateNumber);
   if (!normalized) {
@@ -18150,7 +18276,8 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
     const result = await response.json();
     if (!response.ok || !result.profile) {
       const message = result.error || i18n('private_number_not_found');
-      if (options.keepConnectionSheet) setNewConnectionError(message); else toast(message);
+      if (options.onError) options.onError(message);
+      else if (options.keepConnectionSheet) setNewConnectionError(message); else toast(message);
       history.replaceState(null, '', '/');
       return false;
     }
@@ -18180,6 +18307,7 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
       openApp.hidden = isNativeApp();
       openApp.style.display = isNativeApp() ? 'none' : 'block';
     }
+    showInviteGetApp(result.profile);
     const button = document.getElementById('public-profile-request');
     const isOwnProfile = signedIn && normalizePrivateNumber(signedIn.privateNumber) === normalizePrivateNumber(result.profile.privateNumber);
     button.textContent = isOwnProfile
@@ -18193,7 +18321,8 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
     return true;
   } catch (e) {
     const message = 'Could not open this Vaultlix identity. Check your connection and try again.';
-    if (options.keepConnectionSheet) setNewConnectionError(message); else toast(message);
+    if (options.onError) options.onError(message);
+    else if (options.keepConnectionSheet) setNewConnectionError(message); else toast(message);
     return false;
   }
 }
@@ -20137,6 +20266,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (restoredConversationCode && rooms.has(restoredConversationCode)) {
     openConversationAfterPaint(restoredConversationCode);
     toast('Existing private conversation restored securely');
+  }
+  // An invitation that came through the Play Store install (Android app only).
+  if (!publicProfileShareCode && !publicPrivateNumber && !startupRecovery && !startupConnectionRequestId && !pendingNumberGift
+      && !loadQuickConnectTarget()) {
+    checkInstallInvite().catch(() => {});
   }
   scheduleRecoveryReminder();
 });

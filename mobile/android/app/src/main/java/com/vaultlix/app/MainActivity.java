@@ -113,6 +113,8 @@ public class MainActivity extends BridgeActivity {
         nativeCallEngine = NativeWebRtcCallEngine.get(this);
         nativeCallEngine.addListener(nativeCallListener);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
+        // A friend's invitation that came through the Play Store install.
+        InstallInvite.checkOnce(getApplicationContext());
         scheduleDecryptedMediaCacheCleanup();
         openVaultlixInvite(getIntent());
     }
@@ -552,6 +554,17 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class AndroidCallBridge {
+        // The six-character invite code carried through the Play Store install, or "".
+        @JavascriptInterface
+        public String pendingInstallInvite() { return InstallInvite.pendingCode(MainActivity.this); }
+
+        // Whether Google Play has answered yet (the answer can take a moment on first launch).
+        @JavascriptInterface
+        public boolean installInviteChecked() { return InstallInvite.checked(MainActivity.this); }
+
+        @JavascriptInterface
+        public void clearInstallInvite() { InstallInvite.clear(MainActivity.this); }
+
         @JavascriptInterface
         public void screenImage(String requestId, String base64) {
             if (requestId == null || requestId.length() > 80) return;
