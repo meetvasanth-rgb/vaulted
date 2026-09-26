@@ -2760,6 +2760,18 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   html.vaultlix-native-ios .vault-list-empty strong{font-size:21px}
 }
 </style>
+<style>
+/* The message box is not ringed when it is tapped: the page-wide focus outline
+   (button/input/textarea :focus-visible) and the chat's own focus border and glow
+   are turned off for both composers, on every platform. */
+#msg-input:focus,#msg-input:focus-visible,#s-chat #msg-input:focus,#s-chat #msg-input:focus-visible,
+#group-message-input:focus,#group-message-input:focus-visible,.group-chat-footer textarea:focus,.group-chat-footer textarea:focus-visible{
+  outline:none!important;box-shadow:none!important;-webkit-tap-highlight-color:transparent}
+#s-chat #msg-input:focus,#s-chat #msg-input:focus-visible{background:#FBF8F9!important;border-color:#E3D6DB!important}
+.group-chat-footer textarea:focus,.group-chat-footer textarea:focus-visible{border-color:#dfd2d7!important;background:#fff}
+/* While the keyboard slides, the chat shrinks with it (see createChatKeyboardLayout). */
+.group-chat.kb-animating,#s-chat.kb-animating{transition:height .28s cubic-bezier(.2,.8,.2,1),min-height .28s cubic-bezier(.2,.8,.2,1)}
+</style>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -19223,9 +19235,14 @@ function createChatKeyboardLayout(env) {
   const { vv, win, doc, schedule, cancel } = env;
   const NEAR_BOTTOM_PX = 96;
   const SETTLE_DELAYS_MS = [0, 120, 320, 650];
+  const ANIMATION_MS = 280;
   let pinned = true;
   let lastList = null;
   let timers = [];
+  let animationTimer = null;
+  let holdTimer = null;
+  let holdShow = false; // the keyboard was announced but the web view has not reported it yet
+  let holdHide = false; // the keyboard is sliding away and the chat is growing back
 
   function activeChat() {
     const chat = doc.getElementById('s-chat');
@@ -19241,6 +19258,11 @@ function createChatKeyboardLayout(env) {
     if (chat.list !== lastList) { lastList = chat.list; pinned = true; } // a different conversation starts at its newest message
     const keyboardUp = vv.height < win.innerHeight - 1; // false when the web view itself was resized natively
     const { shell } = chat;
+    if (keyboardUp && env.remember) env.remember(win.innerHeight - vv.height);
+    // While the announced size is still animating, a report that has not caught up
+    // must not undo it. Once the web view reports the keyboard, its numbers rule.
+    if (holdHide || (holdShow && !keyboardUp)) return chat;
+    if (keyboardUp) holdShow = false;
     if (keyboardUp) {
       // .screen has min-height:100dvh, which would keep the shell full height.
       shell.style.height = `${Math.round(vv.height)}px`;
@@ -19255,6 +19277,47 @@ function createChatKeyboardLayout(env) {
       if (chat.fixed) { shell.style.top = ''; shell.style.bottom = ''; }
     }
     return chat;
+  }
+
+  // The web view only reports the keyboard once it has finished sliding up, so
+  // laying out on that report leaves the composer hidden behind the keyboard and
+  // then snaps it into place. The keyboard's height is known when it starts
+  // (native event, or what it measured last time), so the chat shrinks with it.
+  function resizeShell(chat, height) {
+    const { shell } = chat;
+    if (!shell.classList.contains('kb-animating')) {
+      // A height that has never been set cannot animate: pin the current one first.
+      if (!shell.style.height) { shell.style.height = `${Math.round(win.innerHeight)}px`; shell.style.minHeight = shell.style.height; void shell.offsetHeight; }
+      shell.classList.add('kb-animating');
+    }
+    if (animationTimer) cancel(animationTimer);
+    animationTimer = schedule(() => shell.classList.remove('kb-animating'), ANIMATION_MS + 120);
+    shell.style.height = `${Math.round(height)}px`;
+    shell.style.minHeight = shell.style.height;
+  }
+
+  function keyboardWillShow(keyboardHeight) {
+    const chat = activeChat();
+    const height = Number(keyboardHeight);
+    if (!chat || !(height > 100) || height > win.innerHeight * 0.7) return;
+    if (chat.list !== lastList) { lastList = chat.list; pinned = true; }
+    if (chat.fixed) chat.shell.style.top = '0px';
+    holdHide = false; holdShow = true;
+    if (holdTimer) cancel(holdTimer);
+    holdTimer = schedule(() => { holdShow = false; layout(); }, 900); // native resize mode never reports a keyboard
+    resizeShell(chat, win.innerHeight - height);
+    settle();
+  }
+
+  function keyboardWillHide() {
+    const chat = activeChat();
+    if (!chat || !chat.shell.style.height) return;
+    resizeShell(chat, win.innerHeight);
+    chat.shell.style.transform = '';
+    if (chat.fixed) chat.shell.style.top = '0px';
+    holdShow = false; holdHide = true;
+    if (holdTimer) cancel(holdTimer);
+    holdTimer = schedule(() => { holdHide = false; layout(); }, ANIMATION_MS + 60); // then hand back to the normal layout
   }
 
   function pin() {
@@ -19278,6 +19341,8 @@ function createChatKeyboardLayout(env) {
     const target = event.target;
     if (!target || (target.id !== 'msg-input' && target.id !== 'group-message-input')) return;
     pinned = true; // starting to type always shows the latest message
+    // Without a native keyboard event (a browser), use the height it had last time.
+    if (env.preShrinkOnFocus) { const known = env.recall ? env.recall() : 0; if (known) keyboardWillShow(known); }
     settle();
   }
 
@@ -19291,13 +19356,39 @@ function createChatKeyboardLayout(env) {
     doc.addEventListener('focusout', settle);
   }
 
-  return { start, settle, pin, layout, onListScroll, onFocusIn, isPinned: () => pinned };
+  return { start, settle, pin, layout, onListScroll, onFocusIn, keyboardWillShow, keyboardWillHide, isPinned: () => pinned };
 }
 
-createChatKeyboardLayout({
+const KEYBOARD_HEIGHT_KEY = 'vaultlix_keyboard_height';
+let rememberedKeyboardHeight = 0;
+const chatKeyboardLayout = createChatKeyboardLayout({
   vv: window.visualViewport, win: window, doc: document,
   schedule: (fn, ms) => setTimeout(() => requestAnimationFrame(fn), ms), cancel: clearTimeout,
-}).start();
+  // The keyboard's own height, remembered so the next opening can start in step.
+  remember: height => {
+    const value = Math.round(height);
+    if (value < 150 || value > 500 || value === rememberedKeyboardHeight) return;
+    rememberedKeyboardHeight = value;
+    try { localStorage.setItem(KEYBOARD_HEIGHT_KEY, String(value)); } catch (error) {}
+  },
+  recall: () => { try { return Number(localStorage.getItem(KEYBOARD_HEIGHT_KEY)) || 0; } catch (error) { return 0; } },
+  // Only iPhone/iPad browsers report the keyboard late; the iOS app gets a native event instead.
+  preShrinkOnFocus: /iP(hone|ad|od)/.test(navigator.userAgent) && !window.Capacitor?.Plugins?.Keyboard,
+});
+chatKeyboardLayout.start();
+// In the iOS app the Keyboard plugin announces the keyboard, and its exact height,
+// as it starts to slide up, before the web view reports anything.
+(function listenForNativeKeyboard() {
+  const willShow = info => chatKeyboardLayout.keyboardWillShow(info?.keyboardHeight);
+  const willHide = () => chatKeyboardLayout.keyboardWillHide();
+  window.addEventListener('keyboardWillShow', willShow);
+  window.addEventListener('keyboardWillHide', willHide);
+  try {
+    const plugin = window.Capacitor?.Plugins?.Keyboard;
+    plugin?.addListener?.('keyboardWillShow', willShow);
+    plugin?.addListener?.('keyboardWillHide', willHide);
+  } catch (error) {}
+})();
 
 // ── LANDING ANIMATION ────────────────────────────────────────────────────
 // Keep the landing promise concise and stable. The supporting copy and
