@@ -26,8 +26,8 @@ test('installed apps keep native download and share actions separate', () => {
 });
 
 test('ordinary image and file messages can be forwarded into another encrypted conversation', () => {
-  assert.match(client, /canForward = kind === 'file' \|\| kind === 'album'/);
-  assert.match(client, /showForwardAttachmentPicker\(rec\)/);
+  assert.match(client, /\['file', 'album', 'text'\]\.includes\(rec\.kind\) && !rec\.viewOnce/);
+  assert.match(client, /showForwardAttachmentPicker\(rec\.kind === 'text'/);
   assert.match(client, /async function forwardAttachmentToRoom\(target, rec\)/);
   assert.match(client, /await sendAlbumMessage\(target, items, false\)/);
   assert.match(client, /await sendFileMessage\(target, file, rec\.base64/);

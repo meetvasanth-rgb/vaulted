@@ -7,21 +7,22 @@ const { join } = require('node:path');
 
 const client = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('text-message long press opens actions without the release click closing them', () => {
+test('text-message long press selects the message without the release click undoing it', () => {
   assert.match(client, /const textBubble = div\.querySelector\('\.bubble'\)/);
   assert.match(client, /if \(textBubble\) attachLongPress\(textBubble, msgId\)/);
-  assert.match(client, /if \(wasJustLongPressed\(\)\) return;\s*handleTap\(\);/);
+  assert.match(client, /if \(wasJustLongPressed\(\)\) return;\s*if \(selectMode\) toggleMessageSelection\(msgId\);/);
+  assert.match(client, /else if \(selectMode\) toggleMessageSelection\(msgId\); else enterSelectMode\(msgId\);/);
 });
 
-test('reply action starts a reply before closing the message actions', () => {
-  assert.match(client, /actions\.querySelector\('\[data-action="reply"\]'\)\.onclick = \(e\) => \{\s*e\.stopPropagation\(\);\s*startReply\(rec, msgId, replyText\);\s*closeAllMsgActions\(\);/s);
+test('reply starts a reply after ending the selection', () => {
+  assert.match(client, /reply\(\) \{\s*const one = chosen\(\)\[0\]; if \(!one\) return;\s*exitSelectMode\(\);\s*startReply\(one\.entry\.rec, one\.id, one\.entry\.replyText\);/);
   assert.match(client, /document\.getElementById\('reply-preview'\)\.classList\.add\('show'\)/);
 });
 
-test('PDF cards support long-press reply and forward actions', () => {
+test('PDF cards support long-press selection, with reply and forward on the bar', () => {
   assert.match(client, /const media = div\.querySelector\('[^']*\.msg-pdf-card[^']*'\)/);
   assert.match(client, /\.msg-image,\.msg-file,\.msg-pdf-card,\.msg-viewonce\{-webkit-touch-callout:none/);
-  assert.match(client, /canForward = kind === 'file' \|\| kind === 'album'/);
-  assert.match(client, /startReply\(rec, msgId, replyText\)/);
-  assert.match(client, /showForwardAttachmentPicker\(rec\)/);
+  assert.match(client, /return !!rec && \['file', 'album', 'text'\]\.includes\(rec\.kind\) && !rec\.viewOnce;/);
+  assert.match(client, /startReply\(one\.entry\.rec, one\.id, one\.entry\.replyText\)/);
+  assert.match(client, /showForwardAttachmentPicker\(rec\.kind === 'text' \? \{ kind: 'text', text: one\.entry\.replyText \} : rec\)/);
 });

@@ -114,18 +114,29 @@ test('message kind and reply preview describe every message type', () => {
   assert.equal(preview({ text:'y'.repeat(300) }).length, 160);
 });
 
-test('every message gets the direct-chat action row; unreadable ones only Select and Delete', () => {
-  assert.match(groups, /msgActionBtn\('reply', 'Reply'\), msgActionBtn\('react', 'React'\)/);
-  assert.match(groups, /kind === 'text' \? msgActionBtn\('copy', 'Copy'\) : \(\['image', 'file', 'voice'\]\.includes\(kind\) \? msgActionBtn\('save', 'Save'\)/);
-  assert.match(groups, /\['text', 'image', 'file'\]\.includes\(kind\) \? msgActionBtn\('forward', 'Forward'\)/);
-  assert.match(groups, /: \[msgActionBtn\('select', 'Select'\), msgActionBtn\('delete', 'Delete'\)\]/);
-  assert.match(groups, /attachLongPress\(row\.querySelector\('\.group-message'\), id, \(\) => \{ if \(groupSelectMode\)/);
+test('a group message is selected by long-press; unreadable ones only offer Delete', () => {
+  assert.match(groups, /attachLongPress\(row\.querySelector\('\.group-message'\), id, \(\) => \{ if \(groupSelectMode\) togglePrivateGroupSelection\(id\); else enterPrivateGroupSelectMode\(id\); \}\)/);
+  const controller = groups.slice(groups.indexOf('function groupSelectionController()'), groups.indexOf('function enterPrivateGroupSelectMode'));
+  // Reply, Forward, Copy and Save need a readable message; Delete is always there.
+  assert.match(controller, /canReply: !!id && usableRow\(id\)/);
+  assert.match(controller, /canForward: !!id && usableRow\(id\) && \['text', 'image', 'file'\]\.includes\(kind\)/);
+  assert.match(controller, /canCopy: ids\.length > 0 && ids\.every\(item => usableRow\(item\) && groupMessageKind\(messageOf\(item\)\) === 'text'/);
+  assert.match(controller, /canSave: !!id && usableRow\(id\) && \['image', 'file', 'voice'\]\.includes\(kind\)/);
+  assert.match(controller, /reactions: GROUP_REACTIONS/);
+  assert.match(controller, /remove: \(\) => deleteSelectedPrivateGroupMessages\(\)/);
 });
 
-test('long-press supports a custom handler and the outside-tap closer leaves group messages alone', () => {
+test('the old inline action row and reaction strip are gone from group messages', () => {
+  assert.doesNotMatch(groups, /msgActionBtn|class="msg-actions"|class="reaction-picker"|group-message-select/);
+  assert.doesNotMatch(groups, /toggleMsgActions/);
+});
+
+test('long-press supports a custom handler, and a tap on group text does nothing outside selection', () => {
   assert.match(client, /function attachLongPress\(el, msgId, onFire\)/);
   assert.match(client, /if \(onFire\) onFire\(msgId\);/);
-  assert.match(client, /!e\.target\.closest\('\.group-msg'\)/);
+  const wire = groups.slice(groups.indexOf('function wirePrivateGroupMessage'), groups.indexOf('function jumpToPrivateGroupMessage'));
+  assert.match(wire, /if \(groupSelectMode\) \{ event\.preventDefault\(\); event\.stopPropagation\(\); togglePrivateGroupSelection\(id\); \}/);
+  assert.doesNotMatch(wire, /group-message-text/);
 });
 
 test('a reply travels as a wrapper, a plain message stays plain text', () => {
@@ -154,9 +165,8 @@ test('a voice note can be saved but never forwarded', () => {
   assert.match(groups, /found\.attachment\.type === 'group-voice'\) return;/);
 });
 
-test('the action row and reaction strip sit under the bubble, not inside it', () => {
-  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}[^"]*">[\s\S]*<div class="group-message-time"[^>]*>[^`]*<\/div><\/div>\$\{actions\}<\/div>`;/);
-  assert.match(client, /\.group-msg \.msg-actions\{width:max-content/);
+test('the message bubble is one element with nothing hanging under it', () => {
+  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}[^"]*">[\s\S]*<div class="group-message-time"[^>]*>[^`]*<\/div><\/div><\/div>`;/);
 });
 
 test('member Remove and Report/Block are compact icon buttons with labels', () => {

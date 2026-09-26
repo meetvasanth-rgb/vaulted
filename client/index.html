@@ -479,9 +479,6 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .msg-select-badge{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #D0CAC0;color:transparent;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.15);z-index:4;transition:background-color .15s,border-color .15s}
 .msg-select-badge.checked{background:#682C43;border-color:#682C43;color:#fff}
 .msg.them .msg-select-badge{right:auto;left:-8px}
-body.select-mode #chat-body .msg{opacity:.55;transition:opacity .15s}
-body.select-mode #chat-body .msg.msg-selected{opacity:1}
-body.select-mode .chat-ftr{display:none}
 .sys-msg{align-self:center;font-size:12px;color:#999;background:rgba(0,0,0,0.04);border-radius:20px;padding:5px 16px;text-align:center;font-style:italic;margin:6px 0}
 /* One-time verify nudge is a full sentence, not a short "X joined"-style
    line — left-aligned and width-capped so it reads as a paragraph inside
@@ -2828,6 +2825,41 @@ html{background:#fff}
   #s-chat .chat-peer-avatar{width:34px!important;height:34px!important;flex-basis:34px!important}
   #s-chat .chat-hdr-identity{gap:6px!important}
 }
+/* ── Message selection (WhatsApp style) ─────────────────────────────────────
+   Long-press a message: a bar over the header (back, count, reply, delete,
+   forward, more), an emoji bar above the message, and the message tinted
+   across the whole row. Replaces the old inline action row. */
+.msg-selection-bar{position:fixed;left:0;right:0;top:0;z-index:10040;box-sizing:border-box;display:flex;align-items:center;gap:2px;padding:env(safe-area-inset-top) 6px 0;min-height:56px;background:#fff;color:#682C43;border-bottom:1px solid #EFE6E9;box-shadow:0 2px 10px rgba(39,29,37,.06)}
+.msg-selection-bar[hidden]{display:none}
+.msg-selection-bar button{width:44px;height:44px;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:#682C43;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
+.msg-selection-bar button[hidden]{display:none}
+.msg-selection-bar button:active{background:#F3E6EA}
+.msg-selection-bar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.msg-selection-bar [data-sel="more"] svg{fill:currentColor;stroke:none}
+.msg-selection-count{flex:1;padding-left:6px;font:650 19px/1 'Manrope',Inter,sans-serif;color:#271D25}
+.msg-reaction-bar{position:fixed;z-index:10041;display:flex;gap:1px;padding:5px 7px;border-radius:999px;background:#fff;box-shadow:0 6px 24px rgba(39,29,37,.24),0 0 0 1px rgba(104,44,67,.06)}
+.msg-reaction-bar[hidden]{display:none}
+.msg-reaction-bar button{width:40px;height:40px;padding:0;border:0;border-radius:50%;background:none;font-size:25px;line-height:1;display:grid;place-items:center;transition:transform .12s;-webkit-tap-highlight-color:transparent}
+.msg-reaction-bar button:active{transform:scale(1.28)}
+.msg-reaction-bar button.mine{background:#F3E6EA}
+.msg-more-menu{position:fixed;right:8px;z-index:10042;min-width:176px;padding:6px 0;border-radius:14px;background:#fff;box-shadow:0 10px 32px rgba(39,29,37,.26),0 0 0 1px rgba(104,44,67,.06)}
+.msg-more-menu[hidden]{display:none}
+.msg-more-menu button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;border:0;background:none;color:#271D25;font:550 15px Inter,sans-serif;text-align:left}
+.msg-more-menu button:active{background:#F8F2F4}
+.msg-more-menu svg{width:18px;height:18px;flex:none;fill:none;stroke:#682C43;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.msg.msg-selected,.group-msg.msg-selected{position:relative;isolation:isolate}
+.msg.msg-selected::before,.group-msg.msg-selected::before{content:'';position:absolute;z-index:-1;top:-3px;bottom:-3px;left:var(--tint-left,0);width:var(--tint-width,100%);background:rgba(104,44,67,.14);pointer-events:none}
+/* Photo viewer bars (WhatsApp style). */
+.viewer-top{position:absolute;top:0;left:0;right:0;z-index:3;box-sizing:border-box;display:flex;align-items:center;gap:2px;padding:calc(8px + env(safe-area-inset-top)) 8px 22px;background:linear-gradient(rgba(0,0,0,.68),rgba(0,0,0,0));color:#fff}
+.viewer-top button{width:44px;height:44px;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:#fff;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
+.viewer-top button:active{background:rgba(255,255,255,.18)}
+.viewer-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;padding-left:2px}
+.viewer-title strong{font:650 16px/1.2 'Manrope',Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer-title span{font:500 12px/1.2 Inter,sans-serif;opacity:.78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer-bottom{position:absolute;bottom:0;left:0;right:0;z-index:3;box-sizing:border-box;display:flex;align-items:center;gap:6px;padding:22px 12px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.68))}
+.viewer-reply{flex:1;height:44px;padding:0 18px;border:0;border-radius:22px;background:rgba(255,255,255,.18);color:rgba(255,255,255,.88);font:500 15px Inter,sans-serif;text-align:left;-webkit-tap-highlight-color:transparent}
+.viewer-react{width:44px;height:44px;flex:none;padding:0;border:0;border-radius:50%;background:none;font-size:26px;line-height:1;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
+.viewer-react.mine{background:rgba(255,255,255,.22)}
 </style>
 <script type="application/ld+json">
 {
@@ -3351,11 +3383,6 @@ html{background:#fff}
     <span class="cross-vault-banner-copy"><strong id="cross-vault-banner-title">New message</strong><span>Tap to open conversation</span></span>
     <span class="cross-vault-banner-arrow" aria-hidden="true">›</span>
   </button>
-  <div class="select-bar" id="select-bar">
-    <button class="select-bar-cancel" onclick="exitSelectMode()" title="Cancel">✕</button>
-    <div class="select-bar-count" id="select-bar-count">1 selected</div>
-    <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
-  </div>
   <div class="room-tabs" id="room-tabs"></div>
   <div class="push-banner" id="push-banner"></div>
   <div class="secure-reconnect-banner" id="secure-reconnect-banner" role="status">
@@ -3453,11 +3480,6 @@ html{background:#fff}
     <div><div class="group-chat-title" id="group-chat-title">Private group</div><div class="group-chat-sub" id="group-chat-sub">End-to-end encrypted</div></div>
     <button type="button" onclick="openGroupMembers()" aria-label="Group members">⋮</button>
   </header>
-  <div class="group-select-bar" id="group-select-bar">
-    <button type="button" onclick="exitPrivateGroupSelectMode()" aria-label="Cancel selection">✕</button>
-    <div class="group-select-count" id="group-select-count">1 selected</div>
-    <button type="button" onclick="deleteSelectedPrivateGroupMessages()" aria-label="Delete selected messages"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
-  </div>
   <main class="group-chat-body" id="group-chat-body"></main>
   <div class="group-reply-preview" id="group-reply-preview"><div class="group-reply-body"><strong class="group-reply-name"></strong><span class="group-reply-snippet"></span></div><button type="button" onclick="cancelPrivateGroupReply()" aria-label="Cancel reply">✕</button></div>
   <footer class="group-chat-footer" id="group-chat-footer">
@@ -15212,61 +15234,263 @@ function isSingleEmoji(str) {
   }
 }
 
-// Small line-icon set for the action row — same thin-stroke SVG style used
-// for mic/speaker/copy icons elsewhere in the app, swapped in for what used
-// to be raw Unicode glyphs (↩ ☑ etc). Those render through the OS's plain
-// symbol font on a lot of devices rather than anything the app actually
-// drew, which is what read as dated/"old Windows icon"-ish.
-const MSG_ACTION_ICONS = {
+// ── MESSAGE SELECTION (WhatsApp style) ──────────────────────────────────────
+// Long-press a message to select it. The chat's top bar turns into a selection
+// bar (back, count, Reply, Delete, Forward, More) and an emoji bar floats above
+// the message; tapping other messages adds them or takes them out. A single tap
+// on a photo, video or file opens it as usual, and on plain text does nothing.
+// One implementation serves direct chats and private groups: each supplies a
+// small controller (see directSelectionController and groupSelectionController).
+const SELECTION_ICONS = {
+  back: '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
   reply: '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
-  react: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
+  delete: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+  forward: '<polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/>',
+  more: '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   save: '<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/>',
-  forward: '<path d="M14 5l7 7-7 7v-4H9a6 6 0 0 0-6 4c0-7 4-11 11-11V5z"/>',
-  select: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
-  delete: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
 };
-function msgActionBtn(action, label) {
-  return `<button type="button" class="msg-action-btn" data-action="${action}"><span class="msg-action-icon"><svg viewBox="0 0 24 24">${MSG_ACTION_ICONS[action]}</svg></span><span class="msg-action-label">${label}</span></button>`;
+
+const messageActionRegistry = new Map(); // message id -> { room, rec, replyText, isMe }
+let messageSelectionController = null;
+let messageSelectionUi = null;
+
+function selectionIconSvg(name) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${SELECTION_ICONS[name]}</svg>`;
 }
 
-// Text messages get Copy (copies the text); file/image messages get Save
-// (downloads via downloadDataUri) instead — Copy on a file only ever copied
-// its filename as text, which wasn't the useful action there.
-function buildMsgActionsHtml(msgId, kind) {
-  const isMedia = kind === 'file' || kind === 'album' || kind === 'voice';
-  const canForward = kind === 'file' || kind === 'album';
-  const thirdAction = isMedia ? msgActionBtn('save', 'Save') : msgActionBtn('copy', 'Copy');
-  return `
-    <div class="msg-actions" id="actions-${msgId}">
-      ${msgActionBtn('reply', 'Reply')}
-      ${msgActionBtn('react', 'React')}
-      ${thirdAction}
-      ${canForward ? msgActionBtn('forward', 'Forward') : ''}
-      ${msgActionBtn('select', 'Select')}
-      ${msgActionBtn('delete', 'Delete')}
-    </div>
-    <div class="reaction-picker" id="picker-${msgId}">
-      ${QUICK_REACTIONS.map(e => `<span data-emoji="${e}">${e}</span>`).join('')}
-    </div>
-  `;
+function ensureMessageSelectionUi() {
+  if (messageSelectionUi) return messageSelectionUi;
+  const bar = document.createElement('div');
+  bar.id = 'msg-selection-bar'; bar.className = 'msg-selection-bar'; bar.hidden = true;
+  bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Message actions');
+  bar.innerHTML = `<button type="button" data-sel="cancel" aria-label="Cancel selection">${selectionIconSvg('back')}</button>
+    <div class="msg-selection-count" id="msg-selection-count" aria-live="polite">1</div>
+    <button type="button" data-sel="reply" aria-label="Reply">${selectionIconSvg('reply')}</button>
+    <button type="button" data-sel="delete" aria-label="Delete">${selectionIconSvg('delete')}</button>
+    <button type="button" data-sel="forward" aria-label="Forward">${selectionIconSvg('forward')}</button>
+    <button type="button" data-sel="more" aria-label="More options" aria-haspopup="menu" aria-expanded="false">${selectionIconSvg('more')}</button>`;
+  const menu = document.createElement('div');
+  menu.id = 'msg-more-menu'; menu.className = 'msg-more-menu'; menu.hidden = true; menu.setAttribute('role', 'menu');
+  const react = document.createElement('div');
+  react.id = 'msg-reaction-bar'; react.className = 'msg-reaction-bar'; react.hidden = true;
+  react.setAttribute('role', 'toolbar'); react.setAttribute('aria-label', 'React to message');
+  document.body.append(bar, menu, react);
+  // Never take focus (and so the keyboard) away from the message box.
+  for (const node of [bar, menu, react]) node.addEventListener('mousedown', event => event.preventDefault());
+  bar.addEventListener('click', event => {
+    const button = event.target.closest('[data-sel]');
+    const controller = messageSelectionController;
+    if (!button || !controller) return;
+    switch (button.dataset.sel) {
+      case 'cancel': controller.cancel(); break;
+      case 'reply': controller.reply(); break;
+      case 'delete': controller.remove(); break;
+      case 'forward': controller.forward(); break;
+      case 'more': toggleMessageMoreMenu(); break;
+    }
+  });
+  menu.addEventListener('click', event => {
+    const item = event.target.closest('[data-more]');
+    const controller = messageSelectionController;
+    if (!item || !controller) return;
+    closeMessageMoreMenu();
+    if (item.dataset.more === 'copy') controller.copy(); else if (item.dataset.more === 'save') controller.save();
+  });
+  react.addEventListener('click', event => {
+    const button = event.target.closest('[data-emoji]');
+    if (button && messageSelectionController) messageSelectionController.react(button.dataset.emoji);
+  });
+  const follow = () => { if (messageSelectionController) positionMessageReactionBar(); };
+  document.addEventListener('scroll', follow, true);
+  // A resize (rotation, keyboard) changes how wide the tint must be.
+  window.addEventListener('resize', () => { messageSelectionController?.retint?.(); follow(); });
+  document.addEventListener('click', event => {
+    if (!menu.hidden && !event.target.closest('#msg-more-menu, [data-sel="more"]')) closeMessageMoreMenu();
+  });
+  messageSelectionUi = { bar, menu, react, count: bar.querySelector('#msg-selection-count') };
+  return messageSelectionUi;
 }
 
+function closeMessageMoreMenu() {
+  if (!messageSelectionUi) return;
+  messageSelectionUi.menu.hidden = true;
+  messageSelectionUi.bar.querySelector('[data-sel="more"]')?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleMessageMoreMenu() {
+  const controller = messageSelectionController;
+  if (!controller) return;
+  const ui = ensureMessageSelectionUi();
+  if (!ui.menu.hidden) { closeMessageMoreMenu(); return; }
+  const state = controller.state();
+  const items = [];
+  if (state.canCopy) items.push(`<button type="button" role="menuitem" data-more="copy">${selectionIconSvg('copy')}<span>Copy</span></button>`);
+  if (state.canSave) items.push(`<button type="button" role="menuitem" data-more="save">${selectionIconSvg('save')}<span>Save</span></button>`);
+  if (!items.length) return;
+  ui.menu.innerHTML = items.join('');
+  ui.menu.hidden = false;
+  const button = ui.bar.querySelector('[data-sel="more"]');
+  button?.setAttribute('aria-expanded', 'true');
+  const bar = ui.bar.getBoundingClientRect();
+  ui.menu.style.top = `${Math.round(bar.bottom + 2)}px`;
+}
+
+// The emoji bar floats above the selected message (below it when there is no room).
+function positionMessageReactionBar() {
+  const ui = messageSelectionUi;
+  const controller = messageSelectionController;
+  if (!ui || !controller) return;
+  const state = controller.state();
+  if (state.count !== 1 || !state.anchor || !state.anchor.isConnected) { ui.react.hidden = true; return; }
+  if (ui.react.dataset.owner !== String(controller.reactions.join(''))) {
+    ui.react.innerHTML = controller.reactions.map(emoji =>
+      `<button type="button" data-emoji="${emoji}" aria-label="React ${emoji}">${emoji}</button>`).join('');
+    ui.react.dataset.owner = String(controller.reactions.join(''));
+  }
+  ui.react.querySelectorAll('[data-emoji]').forEach(button => button.classList.toggle('mine', button.dataset.emoji === state.currentReaction));
+  ui.react.hidden = false;
+  const anchor = state.anchor.getBoundingClientRect();
+  const size = ui.react.getBoundingClientRect();
+  const barBottom = ui.bar.getBoundingClientRect().bottom;
+  if (anchor.bottom < barBottom || anchor.top > innerHeight) { ui.react.hidden = true; return; }
+  let y = anchor.top - size.height - 8;
+  if (y < barBottom + 6) y = Math.min(anchor.bottom + 8, innerHeight - size.height - 8);
+  let x = state.mine ? anchor.right - size.width : anchor.left;
+  x = Math.max(8, Math.min(x, innerWidth - size.width - 8));
+  ui.react.style.left = `${Math.round(x)}px`;
+  ui.react.style.top = `${Math.round(y)}px`;
+}
+
+// Shows the selection bar over the chat's own header, at the same size.
+function showMessageSelection(controller, headerSelector) {
+  messageSelectionController = controller;
+  const ui = ensureMessageSelectionUi();
+  const header = document.querySelector(headerSelector);
+  const box = header ? header.getBoundingClientRect() : null;
+  ui.bar.style.top = `${box ? Math.round(box.top) : 0}px`;
+  ui.bar.style.height = box && box.height ? `${Math.round(box.height)}px` : '';
+  // Typing and selecting do not mix: put the keyboard away.
+  const active = document.activeElement;
+  if (active && (active.id === 'msg-input' || active.id === 'group-message-input')) active.blur();
+  document.body.classList.add('msg-selecting');
+  refreshMessageSelection();
+}
+
+function refreshMessageSelection() {
+  const controller = messageSelectionController;
+  if (!controller) return;
+  const ui = ensureMessageSelectionUi();
+  const state = controller.state();
+  ui.count.textContent = String(state.count);
+  const show = (name, on) => { const button = ui.bar.querySelector(`[data-sel="${name}"]`); if (button) button.hidden = !on; };
+  show('reply', !!state.canReply);
+  show('forward', !!state.canForward);
+  show('more', !!(state.canCopy || state.canSave));
+  show('delete', state.count > 0);
+  ui.bar.hidden = false;
+  closeMessageMoreMenu();
+  positionMessageReactionBar();
+}
+
+function hideMessageSelection() {
+  messageSelectionController = null;
+  document.body.classList.remove('msg-selecting');
+  if (!messageSelectionUi) return;
+  messageSelectionUi.bar.hidden = true;
+  messageSelectionUi.menu.hidden = true;
+  messageSelectionUi.react.hidden = true;
+}
+
+// A message row tinted from edge to edge of the list, as the selected ones are.
+function tintSelectedRow(row, list, selected) {
+  row.classList.toggle('msg-selected', selected);
+  if (!selected || !list) { row.style.removeProperty('--tint-left'); row.style.removeProperty('--tint-width'); return; }
+  const rowBox = row.getBoundingClientRect();
+  const listBox = list.getBoundingClientRect();
+  row.style.setProperty('--tint-left', `${Math.round(listBox.left - rowBox.left)}px`);
+  row.style.setProperty('--tint-width', `${Math.round(list.clientWidth)}px`);
+}
+
+// What can be done with a message, and where the emoji bar sits.
+function messageReplyable(rec) {
+  return !!rec && !['blocked', 'attachment-loading', 'attachment-unavailable', 'sys'].includes(rec.kind);
+}
+function messageForwardable(rec) {
+  return !!rec && ['file', 'album', 'text'].includes(rec.kind) && !rec.viewOnce;
+}
+
+function saveMessageRecord(rec) {
+  if (!rec) return;
+  if (rec.kind === 'album') {
+    // Downloads what is currently in the album; staggered because some browsers
+    // silently drop download triggers fired in a tight burst.
+    rec.images.forEach((img, i) => {
+      setTimeout(() => downloadDataUri(`data:${img.mime};base64,${img.base64}`, img.fileName), i * 200);
+    });
+  } else if (rec.kind === 'voice') {
+    const ext = (rec.mime || '').includes('mp4') ? 'm4a' : (rec.mime || '').includes('ogg') ? 'ogg' : 'webm';
+    downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, `voice-note.${ext}`);
+  } else if (rec.base64) {
+    downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
+  }
+}
+
+function directSelectionController() {
+  const chosen = () => [...selectedMsgIds].map(id => ({ id, entry: messageActionRegistry.get(id) })).filter(item => item.entry);
+  return {
+    kind: 'direct',
+    reactions: QUICK_REACTIONS,
+    state() {
+      const items = chosen();
+      const one = items.length === 1 ? items[0] : null;
+      const rec = one?.entry.rec;
+      const row = one ? document.querySelector(`#chat-body .msg[data-msg-id="${CSS.escape(one.id)}"]`) : null;
+      return {
+        count: selectedMsgIds.size,
+        canReply: !!one && messageReplyable(rec),
+        canForward: !!one && messageForwardable(rec),
+        canCopy: items.length > 0 && items.every(item => item.entry.rec?.kind === 'text' && String(item.entry.replyText || '').trim()),
+        canSave: !!one && ['file', 'album', 'voice'].includes(rec?.kind),
+        anchor: row ? (row.querySelector('.bubble, .msg-media-wrap') || row) : null,
+        mine: !!rec?.isMe,
+        currentReaction: rec?.reactionMine || null,
+      };
+    },
+    cancel: () => exitSelectMode(),
+    retint: () => selectedMsgIds.forEach(updateMessageSelectionVisual),
+    reply() {
+      const one = chosen()[0]; if (!one) return;
+      exitSelectMode();
+      startReply(one.entry.rec, one.id, one.entry.replyText);
+      document.getElementById('msg-input')?.focus({ preventScroll: true });
+    },
+    remove: () => confirmDeleteSelected(),
+    forward() {
+      const one = chosen()[0]; if (!one) return;
+      const rec = one.entry.rec;
+      exitSelectMode();
+      showForwardAttachmentPicker(rec.kind === 'text' ? { kind: 'text', text: one.entry.replyText } : rec);
+    },
+    async copy() {
+      const text = chosen().map(item => item.entry.replyText).join('\n');
+      exitSelectMode();
+      try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (error) { toast('Could not copy'); }
+    },
+    save() { const one = chosen()[0]; exitSelectMode(); if (one) saveMessageRecord(one.entry.rec); },
+    react(emoji) {
+      const one = chosen()[0]; if (!one) return;
+      exitSelectMode();
+      sendReaction(one.entry.room, one.id, emoji);
+    },
+  };
+}
+
+// Anything that used to close the old inline action row now simply ends selection.
 function closeAllMsgActions() {
-  document.querySelectorAll('.msg-actions.show').forEach(el => el.classList.remove('show'));
-  document.querySelectorAll('.reaction-picker.show').forEach(el => el.classList.remove('show'));
+  if (typeof exitSelectMode === 'function' && selectMode) exitSelectMode();
+  if (typeof groupSelectMode !== 'undefined' && groupSelectMode && typeof exitPrivateGroupSelectMode === 'function') exitPrivateGroupSelectMode();
   activeActionMsgId = null;
-}
-
-// Shared by the bubble tap and media long-press (attachLongPress below) so
-// there's one place that knows how to open/close the Reply/React/Select/
-// Delete row for a given message.
-function toggleMsgActions(msgId) {
-  const actions = document.getElementById(`actions-${msgId}`);
-  if (!actions) return;
-  const wasOpen = actions.classList.contains('show');
-  closeAllMsgActions();
-  if (!wasOpen) { actions.classList.add('show'); activeActionMsgId = msgId; }
 }
 
 // A short-lived flag, not per-element state: a long-press firing sets it,
@@ -15279,10 +15503,9 @@ function toggleMsgActions(msgId) {
 let lastLongPressAt = 0;
 function wasJustLongPressed() { return Date.now() - lastLongPressAt < 350; }
 
-// Long-press (touch-and-hold, or a slow mouse-down/up on desktop) opens the
-// same Reply/React/Select/Delete row as tapping a text bubble does — this
-// is what WhatsApp/Telegram do on a photo or file, and it's the gesture
-// people actually reach for, rather than hunting for a small corner button.
+// Long-press (touch-and-hold, or a slow mouse-down/up on desktop) selects the
+// message, as WhatsApp does — the gesture people actually reach for, rather
+// than hunting for a small corner button.
 // It also doubles as what suppresses the browser's own native "save/copy/
 // share image" long-press menu, since -webkit-touch-callout is turned off
 // on these elements specifically because this gesture now means something.
@@ -15295,7 +15518,7 @@ function attachLongPress(el, msgId, onFire) {
     lastLongPressAt = Date.now();
     if (navigator.vibrate) navigator.vibrate(12);
     if (onFire) onFire(msgId);
-    else if (selectMode) toggleMessageSelection(msgId); else toggleMsgActions(msgId);
+    else if (selectMode) toggleMessageSelection(msgId); else enterSelectMode(msgId);
   };
   el.addEventListener('touchstart', (e) => {
     longPressed = false;
@@ -15334,138 +15557,26 @@ function attachLongPress(el, msgId, onFire) {
 }
 
 function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
-  // Text messages have a .bubble, which is what we tap to reveal Reply/React.
-  // File/image messages fall back to .msg-meta (the timestamp/tick row) —
-  // the media itself has its own onclick (view/download) plus long-press
-  // (attachLongPress below), so this is a secondary way in, not the primary
-  // one.
+  // What the selection bar needs to know about this message.
+  messageActionRegistry.set(msgId, { room, rec, replyText, isMe });
   const textBubble = div.querySelector('.bubble');
-  const bubble = textBubble || div.querySelector('.msg-meta');
-  const actions = div.querySelector(`#actions-${msgId}`);
-  const picker = div.querySelector(`#picker-${msgId}`);
-  if (!bubble || !actions || !picker) return;
-
-  // .msg-album-grid stands in for the whole album here — long-pressing
-  // anywhere on the grid opens Reply/React/Save/Select/Delete for the
-  // message as a whole, same as it would for a single photo; a quick tap
-  // on an individual tile (handleAlbumImageTap) is a separate gesture that
-  // opens just that one photo.
+  // Text and media both start a selection on long-press. .msg-album-grid stands in
+  // for a whole album: holding anywhere on it selects the message, while a quick
+  // tap on one tile (handleAlbumImageTap) opens just that photo.
   const media = div.querySelector('.msg-image, .msg-file, .msg-pdf-card, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif, .msg-video-card');
   if (media) attachLongPress(media, msgId);
-  // Ordinary text bubbles previously only had the short-tap recognizer
-  // below. Holding past its 400ms cutoff therefore did nothing at all,
-  // despite the UI promising long-press actions. Give text the same 450ms
-  // recognizer as media; the trailing click guard below keeps release from
-  // immediately closing the row that the long press just opened.
   if (textBubble) attachLongPress(textBubble, msgId);
-
-  // While a multi-select is in progress, tapping any message toggles its
-  // selection instead of opening the Reply/React/Delete row — checked first
-  // so it takes over the same tap gesture rather than needing a separate one.
-  const handleTap = () => {
-    if (selectMode) { toggleMessageSelection(msgId); return; }
-    toggleMsgActions(msgId);
-  };
-
-  let touchStartX, touchStartY, touchStartTime;
-  bubble.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchStartTime = Date.now();
-  }, { passive: true });
-  bubble.addEventListener('touchend', (e) => {
-    const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-    const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
-    const dt = Date.now() - touchStartTime;
-    if (dx < 15 && dy < 15 && dt < 400) { e.preventDefault(); handleTap(); }
-  });
+  const bubble = textBubble || div.querySelector('.msg-meta');
+  if (!bubble) return;
+  if (!media && !textBubble) attachLongPress(bubble, msgId);
+  // A single tap on plain text does nothing — except while messages are being
+  // selected, when it adds the message to (or takes it out of) the selection.
   bubble.onclick = (e) => {
     e.stopPropagation();
     if (wasJustLongPressed()) return;
-    handleTap();
+    if (selectMode) toggleMessageSelection(msgId);
   };
-
-  actions.querySelector('[data-action="reply"]').onclick = (e) => {
-    e.stopPropagation();
-    startReply(rec, msgId, replyText);
-    closeAllMsgActions();
-  };
-  actions.querySelector('[data-action="react"]').onclick = (e) => {
-    e.stopPropagation();
-    picker.classList.toggle('show');
-  };
-  picker.querySelectorAll('span').forEach(span => {
-    span.onclick = (e) => {
-      e.stopPropagation();
-      sendReaction(room, msgId, span.dataset.emoji);
-      closeAllMsgActions();
-    };
-  });
-  actions.querySelector('[data-action="delete"]').onclick = (e) => {
-    e.stopPropagation();
-    closeAllMsgActions();
-    showDeleteOptions(room, msgId, isMe);
-  };
-  actions.querySelector('[data-action="select"]').onclick = (e) => {
-    e.stopPropagation();
-    closeAllMsgActions();
-    enterSelectMode(msgId);
-  };
-  // Native text selection is turned off on .bubble (see CSS) so long-press
-  // consistently opens this row instead of the OS's own copy popup — Copy
-  // lives here now so that capability isn't lost, just moved.
-  const copyBtn = actions.querySelector('[data-action="copy"]');
-  if (copyBtn) {
-    copyBtn.onclick = async (e) => {
-      e.stopPropagation();
-      closeAllMsgActions();
-      try {
-        await navigator.clipboard.writeText(replyText || '');
-        toast('Copied');
-      } catch (err) {
-        toast('Could not copy');
-      }
-    };
-  }
-  const saveBtn = actions.querySelector('[data-action="save"]');
-  if (saveBtn) {
-    saveBtn.onclick = (e) => {
-      e.stopPropagation();
-      closeAllMsgActions();
-      if (!rec) return;
-      if (rec.kind === 'album') {
-        // Downloads currently in the album (already-consumed view-once
-        // photos are gone from images[] by this point, same as a single
-        // view-once photo has nothing left to save once it's expired).
-        // Staggered slightly — some browsers silently drop download
-        // triggers fired in a tight synchronous burst.
-        rec.images.forEach((img, i) => {
-          setTimeout(() => downloadDataUri(`data:${img.mime};base64,${img.base64}`, img.fileName), i * 200);
-        });
-      } else if (rec.kind === 'voice') {
-        const ext = (rec.mime || '').includes('mp4') ? 'm4a' : (rec.mime || '').includes('ogg') ? 'ogg' : 'webm';
-        downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, `voice-note.${ext}`);
-      } else {
-        downloadDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
-      }
-    };
-  }
-  const forwardBtn = actions.querySelector('[data-action="forward"]');
-  if (forwardBtn) {
-    forwardBtn.onclick = (e) => {
-      e.stopPropagation();
-      closeAllMsgActions();
-      showForwardAttachmentPicker(rec);
-    };
-  }
 }
-
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.msg-actions') && !e.target.closest('.reaction-picker') &&
-      !e.target.closest('.bubble') && !e.target.closest('.msg-media-wrap') && !e.target.closest('.group-msg')) {
-    closeAllMsgActions();
-  }
-});
 
 // Forwarding never sends plaintext to a new server endpoint. The already
 // decrypted attachment stays on this device, is encrypted again with the
@@ -15664,29 +15775,22 @@ async function deleteMessage(room, msgIdOrIds, forEveryone) {
   }
 }
 
-// ── MULTI-SELECT DELETE ──────────────────────────────────────────────────
-// A lightweight selection mode layered on top of the existing single-message
-// Delete: long-press → Select starts it, tapping other messages toggles
-// them in, and the header swaps to a count/cancel/delete bar. Deliberately
-// reuses showDeleteOptions/deleteMessage above rather than duplicating the
-// confirm-modal or the delete logic — only the "which message ids" input
-// differs between the single and multi paths.
+// ── SELECTING MESSAGES ──────────────────────────────────────────────────
+// Selection reuses showDeleteOptions/deleteMessage below rather than
+// duplicating the confirm modal or the delete logic — only the "which message
+// ids" input differs between deleting one message and several.
 let selectMode = false;
 let selectedMsgIds = new Set();
 
 function enterSelectMode(msgId) {
+  if (selectMode) { toggleMessageSelection(msgId); return; }
   selectMode = true;
   selectedMsgIds = new Set([msgId]);
   document.body.classList.add('select-mode');
-  document.querySelector('.chat-hdr')?.classList.add('hidden');
-  document.getElementById('select-bar')?.classList.add('show');
   cancelReply(); // the reply composer doesn't make sense mid-selection
-  // Every message gets an (empty) checkbox once selection starts, not just
-  // the one that was tapped to enter it — otherwise it's unclear which
-  // other messages are even selectable until you've already picked one.
-  document.querySelectorAll('#chat-body .msg[data-msg-id]').forEach(ensureSelectBadge);
+  showMessageSelection(directSelectionController(), '#s-chat .chat-hdr');
   updateMessageSelectionVisual(msgId);
-  updateSelectionBar();
+  refreshMessageSelection();
 }
 
 function exitSelectMode() {
@@ -15694,10 +15798,8 @@ function exitSelectMode() {
   selectMode = false;
   selectedMsgIds = new Set();
   document.body.classList.remove('select-mode');
-  document.querySelector('.chat-hdr')?.classList.remove('hidden');
-  document.getElementById('select-bar')?.classList.remove('show');
-  document.querySelectorAll('#chat-body .msg-select-badge').forEach(b => b.remove());
-  document.querySelectorAll('#chat-body .msg.msg-selected').forEach(d => d.classList.remove('msg-selected'));
+  hideMessageSelection();
+  document.querySelectorAll('#chat-body .msg.msg-selected').forEach(row => tintSelectedRow(row, null, false));
 }
 
 function toggleMessageSelection(msgId) {
@@ -15705,42 +15807,20 @@ function toggleMessageSelection(msgId) {
   else selectedMsgIds.add(msgId);
   updateMessageSelectionVisual(msgId);
   if (selectedMsgIds.size === 0) { exitSelectMode(); return; } // deselecting the last one backs all the way out
-  updateSelectionBar();
+  refreshMessageSelection();
 }
 
-// Adds the empty (unchecked) selection badge to a message, if it doesn't
-// already have one — called for every message when select mode starts, and
-// for any message rendered while select mode is already active (a live
-// incoming message shouldn't be the one thing on screen without a checkbox).
-function ensureSelectBadge(div) {
-  const target = div.querySelector('.bubble, .msg-media-wrap');
-  if (!target) return;
-  if (getComputedStyle(target).position === 'static') target.style.position = 'relative';
-  if (!target.querySelector('.msg-select-badge')) {
-    const badge = document.createElement('div');
-    badge.className = 'msg-select-badge';
-    target.appendChild(badge);
-  }
-}
+// Kept so older call sites that mark a row selectable stay valid: rows no longer
+// carry a checkbox, they are tinted instead.
+function ensureSelectBadge() {}
 
 function updateMessageSelectionVisual(msgId) {
-  const div = document.querySelector(`.msg[data-msg-id="${msgId}"]`);
-  if (!div) return;
-  const selected = selectedMsgIds.has(msgId);
-  div.classList.toggle('msg-selected', selected);
-  ensureSelectBadge(div);
-  const target = div.querySelector('.bubble, .msg-media-wrap');
-  const badge = target?.querySelector('.msg-select-badge');
-  if (badge) { badge.classList.toggle('checked', selected); badge.textContent = selected ? '✓' : ''; }
+  const row = document.querySelector(`#chat-body .msg[data-msg-id="${CSS.escape(msgId)}"]`);
+  if (!row) return;
+  tintSelectedRow(row, document.getElementById('chat-body'), selectedMsgIds.has(msgId));
 }
 
-function updateSelectionBar() {
-  const count = selectedMsgIds.size;
-  const countEl = document.getElementById('select-bar-count');
-  if (countEl) countEl.textContent = `${count} selected`;
-  const delBtn = document.getElementById('select-bar-delete');
-  if (delBtn) delBtn.disabled = count === 0;
-}
+function updateSelectionBar() { refreshMessageSelection(); }
 
 function confirmDeleteSelected() {
   const room = getActiveRoom();
@@ -15835,7 +15915,8 @@ function buildVideoAttachmentHtml({ id, name, thumb, pending = false, group = fa
   const safeThumb = thumb ? safeImageDataUri('image/jpeg', thumb) : null;
   const preview = safeThumb ? `<img src="${safeThumb}" alt="Video preview"/>` : '';
   const handler = group ? `openPrivateGroupVideo('${escHtml(id)}')` : `handleVideoTap('${escHtml(id)}')`;
-  const cardHandler = group ? ` onclick="${handler}"` : ` onclick="handleVideoActionsTap(event, '${escHtml(id)}')"`;
+  // One tap plays the video, in direct chats and groups alike; long-press selects it.
+  const cardHandler = ` onclick="${handler}"`;
   return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card"${cardHandler} oncontextmenu="return false">${preview}<button type="button" class="msg-video-play" aria-label="Play video" onclick="event.stopPropagation();${handler}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button><span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml() : ''}</div>`;
 }
 
@@ -16016,13 +16097,6 @@ function handleVideoTap(msgId) {
   if (selectMode) { toggleMessageSelection(msgId); return; }
   const rec = findMessageRec(msgId); if (!rec || !String(rec.mime || '').startsWith('video/')) return;
   openVideoAttachmentViewer(rec.mime, rec.base64, rec.fileName);
-}
-
-function handleVideoActionsTap(event, msgId) {
-  event?.stopPropagation?.();
-  if (wasJustLongPressed()) return;
-  if (selectMode) { toggleMessageSelection(msgId); return; }
-  toggleMsgActions(msgId);
 }
 
 function sanitizeStatusReplyData(value) {
@@ -16265,7 +16339,6 @@ function renderMessageRecord(room, rec, animate) {
       ${receiptHtml}
     </div>
     ${progressHtml}
-    ${buildMsgActionsHtml(rec.id, rec.kind)}
   `;
 
   div.querySelector('[data-status-reply-id]')?.addEventListener('click', event => {
@@ -16294,7 +16367,7 @@ function renderMessageRecord(room, rec, animate) {
   // A message arriving (or being scrolled into view) while a selection is
   // already in progress should look like every other message in that mode
   // — an empty checkbox, ready to be picked.
-  if (selectMode) ensureSelectBadge(div);
+  if (selectMode) updateMessageSelectionVisual(rec.id);
 
   // If a disappearing-message timer is already ticking (e.g. replaying after
   // switching back to this room), resume the progress bar from where it
@@ -16431,7 +16504,8 @@ function handleImageTap(src, msgId) {
   if (selectMode) { toggleMessageSelection(msgId); return; }
   const rec = findMessageRec(msgId);
   const original = rec?.isImage ? safeImageDataUri(rec.mime, rec.base64) : null;
-  viewImage(original || src);
+  const context = messageContextFor(msgId);
+  viewImage(original || src, context && !context.rec.viewOnce ? { info: viewerInfoForRec(context.room, context.rec) } : undefined);
 }
 // Looks a message record up by id across every open room — used from inline
 // onclick handlers (file tap, view-once) that only have the id to go on.
@@ -16784,7 +16858,7 @@ function handleAlbumImageTap(msgId, imgId) {
     if (found) { room = r; rec = found; break; }
   }
   if (!room || !rec || !rec.images) return;
-  viewImage(null, { gallery: { room, rec, startImgId: imgId } });
+  viewImage(null, { gallery: { room, rec, startImgId: imgId }, info: rec.viewOnce ? undefined : viewerInfoForRec(room, rec) });
 }
 
 function scheduleAlbumImageDelete(room, msgId, imgId) {
@@ -21066,10 +21140,84 @@ function formatFileSize(bytes) {
 // Every photo revealed this way across the whole viewer session (not just
 // whichever one happens to be showing when it closes) gets its grace-timer
 // deletion scheduled in cleanup() below.
+// Who sent it and how long ago, in words ("5 minutes ago").
+function describeMessageAge(ts, now = Date.now()) {
+  const value = Number(ts) || 0;
+  if (!value) return '';
+  const minutes = Math.floor(Math.max(0, now - value) / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return formatFullDateTime(value);
+}
+
+function messageContextFor(msgId) {
+  for (const room of rooms.values()) {
+    const rec = room.messages.find(m => m.id === msgId);
+    if (rec) return { room, rec };
+  }
+  return null;
+}
+
+// What the photo viewer needs to know about the message it is showing.
+function viewerInfoForRec(room, rec) {
+  return {
+    title: rec.isMe ? 'You' : (rec.name || roomDisplayLabel(room)),
+    subtitle: describeMessageAge(rec.ts),
+    reactions: QUICK_REACTIONS,
+    currentReaction: rec.reactionMine || null,
+    onReact: emoji => sendReaction(room, rec.id, emoji),
+    onReply: () => { startReply(rec, rec.id, rec.fileName || 'Photo'); document.getElementById('msg-input')?.focus({ preventScroll: true }); },
+    onForward: messageForwardable(rec) ? () => showForwardAttachmentPicker(rec) : null,
+  };
+}
+
+// The bars over a full-screen photo. info: { title, subtitle, reactions, currentReaction,
+// onReact(emoji), onReply(), onForward() | null }; ctx: { close, getSrc, hideDownload }.
+function buildViewerChrome(info, ctx) {
+  const icon = name => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SELECTION_ICONS[name]}</svg>`;
+  const top = document.createElement('div');
+  top.className = 'viewer-top'; top.dataset.viewerUi = '1';
+  top.innerHTML = `<button type="button" data-v="back" aria-label="Back">${icon('back')}</button>
+    <div class="viewer-title"><strong>${escHtml(info.title || '')}</strong><span>${escHtml(info.subtitle || '')}</span></div>
+    ${ctx.hideDownload ? '' : `<button type="button" data-v="save" aria-label="Save">${icon('save')}</button>`}
+    ${info.onForward ? `<button type="button" data-v="forward" aria-label="Forward">${icon('forward')}</button>` : ''}`;
+  const bottom = document.createElement('div');
+  bottom.className = 'viewer-bottom'; bottom.dataset.viewerUi = '1';
+  // ❤️ and 😂 sit beside Reply, as in WhatsApp; a set without them offers its first two.
+  const all = info.reactions || [];
+  const preferred = ['❤️', '😂'].filter(emoji => all.includes(emoji));
+  const quick = preferred.length ? preferred : all.slice(0, 2);
+  bottom.innerHTML = `<button type="button" class="viewer-reply" data-v="reply">Reply</button>${quick.map(emoji =>
+    `<button type="button" class="viewer-react${emoji === info.currentReaction ? ' mine' : ''}" data-v="react" data-emoji="${emoji}" aria-label="React ${emoji}">${emoji}</button>`).join('')}`;
+  const handle = event => {
+    const button = event.target.closest('[data-v]');
+    if (!button) return;
+    event.stopPropagation();
+    switch (button.dataset.v) {
+      case 'back': ctx.close(); break;
+      case 'save': { const src = ctx.getSrc(); const ext = (String(src).match(/^data:image\/(\w+)/) || [])[1] || 'jpg'; downloadDataUri(src, `vaultlix-image.${ext}`); break; }
+      case 'forward': ctx.close(); info.onForward?.(); break;
+      case 'reply': ctx.close(); info.onReply?.(); break;
+      case 'react': {
+        const already = button.classList.contains('mine');
+        bottom.querySelectorAll('.viewer-react').forEach(node => node.classList.remove('mine'));
+        if (!already) button.classList.add('mine');
+        info.onReact?.(button.dataset.emoji);
+        break;
+      }
+    }
+  };
+  top.addEventListener('click', handle);
+  bottom.addEventListener('click', handle);
+  return { top, bottom };
+}
+
 function viewImage(src, opts) {
   // zIndex lets a caller that sits above the default layer (the private-group
   // chat overlay) raise the viewer; direct conversations keep the 999 default.
-  const { onClose, hideDownload, gallery, zIndex } = opts || {};
+  const { onClose, hideDownload, gallery, zIndex, info } = opts || {};
   let scale = 1, posX = 0, posY = 0, isDragging = false, startX, startY;
   let lastTouchDist = 0;
   // Swipe-to-dismiss: a vertical drag/scroll while not zoomed in closes the
@@ -21115,7 +21263,7 @@ function viewImage(src, opts) {
   // or Escape — no back button needed either. The only visible control is
   // Save, for when the recipient wants to keep a copy.
   let dlBtn = null;
-  if (!effectiveHideDownload) {
+  if (!effectiveHideDownload && !info) {
     dlBtn = document.createElement('button');
     dlBtn.type = 'button';
     dlBtn.title = 'Save image';
@@ -21132,6 +21280,13 @@ function viewImage(src, opts) {
       downloadDataUri(currentSrc, `vaultlix-image.${ext}`);
     };
     overlay.appendChild(dlBtn);
+  }
+
+  // WhatsApp-style chrome when the caller says whose photo this is: a top bar
+  // (back, who and when, Save, Forward) and a bottom bar (Reply, quick reactions).
+  if (info) {
+    const chrome = buildViewerChrome(info, { close: () => cleanup(), getSrc: () => currentSrc, hideDownload: effectiveHideDownload });
+    overlay.append(chrome.top, chrome.bottom);
   }
 
   // "2 / 5" — only present in gallery mode, so a lone photo (or a single
@@ -21228,6 +21383,7 @@ function viewImage(src, opts) {
   let lastTap = 0;
   overlay.addEventListener('click', (e) => {
     if (e.target === dlBtn || (dlBtn && dlBtn.contains(e.target))) return;
+    if (e.target.closest('[data-viewer-ui]')) return; // the bars handle their own taps
     if (e.target !== img) { cleanup(); return; } // tap outside the photo closes it
     const now = Date.now();
     if (now - lastTap < 300) {
@@ -21244,6 +21400,7 @@ function viewImage(src, opts) {
   }
 
   overlay.addEventListener('touchstart', (e) => {
+    if (e.target.closest('[data-viewer-ui]')) return;
     if (e.touches.length === 2) {
       lastTouchDist = getTouchDist(e.touches); e.preventDefault();
     } else if (e.touches.length === 1) {
@@ -21263,6 +21420,7 @@ function viewImage(src, opts) {
   }, { passive: false });
 
   overlay.addEventListener('touchmove', (e) => {
+    if (e.target.closest('[data-viewer-ui]')) return;
     if (e.touches.length === 2) {
       e.preventDefault();
       const dist = getTouchDist(e.touches);

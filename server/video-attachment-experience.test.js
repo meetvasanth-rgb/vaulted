@@ -60,7 +60,8 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
   assert.match(client, /video\.onplaying = revealPlayingVideo/);
   assert.match(client, /className = 'video-attachment-viewer loading'/);
   assert.match(client, /function handleVideoTap/);
-  assert.match(client, /function handleVideoActionsTap/);
+  assert.doesNotMatch(client, /handleVideoActionsTap/, 'a tap plays the video; the old actions row is gone');
+  assert.match(client, /const cardHandler = ` onclick="\$\{handler\}"`;/);
   assert.match(client, /class="msg-video-play"[^>]*onclick="event\.stopPropagation\(\);/);
   assert.match(client, /\.msg-video-card'\)/);
   assert.match(client, /isVideoReply/);

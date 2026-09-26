@@ -620,19 +620,9 @@ function privateGroupRowHtml(group, message, reactions, state) {
       usable = !unsafe && !message.unavailable && typeof message.text === 'string' && !!message.text.trim();
     }
     const mine = message.senderId === state?.accountId;
-    const buttons = usable
-      ? [msgActionBtn('reply', 'Reply'), msgActionBtn('react', 'React'),
-         kind === 'text' ? msgActionBtn('copy', 'Copy') : (['image', 'file', 'voice'].includes(kind) ? msgActionBtn('save', 'Save') : ''),
-         ['text', 'image', 'file'].includes(kind) ? msgActionBtn('forward', 'Forward') : '',
-         msgActionBtn('select', 'Select'), msgActionBtn('delete', 'Delete')]
-      : [msgActionBtn('select', 'Select'), msgActionBtn('delete', 'Delete')];
-    const actions = `<div class="msg-actions" id="actions-${escHtml(message.id)}">${buttons.join('')}</div>`
-      + (usable ? `<div class="reaction-picker" id="picker-${escHtml(message.id)}">${GROUP_REACTIONS.map(emoji => `<span data-emoji="${emoji}">${emoji}</span>`).join('')}</div>` : '');
     const quote = message.reply
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
-    // The bubble is one element; the action row and reaction strip sit under it
-    // (not inside it), exactly where a direct conversation puts them.
-    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>${actions}</div>`;
+    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div></div>`;
 }
 
 function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {}) {
@@ -666,29 +656,17 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
   schedulePrivateGroupAttachmentLoads(body, group);
 }
 
-// Long-press anywhere on a message opens its action row (a tap on text does
-// too), exactly like a direct conversation. In selection mode both just
-// tick or untick the message.
+// Long-press anywhere on a message selects it, exactly like a direct
+// conversation. In selection mode a tap ticks or unticks a message; outside it a
+// tap on plain text does nothing (photos, videos and files open as usual).
 function wirePrivateGroupMessage(row) {
   const id = row.dataset.groupMsgId;
-  attachLongPress(row.querySelector('.group-message'), id, () => { if (groupSelectMode) togglePrivateGroupSelection(id); else toggleMsgActions(id); });
+  attachLongPress(row.querySelector('.group-message'), id, () => { if (groupSelectMode) togglePrivateGroupSelection(id); else enterPrivateGroupSelectMode(id); });
   row.addEventListener('click', event => {
-    if (groupSelectMode) { event.preventDefault(); event.stopPropagation(); togglePrivateGroupSelection(id); return; }
-    if (event.target.closest('.group-message-text') && !window.getSelection()?.toString()) toggleMsgActions(id);
+    if (groupSelectMode) { event.preventDefault(); event.stopPropagation(); togglePrivateGroupSelection(id); }
   }, true);
   const quote = row.querySelector('[data-reply-to]');
   if (quote) quote.onclick = event => { if (!groupSelectMode) { event.stopPropagation(); jumpToPrivateGroupMessage(quote.dataset.replyTo); } };
-  const act = (name, handler) => { const button = row.querySelector(`[data-action="${name}"]`); if (button) button.onclick = event => { event.stopPropagation(); handler(); }; };
-  act('reply', () => startPrivateGroupReply(id));
-  act('react', () => document.getElementById(`picker-${id}`)?.classList.toggle('show'));
-  act('copy', () => copyPrivateGroupText(id));
-  act('save', () => savePrivateGroupAttachment(id));
-  act('forward', () => forwardPrivateGroupMessage(id));
-  act('select', () => { closeAllMsgActions(); enterPrivateGroupSelectMode(id); });
-  act('delete', () => { closeAllMsgActions(); showPrivateGroupDeleteOptions([id]); });
-  row.querySelectorAll('.reaction-picker [data-emoji]').forEach(span => {
-    span.onclick = event => { event.stopPropagation(); closeAllMsgActions(); sendPrivateGroupReaction(id, span.dataset.emoji); };
-  });
 }
 
 function jumpToPrivateGroupMessage(id) {
@@ -850,16 +828,64 @@ async function flushPrivateGroupServerDeletes(group) {
 }
 
 // ---- selection --------------------------------------------------------------
+function groupSelectionController() {
+  const messageOf = id => privateGroupMessageById(id);
+  const rowOf = id => document.querySelector(`#group-chat-body [data-group-msg-id="${CSS.escape(id)}"]`);
+  const chosen = () => [...groupSelectedIds].filter(id => messageOf(id));
+  const usableRow = id => rowOf(id)?.dataset.usable === '1';
+  return {
+    kind: 'group',
+    reactions: GROUP_REACTIONS,
+    state() {
+      const ids = chosen();
+      const id = ids.length === 1 ? ids[0] : null;
+      const message = id ? messageOf(id) : null;
+      const kind = message ? groupMessageKind(message) : null;
+      const state = loadAccountState();
+      const group = privateGroups.get(activePrivateGroupId);
+      const mine = !!message && message.senderId === state?.accountId;
+      const reactions = group ? derivePrivateGroupView(group.messages || [], group.hiddenIds || []).reactions : new Map();
+      return {
+        count: groupSelectedIds.size,
+        canReply: !!id && usableRow(id),
+        canForward: !!id && usableRow(id) && ['text', 'image', 'file'].includes(kind),
+        canCopy: ids.length > 0 && ids.every(item => usableRow(item) && groupMessageKind(messageOf(item)) === 'text' && privateGroupTextById(item)),
+        canSave: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
+        anchor: id ? rowOf(id)?.querySelector('.group-message') || null : null,
+        mine,
+        currentReaction: id ? reactions.get(id)?.get(state?.accountId) || null : null,
+      };
+    },
+    cancel: () => exitPrivateGroupSelectMode(),
+    retint: () => refreshPrivateGroupSelection(),
+    reply() { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); startPrivateGroupReply(id); },
+    remove: () => deleteSelectedPrivateGroupMessages(),
+    forward() { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); forwardPrivateGroupMessage(id); },
+    async copy() {
+      const text = chosen().map(id => privateGroupTextById(id)).filter(Boolean).join('\n');
+      exitPrivateGroupSelectMode();
+      if (!text) return;
+      try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (_) { toast('Could not copy'); }
+    },
+    save() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) savePrivateGroupAttachment(id); },
+    react(emoji) { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); sendPrivateGroupReaction(id, emoji); },
+  };
+}
+
 function enterPrivateGroupSelectMode(firstId) {
+  if (groupSelectMode) { togglePrivateGroupSelection(firstId); return; }
   groupSelectMode = true; groupSelectedIds.clear(); if (firstId) groupSelectedIds.add(firstId);
   cancelPrivateGroupReply();
   document.getElementById('group-chat')?.classList.add('selecting');
+  showMessageSelection(groupSelectionController(), '#group-chat .group-chat-head');
   refreshPrivateGroupSelection();
 }
 
 function exitPrivateGroupSelectMode() {
+  const wasSelecting = groupSelectMode;
   groupSelectMode = false; groupSelectedIds.clear();
   document.getElementById('group-chat')?.classList.remove('selecting');
+  if (wasSelecting) hideMessageSelection();
   refreshPrivateGroupSelection();
 }
 
@@ -870,13 +896,11 @@ function togglePrivateGroupSelection(id) {
 }
 
 function refreshPrivateGroupSelection() {
+  const list = document.getElementById('group-chat-body');
   document.querySelectorAll('#group-chat-body [data-group-msg-id]').forEach(row => {
-    const on = groupSelectMode && groupSelectedIds.has(row.dataset.groupMsgId);
-    row.classList.toggle('selected', on);
-    const badge = row.querySelector('.group-message-select'); if (badge) badge.textContent = on ? '✓' : '';
+    tintSelectedRow(row, list, groupSelectMode && groupSelectedIds.has(row.dataset.groupMsgId));
   });
-  const count = document.getElementById('group-select-count');
-  if (count) count.textContent = `${groupSelectedIds.size} selected`;
+  if (groupSelectMode) refreshMessageSelection();
 }
 
 function deleteSelectedPrivateGroupMessages() {
@@ -944,13 +968,30 @@ async function fillPrivateGroupPdfPreviews(groupId) {
 // viewers (which default to lower z-indexes) must be raised above it.
 const PRIVATE_GROUP_VIEWER_Z = 10022;
 
+// What the photo viewer shows about a group photo: who sent it, when, and the
+// actions the bars offer.
+function privateGroupViewerInfo(group, message) {
+  const state = loadAccountState();
+  const reactions = derivePrivateGroupView(group.messages || [], group.hiddenIds || []).reactions;
+  return {
+    title:message.senderId === state?.accountId ? 'You' : groupMemberLabel(group, message.senderId),
+    subtitle:describeMessageAge(message.createdAt),
+    reactions:GROUP_REACTIONS,
+    currentReaction:reactions.get(message.id)?.get(state?.accountId) || null,
+    onReact:emoji => sendPrivateGroupReaction(message.id, emoji),
+    onReply:() => startPrivateGroupReply(message.id),
+    onForward:() => forwardPrivateGroupMessage(message.id),
+  };
+}
+
 function openPrivateGroupImage(messageId) {
   if (wasJustLongPressed()) return;
   const group = privateGroups.get(activePrivateGroupId);
   const attachment = group?.messages?.find(message => message.id === messageId)?.attachment;
   const src = attachment ? safeImageDataUri(attachment.mime, attachment.data) : null;
   if (!src) { toast('Could not open photo'); return; }
-  viewImage(src, { zIndex:PRIVATE_GROUP_VIEWER_Z });
+  const message = privateGroupMessageById(messageId);
+  viewImage(src, { zIndex:PRIVATE_GROUP_VIEWER_Z, info:group && message ? privateGroupViewerInfo(group, message) : undefined });
 }
 
 function openPrivateGroupVideo(messageId) {
