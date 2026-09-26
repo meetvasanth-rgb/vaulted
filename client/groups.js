@@ -425,6 +425,17 @@ async function createPrivateGroup() {
   finally { button.disabled = false; button.textContent = 'Create group'; }
 }
 
+// Puts the reader at the newest message, again after layout settles (the
+// keyboard, fonts and images can still change the height a frame later).
+function scrollPrivateGroupToLatest() {
+  const body = document.getElementById('group-chat-body');
+  if (!body) return;
+  body.scrollTop = body.scrollHeight;
+  requestAnimationFrame(() => {
+    if (activePrivateGroupId && document.getElementById('group-chat')?.classList.contains('open')) body.scrollTop = body.scrollHeight;
+  });
+}
+
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
   const requestId = ++privateGroupOpenRequestId;
@@ -441,6 +452,9 @@ async function openPrivateGroup(id) {
     retryTransientPrivateGroupAttachments(group);
     document.getElementById('group-chat').classList.add('open');
     document.getElementById('group-chat').setAttribute('aria-hidden','false');
+    // The messages were drawn while the screen was still hidden, where a
+    // scroll position cannot be set. Now that it is showing, start at the newest.
+    scrollPrivateGroupToLatest();
     clearInterval(groupPollTimer); groupPollTimer = setInterval(() => pollPrivateGroup(false), 3000);
     // The normal path is already hydrated by the inbox preloader. If the
     // user taps during a cold launch, open the group shell immediately and
