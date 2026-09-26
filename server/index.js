@@ -3577,7 +3577,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       messages.push(message);
     }
     return res200(res, { ok:true, keyVersion:group.keyVersion, requiresRekey:!!group.requiresRekey,
-      cursor:group.messages[group.messages.length - 1]?.createdAt || after, hasOlder:page.hasOlder, messages });
+      cursor:Math.max(Number(group.lastMessageAt) || 0, group.messages[group.messages.length - 1]?.createdAt || 0) || after,
+      hasOlder:page.hasOlder, messages });
   }
 
   if (path === '/api/groups/attachment/prepare' && method === 'POST') {
@@ -3686,6 +3687,32 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group message');
     }
     return res200(res, { ok:true, createdAt:group.updatedAt, keyVersion:group.keyVersion });
+  }
+
+  // "Delete for everyone": the app first tells members (an encrypted message in
+  // the stream) to hide the message, then calls this so the server stops holding
+  // the encrypted message, and its attachment, at all. Only the sender's own
+  // messages can be removed.
+  if (path === '/api/groups/delete-message' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to delete messages.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const ids = Array.isArray(d.messageIds)
+      ? [...new Set(d.messageIds.filter(item => typeof item === 'string' && item.length > 0 && item.length <= 96))].slice(0, 50) : [];
+    if (!ids.length) return resErr(res, 'Choose messages to delete.', 400);
+    if (await rateLimited(`group-delete-message:${d.accountId}`, 60, 60 * 1000)) return resErr(res, 'Too many deletions — slow down a moment.', 429);
+    const result = await groupStore.deleteMessages(d.groupId, d.accountId, ids);
+    if (!result) return resErr(res, 'Private group not found.', 404);
+    for (const { attachmentId } of result.removed) {
+      if (!attachmentId || !objectStorageEnabled || !postgresEnabled) continue;
+      try {
+        const attachment = await groupStore.attachment(d.groupId, attachmentId);
+        if (!attachment) continue;
+        await objectStorage.delete(attachment.objectKey);
+        await groupStore.deleteAttachmentRecord(attachmentId);
+      } catch (error) { console.error('Encrypted group attachment deletion failed:', error.message); }
+    }
+    return res200(res, { ok:true, removed:result.removed.map(item => item.id) });
   }
 
   if (path === '/api/groups/leave' && method === 'POST') {

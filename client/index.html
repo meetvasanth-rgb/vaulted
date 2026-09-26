@@ -5098,6 +5098,9 @@ const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 const ACCOUNT_STATE_KEY = 'vaultlix_anonymous_account_v1';
 const ACCOUNT_DEVICE_KEY = 'vaultlix_device_installation_v1';
 const PRIVATE_GROUPS_KEY = 'vaultlix_private_groups_v1';
+// "Delete for me" choices kept per group. The server holds at most 1000 messages
+// per group, so this outlasts anything a deleted message could come back from.
+const PRIVATE_GROUP_HIDDEN_MAX = 1200;
 const ACCOUNT_PBKDF2_ITERATIONS = 310000;
 let accountSyncTimer = null;
 // This used to be 5 minutes, which meant closing the app/tab for longer than
@@ -5285,7 +5288,9 @@ function savePrivateGroupSessions(groups = [...privateGroups.values()]) {
     name:group.name || 'Private group', keys:group.keys, keyVersion:group.keyVersion || 1,
     // "Delete for me" choices live with the group (and its backup). Falling back to the stored copy keeps
     // them from being lost when an in-memory group has not loaded them yet.
-    hiddenIds:Array.isArray(group.hiddenIds) ? group.hiddenIds.slice(-500) : (stored.get(group.id)?.hiddenIds || []),
+    hiddenIds:Array.isArray(group.hiddenIds) ? group.hiddenIds.slice(-PRIVATE_GROUP_HIDDEN_MAX) : (stored.get(group.id)?.hiddenIds || []),
+    // Messages deleted for everyone that the server has not yet been asked to drop.
+    pendingServerDeletes:Array.isArray(group.pendingServerDeletes) ? group.pendingServerDeletes.slice(-PRIVATE_GROUP_HIDDEN_MAX) : (stored.get(group.id)?.pendingServerDeletes || []),
     members:group.members || [], requiresRekey:!!group.requiresRekey, createdAt:group.createdAt || Date.now(), updatedAt:group.updatedAt || Date.now(), savedAt:Date.now(),
   }));
   localStorage.setItem(PRIVATE_GROUPS_KEY, JSON.stringify(safe));

@@ -196,3 +196,12 @@ test('wiring: leave/delete forget history, the list offers the button, dates and
   assert.match(groups, /keepDistanceFromBottom/);
   assert.match(extract('decodePrivateGroupBatch', 'async function'), /historyStoreDelete\(privateGroupCacheCode\(group\.id\), id\)/);
 });
+
+test('"delete for me" choices outlast the 1000 messages the server keeps per group', () => {
+  const client = fs.readFileSync(path.join(root, 'client/index.html'), 'utf8');
+  const cap = Number(/const PRIVATE_GROUP_HIDDEN_MAX = (\d+);/.exec(client)[1]);
+  const serverLimit = Number(/const MAX_GROUP_MESSAGES = (\d+);/.exec(fs.readFileSync(path.join(root, 'server/group-store.js'), 'utf8'))[1]);
+  assert.ok(cap > serverLimit, `${cap} must exceed ${serverLimit}`);
+  assert.match(client, /hiddenIds:Array\.isArray\(group\.hiddenIds\) \? group\.hiddenIds\.slice\(-PRIVATE_GROUP_HIDDEN_MAX\)/);
+  assert.match(groups, /\.\.\.ids\]\)\]\.slice\(-PRIVATE_GROUP_HIDDEN_MAX\)/);
+});

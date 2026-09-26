@@ -122,11 +122,41 @@ class GroupStore {
       if (group.requiresRekey || !group.members.some(member => member.accountId === accountId && member.active)) return null;
       const existing = group.messages.find(candidate => candidate.id === message.id);
       if (existing) return existing.senderId === accountId ? group : null;
-      group.messages.push({ ...message, senderId:accountId, keyVersion:group.keyVersion, createdAt:now });
+      // createdAt is also the cursor members poll and page with (strictly newer /
+      // older than), so it must be unique and rise with every message in the
+      // group. `now` is read before this transaction waits for its turn, and two
+      // sends can land in the same millisecond; either would let a member who has
+      // already read past that time never receive the message.
+      // The high-water mark also covers a newest message that was since deleted.
+      const last = Math.max(Number(group.lastMessageAt) || 0,
+        group.messages.length ? Number(group.messages[group.messages.length - 1].createdAt) || 0 : 0);
+      const createdAt = Math.max(now, last + 1);
+      group.messages.push({ ...message, senderId:accountId, keyVersion:group.keyVersion, createdAt });
+      // Deleting the newest message must not let a later one reuse its time.
+      group.lastMessageAt = createdAt;
       if (group.messages.length > MAX_GROUP_MESSAGES) group.messages.splice(0, group.messages.length - MAX_GROUP_MESSAGES);
-      group.updatedAt = now;
+      group.updatedAt = createdAt;
       return group;
     });
+  }
+
+  // "Delete for everyone": removes the sender's own messages from what the
+  // server stores, so a deleted message can no longer be downloaded (and
+  // decrypted) by anyone. Messages that belong to someone else are left alone.
+  // Returns { removed:[{ id, attachmentId }] }, or null if the group is gone.
+  async deleteMessages(id, accountId, messageIds) {
+    const wanted = new Set((Array.isArray(messageIds) ? messageIds : []).filter(item => typeof item === 'string'));
+    const removed = [];
+    const group = await this.mutate(id, current => {
+      if (!current.members.some(member => member.accountId === accountId && member.active)) return null;
+      current.messages = current.messages.filter(message => {
+        if (!wanted.has(message.id) || message.senderId !== accountId) return true;
+        removed.push({ id:message.id, attachmentId:message.attachmentId || null });
+        return false;
+      });
+      return current;
+    });
+    return group ? { removed } : null;
   }
 
   async createPendingAttachment(groupId, accountId, attachment) {

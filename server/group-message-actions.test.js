@@ -142,7 +142,7 @@ test('reactions and deletes are sent as control messages and deletes for everyon
 });
 
 test('"delete for me" is remembered with the saved group, without ever dropping what was stored', () => {
-  assert.match(client, /hiddenIds:Array\.isArray\(group\.hiddenIds\) \? group\.hiddenIds\.slice\(-500\) : \(stored\.get\(group\.id\)\?\.hiddenIds \|\| \[\]\)/);
+  assert.match(client, /hiddenIds:Array\.isArray\(group\.hiddenIds\) \? group\.hiddenIds\.slice\(-PRIVATE_GROUP_HIDDEN_MAX\) : \(stored\.get\(group\.id\)\?\.hiddenIds \|\| \[\]\)/);
 });
 
 test('leaving the group or reopening it clears any half-finished reply or selection', () => {

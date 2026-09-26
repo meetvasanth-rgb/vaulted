@@ -801,13 +801,52 @@ async function deletePrivateGroupMessages(ids, forEveryone) {
   const group = privateGroups.get(activePrivateGroupId); if (!group) return;
   exitPrivateGroupSelectMode();
   // Gone from this device straight away either way, as in a direct chat.
-  group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...ids])].slice(-500);
+  group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...ids])].slice(-PRIVATE_GROUP_HIDDEN_MAX);
   for (const id of ids) historyStoreDelete(privateGroupCacheCode(group.id), id);
   savePrivateGroupSessions(); renderPrivateGroupMessages(group);
   if (!forEveryone) return;
+  // Members are told first (an encrypted message that hides it on their devices),
+  // then the server is asked to stop holding the message and its attachment.
+  const told = [];
   try {
-    for (const id of ids) await sendPrivateGroupControl({ type:'group-delete', target:id }, { type:'delete', target:id });
+    for (const id of ids) { await sendPrivateGroupControl({ type:'group-delete', target:id }, { type:'delete', target:id }); told.push(id); }
   } catch (error) { toast(error.message || 'Could not delete for everyone'); }
+  if (!told.length) return;
+  group.pendingServerDeletes = [...new Set([...(group.pendingServerDeletes || []), ...told])];
+  savePrivateGroupSessions();
+  await flushPrivateGroupServerDeletes(group);
+}
+
+// Removes messages deleted for everyone from the server. A failure (offline, a
+// server hiccup) leaves them queued, saved with the group, and tried again from
+// the poll, so a deletion is never quietly left half done. After a few
+// failures in a row an entry is dropped: it may be gone already.
+const PRIVATE_GROUP_SERVER_DELETE_RETRY_MS = 30 * 1000;
+const PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES = 10;
+
+async function flushPrivateGroupServerDeletes(group) {
+  const state = loadAccountState();
+  const ids = (group?.pendingServerDeletes || []).slice(0, 50);
+  if (!state || !ids.length || group.flushingServerDeletes) return false;
+  group.flushingServerDeletes = true;
+  let done = false;
+  try {
+    const result = await api('/api/groups/delete-message', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, messageIds:ids });
+    // A group that is gone, or a refusal that repeating cannot change, ends the queue.
+    done = !result.error || result.status === 404 || result.status === 403 || result.status === 400;
+    if (!done) throw new Error(result.error);
+  } catch (_) {
+    group.serverDeleteFailures = (group.serverDeleteFailures || 0) + 1;
+    group.serverDeleteRetryAt = Date.now() + PRIVATE_GROUP_SERVER_DELETE_RETRY_MS;
+    if (group.serverDeleteFailures >= PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES) done = true;
+  } finally { group.flushingServerDeletes = false; }
+  if (done) {
+    const sent = new Set(ids);
+    group.pendingServerDeletes = (group.pendingServerDeletes || []).filter(id => !sent.has(id));
+    group.serverDeleteFailures = 0; group.serverDeleteRetryAt = 0;
+    savePrivateGroupSessions();
+  }
+  return done;
 }
 
 // ---- selection --------------------------------------------------------------
@@ -1275,6 +1314,7 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
     return false;
   }
   await restorePrivateGroupHistory(group, state);
+  if (group.pendingServerDeletes?.length && Date.now() >= (group.serverDeleteRetryAt || 0)) flushPrivateGroupServerDeletes(group).catch(() => {});
   const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id,
     after:group.messageCursor || 0, oldest:privateGroupOldestCreatedAt(group) || undefined });
   // Offline (or a server hiccup) with history already on screen is still a usable group.
