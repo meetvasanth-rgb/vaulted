@@ -2804,6 +2804,30 @@ html{background:#fff}
 #s-chat .chat-hdr-sub .e2e-bar,#s-chat .chat-hdr-sub .timer-bar{flex:0 0 auto}
 #s-chat .chat-hdr-sub .e2e-bar.pending{flex:0 1 auto;min-width:0}
 @media(min-width:560px){#s-chat .chat-hdr-sub #chat-presence-label{display:inline;margin-left:6px}}
+/* Narrow phones (or a large display-size setting) leave the contact's name a few
+   letters. Slimmer buttons, back arrow and photo hand that width to the name. */
+@media(max-width:400px){
+  #s-chat .chat-hdr{padding-left:8px!important;padding-right:8px!important;gap:6px!important}
+  #s-chat .chat-hdr-actions{gap:3px!important}
+  #s-chat .chat-call-btn,#s-chat .conversation-menu-btn{width:34px!important;height:36px!important;border-radius:11px!important}
+  #s-chat .chat-call-btn svg{width:18px!important;height:18px!important}
+  #s-chat .chat-home-btn{width:34px!important;height:36px!important;border-radius:11px!important}
+  #s-chat .chat-home-btn svg{width:18px!important;height:18px!important}
+  #s-chat .chat-peer-avatar{width:36px!important;height:36px!important;flex-basis:36px!important;border-radius:12px!important}
+  #s-chat .chat-hdr-identity{gap:8px!important}
+  /* Slimmer to look at, not to tap: the touch area stays about 44px tall. */
+  #s-chat .chat-call-btn,#s-chat .conversation-menu-btn,#s-chat .chat-home-btn{position:relative}
+  #s-chat .chat-call-btn::after,#s-chat .conversation-menu-btn::after,#s-chat .chat-home-btn::after{content:'';position:absolute;inset:-4px -1px}
+}
+@media(max-width:340px){
+  #s-chat .chat-hdr{padding-left:6px!important;padding-right:6px!important;gap:4px!important}
+  #s-chat .chat-hdr-actions{gap:2px!important}
+  #s-chat .chat-call-btn,#s-chat .conversation-menu-btn{width:31px!important;height:34px!important;border-radius:10px!important}
+  #s-chat .chat-call-btn svg{width:17px!important;height:17px!important}
+  #s-chat .chat-home-btn{width:31px!important;height:34px!important}
+  #s-chat .chat-peer-avatar{width:34px!important;height:34px!important;flex-basis:34px!important}
+  #s-chat .chat-hdr-identity{gap:6px!important}
+}
 </style>
 <script type="application/ld+json">
 {

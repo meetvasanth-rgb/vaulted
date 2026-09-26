@@ -77,3 +77,16 @@ test('the line under the name never draws its items over each other', () => {
   assert.match(block, /#s-chat \.chat-hdr-sub \.e2e-bar,#s-chat \.chat-hdr-sub \.timer-bar\{flex:0 0 auto\}/);
   assert.match(chat, /id="chat-presence" title="Online" aria-label="Online" hidden/);
 });
+
+test('narrow screens get slimmer header buttons so the contact\'s name keeps its room', () => {
+  const block = client.slice(client.lastIndexOf('<style>'));
+  const narrow = block.slice(block.indexOf('@media(max-width:400px){'), block.indexOf('@media(max-width:340px){'));
+  assert.match(narrow, /#s-chat \.chat-call-btn,#s-chat \.conversation-menu-btn\{width:34px!important;height:36px!important/);
+  assert.match(narrow, /#s-chat \.chat-home-btn\{width:34px!important/);
+  assert.match(narrow, /#s-chat \.chat-peer-avatar\{width:36px!important/);
+  assert.match(narrow, /\.chat-call-btn::after[^{]*\{content:'';position:absolute;inset:-4px -1px\}/, 'the touch area is kept');
+  const narrower = block.slice(block.indexOf('@media(max-width:340px){'));
+  assert.match(narrower, /#s-chat \.chat-call-btn,#s-chat \.conversation-menu-btn\{width:31px!important;height:34px!important/);
+  // Wider phones keep the regular buttons.
+  assert.doesNotMatch(block.slice(0, block.indexOf('@media(max-width:400px){')).split('\n').slice(-40).join('\n'), /conversation-menu-btn\{width:34px/);
+});
