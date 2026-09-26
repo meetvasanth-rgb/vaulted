@@ -117,3 +117,14 @@ test('closing anything that used to close an action row now ends selection in bo
   assert.match(close, /exitSelectMode\(\)/);
   assert.match(close, /exitPrivateGroupSelectMode\(\)/);
 });
+
+test('the delete dialogs sit above the selection bar, the emoji bar and the More menu', () => {
+  const layers = { bar: 10040, react: 10041, menu: 10042 };
+  const css = name => Number(new RegExp(`\\.${name}\\{[^}]*z-index:(\\d+)`).exec(client)[1]);
+  assert.equal(css('msg-selection-bar'), layers.bar);
+  assert.equal(css('msg-reaction-bar'), layers.react);
+  assert.equal(css('msg-more-menu'), layers.menu);
+  assert.ok(css('group-delete-overlay') > layers.menu, 'group delete dialog');
+  const direct = client.slice(client.indexOf("overlay.id = 'delete-msg-overlay';"));
+  assert.ok(Number(/z-index:(\d+)/.exec(direct.slice(0, 400))[1]) > layers.menu, 'direct delete dialog');
+});
