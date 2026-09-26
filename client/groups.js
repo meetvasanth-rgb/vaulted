@@ -133,19 +133,58 @@ async function uploadPrivateGroupAttachment(state, group, messageId, ciphertext)
   return prepared.attachmentId;
 }
 
-async function downloadPrivateGroupAttachment(state, group, attachmentId) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  let ciphertext;
-  try {
-    const response = await fetch('/api/groups/attachment/content', { method:'POST', headers:{ 'Content-Type':'application/json' },
-      body:JSON.stringify({ accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, attachmentId }),
-      cache:'no-store', signal:controller.signal });
-    if (!response.ok) throw new Error('Could not open attachment');
-    ciphertext = await response.text();
-  } finally { clearTimeout(timeout); }
-  if (!ciphertext || new Blob([ciphertext]).size > MAX_PRIVATE_GROUP_ATTACHMENT_BYTES) throw new Error('Invalid attachment');
-  return ciphertext;
+// Group attachments share the on-device download cache with one-to-one
+// chats. The cache "room" is `group:<id>`, which can never collide with a
+// conversation code.
+function privateGroupCacheCode(groupId) { return `group:${groupId}`; }
+
+const privateGroupDownloads = new Map();
+
+// Leaving, deleting or being removed from a group takes its saved downloads with it.
+function forgetPrivateGroupDownloads(groupId) {
+  if (groupId) attachmentCacheClearRoom(privateGroupCacheCode(groupId)).catch(() => {});
+}
+
+// The encrypted attachment text, from this device when it is already there.
+// messageId ties the saved copy to its message, so deleting the message
+// deletes the copy too.
+function downloadPrivateGroupAttachment(state, group, attachmentId, messageId = '') {
+  const key = `${group.id}:${attachmentId}`;
+  if (privateGroupDownloads.has(key)) return privateGroupDownloads.get(key);
+  const job = fetchPrivateGroupAttachment(state, group, attachmentId, messageId).finally(() => privateGroupDownloads.delete(key));
+  privateGroupDownloads.set(key, job);
+  return job;
+}
+
+async function fetchPrivateGroupAttachment(state, group, attachmentId, messageId) {
+  const cacheCode = privateGroupCacheCode(group.id);
+  const cached = await attachmentCacheGet(cacheCode, attachmentId);
+  if (cached) return cached;
+  let lastError = new Error('Could not open attachment');
+  for (let attempt = 0; attempt < ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS.length; attempt++) {
+    const delay = ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS[attempt];
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const controller = new AbortController();
+    let stall = null;
+    const armStall = () => { clearTimeout(stall); stall = setTimeout(() => controller.abort(), ATTACHMENT_STALL_MS); };
+    armStall();
+    try {
+      const response = await fetch('/api/groups/attachment/content', { method:'POST', headers:{ 'Content-Type':'application/json' },
+        body:JSON.stringify({ accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, attachmentId }),
+        cache:'no-store', signal:controller.signal });
+      if (!response.ok) { const error = new Error('Could not open attachment'); error.status = response.status; throw error; }
+      const ciphertext = await readAttachmentBody(response, armStall);
+      if (!ciphertext || new Blob([ciphertext]).size > MAX_PRIVATE_GROUP_ATTACHMENT_BYTES) throw Object.assign(new Error('Invalid attachment'), { status:422 });
+      attachmentCachePut(cacheCode, attachmentId, messageId, ciphertext).catch(() => {});
+      return ciphertext;
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.status || 0);
+      const retryable = !status || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+      if (!retryable || attempt === ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS.length - 1) break;
+    } finally { clearTimeout(stall); }
+  }
+  throw lastError;
 }
 
 async function sendPrivateGroupAttachment(payload, onProgress) {
@@ -161,6 +200,8 @@ async function sendPrivateGroupAttachment(payload, onProgress) {
     const encryptedPayload = await encryptPrivateGroupValue(key, payload);
     onProgress?.('Sending securely…');
     const attachmentId = await uploadPrivateGroupAttachment(state, group, messageId, encryptedPayload);
+    // We just made this ciphertext, so keep it: our own photo must not be downloaded back.
+    attachmentCachePut(privateGroupCacheCode(group.id), attachmentId, messageId, encryptedPayload).catch(() => {});
     const ciphertext = await encryptPrivateGroupValue(key, { type:'group-attachment', attachmentId });
     const result = await api('/api/groups/send', { accountId:state.accountId, sessionToken:state.sessionToken,
       groupId:group.id, messageId, ciphertext, attachmentId });
@@ -324,7 +365,7 @@ async function refreshPrivateGroups() {
     privateGroups.set(serverGroup.id, { ...local, ...serverGroup, name, keys,
       ownerAccountId:state.accountId, messages:local?.messages || [], unread:local?.unread || 0 });
   }
-  for (const id of [...privateGroups.keys()]) if (!live.has(id)) privateGroups.delete(id);
+  for (const id of [...privateGroups.keys()]) if (!live.has(id)) { forgetPrivateGroupDownloads(id); privateGroups.delete(id); }
   if ([...privateGroups.values()].some(group => !group.keys?.[group.keyVersion])) await restorePrivateGroupKeysFromBackup();
   savePrivateGroupSessions();
   if (receivedNewKey) scheduleAccountSync();
@@ -473,17 +514,27 @@ function groupMessagePreview(message) {
 // stream. A delete only counts when the person who sent it also sent the
 // message it targets, so no member can remove another member's message.
 // `hiddenIds` are this device's own "delete for me" choices.
-function derivePrivateGroupView(messages, hiddenIds = []) {
+function privateGroupDeletedIds(messages, hiddenIds = []) {
   const byId = new Map(messages.map(message => [message.id, message]));
   const deleted = new Set(hiddenIds);
+  for (const message of messages) {
+    const control = message.control;
+    if (control?.type !== 'delete') continue;
+    const target = byId.get(control.target);
+    if (target && !target.control && target.senderId === message.senderId) deleted.add(control.target);
+  }
+  return deleted;
+}
+
+function derivePrivateGroupView(messages, hiddenIds = []) {
+  const byId = new Map(messages.map(message => [message.id, message]));
+  const deleted = privateGroupDeletedIds(messages, hiddenIds);
   const reactions = new Map();
   for (const message of messages) {
     const control = message.control; if (!control) continue;
     const target = byId.get(control.target);
     if (!target || target.control) continue;
-    if (control.type === 'delete') {
-      if (target.senderId === message.senderId) deleted.add(control.target);
-    } else if (control.type === 'reaction') {
+    if (control.type === 'reaction') {
       if (!reactions.has(control.target)) reactions.set(control.target, new Map());
       if (control.emoji) reactions.get(control.target).set(message.senderId, control.emoji);
       else reactions.get(control.target).delete(message.senderId);
@@ -716,6 +767,7 @@ async function deletePrivateGroupMessages(ids, forEveryone) {
   exitPrivateGroupSelectMode();
   // Gone from this device straight away either way, as in a direct chat.
   group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...ids])].slice(-500);
+  for (const id of ids) attachmentCacheDeleteForMessage(privateGroupCacheCode(group.id), id);
   savePrivateGroupSessions(); renderPrivateGroupMessages(group);
   if (!forEveryone) return;
   try {
@@ -891,26 +943,32 @@ function forwardPrivateGroupAttachment(messageId) {
   }, { includeActiveRoom:true });
 }
 
-async function decodePrivateGroupMessage(group, state, message) {
+// Reads everything that is not an attachment. An attachment message comes back
+// as { pending } so the caller can decide whether it is worth downloading.
+async function decodePrivateGroupEnvelope(group, message) {
   const plaintext = await decryptPrivateGroupValue(group.keys?.[message.keyVersion], message.ciphertext);
   let metadata = null;
   try { metadata = JSON.parse(plaintext); } catch (_) {}
-  if (metadata?.type === 'group-gif' && safeKlipyMediaUrl(metadata.url)) return { ...message, gif:metadata };
+  if (metadata?.type === 'group-gif' && safeKlipyMediaUrl(metadata.url)) return { decoded:{ ...message, gif:metadata } };
   // Replies, reactions and deletes ride inside the same encrypted message
   // stream. Everything here comes from another member, so each field is
   // checked and trimmed before it is ever shown.
   if (metadata?.type === 'group-text' && typeof metadata.text === 'string') {
-    return { ...message, text:metadata.text, reply:sanitizeGroupReply(metadata.reply) };
+    return { decoded:{ ...message, text:metadata.text, reply:sanitizeGroupReply(metadata.reply) } };
   }
   if (metadata?.type === 'group-reaction' && typeof metadata.target === 'string' && metadata.target.length <= 96) {
     const emoji = GROUP_REACTIONS.includes(metadata.emoji) ? metadata.emoji : '';
-    return { ...message, control:{ type:'reaction', target:metadata.target, emoji } };
+    return { decoded:{ ...message, control:{ type:'reaction', target:metadata.target, emoji } } };
   }
   if (metadata?.type === 'group-delete' && typeof metadata.target === 'string' && metadata.target.length <= 96) {
-    return { ...message, control:{ type:'delete', target:metadata.target } };
+    return { decoded:{ ...message, control:{ type:'delete', target:metadata.target } } };
   }
-  if (metadata?.type !== 'group-attachment' || !metadata.attachmentId) return { ...message, text:plaintext };
-  const encryptedPayload = await downloadPrivateGroupAttachment(state, group, metadata.attachmentId);
+  if (metadata?.type !== 'group-attachment' || !metadata.attachmentId) return { decoded:{ ...message, text:plaintext } };
+  return { pending:{ message, attachmentId:metadata.attachmentId } };
+}
+
+async function decodePrivateGroupAttachment(group, state, message, attachmentId) {
+  const encryptedPayload = await downloadPrivateGroupAttachment(state, group, attachmentId, message.id);
   const payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
   if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 36 * 1024 * 1024) {
     throw new Error('Invalid group attachment');
@@ -919,7 +977,7 @@ async function decodePrivateGroupMessage(group, state, message) {
     payload.videoThumb = String(payload.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', payload.videoThumb)
       ? payload.videoThumb : null;
   }
-  const decoded = { ...message, attachmentId:metadata.attachmentId, attachment:payload };
+  const decoded = { ...message, attachmentId, attachment:payload };
   if (payload.type === 'group-image' && message.senderId !== state.accountId && localImageSafetyEnabled()) {
     decoded.imageSafety = await checkLocalImages([payload.data], undefined, { persist:true });
   }
@@ -927,6 +985,39 @@ async function decodePrivateGroupMessage(group, state, message) {
     decoded.videoSafety = await checkLocalImages([payload.videoThumb], undefined, { persist:true });
     if (decoded.videoSafety !== 'allowed') payload.videoThumb = null;
   }
+  return decoded;
+}
+
+async function decodePrivateGroupMessage(group, state, message) {
+  const { decoded, pending } = await decodePrivateGroupEnvelope(group, message);
+  return decoded || decodePrivateGroupAttachment(group, state, pending.message, pending.attachmentId);
+}
+
+const PRIVATE_GROUP_ATTACHMENT_CONCURRENCY = 3;
+
+// Text first, then only the attachments somebody still wants: one that was
+// deleted, for everyone or just here, is never downloaded (or saved) again.
+async function decodePrivateGroupBatch(group, state, messages) {
+  const decoded = [], pending = [];
+  for (const message of messages) {
+    try {
+      const result = await decodePrivateGroupEnvelope(group, message);
+      if (result.pending) pending.push(result.pending); else decoded.push(result.decoded);
+    } catch (_) { decoded.push({ ...message, text:'Encrypted message unavailable on this device.', unavailable:true }); }
+  }
+  const stubs = [...(group.messages || []), ...decoded, ...pending.map(item => ({ id:item.message.id, senderId:item.message.senderId }))];
+  const deleted = privateGroupDeletedIds(stubs, group.hiddenIds || []);
+  for (const id of deleted) attachmentCacheDeleteForMessage(privateGroupCacheCode(group.id), id);
+  const wanted = pending.filter(item => !deleted.has(item.message.id));
+  let next = 0;
+  const worker = async () => {
+    while (next < wanted.length) {
+      const item = wanted[next++];
+      try { decoded.push(await decodePrivateGroupAttachment(group, state, item.message, item.attachmentId)); }
+      catch (_) { decoded.push({ ...item.message, text:'Encrypted message unavailable on this device.', unavailable:true }); }
+    }
+  };
+  await Promise.all(Array.from({ length:Math.min(PRIVATE_GROUP_ATTACHMENT_CONCURRENCY, wanted.length) }, worker));
   return decoded;
 }
 
@@ -942,11 +1033,7 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
   }
   const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, after:group.messageCursor || 0 });
   if (result.error) return false;
-  const decoded = [];
-  for (const message of result.messages || []) {
-    try { decoded.push(await decodePrivateGroupMessage(group, state, message)); }
-    catch (_) { decoded.push({ ...message, text:'Encrypted message unavailable on this device.', unavailable:true }); }
-  }
+  const decoded = await decodePrivateGroupBatch(group, state, result.messages || []);
   const known = new Set((group.messages || []).map(item => item.id));
   const incoming = decoded.filter(item => !known.has(item.id));
   const changed = incoming.length > 0;
@@ -1146,7 +1233,7 @@ async function reportPrivateGroupMember(accountId) {
       closeGroupMembers(); openGroupMembers();
     } else {
       await api('/api/groups/leave', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id });
-      privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup();
+      forgetPrivateGroupDownloads(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup();
     }
   } catch (error) { console.error('Group safety exit failed', error); }
   toast('Report sent and member blocked');
@@ -1157,7 +1244,7 @@ async function leavePrivateGroup() {
   if (!state || !group || !confirm('Leave this private group?')) return;
   const result = await api('/api/groups/leave', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id });
   if (result.error) { toast(result.error); return; }
-  privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('You left the group');
+  forgetPrivateGroupDownloads(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('You left the group');
 }
 
 async function deletePrivateGroup() {
@@ -1165,5 +1252,5 @@ async function deletePrivateGroup() {
   if (!state || !group || !confirm('Delete this private group for every member?')) return;
   const result = await api('/api/groups/delete', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id });
   if (result.error) { toast(result.error); return; }
-  privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('Private group deleted');
+  forgetPrivateGroupDownloads(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('Private group deleted');
 }

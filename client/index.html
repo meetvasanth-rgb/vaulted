@@ -4902,6 +4902,16 @@ async function storageStats() {
   return { downloads:groupBytesByRoom(Array.isArray(downloads) ? downloads : []), messages:groupCountByRoom(Array.isArray(messages) ? messages : []) };
 }
 
+// Group downloads are saved under `group:<id>`; everything else is a conversation code.
+function storageLabelForCode(code) {
+  if (String(code).startsWith('group:')) {
+    const group = privateGroups.get(String(code).slice(6));
+    return group ? `${group.name || 'Private group'} (group)` : 'Removed group';
+  }
+  const room = rooms.get(code);
+  return room ? roomDisplayLabel(room) : 'Removed conversation';
+}
+
 async function renderStoragePage() {
   const summary = document.getElementById('storage-summary');
   if (!summary) return;
@@ -4922,19 +4932,19 @@ async function renderStoragePage() {
   document.getElementById('storage-limit').innerHTML = `<div class="storage-seg">${ATTACHMENT_CACHE_LIMIT_CHOICES_MB.map(mb =>
     `<button type="button" class="${mb * 1024 * 1024 === limit ? 'on' : ''}" onclick="setAttachmentCacheLimitMb(${mb})">${mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`}</button>`).join('')}</div>`;
   const codes = [...new Set([...Object.keys(downloads.byRoom), ...Object.keys(messages.byRoom)])];
-  const label = code => { const room = rooms.get(code); return room ? roomDisplayLabel(room) : 'Removed conversation'; };
+  const label = storageLabelForCode;
   codes.sort((a, b) => (downloads.byRoom[b] || 0) - (downloads.byRoom[a] || 0));
   document.getElementById('storage-rooms').innerHTML = codes.length ? codes.map(code => {
     const bytes = downloads.byRoom[code] || 0, count = messages.byRoom[code] || 0;
-    return `<div class="storage-room"><div class="storage-room-name"><strong>${escHtml(label(code))}</strong><small>${count.toLocaleString()} message${count === 1 ? '' : 's'} · ${escHtml(formatStorageBytes(bytes))} downloaded</small></div><button type="button" ${bytes ? '' : 'disabled'} onclick="clearRoomDownloads('${escHtml(code)}')">Clear</button></div>`;
+    const detail = code.startsWith('group:') ? '' : `${count.toLocaleString()} message${count === 1 ? '' : 's'} · `;
+    return `<div class="storage-room"><div class="storage-room-name"><strong>${escHtml(label(code))}</strong><small>${detail}${escHtml(formatStorageBytes(bytes))} downloaded</small></div><button type="button" ${bytes ? '' : 'disabled'} onclick="clearRoomDownloads('${escHtml(code)}')">Clear</button></div>`;
   }).join('') : '<div class="settings-row-sub">Nothing is saved on this device yet.</div>';
   const clearAll = document.getElementById('storage-clear-all');
   if (clearAll) clearAll.disabled = downloads.total === 0;
 }
 
 async function clearRoomDownloads(code) {
-  const room = rooms.get(code);
-  if (!confirm(`Clear downloaded attachments for ${room ? roomDisplayLabel(room) : 'this conversation'}? Messages stay, and attachments download again when you open them if the server still has them.`)) return;
+  if (!confirm(`Clear downloaded attachments for ${storageLabelForCode(code)}? Messages stay, and attachments download again when you open them if the server still has them.`)) return;
   await attachmentCacheClearRoom(code);
   toast('Downloads cleared');
   renderStoragePage().catch(() => {});

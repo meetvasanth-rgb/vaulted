@@ -30,7 +30,7 @@ function extract(source, name) {
 
 const sandbox = vm.createContext({ Map, Set, String, Array, JSON });
 vm.runInContext("const GROUP_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];", sandbox);
-for (const name of ['sanitizeGroupReply', 'groupMessageKind', 'groupMessagePreview', 'derivePrivateGroupView', 'groupReactionChipsHtml']) {
+for (const name of ['sanitizeGroupReply', 'groupMessageKind', 'groupMessagePreview', 'privateGroupDeletedIds', 'derivePrivateGroupView', 'groupReactionChipsHtml']) {
   vm.runInContext(extract(groups, name), sandbox);
 }
 // Results are plain data; round-trip them so assertions compare values, not realms.
