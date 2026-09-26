@@ -18219,26 +18219,44 @@ async function submitInviteCode(event) {
 // once, and dropped after a few failed lookups so a bad code cannot nag forever.
 const INSTALL_INVITE_ATTEMPTS_KEY = 'vaultlix_install_invite_attempts_v1';
 const INSTALL_INVITE_MAX_ATTEMPTS = 3;
+// Where the invitation comes from: the Android app reads it from Google Play; the
+// iPhone app hands over the one its App Clip saved before Vaultlix was installed.
+function installInviteSource() {
+  const android = window.VaultlixAndroid;
+  if (typeof android?.pendingInstallInvite === 'function') {
+    return { peek: () => android.pendingInstallInvite(), checked: () => !!android.installInviteChecked?.(), clear: () => android.clearInstallInvite?.() };
+  }
+  const ios = window.__vaultlixIOSInstallInvite;
+  if (typeof ios === 'string' && ios) {
+    return { peek: () => ios, checked: () => true, clear: () => window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'clearInstallInvite' }) };
+  }
+  return null;
+}
+const INSTALL_INVITE_DONE_KEY = 'vaultlix_install_invite_done_v1';
 async function checkInstallInvite({ waitMs = 6000, pollMs = 400 } = {}) {
-  const bridge = window.VaultlixAndroid;
-  if (!isNativeApp() || typeof bridge?.pendingInstallInvite !== 'function') return false;
+  const source = installInviteSource();
+  if (!isNativeApp() || !source) return false;
   const deadline = Date.now() + waitMs;
   let code = '';
   for (;;) {
-    try { code = normalizeProfileShareCode(bridge.pendingInstallInvite()); } catch (error) { return false; }
+    try { code = normalizeProfileShareCode(source.peek()); } catch (error) { return false; }
     if (code) break;
     let checked = true;
-    try { checked = !!bridge.installInviteChecked?.(); } catch (error) {}
+    try { checked = !!source.checked(); } catch (error) {}
     if (checked || Date.now() >= deadline) return false;
     await new Promise(resolve => setTimeout(resolve, pollMs));
   }
+  // The iPhone app keeps offering the same code until it restarts; each is shown once.
+  try {
+    if (localStorage.getItem(INSTALL_INVITE_DONE_KEY) === code) { try { source.clear(); } catch (error) {} return false; }
+  } catch (error) {}
   let attempts = 0;
   try { attempts = Number(localStorage.getItem(INSTALL_INVITE_ATTEMPTS_KEY)) || 0; } catch (error) {}
-  if (attempts >= INSTALL_INVITE_MAX_ATTEMPTS) { try { bridge.clearInstallInvite?.(); } catch (error) {} return false; }
+  if (attempts >= INSTALL_INVITE_MAX_ATTEMPTS) { try { source.clear(); } catch (error) {} return false; }
   try { localStorage.setItem(INSTALL_INVITE_ATTEMPTS_KEY, String(attempts + 1)); } catch (error) {}
   const opened = await openPublicProfileShareCode(code);
   if (opened) {
-    try { bridge.clearInstallInvite?.(); localStorage.removeItem(INSTALL_INVITE_ATTEMPTS_KEY); } catch (error) {}
+    try { source.clear(); localStorage.removeItem(INSTALL_INVITE_ATTEMPTS_KEY); localStorage.setItem(INSTALL_INVITE_DONE_KEY, code); } catch (error) {}
   }
   return opened;
 }

@@ -58,6 +58,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         bridgeController.webView?.backgroundColor = .white
         bridgeController.webView?.scrollView.backgroundColor = .white
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
+        // A friend's invitation the App Clip saved before the person installed Vaultlix. The code
+        // is validated, so it is safe to place in the script; the page shows the friend's page once
+        // and then asks for it to be cleared (clearInstallInvite).
+        if let code = SharedInvite.pendingCode() {
+            bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
+                source: "window.__vaultlixIOSInstallInvite = '\(code)';",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         let runsOnMac: Bool
         if #available(iOS 14.0, *) { runsOnMac = ProcessInfo.processInfo.isiOSAppOnMac }
         else { runsOnMac = false }
@@ -696,6 +704,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             }
             flushPendingCallActions()
             flushPendingUniversalLink()
+            return
+        }
+        if action == "clearInstallInvite" {
+            guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.host == "vaultlix.com" else { return }
+            SharedInvite.clear()
             return
         }
         if action == "connectedHaptic" {

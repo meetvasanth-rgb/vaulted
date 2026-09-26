@@ -74,7 +74,7 @@ function runCheck({ codes, checkedAfter = 0, lookup = async () => true, attempts
     openPublicProfileShareCode:async code => { log.opened.push(code); return lookup(code); },
     INSTALL_INVITE_ATTEMPTS_KEY:'vaultlix_install_invite_attempts_v1', INSTALL_INVITE_MAX_ATTEMPTS:3,
   });
-  vm.runInContext(`${extract('checkInstallInvite', 'async function')}`, context);
+  vm.runInContext(`${extract('installInviteSource')}\nconst INSTALL_INVITE_DONE_KEY = 'vaultlix_install_invite_done_v1';\n${extract('checkInstallInvite', 'async function')}`, context);
   return { log, run:() => vm.runInContext('checkInstallInvite({ waitMs:200, pollMs:5 })', context) };
 }
 
@@ -119,7 +119,7 @@ test('a lookup that fails keeps the invitation for the next launch, but only thr
 
 test('a browser or the iOS app (no Android bridge) does nothing', async () => {
   const context = vm.createContext({ window:{}, isNativeApp:() => true, Date });
-  vm.runInContext(extract('checkInstallInvite', 'async function'), context);
+  vm.runInContext(`${extract('installInviteSource')}\n${extract('checkInstallInvite', 'async function')}`, context);
   assert.equal(await vm.runInContext('checkInstallInvite()', context), false);
 });
 
