@@ -49,6 +49,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         let bridgeController = CAPBridgeViewController()
         window?.rootViewController = bridgeController
         window?.makeKeyAndVisible()
+        // The keyboard is translucent: what is behind it shows through. Behind it is
+        // this window and web view, whose default colour is dark, so the keyboard
+        // looked white while it slid up and turned grey once it settled. White all
+        // the way down keeps it the same white throughout.
+        window?.backgroundColor = .white
+        bridgeController.view.backgroundColor = .white
+        bridgeController.webView?.backgroundColor = .white
+        bridgeController.webView?.scrollView.backgroundColor = .white
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
         let runsOnMac: Bool
         if #available(iOS 14.0, *) { runsOnMac = ProcessInfo.processInfo.isiOSAppOnMac }
