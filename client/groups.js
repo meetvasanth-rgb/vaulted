@@ -140,9 +140,10 @@ function privateGroupCacheCode(groupId) { return `group:${groupId}`; }
 
 const privateGroupDownloads = new Map();
 
-// Leaving, deleting or being removed from a group takes its saved downloads with it.
-function forgetPrivateGroupDownloads(groupId) {
-  if (groupId) attachmentCacheClearRoom(privateGroupCacheCode(groupId)).catch(() => {});
+// Leaving, deleting or being removed from a group takes everything saved for it
+// on this device: its message history and its downloaded attachments.
+function forgetPrivateGroupData(groupId) {
+  if (groupId) historyStoreClearRoom(privateGroupCacheCode(groupId));
 }
 
 // The encrypted attachment text, from this device when it is already there.
@@ -365,7 +366,7 @@ async function refreshPrivateGroups() {
     privateGroups.set(serverGroup.id, { ...local, ...serverGroup, name, keys,
       ownerAccountId:state.accountId, messages:local?.messages || [], unread:local?.unread || 0 });
   }
-  for (const id of [...privateGroups.keys()]) if (!live.has(id)) { forgetPrivateGroupDownloads(id); privateGroups.delete(id); }
+  for (const id of [...privateGroups.keys()]) if (!live.has(id)) { forgetPrivateGroupData(id); privateGroups.delete(id); }
   if ([...privateGroups.values()].some(group => !group.keys?.[group.keyVersion])) await restorePrivateGroupKeysFromBackup();
   savePrivateGroupSessions();
   if (receivedNewKey) scheduleAccountSync();
@@ -554,7 +555,7 @@ function groupReactionChipsHtml(reactionMap, myId) {
     `<span class="msg-reaction-badge${emoji === mine ? ' mine' : ''}">${emoji}${count > 1 ? `<small>${count}</small>` : ''}</span>`).join('')}</div>`;
 }
 
-function renderPrivateGroupMessages(group) {
+function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {}) {
   const body = document.getElementById('group-chat-body'); if (!body) return;
   const state = loadAccountState();
   if (!hasPrivateGroupKeys(group)) {
@@ -567,7 +568,10 @@ function renderPrivateGroupMessages(group) {
   }
   const { visible, reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
   if (!visible.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
-  body.innerHTML = visible.map(message => {
+  let previousDay = '';
+  const earlier = privateGroupCanLoadEarlier(group)
+    ? '<div class="load-earlier"><button type="button" class="load-earlier-btn" onclick="loadEarlierPrivateGroupMessages()">Load earlier messages</button></div>' : '';
+  body.innerHTML = earlier + visible.map(message => {
     let content;
     const kind = groupMessageKind(message);
     // Same long-press action row as a direct conversation. Hidden, blocked or
@@ -623,11 +627,16 @@ function renderPrivateGroupMessages(group) {
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
     // The bubble is one element; the action row and reaction strip sit under it
     // (not inside it), exactly where a direct conversation puts them.
-    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message${mine ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>${actions}</div>`;
+    const day = dayKey(message.createdAt);
+    const separator = day !== previousDay ? daySeparatorHtml(message.createdAt) : '';
+    previousDay = day;
+    return `${separator}<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message-select"></div><div class="group-message${mine ? ' mine' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div>${actions}</div>`;
   }).join('');
   for (const row of body.querySelectorAll('[data-group-msg-id]')) wirePrivateGroupMessage(row);
   if (groupSelectMode) refreshPrivateGroupSelection();
-  body.scrollTop = body.scrollHeight;
+  // Older messages added above the reader must not move what they are looking at.
+  body.scrollTop = typeof keepDistanceFromBottom === 'number'
+    ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
   fillPrivateGroupPdfPreviews(group.id);
 }
 
@@ -767,7 +776,7 @@ async function deletePrivateGroupMessages(ids, forEveryone) {
   exitPrivateGroupSelectMode();
   // Gone from this device straight away either way, as in a direct chat.
   group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...ids])].slice(-500);
-  for (const id of ids) attachmentCacheDeleteForMessage(privateGroupCacheCode(group.id), id);
+  for (const id of ids) historyStoreDelete(privateGroupCacheCode(group.id), id);
   savePrivateGroupSessions(); renderPrivateGroupMessages(group);
   if (!forEveryone) return;
   try {
@@ -1007,7 +1016,11 @@ async function decodePrivateGroupBatch(group, state, messages) {
   }
   const stubs = [...(group.messages || []), ...decoded, ...pending.map(item => ({ id:item.message.id, senderId:item.message.senderId }))];
   const deleted = privateGroupDeletedIds(stubs, group.hiddenIds || []);
-  for (const id of deleted) attachmentCacheDeleteForMessage(privateGroupCacheCode(group.id), id);
+  // Take deleted messages off the device, but only ones this batch is about:
+  // the stored copy of something deleted earlier is already gone.
+  const touched = new Set([...decoded.map(item => item.id), ...pending.map(item => item.message.id),
+    ...decoded.filter(item => item.control?.type === 'delete').map(item => item.control.target)]);
+  for (const id of deleted) if (touched.has(id)) historyStoreDelete(privateGroupCacheCode(group.id), id);
   const wanted = pending.filter(item => !deleted.has(item.message.id));
   let next = 0;
   const worker = async () => {
@@ -1021,6 +1034,80 @@ async function decodePrivateGroupBatch(group, state, messages) {
   return decoded;
 }
 
+// ---- message history on this device -----------------------------------------
+// The server sends the newest 200 messages and keeps 1000. The messages it
+// sends are also saved here, still encrypted, so a group opens with its
+// conversation already in place, works offline, and keeps what the server has
+// since dropped. They live in the same IndexedDB store as one-to-one history,
+// under `group:<id>`, ordered by the time the server stamped them.
+const PRIVATE_GROUP_HISTORY_PAGE = 100;
+const PRIVATE_GROUP_HISTORY_MAX_CHARS = 256 * 1024;
+const privateGroupRestores = new Map();
+
+// The part of a server message worth keeping, or null for one that is malformed.
+function privateGroupHistoryEnvelope(message) {
+  if (!message || typeof message.id !== 'string' || !message.id || message.id.length > 96) return null;
+  if (typeof message.senderId !== 'string' || !message.senderId) return null;
+  if (typeof message.ciphertext !== 'string' || !message.ciphertext || message.ciphertext.length > PRIVATE_GROUP_HISTORY_MAX_CHARS) return null;
+  const createdAt = Number(message.createdAt);
+  if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
+  return { id:message.id, senderId:message.senderId, ciphertext:message.ciphertext, keyVersion:Number(message.keyVersion) || 1, createdAt };
+}
+
+function privateGroupHistoryPut(groupId, messages) {
+  const code = privateGroupCacheCode(groupId);
+  const rows = [];
+  for (const message of Array.isArray(messages) ? messages : []) {
+    const msg = privateGroupHistoryEnvelope(message);
+    if (msg) rows.push({ code, id:msg.id, seq:msg.createdAt, msg });
+  }
+  if (!rows.length) return Promise.resolve(false);
+  return historyTransaction('readwrite', store => { for (const row of rows) store.put(row); }).catch(() => null);
+}
+
+// Adds decoded messages to the group, newest last, with no repeats. The window
+// is how many stay in memory; it only grows when the reader asks for earlier ones.
+function mergePrivateGroupMessages(group, incoming) {
+  const known = new Set((group.messages || []).map(item => item.id));
+  const fresh = incoming.filter(item => !known.has(item.id));
+  group.messages = [...(group.messages || []), ...fresh].sort((a, b) => a.createdAt - b.createdAt).slice(-(group.messageWindow || 200));
+  return fresh.length;
+}
+
+function privateGroupOldestCreatedAt(group) {
+  let oldest = 0;
+  for (const message of group.messages || []) {
+    if (message.pending || !(message.createdAt > 0)) continue;
+    if (!oldest || message.createdAt < oldest) oldest = message.createdAt;
+  }
+  return oldest;
+}
+
+function privateGroupCanLoadEarlier(group) {
+  return !!(group.localHasMore || group.hasOlder);
+}
+
+// Paints what this device already has, before (and without) the network.
+function restorePrivateGroupHistory(group, state) {
+  if (group.historyRestored) return Promise.resolve();
+  const existing = privateGroupRestores.get(group.id);
+  if (existing) return existing;
+  const job = (async () => {
+    const page = await historyStoreLoadPage(privateGroupCacheCode(group.id), { limit:HISTORY_LOAD_LIMIT });
+    group.historyRestored = true;
+    if (!page.messages.length) return;
+    const decoded = await decodePrivateGroupBatch(group, state, page.messages);
+    mergePrivateGroupMessages(group, decoded);
+    group.messageCursor = Math.max(group.messageCursor || 0, ...page.messages.map(message => Number(message.createdAt) || 0));
+    group.localHasMore = page.hasMore;
+    group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;
+    group.historyHydrated = true;
+    if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+  })().catch(() => { group.historyRestored = true; }).finally(() => privateGroupRestores.delete(group.id));
+  privateGroupRestores.set(group.id, job);
+  return job;
+}
+
 async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) {
   const state = loadAccountState(); const group = privateGroups.get(groupId);
   if (!state || !group) return false;
@@ -1031,18 +1118,64 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
     if (group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
     return false;
   }
-  const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id, after:group.messageCursor || 0 });
-  if (result.error) return false;
-  const decoded = await decodePrivateGroupBatch(group, state, result.messages || []);
-  const known = new Set((group.messages || []).map(item => item.id));
-  const incoming = decoded.filter(item => !known.has(item.id));
-  const changed = incoming.length > 0;
-  group.messages = [...(group.messages || []), ...incoming].sort((a,b) => a.createdAt - b.createdAt).slice(-200);
+  await restorePrivateGroupHistory(group, state);
+  const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id,
+    after:group.messageCursor || 0, oldest:privateGroupOldestCreatedAt(group) || undefined });
+  // Offline (or a server hiccup) with history already on screen is still a usable group.
+  if (result.error) return !!group.historyHydrated;
+  const incomingRaw = result.messages || [];
+  await privateGroupHistoryPut(group.id, incomingRaw);
+  const decoded = await decodePrivateGroupBatch(group, state, incomingRaw);
+  const changed = mergePrivateGroupMessages(group, decoded) > 0;
   group.messageCursor = Math.max(group.messageCursor || 0, Number(result.cursor) || 0);
   group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;
+  if (typeof result.hasOlder === 'boolean') group.hasOlder = result.hasOlder;
+  const wasHydrated = group.historyHydrated;
   group.historyHydrated = true;
-  if ((render || changed) && group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
+  if ((render || changed || !wasHydrated) && group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
   return true;
+}
+
+// "Load earlier messages": this device's own history first, then the server's.
+async function loadEarlierPrivateGroupMessages(groupId = activePrivateGroupId) {
+  const state = loadAccountState(); const group = privateGroups.get(groupId);
+  if (!state || !group || group.loadingEarlier) return;
+  const button = document.querySelector('#group-chat-body .load-earlier-btn');
+  group.loadingEarlier = true;
+  if (button) { button.disabled = true; button.textContent = 'Loading…'; }
+  try {
+    const oldest = privateGroupOldestCreatedAt(group);
+    let raw = [];
+    if (oldest) {
+      const page = await historyStoreLoadPage(privateGroupCacheCode(group.id), { beforeSeq:oldest, limit:PRIVATE_GROUP_HISTORY_PAGE });
+      raw = page.messages;
+      group.localHasMore = page.hasMore;
+    }
+    if (!raw.length) {
+      const result = await api('/api/groups/messages', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id,
+        before:oldest || undefined, limit:PRIVATE_GROUP_HISTORY_PAGE });
+      if (result.error) { toast('Could not load earlier messages. Try again.'); return; }
+      raw = result.messages || [];
+      group.hasOlder = !!result.hasOlder && raw.length > 0;
+      await privateGroupHistoryPut(group.id, raw);
+    }
+    if (!raw.length) { group.localHasMore = false; group.hasOlder = false; }
+    else {
+      const decoded = await decodePrivateGroupBatch(group, state, raw);
+      group.messageWindow = Math.max(group.messageWindow || 200, (group.messages || []).length + decoded.length);
+      mergePrivateGroupMessages(group, decoded);
+    }
+    if (group.id === activePrivateGroupId) {
+      const body = document.getElementById('group-chat-body');
+      const fromBottom = body ? body.scrollHeight - body.scrollTop - body.clientHeight : 0;
+      renderPrivateGroupMessages(group, { keepDistanceFromBottom:raw.length ? fromBottom : null });
+    }
+  } catch (_) { toast('Could not load earlier messages. Try again.'); }
+  finally {
+    group.loadingEarlier = false;
+    const again = document.querySelector('#group-chat-body .load-earlier-btn');
+    if (again) { again.disabled = false; again.textContent = 'Load earlier messages'; }
+  }
 }
 
 async function sendPrivateGroupMessage() {
@@ -1233,7 +1366,7 @@ async function reportPrivateGroupMember(accountId) {
       closeGroupMembers(); openGroupMembers();
     } else {
       await api('/api/groups/leave', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id });
-      forgetPrivateGroupDownloads(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup();
+      forgetPrivateGroupData(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup();
     }
   } catch (error) { console.error('Group safety exit failed', error); }
   toast('Report sent and member blocked');
@@ -1244,7 +1377,7 @@ async function leavePrivateGroup() {
   if (!state || !group || !confirm('Leave this private group?')) return;
   const result = await api('/api/groups/leave', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id });
   if (result.error) { toast(result.error); return; }
-  forgetPrivateGroupDownloads(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('You left the group');
+  forgetPrivateGroupData(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('You left the group');
 }
 
 async function deletePrivateGroup() {
@@ -1252,5 +1385,5 @@ async function deletePrivateGroup() {
   if (!state || !group || !confirm('Delete this private group for every member?')) return;
   const result = await api('/api/groups/delete', { accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id });
   if (result.error) { toast(result.error); return; }
-  forgetPrivateGroupDownloads(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('Private group deleted');
+  forgetPrivateGroupData(group.id); privateGroups.delete(group.id); savePrivateGroupSessions(); scheduleAccountSync(); closeGroupMembers(); closePrivateGroup(); toast('Private group deleted');
 }

@@ -51,6 +51,6 @@ test('Chrome renders exactly one canonical timestamp per message bubble', () => 
   assert.match(normalize, /formatMsgTime\(Number\(rec\?\.ts\) \|\| 0\)/);
   assert.match(normalize, /legacy\.match\(\/\(\?:\[01\]\\d\|2\[0-3\]\):\[0-5\]\\d\//);
   const render = functionSource(client, 'renderMessageRecord');
-  assert.match(render, /<span class="msg-time">\$\{escHtml\(messageTimeLabel\(rec\)\)\}<\/span>/);
+  assert.match(render, /<span class="msg-time"[^>]*>\$\{escHtml\(messageTimeLabel\(rec\)\)\}<\/span>/);
   assert.equal((render.match(/class="msg-time"/g) || []).length, 1);
 });

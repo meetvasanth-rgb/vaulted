@@ -155,7 +155,7 @@ test('a voice note can be saved but never forwarded', () => {
 });
 
 test('the action row and reaction strip sit under the bubble, not inside it', () => {
-  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}">[\s\S]*<div class="group-message-time">[^`]*<\/div><\/div>\$\{actions\}<\/div>`;/);
+  assert.match(groups, /<div class="group-message\$\{mine \? ' mine' : ''\}">[\s\S]*<div class="group-message-time"[^>]*>[^`]*<\/div><\/div>\$\{actions\}<\/div>`;/);
   assert.match(client, /\.group-msg \.msg-actions\{width:max-content/);
 });
 

@@ -99,7 +99,9 @@ test('the server endpoint is owner-only and never returns pre-join messages', ()
   assert.match(server, /Only the group owner can add members/);
   assert.match(server, /acceptedStatusRecipient\(d\.accountId, roomCode\)/);
   assert.match(server, /A blocked contact cannot be added to a group/);
-  assert.match(server, /message\.createdAt >= joinedAt/);
+  // Hiding what was said before a member joined lives in the shared page selector.
+  assert.match(server, /selectGroupMessages\(group\.messages, joinedAt,/);
+  assert.match(read('server/group-page.js'), /message\.createdAt >= from/);
 });
 
 test('the members card closes when the chat behind it is tapped', () => {

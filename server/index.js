@@ -19,6 +19,7 @@ let safetyStore;
 const { StatusStore } = require('./status-store');
 let statusStore;
 const { GroupStore } = require('./group-store');
+const { selectGroupMessages } = require('./group-page');
 let groupStore;
 const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator');
 const { EncryptedObjectStorage } = require('./object-storage');
@@ -3570,12 +3571,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // A member added later never receives what was said before they joined.
     const joinedAt = Number(group.members.find(member => member.accountId === d.accountId && member.active)?.addedAt) || 0;
     const messages = [];
-    for (const message of group.messages.filter(message => message.createdAt > after && message.createdAt >= joinedAt).slice(-200)) {
+    const page = selectGroupMessages(group.messages, joinedAt, { after, before:d.before, limit:d.limit, oldest:d.oldest });
+    for (const message of page.selected) {
       if (message.senderId !== d.accountId && await safetyStore.blocked(d.accountId, message.senderId)) continue;
       messages.push(message);
     }
     return res200(res, { ok:true, keyVersion:group.keyVersion, requiresRekey:!!group.requiresRekey,
-      cursor:group.messages[group.messages.length - 1]?.createdAt || after, messages });
+      cursor:group.messages[group.messages.length - 1]?.createdAt || after, hasOlder:page.hasOlder, messages });
   }
 
   if (path === '/api/groups/attachment/prepare' && method === 'POST') {

@@ -1490,6 +1490,7 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
 .settings-menu .settings-row-title{font-size:15px;font-weight:650}
 .settings-menu .settings-row-sub{font-size:11.5px}
 .settings-category-page{display:none}
+.day-sep{display:flex;justify-content:center;flex:none;margin:12px 0 6px}.day-sep span{padding:4px 12px;border-radius:999px;background:#F3EDEF;color:#6F6169;font:600 11.5px/1.3 Inter,sans-serif;letter-spacing:.01em}
 .load-earlier{display:flex;justify-content:center;padding:6px 0 12px}.load-earlier-btn{padding:9px 18px;border-radius:18px;border:1px solid #DDCFD5;background:#fff;color:#682C43;font:650 13px Inter,sans-serif}.load-earlier-btn:disabled{opacity:.6}
 .storage-block{padding:0 20px 14px}
 .storage-total{font:700 26px Manrope,sans-serif;color:#271D25}.storage-caption{font:500 12.5px/1.45 Inter,sans-serif;color:#7A6A72;margin-top:4px}
@@ -4936,7 +4937,7 @@ async function renderStoragePage() {
   codes.sort((a, b) => (downloads.byRoom[b] || 0) - (downloads.byRoom[a] || 0));
   document.getElementById('storage-rooms').innerHTML = codes.length ? codes.map(code => {
     const bytes = downloads.byRoom[code] || 0, count = messages.byRoom[code] || 0;
-    const detail = code.startsWith('group:') ? '' : `${count.toLocaleString()} message${count === 1 ? '' : 's'} · `;
+    const detail = `${count.toLocaleString()} message${count === 1 ? '' : 's'} · `;
     return `<div class="storage-room"><div class="storage-room-name"><strong>${escHtml(label(code))}</strong><small>${detail}${escHtml(formatStorageBytes(bytes))} downloaded</small></div><button type="button" ${bytes ? '' : 'disabled'} onclick="clearRoomDownloads('${escHtml(code)}')">Clear</button></div>`;
   }).join('') : '<div class="settings-row-sub">Nothing is saved on this device yet.</div>';
   const clearAll = document.getElementById('storage-clear-all');
@@ -14850,6 +14851,8 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
     renderMessageRecord(room, rec);
   }
   scheduleSecureNativeHistoryCache(room, room.messages);
+  refreshDaySeparators(body, { stick:false });
+  watchChatDaySeparators(body);
   body.dataset.renderedRoom = room.code;
   const keepPlace = typeof keepDistanceFromBottom === 'number';
   // Messages added above the reader must not move what they are looking at:
@@ -15005,6 +15008,83 @@ function formatMsgTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+// ── DATES ───────────────────────────────────────────────────────────────
+// Every bubble shows only a clock time, so a divider names the day whenever it
+// changes. Days are always the reader's own local days.
+function dayKey(ts) {
+  const d = new Date(Number(ts) || 0);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function formatDayLabel(ts, now = Date.now()) {
+  const date = new Date(Number(ts) || 0);
+  const today = new Date(now);
+  const startOf = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(today) - startOf(date)) / 86400000);
+  const lang = document.documentElement.lang || undefined;
+  try {
+    if (days === 0) { const word = new Intl.RelativeTimeFormat(lang, { numeric:'auto' }).format(0, 'day'); return word.charAt(0).toLocaleUpperCase(lang) + word.slice(1); }
+    if (days === 1) return i18n('yesterday');
+    if (days > 1 && days < 7) return date.toLocaleDateString(lang, { weekday:'long' });
+    return date.toLocaleDateString(lang, date.getFullYear() === today.getFullYear()
+      ? { weekday:'short', day:'numeric', month:'short' }
+      : { day:'numeric', month:'short', year:'numeric' });
+  } catch (error) { return date.toDateString(); }
+}
+
+// The complete date and time, for a bubble's tooltip.
+function formatFullDateTime(ts) {
+  const date = new Date(Number(ts) || 0);
+  if (Number.isNaN(date.getTime()) || !ts) return '';
+  try { return date.toLocaleString(document.documentElement.lang || undefined, { weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
+  catch (error) { return date.toString(); }
+}
+
+function daySeparatorHtml(ts) {
+  return `<div class="day-sep" data-day="${escHtml(dayKey(ts))}"><span>${escHtml(formatDayLabel(ts))}</span></div>`;
+}
+
+// Keeps exactly one divider in front of the first message of each day in a
+// conversation view whose rows carry their epoch time in data-ts. It only
+// touches the page when something is wrong, so it is safe to run after any
+// change (live arrival, replaced placeholder, deletion, full render).
+function refreshDaySeparators(body, { stick = true } = {}) {
+  if (!body) return false;
+  const rows = [...body.children];
+  const wanted = new Map();
+  let previousDay = '';
+  for (const row of rows) {
+    if (row.classList.contains('day-sep')) continue;
+    const ts = Number(row.dataset?.ts);
+    if (!(ts > 0)) continue;
+    const day = dayKey(ts);
+    if (day !== previousDay) { wanted.set(row, { day, ts }); previousDay = day; }
+  }
+  const stale = rows.filter(row => row.classList.contains('day-sep')
+    && !(wanted.get(row.nextElementSibling)?.day === row.dataset.day));
+  const missing = [...wanted].filter(([row, info]) => {
+    const before = row.previousElementSibling;
+    return !(before?.classList.contains('day-sep') && before.dataset.day === info.day);
+  });
+  if (!stale.length && !missing.length) return false;
+  const distance = body.scrollHeight - body.scrollTop - body.clientHeight;
+  for (const row of stale) row.remove();
+  for (const [row, info] of missing) {
+    const holder = document.createElement('div');
+    holder.innerHTML = daySeparatorHtml(info.ts);
+    body.insertBefore(holder.firstElementChild, row);
+  }
+  if (stick && distance <= CHAT_NEAR_BOTTOM_PX) body.scrollTop = body.scrollHeight;
+  return true;
+}
+
+let chatDaySeparatorObserver = null;
+function watchChatDaySeparators(body) {
+  if (chatDaySeparatorObserver || !body || typeof MutationObserver !== 'function') return;
+  chatDaySeparatorObserver = new MutationObserver(() => refreshDaySeparators(body));
+  chatDaySeparatorObserver.observe(body, { childList:true });
 }
 
 function messageTimeLabel(rec) {
@@ -15945,6 +16025,7 @@ function renderMessageRecord(room, rec, animate) {
     if (!isVisibleConversationRecord(rec)) return null;
     const div = document.createElement('div');
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
+    if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
     div.textContent = rec.content;
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
@@ -15962,6 +16043,7 @@ function renderMessageRecord(room, rec, animate) {
   const div = document.createElement('div');
   div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
   div.dataset.msgId = rec.id;
+  if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
   if (renderLocalImageSafetyGate(room, rec, div, body, typing)) return div;
   const safetyText = [rec.content,rec.replyData?.text,rec.name,rec.fileName,rec.title].filter(v=>typeof v==='string').join(' ');
   const screened = window.VaultlixContentSafety?.check(safetyText);
@@ -16079,7 +16161,7 @@ function renderMessageRecord(room, rec, animate) {
     <div class="msg-name">${escHtml(rec.name)}</div>
     ${contentHtml}
     <div class="msg-meta">
-      <span class="msg-time">${escHtml(messageTimeLabel(rec))}</span>
+      <span class="msg-time" title="${escHtml(formatFullDateTime(rec.ts))}">${escHtml(messageTimeLabel(rec))}</span>
       ${receiptHtml}
     </div>
     ${progressHtml}

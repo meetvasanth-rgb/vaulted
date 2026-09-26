@@ -38,13 +38,13 @@ function makeSandbox({ cache = new Map(), fetchImpl } = {}) {
     readAttachmentBody:response => response.text(),
     attachmentCacheGet:async (code, id) => cache.get(`${code}|${id}`) ?? null,
     attachmentCachePut:async (code, id, msgId, text) => { calls.put.push([code, id, msgId]); cache.set(`${code}|${id}`, text); return true; },
-    attachmentCacheDeleteForMessage:(code, id) => calls.del.push([code, id]),
-    attachmentCacheClearRoom:async code => { calls.clear.push(code); },
+    historyStoreDelete:(code, id) => calls.del.push([code, id]),
+    historyStoreClearRoom:code => { calls.clear.push(code); },
     fetch:async (...args) => { calls.fetch++; return fetchImpl(...args); },
   });
   vm.runInContext(fn('privateGroupCacheCode'), sandbox);
   vm.runInContext('const privateGroupDownloads = new Map();', sandbox);
-  vm.runInContext(fn('forgetPrivateGroupDownloads'), sandbox);
+  vm.runInContext(fn('forgetPrivateGroupData'), sandbox);
   vm.runInContext(fn('downloadPrivateGroupAttachment'), sandbox);
   vm.runInContext(asyncFn('fetchPrivateGroupAttachment'), sandbox);
   vm.runInContext(groups.match(/const PRIVATE_GROUP_ATTACHMENT_CONCURRENCY = \d+;/)[0], sandbox);
@@ -107,9 +107,9 @@ test('a failed download saves nothing, so the next open tries again', async () =
   assert.equal(vm.runInContext('privateGroupDownloads.size', sandbox), 0);
 });
 
-test('forgetting a group clears exactly its saved downloads', () => {
+test('forgetting a group clears exactly its saved history and downloads', () => {
   const { sandbox, calls } = makeSandbox({ fetchImpl:async () => ok('') });
-  vm.runInContext("forgetPrivateGroupDownloads('g9')", sandbox);
+  vm.runInContext("forgetPrivateGroupData('g9')", sandbox);
   assert.deepEqual(JSON.parse(JSON.stringify(calls.clear)), ['group:g9']);
 });
 
@@ -163,10 +163,10 @@ test('a batch never downloads a deleted attachment, and downloads the rest three
 test('wiring: uploads are kept, deletes and leaving clean up, Storage names groups', () => {
   assert.match(groups, /attachmentCachePut\(privateGroupCacheCode\(group\.id\), attachmentId, messageId, encryptedPayload\)/);
   assert.match(groups, /downloadPrivateGroupAttachment\(state, group, attachmentId, message\.id\)/);
-  assert.match(extract(groups, 'deletePrivateGroupMessages', 'async function'), /attachmentCacheDeleteForMessage\(privateGroupCacheCode\(group\.id\), id\)/);
-  assert.equal((groups.match(/forgetPrivateGroupDownloads\(/g) || []).length, 5); // definition + leave + delete + report + sync prune
-  assert.match(groups, /if \(!live\.has\(id\)\) \{ forgetPrivateGroupDownloads\(id\)/);
-  assert.match(extract(groups, 'pollPrivateGroup', 'async function'), /decodePrivateGroupBatch\(group, state, result\.messages \|\| \[\]\)/);
+  assert.match(extract(groups, 'deletePrivateGroupMessages', 'async function'), /historyStoreDelete\(privateGroupCacheCode\(group\.id\), id\)/);
+  assert.equal((groups.match(/forgetPrivateGroupData\(/g) || []).length, 5); // definition + leave + delete + report + sync prune
+  assert.match(groups, /if \(!live\.has\(id\)\) \{ forgetPrivateGroupData\(id\)/);
+  assert.match(extract(groups, 'pollPrivateGroup', 'async function'), /decodePrivateGroupBatch\(group, state, incomingRaw\)/);
   assert.match(client, /function storageLabelForCode\(code\)/);
   assert.match(client, /startsWith\('group:'\)/);
 });
