@@ -79,9 +79,13 @@ test('live polling continues while old media restores and inline history paints 
   assert.match(client, /const inlineMessages = unseen\.filter/);
   assert.match(client, /const attachmentMessages = unseen\.filter/);
   const inlineAt = client.indexOf('await restoreBatch(inlineMessages)');
-  const attachmentAt = client.indexOf('await restoreBatch(attachmentMessages)');
-  assert.ok(inlineAt > -1 && attachmentAt > inlineAt,
-    'inline ciphertext must restore before object-backed attachments');
+  const placeholdersAt = client.indexOf("kind:'attachment-loading'", inlineAt);
+  assert.ok(inlineAt > -1 && placeholdersAt > inlineAt,
+    'inline ciphertext must restore before object-backed attachments get their placeholders');
+  // Media is no longer downloaded during restore at all: each placeholder loads
+  // on demand as it scrolls into view, so it cannot hold the restore back.
+  assert.doesNotMatch(client, /restoreBatch\(attachmentMessages\)/);
+  assert.match(client, /queueAttachmentLoad\(room, msgId\)/);
   assert.match(client, /if \(room\.isPollRunning\) \{ room\.pollAfterHistoryRestore = true; return; \}/);
   assert.match(client, /queueMicrotask\(\(\) => doPoll\(room\)\)/);
 });

@@ -25,7 +25,7 @@ test('attachment downloads recheck conversation membership before issuing a shor
   assert.match(downloadRoute, /path==='\/api\/attachment\/content'/);
   assert.match(downloadRoute, /objectStorage\.open\(attachment\.objectKey\)/);
   assert.match(downloadRoute, /body\.pipe\(res\)/);
-  assert.match(client, /resolveEncryptedAttachment\(room, content\)/);
+  assert.match(client, /resolveEncryptedAttachment\(room, content, msgId/);
   assert.match(client, /fetch\('\/api\/attachment\/content'/);
   assert.match(client, /retryUnavailableAttachment\(room, rec\.id/);
 });

@@ -115,9 +115,9 @@ test('opening a conversation paints from the device first and only then asks the
   const restore = client.slice(client.indexOf('async function restoreRoomHistory(room) {'));
   assert.ok(restore.indexOf('await restoreLocalHistory(room)') < restore.indexOf("api('/api/poll'"), 'local before network');
   assert.match(restore, /if \(data\.error\) throw new Error\(data\.error\);\s*\n\s*const nowTs = Date\.now\(\);\s*\n\s*historyStorePut/);
-  // the local pass must not wait behind attachment downloads
-  assert.match(client, /applyRestoredHistory\(room, stored, Date\.now\(\), \{ waitForAttachments:false \}\)/);
-  assert.match(client, /if \(waitForAttachments\) await restoreBatch\(attachmentMessages\); else restoreBatch\(attachmentMessages\)\.catch/);
+  // the local pass cannot wait behind attachment downloads: restoring never downloads them
+  assert.match(client, /await applyRestoredHistory\(room, stored, Date\.now\(\)\);/);
+  assert.doesNotMatch(client, /restoreBatch\(attachmentMessages\)/);
 });
 
 test('delivered and read ticks survive on the stored copy', () => {

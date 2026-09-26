@@ -4585,9 +4585,15 @@ function historyDb() {
   historyDbPromise = new Promise(resolve => {
     try {
       if (!window.indexedDB) { resolve(null); return; }
-      const request = indexedDB.open(HISTORY_DB_NAME, 1);
+      const request = indexedDB.open(HISTORY_DB_NAME, 2);
       request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains('messages')) request.result.createObjectStore('messages', { keyPath:['code', 'id'] });
+        const db = request.result;
+        if (!db.objectStoreNames.contains('messages')) db.createObjectStore('messages', { keyPath:['code', 'id'] });
+        if (!db.objectStoreNames.contains('attachments')) {
+          const attachments = db.createObjectStore('attachments', { keyPath:['code', 'attachmentId'] });
+          attachments.createIndex('byMessage', ['code', 'msgId']);
+          attachments.createIndex('byAccess', 'lastAccess');
+        }
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -4675,11 +4681,13 @@ function historyStorePatch(code, id, fields) {
 
 function historyStoreDelete(code, id) {
   if (!code || !id) return;
+  attachmentCacheDeleteForMessage(code, id);
   historyTransaction('readwrite', store => { store.delete([code, id]); }).catch(() => {});
 }
 
 function historyStoreClearRoom(code) {
   if (!code) return;
+  attachmentCacheClearRoom(code);
   historyTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '￿'])); }).catch(() => {});
 }
 
@@ -4689,6 +4697,97 @@ function historyStoreWipeAll() {
     historyDbPromise = null;
     indexedDB.deleteDatabase(HISTORY_DB_NAME);
   } catch (error) {}
+}
+
+
+// ── LOCAL ATTACHMENT CACHE ───────────────────────────────────────────────
+// The encrypted attachment (the same ciphertext the server's object store
+// holds) is kept on the device after its first download or upload, so a photo
+// or video opens instantly and offline instead of being fetched again on every
+// launch. Oldest-used items are evicted once the cache passes its size limit;
+// an evicted attachment is simply downloaded again if the server still has it.
+const ATTACHMENT_CACHE_MAX_BYTES = 600 * 1024 * 1024;
+const ATTACHMENT_CACHE_MAX_ITEM_BYTES = 48 * 1024 * 1024;
+const ATTACHMENT_CACHE_TOUCH_MS = 60 * 60 * 1000;
+
+function attachmentTransaction(mode, work) {
+  return historyDb().then(db => {
+    if (!db) return null;
+    return new Promise(resolve => {
+      try {
+        const tx = db.transaction('attachments', mode);
+        const result = work(tx.objectStore('attachments'));
+        tx.oncomplete = () => resolve(result && 'result' in result ? result.result : true);
+        tx.onerror = tx.onabort = () => resolve(null);
+      } catch (error) { resolve(null); }
+    });
+  });
+}
+
+async function attachmentCacheGet(code, attachmentId) {
+  if (!code || !attachmentId) return null;
+  const row = await attachmentTransaction('readwrite', store => {
+    const request = store.get([code, attachmentId]);
+    request.onsuccess = () => {
+      const found = request.result;
+      // Mark it recently used (at most hourly, to avoid a write on every open).
+      if (found && Date.now() - (found.lastAccess || 0) > ATTACHMENT_CACHE_TOUCH_MS) store.put({ ...found, lastAccess:Date.now() });
+    };
+    return request;
+  });
+  if (!row) return null;
+  try {
+    if (row.blob && typeof row.blob.text === 'function') return await row.blob.text();
+    return typeof row.text === 'string' ? row.text : null;
+  } catch (error) { return null; }
+}
+
+async function attachmentCachePut(code, attachmentId, msgId, ciphertext) {
+  if (!code || !attachmentId || typeof ciphertext !== 'string' || !ciphertext) return false;
+  const size = ciphertext.length; // base64 text: one byte per character
+  if (size > ATTACHMENT_CACHE_MAX_ITEM_BYTES) return false;
+  try {
+    const estimate = await navigator.storage?.estimate?.();
+    if (estimate?.quota && (estimate.usage || 0) + size > estimate.quota * 0.85) return false;
+  } catch (error) {}
+  const row = { code, attachmentId, msgId:msgId || '', size, lastAccess:Date.now() };
+  let saved = await attachmentTransaction('readwrite', store => { store.put({ ...row, blob:new Blob([ciphertext]) }); });
+  if (!saved) saved = await attachmentTransaction('readwrite', store => { store.put({ ...row, text:ciphertext }); }); // a WebView that cannot store Blobs
+  if (saved) attachmentCacheTrim().catch(() => {});
+  return !!saved;
+}
+
+// Evict least recently used items until the cache is back under 90% of its limit.
+async function attachmentCacheTrim() {
+  const entries = await attachmentTransaction('readonly', store => store.index('byAccess').getAll());
+  if (!Array.isArray(entries)) return;
+  let total = entries.reduce((sum, entry) => sum + (Number(entry.size) || 0), 0);
+  if (total <= ATTACHMENT_CACHE_MAX_BYTES) return;
+  const doomed = [];
+  for (const entry of entries) { // getAll on the access index is oldest-first
+    if (total <= ATTACHMENT_CACHE_MAX_BYTES * 0.9) break;
+    doomed.push([entry.code, entry.attachmentId]);
+    total -= Number(entry.size) || 0;
+  }
+  if (doomed.length) await attachmentTransaction('readwrite', store => { for (const key of doomed) store.delete(key); });
+}
+
+function attachmentCacheDeleteForMessage(code, msgId) {
+  if (!code || !msgId) return;
+  attachmentTransaction('readwrite', store => {
+    const request = store.index('byMessage').openKeyCursor(IDBKeyRange.only([code, msgId]));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      store.delete(cursor.primaryKey);
+      cursor.continue();
+    };
+  }).catch(() => {});
+}
+
+function attachmentCacheClearRoom(code) {
+  if (!code) return;
+  attachmentTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '￿'])); }).catch(() => {});
 }
 
 // Our own sends never come back through an incremental poll, so keep them when
@@ -9039,18 +9138,70 @@ async function uploadEncryptedAttachment(room, msgId, ciphertext) {
     body:ciphertext,
   });
   if (!response.ok) throw new Error('ATTACHMENT_UPLOAD');
+  attachmentCachePut(room.code, prepared.attachmentId, msgId, ciphertext).catch(() => {});
   return prepared.attachmentId;
 }
 
-async function resolveEncryptedAttachment(room, content) {
-  if (typeof content !== 'string' || !content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX)) return content;
+// Why an attachment could not be loaded, so the message can say something
+// useful and only transient causes are retried automatically.
+function attachmentFailureReason(error) {
+  const status = Number(error?.status || 0);
+  if (error?.name === 'AbortError' || error?.message === 'ATTACHMENT_STALLED') return 'timeout';
+  if (!status) return typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'network';
+  if (status === 401 || status === 403) return 'denied';
+  if (status === 404) return 'gone';
+  if (status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return 'busy';
+  return 'failed';
+}
+
+const ATTACHMENT_TRANSIENT_REASONS = new Set(['offline', 'network', 'timeout', 'busy', 'failed']);
+const ATTACHMENT_STALL_MS = 25000;
+const attachmentDownloads = new Map();
+
+// Reads the encrypted attachment as it streams in. The download is abandoned
+// only if it stops making progress, not merely because a large file is slow.
+async function readAttachmentBody(response, onProgress) {
+  const total = Number(response.headers.get('Content-Length')) || 0;
+  if (total > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
+  if (!response.body?.getReader) return response.text();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let received = 0, text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > MAX_ENCRYPTED_ATTACHMENT_BYTES) { reader.cancel().catch(() => {}); throw new Error('ATTACHMENT_CONTENT'); }
+    text += decoder.decode(value, { stream:true });
+    onProgress?.(received, total);
+  }
+  return text + decoder.decode();
+}
+
+// msgId is optional; it ties the cached copy to its message so deleting the
+// message deletes it too. options.onProgress(received, total) drives the UI.
+function resolveEncryptedAttachment(room, content, msgId = '', options = {}) {
+  if (typeof content !== 'string' || !content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX)) return Promise.resolve(content);
   const attachmentId = content.slice(ENCRYPTED_ATTACHMENT_PREFIX.length);
+  const key = `${room.code}:${attachmentId}`;
+  // Two callers asking for the same attachment share one download.
+  if (attachmentDownloads.has(key)) return attachmentDownloads.get(key);
+  const job = downloadEncryptedAttachment(room, attachmentId, msgId, options).finally(() => attachmentDownloads.delete(key));
+  attachmentDownloads.set(key, job);
+  return job;
+}
+
+async function downloadEncryptedAttachment(room, attachmentId, msgId, options) {
+  const cached = await attachmentCacheGet(room.code, attachmentId);
+  if (cached) return cached;
   let lastError = new Error('ATTACHMENT_DOWNLOAD');
   for (let attempt = 0; attempt < ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS.length; attempt++) {
     const delay = ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS[attempt];
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    let stall = null;
+    const armStall = () => { clearTimeout(stall); stall = setTimeout(() => controller.abort(), ATTACHMENT_STALL_MS); };
+    armStall();
     try {
       const response = await fetch('/api/attachment/content', {
         method:'POST', headers:{ 'Content-Type':'application/json' },
@@ -9062,8 +9213,9 @@ async function resolveEncryptedAttachment(room, content) {
         error.status = response.status;
         throw error;
       }
-      const ciphertext = await response.text();
-      if (!ciphertext || new Blob([ciphertext]).size > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
+      const ciphertext = await readAttachmentBody(response, (received, total) => { armStall(); options.onProgress?.(received, total); });
+      if (!ciphertext || ciphertext.length > MAX_ENCRYPTED_ATTACHMENT_BYTES) throw new Error('ATTACHMENT_CONTENT');
+      attachmentCachePut(room.code, attachmentId, msgId, ciphertext).catch(() => {});
       return ciphertext;
     } catch (error) {
       lastError = error;
@@ -9071,9 +9223,10 @@ async function resolveEncryptedAttachment(room, content) {
       const retryable = !status || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
       if (!retryable || attempt === ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS.length - 1) break;
     } finally {
-      clearTimeout(timeout);
+      clearTimeout(stall);
     }
   }
+  lastError.reason = attachmentFailureReason(lastError);
   throw lastError;
 }
 
@@ -9310,7 +9463,14 @@ const MEDIA_BLOCKED_HTML = `<div class="msg-media-blocked">⚠️ Attachment cou
 // payload in the first place (see processIncomingContent), so there is
 // nothing here that could ever leak it even by accident.
 const DOWNGRADE_BLOCKED_HTML = `<div class="msg-blocked">⚠️ Message blocked — not encrypted</div>`;
-const ATTACHMENT_UNAVAILABLE_HTML = `<div class="msg-blocked attachment-retry" role="button" tabindex="0">Attachment unavailable — tap to retry</div>`;
+const ATTACHMENT_UNAVAILABLE_LABELS = {
+  offline:'No connection — tap to retry', network:'Connection problem — tap to retry', timeout:'Download timed out — tap to retry',
+  busy:'Server busy — tap to retry', gone:'No longer available on the server', denied:'Not allowed to open this attachment',
+};
+function attachmentUnavailableText(reason) { return ATTACHMENT_UNAVAILABLE_LABELS[reason] || 'Attachment unavailable — tap to retry'; }
+function attachmentUnavailableHtml(rec) {
+  return `<div class="msg-blocked attachment-retry" role="button" tabindex="0">${escHtml(attachmentUnavailableText(rec?.unavailableReason))}</div>`;
+}
 const ATTACHMENT_LOADING_HTML = `<div class="msg-image-preview-loading attachment-loading" role="status">Loading encrypted attachment…</div>`;
 
 function setStatus(online, name) {
@@ -14334,6 +14494,128 @@ function scheduleMessageImagePreviews(body, room) {
   placeholders.forEach(node => messageImagePreviewObserver.observe(node));
 }
 
+// ── ON-DEMAND ATTACHMENTS ────────────────────────────────────────────────
+// Placeholders load as they come into view, two at a time, newest first (what
+// the reader is looking at). A failed one shows why and is retried when the
+// connection returns or the app is reopened, a few times at most.
+const ATTACHMENT_LOAD_CONCURRENCY = 2;
+const ATTACHMENT_AUTO_RETRIES = 3;
+const attachmentLoadQueue = [];
+const attachmentLoadKeys = new Set();
+let attachmentLoadsRunning = 0;
+let attachmentLoadObserver = null;
+
+function queueAttachmentLoad(room, msgId) {
+  const key = `${room.code}:${msgId}`;
+  if (attachmentLoadKeys.has(key)) return;
+  attachmentLoadKeys.add(key);
+  attachmentLoadQueue.push({ room, msgId, key });
+  pumpAttachmentLoads();
+}
+
+function pumpAttachmentLoads() {
+  while (attachmentLoadsRunning < ATTACHMENT_LOAD_CONCURRENCY && attachmentLoadQueue.length) {
+    const job = attachmentLoadQueue.pop();
+    attachmentLoadsRunning++;
+    loadAttachmentRecord(job.room, job.msgId).catch(() => {}).finally(() => {
+      attachmentLoadsRunning--;
+      attachmentLoadKeys.delete(job.key);
+      pumpAttachmentLoads();
+    });
+  }
+}
+
+function attachmentPlaceholderNode(msgId) {
+  return document.querySelector(`#chat-body .msg[data-msg-id="${CSS.escape(msgId)}"] .attachment-loading, #chat-body .msg[data-msg-id="${CSS.escape(msgId)}"] .attachment-retry`);
+}
+
+// Swap one already-drawn message for its new content without touching the rest
+// of the chat or moving the reader's place.
+function replaceRenderedMessage(room, rec) {
+  const body = document.getElementById('chat-body');
+  if (!body || room.code !== activeRoomCode || !document.getElementById('s-chat')?.classList.contains('active')) return;
+  const old = body.querySelector(`.msg[data-msg-id="${CSS.escape(rec.id)}"]`);
+  if (!old) return;
+  const previousTop = body.scrollTop;
+  const wasAtBottom = body.scrollHeight - previousTop - body.clientHeight <= 96;
+  const bodyTop = body.getBoundingClientRect().top;
+  const oldRect = old.getBoundingClientRect();
+  const oldAbove = oldRect.bottom <= bodyTop;
+  const div = renderMessageRecord(room, rec, false); // appends at the end and scrolls down
+  if (div && div !== old) {
+    if (div.parentNode === body) old.replaceWith(div); else old.remove();
+  }
+  if (wasAtBottom) { body.scrollTop = body.scrollHeight; return; }
+  body.scrollTop = previousTop + (oldAbove && div ? div.getBoundingClientRect().height - oldRect.height : 0);
+}
+
+async function loadAttachmentRecord(room, msgId) {
+  const index = room.messages.findIndex(message => message.id === msgId);
+  const current = index >= 0 ? room.messages[index] : null;
+  if (!current || !['attachment-loading', 'attachment-unavailable'].includes(current.kind)
+      || !current.encryptedAttachmentRef || current.attachmentRetrying) return null;
+  current.attachmentRetrying = true;
+  const showProgress = (received, total) => {
+    const node = attachmentPlaceholderNode(msgId);
+    if (node && total > 0) node.textContent = `Downloading… ${Math.min(99, Math.round(received / total * 100))}%`;
+  };
+  let restored = null;
+  try {
+    restored = await processIncomingContent(room, current.encryptedAttachmentRef, current.name, current.time,
+      current.id, current.ts, current.fromToken, current.deleteTimerSeconds || 0, current.readAt, showProgress);
+  } finally {
+    current.attachmentRetrying = false;
+  }
+  const nowIndex = room.messages.findIndex(message => message.id === msgId);
+  if (nowIndex < 0 || room.messages[nowIndex] !== current) return null; // deleted or replaced meanwhile
+  // No conversation key yet: leave the placeholder; the pending-decrypt replay will fill it in.
+  if (!restored || restored.pending) return null;
+  restored.isMe = current.isMe;
+  restored.receiptState = current.receiptState;
+  restored.reactionMine = current.reactionMine;
+  restored.reactionTheirs = current.reactionTheirs;
+  restored.deleteAt = current.deleteAt;
+  restored.timerStarted = current.timerStarted;
+  if (restored.kind === 'attachment-unavailable') restored.autoRetries = current.autoRetries || 0;
+  room.messages[nowIndex] = restored;
+  if (isRoomVisible(room)) replaceRenderedMessage(room, restored);
+  if (restored.kind !== 'attachment-unavailable') scheduleSecureNativeHistoryCache(room, [restored]);
+  return restored;
+}
+
+function scheduleAttachmentLoads(body, room) {
+  if (attachmentLoadObserver) attachmentLoadObserver.disconnect();
+  const placeholders = [...body.querySelectorAll('.msg .attachment-loading')];
+  if (!placeholders.length) return;
+  const request = node => {
+    const msgId = node.closest('.msg')?.dataset.msgId;
+    if (msgId) queueAttachmentLoad(room, msgId);
+  };
+  if (!('IntersectionObserver' in window)) { placeholders.slice(-6).forEach(request); return; }
+  attachmentLoadObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      attachmentLoadObserver.unobserve(entry.target);
+      request(entry.target);
+    }
+  }, { root:body, rootMargin:'400px 0px' });
+  placeholders.forEach(node => attachmentLoadObserver.observe(node));
+}
+
+// Connection is back / app reopened: try the transient failures again.
+function retryTransientAttachments(room) {
+  if (!room) return;
+  for (const rec of room.messages) {
+    if (rec.kind !== 'attachment-unavailable' || !ATTACHMENT_TRANSIENT_REASONS.has(rec.unavailableReason)) continue;
+    if ((rec.autoRetries || 0) >= ATTACHMENT_AUTO_RETRIES) continue;
+    rec.autoRetries = (rec.autoRetries || 0) + 1;
+    queueAttachmentLoad(room, rec.id);
+  }
+}
+window.addEventListener('online', () => retryTransientAttachments(getActiveRoom()));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) retryTransientAttachments(getActiveRoom()); });
+
+
 function renderChatBody(room) {
   const body = document.getElementById('chat-body');
   if (klipyGifObserver) klipyGifObserver.disconnect();
@@ -14356,6 +14638,7 @@ function renderChatBody(room) {
   }
   scheduleSecureNativeHistoryCache(room, room.messages);
   body.scrollTop = body.scrollHeight;
+  scheduleAttachmentLoads(body, room);
   // Inbox navigation renders the conversation immediately before s-chat is
   // made visible. WebKit reports a zero/stale scroll height for that hidden
   // frame, leaving the newest row (notably a missed call) below the viewport.
@@ -15543,7 +15826,7 @@ function renderMessageRecord(room, rec, animate) {
       ? `<div class="msg-media-wrap"><img class="msg-gif" data-klipy-src="${escHtml(gifUrl)}" alt="${escHtml(rec.title || 'GIF')}" loading="lazy" decoding="async" fetchpriority="low" draggable="false" oncontextmenu="return false"/></div>`
       : MEDIA_BLOCKED_HTML;
   } else if (rec.kind === 'attachment-unavailable') {
-    contentHtml = ATTACHMENT_UNAVAILABLE_HTML;
+    contentHtml = attachmentUnavailableHtml(rec);
   } else if (rec.kind === 'attachment-loading') {
     contentHtml = ATTACHMENT_LOADING_HTML;
   } else if (rec.kind === 'blocked') {
@@ -16151,40 +16434,24 @@ function callEventForViewer(callEvent, fromMe) {
 }
 
 async function retryUnavailableAttachment(room, msgId, element) {
-  const index = room?.messages?.findIndex(message => message.id === msgId);
-  const current = index >= 0 ? room.messages[index] : null;
+  const current = room?.messages?.find(message => message.id === msgId);
   if (!current || current.kind !== 'attachment-unavailable' || !current.encryptedAttachmentRef || current.attachmentRetrying) return;
-  current.attachmentRetrying = true;
   if (element) element.textContent = 'Retrying encrypted attachment…';
-  try {
-    const restored = await processIncomingContent(room, current.encryptedAttachmentRef, current.name, current.time,
-      current.id, current.ts, current.fromToken, current.deleteTimerSeconds || 0, current.readAt);
-    if (!restored || restored.kind === 'attachment-unavailable' || restored.pending) throw new Error('ATTACHMENT_RETRY');
-    restored.isMe = current.isMe;
-    restored.receiptState = current.receiptState;
-    restored.reactionMine = current.reactionMine;
-    restored.reactionTheirs = current.reactionTheirs;
-    restored.deleteAt = current.deleteAt;
-    restored.timerStarted = current.timerStarted;
-    room.messages[index] = restored;
-    if (isRoomVisible(room)) renderChatBody(room);
-    scheduleSecureNativeHistoryCache(room, room.messages);
-  } catch (_) {
-    current.attachmentRetrying = false;
-    if (element?.isConnected) element.textContent = 'Attachment unavailable — tap to retry';
-    toast('Attachment is still unavailable. Please try again.');
-  }
+  const restored = await loadAttachmentRecord(room, msgId).catch(() => null);
+  if (restored && restored.kind !== 'attachment-unavailable') return;
+  if (element?.isConnected) element.textContent = attachmentUnavailableText(restored?.unavailableReason || current.unavailableReason);
+  toast(restored?.unavailableReason === 'gone' ? 'This attachment is no longer available.' : 'Attachment is still unavailable. Please try again.');
 }
 
-async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null) {
+async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null, progressCallback = null) {
   if (!content) return null;
   const base = { deleteTimerSeconds, readAt, id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
   const encryptedAttachmentRef = typeof content === 'string' && content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX) ? content : null;
   try {
-    content = await resolveEncryptedAttachment(room, content);
+    content = await resolveEncryptedAttachment(room, content, msgId, { onProgress:progressCallback });
   } catch (error) {
-    console.warn('E2E: encrypted attachment could not be loaded', msgId);
-    return { ...base, kind:'attachment-unavailable', encryptedAttachmentRef:content, fromToken };
+    console.warn('E2E: encrypted attachment could not be loaded', msgId, error?.reason || error?.message);
+    return { ...base, kind:'attachment-unavailable', encryptedAttachmentRef:content, fromToken, unavailableReason:error?.reason || attachmentFailureReason(error) };
   }
   let decrypted;
   try {
@@ -16279,7 +16546,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 // Turns server-format messages (from the network or from the local copy) into
 // this conversation's records: text first, then attachments as placeholders that
 // fill in as each encrypted object arrives.
-async function applyRestoredHistory(room, messages, nowTs, { waitForAttachments = true } = {}) {
+async function applyRestoredHistory(room, messages, nowTs) {
   const unseen = [];
   for (const msg of messages) {
     if (room.seenMsgIds.has(msg.id)) continue;
@@ -16351,20 +16618,33 @@ async function applyRestoredHistory(room, messages, nowTs, { waitForAttachments 
   const attachmentMessages = unseen.filter(msg => typeof msg.content === 'string' && msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
   await restoreBatch(inlineMessages);
   if (inlineMessages.length && isRoomVisible(room)) renderChatBody(room);
-  // A slow object store must not hold the whole chat on a blank screen.
-  // Paint stable placeholders first, then replace each one after its
-  // encrypted object has downloaded and decrypted.
+  // Photos and videos are not downloaded here. Each gets a placeholder, and the
+  // chat fetches only the ones that scroll into view (see scheduleAttachmentLoads),
+  // from the on-device cache when it already has them. Restoring an old
+  // conversation therefore no longer means downloading all its media at once.
   for (const msg of attachmentMessages) {
     if (room.messages.some(existing => existing.id === msg.id)) continue;
-    room.messages.push({ id:msg.id, isMe:msg.from === room.token, name:msg.name,
+    const ledgerDeleteAt = room.deleteLedger.get(msg.id);
+    if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) {
+      historyStoreDelete(room.code, msg.id); // gone by the delete ledger: gone from the local copy too
+      continue;
+    }
+    const placeholder = { id:msg.id, isMe:msg.from === room.token, name:msg.name,
       time:formatMsgTime(msg.ts), ts:Number(msg.ts) || 0, kind:'attachment-loading',
       encryptedAttachmentRef:msg.content, fromToken:msg.from,
       deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt,
-      receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null });
+      receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null };
+    room.messages.push(placeholder);
+    if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
+      placeholder.deleteAt = ledgerDeleteAt;
+      placeholder.timerStarted = true;
+      room.msgTimers.set(msg.id, setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs));
+    } else if (!placeholder.isMe) {
+      room.readConfirmIds.push(msg.id);
+    }
   }
   room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
   if (attachmentMessages.length && isRoomVisible(room)) renderChatBody(room);
-  if (waitForAttachments) await restoreBatch(attachmentMessages); else restoreBatch(attachmentMessages).catch(() => {});
 }
 
 // Stage one of opening a conversation: decrypt and show the messages already
@@ -16374,9 +16654,7 @@ async function restoreLocalHistory(room) {
   try {
     stored = await historyStoreLoad(room.code);
     if (!stored.length || !room.sharedKey) return stored;
-    // Attachments keep loading in the background; the server check must not
-    // wait behind them, exactly as with a network restore.
-    await applyRestoredHistory(room, stored, Date.now(), { waitForAttachments:false });
+    await applyRestoredHistory(room, stored, Date.now());
     room.localHistoryRestored = true;
     // Bring back the delivered / read ticks saved with our own messages.
     handleReadReceipts(room, stored.filter(message => message.from === room.token && (message.deliveredAt || message.readAt))
@@ -16460,6 +16738,7 @@ function restoreRoomHistoryInBackground(room) {
     room.historyRestorePromise = null;
     if (room.code === activeRoomCode && document.getElementById('s-chat')?.classList.contains('active')) {
       renderChatBody(room);
+      retryTransientAttachments(room);
       flushPendingReads(room);
     } else if (document.getElementById('s-vault-list')?.classList.contains('active')) {
       renderVaultList();
