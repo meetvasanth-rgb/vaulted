@@ -64,6 +64,13 @@ test('entitlements: the clip is invoked from vaultlix.com and shares the group w
   assert.match(clipInfo, /NSAppClipRequestLocationConfirmation<\/key>\s*<false\/>/);
 });
 
+test('the clip supports every iPad orientation (App Store Connect refuses a build that does not)', () => {
+  const ipad = clipInfo.slice(clipInfo.indexOf('UISupportedInterfaceOrientations~ipad'));
+  for (const orientation of ['Portrait', 'PortraitUpsideDown', 'LandscapeLeft', 'LandscapeRight']) {
+    assert.ok(ipad.slice(0, 500).includes(`UIInterfaceOrientation${orientation}<`), orientation);
+  }
+});
+
 test('the clip is small and asks for nothing: no calling, no encrypted storage, no permissions', () => {
   assert.doesNotMatch(clipInfo, /UsageDescription|UIBackgroundModes/);
   const sources = ['VaultlixClipApp.swift', 'InviteModel.swift', 'InviteView.swift'].map(file => read(`mobile/ios/App/VaultlixClip/${file}`)).join('\n');
