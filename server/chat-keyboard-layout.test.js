@@ -45,13 +45,14 @@ function setup({ chat = 'direct', innerHeight = 800 } = {}) {
   const win = { innerHeight, scrollY:0, addEventListener:(type, fn) => { listeners.win[type] = fn; } };
   const doc = { getElementById:id => els[id] || null, addEventListener:(type, fn) => { listeners.doc[type] = fn; } };
   const queue = [];
-  const layout = factory({ vv, win, doc, schedule:(fn, ms) => { const t = { fn, ms, cancelled:false }; queue.push(t); return t; }, cancel:t => { t.cancelled = true; } });
+  const remembered = [];
+  const layout = factory({ vv, win, doc, remember:height => remembered.push(height), schedule:(fn, ms) => { const t = { fn, ms, cancelled:false }; queue.push(t); return t; }, cancel:t => { t.cancelled = true; } });
   layout.start();
   const flush = () => { for (const t of queue.splice(0)) if (!t.cancelled) t.fn(); };
   // Only the pin-after-settling timers (0/120/320/650 ms), not the hold and animation timers.
   const flushSettle = () => { for (const t of queue.filter(item => !item.cancelled && [0, 120, 320, 650].includes(item.ms))) { t.cancelled = true; t.fn(); } };
   const list = chat === 'direct' ? directList : groupList;
-  return { layout, listeners, els, vv, win, list, flush, flushSettle, queue };
+  return { layout, listeners, els, vv, win, list, flush, flushSettle, queue, remembered };
 }
 
 test('with the keyboard up the chat is sized to the visible area and follows the panned viewport', () => {
@@ -243,10 +244,75 @@ test('a browser without the native event starts from the height the keyboard had
 test('wiring: the app listens for the iOS keyboard events and the ring is off for both message boxes', () => {
   assert.match(client, /window\.addEventListener\('keyboardWillShow', willShow\)/);
   assert.match(client, /plugin\?\.addListener\?\.\('keyboardWillHide', willHide\)/);
-  assert.match(client, /preShrinkOnFocus: \/iP\(hone\|ad\|od\)\/\.test\(navigator\.userAgent\) && !window\.Capacitor\?\.Plugins\?\.Keyboard/);
+  assert.match(client, /preShrinkOnFocus: \/iP\(hone\|ad\|od\)\/\.test\(navigator\.userAgent\),/);
   const block = client.slice(client.lastIndexOf('<style>'));
   for (const selector of ['#msg-input:focus-visible', '#group-message-input:focus-visible', '#s-chat #msg-input:focus']) assert.ok(block.includes(selector), selector);
   assert.match(block, /outline:none!important;box-shadow:none!important/);
   assert.match(block, /#s-chat #msg-input:focus,#s-chat #msg-input:focus-visible\{background:#FBF8F9!important;border-color:#E3D6DB!important\}/);
   assert.match(block, /\.group-chat\.kb-animating,#s-chat\.kb-animating\{transition:height/);
+});
+
+test('while the chat eases to its new height the list keeps the newest message in view on every frame', () => {
+  const t = setup({ chat:'group' });
+  t.list.scrollTop = 500; t.listeners.doc.scroll({ target:t.list }); // at the bottom
+  t.layout.keyboardWillShow(336);
+  t.list.scrollTop = 0; // the list is left behind as the shell shrinks
+  const frame = () => { const next = t.queue.filter(item => !item.cancelled && item.ms === 0); for (const item of next) { item.cancelled = true; item.fn(); } };
+  t.list.scrollHeight = 1200;
+  frame();
+  assert.equal(t.list.scrollTop, 1200, 'followed on the next frame');
+  t.list.scrollTop = 0; t.list.scrollHeight = 1250;
+  frame();
+  assert.equal(t.list.scrollTop, 1250, 'and the one after');
+});
+
+test('the following stops when the animation ends, and never yanks a reader who scrolled up', () => {
+  const t = setup({ chat:'group' });
+  t.list.scrollTop = 100; t.listeners.doc.scroll({ target:t.list }); // scrolled up
+  t.layout.keyboardWillShow(336);
+  const step = () => { for (const item of t.queue.filter(x => !x.cancelled && x.ms === 0)) { item.cancelled = true; item.fn(); } };
+  t.list.scrollTop = 100; step();
+  assert.equal(t.list.scrollTop, 100);
+  t.list.scrollTop = 500; t.listeners.doc.scroll({ target:t.list }); // back at the bottom
+  step();
+  assert.equal(t.list.scrollTop, 1000);
+  for (const item of t.queue.filter(x => !x.cancelled && x.ms === 400)) { item.cancelled = true; item.fn(); } // animation over
+  t.list.scrollTop = 0; step(); step();
+  assert.equal(t.list.scrollTop, 0, 'no more per-frame pinning');
+});
+
+test('a small correction after the announcement eases in instead of snapping', () => {
+  const t = setup({ chat:'group' });
+  t.layout.keyboardWillShow(336);
+  for (const item of t.queue.filter(x => x.ms === 400)) { item.cancelled = true; item.fn(); } // first animation over
+  assert.equal(t.els['group-chat'].classList.contains('kb-animating'), false);
+  t.vv.height = 448; t.vv.offsetTop = 0;   // the web view reports a slightly larger keyboard
+  t.listeners.vv.resize();
+  t.flushSettle();
+  assert.equal(t.els['group-chat'].style.height, '448px');
+});
+
+test('the very first size after a keyboard report is applied at once, without animation', () => {
+  const t = setup({ chat:'direct' });
+  t.vv.height = 430; t.listeners.vv.resize(); t.flushSettle();
+  assert.equal(t.els['s-chat'].style.height, '430px');
+  assert.equal(t.els['s-chat'].classList.contains('kb-animating'), false);
+});
+
+test('the height the native keyboard announces is remembered for next time', () => {
+  const t = setup({ chat:'group' });
+  t.layout.keyboardWillShow(336);
+  assert.deepEqual(t.remembered, [336]);
+});
+
+test('on an iPhone the tap itself starts the move from the remembered height, and the announcement corrects it', () => {
+  const t = setup({ chat:'group', innerHeight:800 });
+  const listeners = {};
+  const doc = { getElementById:id => t.els[id] || null, addEventListener:(type, fn) => { listeners[type] = fn; } };
+  const layout = factory({ vv:t.vv, win:t.win, doc, schedule:fn => ({ fn }), cancel:() => {}, preShrinkOnFocus:true, recall:() => 300 });
+  layout.start();
+  listeners.focusin({ target:{ id:'group-message-input' } });
+  assert.equal(t.els['group-chat'].style.height, '500px');
+  layout.keyboardWillShow(336);
+  assert.equal(t.els['group-chat'].style.height, '464px');
 });

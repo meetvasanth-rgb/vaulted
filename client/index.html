@@ -19241,6 +19241,7 @@ function createChatKeyboardLayout(env) {
   let timers = [];
   let animationTimer = null;
   let holdTimer = null;
+  let animating = false; // the chat is easing to a new height, so the list follows it every frame
   let holdShow = false; // the keyboard was announced but the web view has not reported it yet
   let holdHide = false; // the keyboard is sliding away and the chat is growing back
 
@@ -19265,8 +19266,11 @@ function createChatKeyboardLayout(env) {
     if (keyboardUp) holdShow = false;
     if (keyboardUp) {
       // .screen has min-height:100dvh, which would keep the shell full height.
-      shell.style.height = `${Math.round(vv.height)}px`;
-      shell.style.minHeight = shell.style.height;
+      const next = `${Math.round(vv.height)}px`;
+      // The very first size is applied at once. When one is already set (announced
+      // ahead, or the suggestion strip changed the keyboard) the difference eases in.
+      if (shell.style.height && shell.style.height !== next) resizeShell(chat, Math.round(vv.height));
+      else { shell.style.height = next; shell.style.minHeight = next; }
       const top = typeof vv.pageTop === 'number' ? vv.pageTop : (vv.offsetTop || 0) + (win.scrollY || 0);
       if (chat.fixed) { shell.style.top = `${Math.round(vv.offsetTop || 0)}px`; shell.style.bottom = 'auto'; }
       else shell.style.transform = top > 0 ? `translateY(${Math.round(top)}px)` : '';
@@ -19291,15 +19295,27 @@ function createChatKeyboardLayout(env) {
       shell.classList.add('kb-animating');
     }
     if (animationTimer) cancel(animationTimer);
-    animationTimer = schedule(() => shell.classList.remove('kb-animating'), ANIMATION_MS + 120);
+    animationTimer = schedule(() => { shell.classList.remove('kb-animating'); animating = false; }, ANIMATION_MS + 120);
     shell.style.height = `${Math.round(height)}px`;
     shell.style.minHeight = shell.style.height;
+    if (!animating) { animating = true; follow(); }
+  }
+
+  // While the chat eases to its new height the list keeps the newest message in
+  // view on every frame, instead of leaving it under the composer until the
+  // settling timers run.
+  function follow() {
+    if (!animating) return;
+    const chat = activeChat();
+    if (chat && pinned && chat.list) chat.list.scrollTop = chat.list.scrollHeight;
+    schedule(follow, 0);
   }
 
   function keyboardWillShow(keyboardHeight) {
     const chat = activeChat();
     const height = Number(keyboardHeight);
     if (!chat || !(height > 100) || height > win.innerHeight * 0.7) return;
+    if (env.remember) env.remember(height);
     if (chat.list !== lastList) { lastList = chat.list; pinned = true; }
     if (chat.fixed) chat.shell.style.top = '0px';
     holdHide = false; holdShow = true;
@@ -19341,7 +19357,7 @@ function createChatKeyboardLayout(env) {
     const target = event.target;
     if (!target || (target.id !== 'msg-input' && target.id !== 'group-message-input')) return;
     pinned = true; // starting to type always shows the latest message
-    // Without a native keyboard event (a browser), use the height it had last time.
+    // Start with the height the keyboard had last time; the announcement corrects it.
     if (env.preShrinkOnFocus) { const known = env.recall ? env.recall() : 0; if (known) keyboardWillShow(known); }
     settle();
   }
@@ -19372,8 +19388,10 @@ const chatKeyboardLayout = createChatKeyboardLayout({
     try { localStorage.setItem(KEYBOARD_HEIGHT_KEY, String(value)); } catch (error) {}
   },
   recall: () => { try { return Number(localStorage.getItem(KEYBOARD_HEIGHT_KEY)) || 0; } catch (error) { return 0; } },
-  // Only iPhone/iPad browsers report the keyboard late; the iOS app gets a native event instead.
-  preShrinkOnFocus: /iP(hone|ad|od)/.test(navigator.userAgent) && !window.Capacitor?.Plugins?.Keyboard,
+  // iPhone and iPad report the keyboard late. Starting from the height it had last
+  // time lets the chat move at the moment of the tap, a beat before the keyboard's
+  // own announcement (which then corrects it if it differs).
+  preShrinkOnFocus: /iP(hone|ad|od)/.test(navigator.userAgent),
 });
 chatKeyboardLayout.start();
 // In the iOS app the Keyboard plugin announces the keyboard, and its exact height,
