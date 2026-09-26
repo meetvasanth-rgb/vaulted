@@ -316,3 +316,20 @@ test('on an iPhone the tap itself starts the move from the remembered height, an
   layout.keyboardWillShow(336);
   assert.equal(t.els['group-chat'].style.height, '464px');
 });
+
+test('typing drops the bottom room kept for the home bar, and leaving the box gives it back', () => {
+  const t = setup({ chat:'group' });
+  t.listeners.doc.focusin({ target:{ id:'group-message-input' } });
+  assert.equal(t.els['group-chat'].classList.contains('composer-focused'), true);
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true);
+  t.listeners.doc.focusout({ target:{ id:'some-other-field' } });
+  assert.equal(t.els['group-chat'].classList.contains('composer-focused'), true, 'another field losing focus does not count');
+  t.listeners.doc.focusout({ target:{ id:'group-message-input' } });
+  assert.equal(t.els['group-chat'].classList.contains('composer-focused'), false);
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
+});
+
+test('the styles remove that bottom room for both chats while typing', () => {
+  assert.match(client, /#s-chat\.composer-focused \.chat-ftr,#s-chat\.composer-focused #chat-ftr\{padding-bottom:10px!important\}/);
+  assert.match(client, /\.group-chat\.composer-focused \.group-chat-footer\{padding-bottom:10px\}/);
+});

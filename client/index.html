@@ -2790,6 +2790,9 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 /* The real select covers the chip, invisible, so a tap opens the native picker. */
 #s-chat .chat-hdr-sub #timer-bar-select{position:absolute!important;inset:-8px -6px!important;width:calc(100% + 12px)!important;height:calc(100% + 16px)!important;min-width:0!important;margin:0!important;padding:0!important;opacity:0!important;border:0!important;background:none!important;font-size:16px!important;cursor:pointer}
 #s-chat .chat-hdr-sub .timer-bar-controls:focus-within{border:0!important;box-shadow:none!important}
+/* Typing: the keyboard is right under the composer, so drop the bottom room kept for the home bar. */
+#s-chat.composer-focused .chat-ftr,#s-chat.composer-focused #chat-ftr{padding-bottom:10px!important}
+.group-chat.composer-focused .group-chat-footer{padding-bottom:10px}
 </style>
 <script type="application/ld+json">
 {
@@ -19390,9 +19393,26 @@ function createChatKeyboardLayout(env) {
     pinned = chat.list.scrollHeight - chat.list.scrollTop - chat.list.clientHeight <= NEAR_BOTTOM_PX;
   }
 
+  // While the message box is being typed in, the keyboard sits directly under the
+  // composer, so the room the composer keeps for the phone's home bar is only
+  // wasted space. The chat's own class drops it (see .composer-focused).
+  function markComposerFocus(on) {
+    for (const id of ['s-chat', 'group-chat']) {
+      const shell = doc.getElementById(id);
+      if (shell && shell.classList) { if (on) shell.classList.add('composer-focused'); else shell.classList.remove('composer-focused'); }
+    }
+  }
+
+  function onFocusOut(event) {
+    const target = event && event.target;
+    if (target && (target.id === 'msg-input' || target.id === 'group-message-input')) markComposerFocus(false);
+    settle();
+  }
+
   function onFocusIn(event) {
     const target = event.target;
     if (!target || (target.id !== 'msg-input' && target.id !== 'group-message-input')) return;
+    markComposerFocus(true);
     pinned = true; // starting to type always shows the latest message
     // Start with the height the keyboard had last time; the announcement corrects it.
     if (env.preShrinkOnFocus) { const known = env.recall ? env.recall() : 0; if (known) keyboardWillShow(known); }
@@ -19406,10 +19426,10 @@ function createChatKeyboardLayout(env) {
     win.addEventListener('resize', settle);
     doc.addEventListener('scroll', onListScroll, { capture:true, passive:true });
     doc.addEventListener('focusin', onFocusIn);
-    doc.addEventListener('focusout', settle);
+    doc.addEventListener('focusout', onFocusOut);
   }
 
-  return { start, settle, pin, layout, onListScroll, onFocusIn, keyboardWillShow, keyboardWillHide, isPinned: () => pinned };
+  return { start, settle, pin, layout, onListScroll, onFocusIn, onFocusOut, keyboardWillShow, keyboardWillHide, isPinned: () => pinned };
 }
 
 const KEYBOARD_HEIGHT_KEY = 'vaultlix_keyboard_height';
