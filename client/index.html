@@ -14785,8 +14785,35 @@ window.addEventListener('online', () => retryTransientAttachments(getActiveRoom(
 document.addEventListener('visibilitychange', () => { if (!document.hidden) retryTransientAttachments(getActiveRoom()); });
 
 
+// Redrawing the chat (a photo finishing its safety check, a history restore
+// completing, a retry) rebuilds every message. If the reader has scrolled up,
+// remember which message is at the top of their view and how far down it was,
+// and put it back there afterwards, so a redraw never throws them to the newest
+// message. Someone at (or near) the bottom simply stays at the bottom.
+const CHAT_NEAR_BOTTOM_PX = 96;
+
+function captureChatScrollAnchor(body) {
+  const top = body.getBoundingClientRect().top;
+  for (const row of body.querySelectorAll('.msg[data-msg-id]')) {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom > top + 1) return { id:row.dataset.msgId, offset:rect.top - top };
+  }
+  return null;
+}
+
+function restoreChatScrollAnchor(body, anchor) {
+  const row = body.querySelector(`.msg[data-msg-id="${CSS.escape(anchor.id)}"]`);
+  if (!row) return false;
+  body.scrollTop += (row.getBoundingClientRect().top - body.getBoundingClientRect().top) - anchor.offset;
+  return true;
+}
+
 function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   const body = document.getElementById('chat-body');
+  // Only when this same conversation is already on screen and the reader is not at the bottom.
+  const readerAnchor = keepDistanceFromBottom === null && body.dataset.renderedRoom === room.code
+    && body.scrollHeight - body.scrollTop - body.clientHeight > CHAT_NEAR_BOTTOM_PX
+    ? captureChatScrollAnchor(body) : null;
   if (klipyGifObserver) klipyGifObserver.disconnect();
   // A room restored from the encrypted session list may not have its message
   // history yet. Keep the explicit loading state on screen until text records
@@ -14813,16 +14840,18 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
     renderMessageRecord(room, rec);
   }
   scheduleSecureNativeHistoryCache(room, room.messages);
+  body.dataset.renderedRoom = room.code;
   const keepPlace = typeof keepDistanceFromBottom === 'number';
   // Messages added above the reader must not move what they are looking at:
   // the distance from the bottom stays the same when older ones are prepended.
   body.scrollTop = keepPlace ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
+  const keptReaderPlace = !keepPlace && readerAnchor ? restoreChatScrollAnchor(body, readerAnchor) : false;
   scheduleAttachmentLoads(body, room);
   // Inbox navigation renders the conversation immediately before s-chat is
   // made visible. WebKit reports a zero/stale scroll height for that hidden
   // frame, leaving the newest row (notably a missed call) below the viewport.
   // Re-apply after the screen transition has committed.
-  if (!keepPlace) requestAnimationFrame(() => {
+  if (!keepPlace && !keptReaderPlace) requestAnimationFrame(() => {
     if (activeRoomCode === room.code) body.scrollTop = body.scrollHeight;
   });
   scheduleDeferredKlipyGifs(body);

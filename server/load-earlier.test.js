@@ -59,7 +59,7 @@ test('loading older messages never sends read receipts for them', () => {
 test('the reader keeps their place: older messages are added above without moving the view', () => {
   assert.match(client, /function renderChatBody\(room, \{ keepDistanceFromBottom = null \} = \{\}\)/);
   assert.match(client, /body\.scrollTop = keepPlace \? Math\.max\(0, body\.scrollHeight - body\.clientHeight - keepDistanceFromBottom\) : body\.scrollHeight;/);
-  assert.match(client, /if \(!keepPlace\) requestAnimationFrame\(\(\) => \{/);
+  assert.match(client, /if \(!keepPlace && !keptReaderPlace\) requestAnimationFrame\(\(\) => \{/);
   assert.match(client, /renderChatBody\(room, \{ keepDistanceFromBottom:distanceFromBottom \}\)/);
 });
 
