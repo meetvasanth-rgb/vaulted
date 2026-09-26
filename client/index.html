@@ -1490,6 +1490,11 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
 .settings-menu .settings-row-title{font-size:15px;font-weight:650}
 .settings-menu .settings-row-sub{font-size:11.5px}
 .settings-category-page{display:none}
+.storage-block{padding:0 20px 14px}
+.storage-total{font:700 26px Manrope,sans-serif;color:#271D25}.storage-caption{font:500 12.5px/1.45 Inter,sans-serif;color:#7A6A72;margin-top:4px}
+.storage-bar{height:8px;border-radius:99px;background:#EFE6EA;overflow:hidden;margin:12px 0 4px}.storage-bar>span{display:block;height:100%;border-radius:99px;background:#682C43}
+.storage-seg{display:flex;gap:8px;flex-wrap:wrap}.storage-seg button{flex:1 1 70px;padding:11px 8px;border-radius:12px;border:1px solid #DDCFD5;background:#fff;color:#4A3A44;font:650 13px Inter,sans-serif}.storage-seg button.on{background:#682C43;border-color:#682C43;color:#fff}
+.storage-room{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #F1E9EB}.storage-room:last-child{border-bottom:0}.storage-room-name{flex:1;min-width:0}.storage-room-name strong{display:block;font:650 14px Inter,sans-serif;color:#271D25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.storage-room-name small{color:#8A7A82;font:500 12px Inter,sans-serif}.storage-room button{padding:8px 12px;border-radius:10px;background:#F6E9ED;color:#8B2949;font:700 12px Inter,sans-serif}.storage-room button:disabled{opacity:.4}
 .settings-category-page.active{display:block}
 .settings-empty-note{margin:16px 20px;padding:16px;border:1px solid #EEE5E8;border-radius:14px;background:#FAF7F8;color:#81747A;font-size:12px;line-height:1.55}
 
@@ -3740,6 +3745,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 <div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub" data-i18n="privacy_security_subtitle">App lock, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="notifications">Notifications</div><div class="settings-row-sub" data-i18n="notifications_subtitle">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('chats')"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="chats">Chats</div><div class="settings-row-sub" data-i18n="chats_subtitle">Conversation label, message controls and chat safety</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+      <div class="settings-link-row" onclick="openSettingsCategory('storage')"><div class="settings-row-icon" style="background:#EEF2F6;color:#4C6A82"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Storage</div><div class="settings-row-sub">Saved messages and downloaded attachments</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('calls')"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="calls">Calls</div><div class="settings-row-sub" data-i18n="calls_subtitle">Call privacy, permissions and audio routing guidance</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('help')"><div class="settings-row-icon" style="background:#F4F0FA;color:#725B91"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-1.3 1.1-1.8 1.5-1.8 3.3"/><path d="M12 18h.01"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="help">Help</div><div class="settings-row-sub" data-i18n="help_subtitle">How to use Vaultlix, FAQ, policies and version</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('language')"><div class="settings-row-icon" style="background:#EEF7F7;color:#3D7B7B"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="language">Language</div><div class="settings-row-sub" data-i18n="language_subtitle">Use your device language or choose another</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
@@ -3854,6 +3860,20 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <div class="settings-row"><div class="settings-row-icon" style="background:#F8F1EA;color:#8A633F"><svg viewBox="0 0 24 24"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Audio route</div><div class="settings-row-sub">Choose phone, speaker, or an available Bluetooth device during a call</div></div><div class="settings-status settings-status-off">During call</div></div>
       <div class="settings-divider"></div>
       <div class="settings-row"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Microphone and camera</div><div class="settings-row-sub">Permissions are controlled by your phone’s system settings</div></div><div class="settings-status settings-status-off">Device</div></div>
+    </div>
+
+    <div id="settings-storage-section" class="settings-category-page">
+      <div class="settings-section-label">On this device</div>
+      <div id="storage-summary" class="storage-block"></div>
+      <div class="settings-section-label">Download limit</div>
+      <div id="storage-limit" class="storage-block"></div>
+      <div class="settings-row-sub" style="padding:0 20px 14px">When downloaded attachments pass the limit, the ones you opened least recently are removed from this device. They download again if the server still has them.</div>
+      <div class="settings-section-label">By conversation</div>
+      <div id="storage-rooms" class="storage-block"></div>
+      <div style="padding:6px 20px 26px">
+        <button class="account-secondary" id="storage-clear-all" type="button" onclick="clearAllDownloads()">Clear all downloads</button>
+        <div class="settings-row-sub" style="padding:10px 0 0">Your messages are kept. Attachments you clear download again the next time you open them, if the server still has them; ones it no longer has cannot come back.</div>
+      </div>
     </div>
 
     <div id="settings-language-section" class="settings-category-page">
@@ -4662,7 +4682,7 @@ function historyStorePut(code, messages) {
 // Newest HISTORY_LOAD_LIMIT stored envelopes for a conversation, oldest first.
 async function historyStoreLoad(code) {
   if (!code) return [];
-  const rows = await historyTransaction('readonly', store => store.getAll(IDBKeyRange.bound([code, ''], [code, '￿'])));
+  const rows = await historyTransaction('readonly', store => store.getAll(IDBKeyRange.bound([code, ''], [code, '\uffff'])));
   const list = Array.isArray(rows) ? rows : [];
   return list.map(row => row.msg).filter(Boolean).sort((a, b) => a.seq - b.seq).slice(-HISTORY_LOAD_LIMIT);
 }
@@ -4688,7 +4708,7 @@ function historyStoreDelete(code, id) {
 function historyStoreClearRoom(code) {
   if (!code) return;
   attachmentCacheClearRoom(code);
-  historyTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '￿'])); }).catch(() => {});
+  historyTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '\uffff'])); }).catch(() => {});
 }
 
 function historyStoreWipeAll() {
@@ -4706,7 +4726,9 @@ function historyStoreWipeAll() {
 // or video opens instantly and offline instead of being fetched again on every
 // launch. Oldest-used items are evicted once the cache passes its size limit;
 // an evicted attachment is simply downloaded again if the server still has it.
-const ATTACHMENT_CACHE_MAX_BYTES = 600 * 1024 * 1024;
+const ATTACHMENT_CACHE_MAX_BYTES = 600 * 1024 * 1024; // the default; Settings > Storage can change it
+const ATTACHMENT_CACHE_LIMIT_KEY = 'vaultlix_attachment_cache_limit_mb'; // its own key, never the room blob
+const ATTACHMENT_CACHE_LIMIT_CHOICES_MB = [200, 600, 1024, 2048];
 const ATTACHMENT_CACHE_MAX_ITEM_BYTES = 48 * 1024 * 1024;
 const ATTACHMENT_CACHE_TOUCH_MS = 60 * 60 * 1000;
 
@@ -4753,7 +4775,7 @@ async function attachmentCachePut(code, attachmentId, msgId, ciphertext) {
   const row = { code, attachmentId, msgId:msgId || '', size, lastAccess:Date.now() };
   let saved = await attachmentTransaction('readwrite', store => { store.put({ ...row, blob:new Blob([ciphertext]) }); });
   if (!saved) saved = await attachmentTransaction('readwrite', store => { store.put({ ...row, text:ciphertext }); }); // a WebView that cannot store Blobs
-  if (saved) attachmentCacheTrim().catch(() => {});
+  if (saved) { requestPersistentStorage(); attachmentCacheTrim().catch(() => {}); }
   return !!saved;
 }
 
@@ -4762,10 +4784,11 @@ async function attachmentCacheTrim() {
   const entries = await attachmentTransaction('readonly', store => store.index('byAccess').getAll());
   if (!Array.isArray(entries)) return;
   let total = entries.reduce((sum, entry) => sum + (Number(entry.size) || 0), 0);
-  if (total <= ATTACHMENT_CACHE_MAX_BYTES) return;
+  const limit = attachmentCacheLimitBytes();
+  if (total <= limit) return;
   const doomed = [];
   for (const entry of entries) { // getAll on the access index is oldest-first
-    if (total <= ATTACHMENT_CACHE_MAX_BYTES * 0.9) break;
+    if (total <= limit * 0.9) break;
     doomed.push([entry.code, entry.attachmentId]);
     total -= Number(entry.size) || 0;
   }
@@ -4786,8 +4809,119 @@ function attachmentCacheDeleteForMessage(code, msgId) {
 }
 
 function attachmentCacheClearRoom(code) {
-  if (!code) return;
-  attachmentTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '￿'])); }).catch(() => {});
+  if (!code) return Promise.resolve(null);
+  return attachmentTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '\uffff'])); }).catch(() => null);
+}
+
+function attachmentCacheClearAll() {
+  return attachmentTransaction('readwrite', store => { store.clear(); }).catch(() => null);
+}
+
+// ── STORAGE SETTINGS ─────────────────────────────────────────────────────
+// The chosen limit, in bytes. Anything that is not one of the offered choices
+// (a stale or edited value) falls back to the default.
+function attachmentCacheLimitBytes() {
+  try {
+    const chosen = Number(localStorage.getItem(ATTACHMENT_CACHE_LIMIT_KEY));
+    if (ATTACHMENT_CACHE_LIMIT_CHOICES_MB.includes(chosen)) return chosen * 1024 * 1024;
+  } catch (error) {}
+  return ATTACHMENT_CACHE_MAX_BYTES;
+}
+
+function setAttachmentCacheLimitMb(megabytes) {
+  if (!ATTACHMENT_CACHE_LIMIT_CHOICES_MB.includes(megabytes)) return;
+  try { localStorage.setItem(ATTACHMENT_CACHE_LIMIT_KEY, String(megabytes)); } catch (error) {}
+  attachmentCacheTrim().catch(() => {}).finally(() => { if (settingsCategory === 'storage') renderStoragePage().catch(() => {}); });
+}
+
+function formatStorageBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function groupBytesByRoom(rows) {
+  const byRoom = {};
+  let total = 0;
+  for (const row of rows || []) {
+    const size = Number(row?.size) || 0;
+    if (!row?.code || size <= 0) continue;
+    byRoom[row.code] = (byRoom[row.code] || 0) + size;
+    total += size;
+  }
+  return { byRoom, total };
+}
+
+function groupCountByRoom(keys) {
+  const byRoom = {};
+  let total = 0;
+  for (const key of keys || []) {
+    const code = Array.isArray(key) ? key[0] : null;
+    if (!code) continue;
+    byRoom[code] = (byRoom[code] || 0) + 1;
+    total++;
+  }
+  return { byRoom, total };
+}
+
+async function storageStats() {
+  const [downloads, messages] = await Promise.all([
+    attachmentTransaction('readonly', store => store.getAll()),
+    historyTransaction('readonly', store => store.getAllKeys()),
+  ]);
+  return { downloads:groupBytesByRoom(Array.isArray(downloads) ? downloads : []), messages:groupCountByRoom(Array.isArray(messages) ? messages : []) };
+}
+
+async function renderStoragePage() {
+  const summary = document.getElementById('storage-summary');
+  if (!summary) return;
+  const { downloads, messages } = await storageStats();
+  const limit = attachmentCacheLimitBytes();
+  const percent = Math.min(100, Math.round(downloads.total / limit * 100));
+  let quotaLine = '';
+  try {
+    const estimate = await navigator.storage?.estimate?.();
+    if (estimate?.quota) quotaLine = ` Vaultlix may use up to about ${formatStorageBytes(estimate.quota)} on this device.`;
+    const persisted = await navigator.storage?.persisted?.();
+    if (persisted === true) quotaLine += ' Protected from automatic clean-up.';
+    else if (persisted === false) quotaLine += ' The system may clear it if this device runs very low on space.';
+  } catch (error) {}
+  summary.innerHTML = `<div class="storage-total">${escHtml(formatStorageBytes(downloads.total))}</div>
+    <div class="storage-caption">of downloaded attachments, out of a ${escHtml(formatStorageBytes(limit))} limit. ${messages.total.toLocaleString()} saved message${messages.total === 1 ? '' : 's'}.${escHtml(quotaLine)}</div>
+    <div class="storage-bar" role="img" aria-label="${percent}% of the download limit used"><span style="width:${percent}%"></span></div>`;
+  document.getElementById('storage-limit').innerHTML = `<div class="storage-seg">${ATTACHMENT_CACHE_LIMIT_CHOICES_MB.map(mb =>
+    `<button type="button" class="${mb * 1024 * 1024 === limit ? 'on' : ''}" onclick="setAttachmentCacheLimitMb(${mb})">${mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`}</button>`).join('')}</div>`;
+  const codes = [...new Set([...Object.keys(downloads.byRoom), ...Object.keys(messages.byRoom)])];
+  const label = code => { const room = rooms.get(code); return room ? roomDisplayLabel(room) : 'Removed conversation'; };
+  codes.sort((a, b) => (downloads.byRoom[b] || 0) - (downloads.byRoom[a] || 0));
+  document.getElementById('storage-rooms').innerHTML = codes.length ? codes.map(code => {
+    const bytes = downloads.byRoom[code] || 0, count = messages.byRoom[code] || 0;
+    return `<div class="storage-room"><div class="storage-room-name"><strong>${escHtml(label(code))}</strong><small>${count.toLocaleString()} message${count === 1 ? '' : 's'} · ${escHtml(formatStorageBytes(bytes))} downloaded</small></div><button type="button" ${bytes ? '' : 'disabled'} onclick="clearRoomDownloads('${escHtml(code)}')">Clear</button></div>`;
+  }).join('') : '<div class="settings-row-sub">Nothing is saved on this device yet.</div>';
+  const clearAll = document.getElementById('storage-clear-all');
+  if (clearAll) clearAll.disabled = downloads.total === 0;
+}
+
+async function clearRoomDownloads(code) {
+  const room = rooms.get(code);
+  if (!confirm(`Clear downloaded attachments for ${room ? roomDisplayLabel(room) : 'this conversation'}? Messages stay, and attachments download again when you open them if the server still has them.`)) return;
+  await attachmentCacheClearRoom(code);
+  toast('Downloads cleared');
+  renderStoragePage().catch(() => {});
+}
+
+async function clearAllDownloads() {
+  if (!confirm('Clear all downloaded attachments from this device? Messages stay, and attachments download again when you open them if the server still has them.')) return;
+  await attachmentCacheClearAll();
+  toast('Downloads cleared');
+  renderStoragePage().catch(() => {});
+}
+
+// Ask the system not to clear this data when the device runs low on space.
+// Best effort, once per launch; browsers and WebViews that lack it ignore it.
+function requestPersistentStorage() {
+  try { navigator.storage?.persist?.().catch(() => {}); } catch (error) {}
 }
 
 // Our own sends never come back through an incremental poll, so keep them when
@@ -9656,6 +9790,8 @@ function showSettingsMenu() {
   document.getElementById('settings-share-section').classList.remove('active');
   document.getElementById('settings-share-section').style.display = 'none';
   document.getElementById('settings-calls-section').classList.remove('active');
+  document.getElementById('settings-storage-section').classList.remove('active');
+  document.getElementById('settings-storage-section').style.display = 'none';
   document.getElementById('settings-language-section').classList.remove('active');
   document.getElementById('settings-language-section').style.display = 'none';
   document.getElementById('settings-about-section').style.display = 'none';
@@ -9664,7 +9800,7 @@ function showSettingsMenu() {
 function openSettingsCategory(category) {
   settingsCategory = category;
   const room = getActiveRoom();
-  const titles = { share:'Share', profile:i18n('profile'), privacy:i18n('privacy_security'), notifications:i18n('notifications'), chats:i18n('chats'), calls:i18n('calls'), help:i18n('help'), language:i18n('language') };
+  const titles = { share:'Share', profile:i18n('profile'), privacy:i18n('privacy_security'), notifications:i18n('notifications'), chats:i18n('chats'), storage:'Storage', calls:i18n('calls'), help:i18n('help'), language:i18n('language') };
   document.getElementById('settings-menu').style.display = 'none';
   document.getElementById('settings-header-title').textContent = settingsContextMode === 'chat' ? i18n('conversation_settings') : (titles[category] || i18n('settings'));
   const generalSection = document.getElementById('settings-general-section');
@@ -9677,7 +9813,7 @@ function openSettingsCategory(category) {
   // Calls and Language are full category pages nested inside the shared
   // settings container. Keep their parent visible even though they do not
   // use any of the individual general-setting rows.
-  generalSection.style.display = selectedRows.length || category === 'share' || category === 'calls' || category === 'language' ? '' : 'none';
+  generalSection.style.display = selectedRows.length || category === 'share' || category === 'calls' || category === 'storage' || category === 'language' ? '' : 'none';
   Array.from(generalSection.children).forEach(el => { el.style.display = 'none'; });
   const sectionLabel = generalSection.querySelector('.settings-section-label');
   if (sectionLabel && selectedRows.length) {
@@ -9704,6 +9840,10 @@ function openSettingsCategory(category) {
   const callsSection = document.getElementById('settings-calls-section');
   callsSection.classList.toggle('active', category === 'calls');
   callsSection.style.display = category === 'calls' ? '' : 'none';
+  const storageSection = document.getElementById('settings-storage-section');
+  storageSection.classList.toggle('active', category === 'storage');
+  storageSection.style.display = category === 'storage' ? '' : 'none';
+  if (category === 'storage') renderStoragePage().catch(() => {});
   const languageSection = document.getElementById('settings-language-section');
   languageSection.classList.toggle('active', category === 'language');
   languageSection.style.display = category === 'language' ? '' : 'none';

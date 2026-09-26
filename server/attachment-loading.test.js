@@ -201,6 +201,6 @@ test('our own sent attachments are cached on upload, and deleting a message dele
 test('the cache is bounded and evicts least recently used items', () => {
   assert.match(client, /const ATTACHMENT_CACHE_MAX_BYTES = 600 \* 1024 \* 1024;/);
   assert.match(client, /index\('byAccess'\)\.getAll\(\)/);
-  assert.match(client, /ATTACHMENT_CACHE_MAX_BYTES \* 0\.9/);
+  assert.match(client, /if \(total <= limit \* 0\.9\) break;/);
   assert.match(client, /estimate\.quota \* 0\.85/);
 });
