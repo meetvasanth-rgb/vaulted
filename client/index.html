@@ -4493,6 +4493,7 @@ function scheduleSecureNativeHistoryCache(room, records) {
 }
 function secureNativeDeleteMessage(conversationId, messageId) {
   if (!conversationId || !messageId) return;
+  historyStoreDelete(conversationId, messageId);
   try {
     if (typeof window.VaultlixAndroid?.secureDeleteMessage === 'function') {
       window.VaultlixAndroid.secureDeleteMessage(conversationId, messageId);
@@ -4555,6 +4556,7 @@ function cancelAndScrubConversationCache(room) {
 }
 function secureNativeClearConversation(conversationId) {
   if (!conversationId) return;
+  historyStoreClearRoom(conversationId);
   try {
     if (typeof window.VaultlixAndroid?.secureClearConversation === 'function') {
       window.VaultlixAndroid.secureClearConversation(conversationId);
@@ -4562,6 +4564,140 @@ function secureNativeClearConversation(conversationId) {
       window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'secureClearConversation', conversationId });
     }
   } catch (e) { console.warn('Native conversation erase failed'); }
+}
+
+// ── LOCAL ENCRYPTED HISTORY ──────────────────────────────────────────────
+// Keeps each conversation's messages on this device until they are deleted, so
+// reopening Vaultlix no longer has to download and rebuild everything. What is
+// stored is the same end-to-end encrypted envelope the server holds (never
+// plaintext); it is decrypted with the conversation key already on this
+// device when the chat opens, then brought up to date from the server.
+// Deliberately not stored: view-once messages, messages under a disappearing
+// timer, anything with a server expiry, and envelopes over 256 KB. Attachments
+// are stored only as their small reference; their bytes are not cached yet.
+const HISTORY_DB_NAME = 'vaultlix-history';
+const HISTORY_MAX_ENVELOPE_CHARS = 256 * 1024;
+const HISTORY_LOAD_LIMIT = 500;
+let historyDbPromise = null;
+
+function historyDb() {
+  if (historyDbPromise) return historyDbPromise;
+  historyDbPromise = new Promise(resolve => {
+    try {
+      if (!window.indexedDB) { resolve(null); return; }
+      const request = indexedDB.open(HISTORY_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('messages')) request.result.createObjectStore('messages', { keyPath:['code', 'id'] });
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onversionchange = () => { db.close(); historyDbPromise = null; };
+        resolve(db);
+      };
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    } catch (error) { resolve(null); }
+  });
+  return historyDbPromise;
+}
+
+// The envelope worth keeping for a server message, or null if this message must
+// never be kept on the device.
+function historyEnvelope(msg) {
+  if (!msg || msg.type !== 'message' || msg.deleted || typeof msg.id !== 'string' || !msg.id) return null;
+  if (typeof msg.content !== 'string' || !msg.content || msg.content.length > HISTORY_MAX_ENVELOPE_CHARS) return null;
+  if (msg.viewOnce || msg.expiresAt || Number(msg.deleteTimerSeconds) > 0) return null;
+  const seq = Number(msg.seq);
+  if (!Number.isFinite(seq) || seq <= 0) return null;
+  return { id:msg.id, seq, type:'message', from:msg.from, name:msg.name || null, content:msg.content,
+    ts:Number(msg.ts) || 0, deliveredAt:msg.deliveredAt || null, readAt:msg.readAt || null, deleteTimerSeconds:0 };
+}
+
+// Which stored messages the server has since removed. Only messages inside the
+// window the server just returned can be judged; anything older is kept because
+// the server no longer holds it either way.
+function historyReconcilePlan({ local, serverMessages, tombstoneIds, clearedAt }) {
+  const remove = new Set(tombstoneIds || []);
+  const returned = new Set((serverMessages || []).map(message => message.id));
+  const seqs = (serverMessages || []).map(message => Number(message.seq)).filter(Number.isFinite);
+  const windowStart = seqs.length ? Math.min(...seqs) : null;
+  for (const item of local || []) {
+    if (clearedAt && Number(item.ts) > 0 && Number(item.ts) <= clearedAt) { remove.add(item.id); continue; }
+    if (windowStart !== null && Number(item.seq) >= windowStart && !returned.has(item.id)) remove.add(item.id);
+  }
+  return remove;
+}
+
+function historyTransaction(mode, work) {
+  return historyDb().then(db => {
+    if (!db) return null;
+    return new Promise(resolve => {
+      try {
+        const tx = db.transaction('messages', mode);
+        const result = work(tx.objectStore('messages'));
+        tx.oncomplete = () => resolve(result && 'result' in result ? result.result : true);
+        tx.onerror = tx.onabort = () => resolve(null);
+      } catch (error) { resolve(null); }
+    });
+  });
+}
+
+function historyStorePut(code, messages) {
+  if (!code || !Array.isArray(messages)) return Promise.resolve(false);
+  const rows = [];
+  for (const message of messages) {
+    const msg = historyEnvelope(message);
+    if (msg) rows.push({ code, id:msg.id, seq:msg.seq, msg });
+  }
+  if (!rows.length) return Promise.resolve(false);
+  return historyTransaction('readwrite', store => { for (const row of rows) store.put(row); }).catch(() => null);
+}
+
+// Newest HISTORY_LOAD_LIMIT stored envelopes for a conversation, oldest first.
+async function historyStoreLoad(code) {
+  if (!code) return [];
+  const rows = await historyTransaction('readonly', store => store.getAll(IDBKeyRange.bound([code, ''], [code, '￿'])));
+  const list = Array.isArray(rows) ? rows : [];
+  return list.map(row => row.msg).filter(Boolean).sort((a, b) => a.seq - b.seq).slice(-HISTORY_LOAD_LIMIT);
+}
+
+// Delivered / read ticks on our own messages older than the server's window
+// only exist here, so keep them current on the stored copy.
+function historyStorePatch(code, id, fields) {
+  if (!code || !id || !fields) return;
+  historyTransaction('readwrite', store => {
+    const request = store.get([code, id]);
+    request.onsuccess = () => {
+      if (request.result?.msg) store.put({ ...request.result, msg:{ ...request.result.msg, ...fields } });
+    };
+  }).catch(() => {});
+}
+
+function historyStoreDelete(code, id) {
+  if (!code || !id) return;
+  historyTransaction('readwrite', store => { store.delete([code, id]); }).catch(() => {});
+}
+
+function historyStoreClearRoom(code) {
+  if (!code) return;
+  historyTransaction('readwrite', store => { store.delete(IDBKeyRange.bound([code, ''], [code, '￿'])); }).catch(() => {});
+}
+
+function historyStoreWipeAll() {
+  try {
+    historyDbPromise?.then(db => db?.close()).catch(() => {});
+    historyDbPromise = null;
+    indexedDB.deleteDatabase(HISTORY_DB_NAME);
+  } catch (error) {}
+}
+
+// Our own sends never come back through an incremental poll, so keep them when
+// the server acknowledges them.
+function historyStoreSent(request, response, room) {
+  if (!room || !request?.content || !response?.seq || response.duplicate) return;
+  historyStorePut(room.code, [{ id:response.msgId || request.msgId, seq:response.seq, type:'message', from:request.token,
+    name:room.myName || null, content:request.content, viewOnce:!!request.viewOnce, deleteTimerSeconds:room.deleteTimerSeconds || 0,
+    ts:Date.now() }]);
 }
 syncAndroidSystemInsets();
 window.addEventListener('resize',syncAndroidSystemInsets,{passive:true});
@@ -4901,7 +5037,9 @@ function importAccountBundle(bundle, accountId) {
     const current = merged.get(session.code);
     if (!current) added++;
     const selected = !current || (ownedSession.savedAt || 0) > (current.savedAt || 0) ? ownedSession : current;
-    merged.set(session.code, { ...selected, ownerAccountId:accountId });
+    // Whichever copy wins, a message deleted on either one stays deleted.
+    const deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(current?.deleteLedger, ownedSession.deleteLedger));
+    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
@@ -5569,15 +5707,41 @@ function persistReconnectMeta(room) {
 // older than 48h are dropped on the way out: the server only ever keeps the
 // last 100 messages per room anyway, so anything this old could never be
 // re-fetched and resurrected regardless.
+// The delete ledger is what keeps a message that was deleted on this device
+// from being restored again from the server, which still holds it. It used to
+// forget after 48 hours (when the server dropped messages that quickly), so
+// old "delete for me" messages reappeared. It now keeps a year, newest 5000.
+const DELETE_LEDGER_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+const DELETE_LEDGER_MAX_ENTRIES = 5000;
+
+// Union of ledgers: a deletion recorded on either side is kept. Entries are
+// { messageId: deletedAt }; the later time wins for the same message.
+function mergeDeleteLedgers(...ledgers) {
+  const merged = {};
+  for (const ledger of ledgers) {
+    if (!ledger || typeof ledger !== 'object') continue;
+    for (const [id, at] of Object.entries(ledger)) {
+      const time = Number(at);
+      if (!id || !Number.isFinite(time)) continue;
+      if (!(id in merged) || time > merged[id]) merged[id] = time;
+    }
+  }
+  return merged;
+}
+
+function pruneDeleteLedger(ledger, now = Date.now()) {
+  const cutoff = now - DELETE_LEDGER_MAX_AGE_MS;
+  const entries = Object.entries(ledger || {}).filter(([, at]) => Number(at) >= cutoff);
+  entries.sort((a, b) => b[1] - a[1]);
+  return Object.fromEntries(entries.slice(0, DELETE_LEDGER_MAX_ENTRIES));
+}
+
 function persistDeleteLedger(room) {
   try {
     const key = roomStorageKey(room.code);
     const existing = JSON.parse(localStorage.getItem(key) || 'null');
     if (!existing) return;
-    const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-    const out = {};
-    for (const [id, at] of room.deleteLedger) if (at >= cutoff) out[id] = at;
-    existing.deleteLedger = out;
+    existing.deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(existing.deleteLedger, Object.fromEntries(room.deleteLedger)));
     localStorage.setItem(key, JSON.stringify(existing));
     scheduleAccountSync();
   } catch(e) {}
@@ -8848,6 +9012,7 @@ async function api(path, data = null) {
     };
   }
   if (!res.ok && body && typeof body === 'object') body.status = res.status;
+  if (path === '/api/send' && res.ok && body?.ok && data?.code) historyStoreSent(data, body, rooms.get(data.code));
   return body;
 }
 
@@ -12305,6 +12470,7 @@ async function clearVaultlixDeviceData() {
   try { indexedDB.deleteDatabase('vaulted-push'); } catch (e) {}
   try { indexedDB.deleteDatabase('vaultlix'); } catch (e) {}
   try { indexedDB.deleteDatabase(DAILY_LOOK_RESULT_DB); } catch (e) {}
+  historyStoreWipeAll();
   try { sessionStorage.clear(); localStorage.clear(); } catch (e) {}
   try { window.VaultlixAndroid?.emergencyReset(); } catch (e) {}
   try { window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'emergencyReset' }); } catch (e) {}
@@ -15470,6 +15636,12 @@ function handleReadReceipts(room, receipts) {
     const rec = room.messages.find(m => m.id === msgId);
     if (!rec) continue;
     rec.deleteTimerSeconds = deleteTimerSeconds;
+    if (rec.isMe && (deliveredAt || readAt)) {
+      const ticks = {};
+      if (deliveredAt) ticks.deliveredAt = deliveredAt;
+      if (readAt) ticks.readAt = readAt;
+      historyStorePatch(room.code, msgId, ticks);
+    }
     if (readAt) {
       rec.readAt = readAt;
       rec.receiptState = 'read';
@@ -16104,100 +16276,143 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 // delete ledger is what stops an already-expired message from resurrecting
 // while still letting anything that's still genuinely live come back and
 // resume its countdown from wherever it actually was.
-async function restoreRoomHistory(room) {
-  room.historyLoadFailed = false;
-  try {
-    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
-    if (!data || data.roomGone) return;
-    const nowTs = Date.now();
+// Turns server-format messages (from the network or from the local copy) into
+// this conversation's records: text first, then attachments as placeholders that
+// fill in as each encrypted object arrives.
+async function applyRestoredHistory(room, messages, nowTs, { waitForAttachments = true } = {}) {
+  const unseen = [];
+  for (const msg of messages) {
+    if (room.seenMsgIds.has(msg.id)) continue;
+    room.seenMsgIds.add(msg.id);
+    if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
+    unseen.push(msg);
+  }
 
-    if (data.messages && data.messages.length > 0) {
-      const unseen = [];
-      for (const msg of data.messages) {
-        if (room.seenMsgIds.has(msg.id)) continue;
-        room.seenMsgIds.add(msg.id);
-        if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
-        unseen.push(msg);
-      }
-
-      // Restore inline ciphertext first. Object-backed photos/videos can be
-      // tens of megabytes each and require a second network round-trip; making
-      // text wait behind all of them left an opened conversation blank for
-      // minutes after a deploy/reload. Each phase is still bounded and applied
-      // in server order, while live polling is allowed to continue below.
-      const restoreBatch = async batch => {
-        const processed = new Array(batch.length);
-        let nextIndex = 0;
-        const decryptWorker = async () => {
-          while (nextIndex < batch.length) {
-            const index = nextIndex++;
-            const msg = batch[index];
-            let rec = null;
-            if (msg.type === 'message') {
-              rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
-              if (rec && rec.pending) {
-                // Do not strand this envelope behind seenMsgIds. The ordinary
-                // pending queue replays it as soon as the verified key exists.
-                room.pendingDecrypt.push({ msgId:msg.id, content:msg.content, name:msg.name, time:formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt });
-                room.pendingHistoryRestore = true;
-                rec = null;
-              } else if (rec) {
-                rec.isMe = msg.from === room.token;
-              }
-            }
-            processed[index] = rec;
-          }
-        };
-        const decryptWorkerCount = Math.min(8, batch.length);
-        await Promise.all(Array.from({ length:decryptWorkerCount }, () => decryptWorker()));
-
-        for (let index = 0; index < batch.length; index++) {
-          const msg = batch[index];
-          const rec = processed[index];
-          if (!rec) continue;
-          const ledgerDeleteAt = room.deleteLedger.get(msg.id);
-          if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) {
-            const staleIndex = room.messages.findIndex(existing => existing.id === msg.id && existing.kind === 'attachment-loading');
-            if (staleIndex >= 0) room.messages.splice(staleIndex, 1);
-            continue;
-          }
-          const existingIndex = room.messages.findIndex(existing => existing.id === msg.id);
-          if (existingIndex >= 0 && room.messages[existingIndex].kind === 'attachment-loading') {
-            room.messages[existingIndex] = rec;
-          } else if (existingIndex >= 0) continue;
-          if (existingIndex < 0) room.messages.push(rec);
-          if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
-            rec.deleteAt = ledgerDeleteAt;
-            rec.timerStarted = true;
-            const handle = setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs);
-            room.msgTimers.set(msg.id, handle);
-          } else if (!rec.isMe && msg.type === 'message') {
-            room.readConfirmIds.push(msg.id);
+  // Restore inline ciphertext first. Object-backed photos/videos can be
+  // tens of megabytes each and require a second network round-trip; making
+  // text wait behind all of them left an opened conversation blank for
+  // minutes after a deploy/reload. Each phase is still bounded and applied
+  // in server order, while live polling is allowed to continue below.
+  const restoreBatch = async batch => {
+    const processed = new Array(batch.length);
+    let nextIndex = 0;
+    const decryptWorker = async () => {
+      while (nextIndex < batch.length) {
+        const index = nextIndex++;
+        const msg = batch[index];
+        let rec = null;
+        if (msg.type === 'message') {
+          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
+          if (rec && rec.pending) {
+            // Do not strand this envelope behind seenMsgIds. The ordinary
+            // pending queue replays it as soon as the verified key exists.
+            room.pendingDecrypt.push({ msgId:msg.id, content:msg.content, name:msg.name, time:formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt });
+            room.pendingHistoryRestore = true;
+            rec = null;
+          } else if (rec) {
+            rec.isMe = msg.from === room.token;
           }
         }
-        room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
-      };
-
-      const inlineMessages = unseen.filter(msg => typeof msg.content !== 'string' || !msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
-      const attachmentMessages = unseen.filter(msg => typeof msg.content === 'string' && msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
-      await restoreBatch(inlineMessages);
-      if (inlineMessages.length && isRoomVisible(room)) renderChatBody(room);
-      // A slow object store must not hold the whole chat on a blank screen.
-      // Paint stable placeholders first, then replace each one after its
-      // encrypted object has downloaded and decrypted.
-      for (const msg of attachmentMessages) {
-        if (room.messages.some(existing => existing.id === msg.id)) continue;
-        room.messages.push({ id:msg.id, isMe:msg.from === room.token, name:msg.name,
-          time:formatMsgTime(msg.ts), ts:Number(msg.ts) || 0, kind:'attachment-loading',
-          encryptedAttachmentRef:msg.content, fromToken:msg.from,
-          deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt,
-          receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null });
+        processed[index] = rec;
       }
-      room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
-      if (attachmentMessages.length && isRoomVisible(room)) renderChatBody(room);
-      await restoreBatch(attachmentMessages);
-    }
+    };
+    const decryptWorkerCount = Math.min(8, batch.length);
+    await Promise.all(Array.from({ length:decryptWorkerCount }, () => decryptWorker()));
 
+    for (let index = 0; index < batch.length; index++) {
+      const msg = batch[index];
+      const rec = processed[index];
+      if (!rec) continue;
+      const ledgerDeleteAt = room.deleteLedger.get(msg.id);
+      if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) {
+        historyStoreDelete(room.code, msg.id); // gone by the delete ledger: gone from the local copy too
+        const staleIndex = room.messages.findIndex(existing => existing.id === msg.id && existing.kind === 'attachment-loading');
+        if (staleIndex >= 0) room.messages.splice(staleIndex, 1);
+        continue;
+      }
+      const existingIndex = room.messages.findIndex(existing => existing.id === msg.id);
+      if (existingIndex >= 0 && room.messages[existingIndex].kind === 'attachment-loading') {
+        room.messages[existingIndex] = rec;
+      } else if (existingIndex >= 0) continue;
+      if (existingIndex < 0) room.messages.push(rec);
+      if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
+        rec.deleteAt = ledgerDeleteAt;
+        rec.timerStarted = true;
+        const handle = setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs);
+        room.msgTimers.set(msg.id, handle);
+      } else if (!rec.isMe && msg.type === 'message') {
+        room.readConfirmIds.push(msg.id);
+      }
+    }
+    room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
+  };
+
+  const inlineMessages = unseen.filter(msg => typeof msg.content !== 'string' || !msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
+  const attachmentMessages = unseen.filter(msg => typeof msg.content === 'string' && msg.content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX));
+  await restoreBatch(inlineMessages);
+  if (inlineMessages.length && isRoomVisible(room)) renderChatBody(room);
+  // A slow object store must not hold the whole chat on a blank screen.
+  // Paint stable placeholders first, then replace each one after its
+  // encrypted object has downloaded and decrypted.
+  for (const msg of attachmentMessages) {
+    if (room.messages.some(existing => existing.id === msg.id)) continue;
+    room.messages.push({ id:msg.id, isMe:msg.from === room.token, name:msg.name,
+      time:formatMsgTime(msg.ts), ts:Number(msg.ts) || 0, kind:'attachment-loading',
+      encryptedAttachmentRef:msg.content, fromToken:msg.from,
+      deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt,
+      receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null });
+  }
+  room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
+  if (attachmentMessages.length && isRoomVisible(room)) renderChatBody(room);
+  if (waitForAttachments) await restoreBatch(attachmentMessages); else restoreBatch(attachmentMessages).catch(() => {});
+}
+
+// Stage one of opening a conversation: decrypt and show the messages already
+// stored on this device. Returns them so the server check can reconcile.
+async function restoreLocalHistory(room) {
+  let stored = [];
+  try {
+    stored = await historyStoreLoad(room.code);
+    if (!stored.length || !room.sharedKey) return stored;
+    // Attachments keep loading in the background; the server check must not
+    // wait behind them, exactly as with a network restore.
+    await applyRestoredHistory(room, stored, Date.now(), { waitForAttachments:false });
+    room.localHistoryRestored = true;
+    // Bring back the delivered / read ticks saved with our own messages.
+    handleReadReceipts(room, stored.filter(message => message.from === room.token && (message.deliveredAt || message.readAt))
+      .map(message => ({ msgId:message.id, deliveredAt:message.deliveredAt, readAt:message.readAt, deleteTimerSeconds:0 })));
+  } catch (error) {
+    console.warn('Local history could not be restored', error?.message);
+  }
+  return stored;
+}
+
+// After the server answers, drop local messages it has deleted or cleared.
+function reconcileLocalHistory(room, localMessages, data) {
+  if (!localMessages?.length && !(data.deletions || []).length && !data.clearedAt) return;
+  const tombstoneIds = (data.deletions || []).map(item => item.msgId).filter(Boolean);
+  const remove = historyReconcilePlan({ local:localMessages, serverMessages:data.messages, tombstoneIds, clearedAt:Number(data.clearedAt) || 0 });
+  for (const id of remove) {
+    historyStoreDelete(room.code, id);
+    if (room.messages.some(record => record.id === id)) removeMessageRecord(room, id);
+  }
+  if (remove.size && isRoomVisible(room)) renderChatBody(room);
+}
+
+async function restoreRoomHistory(room) {
+  room.historyLoadFailed = false;
+  // 1. Paint what this device already has, without waiting for the network.
+  const localMessages = await restoreLocalHistory(room);
+  try {
+    // 2. Ask the server what is current and bring the chat up to date.
+    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
+    if (!data || data.roomGone) return;
+    if (data.error) throw new Error(data.error);
+    const nowTs = Date.now();
+    historyStorePut(room.code, data.messages);
+    reconcileLocalHistory(room, localMessages, data);
+
+    if (data.messages && data.messages.length > 0) await applyRestoredHistory(room, data.messages, nowTs);
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
       for (const r of data.readReceipts) if (r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
@@ -16586,6 +16801,7 @@ async function doPoll(room) {
     }
 
     if (data.messages && data.messages.length > 0) {
+      historyStorePut(room.code, data.messages); // keep it on this device until it is deleted
       for (const msg of data.messages) {
         if (room.seenMsgIds.has(msg.id)) continue;
         room.seenMsgIds.add(msg.id);
