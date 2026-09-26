@@ -115,7 +115,7 @@ test('client ignores room timer for old messages and repeated reads never extend
 });
 test('timer changes insert timestamped chat notices without success toasts',async()=>{
   const notices=[];const room={code:'room',messages:[],deleteTimerSeconds:0};let id=0;
-  const context={getActiveRoom:()=>room,newMsgId:()=>`timer-${++id}`,encryptMsg:async(_,text)=>'v:'+text,api:async(_,body)=>({deleteTimer:body.deleteTimer,notice:{id:body.noticeId,ts:1000}}),persistRoom(){},updateTimerBar(){},toast:s=>notices.push(s),formatDuration:s=>s+'s',formatMsgTime:()=> '16:14',secureNativeStoreMessage(){},activeRoomCode:'room',renderChatBody(){}};
+  const context={getActiveRoom:()=>room,newMsgId:()=>`timer-${++id}`,encryptMsg:async(_,text)=>'v:'+text,api:async(_,body)=>({deleteTimer:body.deleteTimer,notice:{id:body.noticeId,ts:1000}}),persistRoom(){},showTimerChip(){},updateTimerBar(){},toast:s=>notices.push(s),formatDuration:s=>s+'s',formatMsgTime:()=> '16:14',secureNativeStoreMessage(){},activeRoomCode:'room',renderChatBody(){}};
   vm.createContext(context);vm.runInContext(clientFunction('timerNoticeRecord')+'\nasync '+clientFunction('changeRoomTimer'),context);
   await context.changeRoomTimer('60');await context.changeRoomTimer('0');
   assert.equal(notices.length,0);assert.equal(room.messages.length,2);

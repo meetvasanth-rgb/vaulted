@@ -2771,6 +2771,25 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 .group-chat-footer textarea:focus,.group-chat-footer textarea:focus-visible{border-color:#dfd2d7!important;background:#fff}
 /* While the keyboard slides, the chat shrinks with it (see createChatKeyboardLayout). */
 .group-chat.kb-animating,#s-chat.kb-animating{transition:height .28s cubic-bezier(.2,.8,.2,1),min-height .28s cubic-bezier(.2,.8,.2,1)}
+
+/* ── Compact chat header ─────────────────────────────────────────────────
+   The "Encrypted" and "Timer" bars used to take a full row above the messages.
+   They now share the line under the contact's name, so the conversation gets that
+   height back. */
+#s-chat .chat-hdr-sub{display:flex;align-items:center;gap:7px;min-width:0;flex-wrap:nowrap;white-space:nowrap}
+#s-chat .chat-hdr-sub .chat-hdr-presence{flex:0 1 auto;min-width:0}
+#s-chat .chat-hdr-sub .e2e-bar{flex:0 1 auto;min-width:0;display:inline-flex!important;align-items:center;gap:4px;width:auto!important;margin:0!important;padding:2px 0!important;border:0!important;border-radius:0!important;background:transparent!important;color:#4C6B55!important;font:650 11px/1.2 'Manrope',sans-serif!important;text-align:left;overflow:hidden;text-overflow:ellipsis}
+#s-chat .chat-hdr-sub .e2e-bar svg{width:13px;height:13px}
+#s-chat .chat-hdr-sub .e2e-bar:not(.pending) span{display:none}
+#s-chat .chat-hdr-sub .e2e-bar.pending{color:#8A6A2E!important;overflow:hidden}
+#s-chat .chat-hdr-sub .timer-bar{flex:0 0 auto;display:inline-flex!important;align-items:center;margin:0!important;padding:0!important;border:0!important;background:transparent!important;height:auto!important;width:auto!important}
+#s-chat .chat-hdr-sub .timer-bar-controls{display:inline-flex!important;align-items:center;gap:3px;height:auto;padding:2px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;position:relative;color:#786A72}
+#s-chat .chat-hdr-sub .timer-bar-controls::before{content:'';flex:none;width:13px;height:13px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23786A72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13' r='8'/%3E%3Cpath d='M12 9v4l2 2M9 2h6'/%3E%3C/svg%3E") center/contain no-repeat}
+#s-chat .chat-hdr-sub .timer-bar-controls::after{content:attr(data-short);font:650 11px/1.2 'Manrope',sans-serif;color:#786A72}
+#s-chat .chat-hdr-sub .timer-bar-label{display:none!important}
+/* The real select covers the chip, invisible, so a tap opens the native picker. */
+#s-chat .chat-hdr-sub #timer-bar-select{position:absolute!important;inset:-8px -6px!important;width:calc(100% + 12px)!important;height:calc(100% + 16px)!important;min-width:0!important;margin:0!important;padding:0!important;opacity:0!important;border:0!important;background:none!important;font-size:16px!important;cursor:pointer}
+#s-chat .chat-hdr-sub .timer-bar-controls:focus-within{border:0!important;box-shadow:none!important}
 </style>
 <script type="application/ld+json">
 {
@@ -3245,7 +3264,26 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
       <button class="chat-peer-avatar" id="chat-peer-avatar" type="button" onclick="openPeerProfileImage()" title="View profile image" aria-label="View peer profile image">V</button>
       <div class="chat-hdr-meta">
         <div class="vaultlix-identity-line"><div class="chat-hdr-room" id="hdr-code" onclick="showRenameRoomPanel()" title="Tap to label this vault (only visible to you)">—</div><span class="vaultlix-identity-badge" aria-label="Vaultlix member" title="Vaultlix member"><span>V</span></span></div>
-        <div class="chat-hdr-presence" id="chat-presence" hidden><span class="status-dot" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Online</span></div>
+        <!-- One quiet line under the name (like Signal) instead of a bar of their own:
+             online, the lock (tap for encryption details), and the disappearing-message
+             timer. Warnings such as "Establishing encryption…" still show in full. -->
+        <div class="chat-hdr-sub">
+          <div class="chat-hdr-presence" id="chat-presence" hidden><span class="status-dot" id="status-dot" aria-hidden="true"></span><span id="chat-presence-label">Online</span></div>
+  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span data-i18n="encrypted">Encrypted</span></div>
+  <div class="timer-bar">
+    <div class="timer-bar-controls">
+      <span class="timer-bar-label">⏱ <span data-i18n="disappearing_messages">Disappearing messages</span></span>
+      <select id="timer-bar-select" onchange="changeRoomTimer(this.value)" aria-label="Disappearing messages" title="Disappearing messages">
+        <option value="0" data-i18n="off">Off</option>
+        <option value="60" data-i18n="one_minute">1 minute</option>
+        <option value="300" data-i18n="five_minutes">5 minutes</option>
+        <option value="1800" data-i18n="thirty_minutes">30 minutes</option>
+        <option value="3600" data-i18n="one_hour">1 hour</option>
+        <option value="28800" data-i18n="eight_hours">8 hours</option>
+      </select>
+    </div>
+  </div>
+        </div>
       </div>
     </div>
     <!-- Primary call actions stay visible; secondary conversation actions
@@ -3281,28 +3319,6 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
     <button class="select-bar-delete" id="select-bar-delete" onclick="confirmDeleteSelected()" title="Delete selected">🗑</button>
   </div>
   <div class="room-tabs" id="room-tabs"></div>
-  <div class="chat-tools">
-  <div class="e2e-bar" onclick="showVerifyPanel()" title="Encrypted. Tap for encryption details." style="cursor:pointer"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span data-i18n="encrypted">Encrypted</span></div>
-  <!-- Call button lives here now, inside the current room's own content area
-       (below the room-tabs switcher) rather than in the shared header —
-       with multiple rooms open, having it in the header made it ambiguous
-       which room a tap would actually call into. Grouping it with the
-       disappearing-messages control (also per-room, also sits right below
-       the tabs) makes "this acts on the room you're looking at" clear. -->
-  <div class="timer-bar">
-    <div class="timer-bar-controls">
-      <span class="timer-bar-label">⏱ <span data-i18n="disappearing_messages">Disappearing messages</span></span>
-      <select id="timer-bar-select" onchange="changeRoomTimer(this.value)">
-        <option value="0" data-i18n="off">Off</option>
-        <option value="60" data-i18n="one_minute">1 minute</option>
-        <option value="300" data-i18n="five_minutes">5 minutes</option>
-        <option value="1800" data-i18n="thirty_minutes">30 minutes</option>
-        <option value="3600" data-i18n="one_hour">1 hour</option>
-        <option value="28800" data-i18n="eight_hours">8 hours</option>
-      </select>
-    </div>
-  </div>
-  </div>
   <div class="push-banner" id="push-banner"></div>
   <div class="secure-reconnect-banner" id="secure-reconnect-banner" role="status">
     <span>This private line needs a new secure connection before messages can be sent.</span>
@@ -14597,6 +14613,26 @@ function updateTimerBar(room) {
   if (!select || !room) return;
   const value = String(room.deleteTimerSeconds || 0);
   if (select.value !== value) select.value = value;
+  showTimerChip(Number(value));
+}
+
+// The header shows the timer the way Signal does: a clock and a short length
+// ("1h"), nothing but the clock when it is off. The select itself sits invisibly
+// over the chip, so tapping it still opens the native picker.
+function timerShortLabel(seconds) {
+  const value = Number(seconds) || 0;
+  if (value <= 0) return '';
+  if (value < 3600) return `${Math.max(1, Math.round(value / 60))}m`;
+  if (value < 86400) return `${Math.round(value / 3600)}h`;
+  return `${Math.round(value / 86400)}d`;
+}
+
+function showTimerChip(seconds) {
+  const controls = document.querySelector('.timer-bar-controls');
+  if (!controls) return;
+  const label = timerShortLabel(seconds);
+  controls.dataset.short = label;
+  controls.classList.toggle('timer-on', !!label);
 }
 
 function timerNoticeRecord(id, ts, seconds) {
@@ -14610,6 +14646,7 @@ async function changeRoomTimer(value) {
   const seconds = parseInt(value) || 0;
   const previous = room.deleteTimerSeconds;
   room.deleteTimerSeconds = seconds; // optimistic — server confirms/corrects below
+  showTimerChip(seconds);
   try {
     const noticeId = newMsgId();
     const noticeContent = await encryptMsg(room, JSON.stringify({ type:'timer-event', seconds }));
