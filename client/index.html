@@ -2793,6 +2793,7 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 /* Typing: the keyboard is right under the composer, so drop the bottom room kept for the home bar. */
 #s-chat.composer-focused .chat-ftr,#s-chat.composer-focused #chat-ftr{padding-bottom:10px!important}
 .group-chat.composer-focused .group-chat-footer{padding-bottom:10px}
+html{background:#fff}
 </style>
 <script type="application/ld+json">
 {
@@ -19232,6 +19233,32 @@ function isNativeIOS() {
     && window.Capacitor?.getPlatform?.() === 'ios';
 }
 
+// Tapping Send must not move focus out of the message box. On iPhone a touch
+// blurs the box unless the touch itself is cancelled (cancelling only the
+// pointerdown is not enough), so the keyboard sank and came back after every
+// message. The touch is cancelled here and the tap is sent on to the button as a
+// normal click, so the button's own action runs exactly once.
+function keepKeyboardOnTap(button) {
+  if (!button || button.dataset.keepKeyboard) return;
+  button.dataset.keepKeyboard = '1';
+  let tracking = null;
+  button.addEventListener('mousedown', event => event.preventDefault()); // desktop: keep focus too
+  button.addEventListener('touchstart', event => {
+    if (event.cancelable) event.preventDefault();
+    tracking = event.touches && event.touches.length === 1 ? true : null;
+  }, { passive:false });
+  button.addEventListener('touchend', event => {
+    if (event.cancelable) event.preventDefault();
+    const touch = event.changedTouches && event.changedTouches[0];
+    const box = button.getBoundingClientRect();
+    const inside = !touch || (touch.clientX >= box.left - 12 && touch.clientX <= box.right + 12 && touch.clientY >= box.top - 12 && touch.clientY <= box.bottom + 12);
+    const wanted = tracking && inside;
+    tracking = null;
+    if (wanted) button.click();
+  }, { passive:false });
+  button.addEventListener('touchcancel', () => { tracking = null; });
+}
+
 function keepIOSComposerFocused(inputId) {
   if (isNativeIOS()) document.getElementById(inputId)?.focus({ preventScroll:true });
 }
@@ -19243,10 +19270,21 @@ async function configureNativeIOSKeyboard() {
   } catch (error) {
     console.warn('Could not hide the iOS keyboard accessory bar', error);
   }
+  // Always the light keyboard (white keys), whatever the phone's appearance
+  // setting, so it matches the app's white composer instead of a dark or
+  // tinted one. iOS draws the keyboard's own backing itself; this is the
+  // colour control an app is given.
+  try {
+    await window.Capacitor?.Plugins?.Keyboard?.setStyle({ style:'LIGHT' });
+  } catch (error) {
+    console.warn('Could not set the iOS keyboard style', error);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   configureNativeIOSKeyboard();
+  keepKeyboardOnTap(document.getElementById('send-btn'));
+  keepKeyboardOnTap(document.querySelector('.group-send-btn'));
   document.getElementById('name-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('code-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') handleSetup(); });
   document.getElementById('msg-input')?.addEventListener('input', onTyping);
@@ -19276,7 +19314,10 @@ function createChatKeyboardLayout(env) {
   const NEAR_BOTTOM_PX = 96;
   const SETTLE_DELAYS_MS = [0, 120, 320, 650];
   const ANIMATION_MS = 280;
+  const HIDE_DELAY_MS = 140; // a keyboard that drops and comes straight back is not a hide
   let pinned = true;
+  let settling = false; // the chat is being resized by the keyboard; the reader is not scrolling
+  let hideTimer = null;
   let lastList = null;
   let timers = [];
   let animationTimer = null;
@@ -19358,6 +19399,7 @@ function createChatKeyboardLayout(env) {
     if (env.remember) env.remember(height);
     if (chat.list !== lastList) { lastList = chat.list; pinned = true; }
     if (chat.fixed) chat.shell.style.top = '0px';
+    if (hideTimer) { cancel(hideTimer); hideTimer = null; }
     holdHide = false; holdShow = true;
     if (holdTimer) cancel(holdTimer);
     holdTimer = schedule(() => { holdShow = false; layout(); }, 900); // native resize mode never reports a keyboard
@@ -19366,6 +19408,11 @@ function createChatKeyboardLayout(env) {
   }
 
   function keyboardWillHide() {
+    if (hideTimer) cancel(hideTimer);
+    hideTimer = schedule(() => { hideTimer = null; growBack(); }, HIDE_DELAY_MS);
+  }
+
+  function growBack() {
     const chat = activeChat();
     if (!chat || !chat.shell.style.height) return;
     resizeShell(chat, win.innerHeight);
@@ -19383,12 +19430,20 @@ function createChatKeyboardLayout(env) {
 
   function settle() {
     timers.forEach(cancel);
-    timers = SETTLE_DELAYS_MS.map(ms => schedule(pin, ms));
+    settling = true;
+    timers = SETTLE_DELAYS_MS.map((ms, index) => schedule(() => {
+      pin();
+      if (index === SETTLE_DELAYS_MS.length - 1) settling = false;
+    }, ms));
   }
 
   function onListScroll(event) {
     const chat = activeChat();
     if (!chat || event.target !== chat.list) return;
+    // While the keyboard is resizing the chat, the browser can report scrolls of its
+    // own (the list shrank under the reader). Reading those as "scrolled up" would
+    // stop the newest message being kept in view, leaving it behind the keyboard.
+    if (settling) return;
     lastList = chat.list; // a scroll here is the reader's own, so this list is already known
     pinned = chat.list.scrollHeight - chat.list.scrollTop - chat.list.clientHeight <= NEAR_BOTTOM_PX;
   }

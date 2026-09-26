@@ -200,6 +200,9 @@ test('hiding: the chat grows back with the keyboard and a stale report cannot sq
   const t = setup({ chat:'group' });
   t.vv.height = 470; t.listeners.vv.resize(); t.flush();
   t.layout.keyboardWillHide();
+  const growBack = () => { for (const item of t.queue.filter(x => !x.cancelled && x.ms === 140)) { item.cancelled = true; item.fn(); } };
+  assert.equal(t.els['group-chat'].style.height, '470px', 'not yet: a keyboard that comes straight back is not a hide');
+  growBack();
   assert.equal(t.els['group-chat'].style.height, '800px');
   t.listeners.doc.focusout({}); // the report still says the keyboard is up
   t.flushSettle();
@@ -273,6 +276,7 @@ test('the following stops when the animation ends, and never yanks a reader who 
   const step = () => { for (const item of t.queue.filter(x => !x.cancelled && x.ms === 0)) { item.cancelled = true; item.fn(); } };
   t.list.scrollTop = 100; step();
   assert.equal(t.list.scrollTop, 100);
+  for (const item of t.queue.filter(x => !x.cancelled && x.ms === 650)) { item.cancelled = true; item.fn(); } // settling over
   t.list.scrollTop = 500; t.listeners.doc.scroll({ target:t.list }); // back at the bottom
   step();
   assert.equal(t.list.scrollTop, 1000);
@@ -332,4 +336,47 @@ test('typing drops the bottom room kept for the home bar, and leaving the box gi
 test('the styles remove that bottom room for both chats while typing', () => {
   assert.match(client, /#s-chat\.composer-focused \.chat-ftr,#s-chat\.composer-focused #chat-ftr\{padding-bottom:10px!important\}/);
   assert.match(client, /\.group-chat\.composer-focused \.group-chat-footer\{padding-bottom:10px\}/);
+});
+
+test('a keyboard that drops and comes straight back (Send on iPhone) does not make the chat jump', () => {
+  const t = setup({ chat:'group' });
+  t.layout.keyboardWillShow(336);
+  for (const item of t.queue.filter(x => !x.cancelled && x.ms === 400)) { item.cancelled = true; item.fn(); }
+  t.layout.keyboardWillHide();
+  t.layout.keyboardWillShow(336);        // focus came straight back
+  for (const item of t.queue.filter(x => !x.cancelled && x.ms === 140)) { item.cancelled = true; item.fn(); }
+  assert.equal(t.els['group-chat'].style.height, '464px', 'never grew back to full height');
+});
+
+test('a resize scroll while the keyboard is opening is not mistaken for the reader scrolling up', () => {
+  const t = setup({ chat:'group' });
+  t.list.scrollTop = 500; t.listeners.doc.scroll({ target:t.list });   // at the bottom
+  t.listeners.doc.focusin({ target:{ id:'group-message-input' } });     // tap the box
+  t.list.scrollTop = 40;                                              // the list shrank under the reader
+  t.listeners.doc.scroll({ target:t.list });                          // and the browser reports a scroll
+  t.list.scrollHeight = 1300;
+  t.flushSettle();
+  assert.equal(t.list.scrollTop, 1300, 'the newest message is still brought into view');
+});
+
+test('a real scroll after the keyboard has settled still counts', () => {
+  const t = setup({ chat:'group' });
+  t.listeners.doc.focusin({ target:{ id:'group-message-input' } });
+  t.flushSettle();
+  t.list.scrollTop = 100; t.listeners.doc.scroll({ target:t.list });
+  t.vv.height = 430; t.listeners.vv.resize(); t.flushSettle();
+  assert.equal(t.list.scrollTop, 100);
+});
+
+test('wiring: Send keeps focus in the message box on touch screens', () => {
+  const fn = extract(client, 'keepKeyboardOnTap');
+  assert.match(fn, /addEventListener\('touchstart'[^]*preventDefault[^]*\{ passive:false \}/);
+  assert.match(fn, /addEventListener\('touchend'[^]*button\.click\(\)/);
+  assert.match(fn, /addEventListener\('mousedown', event => event\.preventDefault\(\)\)/);
+  assert.match(client, /keepKeyboardOnTap\(document\.getElementById\('send-btn'\)\);\s*keepKeyboardOnTap\(document\.querySelector\('\.group-send-btn'\)\);/);
+});
+
+test('the iOS app asks for the light keyboard, and any exposed page area is white', () => {
+  assert.match(client, /Keyboard\?\.setStyle\(\{ style:'LIGHT' \}\)/);
+  assert.match(client, /\nhtml\{background:#fff\}\n<\/style>/);
 });
