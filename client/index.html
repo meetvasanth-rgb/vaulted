@@ -1490,6 +1490,7 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
 .settings-menu .settings-row-title{font-size:15px;font-weight:650}
 .settings-menu .settings-row-sub{font-size:11.5px}
 .settings-category-page{display:none}
+.load-earlier{display:flex;justify-content:center;padding:6px 0 12px}.load-earlier-btn{padding:9px 18px;border-radius:18px;border:1px solid #DDCFD5;background:#fff;color:#682C43;font:650 13px Inter,sans-serif}.load-earlier-btn:disabled{opacity:.6}
 .storage-block{padding:0 20px 14px}
 .storage-total{font:700 26px Manrope,sans-serif;color:#271D25}.storage-caption{font:500 12.5px/1.45 Inter,sans-serif;color:#7A6A72;margin-top:4px}
 .storage-bar{height:8px;border-radius:99px;background:#EFE6EA;overflow:hidden;margin:12px 0 4px}.storage-bar>span{display:block;height:100%;border-radius:99px;background:#682C43}
@@ -4597,7 +4598,9 @@ function secureNativeClearConversation(conversationId) {
 // are stored only as their small reference; their bytes are not cached yet.
 const HISTORY_DB_NAME = 'vaultlix-history';
 const HISTORY_MAX_ENVELOPE_CHARS = 256 * 1024;
-const HISTORY_LOAD_LIMIT = 500;
+const HISTORY_LOAD_LIMIT = 200;  // shown when a chat opens
+const HISTORY_PAGE_SIZE = 200;   // added by each "Load earlier messages" from this device
+const SERVER_HISTORY_PAGE_SIZE = 50; // ... and from the server once the device has nothing older
 let historyDbPromise = null;
 
 function historyDb() {
@@ -4605,10 +4608,14 @@ function historyDb() {
   historyDbPromise = new Promise(resolve => {
     try {
       if (!window.indexedDB) { resolve(null); return; }
-      const request = indexedDB.open(HISTORY_DB_NAME, 2);
+      const request = indexedDB.open(HISTORY_DB_NAME, 3);
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains('messages')) db.createObjectStore('messages', { keyPath:['code', 'id'] });
+        const messages = db.objectStoreNames.contains('messages')
+          ? request.transaction.objectStore('messages')
+          : db.createObjectStore('messages', { keyPath:['code', 'id'] });
+        // Lets history be read a page at a time, newest first, for "Load earlier messages".
+        if (!messages.indexNames.contains('byRoomSeq')) messages.createIndex('byRoomSeq', ['code', 'seq']);
         if (!db.objectStoreNames.contains('attachments')) {
           const attachments = db.createObjectStore('attachments', { keyPath:['code', 'attachmentId'] });
           attachments.createIndex('byMessage', ['code', 'msgId']);
@@ -4679,12 +4686,34 @@ function historyStorePut(code, messages) {
   return historyTransaction('readwrite', store => { for (const row of rows) store.put(row); }).catch(() => null);
 }
 
+// A page of stored envelopes for a conversation, oldest first: the newest
+// `limit` that come before `beforeSeq` (default: the newest overall). hasMore
+// says whether older ones remain on this device.
+async function historyStoreLoadPage(code, { beforeSeq = Infinity, limit = HISTORY_LOAD_LIMIT } = {}) {
+  const empty = { messages:[], hasMore:false };
+  if (!code) return empty;
+  const db = await historyDb();
+  if (!db) return empty;
+  return new Promise(resolve => {
+    try {
+      const tx = db.transaction('messages', 'readonly');
+      const bounded = Number.isFinite(beforeSeq);
+      const range = IDBKeyRange.bound([code, 0], [code, bounded ? beforeSeq : Number.MAX_SAFE_INTEGER], false, bounded);
+      const rows = [];
+      const request = tx.objectStore('messages').index('byRoomSeq').openCursor(range, 'prev');
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor && rows.length <= limit) { rows.push(cursor.value.msg); cursor.continue(); }
+      };
+      tx.oncomplete = () => resolve({ messages:rows.slice(0, limit).reverse().filter(Boolean), hasMore:rows.length > limit });
+      tx.onerror = tx.onabort = () => resolve(empty);
+    } catch (error) { resolve(empty); }
+  });
+}
+
 // Newest HISTORY_LOAD_LIMIT stored envelopes for a conversation, oldest first.
 async function historyStoreLoad(code) {
-  if (!code) return [];
-  const rows = await historyTransaction('readonly', store => store.getAll(IDBKeyRange.bound([code, ''], [code, '\uffff'])));
-  const list = Array.isArray(rows) ? rows : [];
-  return list.map(row => row.msg).filter(Boolean).sort((a, b) => a.seq - b.seq).slice(-HISTORY_LOAD_LIMIT);
+  return (await historyStoreLoadPage(code)).messages;
 }
 
 // Delivered / read ticks on our own messages older than the server's window
@@ -14756,7 +14785,7 @@ window.addEventListener('online', () => retryTransientAttachments(getActiveRoom(
 document.addEventListener('visibilitychange', () => { if (!document.hidden) retryTransientAttachments(getActiveRoom()); });
 
 
-function renderChatBody(room) {
+function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   const body = document.getElementById('chat-body');
   if (klipyGifObserver) klipyGifObserver.disconnect();
   // A room restored from the encrypted session list may not have its message
@@ -14772,18 +14801,28 @@ function renderChatBody(room) {
     return;
   }
   body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+  if (room.historyOldestSeq > 1 && !room.historyEarlierExhausted) {
+    const more = document.createElement('div');
+    more.className = 'load-earlier';
+    more.innerHTML = '<button type="button" class="load-earlier-btn">Load earlier messages</button>';
+    more.querySelector('button').onclick = () => loadEarlierMessages(room);
+    body.insertBefore(more, body.querySelector('#typing-indicator'));
+  }
   for (const rec of uniqueVisibleConversationRecords(room.messages)) {
     if (rec.deleted || rec.verifyNudge) continue;
     renderMessageRecord(room, rec);
   }
   scheduleSecureNativeHistoryCache(room, room.messages);
-  body.scrollTop = body.scrollHeight;
+  const keepPlace = typeof keepDistanceFromBottom === 'number';
+  // Messages added above the reader must not move what they are looking at:
+  // the distance from the bottom stays the same when older ones are prepended.
+  body.scrollTop = keepPlace ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
   scheduleAttachmentLoads(body, room);
   // Inbox navigation renders the conversation immediately before s-chat is
   // made visible. WebKit reports a zero/stale scroll height for that hidden
   // frame, leaving the newest row (notably a missed call) below the viewport.
   // Re-apply after the screen transition has committed.
-  requestAnimationFrame(() => {
+  if (!keepPlace) requestAnimationFrame(() => {
     if (activeRoomCode === room.code) body.scrollTop = body.scrollHeight;
   });
   scheduleDeferredKlipyGifs(body);
@@ -16686,9 +16725,12 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 // Turns server-format messages (from the network or from the local copy) into
 // this conversation's records: text first, then attachments as placeholders that
 // fill in as each encrypted object arrives.
-async function applyRestoredHistory(room, messages, nowTs) {
+async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true } = {}) {
   const unseen = [];
   for (const msg of messages) {
+    // How far back this conversation has been loaded, so "Load earlier messages" knows where to continue.
+    const seq = Number(msg.seq);
+    if (seq > 0 && !(seq >= room.historyOldestSeq)) room.historyOldestSeq = seq;
     if (room.seenMsgIds.has(msg.id)) continue;
     room.seenMsgIds.add(msg.id);
     if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
@@ -16747,7 +16789,7 @@ async function applyRestoredHistory(room, messages, nowTs) {
         rec.timerStarted = true;
         const handle = setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs);
         room.msgTimers.set(msg.id, handle);
-      } else if (!rec.isMe && msg.type === 'message') {
+      } else if (!rec.isMe && msg.type === 'message' && confirmReads) {
         room.readConfirmIds.push(msg.id);
       }
     }
@@ -16779,12 +16821,18 @@ async function applyRestoredHistory(room, messages, nowTs) {
       placeholder.deleteAt = ledgerDeleteAt;
       placeholder.timerStarted = true;
       room.msgTimers.set(msg.id, setTimeout(() => removeMessageRecord(room, msg.id), ledgerDeleteAt - nowTs));
-    } else if (!placeholder.isMe) {
+    } else if (!placeholder.isMe && confirmReads) {
       room.readConfirmIds.push(msg.id);
     }
   }
   room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
   if (attachmentMessages.length && isRoomVisible(room)) renderChatBody(room);
+}
+
+// Delivered / read ticks that arrive with our own older messages.
+function restoreOwnTicks(room, messages) {
+  handleReadReceipts(room, messages.filter(message => message.from === room.token && (message.deliveredAt || message.readAt))
+    .map(message => ({ msgId:message.id, deliveredAt:message.deliveredAt, readAt:message.readAt, deleteTimerSeconds:0 })));
 }
 
 // Stage one of opening a conversation: decrypt and show the messages already
@@ -16797,12 +16845,52 @@ async function restoreLocalHistory(room) {
     await applyRestoredHistory(room, stored, Date.now());
     room.localHistoryRestored = true;
     // Bring back the delivered / read ticks saved with our own messages.
-    handleReadReceipts(room, stored.filter(message => message.from === room.token && (message.deliveredAt || message.readAt))
-      .map(message => ({ msgId:message.id, deliveredAt:message.deliveredAt, readAt:message.readAt, deleteTimerSeconds:0 })));
+    restoreOwnTicks(room, stored);
   } catch (error) {
     console.warn('Local history could not be restored', error?.message);
   }
   return stored;
+}
+
+// "Load earlier messages": first from this device's saved history, then, once
+// that has nothing older, from the server (which keeps the full encrypted
+// history and serves it in pages). Each page is saved on the device as well.
+async function loadEarlierMessages(room) {
+  const before = Number(room?.historyOldestSeq);
+  if (!room || room.loadingEarlier || !(before > 1)) return;
+  room.loadingEarlier = true;
+  const body = document.getElementById('chat-body');
+  const button = body?.querySelector('.load-earlier-btn');
+  if (button) { button.disabled = true; button.textContent = 'Loading…'; }
+  const distanceFromBottom = body ? body.scrollHeight - body.scrollTop - body.clientHeight : 0;
+  try {
+    let { messages } = await historyStoreLoadPage(room.code, { beforeSeq:before, limit:HISTORY_PAGE_SIZE });
+    let fromServer = false, serverHasMore = false;
+    if (!messages.length) {
+      const result = await api('/api/history', { code:room.code, token:room.token, beforeSeq:before, limit:SERVER_HISTORY_PAGE_SIZE });
+      if (result?.error) throw new Error(result.error);
+      messages = Array.isArray(result?.messages) ? result.messages : [];
+      fromServer = true;
+      serverHasMore = result?.hasMore === true;
+      if (messages.length) historyStorePut(room.code, messages);
+    }
+    if (messages.length) {
+      await applyRestoredHistory(room, messages, Date.now(), { confirmReads:false });
+      restoreOwnTicks(room, messages);
+    }
+    // Stop offering the button when a page brought nothing older, or the server has said it is the last one.
+    // A page from this device does not settle it: the server may still hold more.
+    const progressed = messages.length > 0 && room.historyOldestSeq < before;
+    if (!progressed || (fromServer && !serverHasMore)) room.historyEarlierExhausted = true;
+    if (!progressed) toast('No earlier messages');
+    if (isRoomVisible(room)) renderChatBody(room, { keepDistanceFromBottom:distanceFromBottom });
+  } catch (error) {
+    toast('Could not load earlier messages. Check your connection and try again.');
+    const again = document.querySelector('#chat-body .load-earlier-btn');
+    if (again) { again.disabled = false; again.textContent = 'Load earlier messages'; }
+  } finally {
+    room.loadingEarlier = false;
+  }
 }
 
 // After the server answers, drop local messages it has deleted or cleared.
@@ -18582,6 +18670,8 @@ function clearRoomChatLocally(room) {
   for (const handle of room.msgTimers.values()) clearTimeout(handle);
   room.msgTimers.clear();
   room.messages = [];
+  room.historyOldestSeq = undefined;
+  room.historyEarlierExhausted = false;
   room.deleteLedger.clear();
   persistDeleteLedger(room);
   room.unread = 0;

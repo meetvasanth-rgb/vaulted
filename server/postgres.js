@@ -884,6 +884,31 @@ class PostgresStore {
       ORDER BY sequence DESC
       LIMIT $3
     ) AS recent_messages ORDER BY sequence ASC`, [conversationId, now, safeLimit]);
+    return this.enrichEncryptedMessageRows(conversationId, rows, client);
+  }
+
+  // One page of older history: messages before `beforeSequence`, oldest first,
+  // never anything meant to vanish (view-once, disappearing-timer or expiring).
+  // Ask for one more than you need: getting it back means there is still more.
+  async loadEncryptedHistoryPage(conversationId, beforeSequence, limit = 50, now = Date.now(), client = this.pool) {
+    if (!this.enabled) return [];
+    const safeLimit = Math.max(1, Math.min(101, Number(limit) || 50));
+    const before = Number(beforeSequence);
+    if (!Number.isSafeInteger(before) || before < 1) return [];
+    const { rows } = await client.query(`SELECT * FROM (
+      SELECT conversation_id, message_id, sender_token_hash, sequence,
+        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds
+      FROM encrypted_messages
+      WHERE conversation_id=$1 AND sequence < $2 AND (expires_at IS NULL OR expires_at > $3)
+        AND view_once IS NOT TRUE AND COALESCE(delete_timer_seconds, 0) = 0
+      ORDER BY sequence DESC
+      LIMIT $4
+    ) AS page ORDER BY sequence ASC`, [conversationId, before, now, safeLimit]);
+    return this.enrichEncryptedMessageRows(conversationId, rows, client);
+  }
+
+  // Adds each message's receipts and reactions. Shared by the recent-history load and history paging.
+  async enrichEncryptedMessageRows(conversationId, rows, client = this.pool) {
     const messageIds = rows.map(row => row.message_id);
     const receipts = messageIds.length ? await client.query(`SELECT * FROM message_receipts
       WHERE conversation_id=$1 AND message_id=ANY($2::text[])`, [conversationId, messageIds]) : { rows:[] };

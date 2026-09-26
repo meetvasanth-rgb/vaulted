@@ -13,6 +13,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
 const { SafetyStore } = require('./safety-store');
 const { guardedSocketTask } = require('./socket-task');
+const { buildHistoryPage } = require('./history-page');
 const contentSafety = require('../client/content-safety');
 let safetyStore;
 const { StatusStore } = require('./status-store');
@@ -5233,6 +5234,29 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       reactions:reactionsForViewer(msg.reactions, token),
     }));
     return res200(res, { messages, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
+  }
+
+  // POST /api/history — one page of older messages than `beforeSeq`, for a
+  // member of the conversation. /api/poll only serves the newest 100; PostgreSQL
+  // keeps the full ciphertext history, so this lets a device page back through it
+  // (including a device that has nothing saved locally). Membership is checked
+  // every time. View-once, disappearing-timer and expiring messages are never
+  // returned, and nothing here marks a message delivered or read.
+  if (path==='/api/history' && method==='POST') {
+    const room = rooms.get(d.code);
+    if (!room) return res200(res, { roomGone:true });
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (await rateLimited(`history:${String(d.token).slice(0, 96)}`, 60, 60 * 1000)) {
+      return resErr(res,'Loading history too fast — try again in a moment.',429);
+    }
+    const beforeSeq = Number(d.beforeSeq);
+    const limit = Math.max(1, Math.min(100, parseInt(d.limit, 10) || 50));
+    if (!postgresEnabled || !Number.isSafeInteger(beforeSeq) || beforeSeq < 2) {
+      return res200(res, { messages:[], hasMore:false });
+    }
+    const rows = await postgresStore.loadEncryptedHistoryPage(d.code, beforeSeq, limit + 1, Date.now());
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, buildHistoryPage({ room, token:d.token, rows, limit, sameToken:sameConversationToken, reactionsForViewer }));
   }
 
   // POST /api/mark-delivered — reports that a push notification actually

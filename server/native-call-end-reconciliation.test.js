@@ -67,7 +67,7 @@ test('Android completed calls survive activity and encrypted-room restoration ra
 test('opening a conversation clears its missed-call inbox alert', () => {
   assert.match(client, /function setActiveRoom\(code(?:, \{ deferMessages = false \} = \{\})?\)[\s\S]*room\.unread = 0/);
   assert.match(client, /missed_encrypted_call'\), alert: room\.unread > 0/);
-  assert.match(client, /function renderChatBody\(room\)[\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*body\.scrollTop = body\.scrollHeight/);
+  assert.match(client, /function renderChatBody\(room[,)][\s\S]*requestAnimationFrame\(\(\) => \{[\s\S]*body\.scrollTop = body\.scrollHeight/);
 });
 
 test('hang-up is acknowledged, retried and reconciled on both call engines', () => {

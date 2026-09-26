@@ -122,7 +122,8 @@ test('opening a conversation paints from the device first and only then asks the
 
 test('delivered and read ticks survive on the stored copy', () => {
   assert.match(client, /historyStorePatch\(room\.code, msgId, ticks\)/);
-  assert.match(client, /handleReadReceipts\(room, stored\.filter\(message => message\.from === room\.token/);
+  assert.match(client, /restoreOwnTicks\(room, stored\);/);
+  assert.match(client, /function restoreOwnTicks\(room, messages\) \{\s*handleReadReceipts\(room, messages\.filter\(message => message\.from === room\.token/);
 });
 
 test('a plain store failure never blocks opening a chat', () => {

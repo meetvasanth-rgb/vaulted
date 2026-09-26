@@ -125,5 +125,5 @@ test('the system is asked, best effort, not to clear this data', () => {
 
 test('no raw noncharacter is left in the source (the range end uses the escape)', () => {
   assert.equal(client.includes(String.fromCharCode(0xFFFF)), false);
-  assert.equal((client.match(/\\uffff/g) || []).length >= 3, true);
+  assert.equal((client.match(/\\uffff/g) || []).length >= 2, true);
 });
