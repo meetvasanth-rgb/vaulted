@@ -1994,14 +1994,6 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 #s-landing .messenger-capabilities{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px}
 #s-landing .messenger-capabilities span{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border-radius:11px;background:#F2E7EB;color:#5B3544;font:750 10px/1 'Manrope',sans-serif}
 #s-landing .messenger-capabilities span::before{content:'';width:6px;height:6px;border-radius:50%;background:#C87588;box-shadow:0 0 0 3px rgba(200,117,136,.14)}
-#s-landing .landing-hero-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:21px}
-#s-landing .landing-hero-action{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 18px;border:1px solid #682C43;border-radius:999px;background:#682C43;color:#fff;font:750 12px/1 'Manrope',sans-serif;box-shadow:0 10px 24px rgba(104,44,67,.22);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
-#s-landing .landing-hero-action:hover{background:#542237;box-shadow:0 13px 28px rgba(104,44,67,.27);transform:translateY(-2px)}
-#s-landing .landing-hero-action-secondary{min-width:92px;background:rgba(255,255,255,.75);color:#682C43;border-color:#CDB8C0;box-shadow:none}
-#s-landing .landing-hero-action-secondary:hover{background:#fff;color:#542237;box-shadow:0 8px 20px rgba(104,44,67,.10)}
-#s-landing .landing-hero-app-store{text-decoration:none;background:#171417;border-color:#171417;box-shadow:0 10px 24px rgba(23,20,23,.18)}
-#s-landing .landing-hero-app-store:hover{background:#000;border-color:#000;box-shadow:0 13px 28px rgba(23,20,23,.24)}
-#s-landing .landing-hero-action svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #s-landing .landing-store-badges{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:15px}
 .official-store-badge{display:inline-flex;align-items:center;justify-content:center;line-height:0;text-decoration:none;border-radius:8px}
 .official-store-badge:focus-visible{outline:3px solid rgba(104,44,67,.32);outline-offset:4px}
@@ -2017,7 +2009,6 @@ html.vaultlix-native #s-landing .landing-store-badges{display:none}
 #s-landing .landing-section-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
 #s-landing .landing-section-heading span{display:block;font:750 9px/1 'Manrope',sans-serif;letter-spacing:.17em;color:#9B7784;margin-bottom:8px}
 #s-landing .landing-section-heading h2{font:750 24px/1.1 'Manrope',sans-serif;letter-spacing:-.035em;color:#34272F}
-#s-landing .landing-count{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#E9D8DE;color:#682C43;font:750 13px/1 'Manrope',sans-serif}
 #s-landing .cards{display:grid!important;grid-template-columns:1fr 1fr!important;gap:12px!important;max-width:none!important;margin:0!important}
 #s-landing .card{min-width:0;min-height:154px;display:flex!important;flex-direction:column;align-items:flex-start!important;gap:0!important;padding:18px!important;border:1px solid #E4DADF!important;border-radius:22px!important;background:#FFFFFF!important;text-align:left;box-shadow:0 9px 26px rgba(39,29,37,.065)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease!important}
 #s-landing .card:hover{transform:translateY(-2px);border-color:#CFBAC2!important;box-shadow:0 14px 30px rgba(39,29,37,.10)!important}
@@ -2124,7 +2115,6 @@ html.vaultlix-native #s-landing .landing-store-badges{display:none}
   #s-landing .landing-section-heading{margin-bottom:22px;padding:0 2px}
   #s-landing .landing-section-heading span{font-size:10px;margin-bottom:10px}
   #s-landing .landing-section-heading h2{font-size:29px}
-  #s-landing .landing-count{width:44px;height:44px;font-size:14px}
   #s-landing .cards{grid-template-columns:1fr!important;gap:12px!important}
   #s-landing .card,#s-landing .card-permanent{
     grid-column:auto;min-height:104px;display:grid!important;
@@ -2667,7 +2657,6 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
   #s-landing .landing-account-btn{font-size:12px}
   #s-landing .logo-sub{font-size:11.5px!important;line-height:1.45!important}
   #s-landing .tagline{font-size:17px!important;line-height:1.6!important;font-weight:500!important}
-  #s-landing .landing-hero-action{font-size:14px;padding:15px 20px}
   #s-landing .identity-proof span{font-size:12px;padding:10px 12px}
   #s-landing .landing-section-heading span{font-size:11px}
   #s-landing .landing-section-heading h2{font-size:24px}
@@ -2946,10 +2935,6 @@ html{background:#fff}
       </h1>
       <p class="tagline" id="logoTag">Send encrypted messages, photos and files. Make private voice and video calls. Connect through a Vaultlix number without sharing your personal phone number.</p>
       <div class="messenger-capabilities" aria-label="Vaultlix messaging features"><span>Encrypted chats</span><span>Photos &amp; files</span><span>Voice &amp; video</span></div>
-      <div class="landing-hero-actions">
-        <button class="landing-hero-action" type="button" onclick="openCreateAccount()">Create my number <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
-        <button class="landing-hero-action landing-hero-action-secondary" type="button" onclick="openLoginOrInbox()">Sign in</button>
-      </div>
       <button class="landing-invite-link" type="button" onclick="openInviteCodePrompt()">Have an invite code?</button>
       <div class="landing-store-badges" aria-label="Download Vaultlix">
         <a class="official-store-badge apple" href="https://apps.apple.com/in/app/vaultlix/id6798266989" aria-label="Download Vaultlix on the App Store"><img src="/media/download-on-the-app-store.svg" alt="Download on the App Store"/></a>
@@ -2964,7 +2949,6 @@ html{background:#fff}
           <span>START HERE</span>
           <h2 id="landing-actions-title">Start in seconds</h2>
         </div>
-        <div class="landing-count" aria-label="Two options">2</div>
       </div>
 
       <div class="cards" id="cards">
