@@ -15273,6 +15273,9 @@ const SELECTION_ICONS = {
   more: '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   save: '<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/>',
+  // The OS share sheet, not Forward: this hands a decrypted copy to another app
+  // (WhatsApp, Mail, …), outside Vaultlix's encryption from that point on.
+  share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
 };
 
 const messageActionRegistry = new Map(); // message id -> { room, rec, replyText, isMe }
@@ -15319,7 +15322,9 @@ function ensureMessageSelectionUi() {
     const controller = messageSelectionController;
     if (!item || !controller) return;
     closeMessageMoreMenu();
-    if (item.dataset.more === 'copy') controller.copy(); else if (item.dataset.more === 'save') controller.save();
+    if (item.dataset.more === 'copy') controller.copy();
+    else if (item.dataset.more === 'save') controller.save();
+    else if (item.dataset.more === 'share') controller.share();
   });
   react.addEventListener('click', event => {
     const button = event.target.closest('[data-emoji]');
@@ -15351,6 +15356,7 @@ function toggleMessageMoreMenu() {
   const items = [];
   if (state.canCopy) items.push(`<button type="button" role="menuitem" data-more="copy">${selectionIconSvg('copy')}<span>Copy</span></button>`);
   if (state.canSave) items.push(`<button type="button" role="menuitem" data-more="save">${selectionIconSvg('save')}<span>Save</span></button>`);
+  if (state.canShare) items.push(`<button type="button" role="menuitem" data-more="share">${selectionIconSvg('share')}<span>Share externally</span></button>`);
   if (!items.length) return;
   ui.menu.innerHTML = items.join('');
   ui.menu.hidden = false;
@@ -15410,7 +15416,7 @@ function refreshMessageSelection() {
   const show = (name, on) => { const button = ui.bar.querySelector(`[data-sel="${name}"]`); if (button) button.hidden = !on; };
   show('reply', !!state.canReply);
   show('forward', !!state.canForward);
-  show('more', !!(state.canCopy || state.canSave));
+  show('more', !!(state.canCopy || state.canSave || state.canShare));
   show('delete', state.count > 0);
   ui.bar.hidden = false;
   closeMessageMoreMenu();
@@ -15460,6 +15466,23 @@ function saveMessageRecord(rec) {
   }
 }
 
+// "Share externally": decrypts on this device, hands the plain file to the OS
+// share sheet (shareDataUri → a temporary file the native side deletes once the
+// sheet closes), and never touches the Vaultlix server. From that point the
+// copy lives outside Vaultlix's encryption, under whatever app receives it —
+// unlike Forward, which stays inside Vaultlix, still encrypted. A single photo,
+// video, document or voice note only; an album shares one file at a time in a
+// row of prompts, so it is kept out of this quick action.
+function shareMessageRecord(rec) {
+  if (!rec) return;
+  if (rec.kind === 'voice') {
+    const ext = (rec.mime || '').includes('mp4') ? 'm4a' : (rec.mime || '').includes('ogg') ? 'ogg' : 'webm';
+    shareDataUri(`data:${rec.mime};base64,${rec.base64}`, `voice-note.${ext}`);
+  } else if (rec.base64) {
+    shareDataUri(`data:${rec.mime};base64,${rec.base64}`, rec.fileName);
+  }
+}
+
 function directSelectionController() {
   const chosen = () => [...selectedMsgIds].map(id => ({ id, entry: messageActionRegistry.get(id) })).filter(item => item.entry);
   return {
@@ -15473,9 +15496,10 @@ function directSelectionController() {
       return {
         count: selectedMsgIds.size,
         canReply: !!one && messageReplyable(rec),
-        canForward: !!one && messageForwardable(rec),
+        canForward: items.length > 0 && items.every(item => messageForwardable(item.entry.rec)),
         canCopy: items.length > 0 && items.every(item => item.entry.rec?.kind === 'text' && String(item.entry.replyText || '').trim()),
         canSave: !!one && ['file', 'album', 'voice'].includes(rec?.kind),
+        canShare: !!one && ['file', 'voice'].includes(rec?.kind),
         anchor: row ? (row.querySelector('.bubble, .msg-media-wrap') || row) : null,
         mine: !!rec?.isMe,
         currentReaction: rec?.reactionMine || null,
@@ -15491,10 +15515,9 @@ function directSelectionController() {
     },
     remove: () => confirmDeleteSelected(),
     forward() {
-      const one = chosen()[0]; if (!one) return;
-      const rec = one.entry.rec;
+      const items = chosen(); if (!items.length) return;
       exitSelectMode();
-      showForwardAttachmentPicker(rec.kind === 'text' ? { kind: 'text', text: one.entry.replyText } : rec);
+      showForwardAttachmentPicker(items.map(item => item.entry.rec.kind === 'text' ? { kind: 'text', text: item.entry.replyText } : item.entry.rec));
     },
     async copy() {
       const text = chosen().map(item => item.entry.replyText).join('\n');
@@ -15502,6 +15525,7 @@ function directSelectionController() {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (error) { toast('Could not copy'); }
     },
     save() { const one = chosen()[0]; exitSelectMode(); if (one) saveMessageRecord(one.entry.rec); },
+    share() { const one = chosen()[0]; exitSelectMode(); if (one) shareMessageRecord(one.entry.rec); },
     react(emoji) {
       const one = chosen()[0]; if (!one) return;
       exitSelectMode();
@@ -15609,9 +15633,13 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
 // defeat the sender's one-view choice.
 // options.includeActiveRoom: a private group forwards from outside the direct
 // rooms, so the room that happens to be "active" is a valid target there.
-function showForwardAttachmentPicker(rec, options = {}) {
-  if (!rec || !['file', 'album', 'text'].includes(rec.kind)) return;
-  if (rec.viewOnce) { toast('View-once photos cannot be forwarded'); return; }
+function showForwardAttachmentPicker(recOrRecs, options = {}) {
+  const input = Array.isArray(recOrRecs) ? recOrRecs : [recOrRecs];
+  const recs = input.filter(rec => rec && ['file', 'album', 'text'].includes(rec.kind) && !rec.viewOnce);
+  if (!recs.length) {
+    toast(input.length === 1 && input[0]?.viewOnce ? 'View-once photos cannot be forwarded' : 'Nothing here can be forwarded');
+    return;
+  }
   const targets = [...rooms.values()].filter(room =>
     (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
   );
@@ -15628,9 +15656,10 @@ function showForwardAttachmentPicker(rec, options = {}) {
     const avatar = profileImage
       ? `<img src="${profileImage}" alt="" style="width:100%;height:100%;object-fit:cover"/>`
       : escHtml(label.trim().charAt(0).toUpperCase() || 'V');
-    return `<button type="button" data-forward-room="${escHtml(room.code)}" data-forward-name="${escHtml(label.toLocaleLowerCase())}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;border-bottom:1px solid #EEE7E9;background:#fff;text-align:left;font:600 15px Inter,sans-serif;color:#211A1E;cursor:pointer;transition:background .16s ease,opacity .16s ease"><span style="width:42px;height:42px;border-radius:50%;display:grid;place-items:center;overflow:hidden;flex:none;${avatarStyle}">${avatar}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(label)}</span><span data-forward-status role="status" aria-live="polite" style="flex:none;color:#7B2949;font-size:13px;font-weight:700"></span></button>`;
+    return `<button type="button" data-forward-room="${escHtml(room.code)}" data-forward-name="${escHtml(label.toLocaleLowerCase())}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;background:#fff;border-radius:14px;cursor:pointer;text-align:left"><span style="width:44px;height:44px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;font:700 16px Inter,sans-serif;overflow:hidden;${avatarStyle}">${avatar}</span><span style="flex:1;min-width:0;font:600 15px Inter,sans-serif;color:#211A1E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</span><span data-forward-status style="font:600 12.5px Inter,sans-serif;color:#9A8C93"></span></button>`;
   }).join('');
-  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward attachment" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">Forward to</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div><label style="display:flex;align-items:center;gap:9px;background:#F7F1F3;border:1px solid #E8DDE1;border-radius:14px;padding:10px 12px;margin:4px 0 10px;color:#7B2949"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-forward-search placeholder="Search contacts" autocomplete="off" aria-label="Search contacts to forward to" style="width:100%;border:0;outline:0;background:transparent;font:500 15px Inter,sans-serif;color:#211A1E"></label><div data-forward-list>${rows}</div><div data-forward-empty hidden style="padding:22px 4px;text-align:center;font:500 14px Inter,sans-serif;color:#746A6E">No matching contacts</div></section>`;
+  const title = recs.length > 1 ? `Forward ${recs.length} messages` : 'Forward to';
+  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">${escHtml(title)}</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div><label style="display:flex;align-items:center;gap:9px;background:#F7F1F3;border:1px solid #E8DDE1;border-radius:14px;padding:10px 12px;margin:4px 0 10px;color:#7B2949"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-forward-search placeholder="Search contacts" autocomplete="off" aria-label="Search contacts to forward to" style="width:100%;border:0;outline:0;background:transparent;font:500 15px Inter,sans-serif;color:#211A1E"></label><div data-forward-list>${rows}</div><div data-forward-empty hidden style="padding:22px 4px;text-align:center;font:500 14px Inter,sans-serif;color:#746A6E">No matching contacts</div></section>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
   overlay.querySelector('[data-forward-close]').onclick = close;
@@ -15648,20 +15677,32 @@ function showForwardAttachmentPicker(rec, options = {}) {
     });
     empty.hidden = visible !== 0;
   });
+  // Tracks, per target room, which of the selected messages it has already
+  // received — so tapping "Try again" after a partial failure resends only
+  // what did not go through, never a message twice.
+  const sentTo = new Map();
   targetButtons.forEach(button => {
     button.onclick = async () => {
       const target = rooms.get(button.dataset.forwardRoom);
       if (!target) return;
+      const done = sentTo.get(target.code) || new Set();
+      const indices = recs.map((_, index) => index).filter(index => !done.has(index));
       targetButtons.forEach(candidate => { candidate.disabled = true; });
       button.style.background = '#F5E8ED';
-      button.querySelector('[data-forward-status]').textContent = 'Sending…';
-      const sent = await forwardAttachmentToRoom(target, rec);
-      if (sent) {
-        button.querySelector('[data-forward-status]').textContent = '✓ Sent';
+      const status = button.querySelector('[data-forward-status]');
+      for (let i = 0; i < indices.length; i++) {
+        const index = indices[i];
+        status.textContent = recs.length > 1 ? `Sending ${i + 1} of ${indices.length}…` : 'Sending…';
+        const sent = await forwardAttachmentToRoom(target, recs[index]);
+        if (sent) done.add(index); else break;
+      }
+      sentTo.set(target.code, done);
+      if (done.size === recs.length) {
+        status.textContent = '✓ Sent';
         setTimeout(close, 550);
       } else {
         button.style.background = '#fff';
-        button.querySelector('[data-forward-status]').textContent = 'Try again';
+        status.textContent = recs.length > 1 ? `${done.size} of ${recs.length} sent — try again` : 'Try again';
         targetButtons.forEach(candidate => { candidate.disabled = false; });
       }
     };
@@ -21334,6 +21375,7 @@ function buildViewerChrome(info, ctx) {
   top.innerHTML = `<button type="button" data-v="back" aria-label="Back">${icon('back')}</button>
     <div class="viewer-title"><strong>${escHtml(info.title || '')}</strong><span>${escHtml(info.subtitle || '')}</span></div>
     ${ctx.hideDownload ? '' : `<button type="button" data-v="save" aria-label="Save">${icon('save')}</button>`}
+    ${ctx.hideDownload ? '' : `<button type="button" data-v="share" aria-label="Share externally" title="Share to another app">${icon('share')}</button>`}
     ${info.onForward ? `<button type="button" data-v="forward" aria-label="Forward">${icon('forward')}</button>` : ''}`;
   const bottom = document.createElement('div');
   bottom.className = 'viewer-bottom'; bottom.dataset.viewerUi = '1';
@@ -21350,6 +21392,9 @@ function buildViewerChrome(info, ctx) {
     switch (button.dataset.v) {
       case 'back': ctx.close(); break;
       case 'save': { const src = ctx.getSrc(); const ext = (String(src).match(/^data:image\/(\w+)/) || [])[1] || 'jpg'; downloadDataUri(src, `vaultlix-image.${ext}`); break; }
+      // Decrypts to a temporary file on this device and opens the OS share sheet
+      // (WhatsApp, Mail, …) — unlike Forward, this leaves Vaultlix's encryption.
+      case 'share': { const src = ctx.getSrc(); const ext = (String(src).match(/^data:image\/(\w+)/) || [])[1] || 'jpg'; shareDataUri(src, `vaultlix-image.${ext}`); break; }
       case 'forward': ctx.close(); info.onForward?.(); break;
       case 'reply': ctx.close(); info.onReply?.(); break;
       case 'react': {

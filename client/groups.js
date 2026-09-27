@@ -696,16 +696,39 @@ async function copyPrivateGroupText(messageId) {
 // Forward a group message into a one-to-one conversation. Text is already
 // decrypted on this device and is sent again under the chosen conversation's
 // own key through the ordinary send route; photos and files do the same.
-function forwardPrivateGroupText(messageId) {
-  closeAllMsgActions();
-  const text = privateGroupTextById(messageId); if (!text) return;
-  showForwardAttachmentPicker({ kind:'text', text }, { includeActiveRoom:true });
+// The record shape showForwardAttachmentPicker/forwardAttachmentToRoom expect,
+// for a group message — text or a forwardable attachment (never voice notes,
+// same rule the single-message forward always had). null if it can't be
+// forwarded at all.
+function groupMessageToForwardRec(messageId) {
+  const message = privateGroupMessageById(messageId); if (!message) return null;
+  if (groupMessageKind(message) === 'text') {
+    const text = privateGroupTextById(messageId);
+    return text ? { kind:'text', text } : null;
+  }
+  const found = privateGroupAttachmentById(messageId); if (!found || found.attachment.type === 'group-voice') return null;
+  const { attachment, mime } = found;
+  const isImage = attachment.type === 'group-image';
+  if (isImage ? !safeImageDataUri(mime, attachment.data) : !isValidMediaBase64(attachment.data)) return null;
+  const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview) ? attachment.pdfPreview : null;
+  return {
+    kind:'file', fileName:attachment.name || (isImage ? 'vaultlix-image' : 'vaultlix-file'), mime, base64:attachment.data,
+    isImage, pdfPreview:thumbnail, videoThumb:safeImageDataUri('image/jpeg', attachment.videoThumb) ? attachment.videoThumb : null,
+    pageCount:Number(attachment.pageCount) || 0, viewOnce:false,
+  };
 }
 
 function forwardPrivateGroupMessage(messageId) {
-  const message = privateGroupMessageById(messageId); if (!message) return;
-  if (groupMessageKind(message) === 'text') forwardPrivateGroupText(messageId);
-  else forwardPrivateGroupAttachment(messageId);
+  closeAllMsgActions();
+  const rec = groupMessageToForwardRec(messageId);
+  if (!rec) { toast('Could not forward this message'); return; }
+  showForwardAttachmentPicker(rec, { includeActiveRoom:true });
+}
+function forwardPrivateGroupMessages(messageIds) {
+  closeAllMsgActions();
+  const recs = messageIds.map(groupMessageToForwardRec).filter(Boolean);
+  if (!recs.length) { toast('Nothing here can be forwarded'); return; }
+  showForwardAttachmentPicker(recs, { includeActiveRoom:true });
 }
 
 // ---- reply ------------------------------------------------------------------
@@ -848,9 +871,10 @@ function groupSelectionController() {
       return {
         count: groupSelectedIds.size,
         canReply: !!id && usableRow(id),
-        canForward: !!id && usableRow(id) && ['text', 'image', 'file'].includes(kind),
+        canForward: ids.length > 0 && ids.every(item => usableRow(item) && ['text', 'image', 'file'].includes(groupMessageKind(messageOf(item)))),
         canCopy: ids.length > 0 && ids.every(item => usableRow(item) && groupMessageKind(messageOf(item)) === 'text' && privateGroupTextById(item)),
         canSave: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
+        canShare: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
         anchor: id ? rowOf(id)?.querySelector('.group-message') || null : null,
         mine,
         currentReaction: id ? reactions.get(id)?.get(state?.accountId) || null : null,
@@ -860,7 +884,7 @@ function groupSelectionController() {
     retint: () => refreshPrivateGroupSelection(),
     reply() { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); startPrivateGroupReply(id); },
     remove: () => deleteSelectedPrivateGroupMessages(),
-    forward() { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); forwardPrivateGroupMessage(id); },
+    forward() { const ids = chosen(); if (!ids.length) return; exitPrivateGroupSelectMode(); forwardPrivateGroupMessages(ids); },
     async copy() {
       const text = chosen().map(id => privateGroupTextById(id)).filter(Boolean).join('\n');
       exitPrivateGroupSelectMode();
@@ -868,6 +892,7 @@ function groupSelectionController() {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (_) { toast('Could not copy'); }
     },
     save() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) savePrivateGroupAttachment(id); },
+    share() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) sharePrivateGroupAttachment(id); },
     react(emoji) { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); sendPrivateGroupReaction(id, emoji); },
   };
 }
@@ -1039,24 +1064,27 @@ function savePrivateGroupAttachment(messageId) {
   downloadDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || fallbackName);
 }
 
+// "Share externally": same decrypt-on-device, temporary-file, OS-share-sheet
+// path as a 1:1 attachment (see shareMessageRecord) — never Forward, which
+// stays inside Vaultlix. Once shared, the copy is outside Vaultlix's
+// encryption and under whatever app received it.
+function sharePrivateGroupAttachment(messageId) {
+  closeAllMsgActions();
+  const found = privateGroupAttachmentById(messageId); if (!found) return;
+  const { attachment, mime } = found;
+  const voiceExt = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+  const fallbackName = attachment.type === 'group-image' ? 'vaultlix-image'
+    : (attachment.type === 'group-voice' ? `voice-note.${voiceExt}` : 'Vaultlix attachment');
+  shareDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || fallbackName);
+}
+
 // Forward reuses the direct-conversation picker and send path, exactly as a
 // forwarded 1:1 attachment does: the already-decrypted file stays on this
 // device, is re-encrypted with the chosen conversation's own key, and is sent
 // through the ordinary /api/send route. includeActiveRoom is needed because a
 // group is not one of the direct rooms, so no room is "the current one" here.
-function forwardPrivateGroupAttachment(messageId) {
-  closeAllMsgActions();
-  const found = privateGroupAttachmentById(messageId); if (!found || found.attachment.type === 'group-voice') return;
-  const { attachment, mime } = found;
-  const isImage = attachment.type === 'group-image';
-  if (isImage ? !safeImageDataUri(mime, attachment.data) : !isValidMediaBase64(attachment.data)) { toast('Could not forward this attachment'); return; }
-  const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview) ? attachment.pdfPreview : null;
-  showForwardAttachmentPicker({
-    kind:'file', fileName:attachment.name || (isImage ? 'vaultlix-image' : 'vaultlix-file'), mime, base64:attachment.data,
-    isImage, pdfPreview:thumbnail, videoThumb:safeImageDataUri('image/jpeg', attachment.videoThumb) ? attachment.videoThumb : null,
-    pageCount:Number(attachment.pageCount) || 0, viewOnce:false,
-  }, { includeActiveRoom:true });
-}
+// (See forwardPrivateGroupMessage/forwardPrivateGroupMessages above, which
+// build the record through groupMessageToForwardRec.)
 
 // Reads everything that is not an attachment. An attachment message comes back
 // as { pending } so the caller can decide whether it is worth downloading.

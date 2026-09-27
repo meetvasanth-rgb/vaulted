@@ -117,9 +117,9 @@ test('message kind and reply preview describe every message type', () => {
 test('a group message is selected by long-press; unreadable ones only offer Delete', () => {
   assert.match(groups, /attachLongPress\(row\.querySelector\('\.group-message'\), id, \(\) => \{ if \(groupSelectMode\) togglePrivateGroupSelection\(id\); else enterPrivateGroupSelectMode\(id\); \}\)/);
   const controller = groups.slice(groups.indexOf('function groupSelectionController()'), groups.indexOf('function enterPrivateGroupSelectMode'));
-  // Reply, Forward, Copy and Save need a readable message; Delete is always there.
+  // Reply needs exactly one readable message; Forward, Copy and Save work across a multi-selection.
   assert.match(controller, /canReply: !!id && usableRow\(id\)/);
-  assert.match(controller, /canForward: !!id && usableRow\(id\) && \['text', 'image', 'file'\]\.includes\(kind\)/);
+  assert.match(controller, /canForward: ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)/);
   assert.match(controller, /canCopy: ids\.length > 0 && ids\.every\(item => usableRow\(item\) && groupMessageKind\(messageOf\(item\)\) === 'text'/);
   assert.match(controller, /canSave: !!id && usableRow\(id\) && \['image', 'file', 'voice'\]\.includes\(kind\)/);
   assert.match(controller, /reactions: GROUP_REACTIONS/);
@@ -162,7 +162,7 @@ test('leaving the group or reopening it clears any half-finished reply or select
 
 test('a voice note can be saved but never forwarded', () => {
   assert.match(groups, /\['group-image', 'group-file', 'group-voice'\]\.includes\(attachment\.type\)/);
-  assert.match(groups, /found\.attachment\.type === 'group-voice'\) return;/);
+  assert.match(groups, /found\.attachment\.type === 'group-voice'\) return null;/);
 });
 
 test('the message bubble is one element with nothing hanging under it', () => {

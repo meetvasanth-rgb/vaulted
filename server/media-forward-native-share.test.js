@@ -27,11 +27,11 @@ test('installed apps keep native download and share actions separate', () => {
 
 test('ordinary image and file messages can be forwarded into another encrypted conversation', () => {
   assert.match(client, /\['file', 'album', 'text'\]\.includes\(rec\.kind\) && !rec\.viewOnce/);
-  assert.match(client, /showForwardAttachmentPicker\(rec\.kind === 'text'/);
+  assert.match(client, /showForwardAttachmentPicker\(items\.map\(item => item\.entry\.rec\.kind === 'text'/);
   assert.match(client, /async function forwardAttachmentToRoom\(target, rec\)/);
   assert.match(client, /await sendAlbumMessage\(target, items, false\)/);
   assert.match(client, /await sendFileMessage\(target, file, rec\.base64/);
-  assert.match(client, /if \(rec\.viewOnce\) \{ toast\('View-once photos cannot be forwarded'/);
+  assert.match(client, /input\.length === 1 && input\[0\]\?\.viewOnce \? 'View-once photos cannot be forwarded'/);
 });
 
 test('forward picker filters contacts and confirms the selected recipient immediately', () => {

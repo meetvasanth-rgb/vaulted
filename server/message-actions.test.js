@@ -24,5 +24,5 @@ test('PDF cards support long-press selection, with reply and forward on the bar'
   assert.match(client, /\.msg-image,\.msg-file,\.msg-pdf-card,\.msg-viewonce\{-webkit-touch-callout:none/);
   assert.match(client, /return !!rec && \['file', 'album', 'text'\]\.includes\(rec\.kind\) && !rec\.viewOnce;/);
   assert.match(client, /startReply\(one\.entry\.rec, one\.id, one\.entry\.replyText\)/);
-  assert.match(client, /showForwardAttachmentPicker\(rec\.kind === 'text' \? \{ kind: 'text', text: one\.entry\.replyText \} : rec\)/);
+  assert.match(client, /showForwardAttachmentPicker\(items\.map\(item => item\.entry\.rec\.kind === 'text' \? \{ kind: 'text', text: item\.entry\.replyText \} : item\.entry\.rec\)\)/);
 });
