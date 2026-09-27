@@ -24,6 +24,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var nativeMediaCalls: Set<UUID> = []
     private var connectedCalls: Set<UUID> = []
     private var outgoingCalls: Set<UUID> = []
+    // Outgoing calls placed from an Apple Silicon Mac (`isRunningOnAppleSiliconMac`)
+    // bypass CXCallController entirely — see `startOutgoingCallBypassingCallKit`.
+    // Tracked so their teardown also skips CallKit's transaction machinery.
+    private var nativeBypassCallKitCalls: Set<UUID> = []
     private var outgoingWebAudioSessionActive = false
     private var callKitAudioSessionActive = false
     private var appKeyboardLockedForCall = false
@@ -422,6 +426,19 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private func completeAnswer(action: CXAnswerCallAction,
                                 payload: [String: Any],
                                 alreadyFulfilled: Bool) {
+        guard completeAnswerLocally(callID: action.callUUID, payload: payload) else {
+            if !alreadyFulfilled { action.fail() }
+            rejectCallForMicrophone(callID: action.callUUID, payload: payload, action: nil)
+            return
+        }
+        if !alreadyFulfilled { action.fulfill() }
+    }
+
+    /// The actual answer work, independent of any `CXAnswerCallAction` —
+    /// shared by the real CallKit-delegate answer path and by
+    /// `answerCallFromWeb`'s Mac bypass (see there for why the bypass exists).
+    @discardableResult
+    private func completeAnswerLocally(callID: UUID, payload: [String: Any]) -> Bool {
         do {
             // CallKit owns activation/deactivation, but the application must
             // still describe the session it needs. Without playAndRecord +
@@ -445,14 +462,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 NativeWebRTCCallEngine.shared.callKitDidActivate(session)
             }
         } catch {
-            if !alreadyFulfilled { action.fail() }
-            rejectCallForMicrophone(callID: action.callUUID, payload: payload, action: nil)
-            return
+            return false
         }
-        answeredCalls.insert(action.callUUID)
-        if nativeMediaCalls.contains(action.callUUID) {
+        answeredCalls.insert(callID)
+        if nativeMediaCalls.contains(callID) {
             print("VXCALL manager answer native")
-            NativeWebRTCCallEngine.shared.answer(callID: action.callUUID)
+            NativeWebRTCCallEngine.shared.answer(callID: callID)
         } else {
             print("VXCALL manager answer web-fallback")
         }
@@ -463,16 +478,17 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // second "Open Vaultlix" notification even though the user had answered.
         // A provisioned native call must have exactly one media owner. Do not
         // also tell WKWebView to create a second peer connection/audio track.
-        if !nativeMediaCalls.contains(action.callUUID) {
-            postAction("answer", callID: action.callUUID, payload: payload)
+        if !nativeMediaCalls.contains(callID) {
+            postAction("answer", callID: callID, payload: payload)
         }
-        if !alreadyFulfilled { action.fulfill() }
+        return true
     }
 
     private func rejectCallForMicrophone(callID: UUID,
                                          payload: [String: Any],
                                          action: CXAnswerCallAction?) {
         action?.fail()
+        print("VXCALL manager end-trigger=mic-denial callID=\(callID)")
         NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: true, outcome: "declined")
         provider.reportCall(with: callID, endedAt: Date(), reason: .failed)
         calls.removeValue(forKey: callID)
@@ -561,18 +577,26 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        stopRingback(callID: action.callUUID)
-        let payload = calls.removeValue(forKey: action.callUUID) ?? [:]
-        let wasAnswered = answeredCalls.contains(action.callUUID)
-        let wasOutgoing = outgoingCalls.contains(action.callUUID)
-        let outcome = wasAnswered ? "ended" : (wasOutgoing ? "cancelled" : "declined")
-        answeredCalls.remove(action.callUUID)
-        connectedCalls.remove(action.callUUID)
-        outgoingCalls.remove(action.callUUID)
-        NativeWebRTCCallEngine.shared.end(callID: action.callUUID, notifyPeer: true, outcome: outcome)
-        nativeMediaCalls.remove(action.callUUID)
-        postAction("declineOrEnd", callID: action.callUUID, payload: payload)
+        endCallLocally(callID: action.callUUID, source: "cxEndCallAction")
         action.fulfill()
+    }
+
+    @discardableResult
+    private func endCallLocally(callID: UUID, source: String) -> String {
+        stopRingback(callID: callID)
+        let payload = calls.removeValue(forKey: callID) ?? [:]
+        let wasAnswered = answeredCalls.contains(callID)
+        let wasOutgoing = outgoingCalls.contains(callID)
+        let outcome = wasAnswered ? "ended" : (wasOutgoing ? "cancelled" : "declined")
+        answeredCalls.remove(callID)
+        connectedCalls.remove(callID)
+        outgoingCalls.remove(callID)
+        nativeBypassCallKitCalls.remove(callID)
+        print("VXCALL manager end-trigger=\(source) callID=\(callID) outcome=\(outcome) wasAnswered=\(wasAnswered) wasOutgoing=\(wasOutgoing)")
+        NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: true, outcome: outcome)
+        nativeMediaCalls.remove(callID)
+        postAction("declineOrEnd", callID: callID, payload: payload)
+        return outcome
     }
 
     func providerDidReset(_ provider: CXProvider) {
@@ -582,6 +606,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         nativeMediaCalls.removeAll()
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
+        nativeBypassCallKitCalls.removeAll()
         NativeWebRTCCallEngine.shared.reset()
         releaseAppKeyboardIfIdle()
     }
@@ -589,6 +614,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     func endCallFromWeb(roomCode: String, outcome: String = "ended") {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first else { return }
         stopRingback(callID: match.key)
+        print("VXCALL manager end-trigger=endCallFromWeb callID=\(match.key) roomCode=\(roomCode) outcome=\(outcome)")
         NativeWebRTCCallEngine.shared.end(callID: match.key, notifyPeer: true, outcome: outcome)
         provider.reportCall(with: match.key, endedAt: Date(), reason: .remoteEnded)
         calls.removeValue(forKey: match.key)
@@ -596,10 +622,19 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         nativeMediaCalls.remove(match.key)
         connectedCalls.remove(match.key)
         outgoingCalls.remove(match.key)
+        nativeBypassCallKitCalls.remove(match.key)
     }
 
     func endActiveNativeCall() {
         guard let callID = nativeMediaCalls.first else { return }
+        // A Mac-outgoing call bypassed CXCallController on the way in (see
+        // `startOutgoingCallBypassingCallKit`), so CallKit never learned about
+        // it — requesting CXEndCallAction for it would just fail. End it the
+        // same way it started: directly, without the transaction.
+        if nativeBypassCallKitCalls.contains(callID) {
+            endCallLocally(callID: callID, source: "endActiveNativeCall-bypass")
+            return
+        }
         callController.request(CXTransaction(action: CXEndCallAction(call: callID))) { error in
             if let error { print("VXCALL native end request failed: \(error.localizedDescription)") }
         }
@@ -616,13 +651,61 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         nativeMediaCalls.removeAll()
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
+        nativeBypassCallKitCalls.removeAll()
         outgoingWebAudioSessionActive = false
         releaseAppKeyboardIfIdle()
+    }
+
+    /// A call-invite that arrives over the already-open web signaling socket
+    /// (the app already foregrounded — no PushKit wake) never passes through
+    /// `pushRegistry(_:didReceiveIncomingPushWith:...)` above, so nothing ever
+    /// registers it with `calls`/`nativeMediaCalls`. `acceptCall()` on the web
+    /// side assumes native readiness the moment the bridge object exists, so
+    /// answering such a call posts `{action:'answer'}` to a callID the native
+    /// side never heard of — `answerCallFromWeb` finds no match and silently
+    /// no-ops, leaving this device on "Connecting securely…" and the caller
+    /// still ringing. Register the call here instead, mirroring what the
+    /// PushKit handler already does, so answering it actually works.
+    func prepareIncomingCallFromWeb(roomCode: String, roomHandle: String, caller: String, hasVideo: Bool) {
+        // Already mid-call (including one the PushKit handler just won this
+        // same race for) — never stomp a call already in progress.
+        guard calls.isEmpty, nativeMediaCalls.isEmpty else { return }
+        let callID = UUID()
+        let payload: [String: Any] = [
+            "callId": callID.uuidString,
+            "roomHandle": roomHandle,
+            "code": roomCode,
+            "caller": String(caller.prefix(80)),
+            "hasVideo": hasVideo,
+        ]
+        calls[callID] = payload
+        guard NativeWebRTCCallEngine.shared.prepareIncoming(callID: callID, roomHandle: roomHandle, video: hasVideo) else {
+            calls.removeValue(forKey: callID)
+            print("VXCALL manager foreground-incoming prepare failed callID=\(callID)")
+            return
+        }
+        nativeMediaCalls.insert(callID)
+        print("VXCALL manager foreground-incoming prepared callID=\(callID)")
     }
 
     func answerCallFromWeb(roomCode: String) {
         guard let match = calls.first(where: { ($0.value["code"] as? String) == roomCode }) ?? calls.first,
               !answeredCalls.contains(match.key) else { return }
+        // On an Apple Silicon Mac, requesting a CXAnswerCallAction transaction
+        // here is as unreliable as requesting CXStartCallAction was for
+        // outgoing calls (see startOutgoingCallBypassingCallKit): the peer
+        // connection's answer never actually reaches the native engine, which
+        // leaves this side stuck on "Connecting securely…" and the caller
+        // still ringing. Answer directly instead — same call this makes on
+        // every other platform once the transaction round-trip succeeds.
+        if isRunningOnAppleSiliconMac {
+            print("VXCALL manager mac answer bypassing CallKit transaction callID=\(match.key)")
+            let payload = match.value
+            if !completeAnswerLocally(callID: match.key, payload: payload) {
+                rejectCallForMicrophone(callID: match.key, payload: payload, action: nil)
+            }
+            return
+        }
         // Route an answer made in Vaultlix's own UI through CallKit too.
         // Otherwise the WebRTC timer starts while iOS continues presenting
         // the native incoming-call banner with Answer/Decline controls.
@@ -669,6 +752,9 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         calls[callID] = payload
         nativeMediaCalls.insert(callID)
         outgoingCalls.insert(callID)
+        if isRunningOnAppleSiliconMac {
+            return startOutgoingCallBypassingCallKit(callID: callID, payload: payload)
+        }
         let handle = CXHandle(type: .generic, value: String(peer.prefix(80)))
         let action = CXStartCallAction(call: callID, handle: handle)
         action.isVideo = video
@@ -685,6 +771,40 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                 }
             }
         }
+        return true
+    }
+
+    /// Apple Silicon Macs running this app via "Designed for iPad" do not
+    /// reliably support CallKit's *outgoing*-call transaction: requesting
+    /// `CXStartCallAction` succeeds and our own setup (audio activation, TURN,
+    /// peer connection, signaling) all completes correctly, but the system
+    /// then issues its own `CXEndCallAction` and silently cancels the call
+    /// within about a second of the invite being sent. CallKit's incoming
+    /// path (PushKit ring + answer UI) is unaffected and untouched here, and
+    /// iPhone calls in either direction are unaffected — only a Mac-initiated
+    /// outgoing call skips `CXCallController` and drives audio activation and
+    /// the native engine directly, the same way the CXStartCallAction handler
+    /// would have.
+    private func startOutgoingCallBypassingCallKit(callID: UUID, payload: [String: Any]) -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            try session.setActive(true)
+            callKitAudioSessionActive = true
+            NativeWebRTCCallEngine.shared.callKitDidActivate(session)
+        } catch {
+            print("VXCALL manager mac outgoing audio activation failed: \(error.localizedDescription)")
+            calls.removeValue(forKey: callID)
+            nativeMediaCalls.remove(callID)
+            outgoingCalls.remove(callID)
+            NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
+            postAction("nativeFailed", callID: callID, payload: payload)
+            return false
+        }
+        nativeBypassCallKitCalls.insert(callID)
+        ringbackCallID = callID
+        print("VXCALL manager mac outgoing bypassing CallKit transaction callID=\(callID)")
+        NativeWebRTCCallEngine.shared.startOutgoing(callID: callID)
         return true
     }
 

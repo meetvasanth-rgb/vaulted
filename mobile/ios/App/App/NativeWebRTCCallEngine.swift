@@ -367,9 +367,10 @@ final class NativeWebRTCCallEngine: NSObject {
 
     func end(callID: UUID, notifyPeer: Bool, outcome requestedOutcome: String? = nil) {
         queue.async {
-            guard self.callID == callID else { return }
+            self.trace("end requested callID=\(callID) notifyPeer=\(notifyPeer) currentCallID=\(String(describing: self.callID)) ending=\(self.ending)")
+            guard self.callID == callID else { self.trace("end ignored stale-callID"); return }
             guard notifyPeer else { self.resetLocked(); return }
-            guard !self.ending else { return }
+            guard !self.ending else { self.trace("end ignored already-ending"); return }
             let fallback = self.answered ? "ended" : (self.outgoing ? "cancelled" : "declined")
             let callOutcome = self.normalizedOutcome(requestedOutcome, fallback: fallback)
             self.ending = true

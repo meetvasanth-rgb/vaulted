@@ -7247,6 +7247,19 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
           room.nativeIncomingPrepared = false;
         }
       }
+      // A call-invite delivered over the already-open web socket (the app
+      // already foregrounded, no PushKit wake) never reaches the native side
+      // through the VoIP push path, so it was never registered with CallKit's
+      // engine — acceptCall() answering it then posted 'answer' for a callID
+      // the native side never heard of and silently did nothing. Register it
+      // here too; the native side no-ops if a PushKit push already won this
+      // same race.
+      try {
+        window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
+          action: 'prepareIncoming', roomHandle: room.nativeRoomHandle, code: room.code,
+          caller: room.callPeerName || 'Someone', hasVideo: room.incomingVideoCall === true,
+        });
+      } catch (e) {}
       // Foreground Android calls keep the incoming Answer/Decline sheet until
       // the user answers. Answer then opens NativeCallActivity and the WebView
       // never creates a competing RTCPeerConnection. Background and locked

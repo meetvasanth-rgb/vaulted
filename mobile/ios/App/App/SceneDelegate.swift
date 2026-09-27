@@ -1022,6 +1022,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             print("VXCALL scene provision saved=\(saved)")
             return
         }
+        if action == "prepareIncoming",
+           let code = body["code"] as? String,
+           let handle = body["roomHandle"] as? String,
+           code.count <= 128,
+           handle.range(of: "^[A-Za-z0-9_-]{16,64}$", options: .regularExpression) != nil {
+            let caller = (body["caller"] as? String) ?? "Someone"
+            let hasVideo = (body["hasVideo"] as? Bool) ?? false
+            VaultlixCallManager.shared.prepareIncomingCallFromWeb(
+                roomCode: code, roomHandle: handle, caller: caller, hasVideo: hasVideo
+            )
+            return
+        }
         if action == "answer",
            let code = body["code"] as? String,
            code.count <= 128 {
