@@ -26,11 +26,12 @@ function extract(source, name, keyword = 'function') {
   throw new Error('unbalanced');
 }
 
-test('the "Forward" button on the selection bar requires every selected message to be forwardable', () => {
+test('the "Forward" button on the selection bar requires every selected message to be forwardable (or a single voice note, which opens the sheet just to reach Share)', () => {
   const controller = extract(client, 'directSelectionController');
-  assert.match(controller, /canForward: items\.length > 0 && items\.every\(item => messageForwardable\(item\.entry\.rec\)\)/);
+  assert.match(controller, /canForward: \(items\.length > 0 && items\.every\(item => messageForwardable\(item\.entry\.rec\)\)\) \|\| \(!!one && rec\?\.kind === 'voice'\)/);
   const groupController = extract(groups, 'groupSelectionController');
-  assert.match(groupController, /canForward: ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)/);
+  assert.match(groupController, /canForward: \(ids\.length > 0 && ids\.every\(item => usableRow\(item\) && \['text', 'image', 'file'\]\.includes\(groupMessageKind\(messageOf\(item\)\)\)\)\)/);
+  assert.match(groupController, /\|\| \(!!id && usableRow\(id\) && kind === 'voice'\)/);
 });
 
 test('forwarding a multi-selection hands every chosen message to the picker, in order', () => {
@@ -66,21 +67,24 @@ test('a voice note in the selection blocks Forward for the whole batch, in both 
   assert.equal(vm.runInContext('directSelectionController().state().canForward', context), false);
 });
 
-test('the group forward path builds one record per message and drops what cannot be sent', () => {
+test('the group forward path builds one record per message, drops what cannot be sent, and keeps a voice note as share-only', () => {
   const calls = [];
   const context = vm.createContext({
     Map, Set,
-    privateGroupMessageById: id => ({ a:{ id:'a', text:'hi' }, b:{ id:'b', attachment:{ type:'group-voice' } }, c:{ id:'c', text:'ok' } }[id]),
+    privateGroupMessageById: id => ({ a:{ id:'a', text:'hi' }, b:{ id:'b', attachment:{ type:'group-voice' } }, c:{ id:'c', text:'ok' }, d:{ id:'d' } }[id]),
     groupMessageKind: message => (message.text !== undefined ? 'text' : 'voice'),
     privateGroupTextById: id => ({ a:'hi', c:'ok' }[id] || null),
-    privateGroupAttachmentById: id => (id === 'b' ? { attachment:{ type:'group-voice' }, mime:'audio/webm' } : null),
+    privateGroupAttachmentById: id => ({ b:{ attachment:{ type:'group-voice', data:'d29ya' }, mime:'audio/webm' } }[id] || null),
     closeAllMsgActions: () => { calls.push('closed'); },
     toast: message => calls.push(['toast', message]),
     showForwardAttachmentPicker: (recs, options) => calls.push(['picker', recs, options]),
   });
   vm.runInContext(`${extract(groups, 'groupMessageToForwardRec')}\n${extract(groups, 'forwardPrivateGroupMessages')}`, context);
-  vm.runInContext("forwardPrivateGroupMessages(['a', 'b', 'c'])", context);
-  assert.deepEqual(JSON.parse(JSON.stringify(calls)), ['closed', ['picker', [{ kind:'text', text:'hi' }, { kind:'text', text:'ok' }], { includeActiveRoom:true }]]);
+  // 'd' has no text and no attachment record at all — dropped, unlike the voice note.
+  vm.runInContext("forwardPrivateGroupMessages(['a', 'b', 'c', 'd'])", context);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), ['closed', ['picker',
+    [{ kind:'text', text:'hi' }, { kind:'voice', mime:'audio/webm', base64:'d29ya' }, { kind:'text', text:'ok' }],
+    { includeActiveRoom:true }]]);
 });
 
 test('forwarding to a room resends only what failed on a retry, and never a message twice', async () => {

@@ -15324,7 +15324,6 @@ function ensureMessageSelectionUi() {
     closeMessageMoreMenu();
     if (item.dataset.more === 'copy') controller.copy();
     else if (item.dataset.more === 'save') controller.save();
-    else if (item.dataset.more === 'share') controller.share();
   });
   react.addEventListener('click', event => {
     const button = event.target.closest('[data-emoji]');
@@ -15356,7 +15355,8 @@ function toggleMessageMoreMenu() {
   const items = [];
   if (state.canCopy) items.push(`<button type="button" role="menuitem" data-more="copy">${selectionIconSvg('copy')}<span>Copy</span></button>`);
   if (state.canSave) items.push(`<button type="button" role="menuitem" data-more="save">${selectionIconSvg('save')}<span>Save</span></button>`);
-  if (state.canShare) items.push(`<button type="button" role="menuitem" data-more="share">${selectionIconSvg('share')}<span>Share externally</span></button>`);
+  // Share externally lives inside the Forward sheet (see showForwardAttachmentPicker),
+  // next to the Vaultlix contacts — not here.
   if (!items.length) return;
   ui.menu.innerHTML = items.join('');
   ui.menu.hidden = false;
@@ -15416,7 +15416,7 @@ function refreshMessageSelection() {
   const show = (name, on) => { const button = ui.bar.querySelector(`[data-sel="${name}"]`); if (button) button.hidden = !on; };
   show('reply', !!state.canReply);
   show('forward', !!state.canForward);
-  show('more', !!(state.canCopy || state.canSave || state.canShare));
+  show('more', !!(state.canCopy || state.canSave));
   show('delete', state.count > 0);
   ui.bar.hidden = false;
   closeMessageMoreMenu();
@@ -15496,10 +15496,12 @@ function directSelectionController() {
       return {
         count: selectedMsgIds.size,
         canReply: !!one && messageReplyable(rec),
-        canForward: items.length > 0 && items.every(item => messageForwardable(item.entry.rec)),
+        // A single voice note opens the same sheet purely for "Share to another
+        // app" (see showForwardAttachmentPicker) — voice notes are never
+        // forwarded into another Vaultlix conversation.
+        canForward: (items.length > 0 && items.every(item => messageForwardable(item.entry.rec))) || (!!one && rec?.kind === 'voice'),
         canCopy: items.length > 0 && items.every(item => item.entry.rec?.kind === 'text' && String(item.entry.replyText || '').trim()),
         canSave: !!one && ['file', 'album', 'voice'].includes(rec?.kind),
-        canShare: !!one && ['file', 'voice'].includes(rec?.kind),
         anchor: row ? (row.querySelector('.bubble, .msg-media-wrap') || row) : null,
         mine: !!rec?.isMe,
         currentReaction: rec?.reactionMine || null,
@@ -15525,7 +15527,6 @@ function directSelectionController() {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (error) { toast('Could not copy'); }
     },
     save() { const one = chosen()[0]; exitSelectMode(); if (one) saveMessageRecord(one.entry.rec); },
-    share() { const one = chosen()[0]; exitSelectMode(); if (one) shareMessageRecord(one.entry.rec); },
     react(emoji) {
       const one = chosen()[0]; if (!one) return;
       exitSelectMode();
@@ -15635,15 +15636,21 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
 // rooms, so the room that happens to be "active" is a valid target there.
 function showForwardAttachmentPicker(recOrRecs, options = {}) {
   const input = Array.isArray(recOrRecs) ? recOrRecs : [recOrRecs];
+  // Two independent things this sheet can offer: forwarding into another
+  // Vaultlix conversation (text, photos, files, albums — still encrypted, still
+  // inside Vaultlix), and "Share to another app" (a single photo, video,
+  // document or voice note only, decrypted on this device and handed to the OS
+  // share sheet — see shareMessageRecord). A voice note can only do the latter.
   const recs = input.filter(rec => rec && ['file', 'album', 'text'].includes(rec.kind) && !rec.viewOnce);
-  if (!recs.length) {
+  const shareRec = input.length === 1 && input[0] && ['file', 'voice'].includes(input[0].kind) && !input[0].viewOnce ? input[0] : null;
+  if (!recs.length && !shareRec) {
     toast(input.length === 1 && input[0]?.viewOnce ? 'View-once photos cannot be forwarded' : 'Nothing here can be forwarded');
     return;
   }
-  const targets = [...rooms.values()].filter(room =>
+  const targets = recs.length ? [...rooms.values()].filter(room =>
     (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
-  );
-  if (!targets.length) { toast('No other connected conversations'); return; }
+  ) : [];
+  if (recs.length && !targets.length && !shareRec) { toast('No other connected conversations'); return; }
 
   document.getElementById('forward-attachment-overlay')?.remove();
   const overlay = document.createElement('div');
@@ -15658,16 +15665,20 @@ function showForwardAttachmentPicker(recOrRecs, options = {}) {
       : escHtml(label.trim().charAt(0).toUpperCase() || 'V');
     return `<button type="button" data-forward-room="${escHtml(room.code)}" data-forward-name="${escHtml(label.toLocaleLowerCase())}" style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;background:#fff;border-radius:14px;cursor:pointer;text-align:left"><span style="width:44px;height:44px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;font:700 16px Inter,sans-serif;overflow:hidden;${avatarStyle}">${avatar}</span><span style="flex:1;min-width:0;font:600 15px Inter,sans-serif;color:#211A1E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</span><span data-forward-status style="font:600 12.5px Inter,sans-serif;color:#9A8C93"></span></button>`;
   }).join('');
-  const title = recs.length > 1 ? `Forward ${recs.length} messages` : 'Forward to';
-  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">${escHtml(title)}</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div><label style="display:flex;align-items:center;gap:9px;background:#F7F1F3;border:1px solid #E8DDE1;border-radius:14px;padding:10px 12px;margin:4px 0 10px;color:#7B2949"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-forward-search placeholder="Search contacts" autocomplete="off" aria-label="Search contacts to forward to" style="width:100%;border:0;outline:0;background:transparent;font:500 15px Inter,sans-serif;color:#211A1E"></label><div data-forward-list>${rows}</div><div data-forward-empty hidden style="padding:22px 4px;text-align:center;font:500 14px Inter,sans-serif;color:#746A6E">No matching contacts</div></section>`;
+  const title = !recs.length ? 'Share' : recs.length > 1 ? `Forward ${recs.length} messages` : 'Forward to';
+  const shareRow = shareRec ? `<button type="button" data-forward-share style="display:flex;align-items:center;gap:13px;width:100%;padding:13px 4px;border:0;background:#fff;border-radius:14px;cursor:pointer;text-align:left;margin-bottom:2px"><span style="width:44px;height:44px;flex:none;border-radius:14px;display:flex;align-items:center;justify-content:center;background:#F5ECEF;color:#682C43"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SELECTION_ICONS.share}</svg></span><span style="flex:1;min-width:0;font:600 15px Inter,sans-serif;color:#211A1E">Share to another app</span></button>` : '';
+  const contactChrome = recs.length ? `<label style="display:flex;align-items:center;gap:9px;background:#F7F1F3;border:1px solid #E8DDE1;border-radius:14px;padding:10px 12px;margin:4px 0 10px;color:#7B2949"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" data-forward-search placeholder="Search contacts" autocomplete="off" aria-label="Search contacts to forward to" style="width:100%;border:0;outline:0;background:transparent;font:500 15px Inter,sans-serif;color:#211A1E"></label><div data-forward-list>${rows}</div><div data-forward-empty hidden style="padding:22px 4px;text-align:center;font:500 14px Inter,sans-serif;color:#746A6E">No matching contacts</div>` : '';
+  overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Forward" style="width:min(560px,100%);max-height:72vh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -18px 50px rgba(0,0,0,.22)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><strong style="font:700 19px Inter,sans-serif;color:#211A1E">${escHtml(title)}</strong><button type="button" data-forward-close style="border:0;background:#F5ECEF;color:#682C43;width:38px;height:38px;border-radius:50%;font-size:22px;cursor:pointer">×</button></div>${shareRow}${contactChrome}</section>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
   overlay.querySelector('[data-forward-close]').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  const shareButton = overlay.querySelector('[data-forward-share]');
+  if (shareButton) shareButton.onclick = () => { close(); shareMessageRecord(shareRec); };
   const targetButtons = [...overlay.querySelectorAll('[data-forward-room]')];
   const search = overlay.querySelector('[data-forward-search]');
   const empty = overlay.querySelector('[data-forward-empty]');
-  search.addEventListener('input', () => {
+  search?.addEventListener('input', () => {
     const query = search.value.trim().toLocaleLowerCase();
     let visible = 0;
     targetButtons.forEach(button => {

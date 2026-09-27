@@ -697,17 +697,20 @@ async function copyPrivateGroupText(messageId) {
 // decrypted on this device and is sent again under the chosen conversation's
 // own key through the ordinary send route; photos and files do the same.
 // The record shape showForwardAttachmentPicker/forwardAttachmentToRoom expect,
-// for a group message — text or a forwardable attachment (never voice notes,
-// same rule the single-message forward always had). null if it can't be
-// forwarded at all.
+// for a group message. Text and forwardable attachments are sent into another
+// Vaultlix conversation as before; a voice note is never forwarded that way,
+// but still comes back as a { kind:'voice' } record, because
+// showForwardAttachmentPicker also offers a single voice note through "Share
+// to another app" (see shareMessageRecord). null if it can't be shared at all.
 function groupMessageToForwardRec(messageId) {
   const message = privateGroupMessageById(messageId); if (!message) return null;
   if (groupMessageKind(message) === 'text') {
     const text = privateGroupTextById(messageId);
     return text ? { kind:'text', text } : null;
   }
-  const found = privateGroupAttachmentById(messageId); if (!found || found.attachment.type === 'group-voice') return null;
+  const found = privateGroupAttachmentById(messageId); if (!found) return null;
   const { attachment, mime } = found;
+  if (attachment.type === 'group-voice') return { kind:'voice', mime, base64:attachment.data };
   const isImage = attachment.type === 'group-image';
   if (isImage ? !safeImageDataUri(mime, attachment.data) : !isValidMediaBase64(attachment.data)) return null;
   const thumbnail = safeImageDataUri('image/jpeg', attachment.pdfPreview) ? attachment.pdfPreview : null;
@@ -871,10 +874,13 @@ function groupSelectionController() {
       return {
         count: groupSelectedIds.size,
         canReply: !!id && usableRow(id),
-        canForward: ids.length > 0 && ids.every(item => usableRow(item) && ['text', 'image', 'file'].includes(groupMessageKind(messageOf(item)))),
+        // A single voice note opens the same sheet purely for "Share to another
+        // app" (see showForwardAttachmentPicker) — voice notes are never
+        // forwarded into another Vaultlix conversation.
+        canForward: (ids.length > 0 && ids.every(item => usableRow(item) && ['text', 'image', 'file'].includes(groupMessageKind(messageOf(item)))))
+          || (!!id && usableRow(id) && kind === 'voice'),
         canCopy: ids.length > 0 && ids.every(item => usableRow(item) && groupMessageKind(messageOf(item)) === 'text' && privateGroupTextById(item)),
         canSave: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
-        canShare: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
         anchor: id ? rowOf(id)?.querySelector('.group-message') || null : null,
         mine,
         currentReaction: id ? reactions.get(id)?.get(state?.accountId) || null : null,
@@ -892,7 +898,6 @@ function groupSelectionController() {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (_) { toast('Could not copy'); }
     },
     save() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) savePrivateGroupAttachment(id); },
-    share() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) sharePrivateGroupAttachment(id); },
     react(emoji) { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); sendPrivateGroupReaction(id, emoji); },
   };
 }
@@ -1064,19 +1069,6 @@ function savePrivateGroupAttachment(messageId) {
   downloadDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || fallbackName);
 }
 
-// "Share externally": same decrypt-on-device, temporary-file, OS-share-sheet
-// path as a 1:1 attachment (see shareMessageRecord) — never Forward, which
-// stays inside Vaultlix. Once shared, the copy is outside Vaultlix's
-// encryption and under whatever app received it.
-function sharePrivateGroupAttachment(messageId) {
-  closeAllMsgActions();
-  const found = privateGroupAttachmentById(messageId); if (!found) return;
-  const { attachment, mime } = found;
-  const voiceExt = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
-  const fallbackName = attachment.type === 'group-image' ? 'vaultlix-image'
-    : (attachment.type === 'group-voice' ? `voice-note.${voiceExt}` : 'Vaultlix attachment');
-  shareDataUri(`data:${mime};base64,${attachment.data}`, attachment.name || fallbackName);
-}
 
 // Forward reuses the direct-conversation picker and send path, exactly as a
 // forwarded 1:1 attachment does: the already-decrypted file stays on this

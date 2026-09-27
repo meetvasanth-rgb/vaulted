@@ -60,6 +60,14 @@ import java.util.Collections;
 
 public class MainActivity extends BridgeActivity {
     private static final int SAVE_MEDIA_REQUEST = 4107;
+    // A share to WhatsApp (and most other apps) often uses Android's Direct
+    // Share: control returns to Vaultlix (onResume) almost immediately, while
+    // the receiving app reads the granted file asynchronously in the
+    // background, sometimes seconds later. Deleting the file the moment we
+    // resume raced that read and showed WhatsApp's own "Couldn't send" error.
+    // Anything newer than this survives one purge pass; it is swept up on the
+    // next one, or by the guaranteed delayed purge scheduled after each share.
+    private static final long SHARED_MEDIA_GRACE_MS = 25_000L;
     private static WeakReference<MainActivity> activeInstance = new WeakReference<>(null);
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -83,6 +91,7 @@ public class MainActivity extends BridgeActivity {
         return thread;
     });
     private final AtomicBoolean mediaCacheCleanupScheduled = new AtomicBoolean(false);
+    private final Handler mediaCacheCleanupHandler = new Handler(Looper.getMainLooper());
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
@@ -163,16 +172,37 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void purgeDecryptedMediaCacheNow() {
-        String[] directories = { "shared-media", "open-media", "saved-media", "media-compression" };
-        for (String name : directories) {
-            File directory = new File(getCacheDir(), name);
-            File[] files = directory.listFiles();
-            if (files == null) continue;
-            for (File file : files) {
-                if (file == null || file.equals(pendingSaveMediaFile)) continue;
-                file.delete();
-            }
+        // shared-media and open-media are handed to another app by URI, which can
+        // still be reading them after Vaultlix resumes (see SHARED_MEDIA_GRACE_MS
+        // above); age-gate those two. saved-media is only ever read by the system
+        // "save as" picker itself, synchronously, before we regain the foreground,
+        // and media-compression is never exposed outside Vaultlix — both purge
+        // immediately, as before.
+        long now = System.currentTimeMillis();
+        purgeDirectory(new File(getCacheDir(), "shared-media"), now - SHARED_MEDIA_GRACE_MS);
+        purgeDirectory(new File(getCacheDir(), "open-media"), now - SHARED_MEDIA_GRACE_MS);
+        purgeDirectory(new File(getCacheDir(), "saved-media"), Long.MAX_VALUE);
+        purgeDirectory(new File(getCacheDir(), "media-compression"), Long.MAX_VALUE);
+    }
+
+    // Deletes every file in `directory` last modified at or before `cutoffMs`
+    // (Long.MAX_VALUE purges unconditionally, matching the previous behaviour).
+    private void purgeDirectory(File directory, long cutoffMs) {
+        File[] files = directory.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file == null || file.equals(pendingSaveMediaFile)) continue;
+            if (file.lastModified() > cutoffMs) continue;
+            file.delete();
         }
+    }
+
+    // Runs once, SHARED_MEDIA_GRACE_MS after a share/open, regardless of whether
+    // Vaultlix ever regains the foreground in between — the app-resume purge
+    // above is not a reliable backstop by itself, since the person sharing may
+    // not switch back to Vaultlix again for a long time, if ever.
+    private void scheduleGuaranteedMediaCacheCleanup() {
+        mediaCacheCleanupHandler.postDelayed(this::scheduleDecryptedMediaCacheCleanup, SHARED_MEDIA_GRACE_MS + 2_000L);
     }
 
     private void showAppSwitcherPrivacyCover() {
@@ -833,6 +863,7 @@ public class MainActivity extends BridgeActivity {
                     sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(Intent.createChooser(sendIntent, "Save or share"));
                 });
+                scheduleGuaranteedMediaCacheCleanup();
                 return true;
             } catch (Exception ignored) { return false; }
         }
@@ -899,6 +930,7 @@ public class MainActivity extends BridgeActivity {
                         startActivity(Intent.createChooser(openIntent, "Open PDF with"));
                     } catch (Exception ignored) {}
                 });
+                scheduleGuaranteedMediaCacheCleanup();
                 return true;
             } catch (Exception ignored) { return false; }
         }

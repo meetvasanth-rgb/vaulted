@@ -61,9 +61,27 @@ test('message records and rendered media references are scrubbed during deletion
 test('decrypted native share/open staging files are cleaned after use', () => {
   assert.match(androidActivity, /void onResume\(\)[\s\S]*scheduleDecryptedMediaCacheCleanup\(\)/);
   assert.match(androidActivity, /scheduleDecryptedMediaCacheCleanup\(\)[\s\S]*mediaCacheCleanupExecutor\.execute/);
-  assert.match(androidActivity, /void purgeDecryptedMediaCacheNow\(\)[\s\S]*file\.delete\(\)/);
-  assert.match(androidActivity, /"shared-media", "open-media", "saved-media"/);
+  assert.match(androidActivity, /void purgeDecryptedMediaCacheNow\(\)[\s\S]*purgeDirectory\(/);
+  assert.match(androidActivity, /void purgeDirectory\(File directory, long cutoffMs\)[\s\S]*file\.delete\(\)/);
+  for (const directory of ['"shared-media"', '"open-media"', '"saved-media"', '"media-compression"']) {
+    assert.ok(androidActivity.includes(`getCacheDir(), ${directory}`), directory);
+  }
   assert.match(iosScene, /completionWithItemsHandler[\s\S]*removeItem\(at: fileURL\)/);
+});
+
+test('a shared/opened file survives one purge pass, so an app reading it in the background (e.g. WhatsApp Direct Share) is not raced', () => {
+  assert.match(androidActivity, /SHARED_MEDIA_GRACE_MS = 25_000L/);
+  assert.match(androidActivity, /purgeDirectory\(new File\(getCacheDir\(\), "shared-media"\), now - SHARED_MEDIA_GRACE_MS\)/);
+  assert.match(androidActivity, /purgeDirectory\(new File\(getCacheDir\(\), "open-media"\), now - SHARED_MEDIA_GRACE_MS\)/);
+  // saved-media and media-compression are never read by another app in the
+  // background, so they still purge immediately.
+  assert.match(androidActivity, /purgeDirectory\(new File\(getCacheDir\(\), "saved-media"\), Long\.MAX_VALUE\)/);
+  assert.match(androidActivity, /purgeDirectory\(new File\(getCacheDir\(\), "media-compression"\), Long\.MAX_VALUE\)/);
+  assert.match(androidActivity, /if \(file\.lastModified\(\) > cutoffMs\) continue;/);
+  // A share is followed by a cleanup that runs even if Vaultlix never regains
+  // the foreground, not just the next onResume.
+  assert.match(androidActivity, /public boolean shareMedia\(String dataUrl, String requestedName\)[\s\S]{0,2200}scheduleGuaranteedMediaCacheCleanup\(\);/);
+  assert.match(androidActivity, /scheduleGuaranteedMediaCacheCleanup\(\)[\s\S]*postDelayed\(this::scheduleDecryptedMediaCacheCleanup, SHARED_MEDIA_GRACE_MS \+ 2_000L\)/);
 });
 
 test('Emergency Exit cryptographically clears native message stores independently of WebView state', () => {
