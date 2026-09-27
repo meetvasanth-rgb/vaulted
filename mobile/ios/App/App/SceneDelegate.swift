@@ -69,6 +69,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         let runsOnMac: Bool
         if #available(iOS 14.0, *) { runsOnMac = ProcessInfo.processInfo.isiOSAppOnMac }
         else { runsOnMac = false }
+        // UIRequiresFullScreen is off so the Mac window can be resized and
+        // taken into the system's native full screen. Leaving maximumSize at
+        // its default (rather than explicitly generous) is what silently
+        // capped the window at its initial requested size and blocked
+        // dragging to resize — set both ends explicitly.
+        if runsOnMac, let restrictions = windowScene.sizeRestrictions {
+            restrictions.minimumSize = CGSize(width: 380, height: 520)
+            restrictions.maximumSize = CGSize(width: 6000, height: 6000)
+        }
+        if runsOnMac, #available(iOS 16.0, *) {
+            let screen = windowScene.screen.bounds.size
+            // windowScene.screen.bounds reflects the host Mac display; if
+            // that ever comes back implausibly small (an iPad-sized
+            // fallback instead of the real display), still open generously
+            // large rather than tiny.
+            let width = max(screen.width - 160, 1280)
+            let height = max(screen.height - 200, 860)
+            let frame = CGRect(x: 80, y: 80, width: width, height: height)
+            windowScene.requestGeometryUpdate(.Mac(systemFrame: frame)) { _ in }
+        }
         bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
             source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixNativeMediaCompression = true; window.__vaultlixIOSAppOnMac = \(runsOnMac ? "true" : "false");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
