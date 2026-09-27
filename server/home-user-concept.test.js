@@ -5,15 +5,18 @@ const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('home page explains the Vaultlix-number user model without repetitive privacy copy', () => {
-  assert.match(client, /aria-label="Your Vaultlix number\. No SIM required\."/);
+test('home page leads with private messaging and explains the Vaultlix-number model', () => {
+  assert.match(client, /aria-label="Private messaging\. No phone number\."/);
   assert.match(client, /Create my number/);
-  assert.equal((client.match(/Dating someone new, selling online or meeting a client\? Share Vaultlix and keep your personal number to yourself\./g) || []).length, 2);
+  assert.equal((client.match(/Send encrypted messages, photos and files\. Make private voice and video calls\. Connect through a Vaultlix number without sharing your personal phone number\./g) || []).length, 2);
+  assert.match(client, /Encrypted chats/);
+  assert.match(client, /Photos &amp; files/);
+  assert.match(client, /Voice &amp; video/);
   assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
-  assert.match(client, /01 · Identify/);
-  assert.match(client, /02 · Share/);
-  assert.match(client, /03 · Decide/);
-  assert.match(client, /People need your exact number, and you decide who connects/);
+  assert.match(client, /01 · Create/);
+  assert.match(client, /02 · Connect/);
+  assert.match(client, /03 · Talk/);
+  assert.match(client, /Vaultlix is not a cellular number or virtual SIM service and cannot receive ordinary calls, SMS or OTPs/);
 });
 
 test('create and sign-in homepage actions open the correct account path directly', () => {
@@ -29,14 +32,14 @@ test('shareable create-number link opens account creation directly', () => {
   assert.match(client, /else if \(startupCreateNumber && !loadAccountState\(\)\) \{\s*openCreateAccount\(\);/);
 });
 
-test('home page leads with relatable private-number use cases', () => {
+test('home page leads with the core messenger experience', () => {
   assert.match(client, /id="everyday-privacy"/);
-  assert.match(client, /Keep your personal number for the people who already have it\./);
-  assert.match(client, /Dating someone new/);
-  assert.match(client, /Buying or selling/);
-  assert.match(client, /Meeting a client/);
-  assert.match(client, /No app installation required to open your invitation\. You decide whether to accept the connection\. When you’re finished, you can erase the conversation for both people\./);
-  assert.doesNotMatch(client, /Selling on Marketplace/);
+  assert.match(client, /Everything you expect from a messenger\. Less personal information\./);
+  assert.match(client, /Message privately/);
+  assert.match(client, /Share moments/);
+  assert.match(client, /Call securely/);
+  assert.match(client, /one-to-one or private group conversations/);
+  assert.match(client, /It works only inside Vaultlix—it cannot receive regular calls, SMS messages or OTPs/);
 });
 
 test('home page footer does not repeat the FAQ section', () => {
@@ -86,7 +89,7 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /threshold:\.62/);
   assert.match(client, /deckObserver\.observe\(deck\)/);
   assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1!important;animation:none!important/);
-  assert.match(client, /Your line, waiting for you/);
+  assert.match(client, /Your private messenger is ready/);
   assert.match(client, /@keyframes landing-word-build/);
   assert.match(client, /landing-reveal-accent::after/);
   assert.match(client, /id="vaultlix-motion-showcase"/);
