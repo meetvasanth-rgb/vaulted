@@ -2,6 +2,7 @@ package com.vaultlix.app;
 
 import android.app.Activity;
 import android.Manifest;
+import android.app.NotificationChannel;
 import android.content.pm.PackageManager;
 import android.app.NotificationManager;
 import android.content.Intent;
@@ -20,6 +21,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -62,6 +66,7 @@ public class IncomingCallActivity extends Activity {
     private final Handler ringtoneHandler = new Handler(Looper.getMainLooper());
     private final Runnable ringtoneTimeout = this::stopIncomingRingtone;
     private Ringtone incomingRingtone;
+    private Vibrator incomingVibrator;
     private static WeakReference<IncomingCallActivity> activeActivity = new WeakReference<>(null);
 
     @Override
@@ -318,18 +323,60 @@ public class IncomingCallActivity extends Activity {
     private void startIncomingRingtone() {
         stopIncomingRingtone();
         AudioManager manager = getSystemService(AudioManager.class);
-        if (manager != null && manager.getRingerMode() != AudioManager.RINGER_MODE_NORMAL) return;
-        Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-        Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), sound);
-        if (ringtone == null) return;
-        ringtone.setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build());
-        ringtone.setLooping(true);
-        incomingRingtone = ringtone;
-        ringtone.play();
+        int ringerMode = manager == null ? AudioManager.RINGER_MODE_NORMAL : manager.getRingerMode();
+        if (ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+            Uri sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            Ringtone ringtone = RingtoneManager.getRingtone(getApplicationContext(), sound);
+            if (ringtone != null) {
+                ringtone.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build());
+                ringtone.setLooping(true);
+                incomingRingtone = ringtone;
+                ringtone.play();
+            }
+        }
+        // This activity cancels the system call notification the moment it
+        // takes over (see handleIntent above) so its own channel-driven sound
+        // and vibration never get a chance to fire — incoming calls rang but
+        // never vibrated, on lock screen, in background and in most
+        // foreground cases alike, regardless of the channel's Vibrate toggle.
+        // Vibrate here instead, for as long as the ring plays, and keep it
+        // independent of the ring itself: a call should still vibrate in
+        // Vibrate ringer mode even though it should not audibly ring there.
+        if (ringerMode != AudioManager.RINGER_MODE_SILENT) startIncomingVibration();
         ringtoneHandler.postDelayed(ringtoneTimeout, 60_000);
+    }
+
+    private void startIncomingVibration() {
+        if (!callChannelVibrationEnabled()) return;
+        Vibrator vibrator = vibratorService();
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+        long[] pattern = { 0, 1000, 1000 };
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(pattern, 1));
+        } else {
+            vibrator.vibrate(pattern, 1);
+        }
+        incomingVibrator = vibrator;
+    }
+
+    /** Respects the same per-channel "Vibrate" toggle Android Settings shows for the calls channel. */
+    private boolean callChannelVibrationEnabled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return true;
+        NotificationChannel channel = manager.getNotificationChannel(VaultlixMessagingService.CALL_CHANNEL_PREFIX + "system");
+        return channel == null || channel.shouldVibrate();
+    }
+
+    private Vibrator vibratorService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager vibratorManager = getSystemService(VibratorManager.class);
+            return vibratorManager == null ? null : vibratorManager.getDefaultVibrator();
+        }
+        return getSystemService(Vibrator.class);
     }
 
     private void stopIncomingRingtone() {
@@ -337,6 +384,10 @@ public class IncomingCallActivity extends Activity {
         Ringtone ringtone = incomingRingtone;
         incomingRingtone = null;
         if (ringtone != null && ringtone.isPlaying()) ringtone.stop();
+        if (incomingVibrator != null) {
+            incomingVibrator.cancel();
+            incomingVibrator = null;
+        }
     }
 
     private TextView text(String value, int sizeSp, int color) {
