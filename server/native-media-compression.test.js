@@ -18,39 +18,80 @@ test('photos use a high-quality mobile-size compression profile', () => {
   assert.match(client, /if \(!blob \|\| blob\.size >= file\.size\)/);
 });
 
-test('direct and group videos compress before encryption with safe original fallback', () => {
-  assert.match(client, /async function compressVideoFile\(file\)/);
-  assert.match(client, /supportsNativeMediaCompression/);
-  assert.match(client, /action:'compressVideo'/);
-  assert.match(client, /compressed\.length >= originalBase64\.length/);
-  assert.match(client, /const compressedVideo = isVideo \? await compressVideoFile\(file\) : null/);
-  assert.match(groups, /compressVideoFile\(file\)/);
+test('direct and group videos compress before encryption, streamed to native in chunks, with no oversized-original fallback', () => {
+  assert.match(client, /async function compressVideoFile\(file, controller = null\)/);
+  assert.match(client, /nativeChunkedVideoCompressionAvailable/);
+  assert.match(client, /const MAX_VIDEO_SOURCE_BYTES = 100 \* 1024 \* 1024/);
+  assert.match(client, /const VIDEO_COMPRESSION_CHUNK_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(client, /action:'beginVideoCompression'/);
+  assert.match(client, /action:'appendVideoCompressionChunk'/);
+  assert.match(client, /action:'finishVideoCompression'/);
+  assert.match(client, /action:'cancelVideoCompression'/);
+  assert.match(client, /compressedBytes < file\.size && compressedBytes <= MAX_FILE_SIZE/);
+  // A video that genuinely needs compression to fit and can't get there
+  // must never fall back to the raw original — it has to return null and
+  // the caller must refuse to send it, not silently upload it anyway.
+  assert.match(client, /if \(!mustCompress\) return \{ base64: await fileToBase64\(file\), mime: file\.type, name: file\.name \};\s*\n\s*return null;/);
+  assert.match(client, /const compressedVideo = isVideo \? await compressVideoFile\(file, currentVideoController\) : null/);
+  assert.doesNotMatch(client, /action:'compressVideo'/);
+  assert.match(groups, /compressVideoFile\(file, currentVideoController\)/);
   assert.match(groups, /mime = compressedVideo\.mime/);
+  // Both send paths must refuse an oversized video rather than upload it.
+  for (const source of [client, groups]) {
+    assert.match(source, /couldn.t be compressed under 25MB/);
+  }
 });
 
-test('Android uses hardware-backed 720p H264 AAC transcoding', () => {
+test('a cancelled video compression is distinguished from a genuine failure on both send paths', () => {
+  assert.match(client, /return \{ cancelled: true \};/);
+  assert.match(client, /if \(isVideo && compressedVideo\?\.cancelled\) continue;/);
+  assert.match(groups, /if \(isVideo && compressedVideo\?\.cancelled\) continue;/);
+  assert.match(client, /cancelBtn\.className = 'photo-send-cancel'/);
+  assert.match(client, /cancelNativeVideoCompression\(requestId\)/);
+});
+
+test('Android streams chunks to a temp file and retries at a lower quality tier before giving up', () => {
   assert.match(gradle, /media3-transformer:1\.11\.1/);
   assert.match(gradle, /media3-effect:1\.11\.1/);
-  assert.match(android, /Presentation\.createForHeight\(720\)/);
-  assert.match(android, /setBitrate\(2_500_000\)/);
+  assert.match(android, /public boolean supportsChunkedVideoCompression\(\) \{ return true; \}/);
+  assert.match(android, /public boolean beginVideoCompression\(/);
+  assert.match(android, /public boolean appendVideoCompressionChunk\(/);
+  assert.match(android, /public void finishVideoCompression\(/);
+  assert.match(android, /public void cancelVideoCompression\(/);
+  assert.match(android, /MAX_CHUNKED_VIDEO_SOURCE_BYTES = 100 \* 1024 \* 1024/);
+  assert.match(android, /MAX_COMPRESSED_VIDEO_BYTES = 25 \* 1024 \* 1024/);
+  assert.match(android, /VIDEO_COMPRESSION_TIER_HEIGHTS = \{ 720, 480 \}/);
+  assert.match(android, /VIDEO_COMPRESSION_TIER_BITRATES = \{ 2_500_000, 1_200_000 \}/);
+  assert.match(android, /Presentation\.createForHeight\(VIDEO_COMPRESSION_TIER_HEIGHTS\[tier\]\)/);
   assert.match(android, /setVideoMimeType\(MimeTypes\.VIDEO_H264\)/);
   assert.match(android, /setAudioMimeType\(MimeTypes\.AUDIO_AAC\)/);
   assert.match(android, /bytes\.length < originalSize/);
+  assert.match(android, /retryOrFailVideoCompression/);
+  assert.doesNotMatch(android, /public boolean compressVideo\(/);
+  assert.doesNotMatch(android, /supportsNativeMediaCompression/);
 });
 
-test('iOS uses the system 720p H264 AAC export preset', () => {
-  assert.match(ios, /__vaultlixNativeMediaCompression = true/);
-  assert.match(ios, /AVAssetExportPreset1280x720/);
+test('iOS streams chunks to a temp file and retries at a lower quality tier before giving up', () => {
+  assert.match(ios, /__vaultlixChunkedMediaCompression = true/);
+  assert.match(ios, /func beginVideoCompression\(/);
+  assert.match(ios, /func appendVideoCompressionChunk\(/);
+  assert.match(ios, /func finishVideoCompression\(/);
+  assert.match(ios, /func cancelVideoCompression\(/);
+  assert.match(ios, /maxChunkedVideoSourceBytes = 100 \* 1024 \* 1024/);
+  assert.match(ios, /maxCompressedVideoBytes = 25 \* 1024 \* 1024/);
+  assert.match(ios, /\[AVAssetExportPreset1280x720, AVAssetExportPreset640x480, AVAssetExportPresetMediumQuality\]/);
   assert.match(ios, /exporter\.outputFileType = \.mp4/);
   assert.match(ios, /exporter\.shouldOptimizeForNetworkUse = true/);
-  assert.match(ios, /compressed\.count < sourceData\.count/);
+  assert.match(ios, /compressed\.count < originalSize/);
+  assert.match(ios, /attemptVideoExport/);
+  assert.doesNotMatch(ios, /func compressVideoForMessaging/);
 });
 
-test('large compressed videos remain downloadable and shareable in both native apps', () => {
-  assert.match(android, /dataUrl\.length\(\) > 36_000_000/);
-  assert.match(android, /bytes\.length > 25 \* 1024 \* 1024/);
-  assert.match(ios, /dataURL\.count <= 36_000_000/);
-  assert.match(ios, /data\.count <= 25 \* 1024 \* 1024/);
+test('large compressed videos remain downloadable and shareable in both native apps, with the 25MB output ceiling enforced natively', () => {
+  assert.match(android, /totalBytes > MAX_CHUNKED_VIDEO_SOURCE_BYTES/);
+  assert.match(android, /bytes\.length <= MAX_COMPRESSED_VIDEO_BYTES/);
+  assert.match(ios, /totalBytes <= Self\.maxChunkedVideoSourceBytes/);
+  assert.match(ios, /compressed\.count <= Self\.maxCompressedVideoBytes/);
 });
 
 test('message notifications use the new original Vaultlix chime', () => {

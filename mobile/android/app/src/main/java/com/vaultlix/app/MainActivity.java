@@ -612,8 +612,39 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
+        // A source video is streamed here from the web side in bounded
+        // chunks (see beginVideoCompression/appendVideoCompressionChunk)
+        // rather than arriving as one base64 data: URL — that used to mean a
+        // 100MB video became a ~133MB JS string AND a ~133MB decoded byte
+        // array held for the whole compression, a real source of the
+        // WebView memory spikes/freezes this chunked handoff exists to
+        // avoid. Every access to this map, and to the FileOutputStream it
+        // holds, happens only on mediaCompressionExecutor (a single-thread
+        // executor) — that serialization is what makes a plain HashMap safe
+        // here despite being touched from both the JS bridge thread-hop and
+        // the export callback.
+        private final java.util.Map<String, ChunkedVideoUpload> chunkedVideoUploads = new java.util.HashMap<>();
+        private static final int MAX_CHUNKED_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024;
+        private static final int MAX_COMPRESSED_VIDEO_BYTES = 25 * 1024 * 1024;
+        // 720p first; if that still doesn't fit under the 25MB ceiling, one
+        // more attempt at a visibly lower resolution/bitrate rather than
+        // giving up outright — never falling back to the untouched original
+        // is only safe because this retry exists.
+        private static final int[] VIDEO_COMPRESSION_TIER_HEIGHTS = { 720, 480 };
+        private static final int[] VIDEO_COMPRESSION_TIER_BITRATES = { 2_500_000, 1_200_000 };
+
+        private static final class ChunkedVideoUpload {
+            final File file;
+            final FileOutputStream output;
+            final int expectedTotalBytes;
+            int writtenBytes;
+            ChunkedVideoUpload(File file, FileOutputStream output, int expectedTotalBytes) {
+                this.file = file; this.output = output; this.expectedTotalBytes = expectedTotalBytes; this.writtenBytes = 0;
+            }
+        }
+
         @JavascriptInterface
-        public boolean supportsNativeMediaCompression() { return true; }
+        public boolean supportsChunkedVideoCompression() { return true; }
 
         private void emitVideoCompression(String requestId, byte[] output) {
             mediaCompressionExecutor.execute(() -> {
@@ -632,43 +663,55 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
-        @UnstableApi
         @JavascriptInterface
-        public boolean compressVideo(String requestId, String dataUrl, String requestedName, String quality) {
-            if (requestId == null || requestId.length() > 80 || dataUrl == null
-                    || !dataUrl.startsWith("data:video/") || dataUrl.length() > 36_000_000) return false;
-            int marker = dataUrl.indexOf(";base64,");
-            if (marker < 11) return false;
+        public boolean beginVideoCompression(String requestId, String filename, int totalBytes, String mime) {
+            if (requestId == null || requestId.isEmpty() || requestId.length() > 80
+                    || totalBytes <= 0 || totalBytes > MAX_CHUNKED_VIDEO_SOURCE_BYTES) return false;
             try {
                 mediaCompressionExecutor.execute(() -> {
-                    File inputFile = null;
-                    File outputFile = null;
+                    if (chunkedVideoUploads.containsKey(requestId)) return;
                     try {
-                        byte[] input = Base64.decode(dataUrl.substring(marker + 8), Base64.DEFAULT);
-                        if (input.length == 0 || input.length > 25 * 1024 * 1024) {
-                            emitVideoCompression(requestId, null); return;
-                        }
                         File directory = new File(getCacheDir(), "media-compression");
-                        if (!directory.exists() && !directory.mkdirs()) {
-                            emitVideoCompression(requestId, null); return;
-                        }
+                        if (!directory.exists() && !directory.mkdirs()) return;
                         String extension = "mp4";
-                        String candidate = requestedName == null ? "" : requestedName.toLowerCase(java.util.Locale.ROOT);
+                        String candidate = filename == null ? "" : filename.toLowerCase(java.util.Locale.ROOT);
                         int dot = candidate.lastIndexOf('.');
                         if (dot >= 0) {
                             String requestedExtension = candidate.substring(dot + 1);
                             if (requestedExtension.matches("mp4|mov|m4v|3gp|mkv|webm")) extension = requestedExtension;
                         }
-                        inputFile = new File(directory, "input-" + System.nanoTime() + "." + extension);
-                        outputFile = new File(directory, "output-" + System.nanoTime() + ".mp4");
-                        try (FileOutputStream output = new FileOutputStream(inputFile, false)) { output.write(input); }
-                        File finalInputFile = inputFile;
-                        File finalOutputFile = outputFile;
-                        int originalSize = input.length;
-                        runOnUiThread(() -> startVideoCompression(requestId, finalInputFile, finalOutputFile, originalSize));
+                        File file = new File(directory, "input-" + System.nanoTime() + "." + extension);
+                        FileOutputStream output = new FileOutputStream(file, false);
+                        chunkedVideoUploads.put(requestId, new ChunkedVideoUpload(file, output, totalBytes));
+                    } catch (Exception ignored) { }
+                });
+                return true;
+            } catch (RejectedExecutionException unavailable) { return false; }
+        }
+
+        @JavascriptInterface
+        public boolean appendVideoCompressionChunk(String requestId, String chunkBase64) {
+            if (requestId == null || chunkBase64 == null) return false;
+            try {
+                mediaCompressionExecutor.execute(() -> {
+                    ChunkedVideoUpload upload = chunkedVideoUploads.get(requestId);
+                    if (upload == null) return;
+                    try {
+                        byte[] data = Base64.decode(chunkBase64, Base64.DEFAULT);
+                        // A chunk that fails to decode, or would overrun the
+                        // size this upload was opened for, means the two
+                        // sides disagree about what is being sent — abandon
+                        // it rather than write something a later finish call
+                        // could mistake for a complete, trustworthy file.
+                        if (data.length == 0 || upload.writtenBytes + data.length > upload.expectedTotalBytes) {
+                            abandonChunkedUpload(requestId);
+                            emitVideoCompression(requestId, null);
+                            return;
+                        }
+                        upload.output.write(data);
+                        upload.writtenBytes += data.length;
                     } catch (Exception ignored) {
-                        if (inputFile != null) inputFile.delete();
-                        if (outputFile != null) outputFile.delete();
+                        abandonChunkedUpload(requestId);
                         emitVideoCompression(requestId, null);
                     }
                 });
@@ -676,11 +719,55 @@ public class MainActivity extends BridgeActivity {
             } catch (RejectedExecutionException unavailable) { return false; }
         }
 
+        @JavascriptInterface
+        public void cancelVideoCompression(String requestId) {
+            if (requestId == null) return;
+            try { mediaCompressionExecutor.execute(() -> abandonChunkedUpload(requestId)); }
+            catch (RejectedExecutionException ignored) { }
+        }
+
+        // Must only ever be called while already running on mediaCompressionExecutor.
+        private void abandonChunkedUpload(String requestId) {
+            ChunkedVideoUpload upload = chunkedVideoUploads.remove(requestId);
+            if (upload == null) return;
+            try { upload.output.close(); } catch (Exception ignored) { }
+            upload.file.delete();
+        }
+
         @UnstableApi
-        private void startVideoCompression(String requestId, File inputFile, File outputFile, int originalSize) {
+        @JavascriptInterface
+        public void finishVideoCompression(String requestId) {
+            if (requestId == null) return;
+            try {
+                mediaCompressionExecutor.execute(() -> {
+                    ChunkedVideoUpload upload = chunkedVideoUploads.remove(requestId);
+                    if (upload == null) return;
+                    try { upload.output.close(); } catch (Exception ignored) { }
+                    int originalSize = upload.writtenBytes;
+                    File outputFile = new File(upload.file.getParentFile(), "output-" + System.nanoTime() + ".mp4");
+                    runOnUiThread(() -> startVideoCompression(requestId, upload.file, outputFile, originalSize, 0));
+                });
+            } catch (RejectedExecutionException ignored) { }
+        }
+
+        @UnstableApi
+        private void retryOrFailVideoCompression(String requestId, File inputFile, File outputFile, int originalSize, int tier) {
+            outputFile.delete();
+            int nextTier = tier + 1;
+            if (nextTier >= VIDEO_COMPRESSION_TIER_HEIGHTS.length) {
+                inputFile.delete();
+                emitVideoCompression(requestId, null);
+                return;
+            }
+            File nextOutput = new File(inputFile.getParentFile(), "output-" + System.nanoTime() + ".mp4");
+            runOnUiThread(() -> startVideoCompression(requestId, inputFile, nextOutput, originalSize, nextTier));
+        }
+
+        @UnstableApi
+        private void startVideoCompression(String requestId, File inputFile, File outputFile, int originalSize, int tier) {
             try {
                 VideoEncoderSettings encoderSettings = new VideoEncoderSettings.Builder()
-                        .setBitrate(2_500_000)
+                        .setBitrate(VIDEO_COMPRESSION_TIER_BITRATES[tier])
                         .build();
                 DefaultEncoderFactory encoderFactory = new DefaultEncoderFactory.Builder(MainActivity.this)
                         .setRequestedVideoEncoderSettings(encoderSettings)
@@ -688,34 +775,36 @@ public class MainActivity extends BridgeActivity {
                 EditedMediaItem item = new EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(inputFile)))
                         .setEffects(new Effects(
                                 Collections.emptyList(),
-                                Collections.singletonList(Presentation.createForHeight(720))))
+                                Collections.singletonList(Presentation.createForHeight(VIDEO_COMPRESSION_TIER_HEIGHTS[tier]))))
                         .build();
                 Transformer transformer = new Transformer.Builder(MainActivity.this)
                         .setAudioMimeType(MimeTypes.AUDIO_AAC)
                         .setVideoMimeType(MimeTypes.VIDEO_H264)
                         .setEncoderFactory(encoderFactory)
                         .addListener(new Transformer.Listener() {
-                            private void finish(byte[] output) {
-                                inputFile.delete(); outputFile.delete();
-                                emitVideoCompression(requestId, output);
-                            }
                             @Override public void onCompleted(Composition composition, ExportResult result) {
                                 mediaCompressionExecutor.execute(() -> {
                                     try (FileInputStream input = new FileInputStream(outputFile)) {
                                         byte[] bytes = input.readAllBytes();
-                                        finish(bytes.length > 0 && bytes.length < originalSize && bytes.length <= 25 * 1024 * 1024 ? bytes : null);
-                                    } catch (Exception ignored) { finish(null); }
+                                        if (bytes.length > 0 && bytes.length < originalSize && bytes.length <= MAX_COMPRESSED_VIDEO_BYTES) {
+                                            inputFile.delete(); outputFile.delete();
+                                            emitVideoCompression(requestId, bytes);
+                                        } else {
+                                            retryOrFailVideoCompression(requestId, inputFile, outputFile, originalSize, tier);
+                                        }
+                                    } catch (Exception ignored) {
+                                        retryOrFailVideoCompression(requestId, inputFile, outputFile, originalSize, tier);
+                                    }
                                 });
                             }
                             @Override public void onError(Composition composition, ExportResult result, ExportException exception) {
-                                finish(null);
+                                retryOrFailVideoCompression(requestId, inputFile, outputFile, originalSize, tier);
                             }
                         })
                         .build();
                 transformer.start(item, outputFile.getAbsolutePath());
             } catch (Exception ignored) {
-                inputFile.delete(); outputFile.delete();
-                emitVideoCompression(requestId, null);
+                retryOrFailVideoCompression(requestId, inputFile, outputFile, originalSize, tier);
             }
         }
 

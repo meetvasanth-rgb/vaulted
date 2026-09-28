@@ -10,6 +10,17 @@ import WebRTC
 import OSLog
 #endif
 
+// One in-flight chunked video upload from the web side — a temp file being
+// appended to as base64 chunks arrive, until finishVideoCompression closes
+// it and hands it to AVAssetExportSession.
+private struct ChunkedVideoUpload {
+    let url: URL
+    let handle: FileHandle
+    let expectedTotalBytes: Int
+    var writtenBytes: Int
+    let mime: String
+}
+
 class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler, UIDocumentPickerDelegate, UIDocumentInteractionControllerDelegate, UIAdaptivePresentationControllerDelegate {
     var window: UIWindow?
     private var observers: [NSObjectProtocol] = []
@@ -41,6 +52,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var nativeLocalVideoEnabled = false
     private var nativeVideoSessionActive = false
     private weak var nativeVideoConsentAlert: UIAlertController?
+    // A source video is streamed to disk in bounded chunks from the web side
+    // (see beginVideoCompression/appendVideoCompressionChunk below) rather
+    // than arriving as one giant base64 data: URL — that used to mean a
+    // 100MB video became a ~133MB JS string AND a ~133MB Swift Data value
+    // held for the whole compression. Every access to this dictionary and
+    // to each upload's FileHandle happens only on chunkedVideoUploadQueue,
+    // which is what actually makes it safe to touch from the main-thread
+    // WKScriptMessageHandler callback and the background export work.
+    private var chunkedVideoUploads: [String: ChunkedVideoUpload] = [:]
+    private let chunkedVideoUploadQueue = DispatchQueue(label: "com.vaultlix.chunkedVideoUpload")
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
@@ -90,7 +111,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             windowScene.requestGeometryUpdate(.Mac(systemFrame: frame)) { _ in }
         }
         bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixNativeMediaCompression = true; window.__vaultlixIOSAppOnMac = \(runsOnMac ? "true" : "false");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixChunkedMediaCompression = true; window.__vaultlixIOSAppOnMac = \(runsOnMac ? "true" : "false");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -209,53 +230,105 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
     }
 
-    private func compressVideoForMessaging(requestId: String, dataURL: String, filename: String) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+    // Source videos up to 100MB are allowed through — the exported result
+    // must still land at or under 25MB (see attemptVideoExport below); that
+    // output ceiling, not this input one, is what a message can actually
+    // carry.
+    private static let maxChunkedVideoSourceBytes = 100 * 1024 * 1024
+    private static let maxCompressedVideoBytes = 25 * 1024 * 1024
+
+    private func beginVideoCompression(requestId: String, filename: String, totalBytes: Int, mime: String) {
+        chunkedVideoUploadQueue.async { [weak self] in
             guard let self,
-                  dataURL.count <= 36_000_000,
-                  dataURL.hasPrefix("data:video/"),
-                  let marker = dataURL.range(of: ";base64,"),
-                  let sourceData = Data(base64Encoded: String(dataURL[marker.upperBound...])),
-                  !sourceData.isEmpty, sourceData.count <= 25 * 1024 * 1024 else {
-                self?.emitVideoCompression(requestId: requestId)
-                return
-            }
+                  requestId.count <= 80, !requestId.isEmpty,
+                  totalBytes > 0, totalBytes <= Self.maxChunkedVideoSourceBytes,
+                  self.chunkedVideoUploads[requestId] == nil else { return }
             let extensionSource = (filename as NSString).pathExtension.lowercased()
             let inputExtension = ["mov", "mp4", "m4v"].contains(extensionSource) ? extensionSource : "mov"
-            let inputURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-compress-\(UUID().uuidString).\(inputExtension)")
-            let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-compress-\(UUID().uuidString).mp4")
-            do { try sourceData.write(to: inputURL, options: .atomic) }
-            catch { self.emitVideoCompression(requestId: requestId); return }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-compress-\(UUID().uuidString).\(inputExtension)")
+            guard FileManager.default.createFile(atPath: url.path, contents: nil),
+                  let handle = try? FileHandle(forWritingTo: url) else { return }
+            self.chunkedVideoUploads[requestId] = ChunkedVideoUpload(
+                url: url, handle: handle, expectedTotalBytes: totalBytes, writtenBytes: 0, mime: mime)
+        }
+    }
 
-            let asset = AVURLAsset(url: inputURL)
-            let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
-            let preset = compatible.contains(AVAssetExportPreset1280x720)
-                ? AVAssetExportPreset1280x720
-                : AVAssetExportPresetMediumQuality
-            guard let exporter = AVAssetExportSession(asset: asset, presetName: preset),
-                  exporter.supportedFileTypes.contains(.mp4) else {
-                try? FileManager.default.removeItem(at: inputURL)
+    private func appendVideoCompressionChunk(requestId: String, chunkBase64: String) {
+        chunkedVideoUploadQueue.async { [weak self] in
+            guard let self, var upload = self.chunkedVideoUploads[requestId] else { return }
+            // A chunk that doesn't decode, or would overrun the size this
+            // upload was opened for, means the two sides disagree about what
+            // is being sent — abandon it rather than write something a later
+            // finish call could mistake for a complete, trustworthy file.
+            guard let data = Data(base64Encoded: chunkBase64), !data.isEmpty,
+                  upload.writtenBytes + data.count <= upload.expectedTotalBytes else {
+                self.cleanupChunkedUpload(requestId: requestId)
                 self.emitVideoCompression(requestId: requestId)
                 return
             }
-            exporter.outputURL = outputURL
-            exporter.outputFileType = .mp4
-            exporter.shouldOptimizeForNetworkUse = true
-            exporter.exportAsynchronously { [weak self] in
-                defer {
-                    try? FileManager.default.removeItem(at: inputURL)
-                    try? FileManager.default.removeItem(at: outputURL)
-                }
-                guard exporter.status == .completed,
-                      let compressed = try? Data(contentsOf: outputURL),
-                      !compressed.isEmpty,
-                      compressed.count < sourceData.count,
-                      compressed.count <= 25 * 1024 * 1024 else {
-                    self?.emitVideoCompression(requestId: requestId)
-                    return
-                }
-                self?.emitVideoCompression(requestId: requestId, data: compressed, mime: "video/mp4")
+            upload.handle.write(data)
+            upload.writtenBytes += data.count
+            self.chunkedVideoUploads[requestId] = upload
+        }
+    }
+
+    private func cancelVideoCompression(requestId: String) {
+        chunkedVideoUploadQueue.async { [weak self] in self?.cleanupChunkedUpload(requestId: requestId) }
+    }
+
+    // Must only ever be called while already running on chunkedVideoUploadQueue.
+    private func cleanupChunkedUpload(requestId: String) {
+        guard let upload = chunkedVideoUploads.removeValue(forKey: requestId) else { return }
+        try? upload.handle.close()
+        try? FileManager.default.removeItem(at: upload.url)
+    }
+
+    private func finishVideoCompression(requestId: String) {
+        chunkedVideoUploadQueue.async { [weak self] in
+            guard let self, let upload = self.chunkedVideoUploads.removeValue(forKey: requestId) else { return }
+            try? upload.handle.close()
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.exportChunkedVideo(requestId: requestId, inputURL: upload.url, originalSize: upload.writtenBytes)
             }
+        }
+    }
+
+    private func exportChunkedVideo(requestId: String, inputURL: URL, originalSize: Int) {
+        defer { try? FileManager.default.removeItem(at: inputURL) }
+        let asset = AVURLAsset(url: inputURL)
+        let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        // 720p first; if that still doesn't fit under the 25MB ceiling, one
+        // more attempt at a visibly lower resolution rather than giving up
+        // outright — never falling back to the untouched original is only
+        // safe because this retry exists.
+        let tiers = [AVAssetExportPreset1280x720, AVAssetExportPreset640x480, AVAssetExportPresetMediumQuality]
+            .filter { compatible.contains($0) }
+        let presets = tiers.isEmpty ? [AVAssetExportPresetMediumQuality] : tiers
+        attemptVideoExport(asset: asset, presets: presets, index: 0, requestId: requestId, originalSize: originalSize)
+    }
+
+    private func attemptVideoExport(asset: AVURLAsset, presets: [String], index: Int, requestId: String, originalSize: Int) {
+        guard index < presets.count else { emitVideoCompression(requestId: requestId); return }
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-compress-\(UUID().uuidString).mp4")
+        guard let exporter = AVAssetExportSession(asset: asset, presetName: presets[index]),
+              exporter.supportedFileTypes.contains(.mp4) else {
+            attemptVideoExport(asset: asset, presets: presets, index: index + 1, requestId: requestId, originalSize: originalSize)
+            return
+        }
+        exporter.outputURL = outputURL
+        exporter.outputFileType = .mp4
+        exporter.shouldOptimizeForNetworkUse = true
+        exporter.exportAsynchronously { [weak self] in
+            defer { try? FileManager.default.removeItem(at: outputURL) }
+            guard exporter.status == .completed,
+                  let compressed = try? Data(contentsOf: outputURL),
+                  !compressed.isEmpty,
+                  compressed.count < originalSize,
+                  compressed.count <= Self.maxCompressedVideoBytes else {
+                self?.attemptVideoExport(asset: asset, presets: presets, index: index + 1, requestId: requestId, originalSize: originalSize)
+                return
+            }
+            self?.emitVideoCompression(requestId: requestId, data: compressed, mime: "video/mp4")
         }
     }
 
@@ -741,17 +814,37 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             setDocumentPreviewOpen(body["open"] as? Bool ?? false)
             return
         }
-        if action == "compressVideo" {
+        if action == "beginVideoCompression" {
             guard message.frameInfo.isMainFrame,
                   message.frameInfo.securityOrigin.host == "vaultlix.com",
                   let requestId = body["requestId"] as? String,
-                  requestId.count <= 80,
-                  let dataURL = body["dataUrl"] as? String else { return }
-            compressVideoForMessaging(
+                  let totalBytes = body["totalBytes"] as? Int else { return }
+            beginVideoCompression(
                 requestId: requestId,
-                dataURL: dataURL,
-                filename: (body["filename"] as? String) ?? "vaultlix-video.mov"
+                filename: (body["filename"] as? String) ?? "vaultlix-video.mov",
+                totalBytes: totalBytes,
+                mime: (body["mime"] as? String) ?? "video/mp4"
             )
+            return
+        }
+        if action == "appendVideoCompressionChunk" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com",
+                  let requestId = body["requestId"] as? String,
+                  let chunk = body["chunk"] as? String else { return }
+            appendVideoCompressionChunk(requestId: requestId, chunkBase64: chunk)
+            return
+        }
+        if action == "finishVideoCompression" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com",
+                  let requestId = body["requestId"] as? String else { return }
+            finishVideoCompression(requestId: requestId)
+            return
+        }
+        if action == "cancelVideoCompression" {
+            guard let requestId = body["requestId"] as? String else { return }
+            cancelVideoCompression(requestId: requestId)
             return
         }
         if action == "playVideoOnMac",

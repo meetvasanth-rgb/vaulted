@@ -239,9 +239,14 @@ async function handlePrivateGroupFileSelect(event) {
   for (const file of files) {
     const isVideo = String(file.type || '').startsWith('video/');
     let attachmentName = file.name;
-    const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : (String(file.type || '').startsWith('image/') ? 'Encrypting image…' : 'Encrypting attachment…'));
+    let currentVideoController = null;
+    const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : (String(file.type || '').startsWith('image/') ? 'Encrypting image…' : 'Encrypting attachment…'),
+      isVideo ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null);
     try {
-      if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
+      if (file.size > (isVideo ? MAX_VIDEO_SOURCE_BYTES : MAX_PRIVATE_GROUP_FILE_BYTES)) {
+        toast(isVideo ? `“${file.name}” is too large — maximum 100MB` : `“${file.name}” is too large — maximum 25MB`);
+        continue;
+      }
       let base64, mime = file.type || 'application/octet-stream';
       if (mime.startsWith('image/')) {
         progress.update('Encrypting image…');
@@ -251,8 +256,17 @@ async function handlePrivateGroupFileSelect(event) {
       } else {
         progress.update(isVideo ? 'Optimising video…' : 'Encrypting attachment…');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        const compressedVideo = isVideo ? await compressVideoFile(file) : null;
-        base64 = compressedVideo?.base64 || await fileToBase64(file);
+        currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
+        const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
+        currentVideoController = null;
+        if (isVideo && compressedVideo?.cancelled) continue;
+        // Never fall back to the raw original when a video genuinely needed
+        // compression and couldn't get under 25MB.
+        if (isVideo && !compressedVideo) {
+          toast(`“${file.name}” couldn’t be compressed under 25MB — try a shorter or lower-resolution video`);
+          continue;
+        }
+        base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
         if (compressedVideo) { attachmentName = compressedVideo.name; mime = compressedVideo.mime; }
       }
       const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;

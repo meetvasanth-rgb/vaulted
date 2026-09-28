@@ -2595,8 +2595,12 @@ html.vaultlix-native-android .emergency-sheet{
 }
 
 #photo-send-progress{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(340px,calc(100% - 32px));z-index:998;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-.photo-send-status{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:16px;background:#1A1916;color:#fff;font-size:14px;box-shadow:0 4px 20px #0003}
+.photo-send-status{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:16px;background:#1A1916;color:#fff;font-size:14px;box-shadow:0 4px 20px #0003;pointer-events:auto}
+.photo-send-status>span:nth-of-type(2){flex:1;min-width:0}
 .photo-send-spinner{width:18px;height:18px;flex-shrink:0;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:photo-send-spin .8s linear infinite}
+.photo-send-cancel{flex:none;border:1px solid #ffffff3d;border-radius:11px;padding:6px 12px;background:#ffffff14;color:#fff;font:700 12px 'Manrope',sans-serif;cursor:pointer}
+.photo-send-cancel:active{background:#ffffff24}
+.photo-send-cancel:disabled{opacity:.5;cursor:default}
 @keyframes photo-send-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.photo-send-spinner{animation:none}}
 </style>
@@ -5314,7 +5318,20 @@ let accountSyncTimer = null;
 // be generously long, not a safety mechanism in itself.
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const QUICK_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB attachment limit
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB attachment limit — also the hard ceiling a video must fit under AFTER native compression
+// Videos get their own, larger source-file ceiling: MAX_FILE_SIZE above stays
+// the limit for what actually goes on the wire, but a source video well
+// above that can still legitimately compress down under it. Bounded (not
+// unlimited) so a single source file can't be arbitrarily large on-device.
+const MAX_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024;
+// The source video is streamed to native compression in bounded chunks
+// rather than read into one base64 string first — a 100MB source read via
+// FileReader.readAsDataURL becomes a ~133MB JS string held for the entire
+// compression, which is exactly the memory spike (and the Android WebView
+// freezes it can cause) this chunked handoff exists to avoid. Only the
+// final, already-compressed (<=MAX_FILE_SIZE) result is ever held as one
+// base64 string.
+const VIDEO_COMPRESSION_CHUNK_BYTES = 2 * 1024 * 1024;
 
 function normalizePrivateNumber(value) {
   const privateNumber = String(value || '').replace(/\D/g, '');
@@ -20755,8 +20772,14 @@ async function handleFileSelect(event) {
 
   const valid = [];
   const tooLarge = [];
+  const tooLargeVideos = [];
   for (const file of files) {
-    if (file.size > MAX_FILE_SIZE) tooLarge.push(file.name); else valid.push(file);
+    const isVideo = String(file.type || '').startsWith('video/');
+    if (file.size > (isVideo ? MAX_VIDEO_SOURCE_BYTES : MAX_FILE_SIZE)) (isVideo ? tooLargeVideos : tooLarge).push(file.name);
+    else valid.push(file);
+  }
+  if (tooLargeVideos.length) {
+    toast(tooLargeVideos.length === 1 ? `“${tooLargeVideos[0]}” too large — maximum 100MB` : `${tooLargeVideos.length} videos skipped — maximum 100MB each`);
   }
   if (tooLarge.length) {
     toast(tooLarge.length === 1 ? `“${tooLarge[0]}” too large — maximum 25MB` : `${tooLarge.length} files skipped — maximum 25MB each`);
@@ -20767,7 +20790,13 @@ async function handleFileSelect(event) {
   const others = [];
   const photoCount = valid.filter(file => file.type.startsWith('image/')).length;
   const videoCount = valid.filter(file => String(file.type || '').startsWith('video/')).length;
-  const progress = valid.length ? beginPhotoSendProgress(valid.length, photoCount ? `Encrypting ${photoCount === 1 ? 'image' : photoCount + ' images'}…` : (videoCount ? `Encrypting ${videoCount === 1 ? 'video' : videoCount + ' videos'}…` : 'Encrypting attachment…')) : null;
+  // The Cancel button only ever does anything while currentVideoController
+  // is set — between/outside videos (including during the near-instant
+  // image path) it's a harmless no-op, so one shared button for the whole
+  // batch is enough rather than needing to swap it in and out per file.
+  let currentVideoController = null;
+  const progress = valid.length ? beginPhotoSendProgress(valid.length, photoCount ? `Encrypting ${photoCount === 1 ? 'image' : photoCount + ' images'}…` : (videoCount ? `Encrypting ${videoCount === 1 ? 'video' : videoCount + ' videos'}…` : 'Encrypting attachment…'),
+    videoCount ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null) : null;
   let photoIndex = 0;
   let videoIndex = 0;
   try {
@@ -20787,11 +20816,21 @@ async function handleFileSelect(event) {
         else progress?.update('Encrypting attachment…');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
-        const compressedVideo = isVideo ? await compressVideoFile(file) : null;
+        currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
+        const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
+        currentVideoController = null;
+        if (isVideo && compressedVideo?.cancelled) continue;
+        // Never fall back to the raw original when a video genuinely needed
+        // compression and couldn't get under 25MB — this used to silently
+        // upload the oversized file instead.
+        if (isVideo && !compressedVideo) {
+          toast(`“${file.name}” couldn’t be compressed under 25MB — try a shorter or lower-resolution video`);
+          continue;
+        }
         const preparedFile = compressedVideo
           ? { name:compressedVideo.name, type:compressedVideo.mime }
           : file;
-        const base64 = compressedVideo?.base64 || await fileToBase64(file);
+        const base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
         const pdfPreview = isPdfAttachment(file.type, file.name)
           ? await createPdfFirstPagePreview(base64)
           : null;
@@ -21218,7 +21257,7 @@ function seekVoice(e, msgId) {
 // only the recipient's side is gated.
 // items: array of { file, base64, mime } — one photo or several from a
 // multi-select all share the single choice made here.
-function beginPhotoSendProgress(count, initialMessage = '') {
+function beginPhotoSendProgress(count, initialMessage = '', onCancel = null) {
   let host = document.getElementById('photo-send-progress');
   if (!host) {
     host = document.createElement('div'); host.id = 'photo-send-progress';
@@ -21228,7 +21267,17 @@ function beginPhotoSendProgress(count, initialMessage = '') {
   notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
   const spinner = document.createElement('span'); spinner.className = 'photo-send-spinner'; spinner.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span'); label.textContent = initialMessage || `Encrypting ${count === 1 ? 'image' : count + ' images'}…`;
-  notice.append(spinner, label); host.appendChild(notice);
+  notice.append(spinner, label);
+  // Only a video's native compression is slow enough to be worth letting the
+  // user back out of — onCancel is passed in specifically for that case, not
+  // for the near-instant image/attachment paths.
+  if (onCancel) {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button'; cancelBtn.className = 'photo-send-cancel'; cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => { cancelBtn.disabled = true; onCancel(); };
+    notice.append(cancelBtn);
+  }
+  host.appendChild(notice);
   return {
     update(message) { label.textContent = message; },
     close() { notice.remove(); if (!host.children.length) host.remove(); },
@@ -21383,42 +21432,102 @@ function nativeVideoCompressionResult(requestId, timeoutMs = 150000) {
   });
 }
 
-async function compressVideoFile(file) {
-  const originalBase64 = await fileToBase64(file);
-  // Re-encoding tiny clips costs more battery than it saves. Native mobile
-  // HD compression is used for meaningful files; older app builds and the
-  // browser safely retain the original until their native bridge supports it.
-  if (file.size < 1024 * 1024) return { base64:originalBase64, mime:file.type, name:file.name };
-  const requestId = `video-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`;
-  const resultPromise = nativeVideoCompressionResult(requestId);
-  let requested = false;
+// True only for an app build new enough to speak the chunked begin/append/
+// finish/cancel protocol below — the single-shot compressVideo(requestId,
+// dataUrl, name, quality) bridge stays in place on both native sides purely
+// for an old installed app talking to this same web deploy, but this client
+// never calls it: dataUrl meant materializing the whole source file as one
+// base64 string first, which is the exact memory spike chunking exists to
+// remove.
+function nativeChunkedVideoCompressionAvailable() {
+  return (typeof window.VaultlixAndroid?.supportsChunkedVideoCompression === 'function'
+      && window.VaultlixAndroid.supportsChunkedVideoCompression() === true)
+    || window.__vaultlixChunkedMediaCompression === true;
+}
+
+function cancelNativeVideoCompression(requestId) {
+  if (!requestId) return;
   try {
-    const dataUrl = `data:${file.type};base64,${originalBase64}`;
-    if (typeof window.VaultlixAndroid?.supportsNativeMediaCompression === 'function'
-        && window.VaultlixAndroid.supportsNativeMediaCompression() === true
-        && typeof window.VaultlixAndroid.compressVideo === 'function') {
-      requested = window.VaultlixAndroid.compressVideo(requestId, dataUrl, file.name, 'hd') === true;
-    } else if (window.__vaultlixNativeMediaCompression === true && window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'compressVideo', requestId, dataUrl, filename:file.name, quality:'hd' });
-      requested = true;
-    }
+    if (typeof window.VaultlixAndroid?.cancelVideoCompression === 'function') window.VaultlixAndroid.cancelVideoCompression(requestId);
+    else if (window.webkit?.messageHandlers?.vaultlixCall) window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'cancelVideoCompression', requestId });
   } catch (_) {}
-  if (!requested) {
+}
+
+// controller (optional): { cancelled, requestId } — a plain object the
+// caller can also hold onto to cancel from a UI button. Set on it here so a
+// cancel requested mid-transfer can reach native with the right requestId.
+// Returns the same shape as the legacy compressVideo result event
+// ({ok, base64, mime}), or null if native was never actually asked (no
+// bridge available, or the request was rejected before any chunk was sent).
+async function requestNativeVideoCompression(file, controller) {
+  const isAndroid = typeof window.VaultlixAndroid?.beginVideoCompression === 'function';
+  const isIOS = !isAndroid && window.webkit?.messageHandlers?.vaultlixCall;
+  if (!isAndroid && !isIOS) return null;
+  const requestId = `video-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`;
+  if (controller) controller.requestId = requestId;
+  const resultPromise = nativeVideoCompressionResult(requestId, 300000);
+  const bail = () => {
     const cancelPending = nativeVideoCompressionRequests.get(requestId);
     nativeVideoCompressionRequests.delete(requestId);
     cancelPending?.(null);
-    return { base64:originalBase64, mime:file.type, name:file.name };
+  };
+  try {
+    const began = isAndroid
+      ? window.VaultlixAndroid.beginVideoCompression(requestId, file.name, file.size, file.type) === true
+      : (window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'beginVideoCompression', requestId, filename:file.name, totalBytes:file.size, mime:file.type }), true);
+    if (!began) { bail(); return null; }
+    for (let offset = 0; offset < file.size; offset += VIDEO_COMPRESSION_CHUNK_BYTES) {
+      if (controller?.cancelled) { cancelNativeVideoCompression(requestId); bail(); return null; }
+      const chunk = await blobToBase64(file.slice(offset, offset + VIDEO_COMPRESSION_CHUNK_BYTES));
+      if (isAndroid) {
+        if (window.VaultlixAndroid.appendVideoCompressionChunk(requestId, chunk) !== true) {
+          cancelNativeVideoCompression(requestId); bail(); return null;
+        }
+      } else {
+        window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'appendVideoCompressionChunk', requestId, chunk });
+      }
+    }
+    if (controller?.cancelled) { cancelNativeVideoCompression(requestId); bail(); return null; }
+    if (isAndroid) window.VaultlixAndroid.finishVideoCompression(requestId);
+    else window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'finishVideoCompression', requestId });
+  } catch (_) { bail(); return null; }
+  return resultPromise;
+}
+
+// Returns { base64, mime, name } on success, { cancelled:true } if the
+// caller's controller was cancelled, or null if this video cannot be sent —
+// too large to even attempt (MAX_VIDEO_SOURCE_BYTES), or it genuinely needs
+// compression to fit under MAX_FILE_SIZE and either no compressor is
+// available (plain browser, or an app build too old for the chunked
+// protocol) or native's own 720p-then-lower-quality retry still couldn't
+// get it there. Callers must never fall back to sending the original in
+// that null case — that silent-oversized-upload was the bug this replaced.
+// A video that already fits as-is is a separate, always-safe path below.
+async function compressVideoFile(file, controller = null) {
+  if (file.size > MAX_VIDEO_SOURCE_BYTES) return null;
+  // Re-encoding a tiny clip costs more battery than it saves, and it
+  // already fits — send it untouched.
+  if (file.size <= MAX_FILE_SIZE && file.size < 1024 * 1024) {
+    return { base64: await fileToBase64(file), mime: file.type, name: file.name };
   }
-  const result = await resultPromise;
+  const mustCompress = file.size > MAX_FILE_SIZE;
+  if (!nativeChunkedVideoCompressionAvailable()) {
+    if (mustCompress) return null;
+    return { base64: await fileToBase64(file), mime: file.type, name: file.name };
+  }
+  const result = await requestNativeVideoCompression(file, controller);
+  if (controller?.cancelled) return { cancelled: true };
   const compressed = typeof result?.base64 === 'string' ? result.base64 : '';
-  if (result?.ok !== true || !isValidMediaBase64(compressed)
-      || compressed.length >= originalBase64.length
-      || Math.ceil(compressed.length * 3 / 4) > MAX_FILE_SIZE) {
-    return { base64:originalBase64, mime:file.type, name:file.name };
+  const compressedBytes = compressed ? Math.ceil(compressed.length * 3 / 4) : Infinity;
+  const fitsAfterCompression = result?.ok === true && isValidMediaBase64(compressed)
+    && compressedBytes < file.size && compressedBytes <= MAX_FILE_SIZE;
+  if (fitsAfterCompression) {
+    const baseName = String(file.name || 'vaultlix-video').replace(/\.[^.]+$/, '').slice(0, 120) || 'vaultlix-video';
+    const outputMime = result?.mime === 'video/mp4' ? result.mime : 'video/mp4';
+    return { base64: compressed, mime: outputMime, name: `${baseName}.mp4` };
   }
-  const baseName = String(file.name || 'vaultlix-video').replace(/\.[^.]+$/, '').slice(0, 120) || 'vaultlix-video';
-  const outputMime = result?.mime === 'video/mp4' ? result.mime : 'video/mp4';
-  return { base64:compressed, mime:outputMime, name:`${baseName}.mp4` };
+  if (!mustCompress) return { base64: await fileToBase64(file), mime: file.type, name: file.name };
+  return null;
 }
 
 function createVideoAttachmentThumbnail(file, maxDim = 480) {
