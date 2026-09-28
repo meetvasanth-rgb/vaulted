@@ -125,6 +125,25 @@ test('approved native photos, videos and file previews avoid the second reveal g
   const emptyAlbum={kind:'album',images:[]};
   context.localRecordChecks.set(emptyAlbum,'allowed');
   assert.equal(context.needsAttachmentReveal(emptyAlbum),true);
+  // A plain text reply that quotes an image/video message (replyData.isImage
+  // with no type:'status') carries no attachment of its own — the quoted
+  // content already went through its own gate as the original message — so
+  // it must never be hidden behind "Attachment hidden", regardless of
+  // scanner availability or check status.
+  for(const enabled of [true,false]) {
+    context.localImageSafetyEnabled=()=>enabled;
+    assert.equal(context.needsAttachmentReveal({kind:'text',replyData:{isImage:true,mediaType:'image',thumb:'photo'}}),false);
+    assert.equal(context.needsAttachmentReveal({kind:'text',replyData:{isImage:true,mediaType:'video',thumb:null}}),false);
+  }
+  context.localImageSafetyEnabled=()=>true;
+  // A status-reply preview (type:'status') is the one reply shape that DOES
+  // need gating — it's a locally-generated snapshot of someone else's
+  // status, not yet screened at the message level.
+  const statusReply={kind:'text',replyData:{type:'status',isImage:true,thumb:'photo'}};
+  context.localRecordChecks.set(statusReply,undefined);
+  assert.equal(context.needsAttachmentReveal(statusReply),true);
+  context.localRecordChecks.set(statusReply,'allowed');
+  assert.equal(context.needsAttachmentReveal(statusReply),false);
   assert.equal(context.needsAttachmentReveal({kind:'gif'}),false);
 });
 test('photo checking reports each image and stops at a failed check',async()=>{

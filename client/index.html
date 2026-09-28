@@ -16453,7 +16453,14 @@ function scheduleDeferredKlipyGifs(body) {
 }
 const safetyRevealedRecords = new WeakSet();
 function needsAttachmentReveal(rec) {
-  const isAttachment = ['file','album','voice','gif','image'].includes(rec.kind) || !!rec.replyData?.isImage;
+  // A reply's own thumbnail only needs gating when it's a status-reply
+  // preview (a locally-generated snapshot of someone else's status, not
+  // yet scanned at the message level — see isScreenedStatusPreview below).
+  // Replying to an ordinary image/video message just quotes content that's
+  // already inside this room and was already screened as that original
+  // message; the reply itself carries no new attachment to hide.
+  const isStatusReplyPreview = rec.replyData?.type === 'status' && !!rec.replyData?.isImage;
+  const isAttachment = ['file','album','voice','gif','image'].includes(rec.kind) || isStatusReplyPreview;
   if (!isAttachment) return false;
   // A GIF record is created only after safeKlipyMediaUrl has accepted its
   // HTTPS delivery host. Treating it like an arbitrary peer-uploaded file
