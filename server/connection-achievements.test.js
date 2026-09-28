@@ -36,13 +36,24 @@ test('completed calls, video, inbox badges and accessible motion are wired to ac
   assert.match(client, /room\.callHadVideo = true/);
   assert.match(client, /connectionSpark >= 3[\s\S]{0,180}connection-spark/);
   assert.match(client, /prefers-reduced-motion:reduce/);
-  assert.match(client, /const colors = \['#FF3B6B','#FFB800','#33D17A','#2EC5FF','#8B5CF6','#FF70C9','#FFFFFF'\]/);
+  // The celebration's spring-in, glow bloom and shine sweep all fall back to
+  // an instant, static reveal under reduced motion — no confetti canvas to
+  // gate any more.
+  assert.match(client, /prefers-reduced-motion:reduce\)\{\.achievement-celebration\{transition:opacity \.15s ease\}[\s\S]{0,220}\.achievement-badge-glow,\.achievement-badge-shine\{display:none\}\}/);
 });
 
-test('achievements animate as transient text without a share card', () => {
+test('achievements animate as a poised, badge-first moment without a share card', () => {
   assert.match(client, /id="achievement-celebration"[^>]*role="status"/);
   assert.match(client, /showAchievementCelebration\(MILESTONE_DEFS\[id\]\)/);
-  assert.match(client, /achievementCelebrationTimer = setTimeout[\s\S]{0,100}3600/);
+  assert.match(client, /achievementCelebrationTimer = setTimeout\(dismiss, 2600\)/);
+  // Tapping the moment away early is as valid as waiting it out.
+  assert.match(client, /ceremony\.onclick = \(\) => \{ clearTimeout\(achievementCelebrationTimer\); dismiss\(\); \}/);
+  // The badge medallion reuses the exact gradient an earned achievement-badge-icon
+  // uses in the achievements list — the celebration shows the real badge, not a
+  // disconnected graphic — and carries the milestone's own glyph/number, so the
+  // title only needs to confirm what it is rather than repeat the value.
+  assert.match(client, /\.achievement-badge-medal\{[^}]*background:linear-gradient\(145deg,#8A3A58,#682C43\)/);
+  assert.match(client, /icon\.textContent = String\(milestone\.value \?\? '✦'\)\.slice\(0, 4\)/);
   assert.doesNotMatch(client, /id="milestone-canvas"|shareMilestoneCard|milestone-share-btn/);
 });
 
@@ -65,13 +76,18 @@ test('text, voice and media achievements keep independent encrypted counters', (
   assert.match(client, /if \(wasVideo\) ledger\.videoCallCount =/);
 });
 
-test('every achievement uses a readable badge and every celebration uses multicolour fireworks', () => {
-  assert.match(client, /\.achievement-kicker\{color:#fff/);
-  assert.match(client, /\.achievement-title\{[^}]*background:rgba\(8,8,12,\.66\)[^}]*color:#fff/);
+test('every achievement uses a readable badge and the celebration is a poised badge reveal, not fireworks', () => {
+  assert.match(client, /\.achievement-kicker\{[^}]*color:rgba\(255,255,255,\.7\)/);
+  assert.match(client, /\.achievement-title\{[^}]*color:#fff/);
   assert.match(client, /\.achievement-badge-card\.earned\{[^}]*#FFF6F9/);
   assert.match(client, /\.achievement-badge-card\.earned \.achievement-badge-icon\{[^}]*#8A3A58[^}]*#682C43/);
-  assert.match(client, /const colors = \['#FF3B6B','#FFB800','#33D17A','#2EC5FF','#8B5CF6','#FF70C9','#FFFFFF'\]/);
+  // No confetti canvas, no rainbow particle palette, anywhere.
+  assert.doesNotMatch(client, /celebration-fireworks|launchCelebrationFireworks/);
+  assert.doesNotMatch(client, /#FF3B6B','#FFB800','#33D17A','#2EC5FF','#8B5CF6','#FF70C9'/);
   assert.doesNotMatch(client, /first_call:\{[^}]*☎|First secure call',icon:'☎'/);
   const achievementCss = client.slice(client.indexOf('/* ── CONNECTION ACHIEVEMENTS'), client.indexOf('.number-card-overlay'));
   assert.doesNotMatch(achievementCss, /#F3C66B|#F7E8C7|#D8B25D|#F4D680|#D8A33E|#D4A541/);
+  // The spring-in uses the same overshoot curve already established
+  // elsewhere in the app's own motion language, not an arbitrary new one.
+  assert.match(achievementCss, /achievement-medal-in \.62s cubic-bezier\(\.34,1\.56,\.64,1\) forwards/);
 });
