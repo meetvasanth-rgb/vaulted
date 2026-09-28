@@ -89,7 +89,13 @@ test('hidden incoming content and inbox previews do not render unscreened text o
   context.renderMessageRecord({},malicious,false);
   assert.equal(body.last.children[0].children[0].textContent,'Potentially harmful message hidden by on-device safety checks.');
   assert.equal(context.vaultInboxPreview({messages:[malicious]},true).text,'Potentially harmful message hidden');
-  for(const kind of ['file','album','voice','image']){
+  // 'file' and 'voice' with nothing else set are no longer gated here — a
+  // bare file has no preview to scan and a voice note has no image content
+  // at all, so both are now shown outright (needsAttachmentReveal is tested
+  // directly, including these two cases, in media-safety.test.js). 'album'
+  // (no images array) and the synthetic 'image' kind are unchanged: neither
+  // matches any of the scan-eligible shapes, so they still hit this gate.
+  for(const kind of ['album','image']){
     context.renderMessageRecord({},{kind,isMe:false,id:kind},false);
     assert.match(body.last.children[0].children[0].textContent,/Attachment hidden/);
   }

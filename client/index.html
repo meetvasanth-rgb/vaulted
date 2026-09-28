@@ -16431,14 +16431,23 @@ function needsAttachmentReveal(rec) {
   // A GIF record is created only after safeKlipyMediaUrl has accepted its
   // HTTPS delivery host. Treating it like an arbitrary peer-uploaded file
   // made every received KLIPY result show the attachment-hidden warning.
-  if (rec.kind === 'gif') return false;
-  // Approval covers the complete photo/album, not a document's preview or a
-  // voice/video message's reply thumbnail. Keep the latter opt-in.
+  // A voice note carries no image content at all — nothing for the
+  // on-device scanner to check, and nothing this gate protects against —
+  // so it behaves like a photo that has nothing to hide behind: shown
+  // outright, same as a GIF.
+  if (rec.kind === 'gif' || rec.kind === 'voice') return false;
+  // Files/documents now behave like photos: auto-revealed once whatever
+  // preview they carry (a PDF's rendered first page, a video's thumbnail)
+  // clears the same on-device scan a photo goes through. A file with no
+  // preview at all — nothing rendered, nothing to scan — has nothing to
+  // gate either, and is shown outright too.
   const isPhoto = rec.kind === 'file' && rec.isImage && !!rec.base64;
   const isAlbum = rec.kind === 'album' && rec.images?.length > 0 && rec.images.every(image => !!image.base64);
   const isScreenedVideoPreview = rec.kind === 'file' && String(rec.mime || '').startsWith('video/') && !!rec.videoThumb;
+  const isScreenedPdfPreview = rec.kind === 'file' && !!rec.pdfPreview;
   const isScreenedStatusPreview = rec.replyData?.type === 'status' && !!rec.replyData.thumb;
-  return !((isPhoto || isAlbum || isScreenedVideoPreview || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
+  if (rec.kind === 'file' && !isPhoto && !isScreenedVideoPreview && !isScreenedPdfPreview) return false;
+  return !((isPhoto || isAlbum || isScreenedVideoPreview || isScreenedPdfPreview || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
 }
 function renderMessageRecord(room, rec, animate) {
   if (rec.replyData?.msgId && room.deleteLedger.get(rec.replyData.msgId) <= Date.now()) {

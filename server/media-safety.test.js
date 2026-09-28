@@ -86,10 +86,14 @@ test('HTML bypasses the unversioned module cached by older service workers',()=>
   assert.ok(server.includes("url === '/media-safety-v3.js'"));
 });
 
-test('approved native photos avoid the second reveal gate, but other attachments stay opt-in',()=>{
+test('approved native photos, videos and file previews avoid the second reveal gate; voice/gif are exempt outright; empty albums and unpreviewed files never hide unnecessarily',()=>{
   const context={localImageSafetyEnabled:()=>true,localRecordChecks:new WeakMap()};
   vm.createContext(context);vm.runInContext(extract('needsAttachmentReveal'),context);
-  for(const rec of [{kind:'file',isImage:true,base64:'photo'}, {kind:'album',images:[{base64:'a'},{base64:'b'}]}, {kind:'file',isImage:true,base64:'photo',viewOnce:true}]) {
+  // Photos, albums, view-once photos, and now file previews (a PDF's
+  // rendered first page) all wait for the same on-device scan to clear
+  // before auto-revealing — and never auto-reveal at all if the scanner
+  // itself isn't available (localImageSafetyEnabled false).
+  for(const rec of [{kind:'file',isImage:true,base64:'photo'}, {kind:'album',images:[{base64:'a'},{base64:'b'}]}, {kind:'file',isImage:true,base64:'photo',viewOnce:true}, {kind:'file',pdfPreview:'preview'}]) {
     for(const status of [undefined,'pending','blocked','unavailable']) {
       context.localRecordChecks.set(rec,status);
       assert.equal(context.needsAttachmentReveal(rec),true);
@@ -100,10 +104,27 @@ test('approved native photos avoid the second reveal gate, but other attachments
     assert.equal(context.needsAttachmentReveal(rec),true);
     context.localImageSafetyEnabled=()=>true;
   }
-  for(const rec of [{kind:'file',pdfPreview:'preview'}, {kind:'voice',replyData:{isImage:true,thumb:'photo'}}, {kind:'album',images:[]}]) {
-    context.localRecordChecks.set(rec,'allowed');
-    assert.equal(context.needsAttachmentReveal(rec),true);
+  // Voice notes carry no image content at all — exempt outright, regardless
+  // of status, replyData, or whether the scanner is even available.
+  for(const status of [undefined,'pending','blocked','unavailable','allowed']) {
+    const rec={kind:'voice',replyData:{isImage:true,thumb:'photo'}};
+    context.localRecordChecks.set(rec,status);
+    assert.equal(context.needsAttachmentReveal(rec),false);
   }
+  context.localImageSafetyEnabled=()=>false;
+  assert.equal(context.needsAttachmentReveal({kind:'voice'}),false);
+  context.localImageSafetyEnabled=()=>true;
+  // A file with nothing rendered to preview (no pdfPreview, not an image,
+  // no video thumbnail) has nothing to scan either — shown outright, same
+  // reasoning as voice/gif, regardless of scanner availability.
+  assert.equal(context.needsAttachmentReveal({kind:'file',fileName:'archive.zip'}),false);
+  context.localImageSafetyEnabled=()=>false;
+  assert.equal(context.needsAttachmentReveal({kind:'file',fileName:'archive.zip'}),false);
+  context.localImageSafetyEnabled=()=>true;
+  // An empty album never qualifies as a real album, regardless of status.
+  const emptyAlbum={kind:'album',images:[]};
+  context.localRecordChecks.set(emptyAlbum,'allowed');
+  assert.equal(context.needsAttachmentReveal(emptyAlbum),true);
   assert.equal(context.needsAttachmentReveal({kind:'gif'}),false);
 });
 test('photo checking reports each image and stops at a failed check',async()=>{
