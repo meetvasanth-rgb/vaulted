@@ -23,7 +23,10 @@ test('native iOS answers do not start a second WebRTC media connection', () => {
   assert.match(client, /const iosNativeBridge = window\.webkit\?\.messageHandlers\?\.vaultlixCall;[\s\S]*if \(iosNativeBridge && room\.nativeRoomHandle\)/);
   assert.match(client, /iosNativeBridge\.postMessage\(\{ action: 'answer', code: room\.code \}\)/);
   assert.match(client, /if \(iosNativeBridge && room\.nativeRoomHandle\)[\s\S]*disconnectSignaling\(room\)[\s\S]*return;/);
-  assert.match(ios, /if !nativeMediaCalls\.contains\(action\.callUUID\) \{[\s\S]*postAction\("answer"/);
+  // The answer logic lives in completeAnswerLocally (shared with the Mac
+  // CallKit-bypass answer path), keyed on a plain callID rather than
+  // action.callUUID directly.
+  assert.match(ios, /private func completeAnswerLocally\(callID: UUID, payload: \[String: Any\]\)[\s\S]*if !nativeMediaCalls\.contains\(callID\) \{[\s\S]*postAction\("answer"/);
 });
 
 test('Apple-silicon Mac calls use native CallKit media without reset-induced termination', () => {

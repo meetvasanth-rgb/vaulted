@@ -275,11 +275,6 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .call-btn:disabled{opacity:.3;cursor:not-allowed}
 .call-btn:disabled:hover{background:none}
 .e2e-bar{flex-shrink:0;background:#FFFBF0;border-top:1px solid #F0E8CC;border-bottom:1px solid #F0E8CC;padding:6px 14px;font-size:11px;color:#682C43;text-align:center;letter-spacing:.04em;font-weight:500}
-.push-banner{display:none;flex-shrink:0;align-items:center;gap:10px;background:#F0EBE3;border-bottom:1px solid #E8E2DA;padding:8px 14px;font-size:12px;color:#4A3F35}
-.push-banner.show{display:flex}
-.push-banner span{flex:1}
-.push-banner button{background:#682C43;color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:11px;cursor:pointer;white-space:nowrap}
-.push-banner button.secondary{background:none;color:#7A6E65;border:0.5px solid #D0CAC0}
 
 /* -- ROOM SWITCHER (multi-room tabs) -- */
 .room-tabs{display:none;flex-shrink:0;background:#fff;border-bottom:1px solid #EFEFEF;padding:6px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:center}
@@ -1466,11 +1461,11 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
 
 /* Push notifications is status-only, not a toggle — the OS/browser
    permission it reflects can't actually be revoked from this page once
-   granted, so a toggle that appeared to turn it "off" would be lying. The
-   automatic per-room banner (showEnableNotificationsBanner) already does
-   the real work of asking; this row just reports the true state and, when
-   there's something the user can still do (grant it / add to home
-   screen), lets them do that from here too. */
+   granted, so a toggle that appeared to turn it "off" would be lying.
+   Notification permission is asked once, during account creation/login
+   onboarding; this row just reports the true state and, when there's
+   something the user can still do (grant it / add to home screen), lets
+   them do that from here too. */
 .settings-status{flex-shrink:0;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-align:right;white-space:nowrap}
 .settings-status-on{color:#71947C}
 .settings-status-off{color:#B0A498}
@@ -1631,7 +1626,6 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 #msg-input:focus{background:#fff!important;border-color:rgba(104,44,67,.5)!important;box-shadow:0 0 0 4px rgba(104,44,67,.09)}
 .attach-btn,.mic-btn{width:42px!important;height:42px!important;border-radius:14px!important;background:#F4F1EB!important;color:#716A61!important}
 .send-btn{width:42px!important;height:42px!important;border-radius:14px!important;background:linear-gradient(145deg,var(--vx-gold),#542237)!important;box-shadow:0 6px 14px rgba(104,44,67,.25)}
-.push-banner{background:#EEF4F0;border-color:#D7E6DC;color:#285C40}
 .daily-nudge{background:#F7F2E4!important;border-color:#E9DFC1!important}
 
 /* Vault list, settings and informational pages */
@@ -1713,7 +1707,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .msg-bubble.me,.bubble.me{background:linear-gradient(145deg,#D9F1FF,#C8E9FB)!important;color:#271D25!important;border:1px solid #BCE0F3!important;box-shadow:0 4px 14px rgba(34,126,174,.10)}
 .msg-bubble.them,.bubble.them{border-color:#D8E5EC!important;box-shadow:0 4px 14px rgba(36,83,112,.07)}
 #msg-input{background:#EFF5F8!important}.attach-btn,.mic-btn{background:#EAF3F8!important;color:#4C758B!important}
-.push-banner{background:#E9F7F0;border-color:#CDE9DA;color:#246344}.daily-nudge{background:#F1EEFF!important;border-color:#CDEAF7!important}
+.daily-nudge{background:#F1EEFF!important;border-color:#CDEAF7!important}
 .toggle-switch input:checked + .toggle-track{background:#682C43}.settings-status-action{color:#542237}
 .settings-about-rule{background:#682C43}.legal-highlight{background:#F1EEFF!important;border-color:#C9E6F4!important;color:#285F78!important}
 .call-overlay{background:radial-gradient(circle at 50% 28%,#22516A 0%,#172C39 52%,#101C24 100%)}
@@ -1798,7 +1792,7 @@ body{background:#FFFFFF}
 .destroy-btn{color:#D94E54!important;border-color:#F3BFC2!important;background:#FFF3F4!important}
 .call-btn svg{stroke:#682C43}.call-accept-btn{background:#71947C}.call-decline-btn,.call-end-btn{background:#C87588}
 .call-overlay{background:radial-gradient(circle at 50% 25%,#34304F 0%,#1E2035 54%,#11131F 100%)}
-.legal-highlight,.push-banner{background:#EAF9F4!important;border-color:#CDEFE3!important;color:#225E4B!important}
+.legal-highlight{background:#EAF9F4!important;border-color:#CDEFE3!important;color:#225E4B!important}
 .toggle-switch input:checked + .toggle-track{background:#682C43}.settings-status-on{color:#71947C}.settings-status-action{color:#682C43}
 
 /* Burgundy + Rose + Sage — definitive palette and message treatment. */
@@ -1839,7 +1833,7 @@ body{color:#271D25;background:#FBF7F8}
    Only the dedicated call surfaces survive in this mode. */
 body.native-call-only > *:not(#call-overlay):not(#call-remote-video):not(#call-local-video):not(#call-reaction-burst){display:none!important}
 body.native-call-only{background:#271D25!important;overflow:hidden!important}
-.legal-highlight,.push-banner{background:#EEF3EF!important;border-color:#D8E4DB!important;color:#486451!important}
+.legal-highlight{background:#EEF3EF!important;border-color:#D8E4DB!important;color:#486451!important}
 .toggle-switch input:checked + .toggle-track{background:#682C43}.settings-status-on{color:#71947C}.settings-status-action{color:#682C43}
 
 /* Actual rendered chat message selectors (fixes the legacy gold bubble). */
@@ -2485,7 +2479,6 @@ html.vaultlix-native .landing-marketing{display:none!important}
 @keyframes private-line-travel{0%,22%{offset-distance:0%;opacity:0;transform:scale(.55)}32%{opacity:1}68%{opacity:1}79%,100%{offset-distance:100%;opacity:0;transform:scale(1)}}
 @keyframes private-line-spark{0%,32%,78%,100%{opacity:0;transform:scale(.2) rotate(0)}43%,65%{opacity:.8;transform:scale(1) rotate(90deg)}}
 @media(prefers-reduced-motion:reduce){.private-line-welcome{animation:none}.private-line-thread{animation:none;stroke-dashoffset:0}.private-line-thread-glow{animation:none;opacity:.6}.private-line-orbit,.private-line-node-halo,.private-line-core,.private-line-particle,.private-line-spark{animation:none}.private-line-core{opacity:1}.private-line-particle{display:none}}
-#s-chat .push-banner{margin:8px 14px 0;border-radius:12px!important;font-size:11px!important}
 #s-chat>div[style="position:relative"]{background:#fff;border-top:1px solid #EEE5E8;box-shadow:0 -8px 24px rgba(39,29,37,.045)}
 #s-chat .daily-nudge{margin:0!important;padding:11px 14px!important;border:0!important;border-left:4px solid #71947C!important;background:#EFF4F0!important;color:#4A6552!important;font:550 11px/1.35 'Manrope',sans-serif!important}
 #s-chat .reply-preview{background:#FBF7F8!important;border-color:#E8DCE1!important}
@@ -3371,7 +3364,6 @@ html{background:#fff}
     <span class="cross-vault-banner-arrow" aria-hidden="true">›</span>
   </button>
   <div class="room-tabs" id="room-tabs"></div>
-  <div class="push-banner" id="push-banner"></div>
   <div class="secure-reconnect-banner" id="secure-reconnect-banner" role="status">
     <span>This private line needs a new secure connection before messages can be sent.</span>
     <button type="button" id="secure-reconnect-button" onclick="requestSecureReconnection()">Reconnect securely</button>
@@ -12401,7 +12393,6 @@ async function finishAccountCreation(backupConfirmed = true) {
     openNativeOnboarding('notifications');
     return;
   }
-  if (isNativeApp()) showEnableNativeNotificationsBanner();
   showScreen('s-vault-list');
   connectInbox();
   toast('Your Vaultlix private number is ready');
@@ -13384,36 +13375,16 @@ async function requestNativePushPermission() {
   }
 }
 
-function showEnableNativeNotificationsBanner() {
-  const bar = document.getElementById('push-banner');
-  if (!bar || localStorage.getItem('vaulted_native_push_banner_dismissed')) return;
-  bar.innerHTML = `<span>Get notified when a message or call arrives?</span>
-    <button type="button" id="push-banner-yes">Enable</button>
-    <button type="button" class="secondary" id="push-banner-no">Not now</button>`;
-  bar.classList.add('show');
-  document.getElementById('push-banner-yes').onclick = async () => {
-    hidePushBanner();
-    await requestNativePushPermission();
-    updatePushStatus();
-  };
-  document.getElementById('push-banner-no').onclick = () => {
-    localStorage.setItem('vaulted_native_push_banner_dismissed', '1');
-    hidePushBanner();
-  };
-}
-
 async function bootstrapNativePushOnLaunch() {
-  // The old flow only reached native push from startRoomPolling(). A fresh
-  // install sitting on the landing/waiting screen therefore showed neither
-  // our Enable banner nor Apple's permission prompt. Retry briefly because
-  // the remote page can finish loading just before Capacitor exposes the
-  // injected plugin bridge.
+  // Notification permission is requested once, during the account
+  // creation/login onboarding step — nothing here should re-prompt for it.
+  // This just keeps nativePushPermission (used for the Settings status row
+  // and for deciding whether to register an existing grant) fresh on
+  // launch. Retry briefly because the remote page can finish loading just
+  // before Capacitor exposes the injected plugin bridge.
   for (let attempt = 0; attempt < 20; attempt++) {
     if (isNativeApp()) {
       await refreshNativePushPermission();
-      const onboardingState = localStorage.getItem(NATIVE_ONBOARDING_KEY);
-      const onboardingActive = ['welcome','identity','notifications'].includes(onboardingState);
-      if (nativePushPermission === 'prompt' && !onboardingActive) showEnableNativeNotificationsBanner();
       return;
     }
     await new Promise(resolve => setTimeout(resolve, 150));
@@ -13465,30 +13436,6 @@ window.addEventListener('online', () => {
   }
 });
 window.addEventListener('offline', renderOfflineState);
-
-function hidePushBanner() {
-  document.getElementById('push-banner')?.classList.remove('show');
-}
-
-function showEnableNotificationsBanner(room, reg) {
-  const bar = document.getElementById('push-banner');
-  if (!bar || localStorage.getItem('vaulted_push_banner_dismissed')) return;
-  bar.innerHTML = `<span>Get notified here when a message arrives?</span>
-    <button type="button" id="push-banner-yes">Enable</button>
-    <button type="button" class="secondary" id="push-banner-no">Not now</button>`;
-  bar.classList.add('show');
-  document.getElementById('push-banner-yes').onclick = async () => {
-    hidePushBanner();
-    try {
-      const perm = await Notification.requestPermission();
-      if (perm === 'granted') await subscribeToPush(room, reg);
-    } catch (e) {}
-  };
-  document.getElementById('push-banner-no').onclick = () => {
-    localStorage.setItem('vaulted_push_banner_dismissed', '1');
-    hidePushBanner();
-  };
-}
 
 // Multi-room: the push subscription is one-per-browser, not one-per-room, so
 // the service worker needs to know about EVERY open room, not just the one
@@ -13580,20 +13527,23 @@ async function subscribeToPush(room, reg) {
 }
 
 async function initPushForRoom(room) {
+  // Notification permission is asked once, during account creation/login
+  // onboarding — opening a room never re-prompts for it. If permission is
+  // still undetermined (the person deferred it at onboarding), this simply
+  // registers nothing and leaves the Settings status row as the way to
+  // enable it later.
   if (!room.code || !room.token) return;
   if (isNativeApp()) {
     await ensureNativePushListeners();
     await refreshNativePushPermission();
-    if (nativePushPermission === 'prompt') { showEnableNativeNotificationsBanner(); return; }
     if (nativePushPermission === 'granted' && nativePushToken) await registerNativeTokenForRoom(room);
     return;
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   if (isIOS() && !isStandalonePwa()) return;
-  if (Notification.permission === 'denied') return;
+  if (Notification.permission !== 'granted') return;
   const reg = swRegistration || await registerServiceWorker();
   if (!reg) return;
-  if (Notification.permission === 'default') { showEnableNotificationsBanner(room, reg); return; }
   await subscribeToPush(room, reg);
 }
 

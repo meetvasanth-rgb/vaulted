@@ -33,7 +33,11 @@ test('native iOS outgoing calls generate routed ringback until connection or end
   assert.match(iosCallManager, /AVAudioPlayerNode\(\)/);
   assert.match(iosCallManager, /scheduleBuffer\(buffer, at: nil, options: \.loops\)/);
   assert.match(iosCallManager, /nativeCallDidConnect[\s\S]*stopRingback\(callID: callID\)/);
-  assert.match(iosCallManager, /perform action: CXEndCallAction[\s\S]*stopRingback\(callID: action\.callUUID\)/);
+  // CXEndCallAction hands off to the shared endCallLocally helper (also used
+  // by the Mac CallKit-bypass teardown path), which is what actually stops
+  // the ringback — rather than doing it inline itself.
+  assert.match(iosCallManager, /perform action: CXEndCallAction\)\s*\{\s*endCallLocally\(callID: action\.callUUID/);
+  assert.match(iosCallManager, /private func endCallLocally\(callID: UUID, source: String\)[\s\S]*stopRingback\(callID: callID\)/);
   assert.match(client, /callState === 'outgoing'[\s\S]*outgoingSpeakerBtnHtml[\s\S]*toggleSpeaker\(\)/);
   assert.match(iosCallManager, /overrideOutputAudioPort\(enabled \? \.speaker : \.none\)[\s\S]*restartRingbackForCurrentRoute\(\)/);
   assert.match(iosCallManager, /func audioRouteDidChange\(\)[\s\S]*restartRingbackForCurrentRoute\(\)/);
