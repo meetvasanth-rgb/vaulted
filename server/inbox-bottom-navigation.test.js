@@ -21,8 +21,8 @@ test('calls view is derived only from decrypted encrypted-conversation call reco
   assert.doesNotMatch(client, /function renderCallHistoryList\(body\)[\s\S]{0,1200}(?:api\(|fetch\()/);
 });
 
-test('status thumbnails stay compact and live statuses mark matching inbox contacts', () => {
-  assert.match(client, /\.status-ring\{display:block;width:56px;height:68px[^}]*border-radius:19px/);
+test('status thumbnails stay compact circles, and live statuses mark matching inbox contacts', () => {
+  assert.match(client, /\.status-ring\{display:block;width:58px;height:58px[^}]*border-radius:50%/);
   assert.match(client, /\.status-add\{position:absolute;right:2px;bottom:2px;width:19px;height:19px/);
   assert.match(client, /const liveStatusAuthors = new Set\(statusFeed[\s\S]*normalizePrivateNumber\(item\.authorPrivateNumber\)/);
   assert.match(client, /hasLiveStatus = liveStatusAuthors\.has\(normalizePrivateNumber\(room\.peerPrivateNumber\)\)/);
@@ -49,4 +49,34 @@ test('own status viewer uses compact icon-only actions', () => {
   assert.match(client, /status-view-actions\$\{item\.own\?' status-owner-actions':''\}/);
   assert.match(client, /\.status-icon-action\{width:54px;height:54px/);
   assert.doesNotMatch(client, />Add update<\/button>|>\$\{item\.viewers\?\.length\|\|0\} viewed<\/button>|>Delete<\/button>/);
+});
+
+test('inbox bottom bar has a fourth Status action that opens a dedicated status page', () => {
+  const bar = client.match(/<div class="vault-list-actions">[\s\S]*?<\/div>\s*<\/div>\s*<!-- CLOSED -->/)?.[0] || '';
+  assert.match(bar, /id="vault-nav-status"[^>]*onclick="openStatusPage\(\)"[^>]*aria-label="Show status updates"/);
+  // Still icon-only, like the other three.
+  assert.doesNotMatch(bar.match(/id="vault-nav-status"[\s\S]*?<\/button>/)?.[0] || '', /<span[^>]*>\s*Status\s*<\/span>/);
+});
+
+test('the status page is a full screen reachable via goBack, listing every connection\'s status as a row', () => {
+  assert.match(client, /<div id="s-status-page" class="screen">/);
+  assert.match(client, /<div class="status-page-head">[\s\S]*onclick="goBack\(\)"[\s\S]*<h1>Status<\/h1>/);
+  assert.match(client, /<div class="status-page-body" id="status-page-body">/);
+  assert.match(client, /function openStatusPage\(\) \{\s*showScreen\('s-status-page'\);\s*renderStatusPage\(\);/);
+  const renderFn = client.match(/function renderStatusPage\(\)[\s\S]*?\n}/)?.[0] || '';
+  assert.match(renderFn, /status-page-body/);
+  // Same data (statusFeed, seen/hidden sets) and same actions as the rail —
+  // one row per connection, own status first, tapping opens the existing
+  // full-screen viewer (or the composer if there's no status yet).
+  assert.match(renderFn, /statusFeed\.filter\(candidate => !candidate\.own && !hidden\.has\(candidate\.id\)\)/);
+  assert.match(renderFn, /openStatusViewer\('\$\{escapeHtml\(key\)\}'\)/);
+  assert.match(renderFn, /ownItems\.length \? "openStatusViewer\('own'\)" : 'openStatusComposer\(\)'/);
+  assert.match(renderFn, /status-page-empty/);
+  // renderStatusRail() drives both views from one refresh path, so the page
+  // never goes stale relative to the rail.
+  assert.match(client, /rail\.innerHTML = html;\s*renderStatusPage\(\);\s*\n}/);
+});
+
+test('the status rail and the status page sit closer together than before', () => {
+  assert.match(client, /#status-rail\+#vault-list-body\{padding-top:6px!important\}/);
 });
