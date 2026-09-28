@@ -2257,6 +2257,10 @@ html.vaultlix-native #s-landing .landing-store-badges{display:none}
 #s-landing .walkthrough-preview{position:relative;display:grid;place-items:center;overflow:hidden;padding:22px;border:1px solid rgba(255,255,255,.13);border-radius:22px;background:radial-gradient(circle at 50% 15%,rgba(200,117,136,.34),transparent 38%),linear-gradient(145deg,#4A3040,#21181E)}
 #s-landing .walkthrough-video{display:block;width:min(100%,320px);aspect-ratio:9/16;object-fit:cover;border-radius:18px;background:#2F232B;box-shadow:0 20px 42px rgba(0,0,0,.28)}
 #s-landing #get-started-video .walkthrough-video{height:auto;object-fit:contain}
+#s-landing .walkthrough-toggle{margin-top:16px;min-height:44px;padding:10px 22px;border:1px solid #b97e97;border-radius:24px;background:#66334b;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+#s-landing .walkthrough-toggle[hidden]{display:none}
+#s-landing .walkthrough-toggle:focus-visible{outline:3px solid #efc9d9;outline-offset:3px}
+#s-landing .walkthrough-playback-status{color:#fff;font-size:13px;text-align:center}
 #s-landing .walkthrough-transcript{margin-top:24px;font:450 13px/1.6 "Manrope",sans-serif;color:#D7CBD1}
 #s-landing .walkthrough-transcript summary{cursor:pointer;color:#fff;padding:8px 0}
 #s-landing .walkthrough-transcript p{margin:10px 0 0}
@@ -2974,10 +2978,12 @@ html{background:#fff}
         <h2 class="marketing-title" id="get-started-video-title">From hello to a private conversation.</h2>
         <div class="walkthrough-shell">
           <div class="walkthrough-preview">
-            <video class="walkthrough-video" controls playsinline preload="none" width="720" height="1280" poster="/media/vaultlix-get-started-poster-v3.jpg" aria-label="10-second Vaultlix walkthrough: choose your number, sign in, add a friend, and chat" aria-describedby="get-started-video-description">
-              <source src="/media/vaultlix-get-started-10s-v3.mp4" type="video/mp4">
-              <a href="/media/vaultlix-get-started-10s-v3.mp4">Watch the Vaultlix walkthrough</a>
+            <video id="walkthrough-player" class="walkthrough-video" controls playsinline preload="none" width="720" height="1280" poster="/media/vaultlix-get-started-poster-v3.jpg" aria-label="10-second Vaultlix walkthrough: choose your number, sign in, add a friend, and chat" aria-describedby="get-started-video-description">
+              <source src="/media/vaultlix-get-started-10s-v4.mp4" type="video/mp4">
+              <a href="/media/vaultlix-get-started-10s-v4.mp4">Watch the Vaultlix walkthrough</a>
             </video>
+            <button type="button" class="walkthrough-toggle" aria-controls="walkthrough-player" hidden>Play walkthrough</button>
+            <span class="walkthrough-playback-status" role="status"></span>
           </div>
           <div class="walkthrough-copy">
             <h3>Create. Sign in. Connect.</h3>
@@ -21771,5 +21777,6 @@ function cancelReply() {
 
 </script>
 <script src="/groups.js"></script>
+<script src="/walkthrough-player.js"></script>
 </body>
 </html>
