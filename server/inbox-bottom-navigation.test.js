@@ -16,7 +16,7 @@ test('inbox bottom bar exposes compact icon-only add, chats and calls actions', 
 });
 
 test('calls view is derived only from decrypted encrypted-conversation call records', () => {
-  assert.match(client, /function callHistoryEntries\(\)[\s\S]*for \(const room of rooms\.values\(\)\)[\s\S]*uniqueVisibleConversationRecords\(room\.messages\)[\s\S]*callHistoryFamily\(rec\)/);
+  assert.match(client, /function callHistoryEntries\(missedOnly = false\)[\s\S]*for \(const room of rooms\.values\(\)\)[\s\S]*uniqueVisibleConversationRecords\(missedOnly[\s\S]*room\.messages[\s\S]*callHistoryFamily\(rec\)/);
   assert.match(client, /function renderCallHistoryList\(body\)[\s\S]*callHistoryEntries\(\)[\s\S]*openVaultListRoom\(el\.dataset\.room\)/);
   assert.doesNotMatch(client, /function renderCallHistoryList\(body\)[\s\S]{0,1200}(?:api\(|fetch\()/);
 });

@@ -56,7 +56,7 @@ test('cancelled calls distinguish caller and receiver perspectives', () => {
 
 test('call history makes no-answer and missed-call records visible', () => {
   assert.match(client, /Encrypted call\|Missed\(\?: encrypted\)\? call\|No answer\|Call declined\|Declined call\|Caller cancelled\|Cancel/);
-  assert.match(client, /else if \(!isPerspectiveCallEvent \|\| rec\.callEventViewerRole === 'receiver'\) room\.unread\+\+/);
+  assert.match(client, /else if \(!isPerspectiveCallEvent \|\| rec\.callEventViewerRole === 'receiver'\) \{\s*room\.unread\+\+/);
 });
 
 test('terminal signalling carries the outcome through web and native paths', () => {
