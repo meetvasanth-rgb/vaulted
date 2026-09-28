@@ -14244,8 +14244,10 @@ function renderStatusViewer() {
   const viewers=item.own?`<button class="status-icon-action" type="button" onclick="closeStatusViewer();openStatusComposer()" aria-label="Add status update" title="Add status update"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="status-icon-action" type="button" onclick="showStatusViewers()" aria-label="View status viewers" title="View status viewers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg></button><button class="status-icon-action" type="button" onclick="deleteCurrentStatus()" aria-label="Delete status" title="Delete status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button>`:`<div class="status-peer-actions"><div class="status-reply-pill"><button class="status-reply-launch" type="button" onclick="expandStatusReply()">Reply</button><button class="status-quick-reaction" type="button" onclick="sendQuickStatusReply('😍')" aria-label="Reply with heart eyes">😍</button><button class="status-quick-reaction" type="button" onclick="sendQuickStatusReply('😂')" aria-label="Reply with laughter">😂</button></div><button class="status-heart" type="button" onclick="sendQuickStatusReply('❤️')" aria-label="Reply with a heart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.7-7.5 1.1-1.1a5.5 5.5 0 0 0 0-7.8Z"/></svg></button></div><div class="status-inline-reply"><div class="status-reaction-tray">${['😍','😂','😮','😢','🙏','👏','🥳','💯'].map(emoji=>`<button type="button" onclick="sendQuickStatusReply('${emoji}')" aria-label="Reply ${emoji}">${emoji}</button>`).join('')}</div><div class="status-reply-compose"><button type="button" onclick="continueStatusReplyWith('gallery')" aria-label="Add photo or video"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><input id="status-reply-input" maxlength="500" placeholder="Reply privately…" oninput="updateStatusReplyControls()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStatusReplyText()}"/><button type="button" onclick="continueStatusReplyWith('camera')" aria-label="Open camera"><svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h3l1.4-2h5.2L16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg></button><button class="status-reply-mic" type="button" onclick="continueStatusReplyWith('voice')" aria-label="Record voice reply"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg></button><button class="status-reply-send" type="button" hidden onclick="sendStatusReplyText()" aria-label="Send reply"><svg viewBox="0 0 24 24"><path d="m4 12 16-8-5 16-3-6-8-2Z"/><path d="m12 14 8-10"/></svg></button></div></div>`;
   const menu=item.own?'':`<div class="status-overflow" id="status-overflow" hidden><button type="button" onclick="messageCurrentStatusAuthor()">Message</button><button type="button" onclick="callCurrentStatusAuthor(false)">Voice call</button><button type="button" onclick="callCurrentStatusAuthor(true)">Video call</button><button type="button" onclick="viewCurrentStatusContact()">View contact</button><button type="button" onclick="enableCurrentStatusNotifications()">Get notifications</button><button type="button" onclick="hideCurrentStatus()">Hide</button><button class="danger" type="button" onclick="reportCurrentStatus()">Report</button></div>`;
   overlay.innerHTML=`<div class="status-progress" style="--status-duration:${item.payload.type==='video'?Math.max(1,Number(item.payload.duration)||MAX_STATUS_VIDEO_SECONDS):6}s">${statusViewerItems.map((_,index)=>`<span class="${index<statusViewerIndex?'done':index===statusViewerIndex?'active':''}"><i></i></span>`).join('')}</div><div class="status-view-head"><button class="status-view-back" type="button" onclick="closeStatusViewer()" aria-label="Close status"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><span class="status-view-avatar">${image?`<img src="${escHtml(image)}" alt=""/>`:escHtml(name.charAt(0))}</span><span><div class="status-view-name">${escHtml(name)}</div><div class="status-view-time">${formatVaultInboxTime(item.createdAt)} · disappears in ${Math.max(1,Math.ceil((item.expiresAt-Date.now())/3600000))}h</div></span>${item.own?'<span></span>':'<button class="status-view-menu" type="button" onclick="toggleStatusOverflow(event)" aria-label="Status options" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>'}</div>${menu}<div class="status-stage">${stage}${tapZones}</div><div class="status-view-actions${item.own?' status-owner-actions':''}">${viewers}</div>`;
-  // Single finger: horizontal drag steps prev/next (unchanged), vertical
-  // drag down dismisses back to whatever screen opened the viewer. Two
+  // Single finger: vertical drag down dismisses back to whatever screen
+  // opened the viewer; a horizontal drag is left un-intercepted so the
+  // app-wide native swipe (back/home, see navigateBackFromNativeSwipe) can
+  // take it instead — prev/next between items stays on the tap zones. Two
   // fingers: pinch zooms the current image/video around the pinch midpoint.
   // Zoomed-in content suppresses single-finger nav until pinched back out,
   // same as Photos/Instagram — the back button always still works either way.
@@ -14309,7 +14311,11 @@ function renderStatusViewer() {
     overlay.style.transition = 'transform .3s cubic-bezier(.22,1,.36,1), opacity .3s ease';
     if (dy > 90 && dy > Math.abs(dx)) { overlay.style.transform = 'translateY(100%)'; overlay.style.opacity = '0'; setTimeout(closeStatusViewer, 220); return; }
     overlay.style.transform = ''; overlay.style.opacity = '';
-    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) { statusViewerStep(dx < 0 ? 1 : -1); return; }
+    // Horizontal drags used to step prev/next here too, but that competed
+    // with the app-wide native swipe (back/home) on the same axis. Prev/next
+    // stays available via the tap zones; a horizontal drag now falls through
+    // un-intercepted so the global gesture — the same one every other
+    // screen already answers to — can take it instead.
     overlay.querySelector('.status-progress span.active i')?.style.setProperty('animation-play-state','running');
     statusViewerTimer=setTimeout(()=>statusViewerStep(1),6000);
   };
@@ -14668,25 +14674,34 @@ function renderVaultList() {
     return;
   }
   let html = `${requestHtml}${outgoingRequestHtml}`;
-  const orderedGroups = [...privateGroups.values()].sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  for (const group of orderedGroups) {
-    const opening = openingPrivateGroupId === group.id;
-    const preview = opening ? 'Opening encrypted group…' : group.requiresRekey ? 'Updating group encryption…' : `${group.members?.length || 1} members · Encrypted group`;
-    html += `<div class="vault-list-row group-list-row${opening ? ' opening' : ''}" data-group="${escHtml(group.id)}" data-group-opening="${opening}" aria-busy="${opening}">
-      <span class="vault-list-avatar group-row-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg></span>
-      <span class="vault-list-row-name">${escHtml(group.name || 'Private group')}</span>
-      <span class="vault-list-row-preview${group.requiresRekey ? ' alert' : ''}">${escHtml(preview)}</span>
-      <span class="vault-list-row-meta">${group.updatedAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(group.updatedAt)}</span>` : ''}${group.unread > 0 ? `<span class="vault-list-row-unread">${group.unread > 9 ? '9+' : group.unread}</span>` : ''}</span>
-    </div>`;
-  }
   const hiddenStatusIds = statusHiddenIds();
   const liveStatusAuthors = new Set(statusFeed
     .filter(item => !item.own && !hiddenStatusIds.has(item.id))
     .map(item => normalizePrivateNumber(item.authorPrivateNumber))
     .filter(Boolean));
-  const orderedRooms = [...rooms.values()].sort((a, b) => vaultLastActivity(b) - vaultLastActivity(a));
-  for (const room of orderedRooms) {
+  // Groups and 1:1 rooms are interleaved by their own last-activity
+  // timestamp — same as a regular chat app inbox — rather than pinning
+  // every group above every room regardless of how stale it is.
+  const groupEntries = [...privateGroups.values()].map(group => ({ kind:'group', group, sortKey: group.updatedAt || 0 }));
+  const roomEntries = [...rooms.values()].map(room => {
     syncAchievementActivityFromMessages(room);
+    return { kind:'room', room, sortKey: vaultLastActivity(room) };
+  });
+  const orderedEntries = [...groupEntries, ...roomEntries].sort((a, b) => b.sortKey - a.sortKey);
+  for (const entry of orderedEntries) {
+    if (entry.kind === 'group') {
+      const group = entry.group;
+      const opening = openingPrivateGroupId === group.id;
+      const preview = opening ? 'Opening encrypted group…' : group.requiresRekey ? 'Updating group encryption…' : `${group.members?.length || 1} members · Encrypted group`;
+      html += `<div class="vault-list-row group-list-row${opening ? ' opening' : ''}" data-group="${escHtml(group.id)}" data-group-opening="${opening}" aria-busy="${opening}">
+        <span class="vault-list-avatar group-row-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg></span>
+        <span class="vault-list-row-name">${escHtml(group.name || 'Private group')}</span>
+        <span class="vault-list-row-preview${group.requiresRekey ? ' alert' : ''}">${escHtml(preview)}</span>
+        <span class="vault-list-row-meta">${group.updatedAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(group.updatedAt)}</span>` : ''}${group.unread > 0 ? `<span class="vault-list-row-unread">${group.unread > 9 ? '9+' : group.unread}</span>` : ''}</span>
+      </div>`;
+      continue;
+    }
+    const room = entry.room;
     const connectionSpark = roomConnectionSpark(room);
     const label = roomDisplayLabel(room);
     const preview = room.restorePending
@@ -14696,7 +14711,7 @@ function renderVaultList() {
       : room.restoreUnavailable
       ? { text:'Connection unavailable · tap to retry', alert:true }
       : vaultInboxPreview(room, previews);
-    const activity = vaultLastActivity(room);
+    const activity = entry.sortKey;
     const avatarStyle = vaultAvatarPalette(room.peerPrivateNumber || room.code);
     const profileImage = displayProfileImageUri(room.peerProfileImage);
     const hasLiveStatus = liveStatusAuthors.has(normalizePrivateNumber(room.peerPrivateNumber));
@@ -15249,15 +15264,20 @@ function nativeSwipeNavigationBlocked(target) {
     '#conversation-menu.open, #qr-overlay, #connect-overlay, #call-overlay, ' +
     '.app-lock-overlay.open, .account-overlay.open, .safety-overlay.open, ' +
     '.emergency-overlay.open, .achievement-celebration.open, .achievements-overlay.open, .number-card-overlay.open, ' +
-    '.pdf-preview-overlay.open, .image-viewer-overlay'
+    '.pdf-preview-overlay.open, .image-viewer-overlay, #status-composer'
   )) return true;
   return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile');
 }
 
 function navigateBackFromNativeSwipe() {
   closeConversationMenu();
+  // The status viewer floats above whatever screen opened it rather than
+  // being a screen of its own, so it needs its own check ahead of the
+  // screen-id switch below — same "swipe to go back" the other tabs get.
+  if (document.getElementById('status-viewer')) { closeStatusViewer(); return; }
   switch (activeScreenId()) {
     case 's-chat': openVaultInbox(); break;
+    case 's-status-page': openVaultInbox(); break;
     case 's-waiting': backToVaults(); break;
     case 's-setup':
     case 's-privacy':
@@ -15271,6 +15291,7 @@ function navigateBackFromNativeSwipe() {
 function navigateHomeFromNativeSwipe() {
   closeConversationMenu();
   closeSettings();
+  closeStatusViewer();
   // On Android this gesture intentionally leaves Vaultlix for the device's
   // Home screen. Older builds without the bridge method keep the safe
   // in-app fallback until the user updates the native wrapper.
