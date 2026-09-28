@@ -399,7 +399,7 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
    phone's own text-selection callout popped up on top of/instead of that
    menu on a slightly longer press. Copy is still reachable, just via the
    app's own action row now instead of native selection. */
-.bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.bubble{padding:9px 14px;border-radius:18px;font-size:15px;line-height:1.5;color:#111;word-break:break-word;position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}.msg.flash .bubble{animation:msg-flash 1.2s ease}@keyframes msg-flash{0%,60%{box-shadow:0 0 0 3px #c87588}100%{box-shadow:none}}
 /* Sent/received bubbles used to be WhatsApp's stock green/grey — every other
    screen in the app (landing, calls, settings, the V ceremonies) has been
    deliberately rebuilt in Vaultlix's own gold-on-cream palette, but the one
@@ -15685,6 +15685,10 @@ function attachLongPress(el, msgId, onFire) {
 function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // What the selection bar needs to know about this message.
   messageActionRegistry.set(msgId, { room, rec, replyText, isMe });
+  // Tapping a reply quote jumps to the original message it's quoting —
+  // same idea as the private-group chat's jumpToPrivateGroupMessage.
+  const quote = div.querySelector('[data-reply-to]');
+  if (quote) quote.onclick = e => { if (!selectMode) { e.stopPropagation(); jumpToMessage(quote.dataset.replyTo); } };
   const textBubble = div.querySelector('.bubble');
   // Text and media both start a selection on long-press. .msg-album-grid stands in
   // for a whole album: holding anywhere on it selects the message, while a quick
@@ -15702,6 +15706,14 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
     if (wasJustLongPressed()) return;
     if (selectMode) toggleMessageSelection(msgId);
   };
+}
+
+function jumpToMessage(id) {
+  const target = document.querySelector(`#chat-body .msg[data-msg-id="${CSS.escape(id)}"]`);
+  if (!target) { toast('That message is no longer on this device'); return; }
+  target.scrollIntoView({ block:'center', behavior:'smooth' });
+  target.classList.add('flash');
+  setTimeout(() => target.classList.remove('flash'), 1200);
 }
 
 // Forwarding never sends plaintext to a new server endpoint. The already
@@ -16057,7 +16069,7 @@ function buildReplyQuotePhotoHtml(replyData) {
   const safeSrc = replyData.thumb ? safeImageDataUri(replyData.thumbMime || 'image/jpeg', replyData.thumb) : null;
   const thumbHtml = safeSrc ? `<img class="msg-reply-quote-thumb" src="${safeSrc}" alt=""/>` : '';
   const isVideo = replyData.mediaType === 'video';
-  return `<div class="msg-reply-quote msg-reply-quote-photo">${thumbHtml}<span>${isVideo ? '▶' : '📷'} ${escHtml(replyData.text || (isVideo ? 'Video' : 'Photo'))}</span></div>`;
+  return `<div class="msg-reply-quote msg-reply-quote-photo"${replyData.msgId ? ` data-reply-to="${escHtml(replyData.msgId)}"` : ''}>${thumbHtml}<span>${isVideo ? '▶' : '📷'} ${escHtml(replyData.text || (isVideo ? 'Video' : 'Photo'))}</span></div>`;
 }
 
 function attachmentUploadAnimationHtml(label = 'Encrypting & sending…') {
@@ -16475,7 +16487,7 @@ function renderMessageRecord(room, rec, animate) {
           ? buildStatusReplyQuoteHtml(rec.replyData)
           : rec.replyData.isImage
             ? buildReplyQuotePhotoHtml(rec.replyData)
-            : `<div class="msg-reply-quote">${escHtml(rec.replyData.text)}</div>`)
+            : `<div class="msg-reply-quote"${rec.replyData.msgId ? ` data-reply-to="${escHtml(rec.replyData.msgId)}"` : ''}>${escHtml(rec.replyData.text)}</div>`)
       : '';
     contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
   }
@@ -17146,6 +17158,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     if (parsed.text && parsed.reply) {
       const statusReply = sanitizeStatusReplyData(parsed.reply);
       const replyData = statusReply || {
+        msgId:typeof parsed.reply.msgId === 'string' && parsed.reply.msgId.length <= 120 ? parsed.reply.msgId : null,
         text:String(parsed.reply.text || '').slice(0,100), isImage:!!parsed.reply.isImage,
         mediaType:parsed.reply.mediaType === 'video' ? 'video' : 'image',
         thumb:typeof parsed.reply.thumb === 'string' && parsed.reply.thumb.length <= 32768 ? parsed.reply.thumb : null,
@@ -17853,7 +17866,7 @@ async function sendMsg() {
     replySnapshot = replyTo.type === 'status'
       ? { type:'status', statusId:replyTo.statusId, statusType:replyTo.statusType, text:replyTo.text,
           createdAt:replyTo.createdAt, isImage:!!thumb, thumb, thumbMime:thumb ? 'image/jpeg' : null }
-      : { text: replyTo.text, isImage: !!replyTo.isImage, mediaType:replyTo.mediaType || null, thumb, thumbMime: replyTo.thumbMime || null };
+      : { msgId: replyTo.msgId || null, text: replyTo.text, isImage: !!replyTo.isImage, mediaType:replyTo.mediaType || null, thumb, thumbMime: replyTo.thumbMime || null };
   }
 
   const msgData = replySnapshot
