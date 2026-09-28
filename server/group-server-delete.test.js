@@ -55,7 +55,7 @@ function load(apiImpl, { pending = [] } = {}) {
     api:async (url, body) => { log.api.push([url, JSON.parse(JSON.stringify(body))]); return apiImpl(url, body); },
   });
   vm.runInContext(groups.match(/const PRIVATE_GROUP_SERVER_DELETE_RETRY_MS = [^;]+;/)[0], sandbox);
-  vm.runInContext(groups.match(/const PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES = \d+;/)[0], sandbox);
+  vm.runInContext(groups.match(/const PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES = [^;]+;/)[0], sandbox);
   vm.runInContext(extract(groups, 'flushPrivateGroupServerDeletes', 'async function'), sandbox);
   sandbox.group = { id:'g1', pendingServerDeletes:[...pending] };
   return { sandbox, log };
@@ -90,10 +90,10 @@ test('a server error is retried; a missing group or a refusal ends the queue', a
   }
 });
 
-test('an entry that keeps failing is eventually dropped', async () => {
+test('an entry that keeps failing remains pending', async () => {
   const { sandbox } = load(() => { throw new Error('offline'); }, { pending:['a'] });
   for (let i = 0; i < 10; i++) await vm.runInContext('flushPrivateGroupServerDeletes(group)', sandbox);
-  assert.deepEqual(plain(sandbox.group.pendingServerDeletes), []);
+  assert.deepEqual(plain(sandbox.group.pendingServerDeletes), ['a']);
 });
 
 test('only 50 are sent at a time, and a second flush cannot overlap the first', async () => {

@@ -636,6 +636,14 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
     body.innerHTML = '<div class="group-chat-empty">Loading encrypted messages…</div>';
     return;
   }
+  const deleted = privateGroupDeletedIds(group.messages || [], group.hiddenIds || []);
+  if (deleted.size) {
+    const previousHidden = new Set(group.hiddenIds || []);
+    const newlyDeleted = [...deleted].some(id => !previousHidden.has(id));
+    group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...deleted])];
+    scrubDeletedGroupMessages(group, deleted);
+    if (newlyDeleted) savePrivateGroupSessions();
+  }
   const { visible, reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
   if (!visible.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
   let previousDay = '';
@@ -801,12 +809,35 @@ function showPrivateGroupDeleteOptions(ids) {
   if (everyone) everyone.onclick = () => { close(); deletePrivateGroupMessages(ids, true); };
 }
 
+function scrubDeletedGroupMessages(group, deletedIds) {
+  const deleted = new Set(deletedIds);
+  if (!deleted.size) return;
+  if (group.id === activePrivateGroupId && groupReplyTo && deleted.has(groupReplyTo.id)) cancelPrivateGroupReply();
+  const kept = [];
+  for (const message of group.messages || []) {
+    if (deleted.has(message.id)) {
+      // Scrub the object itself too: queued work may still hold a reference.
+      for (const field of Object.keys(message)) if (!['id','senderId'].includes(field)) delete message[field];
+      message.deleted = true;
+      secureNativeDeleteMessage(privateGroupCacheCode(group.id), message.id);
+      continue;
+    }
+    if (message.reply && deleted.has(message.reply.id) && !message.reply.deleted) {
+      redactDeletedReply(message.reply);
+      delete message.ciphertext;
+      secureNativeDeleteMessage(privateGroupCacheCode(group.id), message.id);
+    }
+    kept.push(message);
+  }
+  group.messages = kept;
+}
+
 async function deletePrivateGroupMessages(ids, forEveryone) {
   const group = privateGroups.get(activePrivateGroupId); if (!group) return;
   exitPrivateGroupSelectMode();
   // Gone from this device straight away either way, as in a direct chat.
   group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...ids])].slice(-PRIVATE_GROUP_HIDDEN_MAX);
-  for (const id of ids) historyStoreDelete(privateGroupCacheCode(group.id), id);
+  scrubDeletedGroupMessages(group, ids);
   savePrivateGroupSessions(); renderPrivateGroupMessages(group);
   if (!forEveryone) return;
   // Members are told first (an encrypted message that hides it on their devices),
@@ -824,9 +855,9 @@ async function deletePrivateGroupMessages(ids, forEveryone) {
 // Removes messages deleted for everyone from the server. A failure (offline, a
 // server hiccup) leaves them queued, saved with the group, and tried again from
 // the poll, so a deletion is never quietly left half done. After a few
-// failures in a row an entry is dropped: it may be gone already.
+// failures it remains pending; an outage is not proof of deletion.
 const PRIVATE_GROUP_SERVER_DELETE_RETRY_MS = 30 * 1000;
-const PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES = 10;
+const PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES = Infinity; // Never discard an unacknowledged deletion.
 
 async function flushPrivateGroupServerDeletes(group) {
   const state = loadAccountState();
@@ -842,7 +873,8 @@ async function flushPrivateGroupServerDeletes(group) {
   } catch (_) {
     group.serverDeleteFailures = (group.serverDeleteFailures || 0) + 1;
     group.serverDeleteRetryAt = Date.now() + PRIVATE_GROUP_SERVER_DELETE_RETRY_MS;
-    if (group.serverDeleteFailures >= PRIVATE_GROUP_SERVER_DELETE_MAX_FAILURES) done = true;
+    // Retry transient failures until the server acknowledges deletion.
+    // A retry limit must never silently turn a failed erase into success.
   } finally { group.flushingServerDeletes = false; }
   if (done) {
     const sent = new Set(ids);
@@ -1157,7 +1189,11 @@ async function decodePrivateGroupBatch(group, state, messages) {
   for (const item of pending) {
     if (!deleted.has(item.message.id)) decoded.push({ ...item.message, attachmentId:item.attachmentId, attachmentState:'loading' });
   }
-  return decoded;
+  group.hiddenIds = [...new Set([...(group.hiddenIds || []), ...deleted])];
+  scrubDeletedGroupMessages(group, deleted);
+  const batch = { id:group.id, messages:decoded };
+  scrubDeletedGroupMessages(batch, deleted);
+  return batch.messages;
 }
 
 // ---- attachments load as they scroll into view --------------------------------
@@ -1315,10 +1351,10 @@ function privateGroupHistoryPut(groupId, messages) {
   const rows = [];
   for (const message of Array.isArray(messages) ? messages : []) {
     const msg = privateGroupHistoryEnvelope(message);
-    if (msg) rows.push({ code, id:msg.id, seq:msg.createdAt, msg });
+    if (msg && !cacheRecordErased(code, msg.id)) rows.push({ code, id:msg.id, seq:msg.createdAt, msg });
   }
   if (!rows.length) return Promise.resolve(false);
-  return historyTransaction('readwrite', store => { for (const row of rows) store.put(row); }).catch(() => null);
+  return historyTransaction('readwrite', store => { for (const row of rows) if (!cacheRecordErased(code, row.id)) store.put(row); }).catch(() => null);
 }
 
 // Adds decoded messages to the group, newest last, with no repeats. The window

@@ -97,7 +97,7 @@ test('a chat cleared for everyone removes everything sent up to that moment, and
 // ---- wiring ----------------------------------------------------------------
 
 test('every way a message or conversation is removed also removes the stored copy', () => {
-  assert.match(client, /function secureNativeDeleteMessage\(conversationId, messageId\) \{\s*if \(!conversationId \|\| !messageId\) return;\s*historyStoreDelete\(conversationId, messageId\);/);
+  assert.match(client, /historyStoreDelete\(code, id\), eraseNativeMessage\(code, id\)/);
   assert.match(client, /function secureNativeClearConversation\(conversationId\) \{\s*if \(!conversationId\) return;\s*historyStoreClearRoom\(conversationId\);/);
   assert.match(client, /historyStoreWipeAll\(\);\s*\n\s*try \{ sessionStorage\.clear\(\); localStorage\.clear\(\); \}/);
   // the delete ledger and the server's own deletions

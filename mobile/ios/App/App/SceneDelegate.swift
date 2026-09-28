@@ -922,7 +922,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "secureDeleteMessage",
            let conversationID = body["conversationId"] as? String,
            let messageID = body["messageId"] as? String {
-            _ = SecureMessageStore.shared.delete(conversationID: conversationID, messageID: messageID)
+            let success = SecureMessageStore.shared.delete(conversationID: conversationID, messageID: messageID)
+            if let requestId = body["requestId"] as? String {
+                emit(name: "vaultlix:message-erased", detail: ["requestId": requestId, "success": success])
+            }
             return
         }
         if action == "secureClearConversation",

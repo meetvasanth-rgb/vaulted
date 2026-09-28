@@ -30,6 +30,7 @@ function load(overrides = {}) {
   const sandbox = vm.createContext({
     Map, Set, String, Array, JSON, Promise, Object, Number, Math, Infinity,
     HISTORY_LOAD_LIMIT:200,
+    cacheRecordErased:() => false,
     activePrivateGroupId:'g1',
     privateGroups:new Map(),
     loadAccountState:() => ({ accountId:'me', sessionToken:'t' }),

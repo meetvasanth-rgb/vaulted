@@ -194,7 +194,7 @@ test('failed attachments are retried when the connection returns, the app resume
 
 test('our own sent attachments are cached on upload, and deleting a message deletes its cached copy', () => {
   assert.match(client, /attachmentCachePut\(room\.code, prepared\.attachmentId, msgId, ciphertext\)/);
-  assert.match(client, /function historyStoreDelete\(code, id\) \{\s*if \(!code \|\| !id\) return;\s*attachmentCacheDeleteForMessage\(code, id\);/);
+  assert.match(client, /async function historyStoreDelete\(code, id\)[\s\S]*attachmentCacheDeleteForMessage\(code, id\)/);
   assert.match(client, /function historyStoreClearRoom\(code\) \{\s*if \(!code\) return;\s*attachmentCacheClearRoom\(code\);/);
 });
 

@@ -4557,7 +4557,7 @@ let secureNativeCacheScheduled = false;
 function secureNativeStoreMessage(room, rec) {
   if (!room?.code || !rec?.id || rec.kind === 'sys' || rec.kind === 'blocked'
       || rec.kind === 'attachment-unavailable' || rec.kind === 'attachment-loading') return;
-  if (secureNativeCachedRecords.has(rec)) return;
+  if (rec.deleted || rec.replyData?.deleted || cacheRecordErased(room.code, rec.id) || pendingMessageErasures.has(JSON.stringify([room.code, rec.id])) || secureNativeCachedRecords.has(rec)) return;
   let plaintext;
   try { plaintext = JSON.stringify(rec); } catch (e) { return; }
   // Android's JavaScript bridge is synchronous. Passing a multi-megabyte
@@ -4627,16 +4627,97 @@ function scheduleSecureNativeHistoryCache(room, records) {
   };
   scheduleNext(runOne);
 }
+// Pending erasures contain IDs only, never message text. Keep them across crashes.
+const pendingMessageErasures = new Map();
+const nativeEraseReplies = new Map();
+const erasedCacheIds = new Set();
+try { for (const key of JSON.parse(localStorage.getItem('vaultlix_erased_cache_ids_v1') || '[]')) if (typeof key === 'string') erasedCacheIds.add(key); } catch (_) {}
+function cacheRecordErased(code, id) { return erasedCacheIds.has(JSON.stringify([code, id])); }
+function excludeErasedCacheRecord(code, id) {
+  erasedCacheIds.add(JSON.stringify([code, id]));
+  try { localStorage.setItem('vaultlix_erased_cache_ids_v1', JSON.stringify([...erasedCacheIds])); }
+  catch (_) { warnMessageErasePending(); }
+}
+let messageEraseRunning = false;
+let messageEraseWarningShown = false;
+const MESSAGE_ERASE_JOURNAL = 'vaultlix_pending_message_erasures_v1';
+try {
+  for (const item of JSON.parse(localStorage.getItem(MESSAGE_ERASE_JOURNAL) || '[]')) {
+    if (Array.isArray(item) && item.length === 2 && item.every(v => typeof v === 'string' && v.length <= 128))
+      pendingMessageErasures.set(JSON.stringify(item), item);
+  }
+} catch (_) {}
+function saveMessageEraseJournal() {
+  try { localStorage.setItem(MESSAGE_ERASE_JOURNAL, JSON.stringify([...pendingMessageErasures.values()])); return true; }
+  catch (_) { warnMessageErasePending(); return false; }
+}
+function warnMessageErasePending() {
+  if (messageEraseWarningShown) return;
+  messageEraseWarningShown = true;
+  toast('Message hidden. Device cleanup is pending; keep Vaultlix open to retry.');
+}
+window.addEventListener('vaultlix:message-erased', event => {
+  const detail = event.detail || {};
+  nativeEraseReplies.get(detail.requestId)?.(detail.success === true);
+});
+function eraseNativeMessage(conversationId, messageId) {
+  try {
+    if (typeof window.VaultlixAndroid?.secureDeleteMessage === 'function')
+      return Promise.resolve(window.VaultlixAndroid.secureDeleteMessage(conversationId, messageId) === true);
+    if (!window.webkit?.messageHandlers?.vaultlixCall) return Promise.resolve(true);
+    const requestId = crypto.randomUUID();
+    return new Promise(resolve => {
+      const finish = success => { clearTimeout(timer); nativeEraseReplies.delete(requestId); resolve(success); };
+      const timer = setTimeout(() => finish(false), 5000);
+      nativeEraseReplies.set(requestId, finish);
+      try { window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'secureDeleteMessage', conversationId, messageId, requestId }); }
+      catch (_) { finish(false); }
+    });
+  } catch (_) { return Promise.resolve(false); }
+}
+async function retryPendingMessageErasures() {
+  if (messageEraseRunning) return;
+  messageEraseRunning = true;
+  try {
+    for (const [key, [code, id]] of pendingMessageErasures) {
+      const [local, native] = await Promise.all([historyStoreDelete(code, id), eraseNativeMessage(code, id)]).catch(() => [false, false]);
+      if (local && native) { pendingMessageErasures.delete(key); saveMessageEraseJournal(); }
+      else warnMessageErasePending();
+    }
+    if (!pendingMessageErasures.size) messageEraseWarningShown = false;
+  } finally { messageEraseRunning = false; }
+}
 function secureNativeDeleteMessage(conversationId, messageId) {
   if (!conversationId || !messageId) return;
-  historyStoreDelete(conversationId, messageId);
-  try {
-    if (typeof window.VaultlixAndroid?.secureDeleteMessage === 'function') {
-      window.VaultlixAndroid.secureDeleteMessage(conversationId, messageId);
-    } else {
-      window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'secureDeleteMessage', conversationId, messageId });
+  excludeErasedCacheRecord(conversationId, messageId);
+  pendingMessageErasures.set(JSON.stringify([conversationId, messageId]), [conversationId, messageId]);
+  saveMessageEraseJournal();
+  void retryPendingMessageErasures();
+}
+setInterval(() => { if (!document.hidden) void retryPendingMessageErasures(); }, 30000);
+window.addEventListener('pageshow', () => { void retryPendingMessageErasures(); });
+
+function redactDeletedReply(reply) {
+  if (!reply) return;
+  for (const field of Object.keys(reply)) if (!['msgId', 'id'].includes(field)) delete reply[field];
+  reply.text = 'Message deleted';
+  reply.deleted = true;
+}
+function redactRoomReplies(room, msgId) {
+  if (replyTo?.msgId === msgId && room.code === activeRoomCode) cancelReply();
+  for (const rec of room.messages) {
+    if (rec.replyData?.msgId !== msgId || rec.replyData.deleted) continue;
+    redactDeletedReply(rec.replyData);
+    // Drop cached copies of the old quote; preserve the reply itself in memory.
+    cancelSecureNativeCacheWrite(room.code, rec.id);
+    rec.deleted = false; // The reply survives; only its quoted snapshot is removed.
+    secureNativeDeleteMessage(room.code, rec.id);
+    if (room.code === activeRoomCode) {
+      const row = document.querySelector(`.msg[data-msg-id="${rec.id}"]`);
+      const quote = row?.querySelector('.msg-reply-quote');
+      if (quote) quote.textContent = 'Message deleted';
     }
-  } catch (e) { console.warn('Native cryptographic deletion failed'); }
+  }
 }
 
 // A restored-history record can still be waiting in the idle cache queue
@@ -4660,11 +4741,11 @@ function cancelSecureNativeCacheWrite(conversationId, messageId, record = null) 
 function scrubMessageRecord(record) {
   if (!record) return;
   record.deleted = true;
-  for (const field of ['content','base64','pdfPreview','url']) {
+  for (const field of ['content','text','thumb','base64','pdfPreview','url']) {
     if (typeof record[field] === 'string') record[field] = '';
   }
   if (record.replyData && typeof record.replyData === 'object') {
-    for (const field of ['content','base64','pdfPreview','url']) {
+    for (const field of ['content','text','thumb','base64','pdfPreview','url']) {
       if (typeof record.replyData[field] === 'string') record.replyData[field] = '';
     }
   }
@@ -4795,10 +4876,10 @@ function historyStorePut(code, messages) {
   const rows = [];
   for (const message of messages) {
     const msg = historyEnvelope(message);
-    if (msg) rows.push({ code, id:msg.id, seq:msg.seq, msg });
+    if (msg && !cacheRecordErased(code, msg.id)) rows.push({ code, id:msg.id, seq:msg.seq, msg });
   }
   if (!rows.length) return Promise.resolve(false);
-  return historyTransaction('readwrite', store => { for (const row of rows) store.put(row); }).catch(() => null);
+  return historyTransaction('readwrite', store => { for (const row of rows) if (!cacheRecordErased(code, row.id)) store.put(row); }).catch(() => null);
 }
 
 // A page of stored envelopes for a conversation, oldest first: the newest
@@ -4843,10 +4924,13 @@ function historyStorePatch(code, id, fields) {
   }).catch(() => {});
 }
 
-function historyStoreDelete(code, id) {
-  if (!code || !id) return;
-  attachmentCacheDeleteForMessage(code, id);
-  historyTransaction('readwrite', store => { store.delete([code, id]); }).catch(() => {});
+async function historyStoreDelete(code, id) {
+  if (!code || !id) return false;
+  const results = await Promise.all([
+    attachmentCacheDeleteForMessage(code, id),
+    historyTransaction('readwrite', store => { store.delete([code, id]); }).catch(() => null),
+  ]);
+  return results.every(value => value === true);
 }
 
 function historyStoreClearRoom(code) {
@@ -4940,8 +5024,8 @@ async function attachmentCacheTrim() {
 }
 
 function attachmentCacheDeleteForMessage(code, msgId) {
-  if (!code || !msgId) return;
-  attachmentTransaction('readwrite', store => {
+  if (!code || !msgId) return Promise.resolve(false);
+  return attachmentTransaction('readwrite', store => {
     const request = store.index('byMessage').openKeyCursor(IDBKeyRange.only([code, msgId]));
     request.onsuccess = () => {
       const cursor = request.result;
@@ -16357,6 +16441,10 @@ function needsAttachmentReveal(rec) {
   return !((isPhoto || isAlbum || isScreenedVideoPreview || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
 }
 function renderMessageRecord(room, rec, animate) {
+  if (rec.replyData?.msgId && room.deleteLedger.get(rec.replyData.msgId) <= Date.now()) {
+    redactDeletedReply(rec.replyData);
+    if (!cacheRecordErased(room.code, rec.id)) secureNativeDeleteMessage(room.code, rec.id);
+  }
   const body = document.getElementById('chat-body');
   const typing = document.getElementById('typing-indicator');
 
@@ -16629,6 +16717,7 @@ function startReceiveDeleteTimer(room, msgId, seconds) {
 // element, so a message disappears on time even if you're looking at a
 // different room's tab when the countdown ends.
 function removeMessageRecord(room, msgId) {
+  redactRoomReplies(room, msgId);
   const idx = room.messages.findIndex(m => m.id === msgId);
   const record = idx === -1 ? null : room.messages[idx];
   cancelSecureNativeCacheWrite(room.code, msgId, record);
@@ -17164,6 +17253,10 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
         thumb:typeof parsed.reply.thumb === 'string' && parsed.reply.thumb.length <= 32768 ? parsed.reply.thumb : null,
         thumbMime:parsed.reply.thumbMime === 'image/jpeg' ? 'image/jpeg' : null,
       };
+      if (replyData.msgId && room.deleteLedger.get(replyData.msgId) <= Date.now()) {
+        redactDeletedReply(replyData);
+        if (!cacheRecordErased(room.code, base.id)) secureNativeDeleteMessage(room.code, base.id);
+      }
       return { ...base, kind: 'text', content: parsed.text, replyData, jumbo: isSingleEmoji(parsed.text) };
     }
   } catch (e) {}

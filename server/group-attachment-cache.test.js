@@ -39,6 +39,9 @@ function makeSandbox({ cache = new Map(), fetchImpl } = {}) {
     attachmentCacheGet:async (code, id) => cache.get(`${code}|${id}`) ?? null,
     attachmentCachePut:async (code, id, msgId, text) => { calls.put.push([code, id, msgId]); cache.set(`${code}|${id}`, text); return true; },
     historyStoreDelete:(code, id) => calls.del.push([code, id]),
+    secureNativeDeleteMessage:(code, id) => calls.del.push([code, id]),
+    activePrivateGroupId:null, groupReplyTo:null,
+    redactDeletedReply:reply => { reply.text='Message deleted'; reply.deleted=true; },
     historyStoreClearRoom:code => { calls.clear.push(code); },
     fetch:async (...args) => { calls.fetch++; return fetchImpl(...args); },
   });
@@ -48,6 +51,7 @@ function makeSandbox({ cache = new Map(), fetchImpl } = {}) {
   vm.runInContext(fn('downloadPrivateGroupAttachment'), sandbox);
   vm.runInContext(asyncFn('fetchPrivateGroupAttachment'), sandbox);
   vm.runInContext(fn('privateGroupDeletedIds'), sandbox);
+  vm.runInContext(fn('scrubDeletedGroupMessages'), sandbox);
   vm.runInContext(asyncFn('decodePrivateGroupBatch'), sandbox);
   return { sandbox, calls, cache };
 }
@@ -158,7 +162,7 @@ test('a batch never keeps a deleted attachment, and turns the rest into placehol
 test('wiring: uploads are kept, deletes and leaving clean up, Storage names groups', () => {
   assert.match(groups, /attachmentCachePut\(privateGroupCacheCode\(group\.id\), attachmentId, messageId, encryptedPayload\)/);
   assert.match(groups, /downloadPrivateGroupAttachment\(state, group, attachmentId, message\.id, options\)/);
-  assert.match(extract(groups, 'deletePrivateGroupMessages', 'async function'), /historyStoreDelete\(privateGroupCacheCode\(group\.id\), id\)/);
+  assert.match(extract(groups, 'deletePrivateGroupMessages', 'async function'), /scrubDeletedGroupMessages\(group, ids\)/);
   assert.equal((groups.match(/forgetPrivateGroupData\(/g) || []).length, 5); // definition + leave + delete + report + sync prune
   assert.match(groups, /if \(!live\.has\(id\)\) \{ forgetPrivateGroupData\(id\)/);
   assert.match(extract(groups, 'pollPrivateGroup', 'async function'), /decodePrivateGroupBatch\(group, state, incomingRaw\)/);
