@@ -1277,29 +1277,15 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
    already faded to transparent (see dissolveCallScreen), so it's sitting
    directly on the room's white/cream chat background, not the #0A0908 the
    original vanish-overlay text colors were tuned for. White-on-white would
-   have been unreadable right when it matters most — the one line that's
-   actually meant to reassure the person reading it. Dark, warm-toned text
-   instead. Just the V and "This call never existed." here — the call
-   duration isn't shown on this transient screen at all (it still lands in
-   the room afterward via the "Encrypted call · MM:SS" system message), so
-   there's nothing to stage before the one line that matters. */
+   have been unreadable right when it matters most. Just the V here — the
+   call duration isn't shown on this transient screen at all (it still
+   lands in the room afterward via the "Encrypted call · MM:SS" system
+   message), so there's nothing to stage before it. */
 .call-vanish-mark{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity .5s ease,transform .8s ease-out}
 .call-vanish-mark.visible{opacity:1}
 .call-vanish-mark .v-glyph{font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:300;color:#682C43;letter-spacing:.1em;line-height:1;transform:scale(.8);transition:transform .4s ease-out}
 .call-vanish-mark.visible .v-glyph{transform:scale(1)}
 .call-vanish-mark .v-glyph.pulse{animation:vanish-pulse .5s ease-in-out}
-.call-vanish-mark .v-line2{font-family:'Inter',sans-serif;font-size:11px;color:#682C43;font-weight:400;letter-spacing:.1em;text-transform:uppercase;margin-top:20px;opacity:0;transition:opacity .4s ease .55s}
-.call-vanish-mark.visible .v-line2{opacity:.8}
-/* Sand-disintegrate — "This call never existed." is the one line built to
-   be believed, so instead of floating off like everything before it, it
-   comes apart letter by letter: each character carries its own randomized
-   drift/rotation/delay (set inline per-char in wrapSandChars) so the line
-   crumbles unevenly, like sand losing its shape, rather than moving as one
-   block. transform+opacity+filter only — no layout properties — so it
-   stays smooth even on older phones. */
-.sand-char{display:inline-block}
-.sand-char.sand-disintegrate{animation:sand-fall .85s ease-in forwards;animation-delay:var(--delay)}
-@keyframes sand-fall{0%{opacity:1;transform:translate(0,0) rotate(0deg);filter:blur(0)}35%{opacity:.8}100%{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(var(--rot));filter:blur(2px)}}
 
 .call-actions{display:flex;gap:36px;align-items:flex-start;justify-content:center}
 /* At 4+ buttons (camera toggle is always present now, speaker/flip are each
@@ -1730,7 +1716,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .msg-viewonce-badge,.settings-btn:hover,.settings-btn.active svg{color:#682C43!important}
 .msg.me .msg-progress-wrap{background:rgba(104,44,67,.15)}
 .msg.me .msg-reply-quote{background:rgba(104,44,67,.10)}
-.connect-v-mark,.vanish-v,.call-vanish-mark .v-glyph,.call-vanish-mark .v-line2{color:#682C43}
+.connect-v-mark,.vanish-v,.call-vanish-mark .v-glyph{color:#682C43}
 .connect-rule,.vanish-rule,.call-hdr-rule,.ring-dot,.ring-wave,.call-live-dot{background:#682C43}
 .call-hollow-dot{border-color:#682C43}
 .settings-row-icon[style*="#682C43"]{background:#F1EEFF!important;color:#682C43!important}
@@ -8433,7 +8419,7 @@ function renderCallOverlay(room) {
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status call-security">End-to-end encrypted call</div>
         <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>
-        <div class="call-tagline">This call never existed.</div>`;
+        ${waitingForNativeMedia ? '<div class="call-tagline">This call never existed.</div>' : ''}`;
     callSurface.innerHTML = `
       ${stableIosRain || videoMode ? '' : callDataRainHtml()}
       ${videoMode ? '' : callHeaderBlock()}
@@ -14258,19 +14244,81 @@ function renderStatusViewer() {
   const viewers=item.own?`<button class="status-icon-action" type="button" onclick="closeStatusViewer();openStatusComposer()" aria-label="Add status update" title="Add status update"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="status-icon-action" type="button" onclick="showStatusViewers()" aria-label="View status viewers" title="View status viewers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></svg></button><button class="status-icon-action" type="button" onclick="deleteCurrentStatus()" aria-label="Delete status" title="Delete status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button>`:`<div class="status-peer-actions"><div class="status-reply-pill"><button class="status-reply-launch" type="button" onclick="expandStatusReply()">Reply</button><button class="status-quick-reaction" type="button" onclick="sendQuickStatusReply('😍')" aria-label="Reply with heart eyes">😍</button><button class="status-quick-reaction" type="button" onclick="sendQuickStatusReply('😂')" aria-label="Reply with laughter">😂</button></div><button class="status-heart" type="button" onclick="sendQuickStatusReply('❤️')" aria-label="Reply with a heart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.7-7.5 1.1-1.1a5.5 5.5 0 0 0 0-7.8Z"/></svg></button></div><div class="status-inline-reply"><div class="status-reaction-tray">${['😍','😂','😮','😢','🙏','👏','🥳','💯'].map(emoji=>`<button type="button" onclick="sendQuickStatusReply('${emoji}')" aria-label="Reply ${emoji}">${emoji}</button>`).join('')}</div><div class="status-reply-compose"><button type="button" onclick="continueStatusReplyWith('gallery')" aria-label="Add photo or video"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><input id="status-reply-input" maxlength="500" placeholder="Reply privately…" oninput="updateStatusReplyControls()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStatusReplyText()}"/><button type="button" onclick="continueStatusReplyWith('camera')" aria-label="Open camera"><svg viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h3l1.4-2h5.2L16 6h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="13" r="3.5"/></svg></button><button class="status-reply-mic" type="button" onclick="continueStatusReplyWith('voice')" aria-label="Record voice reply"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg></button><button class="status-reply-send" type="button" hidden onclick="sendStatusReplyText()" aria-label="Send reply"><svg viewBox="0 0 24 24"><path d="m4 12 16-8-5 16-3-6-8-2Z"/><path d="m12 14 8-10"/></svg></button></div></div>`;
   const menu=item.own?'':`<div class="status-overflow" id="status-overflow" hidden><button type="button" onclick="messageCurrentStatusAuthor()">Message</button><button type="button" onclick="callCurrentStatusAuthor(false)">Voice call</button><button type="button" onclick="callCurrentStatusAuthor(true)">Video call</button><button type="button" onclick="viewCurrentStatusContact()">View contact</button><button type="button" onclick="enableCurrentStatusNotifications()">Get notifications</button><button type="button" onclick="hideCurrentStatus()">Hide</button><button class="danger" type="button" onclick="reportCurrentStatus()">Report</button></div>`;
   overlay.innerHTML=`<div class="status-progress" style="--status-duration:${item.payload.type==='video'?Math.max(1,Number(item.payload.duration)||MAX_STATUS_VIDEO_SECONDS):6}s">${statusViewerItems.map((_,index)=>`<span class="${index<statusViewerIndex?'done':index===statusViewerIndex?'active':''}"><i></i></span>`).join('')}</div><div class="status-view-head"><button class="status-view-back" type="button" onclick="closeStatusViewer()" aria-label="Close status"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><span class="status-view-avatar">${image?`<img src="${escHtml(image)}" alt=""/>`:escHtml(name.charAt(0))}</span><span><div class="status-view-name">${escHtml(name)}</div><div class="status-view-time">${formatVaultInboxTime(item.createdAt)} · disappears in ${Math.max(1,Math.ceil((item.expiresAt-Date.now())/3600000))}h</div></span>${item.own?'<span></span>':'<button class="status-view-menu" type="button" onclick="toggleStatusOverflow(event)" aria-label="Status options" aria-expanded="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>'}</div>${menu}<div class="status-stage">${stage}${tapZones}</div><div class="status-view-actions${item.own?' status-owner-actions':''}">${viewers}</div>`;
-  let touchX = null;
+  // Single finger: horizontal drag steps prev/next (unchanged), vertical
+  // drag down dismisses back to whatever screen opened the viewer. Two
+  // fingers: pinch zooms the current image/video around the pinch midpoint.
+  // Zoomed-in content suppresses single-finger nav until pinched back out,
+  // same as Photos/Instagram — the back button always still works either way.
+  let touchX = null, touchY = null, dragging = false, pinching = false, pinchStartDist = 0, pinchStartScale = 1, currentScale = 1;
+  const stageEl = overlay.querySelector('.status-stage');
+  const media = () => stageEl?.querySelector('img,video');
+  const pinchDistance = touches => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
   overlay.ontouchstart = event => {
-    if (event.target.closest('button,video')) return;
+    if (event.touches.length === 2) {
+      pinching = true; dragging = false; touchX = touchY = null;
+      if (statusViewerTimer) clearTimeout(statusViewerTimer);
+      overlay.querySelector('.status-progress span.active i')?.style.setProperty('animation-play-state','paused');
+      pinchStartDist = pinchDistance(event.touches);
+      pinchStartScale = currentScale;
+      const m = media(), rect = stageEl.getBoundingClientRect();
+      if (m) {
+        m.style.transition = 'none';
+        m.style.transformOrigin = `${((event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left) / rect.width * 100}% ${((event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top) / rect.height * 100}%`;
+      }
+      return;
+    }
+    if (event.target.closest('button,video') || currentScale > 1.02) return;
     touchX = event.touches[0]?.clientX ?? null;
+    touchY = event.touches[0]?.clientY ?? null;
+    dragging = true;
     if(statusViewerTimer) clearTimeout(statusViewerTimer);
     overlay.querySelector('.status-progress span.active i')?.style.setProperty('animation-play-state','paused');
   };
+  overlay.ontouchmove = event => {
+    if (pinching && event.touches.length === 2) {
+      if (event.cancelable) event.preventDefault();
+      currentScale = Math.min(3, Math.max(1, pinchStartScale * (pinchDistance(event.touches) / pinchStartDist)));
+      const m = media();
+      if (m) m.style.transform = `scale(${currentScale})`;
+      return;
+    }
+    if (dragging && touchY !== null) {
+      const dy = event.touches[0].clientY - touchY, dx = event.touches[0].clientX - touchX;
+      if (dy > 10 && dy > Math.abs(dx)) {
+        if (event.cancelable) event.preventDefault();
+        const progress = Math.min(1, dy / 260);
+        overlay.style.transition = 'none';
+        overlay.style.transform = `translateY(${dy}px) scale(${1 - progress * .08})`;
+        overlay.style.opacity = String(1 - progress * .45);
+      }
+    }
+  };
   overlay.ontouchend = event => {
-    if (touchX === null) return;
-    const delta = (event.changedTouches[0]?.clientX ?? touchX) - touchX; touchX = null;
-    if (Math.abs(delta) > 55) { statusViewerStep(delta < 0 ? 1 : -1); return; }
+    if (pinching) {
+      pinching = false;
+      const m = media();
+      if (currentScale <= 1.05) { currentScale = 1; if (m) { m.style.transition = 'transform .25s cubic-bezier(.22,1,.36,1)'; m.style.transform = ''; m.style.transformOrigin = ''; } }
+      else if (m) m.style.transition = '';
+      return;
+    }
+    if (!dragging || touchX === null) return;
+    dragging = false;
+    const endTouch = event.changedTouches[0];
+    const dx = (endTouch?.clientX ?? touchX) - touchX, dy = (endTouch?.clientY ?? touchY) - touchY;
+    touchX = touchY = null;
+    overlay.style.transition = 'transform .3s cubic-bezier(.22,1,.36,1), opacity .3s ease';
+    if (dy > 90 && dy > Math.abs(dx)) { overlay.style.transform = 'translateY(100%)'; overlay.style.opacity = '0'; setTimeout(closeStatusViewer, 220); return; }
+    overlay.style.transform = ''; overlay.style.opacity = '';
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) { statusViewerStep(dx < 0 ? 1 : -1); return; }
     overlay.querySelector('.status-progress span.active i')?.style.setProperty('animation-play-state','running');
     statusViewerTimer=setTimeout(()=>statusViewerStep(1),6000);
+  };
+  overlay.ontouchcancel = () => {
+    dragging = false; pinching = false; touchX = touchY = null;
+    overlay.style.transition = 'transform .3s cubic-bezier(.22,1,.36,1), opacity .3s ease';
+    overlay.style.transform = ''; overlay.style.opacity = '';
+    const m = media();
+    if (currentScale <= 1.05 && m) { currentScale = 1; m.style.transform = ''; m.style.transformOrigin = ''; }
   };
   if(!item.own){rememberStatusSeen(item.id);const state=loadAccountState();api('/api/status/view',{accountId:state.accountId,sessionToken:state.sessionToken,id:item.id}).catch(()=>{});}
   if (item.payload.type === 'video') {
@@ -19529,49 +19577,30 @@ function hideVanishOverlay() {
 // cuts. Instead of snapping straight to the flat dark "V" vanish screen
 // (still used for Close & erase above), every element of the call UI
 // leaves independently, in a different direction, on its own beat: the
-// tagline goes first, then the status line, then the timer, then the peer
-// name (slower, larger) alongside the live dot doing one last "heartbeat"
-// expansion outward, then the action buttons sink away, then the header
-// rises last. Only transform/opacity are ever touched, so it stays GPU-
-// accelerated and smooth even on older iPhones — no layout reflow. Once
-// the screen is empty its background itself fades to transparent,
-// revealing the chat room was there underneath the whole time; a small
-// gold "V" appears centered over it as punctuation — the call happened,
-// it's over — then dissolves upward itself, and only then does the room's
-// system message land. The moment always reads as call → silence →
-// memory, never a hard cut.
-// Splits a line of text into individually-animatable characters, each
-// carrying its own randomized drift/rotation/timing as CSS custom
-// properties — the raw material for the sand-disintegrate effect on "This
-// call never existed." (see dissolveCallScreen). Only ever called with a
-// fixed literal string, never user content, so no escaping concerns beyond
-// the routine escHtml-per-character below.
-function wrapSandChars(text) {
-  return [...text].map((ch, i) => {
-    if (ch === ' ') return ' ';
-    const dx = (Math.random() * 34 - 17).toFixed(1);      // drift left/right as it comes apart
-    const dy = (16 + Math.random() * 26).toFixed(1);       // sand falls, so mostly downward
-    const rot = (Math.random() * 60 - 30).toFixed(1);      // each grain tumbles its own way
-    const delay = Math.round(i * 16 + Math.random() * 45); // left-to-right sweep, not uniform
-    return `<span class="sand-char" style="--dx:${dx}px;--dy:${dy}px;--rot:${rot}deg;--delay:${delay}ms">${escHtml(ch)}</span>`;
-  }).join('');
-}
-
+// status line goes first, then the timer, then the peer name (slower,
+// larger) alongside the live dot doing one last "heartbeat" expansion
+// outward, then the action buttons sink away, then the header rises last.
+// Only transform/opacity are ever touched, so it stays GPU-accelerated and
+// smooth even on older iPhones — no layout reflow. Once the screen is
+// empty its background itself fades to transparent, revealing the chat
+// room was there underneath the whole time; a small gold "V" appears
+// centered over it as punctuation — the call happened, it's over — then
+// dissolves upward itself, and only then does the room's system message
+// land. The moment always reads as call → silence → memory, never a hard
+// cut.
 async function dissolveCallScreen(room, duration, eventId = null) {
   const overlay = document.getElementById('call-overlay');
   if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId); return; }
 
   // The moving matrix belongs only to a live call. Stop and remove it at
   // the first frame of hang-up so it cannot continue behind the slower
-  // "This call never existed" closing ceremony (especially on iOS, where
-  // WebKit can resume a previously scheduled CSS animation a frame late).
+  // vanish-mark closing ceremony (especially on iOS, where WebKit can
+  // resume a previously scheduled CSS animation a frame late).
   overlay.querySelector('.call-data-rain')?.remove();
 
   const floatOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-float-fade'); };
   const fadeOut = (sel) => { const el = overlay.querySelector(sel); if (el) el.classList.add('call-dissolve-hide'); };
 
-  floatOut('.call-tagline');
-  await delay(200);
   floatOut('.call-status');
   await delay(200);
   floatOut('.call-timer-display');
@@ -19609,10 +19638,7 @@ async function dissolveCallScreen(room, duration, eventId = null) {
 
   const mark = document.createElement('div');
   mark.className = 'call-vanish-mark';
-  mark.innerHTML = `
-    <div class="v-glyph" id="call-vanish-v">V</div>
-    <div class="v-line2" id="call-vanish-line2">${wrapSandChars('This call never existed.')}</div>
-  `;
+  mark.innerHTML = `<div class="v-glyph" id="call-vanish-v">V</div>`;
   overlay.appendChild(mark);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -19623,25 +19649,16 @@ async function dissolveCallScreen(room, duration, eventId = null) {
       }, 400);
     });
   });
-  // Long enough for the tagline reveal above (finishes fading in ~.95s
-  // after .visible is added) to actually land and be read before anything
+  // Let the V's entrance and heartbeat pulse actually land (pulse starts
+  // .4s after .visible, and the pulse keyframe itself runs .5s) before it
   // starts leaving again.
-  await delay(1700);
+  await delay(1100);
 
-  // The V fades away first — "This call never existed." doesn't join it.
-  // That line gets its own ending: it comes apart letter by letter, like
-  // sand losing its shape, rather than just politely fading like the V
-  // did. Deliberately the very last thing on screen; the two never
-  // overlap, one is fully gone before the other begins.
   const vGlyph = document.getElementById('call-vanish-v');
   if (vGlyph) vGlyph.classList.add('call-float-fade');
   // Wait for the full .call-float-fade transition (.6s, see its CSS rule)
-  // to actually finish before the sand effect starts.
+  // to finish before the overlay is removed.
   await delay(650);
-
-  const line2 = document.getElementById('call-vanish-line2');
-  if (line2) line2.querySelectorAll('.sand-char').forEach(c => c.classList.add('sand-disintegrate'));
-  await delay(1150);
 
   overlay.remove();
   addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId);
