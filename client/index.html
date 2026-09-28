@@ -346,8 +346,19 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-action:active{transform:scale(.97)}
 .vault-list-action[data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(3px);white-space:nowrap;padding:7px 10px;border-radius:9px;background:#2F2227;color:#fff;font:600 12px/1.2 'Inter',sans-serif;opacity:0;pointer-events:none;transition:opacity .14s ease,transform .14s ease;box-shadow:0 5px 14px rgba(47,34,39,.2)}
 .vault-list-action[data-tooltip]:hover::after,.vault-list-action[data-tooltip]:focus-visible::after{opacity:1;transform:translateX(-50%) translateY(0)}
-.vault-call-icon{grid-row:1/3;width:48px;height:48px;border-radius:50%;background:#F2E8EC;color:#8D3C56;display:flex;align-items:center;justify-content:center}
+.vault-call-icon{grid-row:1/3;width:48px;height:48px;border-radius:50%;background:#F2E8EC;color:#8D3C56;display:flex;align-items:center;justify-content:center;position:relative}
 .vault-call-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+/* A genuinely missed, not-yet-viewed call — deliberately a different,
+   stronger red than the muted .alert preview text every missed call
+   already gets, so a row you haven't looked at yet is unmistakable at a
+   glance against ones you have. Cleared the instant the calls tab is
+   opened (markVaultMissedCallsViewed runs right after this renders), so
+   the highlight only ever shows once, on first view — same idea as a
+   phone app's missed-call badge. */
+.vault-call-row.missed-unseen{background:#FDF0F1}
+.vault-call-row.missed-unseen .vault-call-icon{background:#F9D9DD;color:#C0293F}
+.vault-call-row.missed-unseen .vault-call-icon::after{content:'';position:absolute;top:-1px;right:-1px;width:13px;height:13px;border-radius:50%;background:#C0293F;border:2px solid #fff}
+.vault-call-row.missed-unseen .vault-list-row-preview.alert{color:#C0293F;font-weight:700}
 /* Call-history actions ring directly without opening the conversation row. */
 button.vault-call-btn{padding:0;border:0;cursor:pointer;font:inherit;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,background .12s ease}
 button.vault-call-btn:active{transform:scale(.92);background:#E9D6DD}
@@ -14604,12 +14615,22 @@ function renderCallHistoryList(body) {
     body.innerHTML = '<div class="vault-list-empty"><strong>No calls yet</strong>Your encrypted call history will appear here after a call ends.</div>';
     return;
   }
-  body.innerHTML = entries.map(({ room, text, occurredAt }) => `<div class="vault-list-row vault-call-row" data-room="${escHtml(room.code)}">
+  // Same "genuinely missed and not yet viewed" test the calls-tab nav badge
+  // already uses (missedCallBadgeEntries) — a call THIS device placed that
+  // simply went unanswered reads "No answer" from its own perspective, so
+  // it never qualifies here even though the peer's mirrored copy of that
+  // same call does say "Missed" from their side.
+  const { seen } = missedCallSeenState();
+  body.innerHTML = entries.map(({ room, rec, text, occurredAt }) => {
+    const isMissed = /^Missed/i.test(text);
+    const isUnseenMissed = isMissed && rec.callEventViewerRole !== 'initiator' && !seen.has(`${room.code}:${rec.id || occurredAt}`);
+    return `<div class="vault-list-row vault-call-row${isUnseenMissed ? ' missed-unseen' : ''}" data-room="${escHtml(room.code)}">
     <button type="button" class="vault-call-icon vault-call-btn" data-call-room="${escHtml(room.code)}" aria-label="Call ${escHtml(roomDisplayLabel(room))}" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></button>
     <span class="vault-list-row-name">${escHtml(roomDisplayLabel(room))}</span>
-    <span class="vault-list-row-preview${/^Missed/i.test(text) ? ' alert' : ''}">${escHtml(text)}</span>
+    <span class="vault-list-row-preview${isMissed ? ' alert' : ''}">${escHtml(text)}</span>
     <span class="vault-list-row-meta">${occurredAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(occurredAt)}</span>` : ''}<button type="button" class="vault-call-video-btn" data-video-call-room="${escHtml(room.code)}" aria-label="Video call ${escHtml(roomDisplayLabel(room))}" title="Video call"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg></button></span>
-  </div>`).join('');
+  </div>`;
+  }).join('');
   body.querySelectorAll('.vault-call-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
   // The phone button rings right away. stopPropagation keeps the tap from also
   // reaching the row handler above, which would open the chat.
@@ -17349,9 +17370,18 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
     // How far back this conversation has been loaded, so "Load earlier messages" knows where to continue.
     const seq = Number(msg.seq);
     if (seq > 0 && !(seq >= room.historyOldestSeq)) room.historyOldestSeq = seq;
+    // Advance the high-water mark for EVERY message the server shows us,
+    // even one already known locally (e.g. a call-event this device posted
+    // itself via addCallSysMsg, pre-seeded into seenMsgIds without ever
+    // updating lastSeq) — must happen BEFORE the seenMsgIds skip below, or
+    // lastSeq gets stuck under that message's seq whenever it's the room's
+    // most recent activity. seenMsgIds itself never survives a reload, but
+    // lastSeq does, so a stuck value quietly persists and the next fresh
+    // launch redelivers that same already-handled message as if it were
+    // new, inflating unread counts for messages and missed calls alike.
+    if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
     if (room.seenMsgIds.has(msg.id)) continue;
     room.seenMsgIds.add(msg.id);
-    if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
     unseen.push(msg);
   }
 
@@ -17928,6 +17958,17 @@ async function doPoll(room) {
     if (data.messages && data.messages.length > 0) {
       historyStorePut(room.code, data.messages); // keep it on this device until it is deleted
       for (const msg of data.messages) {
+        // Advance the high-water mark for EVERY message the server shows
+        // us, even one already known locally (e.g. a call-event this
+        // device posted itself via addCallSysMsg, pre-seeded into
+        // seenMsgIds without ever updating lastSeq) — must happen BEFORE
+        // the seenMsgIds skip below, or lastSeq gets stuck under that
+        // message's seq whenever it's the room's most recent activity.
+        // seenMsgIds itself never survives a reload, but lastSeq does, so a
+        // stuck value quietly persists and the next fresh launch
+        // redelivers that same already-handled message as if it were new,
+        // inflating unread counts for messages and missed calls alike.
+        if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
         if (room.seenMsgIds.has(msg.id)) continue;
         room.seenMsgIds.add(msg.id);
         if (room.seenMsgIds.size > 500) { const first = room.seenMsgIds.values().next().value; room.seenMsgIds.delete(first); }
@@ -17970,7 +18011,6 @@ async function doPoll(room) {
             room.readConfirmIds.push(msg.id);
           }
         }
-        if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
       }
     }
 
