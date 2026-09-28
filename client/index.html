@@ -2262,6 +2262,10 @@ html.vaultlix-native #s-landing .landing-store-badges{display:none}
 #s-landing .walkthrough-shell{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:30px;align-items:center;margin-top:26px;padding:30px;border-radius:28px;background:#2F232B;color:#fff;box-shadow:0 22px 50px rgba(39,29,37,.16)}
 #s-landing .walkthrough-preview{position:relative;display:grid;place-items:center;overflow:hidden;padding:22px;border:1px solid rgba(255,255,255,.13);border-radius:22px;background:radial-gradient(circle at 50% 15%,rgba(200,117,136,.34),transparent 38%),linear-gradient(145deg,#4A3040,#21181E)}
 #s-landing .walkthrough-video{display:block;width:min(100%,320px);aspect-ratio:9/16;object-fit:cover;border-radius:18px;background:#2F232B;box-shadow:0 20px 42px rgba(0,0,0,.28)}
+#s-landing #get-started-video .walkthrough-video{height:auto;object-fit:contain}
+#s-landing .walkthrough-transcript{margin-top:24px;font:450 13px/1.6 "Manrope",sans-serif;color:#D7CBD1}
+#s-landing .walkthrough-transcript summary{cursor:pointer;color:#fff;padding:8px 0}
+#s-landing .walkthrough-transcript p{margin:10px 0 0}
 #s-landing .walkthrough-copy h3{margin:0 0 12px;font:750 27px/1.15 'Manrope',sans-serif;letter-spacing:-.035em}
 #s-landing .walkthrough-copy p{margin:0 0 22px;font:450 13px/1.65 'Manrope',sans-serif;color:#D7CBD1}
 #s-landing .walkthrough-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
@@ -2972,6 +2976,28 @@ html{background:#fff}
     </aside>
 
     <div class="landing-marketing" aria-label="About Vaultlix">
+      <section class="marketing-section" id="get-started-video" aria-labelledby="get-started-video-title">
+        <span class="marketing-eyebrow">WATCH THE 10-SECOND WALKTHROUGH</span>
+        <h2 class="marketing-title" id="get-started-video-title">From hello to a private conversation.</h2>
+        <div class="walkthrough-shell">
+          <div class="walkthrough-preview">
+            <video class="walkthrough-video" controls playsinline preload="none" width="720" height="1280" poster="/media/vaultlix-get-started-poster.jpg" aria-label="10-second Vaultlix walkthrough: create an identity, add a friend, and exchange messages" aria-describedby="get-started-video-description">
+              <source src="/media/vaultlix-get-started-10s.mp4" type="video/mp4">
+              <a href="/media/vaultlix-get-started-10s.mp4">Watch the Vaultlix walkthrough</a>
+            </video>
+          </div>
+          <div class="walkthrough-copy">
+            <h3>Create. Connect. Chat.</h3>
+            <p id="get-started-video-description">See the actual Vaultlix mobile interface in a short, silent walkthrough. Demo accounts shown; steps edited for brevity.</p>
+            <ol class="walkthrough-list">
+              <li><span>1</span>Choose a username and secure your identity.</li>
+              <li><span>2</span>Enter your friend’s Vaultlix number. They accept.</li>
+              <li><span>3</span>Start your encrypted conversation.</li>
+            </ol>
+            <details class="walkthrough-transcript"><summary>Read the walkthrough</summary><p>Choose a username, agree to the terms, and set a password to create your Vaultlix identity. Select Add your friend, enter their Vaultlix private number, and send a connection request. Your friend accepts. Open the conversation, send a hello, and receive their reply.</p></details>
+          </div>
+        </div>
+      </section>
       <section class="marketing-section everyday-privacy" id="everyday-privacy">
         <div class="everyday-privacy-head motion-reveal">
           <span class="marketing-eyebrow">PRIVATE MESSAGING, CLEARLY</span>

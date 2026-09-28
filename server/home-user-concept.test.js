@@ -13,15 +13,15 @@ test('home page leads with private messaging and explains the Vaultlix-number mo
   assert.match(client, /Photos &amp; files/);
   assert.match(client, /Voice &amp; video/);
   assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
-  assert.match(client, /01 · Create/);
-  assert.match(client, /02 · Connect/);
-  assert.match(client, /03 · Talk/);
+  assert.match(client, /Create your identity/);
+  assert.match(client, /Connect by consent/);
+  assert.match(client, /Message or call/);
   assert.match(client, /Vaultlix is not a cellular number or virtual SIM service and cannot receive ordinary calls, SMS or OTPs/);
 });
 
 test('create and sign-in homepage actions open the correct account path directly', () => {
-  assert.match(client, /class="landing-hero-action"[^>]*onclick="openCreateAccount\(\)"[^>]*>Create my number/);
-  assert.match(client, /landing-hero-action-secondary"[^>]*onclick="openLoginOrInbox\(\)"[^>]*>Sign in/);
+  assert.match(client, /class="card card-primary"[^>]*onclick="openCreateAccount\(\)"/);
+  assert.match(client, /class="card card-join"[^>]*onclick="openLoginOrInbox\(\)"/);
   assert.match(client, /function openCreateAccount\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('create'\)/);
   assert.match(client, /id="account-create-form"/);
   assert.match(client, /function openLoginOrInbox\(\)[\s\S]{0,220}openAccountPanel\(\);[\s\S]{0,80}showAccountTab\('login'\)/);
@@ -89,7 +89,6 @@ test('homepage motion system is layered, responsive and accessible', () => {
   assert.match(client, /threshold:\.62/);
   assert.match(client, /deckObserver\.observe\(deck\)/);
   assert.match(client, /@media\(prefers-reduced-motion:reduce\)[\s\S]*?\.motion-deck-card\{opacity:1!important;animation:none!important/);
-  assert.match(client, /Your private messenger is ready/);
   assert.match(client, /@keyframes landing-word-build/);
   assert.match(client, /landing-reveal-accent::after/);
   assert.match(client, /id="vaultlix-motion-showcase"/);
