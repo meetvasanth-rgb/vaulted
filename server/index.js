@@ -903,8 +903,20 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
       },
     };
     // Calls are data-only so Android can build a native full-screen incoming
-    // call notification. Ordinary messages remain system-rendered alerts.
-    if (!parsed.isCall && !parsed.isCallEnd) {
+    // call notification. Ordinary messages (identified by carrying a msgId)
+    // are now data-only too, for the same underlying reason: a hybrid
+    // notification+data FCM message is often shown straight from the system
+    // tray without reliably invoking onMessageReceived() while the app is
+    // backgrounded or the device is locked, which meant VaultlixMessagingService
+    // never got a chance to run code on receipt — including the
+    // /api/mark-delivered call that reports a message actually reached this
+    // device, the reason the sender's tick stayed stuck on "sent" until the
+    // recipient opened the app. Data-only + a self-built notification (see
+    // showMessageNotification in VaultlixMessagingService) makes that
+    // callback fire reliably. Everything else routed through this function
+    // (connection requests, session-replaced notices — anything with no
+    // msgId) keeps the existing system-rendered path unchanged.
+    if (!parsed.isCall && !parsed.isCallEnd && !parsed.msgId) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',

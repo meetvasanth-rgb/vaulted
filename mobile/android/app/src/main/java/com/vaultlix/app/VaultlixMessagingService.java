@@ -22,6 +22,12 @@ import androidx.core.graphics.drawable.IconCompat;
 import com.capacitorjs.plugins.pushnotifications.MessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
+import org.json.JSONObject;
+
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 public class VaultlixMessagingService extends MessagingService {
@@ -67,6 +73,19 @@ public class VaultlixMessagingService extends MessagingService {
         }
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) ensureMessageChannel(manager);
+        // A regular chat message (server/index.js sends it data-only,
+        // identified by carrying a msgId, for exactly this reason — see the
+        // comment there). Building the notification here ourselves, instead
+        // of relying on an auto-displayed FCM "notification" payload, is what
+        // actually lets this code run reliably while the app is backgrounded
+        // or the device is locked — which is also what makes the
+        // mark-delivered report below possible in that state at all.
+        String msgId = safe(data.get("msgId"));
+        if (!msgId.isEmpty()) {
+            showMessageNotification(data);
+            reportMessageDelivered(safe(data.get("code")), msgId);
+            return;
+        }
         super.onMessageReceived(remoteMessage);
     }
 
@@ -85,6 +104,82 @@ public class VaultlixMessagingService extends MessagingService {
                 .build());
         channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
+    }
+
+    // Stands in for the FCM SDK's own auto-displayed notification, now that
+    // regular messages arrive data-only (see onMessageReceived above). One
+    // stable ID per room (not per message) so a burst of messages from the
+    // same conversation updates a single tray entry instead of stacking.
+    private void showMessageNotification(Map<String, String> data) {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        ensureMessageChannel(manager);
+
+        String code = safe(data.get("code"));
+        String title = safe(data.get("title"));
+        String body = safe(data.get("body"));
+        Uri conversationUri = Uri.parse("https://vaultlix.com/").buildUpon()
+                .appendQueryParameter("room", code)
+                .build();
+        int notificationId = ("message:" + code).hashCode();
+        Intent openConversation = new Intent(Intent.ACTION_VIEW, conversationUri, this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this,
+                notificationId,
+                openConversation,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        manager.notify(notificationId, new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_vaultlix)
+                .setColor(Color.rgb(104, 44, 67))
+                .setContentTitle(title.isEmpty() ? "Vaultlix" : title)
+                .setContentText(body.isEmpty() ? "New message" : body)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setContentIntent(contentIntent)
+                .build());
+    }
+
+    // The whole reason onMessageReceived now runs reliably while locked/
+    // backgrounded (see above) — this is the actual fix for the sender's
+    // tick staying on "sent" until the recipient opens the app. The room
+    // token comes from NativeCallRoomStore, not the WebView's own storage:
+    // that store is populated for every room the moment its E2E key is
+    // derived (see provisionAndroidCallRoom in client/index.html), not only
+    // rooms that have been called through, and — unlike IndexedDB inside the
+    // WebView — it's readable from here even when the WebView isn't loaded
+    // at all. Best-effort and silent on any failure: the page's own poll
+    // loop (or a Web Push subscription's sw.js handler) remains the fallback
+    // the instant the app is actually opened.
+    private void reportMessageDelivered(String code, String msgId) {
+        if (code.isEmpty() || msgId.isEmpty()) return;
+        NativeCallRoomStore.Room room = new NativeCallRoomStore(this).byCode(code);
+        if (room == null || room.token == null || room.token.isEmpty()) return;
+        HttpURLConnection connection = null;
+        try {
+            JSONObject body = new JSONObject().put("code", code).put("token", room.token).put("msgId", msgId);
+            connection = (HttpURLConnection) new URL("https://vaultlix.com/api/mark-delivered").openConnection();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type", "application/json");
+            // FirebaseMessagingService.onMessageReceived() runs under a
+            // system-granted time budget (roughly 10s) before the process
+            // risks being killed — keep this well inside it even in the
+            // worst case where both connect and read each stall out.
+            connection.setConnectTimeout(3000);
+            connection.setReadTimeout(3000);
+            connection.setDoOutput(true);
+            try (OutputStream out = connection.getOutputStream()) {
+                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            connection.getResponseCode(); // drain the response so the request actually completes
+        } catch (Exception ignored) {
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
     }
 
     private void showMissedCall(Map<String, String> data) {
