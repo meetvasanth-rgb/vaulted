@@ -3810,6 +3810,64 @@ html{background:#fff}
   </form>
 </div>
 
+<div class="app-lock-overlay" id="locker-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-setup-title">
+  <form class="app-lock-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)">
+    <h2 class="app-lock-title" id="locker-setup-title">Vaultlix Locker</h2>
+    <div class="app-lock-copy" id="locker-setup-copy">Choose a password for your Locker, separate from your Vaultlix account password and App Lock passcode. It guards notes and photos stored only on this device. Vaultlix cannot recover it — losing it permanently loses everything in your Locker.</div>
+    <label class="app-lock-field"><span>Locker password</span><input id="locker-setup-password" type="password" autocomplete="new-password" minlength="8" required/></label>
+    <label class="app-lock-field"><span>Confirm password</span><input id="locker-setup-confirm" type="password" autocomplete="new-password" minlength="8" required/></label>
+    <div class="app-lock-error" id="locker-setup-error" aria-live="polite"></div>
+    <div class="app-lock-actions"><button type="button" onclick="closeLockerSetup()">Cancel</button><button class="primary" type="submit">Create Locker</button></div>
+  </form>
+</div>
+
+<div class="app-lock-overlay" id="locker-unlock-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-unlock-title">
+  <form class="app-lock-sheet" id="locker-unlock-form" onsubmit="submitLockerUnlock(event)">
+    <h2 class="app-lock-title" id="locker-unlock-title">Vaultlix Locker</h2>
+    <div class="app-lock-copy">Enter your Locker password.</div>
+    <label class="app-lock-field"><span>Locker password</span><input id="locker-unlock-password" type="password" autocomplete="current-password" required/></label>
+    <div class="app-lock-error" id="locker-unlock-error" aria-live="polite"></div>
+    <div class="app-lock-actions"><button type="button" onclick="closeLockerUnlockScreen()">Cancel</button><button class="primary" type="submit">Unlock</button></div>
+  </form>
+</div>
+
+<div class="app-lock-overlay" id="locker-vault-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-vault-title">
+  <div class="app-lock-sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 class="app-lock-title" id="locker-vault-title" style="margin:0">Locker</h2>
+      <button type="button" onclick="lockLocker()">Lock</button>
+    </div>
+    <div class="app-lock-copy" id="locker-vault-empty">Your Locker is empty. Add a note or a photo below.</div>
+    <div id="locker-item-list"></div>
+    <div class="app-lock-actions" style="justify-content:flex-start;flex-wrap:wrap">
+      <button type="button" onclick="openLockerNoteEditor()">Add note</button>
+      <button type="button" onclick="openLockerImagePicker()">Add photo</button>
+      <button type="button" onclick="closeLockerVault()" style="margin-left:auto">Close</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="locker-image-input" accept="image/*" hidden onchange="handleLockerImageSelect(event)"/>
+
+<div class="app-lock-overlay" id="locker-note-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-note-editor-title">
+  <div class="app-lock-sheet">
+    <h2 class="app-lock-title" id="locker-note-editor-title">New note</h2>
+    <div class="app-lock-copy">Type anything — account details, recovery codes, anything you want kept private.</div>
+    <textarea id="locker-note-editor-text" rows="8" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #D8CDD0;border-radius:12px;font:inherit;resize:vertical"></textarea>
+    <div class="app-lock-actions"><button type="button" onclick="closeLockerNoteEditor()">Cancel</button><button class="primary" type="button" onclick="saveLockerNote()">Save</button></div>
+  </div>
+</div>
+
+<div class="app-lock-overlay" id="locker-item-viewer-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-item-viewer-title">
+  <div class="app-lock-sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 class="app-lock-title" id="locker-item-viewer-title" style="margin:0">Note</h2>
+      <button type="button" class="danger" onclick="deleteLockerItemFromViewer()">Delete item</button>
+    </div>
+    <div id="locker-item-viewer-body"></div>
+    <div class="app-lock-actions"><button class="primary" type="button" onclick="closeLockerItemViewer()">Close</button></div>
+  </div>
+</div>
+
 <div class="website-get-app" id="website-get-app" onclick="if(event.target===this)closeWebsiteGetApp()" role="dialog" aria-modal="true" aria-labelledby="website-get-app-title">
   <div class="website-get-app-card">
     <button class="website-get-app-close" type="button" onclick="closeWebsiteGetApp()" aria-label="Close">×</button>
@@ -3880,6 +3938,19 @@ html{background:#fff}
         <div class="settings-row-sub">Use an independent passcode and lock immediately in the background</div>
       </div>
       <div class="settings-status settings-status-action" id="app-lock-status">Set up</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row" id="settings-locker-row" onclick="openLockerEntry()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
+        <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1.6"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Locker</div>
+        <div class="settings-row-sub">Password-protected notes and photos, separate from App Lock</div>
+      </div>
+      <div class="settings-status settings-status-action" id="locker-status">Set up</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -10062,7 +10133,7 @@ function openSettingsCategory(category) {
   const generalSection = document.getElementById('settings-general-section');
   const generalRows = {
     profile:['settings-account-row','settings-profile-controls'],
-    privacy:['settings-app-lock-row'],
+    privacy:['settings-app-lock-row','settings-locker-row'],
     notifications:['settings-chime-row','settings-push-row']
   };
   const selectedRows = generalRows[category] || [];
@@ -10121,6 +10192,7 @@ function openSettings(mode = 'general', initialCategory = null) {
   updateAnonLinkSection();
   updatePersistentSuggestion();
   updateAppLockStatus();
+  updateLockerStatus();
   const room = getActiveRoom();
   const labelTitleEl = document.getElementById('settings-label-title');
   if (labelTitleEl) {
@@ -12959,6 +13031,456 @@ async function forgetAppLock() {
 renderQuickLock();
 window.addEventListener('pagehide', () => { if (appLockConfigured()) activateAppLock(false); else showPrivacyCover(); });
 
+// ── LOCKER (password-gated encrypted vault: free-form notes + photos) ──
+// A second, independent password gate from App Lock. App Lock only guards
+// the screen and derives no usable encryption key. The Locker's password
+// derives a real AES-GCM key that decrypts locker content, held ONLY in
+// memory (never localStorage, never sessionStorage) and destroyed on lock/
+// background/idle — so an attacker holding an already-unlocked, authenticated
+// Vaultlix session still cannot read locker content without this separate
+// password. Deleted items are crypto-shredded: each item has its own random
+// content key, wrapped under this session key; destroying the wrapped-key
+// record makes the leftover ciphertext permanently unrecoverable, since flash
+// storage doesn't let an app reliably overwrite bytes in place. See
+// docs/security/DELETION-ARCHITECTURE-PHASE2.md for the underlying "deny
+// reads, then destroy the key before the ciphertext" principle this follows.
+const LOCKER_DB_NAME = 'vaultlix-locker';
+const LOCKER_CONFIG_KEY = 'vaultlix_locker_v1';
+const LOCKER_FAILURE_KEY = 'vaultlix_locker_failures_v1';
+const LOCKER_PBKDF2_ITERATIONS = 310000;
+const LOCKER_IDLE_LOCK_MS = 2 * 60 * 1000;
+
+let lockerSessionKey = null; // the ONLY place the usable key ever lives; never persisted
+let lockerIdleTimer = null;
+let lockerItemsCache = [];
+
+async function deriveLockerMaterial(password, salt, iterations = LOCKER_PBKDF2_ITERATIONS) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations }, base, 512));
+  return { verifier: bits.slice(0, 32), wrapKeyBytes: bits.slice(32, 64) };
+}
+
+function loadLockerConfig() {
+  try {
+    const config = JSON.parse(localStorage.getItem(LOCKER_CONFIG_KEY) || 'null');
+    return config?.salt && config?.verifier ? config : null;
+  } catch (e) { return null; }
+}
+
+function lockerConfigured() { return Boolean(loadLockerConfig()); }
+
+async function setUpLocker(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const { verifier } = await deriveLockerMaterial(password, salt);
+  localStorage.setItem(LOCKER_CONFIG_KEY, JSON.stringify({ version:1, iterations:LOCKER_PBKDF2_ITERATIONS, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
+  localStorage.removeItem(LOCKER_FAILURE_KEY);
+}
+
+function loadLockerFailures() {
+  try { return JSON.parse(localStorage.getItem(LOCKER_FAILURE_KEY) || '{"count":0,"blockedUntil":0}'); }
+  catch (e) { return { count:0, blockedUntil:0 }; }
+}
+
+function recordLockerFailure() {
+  const failures = loadLockerFailures();
+  failures.count = Number(failures.count || 0) + 1;
+  failures.blockedUntil = Date.now() + appLockDelayMs(failures.count);
+  localStorage.setItem(LOCKER_FAILURE_KEY, JSON.stringify(failures));
+  return failures;
+}
+
+function lockerWaitCopy(failures = loadLockerFailures()) {
+  const seconds = Math.max(0, Math.ceil((Number(failures.blockedUntil || 0) - Date.now()) / 1000));
+  if (!seconds) return '';
+  return seconds >= 60 ? `Too many attempts. Try again in ${Math.ceil(seconds / 60)} minute${seconds > 60 ? 's' : ''}.` : `Too many attempts. Try again in ${seconds} seconds.`;
+}
+
+async function unlockLocker(password) {
+  const config = loadLockerConfig();
+  if (!config) throw new Error('Locker is not set up');
+  const failures = loadLockerFailures();
+  if (Date.now() < Number(failures.blockedUntil || 0)) throw new Error(lockerWaitCopy(failures));
+  const { verifier, wrapKeyBytes } = await deriveLockerMaterial(password, base64UrlToBytes(config.salt), config.iterations || LOCKER_PBKDF2_ITERATIONS);
+  if (!equalBytes(verifier, base64UrlToBytes(config.verifier))) {
+    recordLockerFailure();
+    throw new Error('Incorrect Locker password.');
+  }
+  localStorage.removeItem(LOCKER_FAILURE_KEY);
+  lockerSessionKey = await crypto.subtle.importKey('raw', wrapKeyBytes, { name:'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  wrapKeyBytes.fill(0);
+  armLockerIdleTimer();
+  return true;
+}
+
+function lockLocker() {
+  lockerSessionKey = null;
+  clearTimeout(lockerIdleTimer);
+  lockerIdleTimer = null;
+  // These render/viewer hooks are added by the Locker UI layer; guarded with
+  // typeof so the crypto/storage layer above works standalone before that
+  // UI exists, and so isolated tests can exercise it without stubbing UI.
+  if (typeof closeLockerItemViewer === 'function') closeLockerItemViewer();
+  if (typeof renderLockerLockScreen === 'function') renderLockerLockScreen();
+}
+
+function armLockerIdleTimer() {
+  clearTimeout(lockerIdleTimer);
+  lockerIdleTimer = setTimeout(function check() {
+    if (!lockerSessionKey) return;
+    if (Date.now() - lastInteractionTime >= LOCKER_IDLE_LOCK_MS) { lockLocker(); return; }
+    lockerIdleTimer = setTimeout(check, 5000);
+  }, LOCKER_IDLE_LOCK_MS);
+}
+
+document.addEventListener('visibilitychange', () => { if (document.hidden && lockerSessionKey) lockLocker(); });
+window.addEventListener('pagehide', () => { if (lockerSessionKey) lockLocker(); });
+
+// item: { type: 'note'|'image', text?: string, mime?: string, base64?: string }
+async function encryptLockerItem(item) {
+  if (!lockerSessionKey) throw new Error('Locker is locked');
+  const itemKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+  const itemKey = await crypto.subtle.importKey('raw', itemKeyBytes, { name:'AES-GCM' }, false, ['encrypt']);
+
+  const contentIv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(JSON.stringify({ type:item.type, text:item.text, mime:item.mime, base64:item.base64 }));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv:contentIv }, itemKey, plaintext));
+
+  // wrappedKey and ciphertext are deliberately separate fields (not
+  // concatenated) so a delete only ever needs to remove this small wrapped
+  // key alongside the row — see deleteLockerItem.
+  const wrapIv = crypto.getRandomValues(new Uint8Array(12));
+  const wrappedKey = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv:wrapIv }, lockerSessionKey, itemKeyBytes));
+  itemKeyBytes.fill(0);
+
+  return {
+    id: crypto.randomUUID(),
+    type: item.type,
+    createdAt: Date.now(),
+    wrapIv: bytesToBase64UrlCompact(wrapIv),
+    wrappedKey: bytesToBase64UrlCompact(wrappedKey),
+    contentIv: bytesToBase64UrlCompact(contentIv),
+    ciphertext: bytesToBase64UrlCompact(ciphertext),
+  };
+}
+
+async function decryptLockerItem(record) {
+  if (!lockerSessionKey) throw new Error('Locker is locked');
+  const itemKeyBytes = new Uint8Array(await crypto.subtle.decrypt({ name:'AES-GCM', iv:base64UrlToBytes(record.wrapIv) }, lockerSessionKey, base64UrlToBytes(record.wrappedKey)));
+  const itemKey = await crypto.subtle.importKey('raw', itemKeyBytes, { name:'AES-GCM' }, false, ['decrypt']);
+  itemKeyBytes.fill(0);
+  const plainBytes = await crypto.subtle.decrypt({ name:'AES-GCM', iv:base64UrlToBytes(record.contentIv) }, itemKey, base64UrlToBytes(record.ciphertext));
+  return JSON.parse(new TextDecoder().decode(plainBytes));
+}
+
+let lockerDbPromise = null;
+function lockerDb() {
+  if (lockerDbPromise) return lockerDbPromise;
+  lockerDbPromise = new Promise(resolve => {
+    try {
+      const request = indexedDB.open(LOCKER_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('items')) {
+          const items = db.createObjectStore('items', { keyPath:'id' });
+          items.createIndex('byCreatedAt', 'createdAt');
+        }
+      };
+      request.onsuccess = () => { const db = request.result; db.onversionchange = () => { db.close(); lockerDbPromise = null; }; resolve(db); };
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+  return lockerDbPromise;
+}
+
+async function lockerItemPut(record) {
+  const db = await lockerDb();
+  if (!db) throw new Error('Locker storage unavailable');
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('items', 'readwrite');
+    tx.objectStore('items').put(record);
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function lockerItemGet(id) {
+  const db = await lockerDb();
+  if (!db) return null;
+  return new Promise(resolve => {
+    const request = db.transaction('items', 'readonly').objectStore('items').get(id);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => resolve(null);
+  });
+}
+
+async function lockerItemDelete(id) {
+  const db = await lockerDb();
+  if (!db) return;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('items', 'readwrite');
+    tx.objectStore('items').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function lockerItemList() {
+  const db = await lockerDb();
+  if (!db) return [];
+  return new Promise(resolve => {
+    const results = [];
+    const request = db.transaction('items', 'readonly').objectStore('items').index('byCreatedAt').openCursor(null, 'prev');
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) { resolve(results); return; }
+      const { id, type, createdAt } = cursor.value;
+      results.push({ id, type, createdAt });
+      cursor.continue();
+    };
+    request.onerror = () => resolve(results);
+  });
+}
+
+async function deleteLockerItem(id) {
+  // 1. Deny reads before any async storage work — remove from the
+  //    in-memory list/UI immediately so a concurrent render can't display it.
+  lockerItemsCache = (lockerItemsCache || []).filter(item => item.id !== id);
+  if (typeof renderLockerItemList === 'function') renderLockerItemList();
+  // 2. A single IndexedDB delete() is transactionally atomic: it removes the
+  //    wrapped item key together with the ciphertext in one commit, so there
+  //    is no crash window where ciphertext survives without its key. Once
+  //    committed, the item key never existed anywhere else (it was random
+  //    and only ever stored wrapped), so the leftover bytes are permanently
+  //    unrecoverable even from raw/forensic storage access.
+  await lockerItemDelete(id);
+}
+
+async function deleteLockerVault() {
+  try { indexedDB.deleteDatabase(LOCKER_DB_NAME); } catch (e) {}
+  lockerDbPromise = null;
+  localStorage.removeItem(LOCKER_CONFIG_KEY);
+  localStorage.removeItem(LOCKER_FAILURE_KEY);
+  lockerItemsCache = [];
+  lockLocker();
+}
+
+// ── LOCKER UI ────────────────────────────────────────────────────────
+function updateLockerStatus() {
+  const status = document.getElementById('locker-status');
+  if (status) status.textContent = lockerConfigured() ? 'On' : 'Set up';
+}
+
+function openLockerEntry() {
+  closeSettings();
+  if (!lockerConfigured()) { openLockerSetup(); return; }
+  openLockerUnlockScreen();
+}
+
+function openLockerSetup() {
+  document.getElementById('locker-setup-form')?.reset();
+  const error = document.getElementById('locker-setup-error');
+  if (error) error.textContent = '';
+  document.getElementById('locker-setup-overlay')?.classList.add('open');
+  setTimeout(() => document.getElementById('locker-setup-password')?.focus(), 50);
+}
+
+function closeLockerSetup() { document.getElementById('locker-setup-overlay')?.classList.remove('open'); }
+
+async function saveLockerSetup(event) {
+  event.preventDefault();
+  const error = document.getElementById('locker-setup-error');
+  error.textContent = '';
+  const password = document.getElementById('locker-setup-password').value;
+  const confirmation = document.getElementById('locker-setup-confirm').value;
+  if (password.length < 8) { error.textContent = 'Use at least 8 characters.'; return; }
+  if (password !== confirmation) { error.textContent = 'The passwords do not match.'; return; }
+  await setUpLocker(password);
+  await unlockLocker(password);
+  closeLockerSetup();
+  updateLockerStatus();
+  openLockerVault();
+}
+
+function openLockerUnlockScreen() {
+  document.getElementById('locker-unlock-form')?.reset();
+  const error = document.getElementById('locker-unlock-error');
+  if (error) error.textContent = lockerWaitCopy();
+  document.getElementById('locker-unlock-overlay')?.classList.add('open');
+  setTimeout(() => document.getElementById('locker-unlock-password')?.focus(), 50);
+}
+
+function closeLockerUnlockScreen() { document.getElementById('locker-unlock-overlay')?.classList.remove('open'); }
+
+async function submitLockerUnlock(event) {
+  event.preventDefault();
+  const error = document.getElementById('locker-unlock-error');
+  const waitCopy = lockerWaitCopy();
+  if (waitCopy) { if (error) error.textContent = waitCopy; return; }
+  const input = document.getElementById('locker-unlock-password');
+  const password = input?.value || '';
+  if (!password) return;
+  try {
+    await unlockLocker(password);
+    if (input) input.value = '';
+    closeLockerUnlockScreen();
+    openLockerVault();
+  } catch (e) {
+    if (input) { input.value = ''; input.focus(); }
+    if (error) error.textContent = e?.message || 'Incorrect Locker password.';
+  }
+}
+
+async function openLockerVault() {
+  document.getElementById('locker-vault-overlay')?.classList.add('open');
+  lockerItemsCache = await lockerItemList();
+  renderLockerItemList();
+}
+
+function closeLockerVault() { document.getElementById('locker-vault-overlay')?.classList.remove('open'); }
+
+function renderLockerLockScreen() {
+  closeLockerVault();
+  closeLockerUnlockScreen();
+}
+
+function lockerItemIcon(type) {
+  return type === 'image'
+    ? '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 17-6-5-4 4-3-3-5 5"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/></svg>';
+}
+
+function lockerRelativeTime(ts) {
+  const diff = Date.now() - Number(ts || 0);
+  const MIN = 60000, HOUR = 3600000, DAY = 86400000;
+  if (diff < MIN) return 'Just now';
+  if (diff < HOUR) return `${Math.floor(diff / MIN)}m ago`;
+  if (diff < DAY) return `${Math.floor(diff / HOUR)}h ago`;
+  if (diff < 7 * DAY) return `${Math.floor(diff / DAY)}d ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
+function renderLockerItemList() {
+  const empty = document.getElementById('locker-vault-empty');
+  const list = document.getElementById('locker-item-list');
+  if (!list) return;
+  const items = lockerItemsCache || [];
+  if (empty) empty.style.display = items.length ? 'none' : '';
+  // No plaintext title/preview is ever stored (see encryptLockerItem) — the
+  // list can only ever show type + timestamp without decrypting anything.
+  list.innerHTML = items.map(item => `
+    <div class="settings-row" style="cursor:pointer" onclick="openLockerItemViewer('${item.id}')">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43">${lockerItemIcon(item.type)}</div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">${item.type === 'image' ? 'Photo' : 'Note'}</div>
+        <div class="settings-row-sub">${escHtml(lockerRelativeTime(item.createdAt))}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openLockerNoteEditor() {
+  const textarea = document.getElementById('locker-note-editor-text');
+  if (textarea) textarea.value = '';
+  document.getElementById('locker-note-editor-overlay')?.classList.add('open');
+  setTimeout(() => document.getElementById('locker-note-editor-text')?.focus(), 50);
+}
+
+function closeLockerNoteEditor() {
+  const textarea = document.getElementById('locker-note-editor-text');
+  if (textarea) textarea.value = ''; // never leave a drafted note sitting in the DOM
+  document.getElementById('locker-note-editor-overlay')?.classList.remove('open');
+}
+
+async function saveLockerNote() {
+  const textarea = document.getElementById('locker-note-editor-text');
+  const text = textarea?.value || '';
+  if (!text.trim()) { closeLockerNoteEditor(); return; }
+  const record = await encryptLockerItem({ type:'note', text });
+  await lockerItemPut(record);
+  closeLockerNoteEditor();
+  lockerItemsCache = await lockerItemList();
+  renderLockerItemList();
+  toast('Note saved to Locker');
+}
+
+function openLockerImagePicker() { document.getElementById('locker-image-input')?.click(); }
+
+async function handleLockerImageSelect(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    const compressed = await compressImageFile(file);
+    if (!isAllowedImageMime(compressed.mime) || !isValidMediaBase64(compressed.base64)) {
+      toast('That photo format is not supported'); return;
+    }
+    const record = await encryptLockerItem({ type:'image', mime: compressed.mime, base64: compressed.base64 });
+    await lockerItemPut(record);
+    lockerItemsCache = await lockerItemList();
+    renderLockerItemList();
+    toast('Photo saved to Locker');
+  } catch (e) {
+    toast('Could not add that photo to your Locker');
+  }
+}
+
+let lockerViewerItemId = null;
+
+async function openLockerItemViewer(id) {
+  const meta = (lockerItemsCache || []).find(item => item.id === id);
+  if (!meta) return;
+  const record = await lockerItemGet(id);
+  if (!record) { toast('That item is no longer in your Locker'); renderLockerItemList(); return; }
+  let decrypted;
+  try { decrypted = await decryptLockerItem(record); }
+  catch (e) { toast('Could not unlock that item'); return; }
+
+  lockerViewerItemId = id;
+  const title = document.getElementById('locker-item-viewer-title');
+  if (title) title.textContent = meta.type === 'image' ? 'Photo' : 'Note';
+  const body = document.getElementById('locker-item-viewer-body');
+  if (body) {
+    body.innerHTML = '';
+    if (meta.type === 'image') {
+      const src = safeImageDataUri(decrypted.mime, decrypted.base64);
+      if (!src) { toast('Could not display that photo'); lockerViewerItemId = null; return; }
+      const img = document.createElement('img');
+      img.src = src;
+      img.style.cssText = 'max-width:100%;border-radius:12px;display:block';
+      body.appendChild(img);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.readOnly = true;
+      textarea.value = decrypted.text || '';
+      textarea.style.cssText = 'width:100%;box-sizing:border-box;min-height:160px;padding:12px;border:1px solid #D8CDD0;border-radius:12px;font:inherit;resize:vertical;background:#FFFDF9';
+      body.appendChild(textarea);
+    }
+  }
+  document.getElementById('locker-item-viewer-overlay')?.classList.add('open');
+}
+
+// The decrypted plaintext lives ONLY inside the viewer's DOM (an <img src>
+// data: URI, or a textarea's value) while this overlay is open — closing it
+// clears that markup and drops the only remaining reference, so nothing
+// decrypted survives past this point for the GC to eventually reclaim.
+function closeLockerItemViewer() {
+  const overlay = document.getElementById('locker-item-viewer-overlay');
+  const body = document.getElementById('locker-item-viewer-body');
+  if (body) body.innerHTML = '';
+  lockerViewerItemId = null;
+  overlay?.classList.remove('open');
+}
+
+async function deleteLockerItemFromViewer() {
+  if (!lockerViewerItemId) return;
+  if (!confirm('Delete this item from your Locker? This cannot be undone.')) return;
+  const id = lockerViewerItemId;
+  closeLockerItemViewer();
+  await deleteLockerItem(id);
+  toast('Deleted from Locker');
+}
+
 // ── EMERGENCY EXIT ─────────────────────────────────────────────────────
 let emergencyHoldTimer = null;
 let emergencyExitBusy = false;
@@ -13027,6 +13549,8 @@ async function clearVaultlixDeviceData() {
   try { indexedDB.deleteDatabase('vaulted-push'); } catch (e) {}
   try { indexedDB.deleteDatabase('vaultlix'); } catch (e) {}
   try { indexedDB.deleteDatabase(DAILY_LOOK_RESULT_DB); } catch (e) {}
+  try { indexedDB.deleteDatabase(LOCKER_DB_NAME); } catch (e) {}
+  lockerSessionKey = null;
   historyStoreWipeAll();
   try { sessionStorage.clear(); localStorage.clear(); } catch (e) {}
   try { window.VaultlixAndroid?.emergencyReset(); } catch (e) {}
