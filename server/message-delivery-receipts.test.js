@@ -77,3 +77,107 @@ test('mark-delivered stays the shared server endpoint both sw.js (web push) and 
   const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
   assert.match(client, /fetch\('\/api\/mark-delivered'/);
 });
+
+// Isolated run of the real sendApnsNotification against a stubbed http2
+// client — proves the actual mutable-content branching, not just a regex.
+// capturedBody is closed over by the OUTER-realm stub functions assigned
+// onto the vm context; that closure works fine across the realm boundary
+// even though the vm calls into it, so no JSON round-trip trick is needed
+// here the way it is for cross-realm object comparisons elsewhere.
+async function buildApnsRequestBody(parsed) {
+  let capturedBody = null;
+  const context = {
+    APNS_CONFIGURED: true,
+    APNS_HOST: 'https://api.push.apple.com',
+    APNS_BUNDLE_ID: 'com.vaultlix.app',
+    getApnsJwt: () => 'fake-jwt',
+    setImmediate,
+    Buffer, // not available by default inside a vm sandbox; the real function needs it for content-length
+    http2: {
+      connect: () => ({
+        request: () => {
+          const req = {
+            on(event, cb) {
+              if (event === 'response') cb({ ':status': 200 });
+              if (event === 'end') setImmediate(cb);
+              return req;
+            },
+            end(body) { capturedBody = body; },
+          };
+          return req;
+        },
+        setTimeout: () => {},
+        on: () => {},
+        close: () => {},
+      }),
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(extract('sendApnsNotification'), context);
+  await vm.runInContext(`sendApnsNotification({apnsToken:'tok'}, ${JSON.stringify(JSON.stringify(parsed))}, 60)`, context);
+  return JSON.parse(capturedBody);
+}
+
+test('a regular chat message push sets mutable-content:1 so iOS actually invokes VaultlixNotificationService', async () => {
+  const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New message from Alex', code: 'room1', msgId: 'msg123' });
+  assert.equal(body.aps['mutable-content'], 1);
+  assert.equal(body.code, 'room1');
+  assert.equal(body.msgId, 'msg123');
+});
+
+test('a call push does not set mutable-content (unchanged behavior — calls have their own handling)', async () => {
+  const body = await buildApnsRequestBody({ isCall: true, code: 'room1', caller: 'Alex' });
+  assert.equal(body.aps['mutable-content'], undefined);
+});
+
+test('a push with no msgId (e.g. a connection request) does not set mutable-content', async () => {
+  const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1' });
+  assert.equal(body.aps['mutable-content'], undefined);
+});
+
+test('the Notification Service Extension target exists, is embedded, and is registered under the app team', () => {
+  const pbxproj = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App.xcodeproj', 'project.pbxproj'), 'utf8');
+  assert.match(pbxproj, /VaultlixNotificationService/);
+  assert.match(pbxproj, /PRODUCT_BUNDLE_IDENTIFIER = com\.vaultlix\.app\.NotificationService/);
+  assert.match(pbxproj, /DEVELOPMENT_TEAM = 3KLX2S84MV/);
+  assert.match(pbxproj, /Embed Foundation Extensions/);
+});
+
+test('iOS extension reads the room token via a shared keychain access group, not the WebView', () => {
+  const appEntitlements = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'App.entitlements'), 'utf8');
+  const extEntitlements = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'VaultlixNotificationService', 'VaultlixNotificationService.entitlements'), 'utf8');
+  const sharedGroup = '$(AppIdentifierPrefix)com.vaultlix.app';
+  // Both targets must list the identical group string, and it must be the
+  // app's own default identifier (TeamID.com.vaultlix.app) — anything else
+  // would be a NEW group that existing keychain items were never saved
+  // under, breaking the already-live native-call-answering feature this
+  // store also backs.
+  assert.match(appEntitlements, /keychain-access-groups/);
+  assert.ok(appEntitlements.includes(sharedGroup));
+  assert.match(extEntitlements, /keychain-access-groups/);
+  assert.ok(extEntitlements.includes(sharedGroup));
+
+  const store = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'NativeCallRoomStore.swift'), 'utf8');
+  assert.match(store, /private let accessGroup = "3KLX2S84MV\.com\.vaultlix\.app"/);
+  assert.match(store, /func room\(code: String\) -> NativeCallRoom\?/);
+  // The existing handle-based save/lookup, used by the already-live call
+  // flow, must remain present and unchanged in shape.
+  assert.match(store, /func save\(_ room: NativeCallRoom\) -> Bool/);
+  assert.match(store, /func room\(handle: String\) -> NativeCallRoom\?/);
+
+  const engine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'NativeWebRTCCallEngine.swift'), 'utf8');
+  assert.match(engine, /NativeCallRoomStore\.shared\.room\(handle: roomHandle\)/);
+});
+
+test('the extension itself calls mark-delivered with the code-derived room token, and never blocks delivery on failure', () => {
+  const nse = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'VaultlixNotificationService', 'NotificationService.swift'), 'utf8');
+  assert.match(nse, /class NotificationService: UNNotificationServiceExtension/);
+  assert.match(nse, /NativeCallRoomStore\.shared\.room\(code: code\)/);
+  assert.match(nse, /URL\(string: "https:\/\/vaultlix\.com\/api\/mark-delivered"\)/);
+  assert.match(nse, /"code": code, "token": room\.token, "msgId": msgId/);
+  // guard-else always falls through to completion()/deliver() — a missing
+  // token, a bad URL, or the network call itself must never leave the
+  // notification undelivered.
+  assert.match(nse, /guard let room = NativeCallRoomStore\.shared\.room\(code: code\),\s*\n\s*let url = URL\(string: "https:\/\/vaultlix\.com\/api\/mark-delivered"\) else \{\s*\n\s*completion\(\)/);
+  assert.match(nse, /override func serviceExtensionTimeWillExpire\(\)/);
+});

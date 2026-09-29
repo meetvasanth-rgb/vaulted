@@ -806,6 +806,13 @@ function sendApnsNotification(member, payload, ttlSeconds) {
       alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
       sound: 'vault_chime.caf',
       'thread-id': parsed.code || 'vaultlix',
+      // Scoped to regular chat messages (identified by carrying a msgId,
+      // same discriminator used for Android's equivalent fix) — this is
+      // what actually invokes VaultlixNotificationService before the alert
+      // is shown, even on a locked device; without it, iOS runs zero app
+      // code on receipt and there is no way to report delivery from here.
+      // Omitted for calls/connection-requests/etc., which don't need it.
+      ...(parsed.msgId ? { 'mutable-content': 1 } : {}),
     },
     // No message text, encrypted payload, room credential, or member token is
     // included. `code` only lets an authenticated local session select the

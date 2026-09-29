@@ -11,6 +11,7 @@
 		169D7930ACD8EE5B02D14DA2 /* InviteLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B7C3DEC7E134CCD89A90AA /* InviteLink.swift */; };
 		1E7BF6662062D1ED3A5F204A /* InviteLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B7C3DEC7E134CCD89A90AA /* InviteLink.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		434ACA8847C20A71CB935E9A /* NativeCallRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00430A1000100000001 /* NativeCallRoomStore.swift */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -458,6 +459,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				93ED2C8F42740F6DE1FA10A1 /* NotificationService.swift in Sources */,
+				434ACA8847C20A71CB935E9A /* NativeCallRoomStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -527,6 +529,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VaultlixNotificationService/VaultlixNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 80;
 				DEVELOPMENT_TEAM = 3KLX2S84MV;
@@ -769,6 +772,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VaultlixNotificationService/VaultlixNotificationService.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 80;
 				DEVELOPMENT_TEAM = 3KLX2S84MV;
