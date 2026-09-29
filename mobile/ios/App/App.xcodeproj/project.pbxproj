@@ -18,8 +18,10 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		754D7780C530FD6C2028B576 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68F40671B650016D375E013F /* Foundation.framework */; };
 		7E171E11C3F9EFC78281C0D1 /* SharedInvite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6770496E2B026FD0092E8023 /* SharedInvite.swift */; };
 		8F0CE198FD51B4B613135FAB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10019F507318EA1E751F1F57 /* Assets.xcassets */; };
+		93ED2C8F42740F6DE1FA10A1 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92201E11778C80098DC96006 /* NotificationService.swift */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */; };
 		A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00430A1000100000001 /* NativeCallRoomStore.swift */; };
@@ -37,6 +39,7 @@
 		B00D000A30B0000100000001 /* vault_call_digital.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001A30B0000100000001 /* vault_call_digital.caf */; };
 		B00D000B30B0000100000001 /* vault_call_urgent.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001B30B0000100000001 /* vault_call_urgent.caf */; };
 		BA7255A4A3A0D1FE970B1E4D /* VaultlixClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */; };
+		C0B21D2DC7951604455920AD /* VaultlixNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10CA11030C1000100000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = C10CA11130C1000100000001 /* Localizable.strings */; };
 		D57000000000000000000001 /* LocalImageSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57000000000000000000002 /* LocalImageSafety.swift */; };
 		D57000000000000000000003 /* NSFW.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = D57000000000000000000004 /* NSFW.mlmodel */; };
@@ -54,9 +57,26 @@
 			remoteGlobalIDString = 1F9F9CDD1365411CA477AD6B;
 			remoteInfo = VaultlixClip;
 		};
+		89A3D09A7FD2A718ABD2B682 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5661908B6354B3522383D789;
+			remoteInfo = VaultlixNotificationService;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		1BDBBA9303CC12A1306C6AD5 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		39F86CDD3F4E6998FE6FD378 /* Embed App Clips */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -66,6 +86,17 @@
 				F86AD57BFBBC0FB06E997F14 /* VaultlixClip.app in Embed App Clips */,
 			);
 			name = "Embed App Clips";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		51EC3918C46468D9A579E020 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C0B21D2DC7951604455920AD /* VaultlixNotificationService.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -87,8 +118,11 @@
 		60AFFE039CAC0D2690F04416 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		6770496E2B026FD0092E8023 /* SharedInvite.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedInvite.swift; sourceTree = "<group>"; };
 		68F40671B650016D375E013F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		7B20361DF30B1DEDE3ACDB47 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		827F970534559597001B2F3C /* VaultlixNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VaultlixNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VaultlixClipApp.swift; sourceTree = "<group>"; };
 		90E1FC57F3C0F3056483E6BE /* VaultlixClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VaultlixClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		92201E11778C80098DC96006 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWebRTCCallEngine.swift; sourceTree = "<group>"; };
@@ -134,9 +168,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F25C1E6B4DA44B63142DBD79 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				754D7780C530FD6C2028B576 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		3BD3FB9F0AF40A749ACA9826 /* VaultlixNotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				92201E11778C80098DC96006 /* NotificationService.swift */,
+				7B20361DF30B1DEDE3ACDB47 /* Info.plist */,
+			);
+			name = VaultlixNotificationService;
+			path = VaultlixNotificationService;
+			sourceTree = "<group>";
+		};
 		4C07AE2912E500DDCF64C354 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -165,6 +217,7 @@
 				9055120FFD51EF61D6BF816B /* Shared */,
 				8B383A49928BBD6CDC3C595E /* VaultlixClip */,
 				4C07AE2912E500DDCF64C354 /* Frameworks */,
+				3BD3FB9F0AF40A749ACA9826 /* VaultlixNotificationService */,
 			);
 			sourceTree = "<group>";
 		};
@@ -173,6 +226,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				90E1FC57F3C0F3056483E6BE /* VaultlixClip.app */,
+				827F970534559597001B2F3C /* VaultlixNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -260,11 +314,14 @@
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
 				39F86CDD3F4E6998FE6FD378 /* Embed App Clips */,
+				1BDBBA9303CC12A1306C6AD5 /* Embed Foundation Extensions */,
+				51EC3918C46468D9A579E020 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				64133D963F87E42C8E971F3B /* PBXTargetDependency */,
+				A661416665A9629D07FD6AC6 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -273,6 +330,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5661908B6354B3522383D789 /* VaultlixNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0CA5CD7CE8083D19D7EA8FCA /* Build configuration list for PBXNativeTarget "VaultlixNotificationService" */;
+			buildPhases = (
+				82384FFE5374C58FF2A0190D /* Sources */,
+				F25C1E6B4DA44B63142DBD79 /* Frameworks */,
+				B6154E80067134B0024D7006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VaultlixNotificationService;
+			productName = VaultlixNotificationService;
+			productReference = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -313,6 +387,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				1F9F9CDD1365411CA477AD6B /* VaultlixClip */,
+				5661908B6354B3522383D789 /* VaultlixNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -344,6 +419,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B6154E80067134B0024D7006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		BDB3F2BDADCC408CD2D5EFCB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -371,6 +453,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		82384FFE5374C58FF2A0190D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				93ED2C8F42740F6DE1FA10A1 /* NotificationService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E723539C4A1AA34D1008ABD7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -391,6 +481,12 @@
 			name = VaultlixClip;
 			target = 1F9F9CDD1365411CA477AD6B /* VaultlixClip */;
 			targetProxy = 39ABA54119ADB1966B0057A5 /* PBXContainerItemProxy */;
+		};
+		A661416665A9629D07FD6AC6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = VaultlixNotificationService;
+			target = 5661908B6354B3522383D789 /* VaultlixNotificationService */;
+			targetProxy = 89A3D09A7FD2A718ABD2B682 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -427,6 +523,32 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		1A3D10C4617150CD7CD8490C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 80;
+				DEVELOPMENT_TEAM = 3KLX2S84MV;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VaultlixNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vaultlix.app.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		4BD29515533C98D2001A943D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -643,9 +765,43 @@
 			};
 			name = Debug;
 		};
+		A667DB65F17332C4CC41F4D8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 80;
+				DEVELOPMENT_TEAM = 3KLX2S84MV;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VaultlixNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vaultlix.app.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0CA5CD7CE8083D19D7EA8FCA /* Build configuration list for PBXNativeTarget "VaultlixNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A3D10C4617150CD7CD8490C /* Release */,
+				A667DB65F17332C4CC41F4D8 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
