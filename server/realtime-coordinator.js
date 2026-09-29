@@ -145,6 +145,12 @@ class RealtimeCoordinator {
     catch (error) { return null; }
   }
 
+  async currentRateCount(key) {
+    if (!this.ready) return null;
+    try { return Number(await this.publisher.get(this.rateKey(key)) || 0); }
+    catch (error) { return null; }
+  }
+
   async progressiveRateLimit(key, now, windowMs, freeAttempts) {
     if (!this.ready) return null;
     try {

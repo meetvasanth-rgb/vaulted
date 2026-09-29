@@ -3233,7 +3233,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // while the new five-digit preference remains a normal 10-digit number
     // and is available to every creator.
     if (category !== NUMBER_TIERS.STANDARD && category !== 'preferred' && !earlyTester) return resErr(res, 'Reserve number selection is currently closed.', 403);
-    const remaining = Math.max(0, 20 - (rateLimitBuckets.get(generationKey)?.count || 0));
+    // rateLimited() above already incremented the real counter (Redis-backed
+    // when available, per RealtimeCoordinator — the local rateLimitBuckets
+    // map is only a fail-safe and is never touched on the Redis path, so it
+    // can't be used here to compute what's left).
+    const redisCount = await realtimeCoordinator.currentRateCount(generationKey);
+    const usedCount = redisCount !== null ? redisCount : (rateLimitBuckets.get(generationKey)?.count || 0);
+    const remaining = Math.max(0, 20 - usedCount);
     return res200(res, { ok:true, ...(await reservePrivateNumber(category, preferredSuffix)), earlyTester, generationsRemaining:remaining });
   }
 
