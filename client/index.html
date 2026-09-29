@@ -2544,7 +2544,11 @@ html.vaultlix-native .landing-marketing{display:none!important}
     #s-chat .e2e-bar span{font-size:13px!important}
     #s-chat .timer-bar-label::before,#s-chat #timer-bar-select{font-size:13px!important}
     #s-chat .sys-msg{font-size:14px!important;line-height:1.45!important}
-    #s-chat .msg .bubble{font-size:17.5px!important;line-height:1.52!important}
+    #s-chat .msg .bubble{font-size:18.5px!important;line-height:1.55!important}
+    /* Group chat had no equivalent to this pass at all — its message text
+       stayed at the 14px base while direct chat got bumped above, so group
+       conversations read noticeably smaller on the exact same device. */
+    .group-message-text{font-size:18.5px!important;line-height:1.55!important}
     #s-chat .msg-name{font-size:13px!important}
     #s-chat .msg-time{font-size:12px!important}
     #s-chat .daily-nudge{font-size:14px!important;line-height:1.4!important}
