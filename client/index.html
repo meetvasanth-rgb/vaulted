@@ -1072,6 +1072,22 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
 .app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
 
+.locker-fullscreen{position:fixed;inset:0;z-index:10046;background:#FFFDF9;display:none;flex-direction:column}
+.locker-fullscreen.open{display:flex}
+.locker-fullscreen-head{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 12px 8px;flex:none}
+.locker-fullscreen-back{display:flex;align-items:center;gap:4px;border:0;background:transparent;color:#682C43;font:600 15px Inter,sans-serif;padding:8px}
+.locker-fullscreen-back svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.locker-fullscreen-delete{border:0;background:transparent;color:#9B2945;padding:8px;display:flex}
+.locker-fullscreen-delete svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.locker-fullscreen-body{flex:1;min-height:0;overflow-y:auto;padding:4px 20px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column}
+.locker-note-heading-input{border:0;outline:none;background:transparent;width:100%;font:700 26px/1.25 'Cormorant Garamond',serif;color:#241B1E;padding:6px 0}
+.locker-note-meta{color:#B0A498;font:600 11px Inter,sans-serif;margin-bottom:10px}
+.locker-note-body-input{flex:1;min-height:220px;border:0;outline:none;resize:none;background:transparent;width:100%;font:500 16px/1.55 Inter,sans-serif;color:#3A322F}
+.locker-fullscreen-dark{background:#0A0908}
+.locker-fullscreen-dark .locker-fullscreen-back{color:#EDE7DC}
+.locker-fullscreen-photo-stage{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;padding:0 20px calc(20px + env(safe-area-inset-bottom))}
+.locker-fullscreen-photo-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+
 /* iOS-only nudge: -webkit-touch-callout is a WebKit/iOS Safari-specific
    property, unsupported anywhere else, so @supports on it is a reliable way
    to target iOS specifically without a JS user-agent check. Android was
@@ -3840,7 +3856,7 @@ html{background:#fff}
     <div class="app-lock-copy" id="locker-vault-empty">Your Locker is empty. Add a note or a photo below.</div>
     <div id="locker-item-list"></div>
     <div class="app-lock-actions" style="justify-content:flex-start;flex-wrap:wrap">
-      <button type="button" onclick="openLockerNoteEditor()">Add note</button>
+      <button type="button" onclick="openLockerNoteScreen()">Add note</button>
       <button type="button" onclick="openLockerImagePicker()">Add photo</button>
       <button type="button" onclick="closeLockerVault()" style="margin-left:auto">Close</button>
     </div>
@@ -3848,24 +3864,32 @@ html{background:#fff}
 </div>
 <input type="file" id="locker-image-input" accept="image/*" hidden onchange="handleLockerImageSelect(event)"/>
 
-<div class="app-lock-overlay" id="locker-note-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-note-editor-title">
-  <div class="app-lock-sheet">
-    <h2 class="app-lock-title" id="locker-note-editor-title">New note</h2>
-    <div class="app-lock-copy">Type anything — account details, recovery codes, anything you want kept private.</div>
-    <textarea id="locker-note-editor-text" rows="8" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid #D8CDD0;border-radius:12px;font:inherit;resize:vertical"></textarea>
-    <div class="app-lock-actions"><button type="button" onclick="closeLockerNoteEditor()">Cancel</button><button class="primary" type="button" onclick="saveLockerNote()">Save</button></div>
+<div class="locker-fullscreen" id="locker-note-screen" role="dialog" aria-modal="true" aria-label="Note">
+  <div class="locker-fullscreen-head">
+    <button type="button" class="locker-fullscreen-back" onclick="closeLockerNoteScreen()" aria-label="Back to Locker">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg><span>Locker</span>
+    </button>
+    <button type="button" class="locker-fullscreen-delete" id="locker-note-delete-btn" onclick="deleteLockerItemFromScreen()" style="display:none" aria-label="Delete note">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </button>
+  </div>
+  <div class="locker-fullscreen-body">
+    <input type="text" id="locker-note-heading-input" class="locker-note-heading-input" placeholder="Title" maxlength="200"/>
+    <div class="locker-note-meta" id="locker-note-meta"></div>
+    <textarea id="locker-note-body-input" class="locker-note-body-input" placeholder="Note"></textarea>
   </div>
 </div>
 
-<div class="app-lock-overlay" id="locker-item-viewer-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-item-viewer-title">
-  <div class="app-lock-sheet">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 class="app-lock-title" id="locker-item-viewer-title" style="margin:0">Note</h2>
-      <button type="button" class="danger" onclick="deleteLockerItemFromViewer()">Delete item</button>
-    </div>
-    <div id="locker-item-viewer-body"></div>
-    <div class="app-lock-actions"><button class="primary" type="button" onclick="closeLockerItemViewer()">Close</button></div>
+<div class="locker-fullscreen locker-fullscreen-dark" id="locker-photo-screen" role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="locker-fullscreen-head">
+    <button type="button" class="locker-fullscreen-back" onclick="closeLockerPhotoScreen()" aria-label="Back to Locker">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg><span>Locker</span>
+    </button>
+    <button type="button" class="locker-fullscreen-delete" onclick="deleteLockerItemFromScreen()" aria-label="Delete photo">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </button>
   </div>
+  <div class="locker-fullscreen-photo-stage" id="locker-photo-stage"></div>
 </div>
 
 <div class="website-get-app" id="website-get-app" onclick="if(event.target===this)closeWebsiteGetApp()" role="dialog" aria-modal="true" aria-labelledby="website-get-app-title">
@@ -13112,14 +13136,17 @@ async function unlockLocker(password) {
   return true;
 }
 
-function lockLocker() {
+async function lockLocker() {
+  // Close (and save, if a note is mid-edit) BEFORE the session key below is
+  // cleared — the save path needs a still-valid key to encrypt on its way
+  // out. These hooks are added by the Locker UI layer; guarded with typeof
+  // so the crypto/storage layer above works standalone before that UI
+  // exists, and so isolated tests can exercise it without stubbing UI.
+  if (typeof closeLockerItemViewer === 'function') await closeLockerItemViewer();
   lockerSessionKey = null;
+  lockerItemsCache = []; // may hold decrypted note titles — must not survive a lock
   clearTimeout(lockerIdleTimer);
   lockerIdleTimer = null;
-  // These render/viewer hooks are added by the Locker UI layer; guarded with
-  // typeof so the crypto/storage layer above works standalone before that
-  // UI exists, and so isolated tests can exercise it without stubbing UI.
-  if (typeof closeLockerItemViewer === 'function') closeLockerItemViewer();
   if (typeof renderLockerLockScreen === 'function') renderLockerLockScreen();
 }
 
@@ -13136,13 +13163,19 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && loc
 window.addEventListener('pagehide', () => { if (lockerSessionKey) lockLocker(); });
 
 // item: { type: 'note'|'image', text?: string, mime?: string, base64?: string }
-async function encryptLockerItem(item) {
+// options: { id?, createdAt? } — pass both when overwriting an existing item
+// (an edit), so the record keeps its original id/creation time instead of
+// becoming a duplicate. A fresh itemKey is still generated every call, even
+// for an edit: the old ciphertext's key is simply never referenced again
+// once lockerItemPut replaces the row, matching the same crypto-shredding
+// property a delete relies on.
+async function encryptLockerItem(item, options = {}) {
   if (!lockerSessionKey) throw new Error('Locker is locked');
   const itemKeyBytes = crypto.getRandomValues(new Uint8Array(32));
   const itemKey = await crypto.subtle.importKey('raw', itemKeyBytes, { name:'AES-GCM' }, false, ['encrypt']);
 
   const contentIv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = new TextEncoder().encode(JSON.stringify({ type:item.type, text:item.text, mime:item.mime, base64:item.base64 }));
+  const plaintext = new TextEncoder().encode(JSON.stringify({ type:item.type, heading:item.heading, text:item.text, mime:item.mime, base64:item.base64 }));
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv:contentIv }, itemKey, plaintext));
 
   // wrappedKey and ciphertext are deliberately separate fields (not
@@ -13153,9 +13186,10 @@ async function encryptLockerItem(item) {
   itemKeyBytes.fill(0);
 
   return {
-    id: crypto.randomUUID(),
+    id: options.id || crypto.randomUUID(),
     type: item.type,
-    createdAt: Date.now(),
+    createdAt: options.createdAt || Date.now(),
+    updatedAt: Date.now(),
     wrapIv: bytesToBase64UrlCompact(wrapIv),
     wrappedKey: bytesToBase64UrlCompact(wrappedKey),
     contentIv: bytesToBase64UrlCompact(contentIv),
@@ -13234,8 +13268,8 @@ async function lockerItemList() {
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) { resolve(results); return; }
-      const { id, type, createdAt } = cursor.value;
-      results.push({ id, type, createdAt });
+      const { id, type, createdAt, updatedAt } = cursor.value;
+      results.push({ id, type, createdAt, updatedAt });
       cursor.continue();
     };
     request.onerror = () => resolve(results);
@@ -13333,8 +13367,7 @@ async function submitLockerUnlock(event) {
 
 async function openLockerVault() {
   document.getElementById('locker-vault-overlay')?.classList.add('open');
-  lockerItemsCache = await lockerItemList();
-  renderLockerItemList();
+  await refreshLockerItemsCache();
 }
 
 function closeLockerVault() { document.getElementById('locker-vault-overlay')?.classList.remove('open'); }
@@ -13360,48 +13393,51 @@ function lockerRelativeTime(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
+// Builds the list's display rows, decrypting just enough of each note (its
+// heading, or a first-line fallback) to show a real title — like the crypto
+// layer's other decrypt paths, this happens only in memory, only while the
+// Locker is unlocked, and is discarded (never persisted) on lock. Images
+// need no decryption for the list — only their (unencrypted) type/timestamp
+// are ever needed to render a row.
+async function lockerBuildDisplayList() {
+  const metas = await lockerItemList();
+  const display = [];
+  for (const meta of metas) {
+    if (meta.type === 'image') { display.push({ ...meta, title: 'Photo' }); continue; }
+    try {
+      const record = await lockerItemGet(meta.id);
+      const decrypted = await decryptLockerItem(record);
+      const heading = (decrypted.heading || '').trim();
+      const firstLine = (decrypted.text || '').trim().split('\n')[0].slice(0, 80);
+      display.push({ ...meta, title: heading || firstLine || 'New note' });
+    } catch (e) {
+      display.push({ ...meta, title: 'Note' });
+    }
+  }
+  display.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+  return display;
+}
+
+async function refreshLockerItemsCache() {
+  lockerItemsCache = await lockerBuildDisplayList();
+  renderLockerItemList();
+}
+
 function renderLockerItemList() {
   const empty = document.getElementById('locker-vault-empty');
   const list = document.getElementById('locker-item-list');
   if (!list) return;
   const items = lockerItemsCache || [];
   if (empty) empty.style.display = items.length ? 'none' : '';
-  // No plaintext title/preview is ever stored (see encryptLockerItem) — the
-  // list can only ever show type + timestamp without decrypting anything.
   list.innerHTML = items.map(item => `
-    <div class="settings-row" style="cursor:pointer" onclick="openLockerItemViewer('${item.id}')">
+    <div class="settings-row" style="cursor:pointer" onclick="openLockerItem('${item.id}')">
       <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43">${lockerItemIcon(item.type)}</div>
       <div class="settings-row-text">
-        <div class="settings-row-title">${item.type === 'image' ? 'Photo' : 'Note'}</div>
-        <div class="settings-row-sub">${escHtml(lockerRelativeTime(item.createdAt))}</div>
+        <div class="settings-row-title">${escHtml(item.title)}</div>
+        <div class="settings-row-sub">${escHtml(lockerRelativeTime(item.updatedAt || item.createdAt))}</div>
       </div>
     </div>
   `).join('');
-}
-
-function openLockerNoteEditor() {
-  const textarea = document.getElementById('locker-note-editor-text');
-  if (textarea) textarea.value = '';
-  document.getElementById('locker-note-editor-overlay')?.classList.add('open');
-  setTimeout(() => document.getElementById('locker-note-editor-text')?.focus(), 50);
-}
-
-function closeLockerNoteEditor() {
-  const textarea = document.getElementById('locker-note-editor-text');
-  if (textarea) textarea.value = ''; // never leave a drafted note sitting in the DOM
-  document.getElementById('locker-note-editor-overlay')?.classList.remove('open');
-}
-
-async function saveLockerNote() {
-  const textarea = document.getElementById('locker-note-editor-text');
-  const text = textarea?.value || '';
-  if (!text.trim()) { closeLockerNoteEditor(); return; }
-  const record = await encryptLockerItem({ type:'note', text });
-  await lockerItemPut(record);
-  closeLockerNoteEditor();
-  lockerItemsCache = await lockerItemList();
-  renderLockerItemList();
-  toast('Note saved to Locker');
 }
 
 function openLockerImagePicker() { document.getElementById('locker-image-input')?.click(); }
@@ -13417,66 +13453,146 @@ async function handleLockerImageSelect(event) {
     }
     const record = await encryptLockerItem({ type:'image', mime: compressed.mime, base64: compressed.base64 });
     await lockerItemPut(record);
-    lockerItemsCache = await lockerItemList();
-    renderLockerItemList();
+    await refreshLockerItemsCache();
     toast('Photo saved to Locker');
   } catch (e) {
     toast('Could not add that photo to your Locker');
   }
 }
 
+// id of the note/photo currently open full-screen; null when nothing is
+// open, or when composing a brand-new note that hasn't been saved yet.
 let lockerViewerItemId = null;
+// Preserves an edited note's original creation time across a save, so
+// editing never resets "created" to "now" (only updatedAt should move).
+let lockerNoteOriginalCreatedAt = null;
 
-async function openLockerItemViewer(id) {
+function openLockerItem(id) {
   const meta = (lockerItemsCache || []).find(item => item.id === id);
   if (!meta) return;
+  if (meta.type === 'image') openLockerPhotoScreen(id);
+  else openLockerNoteScreen(id);
+}
+
+// Full-screen note editor, iOS-Notes style: the note IS the editor — there
+// is no separate read-only view. Pass no id to compose a brand-new note.
+async function openLockerNoteScreen(id) {
+  const headingInput = document.getElementById('locker-note-heading-input');
+  const bodyInput = document.getElementById('locker-note-body-input');
+  const metaEl = document.getElementById('locker-note-meta');
+  const deleteBtn = document.getElementById('locker-note-delete-btn');
+  if (id) {
+    const record = await lockerItemGet(id);
+    if (!record) { toast('That note is no longer in your Locker'); return; }
+    let decrypted;
+    try { decrypted = await decryptLockerItem(record); }
+    catch (e) { toast('Could not unlock that note'); return; }
+    lockerViewerItemId = id;
+    lockerNoteOriginalCreatedAt = record.createdAt;
+    if (headingInput) headingInput.value = decrypted.heading || '';
+    if (bodyInput) bodyInput.value = decrypted.text || '';
+    if (metaEl) metaEl.textContent = `Edited ${lockerRelativeTime(record.updatedAt || record.createdAt)}`;
+    if (deleteBtn) deleteBtn.style.display = '';
+  } else {
+    lockerViewerItemId = null;
+    lockerNoteOriginalCreatedAt = null;
+    if (headingInput) headingInput.value = '';
+    if (bodyInput) bodyInput.value = '';
+    if (metaEl) metaEl.textContent = '';
+    if (deleteBtn) deleteBtn.style.display = 'none';
+  }
+  document.getElementById('locker-note-screen')?.classList.add('open');
+  setTimeout(() => (id ? bodyInput : headingInput)?.focus(), 50);
+}
+
+// Notes autosave on exit (like Apple Notes — no explicit Save button): an
+// empty new note is discarded, and clearing an existing note down to
+// nothing deletes it rather than leaving a blank row behind. Must run
+// while lockerSessionKey is still valid — see lockLocker's call ordering.
+async function closeLockerNoteScreen() {
+  const screen = document.getElementById('locker-note-screen');
+  if (!screen || !screen.classList.contains('open')) return;
+  const headingInput = document.getElementById('locker-note-heading-input');
+  const bodyInput = document.getElementById('locker-note-body-input');
+  const heading = (headingInput?.value || '').trim();
+  const text = (bodyInput?.value || '').trim();
+  const existingId = lockerViewerItemId;
+  try {
+    if (heading || text) {
+      const record = await encryptLockerItem(
+        { type:'note', heading, text },
+        { id: existingId || undefined, createdAt: lockerNoteOriginalCreatedAt || undefined },
+      );
+      await lockerItemPut(record);
+    } else if (existingId) {
+      await lockerItemDelete(existingId);
+    }
+  } catch (e) {
+    // Locker may already be mid-lock (key cleared) or storage failed — the
+    // edit is lost, the same accepted risk as any unsaved draft the OS
+    // kills before it can flush; nothing decrypted is left behind either way.
+  }
+  if (headingInput) headingInput.value = '';
+  if (bodyInput) bodyInput.value = '';
+  lockerViewerItemId = null;
+  lockerNoteOriginalCreatedAt = null;
+  screen.classList.remove('open');
+  if (lockerSessionKey) await refreshLockerItemsCache();
+}
+
+async function openLockerPhotoScreen(id) {
   const record = await lockerItemGet(id);
-  if (!record) { toast('That item is no longer in your Locker'); renderLockerItemList(); return; }
+  if (!record) { toast('That photo is no longer in your Locker'); return; }
   let decrypted;
   try { decrypted = await decryptLockerItem(record); }
-  catch (e) { toast('Could not unlock that item'); return; }
-
+  catch (e) { toast('Could not unlock that photo'); return; }
+  const src = safeImageDataUri(decrypted.mime, decrypted.base64);
+  if (!src) { toast('Could not display that photo'); return; }
   lockerViewerItemId = id;
-  const title = document.getElementById('locker-item-viewer-title');
-  if (title) title.textContent = meta.type === 'image' ? 'Photo' : 'Note';
-  const body = document.getElementById('locker-item-viewer-body');
-  if (body) {
-    body.innerHTML = '';
-    if (meta.type === 'image') {
-      const src = safeImageDataUri(decrypted.mime, decrypted.base64);
-      if (!src) { toast('Could not display that photo'); lockerViewerItemId = null; return; }
-      const img = document.createElement('img');
-      img.src = src;
-      img.style.cssText = 'max-width:100%;border-radius:12px;display:block';
-      body.appendChild(img);
-    } else {
-      const textarea = document.createElement('textarea');
-      textarea.readOnly = true;
-      textarea.value = decrypted.text || '';
-      textarea.style.cssText = 'width:100%;box-sizing:border-box;min-height:160px;padding:12px;border:1px solid #D8CDD0;border-radius:12px;font:inherit;resize:vertical;background:#FFFDF9';
-      body.appendChild(textarea);
-    }
+  const stage = document.getElementById('locker-photo-stage');
+  if (stage) {
+    stage.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = src;
+    stage.appendChild(img);
   }
-  document.getElementById('locker-item-viewer-overlay')?.classList.add('open');
+  document.getElementById('locker-photo-screen')?.classList.add('open');
 }
 
-// The decrypted plaintext lives ONLY inside the viewer's DOM (an <img src>
-// data: URI, or a textarea's value) while this overlay is open — closing it
-// clears that markup and drops the only remaining reference, so nothing
-// decrypted survives past this point for the GC to eventually reclaim.
-function closeLockerItemViewer() {
-  const overlay = document.getElementById('locker-item-viewer-overlay');
-  const body = document.getElementById('locker-item-viewer-body');
-  if (body) body.innerHTML = '';
+// The decrypted image lives ONLY as this <img src> data: URI while the
+// screen is open — closing it clears the markup and drops the only
+// remaining reference, so nothing decrypted survives past this point.
+function closeLockerPhotoScreen() {
+  const screen = document.getElementById('locker-photo-screen');
+  if (!screen || !screen.classList.contains('open')) return;
+  const stage = document.getElementById('locker-photo-stage');
+  if (stage) stage.innerHTML = '';
   lockerViewerItemId = null;
-  overlay?.classList.remove('open');
+  screen.classList.remove('open');
 }
 
-async function deleteLockerItemFromViewer() {
+// Umbrella close, kept under this name for lockLocker()'s existing typeof
+// guard: closes whichever full-screen note/photo view is open (saving a
+// mid-edit note first, via closeLockerNoteScreen).
+async function closeLockerItemViewer() {
+  await closeLockerNoteScreen();
+  closeLockerPhotoScreen();
+}
+
+async function deleteLockerItemFromScreen() {
   if (!lockerViewerItemId) return;
   if (!confirm('Delete this item from your Locker? This cannot be undone.')) return;
   const id = lockerViewerItemId;
-  closeLockerItemViewer();
+  // Clear state and hide directly (not via closeLockerNoteScreen) so its
+  // save-on-close path can't resurrect the note from stale input values.
+  lockerViewerItemId = null;
+  lockerNoteOriginalCreatedAt = null;
+  const headingInput = document.getElementById('locker-note-heading-input');
+  const bodyInput = document.getElementById('locker-note-body-input');
+  if (headingInput) headingInput.value = '';
+  if (bodyInput) bodyInput.value = '';
+  document.getElementById('locker-note-screen')?.classList.remove('open');
+  document.getElementById('locker-photo-screen')?.classList.remove('open');
   await deleteLockerItem(id);
   toast('Deleted from Locker');
 }
@@ -17170,11 +17286,18 @@ function renderMessageRecord(room, rec, animate) {
     // below) or the thin timestamp row underneath, same as the bubble tap
     // does for text.
     if (rec.pending && !isVideo) mediaHtml = `<div class="msg-upload-pending">${mediaHtml}${attachmentUploadAnimationHtml()}</div>`;
-    contentHtml = `<div class="msg-media-wrap">${mediaHtml}</div>`;
+    // An un-revealed view-once photo must not leak its caption before the
+    // photo itself is opened — that would defeat the "hidden until tapped"
+    // point of view-once.
+    const captionHiddenByViewOnce = rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed;
+    const captionHtml = rec.caption && !captionHiddenByViewOnce ? `<div class="bubble">${escHtml(rec.caption)}</div>` : '';
+    contentHtml = `<div class="msg-media-wrap">${mediaHtml}</div>${captionHtml}`;
   } else if (rec.kind === 'album') {
     // Several photos sent together — one grid bubble, not a wall of
     // separate image messages (see sendAlbumMessage/buildAlbumGridHtml).
-    contentHtml = `<div class="msg-media-wrap">${buildAlbumGridHtml(rec)}</div>`;
+    const albumCaptionHiddenByViewOnce = rec.viewOnce && !rec.isMe && !(rec.images || []).some(img => img.viewed);
+    const albumCaptionHtml = rec.caption && !albumCaptionHiddenByViewOnce ? `<div class="bubble">${escHtml(rec.caption)}</div>` : '';
+    contentHtml = `<div class="msg-media-wrap">${buildAlbumGridHtml(rec)}</div>${albumCaptionHtml}`;
   } else if (rec.kind === 'voice') {
     contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
   } else if (rec.kind === 'gif') {
@@ -17835,7 +17958,8 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       const imagePreview = isImage && safeMessageImagePreview(parsed.imagePreview) ? parsed.imagePreview : null;
       const pdfPreview = safeImageDataUri('image/jpeg', parsed.pdfPreview) ? parsed.pdfPreview : null;
       const videoThumb = String(parsed.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', parsed.videoThumb) ? parsed.videoThumb : null;
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, viewed: false, encryptedAttachmentRef };
+      const caption = typeof parsed.caption === 'string' ? parsed.caption.slice(0, 2000) : '';
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, caption, viewed: false, encryptedAttachmentRef };
     }
     // Several photos picked together arrive as ONE message with an
     // images[] array (see sendAlbumMessage) rather than one message per
@@ -17843,7 +17967,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     // grid bubble instead of a wall of separate image messages.
     if (parsed.type === 'album' && Array.isArray(parsed.images)) {
       return {
-        ...base, kind: 'album', viewOnce: !!parsed.viewOnce, encryptedAttachmentRef,
+        ...base, kind: 'album', viewOnce: !!parsed.viewOnce, caption: typeof parsed.caption === 'string' ? parsed.caption.slice(0, 2000) : '', encryptedAttachmentRef,
         // id here is a local-only lookup key (never sent over the wire) —
         // see handleAlbumImageTap/removeAlbumImage, which key off it
         // instead of array position so opening two view-once photos in the
@@ -21395,7 +21519,7 @@ async function handleFileSelect(event) {
 // its real post-compression type instead of the original file's — and size
 // is always derived from the base64 actually being sent rather than
 // file.size, since compression means those two routinely no longer match.
-async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null, imagePreview = null) {
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null, imagePreview = null, caption = '') {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
@@ -21415,14 +21539,15 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   // added to fix — any member could delete any message for everyone.
   const safeVideoThumb = String(mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', videoThumb) ? videoThumb : null;
   const safeImagePreview = isImage && safeMessageImagePreview(imagePreview) ? imagePreview : null;
+  const safeCaption = String(caption || '').slice(0, 2000);
   const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview,
     videoThumb:safeVideoThumb,
     imagePreview:safeImagePreview,
-    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce });
+    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, caption:safeCaption });
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
     fileName: file.name, mime, base64, isImage, imagePreview:safeImagePreview, pdfPreview, videoThumb:safeVideoThumb,
-    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, viewed: false, pending:true,
+    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, caption:safeCaption, viewed: false, pending:true,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   if (rec.videoThumb) localRecordChecks.set(rec, 'allowed');
@@ -21481,12 +21606,13 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // of a wall of separate image messages. A single photo still goes through
 // sendFileMessage as its own normal message; grouping only makes sense
 // once there's more than one.
-async function sendAlbumMessage(room, items, viewOnce, onProgress) {
+async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '') {
   if (!await allowLocalImageSend(items.map(item => item.base64), onProgress, { persist: !viewOnce })) return false;
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const msgId = newMsgId();
+  const safeCaption = String(caption || '').slice(0, 2000);
 
   // Same deliberate duplication as sendFileMessage above — viewOnce here is
   // for this client's own post-decrypt use; the plaintext copy sent
@@ -21497,6 +21623,7 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress) {
   const payload = JSON.stringify({
     type: 'album',
     viewOnce: !!viewOnce,
+    caption: safeCaption,
     images: items.map(({ file, base64, mime, imagePreview }) => ({
       name: file.name, mime, size: Math.ceil(base64.length * 3 / 4), data: base64,
       preview:safeMessageImagePreview(imagePreview) ? imagePreview : null,
@@ -21520,7 +21647,7 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress) {
   }
 
   const rec = {
-    id: msgId, kind: 'album', isMe: true, name: room.myName, time, ts: sentAt, viewOnce: !!viewOnce,
+    id: msgId, kind: 'album', isMe: true, name: room.myName, time, ts: sentAt, viewOnce: !!viewOnce, caption: safeCaption,
     images: items.map(({ file, base64, mime, imagePreview }, i) => ({
       id: 'ai' + i + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       fileName: file.name, mime, base64,
@@ -21811,7 +21938,18 @@ function beginPhotoSendProgress(count, initialMessage = '', onCancel = null) {
     close() { notice.remove(); if (!host.children.length) host.remove(); },
   };
 }
-function showSendImageOptions(room, items) {
+// options.groupMode: private groups have no view-once concept (see
+// handlePrivateGroupFileSelect), so this hides that choice and shows a
+// single "Send" button instead.
+// options.onSend(caption, viewOnce, onProgress): when provided, this dialog
+// only collects the caption/view-once choice and hands off to the caller's
+// own send pipeline, instead of calling sendFileMessage/sendAlbumMessage
+// directly — lets private groups reuse this exact dialog and caption input
+// with their own attachment pipeline (sendPrivateGroupAttachment), which is
+// structurally unrelated to 1:1's (different encryption key, upload route,
+// and no album batching).
+function showSendImageOptions(room, items, options = {}) {
+  const { groupMode = false, onSend } = options;
   const overlay = document.createElement('div');
   overlay.id = 'send-img-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
@@ -21835,10 +21973,12 @@ function showSendImageOptions(room, items) {
         ${previewHtml}
         ${countBadge}
       </div>
-      <div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">${copy} — hidden until opened, then removed shortly after.</div>
+      <textarea id="send-img-caption" placeholder="Add a caption…" maxlength="2000" style="width:100%;box-sizing:border-box;min-height:44px;max-height:120px;resize:vertical;border:1px solid #E4DAD3;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;margin-bottom:14px;text-align:left"></textarea>
+      ${groupMode ? '' : `<div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">${copy} — hidden until opened, then removed shortly after.</div>`}
       <div style="display:flex;flex-direction:column;gap:8px">
-        <button id="send-img-once" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">👁 Send view-once</button>
-        <button id="send-img-normal" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send normally</button>
+        ${groupMode
+          ? '<button id="send-img-normal" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send</button>'
+          : '<button id="send-img-once" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">👁 Send view-once</button><button id="send-img-normal" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send normally</button>'}
         <button id="send-img-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
       </div>
     </div>`;
@@ -21848,16 +21988,19 @@ function showSendImageOptions(room, items) {
   const sendAll = async (viewOnce) => {
     if (sending) return;
     sending = true;
+    const caption = (overlay.querySelector('#send-img-caption')?.value || '').trim();
     const progress = beginPhotoSendProgress(items.length);
     close();
     try {
       // Paint feedback before hashing, serialization and encryption begin.
       await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-      if (items.length > 1) {
-        await sendAlbumMessage(room, items, viewOnce, progress.update);
+      if (onSend) {
+        await onSend(caption, viewOnce, progress.update);
+      } else if (items.length > 1) {
+        await sendAlbumMessage(room, items, viewOnce, progress.update, caption);
       } else {
         const { file, base64, mime, imagePreview } = items[0];
-        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, progress.update, null, imagePreview);
+        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, progress.update, null, imagePreview, caption);
       }
     } catch (error) {
       toast('Could not send photos. Please try again.');
@@ -21865,7 +22008,8 @@ function showSendImageOptions(room, items) {
       progress.close();
     }
   };
-  overlay.querySelector('#send-img-once').onclick = () => sendAll(true);
+  const onceBtn = overlay.querySelector('#send-img-once');
+  if (onceBtn) onceBtn.onclick = () => sendAll(true);
   overlay.querySelector('#send-img-normal').onclick = () => sendAll(false);
   overlay.querySelector('#send-img-cancel').onclick = close;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });

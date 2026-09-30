@@ -236,11 +236,28 @@ async function sendPrivateGroupGif(item, searchQuery) {
 async function handlePrivateGroupFileSelect(event) {
   const files = Array.from(event.target.files || []); event.target.value = '';
   if (!files.length) return;
+  // Images are prepared here but held back from sending — they're batched
+  // into one caption-entry step below (showSendImageOptions, the same
+  // dialog 1:1 chat uses), rather than sent immediately per file like every
+  // other attachment type in this loop. One caption applies to the whole
+  // picked batch, matching how 1:1 asks its view-once question once per
+  // pick rather than once per photo.
+  const imageItems = [];
   for (const file of files) {
     const isVideo = String(file.type || '').startsWith('video/');
+    const isImage = String(file.type || '').startsWith('image/');
+    if (isImage) {
+      if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
+      try {
+        const compressed = await compressImageFile(file);
+        if (!await allowLocalImageSend([compressed.base64], null, { persist:true })) continue;
+        imageItems.push({ file, base64: compressed.base64, mime: compressed.mime, imagePreview: null });
+      } catch (error) { toast(error.message || `“${file.name}” could not be prepared`); }
+      continue;
+    }
     let attachmentName = file.name;
     let currentVideoController = null;
-    const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : (String(file.type || '').startsWith('image/') ? 'Encrypting image…' : 'Encrypting attachment…'),
+    const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : 'Encrypting attachment…',
       isVideo ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null);
     try {
       if (file.size > (isVideo ? MAX_VIDEO_SOURCE_BYTES : MAX_PRIVATE_GROUP_FILE_BYTES)) {
@@ -248,39 +265,52 @@ async function handlePrivateGroupFileSelect(event) {
         continue;
       }
       let base64, mime = file.type || 'application/octet-stream';
-      if (mime.startsWith('image/')) {
-        progress.update('Encrypting image…');
-        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        const compressed = await compressImageFile(file); base64 = compressed.base64; mime = compressed.mime;
-        if (!await allowLocalImageSend([base64], progress.update, { persist:true })) continue;
-      } else {
-        progress.update(isVideo ? 'Optimising video…' : 'Encrypting attachment…');
-        await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
-        const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
-        currentVideoController = null;
-        if (isVideo && compressedVideo?.cancelled) continue;
-        // Never fall back to the raw original when a video genuinely needed
-        // compression and couldn't get under 25MB.
-        if (isVideo && !compressedVideo) {
-          toast(`“${file.name}” couldn’t be compressed under 25MB — try a shorter or lower-resolution video`);
-          continue;
-        }
-        base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
-        if (compressedVideo) { attachmentName = compressedVideo.name; mime = compressedVideo.mime; }
+      progress.update(isVideo ? 'Optimising video…' : 'Encrypting attachment…');
+      await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
+      const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
+      currentVideoController = null;
+      if (isVideo && compressedVideo?.cancelled) continue;
+      // Never fall back to the raw original when a video genuinely needed
+      // compression and couldn't get under 25MB.
+      if (isVideo && !compressedVideo) {
+        toast(`“${file.name}” couldn’t be compressed under 25MB — try a shorter or lower-resolution video`);
+        continue;
       }
+      base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
+      if (compressedVideo) { attachmentName = compressedVideo.name; mime = compressedVideo.mime; }
       const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
       // Same first-page thumbnail and page count as direct conversations; both
       // ride inside the encrypted payload, never as plaintext.
-      const pdfPreview = !mime.startsWith('image/') && isPdfAttachment(mime, attachmentName)
-        ? await createPdfFirstPagePreview(base64) : null;
-      await sendPrivateGroupAttachment({ type:mime.startsWith('image/') ? 'group-image' : 'group-file',
+      const pdfPreview = isPdfAttachment(mime, attachmentName) ? await createPdfFirstPagePreview(base64) : null;
+      await sendPrivateGroupAttachment({ type:'group-file',
         name:String(attachmentName || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64,
         ...(videoThumb && safeImageDataUri('image/jpeg', videoThumb) ? { videoThumb } : {}),
         ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) }, progress.update);
-      toast(mime.startsWith('image/') ? 'Photo sent' : (isVideo ? 'Video sent' : 'File sent'));
+      toast(isVideo ? 'Video sent' : 'File sent');
     } catch (error) { toast(error.message || 'Attachment could not be sent'); }
     finally { progress.close(); }
+  }
+
+  if (imageItems.length) {
+    // room is unused when onSend is provided — groups have their own send
+    // pipeline (sendPrivateGroupAttachment), unrelated to 1:1's.
+    showSendImageOptions(null, imageItems, {
+      groupMode: true,
+      onSend: async (caption, viewOnce, onProgress) => {
+        for (const item of imageItems) {
+          try {
+            await sendPrivateGroupAttachment({ type:'group-image',
+              name:String(item.file.name || 'Photo').slice(0,180), mime:item.mime,
+              size:Math.ceil(item.base64.length * 3 / 4), data:item.base64,
+              ...(caption ? { caption } : {}) }, onProgress);
+          } catch (error) {
+            toast(error.message || `“${item.file.name}” could not be sent`);
+          }
+        }
+        toast(imageItems.length > 1 ? 'Photos sent' : 'Photo sent');
+      },
+    });
   }
 }
 
@@ -607,6 +637,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
           : MEDIA_BLOCKED_HTML);
       usable = !!safeSrc && !(message.imageSafety && message.imageSafety !== 'allowed');
       if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
+      if (message.attachment.caption && usable) content += `<div class="group-message-text">${escHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
@@ -1165,6 +1196,7 @@ async function decodePrivateGroupAttachment(group, state, message, attachmentId,
     payload.videoThumb = String(payload.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', payload.videoThumb)
       ? payload.videoThumb : null;
   }
+  payload.caption = typeof payload.caption === 'string' ? payload.caption.slice(0, 2000) : '';
   const decoded = { ...message, attachmentId, attachment:payload };
   if (payload.type === 'group-image' && message.senderId !== state.accountId && localImageSafetyEnabled()) {
     decoded.imageSafety = await checkLocalImages([payload.data], undefined, { persist:true });

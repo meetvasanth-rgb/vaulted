@@ -17,11 +17,20 @@ function extract(name) {
   let start = html.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} should exist in client/index.html`);
   if (html.slice(Math.max(0, start - 6), start) === 'async ') start -= 6;
-  let i = html.indexOf('{', start);
-  let depth = 0;
+  // Skip past the parameter list via paren-counting first — it may itself
+  // contain a brace (e.g. a default value like `options = {}`), which would
+  // throw off a brace-counter started right after the function name.
+  let i = html.indexOf('(', start);
+  let parenDepth = 0;
   for (; i < html.length; i++) {
-    if (html[i] === '{') depth++;
-    else if (html[i] === '}') { depth--; if (depth === 0) { i++; break; } }
+    if (html[i] === '(') parenDepth++;
+    else if (html[i] === ')') { parenDepth--; if (parenDepth === 0) { i++; break; } }
+  }
+  i = html.indexOf('{', i);
+  let braceDepth = 0;
+  for (; i < html.length; i++) {
+    if (html[i] === '{') braceDepth++;
+    else if (html[i] === '}') { braceDepth--; if (braceDepth === 0) { i++; break; } }
   }
   return html.slice(start, i);
 }
@@ -86,6 +95,29 @@ test('correct password unlocks and the resulting key actually works', async () =
   const record = await ctx.encryptLockerItem({ type: 'note', text: 'hello vault' });
   const decrypted = await ctx.decryptLockerItem(record);
   assert.equal(decrypted.text, 'hello vault');
+});
+
+test('editing a note reuses its id/createdAt (overwrite, not a duplicate) and carries the heading', async () => {
+  const ctx = lockerContext();
+  await ctx.setUpLocker('pw'); await ctx.unlockLocker('pw');
+
+  const original = await ctx.encryptLockerItem({ type: 'note', heading: 'Groceries', text: 'milk, eggs' });
+  assert.deepEqual(await ctx.decryptLockerItem(original), { type: 'note', heading: 'Groceries', text: 'milk, eggs' });
+
+  // Simulate an edit: same id/createdAt passed back in, new content.
+  const edited = await ctx.encryptLockerItem(
+    { type: 'note', heading: 'Groceries (updated)', text: 'milk, eggs, bread' },
+    { id: original.id, createdAt: original.createdAt },
+  );
+  assert.equal(edited.id, original.id);
+  assert.equal(edited.createdAt, original.createdAt);
+  assert.ok(edited.updatedAt >= original.updatedAt);
+  assert.deepEqual(await ctx.decryptLockerItem(edited), { type: 'note', heading: 'Groceries (updated)', text: 'milk, eggs, bread' });
+
+  // The old ciphertext is a different value — a real re-encryption happened,
+  // not a no-op — and the old wrapped key is gone; only `edited`'s survives.
+  assert.notEqual(edited.ciphertext, original.ciphertext);
+  assert.notEqual(edited.wrappedKey, original.wrappedKey);
 });
 
 test('note and image items round-trip through encrypt/decrypt', async () => {
