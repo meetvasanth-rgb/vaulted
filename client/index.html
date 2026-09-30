@@ -8010,6 +8010,12 @@ function addCallSysMsg(room, text, eventId = null, callEvent = null) {
   };
   if (room.messages.some(existing => existing.id === rec.id)) return;
   if (isDuplicateCallHistoryRecord(room, rec)) return;
+  // Unlike applyRestoredHistory's own network-restore path, this direct
+  // add (used by endCall/dissolveCallScreen and the native call-end
+  // bridges) never consulted the delete ledger at all — a queued/stale
+  // native call-end notification arriving after the user had already
+  // deleted this call's history entry would silently resurrect it.
+  if (eventId && room.deleteLedger.get(eventId)) return;
   room.seenMsgIds?.add(rec.id);
   room.messages.push(rec);
   room.lastMessageAt = Math.max(Number(room.lastMessageAt) || 0, occurredAt);
@@ -16987,7 +16993,18 @@ function showDeleteOptions(room, msgIdOrIds, isMe) {
     </div>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
-  const confirmDelete = (forEveryone) => { close(); exitSelectMode(); deleteMessage(room, ids, forEveryone); };
+  const confirmDelete = async (forEveryone) => {
+    close();
+    exitSelectMode();
+    await deleteMessage(room, ids, forEveryone);
+    // removeMessageRecord() only fades the DOM row when this room is the
+    // active CHAT screen — deleting from the Calls tab (room.code !==
+    // activeRoomCode there) never touched that screen's own list at all,
+    // so the deleted row just sat there until the tab was reopened. This
+    // covers both origins with one check rather than threading a callback
+    // through every showDeleteOptions() call site.
+    if (currentVaultListMode === 'calls') renderVaultList();
+  };
   if (isMe) overlay.querySelector('#del-everyone').onclick = () => confirmDelete(true);
   overlay.querySelector('#del-me').onclick = () => confirmDelete(false);
   overlay.querySelector('#del-cancel').onclick = close; // cancelling leaves an in-progress selection intact
@@ -21260,6 +21277,18 @@ window.addEventListener('DOMContentLoaded', async () => {
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;
+      // Loaded here rather than only in the slow per-room loop below
+      // (which awaits a real /api/join network round-trip per room,
+      // sequentially) — restoreRoomHistoryInBackground() (triggered
+      // eagerly for every room the moment the Calls tab renders, so a full
+      // history re-fetch can start before this room's turn in that slow
+      // loop ever comes up) does not wait for that loop either. Without
+      // this, any room not yet reached would still be sitting on
+      // makeRoom()'s empty deleteLedger default when its re-fetched
+      // history arrived, silently resurrecting every message (not just
+      // calls) that had been individually deleted or cleared on this
+      // device — this is local-only data, no network wait needed for it.
+      room.deleteLedger = new Map(Object.entries(session.deleteLedger || {}).map(([k, v]) => [k, Number(v)]));
       addRoomToState(room);
     }
     showScreen('s-vault-list');

@@ -212,6 +212,52 @@ test('the in-chat call card carries data-msg-id, so a deletion can find and fade
   assert.match(render, /div\.className = `msg call-msg \$\{callDetails\.direction === 'outgoing' \? 'me' : 'them'\}\$\{animate \? ' msg-enter' : ''\}`;\s*\n\s*div\.dataset\.msgId = rec\.id;/);
 });
 
+// ── Bug: deleting an individual call from the Calls tab silently did
+// nothing visible — removeMessageRecord() only fades the DOM row when the
+// deleted room is the currently-open CHAT screen (room.code ===
+// activeRoomCode), which is never true when the delete happened from the
+// Calls tab itself. showDeleteOptions() must re-render the vault list
+// itself when it's the active tab, not just rely on removeMessageRecord's
+// own chat-only DOM update. ──
+
+test('showDeleteOptions re-renders the vault list after a confirmed delete, so a Calls tab deletion is actually visible', () => {
+  const fn = extract(client, 'showDeleteOptions');
+  assert.match(fn, /const confirmDelete = async \(forEveryone\) => \{/);
+  assert.match(fn, /await deleteMessage\(room, ids, forEveryone\);/);
+  assert.match(fn, /if \(currentVaultListMode === 'calls'\) renderVaultList\(\);/);
+});
+
+// ── Bug: "Clear all calls" (and any individual delete) appeared to work
+// immediately, but every deleted call reappeared after fully reopening
+// the app. Root cause: startup restores each room's session — including
+// its local-only deleteLedger — sequentially, awaiting a real /api/join
+// network round-trip per room one at a time; that can take real time
+// across several rooms. The Calls tab's own eager-restore-every-room
+// trigger (restoreRoomHistoryInBackground, added earlier this session)
+// does not wait for that slow loop — opening the Calls tab shortly after
+// launch (an entirely normal thing to do) could re-fetch a room's full
+// history before that room's turn in the slow loop ever came up, while
+// its deleteLedger was still makeRoom()'s empty default, silently
+// resurrecting every previously deleted message in it — not just calls.
+// Fixed by loading deleteLedger in the earlier, fully-synchronous, purely
+// local hydration pass instead, before any restore can possibly race
+// ahead of it. ──
+
+test('deleteLedger is loaded in the first synchronous per-room hydration pass, not only in the slow per-room network-restore loop', () => {
+  const idx = client.indexOf("for (const code of idx) {\n      const session = loadRoomSession(code);");
+  assert.notEqual(idx, -1, 'the first (synchronous) hydration loop');
+  const loopEnd = client.indexOf('\n    }', idx);
+  const firstLoop = client.slice(idx, loopEnd);
+  assert.match(firstLoop, /room\.deleteLedger = new Map\(Object\.entries\(session\.deleteLedger \|\| \{\}\)\.map\(\(\[k, v\]\) => \[k, Number\(v\)\]\)\);/);
+  // The later, slow per-room loop's own assignment is left in place as a
+  // harmless no-op safety net — not required to be removed by this fix.
+});
+
+test('addCallSysMsg also checks the delete ledger directly, so a queued native call-end notification cannot resurrect an already-deleted call', () => {
+  const fn = extract(client, 'addCallSysMsg');
+  assert.match(fn, /if \(eventId && room\.deleteLedger\.get\(eventId\)\) return;/);
+});
+
 // ── renderMessageRecord: the in-chat call card branch (structural) ──
 
 test('renderMessageRecord routes call-family sys records to a call-card bubble, not the plain centered sys-msg', () => {
