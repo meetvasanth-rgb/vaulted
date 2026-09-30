@@ -37,6 +37,8 @@ import android.widget.Toast;
 import org.webrtc.RendererCommon;
 import org.webrtc.SurfaceViewRenderer;
 
+import java.util.Random;
+
 /** Keyguard-safe presentation (audio, with optional video) for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
     private static final String TAG = "VaultlixCallAudio";
