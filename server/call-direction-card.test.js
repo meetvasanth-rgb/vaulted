@@ -157,7 +157,7 @@ function callsListHarness() {
 test('an outgoing call row gets the direction arrow with the "outgoing" class', () => {
   const c = callsListHarness();
   c.entries = [{ room:{ code:'r' }, rec:{ id:'1', callEventViewerRole:'initiator' }, text:'Encrypted call · 00:12', occurredAt:1 }];
-  const body = { innerHTML:'', querySelectorAll:() => [] };
+  const body = { innerHTML:'', querySelector:() => null, querySelectorAll:() => [] };
   c.renderCallHistoryList(body);
   assert.match(body.innerHTML, /vault-call-direction outgoing/);
   assert.doesNotMatch(body.innerHTML, /vault-call-direction incoming/);
@@ -166,7 +166,7 @@ test('an outgoing call row gets the direction arrow with the "outgoing" class', 
 test('an incoming missed call row gets the direction arrow with the "incoming" class, inside the red alert text', () => {
   const c = callsListHarness();
   c.entries = [{ room:{ code:'r' }, rec:{ id:'1', callEventViewerRole:'receiver' }, text:'Missed encrypted call', occurredAt:1 }];
-  const body = { innerHTML:'', querySelectorAll:() => [] };
+  const body = { innerHTML:'', querySelector:() => null, querySelectorAll:() => [] };
   c.renderCallHistoryList(body);
   assert.match(body.innerHTML, /vault-list-row-preview alert"><svg class="vault-call-direction incoming/);
 });
@@ -174,9 +174,42 @@ test('an incoming missed call row gets the direction arrow with the "incoming" c
 test('a row with unknown direction (no callEventViewerRole) renders with no arrow at all, not a guessed one', () => {
   const c = callsListHarness();
   c.entries = [{ room:{ code:'r' }, rec:{ id:'1' }, text:'Encrypted call · 00:12', occurredAt:1 }];
-  const body = { innerHTML:'', querySelectorAll:() => [] };
+  const body = { innerHTML:'', querySelector:() => null, querySelectorAll:() => [] };
   c.renderCallHistoryList(body);
   assert.doesNotMatch(body.innerHTML, /vault-call-direction/);
+});
+
+// ── Delete individual calls and clear all — reuses the same
+// showDeleteOptions()/deleteMessage() plumbing chat messages already use,
+// so removing a call entry from the Calls tab also removes it from the
+// 1:1 chat (they're the same underlying room.messages record). ──
+
+test('renderCallHistoryList shows a "Clear all calls" button above the list, wired to confirmClearAllCalls with the current entries', () => {
+  const c = callsListHarness();
+  c.entries = [{ room:{ code:'r' }, rec:{ id:'1', callEventViewerRole:'initiator' }, text:'Encrypted call · 00:12', occurredAt:1 }];
+  const body = { innerHTML:'', querySelector(sel) { return sel === '#vault-clear-all-calls' ? this._btn : null; }, _btn:{ onclick:null }, querySelectorAll:() => [] };
+  c.renderCallHistoryList(body);
+  assert.match(body.innerHTML, /vault-clear-all-calls/);
+  assert.match(body.innerHTML, /Clear all calls/);
+  assert.equal(typeof body._btn.onclick, 'function');
+});
+
+test('each Calls tab row carries data-msg-id and is long-press-wired to delete that one entry, for me only', () => {
+  const render = extract(client, 'renderCallHistoryList');
+  assert.match(render, /data-msg-id="\$\{escHtml\(rec\.id \|\| ''\)\}"/);
+  assert.match(render, /attachLongPress\(el, entry\.rec\.id, \(\) => showDeleteOptions\(entry\.room, entry\.rec\.id, false\)\);/);
+});
+
+test('confirmClearAllCalls groups entries by room and calls deleteMessage per room with "delete for me" only', () => {
+  const fn = extract(client, 'confirmClearAllCalls');
+  assert.match(fn, /if \(!byRoom\.has\(room\.code\)\) byRoom\.set\(room\.code, \{ room, ids: \[\] \}\);/);
+  assert.match(fn, /byRoom\.get\(room\.code\)\.ids\.push\(rec\.id\);/);
+  assert.match(fn, /await deleteMessage\(room, ids, false\);/);
+});
+
+test('the in-chat call card carries data-msg-id, so a deletion can find and fade its DOM element if that chat happens to be open', () => {
+  const render = extract(client, 'renderMessageRecord');
+  assert.match(render, /div\.className = `msg call-msg \$\{callDetails\.direction === 'outgoing' \? 'me' : 'them'\}\$\{animate \? ' msg-enter' : ''\}`;\s*\n\s*div\.dataset\.msgId = rec\.id;/);
 });
 
 // ── renderMessageRecord: the in-chat call card branch (structural) ──

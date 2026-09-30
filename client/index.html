@@ -1536,6 +1536,8 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
 .settings-category-page{display:none}
 .day-sep{display:flex;justify-content:center;flex:none;margin:12px 0 6px}.day-sep span{padding:4px 12px;border-radius:999px;background:#F3EDEF;color:#6F6169;font:600 11.5px/1.3 Inter,sans-serif;letter-spacing:.01em}
 .load-earlier{display:flex;justify-content:center;padding:6px 0 12px}.load-earlier-btn{padding:9px 18px;border-radius:18px;border:1px solid #DDCFD5;background:#fff;color:#682C43;font:650 13px Inter,sans-serif}.load-earlier-btn:disabled{opacity:.6}
+.vault-call-clear-row{display:flex;justify-content:flex-end;padding:2px 4px 8px}
+.vault-call-clear-btn{background:none;border:none;color:#A84964;font:650 12.5px Inter,sans-serif;padding:6px 4px;cursor:pointer}
 .storage-block{padding:0 20px 14px}
 .storage-total{font:700 26px Manrope,sans-serif;color:#271D25}.storage-caption{font:500 12.5px/1.45 Inter,sans-serif;color:#7A6A72;margin-top:4px}
 .storage-bar{height:8px;border-radius:99px;background:#EFE6EA;overflow:hidden;margin:12px 0 4px}.storage-bar>span{display:block;height:100%;border-radius:99px;background:#682C43}
@@ -15479,19 +15481,36 @@ function renderCallHistoryList(body) {
   // it never qualifies here even though the peer's mirrored copy of that
   // same call does say "Missed" from their side.
   const { seen } = missedCallSeenState();
-  body.innerHTML = entries.map(({ room, rec, text, occurredAt }) => {
+  // data-msg-id/data-room on each row let the long-press delete handler
+  // below look the record back up without a second data structure — the
+  // same {room, rec} pairs callHistoryEntries() already produced.
+  const clearAllHtml = '<div class="vault-call-clear-row"><button type="button" class="vault-call-clear-btn" id="vault-clear-all-calls">Clear all calls</button></div>';
+  body.innerHTML = clearAllHtml + entries.map(({ room, rec, text, occurredAt }) => {
     const isMissed = /^Missed/i.test(text);
     const isUnseenMissed = isMissed && rec.callEventViewerRole !== 'initiator' && !seen.has(`${room.code}:${rec.id || occurredAt}`);
     const direction = callRecDirection(rec);
     const directionIcon = callDirectionIconHtml(direction, isMissed);
-    return `<div class="vault-list-row vault-call-row${isUnseenMissed ? ' missed-unseen' : ''}" data-room="${escHtml(room.code)}">
+    return `<div class="vault-list-row vault-call-row${isUnseenMissed ? ' missed-unseen' : ''}" data-room="${escHtml(room.code)}" data-msg-id="${escHtml(rec.id || '')}">
     <button type="button" class="vault-call-icon vault-call-btn" data-call-room="${escHtml(room.code)}" aria-label="Call ${escHtml(roomDisplayLabel(room))}" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></button>
     <span class="vault-list-row-name">${escHtml(roomDisplayLabel(room))}</span>
     <span class="vault-list-row-preview${isMissed ? ' alert' : ''}">${directionIcon}${escHtml(text)}</span>
     <span class="vault-list-row-meta">${occurredAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(occurredAt)}</span>` : ''}<button type="button" class="vault-call-video-btn" data-video-call-room="${escHtml(room.code)}" aria-label="Video call ${escHtml(roomDisplayLabel(room))}" title="Video call"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg></button></span>
   </div>`;
   }).join('');
-  body.querySelectorAll('.vault-call-row').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
+  const clearAllBtn = body.querySelector('#vault-clear-all-calls');
+  if (clearAllBtn) clearAllBtn.onclick = () => confirmClearAllCalls(entries);
+  body.querySelectorAll('.vault-call-row').forEach(el => {
+    // Guard against the trailing click a long-press-to-delete leaves
+    // behind — same pattern used everywhere else a tap and a long-press
+    // share the same element (see wasJustLongPressed's other call sites).
+    el.onclick = () => { if (!wasJustLongPressed()) openVaultListRoom(el.dataset.room); };
+    // Long-press to delete this one call entry — same gesture, same
+    // showDeleteOptions()/deleteMessage() plumbing chat messages already
+    // use, so removing it here also removes it from the 1:1 chat (they're
+    // the same underlying room.messages record).
+    const entry = entries.find(item => item.rec.id === el.dataset.msgId);
+    if (entry) attachLongPress(el, entry.rec.id, () => showDeleteOptions(entry.room, entry.rec.id, false));
+  });
   // The phone button rings right away. stopPropagation keeps the tap from also
   // reaching the row handler above, which would open the chat.
   body.querySelectorAll('.vault-call-btn').forEach(button => {
@@ -15522,6 +15541,44 @@ function renderCallHistoryList(body) {
       };
     }
   }
+}
+
+// "Delete for everyone" doesn't apply here — a call event isn't content one
+// side authored that only they can retract; each device generates its own
+// local copy independently (they just happen to share an id when both
+// exist). "Delete for me" removes it from this device only, exactly like
+// removing a single row via long-press, just for every row at once —
+// which is why this reuses deleteMessage(), grouped per room, rather than
+// a separate bulk-delete code path.
+function confirmClearAllCalls(entries) {
+  if (!entries.length) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'clear-calls-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:10050;padding:24px;';
+  const count = entries.length;
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:320px;width:100%;text-align:center;font-family:inherit">
+      <div style="font-size:13.5px;color:#4A4038;line-height:1.5;margin-bottom:16px">Clear all ${count} call${count === 1 ? '' : 's'} from this device? Your messages stay — only the call entries go.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button id="clear-calls-confirm" style="background:#C87588;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Clear all calls</button>
+        <button id="clear-calls-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#clear-calls-confirm').onclick = async () => {
+    close();
+    const byRoom = new Map();
+    for (const { room, rec } of entries) {
+      if (!byRoom.has(room.code)) byRoom.set(room.code, { room, ids: [] });
+      byRoom.get(room.code).ids.push(rec.id);
+    }
+    for (const { room, ids } of byRoom.values()) await deleteMessage(room, ids, false);
+    if (currentVaultListMode === 'calls') renderVaultList();
+    toast('Call history cleared');
+  };
+  overlay.querySelector('#clear-calls-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
 
 // The phone button on a call-history row rings that conversation immediately,
@@ -17428,6 +17485,7 @@ function renderMessageRecord(room, rec, animate) {
       // who placed the call, like an ordinary chat bubble) instead of the
       // plain centered sys-msg line every other system notice still uses.
       div.className = `msg call-msg ${callDetails.direction === 'outgoing' ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
+      div.dataset.msgId = rec.id;
       if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
       const icon = callDetails.isVideo
         ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg>'

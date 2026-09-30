@@ -44,7 +44,7 @@ function missedEntry(id, room = 'r') {
 }
 
 function fakeBody() {
-  return { innerHTML: '', querySelectorAll: () => [] };
+  return { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
 }
 
 test('a genuinely missed, unviewed call renders with the highlight class and dot', () => {
