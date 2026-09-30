@@ -15294,6 +15294,19 @@ function openVaultListRoom(code) {
 }
 
 function renderCallHistoryList(body) {
+  // callHistoryEntries() aggregates from room.messages across every room,
+  // but that array is only eagerly restored for the single last-active room
+  // at startup (see the startup restore loop) — every other room's messages
+  // stay [] until the user happens to have opened that specific chat this
+  // session. Without this, opening the Calls tab early shows calls from
+  // only whichever one room was last active ("sometimes only one peer's
+  // calls show"). Kick off restoration for any room still missing it;
+  // restoreRoomHistoryInBackground's own completion hook already
+  // re-renders the vault list (this screen) once each one finishes, so no
+  // extra render-wiring is needed here beyond starting them.
+  for (const room of rooms.values()) {
+    if (!room.historyLoaded && !room.historyRestorePromise) restoreRoomHistoryInBackground(room);
+  }
   const entries = callHistoryEntries();
   if (!entries.length) {
     body.innerHTML = '<div class="vault-list-empty"><strong>No calls yet</strong>Your encrypted call history will appear here after a call ends.</div>';
