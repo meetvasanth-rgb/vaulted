@@ -3022,7 +3022,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   if ((path === '/api/report' || path === '/api/connections/block') && method === 'POST') {
     if (await rateLimited(`safety-report:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many safety requests — try again later.', 429);
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     const member = room && typeof d.token === 'string' ? room.members.get(d.token) : null;
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!room || !member || !account) return resErr(res, 'Sign in and reopen this conversation to continue.', 403);
@@ -4523,7 +4523,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // POST /api/join
   if (path==='/api/join' && method==='POST') {
     const roomCode = (d.code||'').toLowerCase().trim();
-    const room = rooms.get(roomCode);
+    const room = await ensureConversationLoaded(roomCode);
 
     // Rejoin with saved token — an existing session token is itself the
     // credential for continued access, so this branch intentionally comes
@@ -4679,7 +4679,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // receives only the same E2E ciphertext envelope peers already exchange.
   if (path==='/api/attachment/prepare' && method==='POST') {
     if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const messageId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
@@ -4711,7 +4711,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // expires after ten minutes.
   if (path==='/api/attachment/download' && method==='POST') {
     if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (!validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
@@ -4731,7 +4731,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // every stream; only E2E ciphertext passes through this process.
   if (path==='/api/attachment/content' && method==='POST') {
     if (!objectStorageEnabled || !postgresEnabled) return resErr(res,'Encrypted attachment storage is temporarily unavailable.',503);
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (!validAttachmentId(d.attachmentId)) return resErr(res,'Invalid encrypted attachment.',400);
@@ -4761,7 +4761,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   // POST /api/send
   if (path==='/api/send' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     // Rate-limited by token (the authenticated sender), not IP — two people
@@ -4909,7 +4909,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   // POST /api/push-subscribe — store this member's Web Push subscription
   if (path==='/api/push-subscribe' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const validated = validatePushSubscription(d.subscription);
     if (!validated) return resErr(res, 'Invalid push subscription.', 400);
@@ -4923,7 +4923,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // local room token is erased, preventing messages or calls for a signed-out
   // identity from continuing to appear on a shared device.
   if (path==='/api/push-unsubscribe' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (await rateLimited(`push-unsubscribe:${d.token}`, 20, 60 * 1000)) return resErr(res,'Too many notification updates.',429);
     const m = room.members.get(d.token);
@@ -4941,7 +4941,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // authenticated member of this room. A stolen room code alone is not
   // sufficient; the caller must also present the random member bearer token.
   if (path==='/api/native-push-subscribe' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (await rateLimited(`native-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     const m = room.members.get(d.token);
@@ -4963,7 +4963,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   // A PushKit token is distinct from the ordinary notification token above.
   if (path==='/api/voip-subscribe' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (await rateLimited(`voip-push:${d.token}`, 10, 60 * 1000)) return resErr(res,'Too many notification registrations.',429);
     if (!validateVoipToken(d.voipToken)) return resErr(res,'Invalid VoIP token.',400);
@@ -4986,7 +4986,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // seconds) goes back to the client. Same auth check as every other
   // room-scoped endpoint — a token that isn't in room.members gets nothing.
   if (path==='/api/turn-credentials' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (await rateLimited(`turn:${d.token}`, 6, 60 * 1000)) return resErr(res,'Too many requests.',429);
     if (!process.env.CF_TURN_KEY_ID || !process.env.CF_TURN_KEY_API_TOKEN) {
@@ -5026,7 +5026,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   // POST /api/react — toggle a single-emoji reaction from this member onto a message
   if (path==='/api/react' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId);
@@ -5057,7 +5057,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // simply never receives it, since the poll filter below skips deleted
   // messages outright.
   if (path==='/api/delete-message' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
@@ -5089,7 +5089,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // the caller must be the recipient (i.e. NOT msg.from) — the inverse of
   // /api/delete-message's own check just above.
   if (path==='/api/view-once-opened' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
@@ -5111,7 +5111,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // rides the existing deleteTimer field returned on every /api/poll
   // response. Updated clients supply an encrypted notice stored with the change.
   if (path==='/api/set-timer' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in conversation.',403);
@@ -5153,7 +5153,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // in-memory history too — a fresh page load needs no such signal, since
   // the now-emptied room.msgs has nothing left in it to bootstrap-fetch back.
   if (path==='/api/clear-chat' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in conversation.',403);
@@ -5193,7 +5193,16 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // own messages exactly as before, since the client already has those
     // from its own optimistic send.
     const includeOwn = d.full === 1 || d.full === '1';
-    const room = rooms.get(roomCode);
+    // Must rehydrate from PostgreSQL like every other conversation route
+    // (ensureConversationLoaded), not a bare rooms.get() — the in-memory
+    // cache starts EMPTY on every boot (rooms.clear() in bootstrap()), so a
+    // raw rooms.get() here reported roomGone:true for a perfectly intact
+    // conversation on its very first poll after any restart, whenever that
+    // poll happened to be the first request to touch the room. The client
+    // trusts roomGone and permanently deletes the room locally — this was
+    // the "contact vanished after a Railway restart, but they could still
+    // call me" bug (the room/membership itself was never touched server-side).
+    const room = await ensureConversationLoaded(roomCode);
     if (!room) return res200(res, { roomGone: true });
     if (!room.members.has(token)) return resErr(res,'Not in conversation.',403);
 
@@ -5303,7 +5312,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // every time. View-once, disappearing-timer and expiring messages are never
   // returned, and nothing here marks a message delivered or read.
   if (path==='/api/history' && method==='POST') {
-    const room = rooms.get(d.code);
+    // Same rehydrate-from-PostgreSQL requirement as /api/poll above — a
+    // bare rooms.get() here has the identical post-restart false-roomGone
+    // bug for whichever room this happens to be the first request to touch.
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return res200(res, { roomGone:true });
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (await rateLimited(`history:${String(d.token).slice(0, 96)}`, 60, 60 * 1000)) {
@@ -5328,7 +5340,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // push handler — same deliveredAt field /api/poll already sets, just
   // triggered from a place that doesn't depend on the page being alive.
   if (path==='/api/mark-delivered' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     const msg = room.msgs.find(mm => mm.id === d.msgId);
     if (msg && msg.type === 'message' && !msg.deliveredAt) {
@@ -5341,7 +5353,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   // POST /api/read
   if (path==='/api/read' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (room && room.members.has(d.token) && Array.isArray(d.msgIds)) {
       let changed = false;
       const changedIds = [];
@@ -5356,7 +5368,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
   // POST /api/typing
   if (path==='/api/typing' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (room && room.members.has(d.token)) {
       const m = room.members.get(d.token);
       m.lastSeen = Date.now(); m.typing = Date.now();
@@ -5380,7 +5392,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // become a room-existence oracle (a real room with no membership and a
   // nonexistent room both need to look identical from the outside).
   if (path==='/api/check_typing' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return res200(res,{typing:false});
     const now = Date.now();
     let typing = false;
@@ -5407,7 +5419,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (await rateLimited(`leave:${ip}`, 20, 10 * 60 * 1000)) {
       return resErr(res, 'Too many leave attempts from this connection — try again in a few minutes.', 429);
     }
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     const m = (room && typeof d.token === 'string') ? room.members.get(d.token) : null;
     if (!room || !m) return res204(res);
     room.members.delete(d.token);
@@ -5432,7 +5444,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // this just brings Close & erase in line with that same pattern. Stays
     // silently idempotent (always {ok:true}) either way, so this doesn't
     // leak whether a given code currently exists to an unauthenticated caller.
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (room && room.members.has(d.token)) destroyRoom(d.code);
     return res200(res,{ok:true});
   }
@@ -5444,7 +5456,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // deliberately destroys and replaces a room. Nothing is destroyed here —
   // it's purely an exemption from the TTL sweep from this point forward.
   if (path==='/api/make-persistent' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (!room.persistent) {
@@ -5470,7 +5482,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // almost certainly a client bug, not a real revoke request, so it's
   // rejected rather than silently doing a full close.
   if (path==='/api/revoke-link' && method==='POST') {
-    const room = rooms.get(d.code);
+    const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (!room.persistent) return resErr(res,'This conversation is not persistent.',400);
@@ -5899,7 +5911,7 @@ async function clearAccountRoomPushDestinations(accountId, account) {
     const match = request.inviteUrl.match(/^https:\/\/vaultlix\.com\/join\/([a-z0-9-]+)/i);
     if (!match || affected.has(match[1].toLowerCase())) continue;
     const roomCode = match[1].toLowerCase();
-    const room = rooms.get(roomCode);
+    const room = await ensureConversationLoaded(roomCode);
     if (!room) continue;
     const slot = request.recipientAccountId === accountId ? 1 :
       (request.senderAccountId === accountId ? 2 : null);

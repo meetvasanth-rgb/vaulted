@@ -6000,8 +6000,18 @@ async function handleNativeCallAction(detail) {
       finishNativeIOSCallOverAppLock();
       return;
     }
-    if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail.action);
-    else pendingNativeUnscopedAction = detail.action;
+    // Store the FULL detail, not just detail.action — nativeConnected and
+    // audioActivated (the only two actions that ever present the call
+    // screen: see presentNativeCallRoom()) need detail.caller/connectedAt
+    // to replay faithfully. Losing them here was the "iOS-to-iOS call
+    // answered, but the in-app call screen never appears" bug: this cold-
+    // start race (PushKit wakes the app fresh, so `rooms` can still be
+    // empty when CallKit's native events first fire) is common for exactly
+    // this scenario, and the old string-only queue was only ever replayed
+    // for 'answer'/'answerWhenActive'/'declineOrEnd' below — nativeConnected/
+    // audioActivated were silently dropped on replay.
+    if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail);
+    else pendingNativeUnscopedAction = detail;
     return;
   }
   const presentNativeCallRoom = () => {
@@ -6105,14 +6115,14 @@ async function handleNativeCallAction(detail) {
   } else if (detail.action === 'answer' || detail.action === 'answerWhenActive') {
     if (room.callState === 'incoming') await acceptCall(true);
     else if (room.iosForegroundWebCall && room.callState === 'active') return;
-    else pendingNativeCallActions.set(room.code, 'answer');
+    else pendingNativeCallActions.set(room.code, { action: 'answer' });
   } else if (detail.action === 'declineOrEnd') {
     if (staleTerminalAction && room.callState !== 'idle') {
       room.nativeCallActive = false;
       await endCall(room, null, null, null, { silentPresentation:true });
     } else if (room.callState === 'incoming') declineCall();
     else if (room.callState === 'active' || room.callState === 'outgoing') hangupCall();
-    else pendingNativeCallActions.set(room.code, 'declineOrEnd');
+    else pendingNativeCallActions.set(room.code, { action: 'declineOrEnd' });
   } else if (detail.action === 'ended' && room.callState !== 'idle') {
     room.nativeCallActive = false;
     await endCall(room, room.callState === 'incoming' ? 'Missed call.' : null,
@@ -7463,12 +7473,18 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
     // retry loop means a lost ack just gets another chance next round,
     // without this needing a dedicated resend loop of its own.
     if (room.callState === 'incoming') sendSignal(room, 'call-ringing', {});
-    const nativeAction = pendingNativeCallActions.get(room.code) || pendingNativeUnscopedAction;
-    if (nativeAction) {
+    const pendingDetail = pendingNativeCallActions.get(room.code) || pendingNativeUnscopedAction;
+    if (pendingDetail) {
       pendingNativeCallActions.delete(room.code);
       pendingNativeUnscopedAction = null;
+      const nativeAction = pendingDetail.action;
       if (nativeAction === 'answer' || nativeAction === 'answerWhenActive') await acceptCall(true);
       else if (nativeAction === 'declineOrEnd') declineCall();
+      // nativeConnected/audioActivated: replay the whole event now that
+      // `room` is resolvable — handleNativeCallAction re-looks-up the room
+      // itself and runs presentNativeCallRoom()/renderCallOverlay(), which
+      // is what actually shows the call screen for these two actions.
+      else if (nativeAction === 'nativeConnected' || nativeAction === 'audioActivated') await handleNativeCallAction(pendingDetail);
     }
   } else if (type === 'call-ringing') {
     // Caller-side only. The first ack flips "Calling…" to "Ringing…" on the
@@ -15337,6 +15353,28 @@ function renderCallHistoryList(body) {
   body.querySelectorAll('.vault-call-video-btn').forEach(button => {
     button.onclick = event => { event.stopPropagation(); startCallFromHistory(button.dataset.videoCallRoom, true); };
   });
+  // Each room's own message/call history is capped at the newest 100
+  // entries (both the server's cache and the client's restore page) — a
+  // call buried behind more than 100 newer chat messages in a busy room is
+  // otherwise permanently unreachable from this tab, showing up as calls
+  // "randomly" missing depending on how chatty each contact is. Chat has
+  // its own "Load earlier messages" button per room; this does the
+  // equivalent across every room at once, reusing the same
+  // loadEarlierMessages/historyOldestSeq machinery.
+  const loadMoreEligible = Array.from(rooms.values()).filter(room =>
+    room.historyLoaded && !room.historyEarlierExhausted && Number(room.historyOldestSeq) > 1);
+  if (loadMoreEligible.length) {
+    body.insertAdjacentHTML('beforeend', '<div class="load-earlier"><button type="button" class="load-earlier-btn load-earlier-calls-btn">Load earlier calls</button></div>');
+    const loadMoreBtn = body.querySelector('.load-earlier-calls-btn');
+    if (loadMoreBtn) {
+      loadMoreBtn.onclick = async () => {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.textContent = 'Loading…';
+        await Promise.all(loadMoreEligible.map(room => loadEarlierMessages(room).catch(() => {})));
+        if (currentVaultListMode === 'calls') renderVaultList();
+      };
+    }
+  }
 }
 
 // The phone button on a call-history row rings that conversation immediately,
@@ -18501,6 +18539,19 @@ async function doPoll(room) {
     const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq });
 
     if (data.roomGone) {
+      // A single roomGone response is not trusted on its own —
+      // removeRoomFromState is a full, permanent local wipe (localStorage
+      // blob, keypair, history, everything), and this poll is event-driven
+      // rather than fixed-interval, so one flaky/transient "gone" (e.g. a
+      // server restart racing the very next request for this room) must
+      // not be enough to trigger it. Require a second roomGone within a
+      // few seconds before actually deleting anything; any non-gone
+      // response in between resets the counter back to zero below.
+      room.roomGoneStrikes = (room.roomGoneStrikes || 0) + 1;
+      if (room.roomGoneStrikes < 2) {
+        setTimeout(() => doPoll(room), 4000);
+        return;
+      }
       const wasActive = room.code === activeRoomCode;
       removeRoomFromState(room.code);
       if (wasActive) {
@@ -18526,6 +18577,7 @@ async function doPoll(room) {
       renderRoomTabs();
       return;
     }
+    room.roomGoneStrikes = 0;
 
     // Rederive E2E key if peer's pubKey changed (they rejoined with new keys)
     if (data.peerPubKey && data.peerPubKey !== room.lastKnownPeerPubKey) {
@@ -20938,7 +20990,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (startupParams.get('nativeCallAction') === 'answer'
       && nativeCallRoomCode
       && /^[a-z0-9-]+$/i.test(nativeCallRoomCode)) {
-    pendingNativeCallActions.set(nativeCallRoomCode.toLowerCase(), 'answer');
+    pendingNativeCallActions.set(nativeCallRoomCode.toLowerCase(), { action: 'answer' });
   }
   // VLX-01: same reasoning, same urgency — openJoinFromLink()'s
   // history.replaceState below (and the two further down, for ?room= and a

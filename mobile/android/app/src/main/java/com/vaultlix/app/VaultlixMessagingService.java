@@ -41,8 +41,17 @@ public class VaultlixMessagingService extends MessagingService {
         if ("true".equalsIgnoreCase(data.get("isCallEnd"))) {
             NativeWebRtcCallEngine engine = NativeWebRtcCallEngine.get(this);
             String callOutcome = safe(data.get("callOutcome"));
-            boolean missedCall = "true".equalsIgnoreCase(data.get("missedCall"))
-                    || "unanswered".equals(callOutcome);
+            // Trust the server's own missedCall flag alone — it is computed
+            // from wasStillRinging (server/index.js: isMissedCall =
+            // wasStillRinging && callOutcome === 'unanswered'), which is the
+            // only place that actually knows whether the call was accepted.
+            // callOutcome alone is NOT a safe secondary signal: a caller-side
+            // 30s ring timeout can still send terminalReason:'unanswered'
+            // even after the callee genuinely answered (e.g. if the answer
+            // signal was delayed reaching the caller), which previously made
+            // this OR mislabel a normally-completed call as missed and show
+            // a spurious "call completed"/"Missed call" notification for it.
+            boolean missedCall = "true".equalsIgnoreCase(data.get("missedCall"));
             if (missedCall ||
                     "cancelled".equals(callOutcome) || "declined".equals(callOutcome)) {
                 // The WebView is commonly frozen or not yet restored when a

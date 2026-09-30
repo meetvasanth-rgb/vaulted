@@ -867,8 +867,24 @@ final class NativeWebRTCCallEngine: NSObject {
         acceptRetryGeneration += 1
         let generation = acceptRetryGeneration
         func retry(_ remaining: Int) {
-            guard remaining > 0, generation == acceptRetryGeneration,
-                  answered, !offerReceived, room != nil else { return }
+            guard generation == acceptRetryGeneration else {
+                trace("call-accept retry stopped (superseded)")
+                return
+            }
+            guard remaining > 0, answered, !offerReceived, room != nil else {
+                // Diagnostic for the "Android caller stuck on ringing after
+                // iOS answers" report — if this fires with offerReceived
+                // still false and remaining<=0, the caller's offer never
+                // came back within the full ~18s retry window, meaning
+                // call-accept itself likely never reached them (dropped by
+                // the server's no-queue relay while their socket was down,
+                // or their own reply never made it back).
+                if remaining <= 0 && answered && !offerReceived {
+                    trace("call-accept retry exhausted, offer never received")
+                }
+                return
+            }
+            trace("call-accept retry attempt remaining=\(remaining)")
             sendSignalLocked(type: "call-accept", payload: [:])
             queue.asyncAfter(deadline: .now() + 1.5) { retry(remaining - 1) }
         }
