@@ -194,7 +194,7 @@ test('renderCallHistoryList shows a "Clear all calls" button above the list, wir
   assert.equal(typeof body._btn.onclick, 'function');
 });
 
-test('each Calls tab row carries data-msg-id and is long-press-wired to delete that one entry, for me only', () => {
+test('each Calls tab row carries data-msg-id and is long-press-wired to delete that visible call, for me only', () => {
   const render = extract(client, 'renderCallHistoryList');
   assert.match(render, /data-msg-id="\$\{escHtml\(rec\.id \|\| ''\)\}"/);
   assert.match(render, /attachLongPress\(el, entry\.rec\.id, \(\) => showDeleteOptions\(entry\.room, entry\.rec\.id, false\)\);/);
@@ -205,6 +205,39 @@ test('confirmClearAllCalls groups entries by room and calls deleteMessage per ro
   assert.match(fn, /if \(!byRoom\.has\(room\.code\)\) byRoom\.set\(room\.code, \{ room, ids: \[\] \}\);/);
   assert.match(fn, /byRoom\.get\(room\.code\)\.ids\.push\(rec\.id\);/);
   assert.match(fn, /await deleteMessage\(room, ids, false\);/);
+});
+
+test('callHistoryRecordIds expands one visible call row to every hidden and suppressed duplicate id', () => {
+  const context = vm.createContext({ CALL_HISTORY_DEDUPE_WINDOW_MS:12000 });
+  vm.runInContext(extract(client, 'callHistoryFamily'), context);
+  vm.runInContext(extract(client, 'isSameCallHistoryRecord'), context);
+  vm.runInContext(extract(client, 'rememberCallHistoryAlias'), context);
+  vm.runInContext(extract(client, 'callHistoryRecordIds'), context);
+  context.room = { messages:[
+    { id:'call-event-shared', callHistoryAliasIds:['server-peer-copy'], kind:'sys', content:'Encrypted call · 00:10 · 14:05', ts:100000 },
+    { id:'sys-call-native-fallback', kind:'sys', content:'Encrypted call · 00:11 · 14:05', ts:104000 },
+    { id:'other-call', kind:'sys', content:'Encrypted call · 00:07 · 14:20', ts:900000 },
+    { id:'chat-message', kind:'text', content:'hello', ts:104000 },
+  ] };
+  context.visible = context.room.messages[0];
+  const ids = vm.runInContext('callHistoryRecordIds(room, visible)', context);
+  assert.deepEqual(Array.from(ids), ['call-event-shared', 'server-peer-copy', 'sys-call-native-fallback']);
+});
+
+test('deleteMessage expands a local call deletion before removing records or writing the ledger', () => {
+  const fn = extract(client, 'deleteMessage');
+  assert.match(fn, /const requestedIds = Array\.isArray\(msgIdOrIds\) \? msgIdOrIds : \[msgIdOrIds\];/);
+  assert.match(fn, /const expanded = !forEveryone && callHistoryFamily\(record\) \? callHistoryRecordIds\(room, record\) : \[msgId\];/);
+  assert.match(fn, /for \(const id of expanded\.length \? expanded : \[msgId\]\) if \(!ids\.includes\(id\)\) ids\.push\(id\);/);
+});
+
+test('restored call duplicates retain the suppressed server id as a deletion alias', () => {
+  const decode = extract(client, 'processIncomingContent');
+  assert.match(decode, /const duplicate = room\.messages\.find\(existing => isSameCallHistoryRecord\(existing, callRecord\)\);/);
+  assert.match(decode, /rememberCallHistoryAlias\(duplicate, msgId\);/);
+  const restore = extract(client, 'applyRestoredHistory');
+  assert.match(restore, /const duplicate = room\.messages\.find\(existing => isSameCallHistoryRecord\(existing, rec\)\);/);
+  assert.match(restore, /rememberCallHistoryAlias\(duplicate, msg\.id\);/);
 });
 
 test('the in-chat call card carries data-msg-id, so a deletion can find and fade its DOM element if that chat happens to be open', () => {

@@ -14626,6 +14626,28 @@ function isDuplicateCallHistoryRecord(room, candidate) {
   return (room?.messages || []).some(existing => isSameCallHistoryRecord(existing, candidate));
 }
 
+function rememberCallHistoryAlias(record, aliasId) {
+  if (!record || typeof aliasId !== 'string' || !aliasId || aliasId === record.id) return;
+  if (!Array.isArray(record.callHistoryAliasIds)) record.callHistoryAliasIds = [];
+  if (!record.callHistoryAliasIds.includes(aliasId)) record.callHistoryAliasIds.push(aliasId);
+}
+
+// A single call can have more than one server message id when both devices
+// independently finish it and an older/native fallback path did not retain
+// the shared invite id. Rendering collapses those messages into one row, but
+// deletion must cover every backing id or the hidden copy returns on reload.
+function callHistoryRecordIds(room, visibleRecord) {
+  if (!room || !visibleRecord) return [];
+  const ids = [];
+  for (const record of room.messages || []) {
+    if (record !== visibleRecord && !isSameCallHistoryRecord(record, visibleRecord)) continue;
+    for (const id of [record.id, ...(Array.isArray(record.callHistoryAliasIds) ? record.callHistoryAliasIds : [])]) {
+      if (typeof id === 'string' && id && !ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
 function uniqueVisibleConversationRecords(records) {
   const visible = [];
   for (const rec of records || []) {
@@ -17020,7 +17042,13 @@ function showDeleteOptions(room, msgIdOrIds, isMe) {
 // needed. msgIdOrIds accepts a single id or an array so the same function
 // serves both the single-message and multi-select delete flows.
 async function deleteMessage(room, msgIdOrIds, forEveryone) {
-  const ids = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
+  const requestedIds = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
+  const ids = [];
+  for (const msgId of requestedIds) {
+    const record = room.messages.find(message => message.id === msgId);
+    const expanded = !forEveryone && callHistoryFamily(record) ? callHistoryRecordIds(room, record) : [msgId];
+    for (const id of expanded.length ? expanded : [msgId]) if (!ids.includes(id)) ids.push(id);
+  }
   for (const msgId of ids) {
     removeMessageRecord(room, msgId);
     room.deleteLedger.set(msgId, Date.now());
@@ -18332,7 +18360,12 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
         callEventViewerRole:viewerRole,
         callWasVideo:!!parsed.callEvent?.isVideo,
       };
-      return isDuplicateCallHistoryRecord(room, callRecord) ? null : callRecord;
+      const duplicate = room.messages.find(existing => isSameCallHistoryRecord(existing, callRecord));
+      if (duplicate) {
+        rememberCallHistoryAlias(duplicate, msgId);
+        return null;
+      }
+      return callRecord;
     }
     if (parsed.text && parsed.reply) {
       const statusReply = sanitizeStatusReplyData(parsed.reply);
@@ -18431,6 +18464,13 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
         const staleIndex = room.messages.findIndex(existing => existing.id === msg.id && existing.kind === 'attachment-loading');
         if (staleIndex >= 0) room.messages.splice(staleIndex, 1);
         continue;
+      }
+      if (rec.kind === 'sys' && callHistoryFamily(rec)) {
+        const duplicate = room.messages.find(existing => isSameCallHistoryRecord(existing, rec));
+        if (duplicate) {
+          rememberCallHistoryAlias(duplicate, msg.id);
+          continue;
+        }
       }
       const existingIndex = room.messages.findIndex(existing => existing.id === msg.id);
       if (existingIndex >= 0 && room.messages[existingIndex].kind === 'attachment-loading') {
