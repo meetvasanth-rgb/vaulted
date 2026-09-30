@@ -37,8 +37,6 @@ import android.widget.Toast;
 import org.webrtc.RendererCommon;
 import org.webrtc.SurfaceViewRenderer;
 
-import java.util.Random;
-
 /** Keyguard-safe presentation (audio, with optional video) for the native Android WebRTC engine. */
 public class NativeCallActivity extends Activity implements NativeWebRtcCallEngine.Listener {
     private static final String TAG = "VaultlixCallAudio";
@@ -64,7 +62,6 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private TextView status;
     private TextView security;
     private TextView timer;
-    private TextView tagline;
     private TextView muteLabel;
     private TextView routeLabel;
     private ImageButton muteButton;
@@ -285,14 +282,6 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(-2, -2);
         timerParams.setMargins(0, dp(8), 0, 0);
         identity.addView(timer, timerParams);
-        tagline = label(getString(R.string.native_call_vanished), 13, MUTED_TEXT);
-        tagline.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-        tagline.setLetterSpacing(.10f);
-        tagline.setVisibility(View.GONE);
-        LinearLayout.LayoutParams taglineParams = new LinearLayout.LayoutParams(-2, -2);
-        taglineParams.setMargins(0, dp(12), 0, 0);
-        identity.addView(tagline, taglineParams);
-
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);
         actions.setBaselineAligned(false);
@@ -630,7 +619,6 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         status.setText(getString(R.string.native_end_to_end_encrypted_call));
         security.setVisibility(View.GONE);
         timer.setVisibility(View.VISIBLE);
-        tagline.setVisibility(View.VISIBLE);
         getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
         tick.run();
         if (startWithVideo && !engine.isCameraOn()) {
@@ -695,44 +683,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         mark.setScaleX(.8f);
         mark.setScaleY(.8f);
         callRoot.addView(mark, new LinearLayout.LayoutParams(-1, -2));
-        LinearLayout message = new LinearLayout(this);
-        message.setGravity(Gravity.CENTER);
-        message.setAlpha(0f);
-        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(-2, -2);
-        messageParams.setMargins(0, dp(18), 0, 0);
-        callRoot.addView(message, messageParams);
-        String vanished = getString(R.string.native_call_vanished).toUpperCase(java.util.Locale.getDefault());
-        for (int index = 0; index < vanished.length(); index++) {
-            TextView grain = label(String.valueOf(vanished.charAt(index)), 11, VANISH_BURGUNDY);
-            grain.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-            grain.setLetterSpacing(.08f);
-            grain.setTag(index);
-            message.addView(grain, new LinearLayout.LayoutParams(-2, -2));
-        }
         mark.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(400).start();
-        message.animate().alpha(.8f).setStartDelay(550).setDuration(400).start();
         handler.postDelayed(() -> {
             mark.animate().alpha(0f).translationY(-dp(24)).setDuration(600).start();
-        }, 1_700);
-        handler.postDelayed(() -> {
-            Random random = new Random();
-            for (int index = 0; index < message.getChildCount(); index++) {
-                TextView grain = (TextView) message.getChildAt(index);
-                if (grain.getText().toString().trim().isEmpty()) continue;
-                float dx = dp(random.nextInt(35) - 17);
-                float dy = dp(16 + random.nextInt(27));
-                float rotation = random.nextInt(61) - 30;
-                grain.animate()
-                        .alpha(0f)
-                        .translationX(dx)
-                        .translationY(dy)
-                        .rotation(rotation)
-                        .setStartDelay(index * 16L + random.nextInt(46))
-                        .setDuration(850)
-                        .start();
-            }
-        }, 2_350);
-        handler.postDelayed(() -> { finish(); overridePendingTransition(0, 0); }, 3_650);
+        }, 1_100);
+        handler.postDelayed(() -> { finish(); overridePendingTransition(0, 0); }, 1_750);
     }
 
     private void stopRingback() {

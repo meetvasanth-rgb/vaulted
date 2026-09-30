@@ -86,11 +86,15 @@ test('hang-up is acknowledged, retried and reconciled on both call engines', () 
   assert.match(androidEngine, /case "call-invite":[\s\S]*inviteId = wireInviteId/);
 });
 
-test('native Android ending uses the Vaultlix sand treatment', () => {
+test('native Android ending retains only the Vaultlix V mark', () => {
   assert.match(android, /VANISH_BACKGROUND = Color\.rgb\(250, 245, 247\)/);
   assert.match(android, /VANISH_BURGUNDY = Color\.rgb\(104, 44, 67\)/);
-  assert.match(android, /random\.nextInt\(35\) - 17/);
-  assert.match(android, /\.setDuration\(850\)/);
+  assert.match(android, /TextView mark = label\("V", 64, VANISH_BURGUNDY\)/);
+  assert.doesNotMatch(android, /native_call_vanished/);
+  assert.doesNotMatch(android, /TextView grain/);
+  assert.match(android, /mark\.animate\(\)\.alpha\(1f\)\.scaleX\(1f\)\.scaleY\(1f\)\.setDuration\(400\)/);
+  assert.match(android, /mark\.animate\(\)\.alpha\(0f\)\.translationY\(-dp\(24\)\)\.setDuration\(600\)[\s\S]*1_100/);
+  assert.match(android, /handler\.postDelayed\(\(\) -> \{ finish\(\); overridePendingTransition\(0, 0\); \}, 1_750\)/);
   assert.match(android, /boolean wasConnected = connectedAt != 0;[\s\S]*if \(wasConnected\) \{[\s\S]*showCallEndedMoment\(\);[\s\S]*\} else \{[\s\S]*finish\(\)/);
 });
 

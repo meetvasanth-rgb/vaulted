@@ -1331,11 +1331,11 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
    a narrow phone's viewport and clip at both edges — shrink to fit instead,
    same reasoning as the timer-bar's "call button wrapping" fix. See the
    actionsButtonCount computation in renderCallOverlay for when this applies. */
-.call-actions.compact{gap:14px}
-.call-actions.compact .call-mute-btn,.call-actions.compact .call-speaker-btn,.call-actions.compact .call-camera-btn,.call-actions.compact .call-reaction-btn,.call-actions.compact .call-end-btn{width:50px;height:50px}
-.call-actions.compact .call-mute-btn svg,.call-actions.compact .call-speaker-btn svg,.call-actions.compact .call-camera-btn svg,.call-actions.compact .call-reaction-btn svg{width:18px;height:18px}
-.call-actions.compact .call-end-btn svg{width:20px;height:20px}
-.call-actions.compact .call-btn-label{font-size:9px;max-width:56px}
+.call-actions.compact{gap:clamp(8px,3vw,14px)}
+.call-actions.compact .call-mute-btn,.call-actions.compact .call-speaker-btn,.call-actions.compact .call-camera-btn,.call-actions.compact .call-reaction-btn,.call-actions.compact .call-end-btn{width:56px;height:56px}
+.call-actions.compact .call-mute-btn svg,.call-actions.compact .call-speaker-btn svg,.call-actions.compact .call-camera-btn svg,.call-actions.compact .call-reaction-btn svg{width:24px;height:24px}
+.call-actions.compact .call-end-btn svg{width:26px;height:26px}
+.call-actions.compact .call-btn-label{font-size:12px;max-width:60px}
 /* Video mode: buttons group into one frosted pill capsule instead of
    scattered bordered circles (matches WhatsApp's/FaceTime's bottom-bar
    convention) — icon-only, no text labels, since the pill itself now
@@ -1368,7 +1368,7 @@ html.vaultlix-native-ios.vaultlix-native-video-active .call-actions{visibility:h
    listener, which also explicitly closes it the moment chrome hides. */
 .call-overlay.has-video .call-identity,.call-overlay.has-video .call-actions,.call-overlay.has-video .call-reaction-picker{transition:opacity .22s ease}
 .call-overlay.has-video.chrome-hidden .call-identity,.call-overlay.has-video.chrome-hidden .call-actions,.call-overlay.has-video.chrome-hidden .call-reaction-picker{opacity:0;pointer-events:none}
-.call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+.call-btn-wrap{display:flex;flex-direction:column;align-items:center;gap:9px}
 .call-btn-label{font-family:'Inter',sans-serif;font-size:10px;color:rgba(255,255,255,.74);letter-spacing:.08em;text-align:center;max-width:90px;text-shadow:0 1px 3px rgba(0,0,0,.22)}
 /* Reaction picker — same frosted-pill language as the video-mode button
    bar, but shown in EITHER call mode (audio or video), unlike video-bar
@@ -8572,8 +8572,7 @@ function renderCallOverlay(room) {
         ${activeAvatar}
         <div><span class="call-live-dot${room.callMuted ? ' muted' : ''}" id="call-live-dot"></span><span class="call-peer-name" style="font-size:28px">${name}</span></div>
         <div class="call-status call-security">End-to-end encrypted call</div>
-        <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>
-        ${waitingForNativeMedia ? '<div class="call-tagline">This call never existed.</div>' : ''}`;
+        <div class="call-timer-display${waitingForNativeMedia ? ' pulsing' : ''}" id="call-timer">${waitingForNativeMedia ? 'Connecting securely…' : '00:00'}</div>`;
     callSurface.innerHTML = `
       ${stableIosRain || videoMode ? '' : callDataRainHtml()}
       ${videoMode ? '' : callHeaderBlock()}

@@ -24,6 +24,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var nativeMediaCalls: Set<UUID> = []
     private var connectedCalls: Set<UUID> = []
     private var outgoingCalls: Set<UUID> = []
+    private var callKitReportedCalls: Set<UUID> = []
+    private var pendingWebAnswerCalls: Set<UUID> = []
     // Outgoing calls placed from an Apple Silicon Mac (`isRunningOnAppleSiliconMac`)
     // bypass CXCallController entirely — see `startOutgoingCallBypassingCallKit`.
     // Tracked so their teardown also skips CallKit's transaction machinery.
@@ -252,6 +254,22 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         update.supportsUngrouping = false
         update.supportsDTMF = false
 
+        // A foreground websocket invitation can register the same encrypted
+        // room before its VoIP push arrives. The push still has to be reported
+        // to CallKit, but it is a duplicate surface for the active invitation,
+        // not a competing call that should decline the peer.
+        if let roomHandle = data["roomHandle"] as? String,
+           calls.contains(where: { ($0.value["roomHandle"] as? String) == roomHandle }) {
+            dismissAppKeyboard()
+            provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
+                if error == nil {
+                    self?.provider.reportCall(with: callID, endedAt: Date(), reason: .answeredElsewhere)
+                }
+                completion()
+            }
+            return
+        }
+
         // The native media engine intentionally owns one encrypted call at a
         // time. A second PushKit invitation must still be reported to CallKit,
         // but it must never replace/reset the engine backing the active call.
@@ -303,7 +321,14 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
             guard let self else { completion(); return }
             self.provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
-                if error != nil { self?.calls.removeValue(forKey: callID) }
+                if error == nil {
+                    self?.callKitReportedCalls.insert(callID)
+                    if self?.pendingWebAnswerCalls.remove(callID) != nil {
+                        self?.requestCallKitAnswer(callID: callID)
+                    }
+                } else {
+                    self?.calls.removeValue(forKey: callID)
+                }
                 completion()
             }
         }
@@ -496,6 +521,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         nativeMediaCalls.remove(callID)
         connectedCalls.remove(callID)
         outgoingCalls.remove(callID)
+        callKitReportedCalls.remove(callID)
+        pendingWebAnswerCalls.remove(callID)
         postAction("microphoneDenied", callID: callID, payload: payload)
         releaseAppKeyboardIfIdle()
     }
@@ -592,6 +619,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.remove(callID)
         outgoingCalls.remove(callID)
         nativeBypassCallKitCalls.remove(callID)
+        callKitReportedCalls.remove(callID)
+        pendingWebAnswerCalls.remove(callID)
         print("VXCALL manager end-trigger=\(source) callID=\(callID) outcome=\(outcome) wasAnswered=\(wasAnswered) wasOutgoing=\(wasOutgoing)")
         NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: true, outcome: outcome)
         nativeMediaCalls.remove(callID)
@@ -607,6 +636,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
         nativeBypassCallKitCalls.removeAll()
+        callKitReportedCalls.removeAll()
+        pendingWebAnswerCalls.removeAll()
         NativeWebRTCCallEngine.shared.reset()
         releaseAppKeyboardIfIdle()
     }
@@ -623,6 +654,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.remove(match.key)
         outgoingCalls.remove(match.key)
         nativeBypassCallKitCalls.remove(match.key)
+        callKitReportedCalls.remove(match.key)
+        pendingWebAnswerCalls.remove(match.key)
     }
 
     func endActiveNativeCall() {
@@ -652,6 +685,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         connectedCalls.removeAll()
         outgoingCalls.removeAll()
         nativeBypassCallKitCalls.removeAll()
+        callKitReportedCalls.removeAll()
+        pendingWebAnswerCalls.removeAll()
         outgoingWebAudioSessionActive = false
         releaseAppKeyboardIfIdle()
     }
@@ -685,7 +720,39 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             return
         }
         nativeMediaCalls.insert(callID)
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .generic, value: String(caller.prefix(80)))
+        update.localizedCallerName = hasVideo ? "VIDEO CALL · \(String(caller.prefix(80)))" : String(caller.prefix(80))
+        update.hasVideo = hasVideo
+        update.supportsHolding = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsDTMF = false
+        dismissAppKeyboard()
+        provider.reportNewIncomingCall(with: callID, update: update) { [weak self] error in
+            guard let self else { return }
+            if let error {
+                print("VXCALL manager foreground-incoming CallKit report failed callID=\(callID) error=\(error.localizedDescription)")
+                self.calls.removeValue(forKey: callID)
+                self.nativeMediaCalls.remove(callID)
+                self.pendingWebAnswerCalls.remove(callID)
+                NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
+                return
+            }
+            self.callKitReportedCalls.insert(callID)
+            print("VXCALL manager foreground-incoming reported callID=\(callID)")
+            if self.pendingWebAnswerCalls.remove(callID) != nil {
+                self.requestCallKitAnswer(callID: callID)
+            }
+        }
         print("VXCALL manager foreground-incoming prepared callID=\(callID)")
+    }
+
+    private func requestCallKitAnswer(callID: UUID) {
+        let transaction = CXTransaction(action: CXAnswerCallAction(call: callID))
+        callController.request(transaction) { error in
+            if let error { print("CallKit web-answer transaction failed: \(error.localizedDescription)") }
+        }
     }
 
     func answerCallFromWeb(roomCode: String) {
@@ -709,10 +776,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // Route an answer made in Vaultlix's own UI through CallKit too.
         // Otherwise the WebRTC timer starts while iOS continues presenting
         // the native incoming-call banner with Answer/Decline controls.
-        let transaction = CXTransaction(action: CXAnswerCallAction(call: match.key))
-        callController.request(transaction) { error in
-            if let error { print("CallKit web-answer transaction failed: \(error.localizedDescription)") }
+        guard callKitReportedCalls.contains(match.key) else {
+            pendingWebAnswerCalls.insert(match.key)
+            print("VXCALL manager web-answer queued until CallKit registration callID=\(match.key)")
+            return
         }
+        requestCallKitAnswer(callID: match.key)
     }
 
     func startOutgoingCall(roomHandle: String, code: String, caller: String, peer: String,
@@ -831,6 +900,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         nativeMediaCalls.remove(callID)
         connectedCalls.remove(callID)
         outgoingCalls.remove(callID)
+        callKitReportedCalls.remove(callID)
+        pendingWebAnswerCalls.remove(callID)
         // CallKit and native WebRTC are only two of the three call-state
         // owners. Tell the embedded web UI as well, otherwise its call screen
         // and duration timer remain live after the remote peer has hung up.
@@ -886,6 +957,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             self.nativeMediaCalls.remove(callID)
             self.connectedCalls.remove(callID)
             self.outgoingCalls.remove(callID)
+            self.callKitReportedCalls.remove(callID)
+            self.pendingWebAnswerCalls.remove(callID)
             self.postAction(action, callID: callID, payload: payload)
         }
     }

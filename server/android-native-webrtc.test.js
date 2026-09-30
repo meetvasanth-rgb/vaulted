@@ -85,7 +85,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /name\.setEllipsize\(TextUtils\.TruncateAt\.END\)/);
   assert.match(nativeActivity, /BitmapFactory\.decodeFile\(callerAvatarPath\)/);
   assert.match(nativeActivity, /showCallEndedMoment\(\)/);
-  assert.match(nativeActivity, /native_call_vanished/);
+  assert.match(nativeActivity, /TextView mark = label\("V", 64, VANISH_BURGUNDY\)/);
+  assert.doesNotMatch(nativeActivity, /native_call_vanished/);
+  assert.match(nativeActivity, /wrapper\.addView\(button, new LinearLayout\.LayoutParams\(dp\(56\), dp\(56\)\)\)/);
   assert.match(nativeActivity, /statusText\(engine\.currentState\(\)\)/);
   assert.match(nativeActivity, /long activeConnectedAt = engine\.connectedAtMs\(\);[\s\S]*renderConnected\(activeConnectedAt\)/);
   assert.match(nativeActivity, /onConnected\(\)[\s\S]*engine\.connectedAtMs\(\)[\s\S]*renderConnected/);
