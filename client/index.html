@@ -330,8 +330,11 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-row-name{min-width:0;font-size:15px;font-weight:700;color:#271D25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:end}
 .vault-list-row-preview{min-width:0;font-size:12.5px;color:#81767C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:start;margin-top:3px}
 .vault-list-row-preview.alert{color:#A84964;font-weight:600}
-.vault-call-direction{width:11px;height:11px;vertical-align:-1px;margin-right:3px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.vault-call-direction{width:15px;height:15px;vertical-align:-2.5px;margin-right:4px;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .vault-call-direction.incoming{transform:rotate(180deg)}
+.vault-call-direction.outgoing{stroke:var(--green)}
+.vault-call-direction.incoming{stroke:#682C43}
+.vault-call-direction.missed{stroke:#C0293F}
 .vault-list-row-meta{grid-column:3;grid-row:1/3;display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:58px}
 .vault-list-row-time{font-size:10.5px;color:#9A9095;white-space:nowrap}
 .vault-list-row-badge{font-size:9px;letter-spacing:.055em;text-transform:uppercase;padding:4px 7px;border-radius:8px;font-weight:700;white-space:nowrap}
@@ -7428,6 +7431,7 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
       room.callInviteId = typeof inviteId === 'string' ? inviteId : null;
       activeCallRoomCode = room.code;
       room.callState = 'incoming';
+      room.callWasOutgoing = false;
       room.incomingVideoCall = hasVideo === true;
       room.callPeerName = (payload && payload.from) || room.peerName || 'them';
       try {
@@ -7666,6 +7670,12 @@ async function startCallForRoom(room, options = {}) {
   }
   activeCallRoomCode = room.code;
   room.callState = 'outgoing';
+  // callState moves on to 'active' the moment the call connects, so
+  // endCall()'s own callRole computation can no longer tell caller from
+  // callee by then — that's what silently dropped the direction arrow (and
+  // the video flag riding along with it) for every call that actually
+  // connected. This persists across the whole call lifecycle instead.
+  room.callWasOutgoing = true;
   room.callPeerName = room.peerName || 'them';
   room.callRinging = false;
   room.callAnswerAcknowledged = false;
@@ -7973,6 +7983,17 @@ function callRecDirection(rec) {
   return null;
 }
 
+// Shared by the Calls tab row and the in-chat call card — same up-right
+// arrow glyph for both directions ('incoming' rotates it 180deg in CSS to
+// point down-left), color-coded (outgoing green, incoming burgundy, missed
+// red) rather than relying on inherited text color, per user feedback that
+// a single currentColor arrow was too subtle to tell directions apart.
+function callDirectionIconHtml(direction, missed = false) {
+  if (!direction) return '';
+  const cls = missed ? `${direction} missed` : direction;
+  return `<svg class="vault-call-direction ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M10 7h7v7"/></svg>`;
+}
+
 function addCallSysMsg(room, text, eventId = null, callEvent = null) {
   // Stamped with a clock time, same as the roadmap's original "Missed call
   // · 11:42" design — a bare "Missed call" a scrollback-length later gives
@@ -8022,12 +8043,29 @@ function checkStaleIncomingCalls() {
 
 async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (!room) return;
-  const callRole = room.callState === 'outgoing' ? 'initiator' :
-    (room.callState === 'incoming' ? 'receiver' : null);
+  // room.callState moves on to 'active' the instant a call connects, so by
+  // the time a CONNECTED call ends, checking callState for 'outgoing'/
+  // 'incoming' here always came back null — silently dropping the
+  // direction arrow (and the video flag riding on the same callEvent
+  // object) for every call that actually connected; only calls that ended
+  // while still ringing (declined/cancelled/unanswered) kept it. callState
+  // is a snapshot of the CURRENT phase, not who placed the call, so it was
+  // never the right source for this. room.callWasOutgoing (set once, in
+  // startCallForRoom, and persisted for the whole call) is the right one —
+  // only startCallForRoom ever sets it true, so anything else (including
+  // the narrow cold-launch case where the normal incoming-invite handler
+  // never ran) correctly defaults to "I didn't place it, so I received it."
+  const callRole = room.callWasOutgoing === true ? 'initiator' : 'receiver';
   // Computed early (moved ahead of its original spot below callEvent) so
   // both callEvent and connectedCallEvent can carry it — needed for the
-  // in-chat call card's "Voice call"/"Video call" title.
-  const wasVideoCall = !!(room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
+  // in-chat call card's "Voice call"/"Video call" title. Also widened to
+  // room.pendingVideoStart/incomingVideoCall (the call's VIDEO INTENT,
+  // known immediately at invite/start, before any connection) alongside
+  // the post-connection state — a call that rang as a video call but was
+  // never answered never sets callHadVideo/callVideoOn at all (those only
+  // ever turn on after the call connects), so relying on them alone
+  // mislabeled every unanswered/declined/cancelled video call as voice.
+  const wasVideoCall = !!(room.pendingVideoStart || room.incomingVideoCall || room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
   const historyText = String(sysMsgText || '');
   const outcome = /^(?:Missed call|Missed encrypted call|No answer|Call not answered)$/i.test(historyText)
     ? 'unanswered'
@@ -8060,6 +8098,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   stopCallTimer(room);
   teardownPeerConnection(room);
   room.callState = 'idle';
+  room.callWasOutgoing = null;
   room.callPeerName = null;
   room.callStartedAt = null;
   room.callConnectedHapticFired = false;
@@ -15407,12 +15446,8 @@ function renderCallHistoryList(body) {
   body.innerHTML = entries.map(({ room, rec, text, occurredAt }) => {
     const isMissed = /^Missed/i.test(text);
     const isUnseenMissed = isMissed && rec.callEventViewerRole !== 'initiator' && !seen.has(`${room.code}:${rec.id || occurredAt}`);
-    // Same up-right arrow glyph for both directions — 'incoming' just
-    // rotates it 180deg (CSS) to point down-left, matching the WhatsApp
-    // convention this row is modeled on. currentColor means it automatically
-    // turns red alongside the text when .alert is present below.
     const direction = callRecDirection(rec);
-    const directionIcon = direction ? `<svg class="vault-call-direction ${direction}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M10 7h7v7"/></svg>` : '';
+    const directionIcon = callDirectionIconHtml(direction, isMissed);
     return `<div class="vault-list-row vault-call-row${isUnseenMissed ? ' missed-unseen' : ''}" data-room="${escHtml(room.code)}">
     <button type="button" class="vault-call-icon vault-call-btn" data-call-room="${escHtml(room.code)}" aria-label="Call ${escHtml(roomDisplayLabel(room))}" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></button>
     <span class="vault-list-row-name">${escHtml(roomDisplayLabel(room))}</span>
@@ -17364,7 +17399,7 @@ function renderMessageRecord(room, rec, animate) {
       div.innerHTML = `<div class="call-card${callDetails.missed ? ' missed' : ''}">
         <div class="call-card-icon">${icon}</div>
         <div class="call-card-text">
-          <div class="call-card-title">${escHtml(callDetails.title)}</div>
+          <div class="call-card-title">${callDirectionIconHtml(callDetails.direction, callDetails.missed)}${escHtml(callDetails.title)}</div>
           <div class="call-card-subtitle">${escHtml(callDetails.subtitle)}</div>
         </div>
       </div>`;

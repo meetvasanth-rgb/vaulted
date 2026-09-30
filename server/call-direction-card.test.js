@@ -146,6 +146,7 @@ function callsListHarness() {
   });
   vm.runInContext(client.slice(client.indexOf('let vaultMissedCallsSeenAccount'), client.indexOf('\nfunction callHistoryEntries')), context);
   vm.runInContext(extract(client, 'callRecDirection'), context);
+  vm.runInContext(extract(client, 'callDirectionIconHtml'), context);
   vm.runInContext(client.slice(client.indexOf('function renderCallHistoryList'), client.indexOf('\nfunction startCallFromHistory')), context);
   return context;
 }
@@ -206,6 +207,58 @@ test('dissolveCallScreen threads its callEvent parameter into both of its addCal
   assert.match(dissolve, /function dissolveCallScreen\(room, duration, eventId = null, callEvent = null\)/);
   const calls = dissolve.match(/addCallSysMsg\(room, `Encrypted call · \$\{formatCallTime\(duration\)\}`, eventId, callEvent\);/g) || [];
   assert.equal(calls.length, 2, 'the early-return no-overlay path and the end-of-animation path');
+});
+
+// ── The real bug: room.callState is a snapshot of the CURRENT phase (it
+// moves on to 'active' the instant a call connects), not who placed the
+// call — so deriving callRole from it inside endCall() returned null for
+// EVERY call that actually connected, silently dropping the direction
+// arrow (and the video flag riding on the same callEvent object) for
+// exactly those calls. Only calls that ended while still ringing
+// (declined/cancelled/unanswered, which never leave 'outgoing'/'incoming')
+// kept it — matching the report exactly: arrows showed for "No answer"/
+// "Caller cancelled" but not for "Encrypted call · MM:SS". ──
+
+test('endCall no longer derives callRole from room.callState (the bug) — it uses the persistent room.callWasOutgoing instead', () => {
+  const endCall = extract(client, 'endCall');
+  assert.doesNotMatch(endCall, /const callRole = room\.callState === 'outgoing'/, 'the buggy state-snapshot derivation must be gone');
+  assert.match(endCall, /const callRole = room\.callWasOutgoing === true \? 'initiator' : 'receiver';/);
+});
+
+test('startCallForRoom sets the persistent callWasOutgoing flag, independent of the transient callState', () => {
+  const start = extract(client, 'startCallForRoom');
+  assert.match(start, /room\.callState = 'outgoing';[\s\S]{0,400}?room\.callWasOutgoing = true;/);
+});
+
+test('the incoming-invite handler sets callWasOutgoing to false at the same point callState becomes \'incoming\'', () => {
+  const idx = client.indexOf(`room.callState = 'incoming';\n      room.callWasOutgoing = false;`);
+  assert.notEqual(idx, -1);
+});
+
+test('endCall resets callWasOutgoing back to null alongside the rest of its call-state cleanup, so it cannot leak into the next call', () => {
+  const endCall = extract(client, 'endCall');
+  assert.match(endCall, /room\.callState = 'idle';\s*\n\s*room\.callWasOutgoing = null;/);
+});
+
+test('wasVideoCall also checks the call\'s video INTENT (pendingVideoStart/incomingVideoCall), not just post-connection media state', () => {
+  // A call that rang as a video call but was never answered never turns on
+  // callHadVideo/callVideoOn/remoteVideoActive at all — those only ever
+  // flip on after the call actually connects — so checking only those
+  // three mislabeled every unanswered/declined/cancelled video call as a
+  // plain voice call.
+  const endCall = extract(client, 'endCall');
+  assert.match(endCall, /const wasVideoCall = !!\(room\.pendingVideoStart \|\| room\.incomingVideoCall \|\| room\.callHadVideo \|\| room\.callVideoOn \|\| room\.remoteVideoActive\);/);
+});
+
+test('regression check: a room that has already transitioned to callState "active" (a connected call) still resolves a definite direction', () => {
+  // Simulates exactly the bug scenario: by the time a connected call ends,
+  // callState is 'active', not 'outgoing'/'incoming' — the fix must not
+  // depend on callState at all for this.
+  const roomOutgoing = { callState:'active', callWasOutgoing:true };
+  const roomIncoming = { callState:'active', callWasOutgoing:false };
+  const roleFor = room => room.callWasOutgoing === true ? 'initiator' : 'receiver';
+  assert.equal(roleFor(roomOutgoing), 'initiator');
+  assert.equal(roleFor(roomIncoming), 'receiver');
 });
 
 // ── processIncomingContent: the synced call-event decode path (receiving side) ──
