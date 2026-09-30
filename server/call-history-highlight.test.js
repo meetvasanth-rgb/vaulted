@@ -29,6 +29,9 @@ function harness() {
   // function declaration would otherwise overwrite the stub above the
   // moment this script runs (it's a plain global assignment, same scope).
   vm.runInContext(html.slice(html.indexOf('let vaultMissedCallsSeenAccount'), html.indexOf('\nfunction callHistoryEntries')), context);
+  // renderCallHistoryList's direction arrow reads callRecDirection() — a
+  // small pure function, extracted for real rather than stubbed.
+  vm.runInContext(html.slice(html.indexOf('function callRecDirection'), html.indexOf('\n\n', html.indexOf('function callRecDirection'))), context);
   // renderCallHistoryList alone, run after the stub is safely the only
   // callHistoryEntries in scope.
   vm.runInContext(html.slice(html.indexOf('function renderCallHistoryList'), html.indexOf('\nfunction startCallFromHistory')), context);

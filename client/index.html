@@ -330,6 +330,8 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-row-name{min-width:0;font-size:15px;font-weight:700;color:#271D25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:end}
 .vault-list-row-preview{min-width:0;font-size:12.5px;color:#81767C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;align-self:start;margin-top:3px}
 .vault-list-row-preview.alert{color:#A84964;font-weight:600}
+.vault-call-direction{width:11px;height:11px;vertical-align:-1px;margin-right:3px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.vault-call-direction.incoming{transform:rotate(180deg)}
 .vault-list-row-meta{grid-column:3;grid-row:1/3;display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:58px}
 .vault-list-row-time{font-size:10.5px;color:#9A9095;white-space:nowrap}
 .vault-list-row-badge{font-size:9px;letter-spacing:.055em;text-transform:uppercase;padding:4px 7px;border-radius:8px;font-weight:700;white-space:nowrap}
@@ -2484,6 +2486,16 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .msg .bubble{max-width:min(78vw,540px)!important;padding:10px 13px!important;font:450 14px/1.48 'Manrope',sans-serif!important;box-shadow:none!important}
 #s-chat .msg.me .bubble{background:#F2DDE3!important;border:1px solid #E8C9D1!important;color:#30242B!important;border-radius:17px 17px 5px 17px!important}
 #s-chat .msg.them .bubble{background:#fff!important;border:1px solid #E7DDE1!important;color:#30242B!important;border-radius:17px 17px 17px 5px!important;box-shadow:0 5px 16px rgba(39,29,37,.055)!important}
+.call-card{display:flex;align-items:center;gap:10px;padding:9px 14px;min-width:168px;cursor:pointer}
+#s-chat .msg.me .call-card{background:#F2DDE3!important;border:1px solid #E8C9D1!important;border-radius:17px 17px 5px 17px!important}
+#s-chat .msg.them .call-card{background:#fff!important;border:1px solid #E7DDE1!important;border-radius:17px 17px 17px 5px!important;box-shadow:0 5px 16px rgba(39,29,37,.055)!important}
+.call-card-icon{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(48,36,43,.08)}
+.call-card-icon svg{width:17px;height:17px;fill:#30242B}
+.call-card.missed .call-card-icon{background:rgba(168,73,100,.14)}
+.call-card.missed .call-card-icon svg{fill:#A84964}
+.call-card-title{font:650 13.5px/1.3 Inter,sans-serif;color:#30242B}
+.call-card.missed .call-card-title{color:#A84964}
+.call-card-subtitle{font:500 12px/1.3 Inter,sans-serif;color:#867B81;margin-top:2px}
 /* Sender identity stays in the message record for a future group renderer,
    but a one-to-one chat does not repeat it above every incoming bubble. */
 #s-chat .msg-name{display:none!important}
@@ -7918,11 +7930,11 @@ async function persistCallSysMsg(room, rec) {
   }
 }
 
-function unansweredCallEvent(authorRole) {
-  return callOutcomeEvent('unanswered', authorRole);
+function unansweredCallEvent(authorRole, isVideo) {
+  return callOutcomeEvent('unanswered', authorRole, isVideo);
 }
 
-function callOutcomeEvent(outcome, authorRole) {
+function callOutcomeEvent(outcome, authorRole, isVideo) {
   const labels = {
     unanswered: { initiatorText:'No answer', receiverText:'Missed encrypted call' },
     declined: { initiatorText:'Call declined', receiverText:'Declined call' },
@@ -7931,8 +7943,34 @@ function callOutcomeEvent(outcome, authorRole) {
   return labels ? {
     outcome,
     authorRole:authorRole === 'initiator' ? 'initiator' : 'receiver',
+    isVideo:!!isVideo,
     ...labels,
   } : null;
+}
+
+// The 'connected' outcome has no initiatorText/receiverText — both sides
+// already see the identical "Encrypted call · MM:SS" duration text — but it
+// still needs an authorRole so the Calls tab and in-chat call card can show
+// the correct incoming/outgoing arrow, same as the other three outcomes.
+function connectedCallEvent(authorRole, isVideo) {
+  return authorRole ? { outcome:'connected', authorRole:authorRole === 'initiator' ? 'initiator' : 'receiver', isVideo:!!isVideo } : null;
+}
+
+// authorRole/direction are the same underlying fact viewed from whichever
+// side generated the record ('initiator' placed the call, 'receiver' took
+// it). callEventForViewer() below only flips role+text for the three
+// outcomes that HAVE distinct initiator/receiver text; this is the same
+// role-flip but usable for every outcome including 'connected', which has
+// no per-side text to select.
+function callEventViewerRoleFor(callEvent, fromMe) {
+  if (!callEvent || (callEvent.authorRole !== 'initiator' && callEvent.authorRole !== 'receiver')) return null;
+  return fromMe ? callEvent.authorRole : (callEvent.authorRole === 'initiator' ? 'receiver' : 'initiator');
+}
+
+function callRecDirection(rec) {
+  if (rec?.callEventViewerRole === 'initiator') return 'outgoing';
+  if (rec?.callEventViewerRole === 'receiver') return 'incoming';
+  return null;
 }
 
 function addCallSysMsg(room, text, eventId = null, callEvent = null) {
@@ -7946,6 +7984,7 @@ function addCallSysMsg(room, text, eventId = null, callEvent = null) {
     id: eventId || ('sys-call-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
     kind:'sys', content:stamped, ts:occurredAt, callEvent,
     callEventViewerRole:callEvent?.authorRole || null,
+    callWasVideo:!!callEvent?.isVideo,
   };
   if (room.messages.some(existing => existing.id === rec.id)) return;
   if (isDuplicateCallHistoryRecord(room, rec)) return;
@@ -7985,13 +8024,18 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (!room) return;
   const callRole = room.callState === 'outgoing' ? 'initiator' :
     (room.callState === 'incoming' ? 'receiver' : null);
+  // Computed early (moved ahead of its original spot below callEvent) so
+  // both callEvent and connectedCallEvent can carry it — needed for the
+  // in-chat call card's "Voice call"/"Video call" title.
+  const wasVideoCall = !!(room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
   const historyText = String(sysMsgText || '');
   const outcome = /^(?:Missed call|Missed encrypted call|No answer|Call not answered)$/i.test(historyText)
     ? 'unanswered'
     : (/^(?:Call declined|Declined call)$/i.test(historyText)
       ? 'declined'
       : (/^(?:Call canceled|Cancelled call|Caller cancelled)$/i.test(historyText) ? 'cancelled' : null));
-  const callEvent = outcome && callRole ? callOutcomeEvent(outcome, callRole) : null;
+  const callEvent = outcome && callRole ? callOutcomeEvent(outcome, callRole, wasVideoCall) : null;
+  const callEventConnected = connectedCallEvent(callRole, wasVideoCall);
   const wasNativeCall = room.nativeCallActive;
   const callHistoryEventId = room.callInviteId ? `call-event-${room.callInviteId}` : null;
   room.lastCallHistoryEventId = callHistoryEventId;
@@ -8008,7 +8052,6 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // picked up).
   const wasActive = room.callState === 'active' && !!room.callStartedAt;
   const duration = wasActive ? Math.max(0, Math.floor((Date.now() - room.callStartedAt) / 1000)) : 0;
-  const wasVideoCall = !!(room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
   if (wasActive) recordCallAchievement(room, duration, wasVideoCall);
 
   clearCallTimeout(room);
@@ -8055,7 +8098,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // encrypted call-history row that the normal presentation path creates.
   if (restoreAppLockAfterCall && quickLockActive) {
     hideCallOverlay();
-    if (wasActive) addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, callHistoryEventId);
+    if (wasActive) addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, callHistoryEventId, callEventConnected);
     else if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
     if (toastMsg) toast(toastMsg, toastVariant);
     notifyLockedCallEnded();
@@ -8089,7 +8132,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
     // that adds the "Encrypted call · MM:SS" system message once the room
     // is visible again. toastMsg (if any — e.g. a mid-call connection
     // failure) still surfaces afterward so the reason isn't lost.
-    await dissolveCallScreen(room, duration, callHistoryEventId);
+    await dissolveCallScreen(room, duration, callHistoryEventId, callEventConnected);
     if (toastMsg) toast(toastMsg, toastVariant);
   } else {
     hideCallOverlay();
@@ -14452,6 +14495,34 @@ function callHistoryFamily(rec) {
   return '';
 }
 
+// Everything the in-chat WhatsApp-style call card needs, derived from the
+// same sys-msg record the Calls tab already reads — returns null for any
+// sys message that isn't a call event (key-change notices, "Conversation
+// cleared", etc.), which keeps those rendering as the plain centered
+// sys-msg line untouched.
+function callCardDetails(rec) {
+  const family = callHistoryFamily(rec);
+  if (!family) return null;
+  const rawText = String(rec.content || '').replace(/\s*·\s*\d{1,2}:\d{2}(?:\s*[AP]M)?\s*$/i, '').trim();
+  const isVideo = !!rec.callWasVideo;
+  const missed = /^Missed/i.test(rawText);
+  let title, subtitle;
+  if (missed) {
+    title = isVideo ? 'Missed video call' : 'Missed voice call';
+    subtitle = 'Tap to call back';
+  } else if (family === 'connected') {
+    title = isVideo ? 'Video call' : 'Voice call';
+    subtitle = rawText.replace(/^Encrypted call\s*·?\s*/i, '').trim() || rawText;
+  } else {
+    title = isVideo ? 'Video call' : 'Voice call';
+    subtitle = rawText;
+  }
+  // Direction unknown (a record from before this data model existed, or one
+  // of the narrow native-bridge fallback paths that doesn't have role info)
+  // defaults to the left/"them" side rather than guessing "me".
+  return { direction:callRecDirection(rec) || 'incoming', isVideo, missed, title, subtitle };
+}
+
 function isSameCallHistoryRecord(existing, candidate) {
   if (!existing || !candidate || existing === candidate ||
       existing.kind !== 'sys' || candidate.kind !== 'sys') return false;
@@ -15336,10 +15407,16 @@ function renderCallHistoryList(body) {
   body.innerHTML = entries.map(({ room, rec, text, occurredAt }) => {
     const isMissed = /^Missed/i.test(text);
     const isUnseenMissed = isMissed && rec.callEventViewerRole !== 'initiator' && !seen.has(`${room.code}:${rec.id || occurredAt}`);
+    // Same up-right arrow glyph for both directions — 'incoming' just
+    // rotates it 180deg (CSS) to point down-left, matching the WhatsApp
+    // convention this row is modeled on. currentColor means it automatically
+    // turns red alongside the text when .alert is present below.
+    const direction = callRecDirection(rec);
+    const directionIcon = direction ? `<svg class="vault-call-direction ${direction}" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M10 7h7v7"/></svg>` : '';
     return `<div class="vault-list-row vault-call-row${isUnseenMissed ? ' missed-unseen' : ''}" data-room="${escHtml(room.code)}">
     <button type="button" class="vault-call-icon vault-call-btn" data-call-room="${escHtml(room.code)}" aria-label="Call ${escHtml(roomDisplayLabel(room))}" title="Call"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg></button>
     <span class="vault-list-row-name">${escHtml(roomDisplayLabel(room))}</span>
-    <span class="vault-list-row-preview${isMissed ? ' alert' : ''}">${escHtml(text)}</span>
+    <span class="vault-list-row-preview${isMissed ? ' alert' : ''}">${directionIcon}${escHtml(text)}</span>
     <span class="vault-list-row-meta">${occurredAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(occurredAt)}</span>` : ''}<button type="button" class="vault-call-video-btn" data-video-call-room="${escHtml(room.code)}" aria-label="Video call ${escHtml(roomDisplayLabel(room))}" title="Video call"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg></button></span>
   </div>`;
   }).join('');
@@ -17273,7 +17350,29 @@ function renderMessageRecord(room, rec, animate) {
 
   if (rec.kind === 'sys') {
     if (!isVisibleConversationRecord(rec)) return null;
+    const callDetails = callCardDetails(rec);
     const div = document.createElement('div');
+    if (callDetails) {
+      // A call event gets its own message-bubble-style card (left/right by
+      // who placed the call, like an ordinary chat bubble) instead of the
+      // plain centered sys-msg line every other system notice still uses.
+      div.className = `msg call-msg ${callDetails.direction === 'outgoing' ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
+      if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
+      const icon = callDetails.isVideo
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.68 2.8a2 2 0 0 1-.45 2.11L8.07 9.9a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.32 1.84.55 2.8.68A2 2 0 0 1 22 16.92Z"/></svg>';
+      div.innerHTML = `<div class="call-card${callDetails.missed ? ' missed' : ''}">
+        <div class="call-card-icon">${icon}</div>
+        <div class="call-card-text">
+          <div class="call-card-title">${escHtml(callDetails.title)}</div>
+          <div class="call-card-subtitle">${escHtml(callDetails.subtitle)}</div>
+        </div>
+      </div>`;
+      div.querySelector('.call-card').onclick = () => startCallFromHistory(room.code, callDetails.isVideo);
+      body.insertBefore(div, typing);
+      body.scrollTop = body.scrollHeight;
+      return div;
+    }
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
     if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
     div.textContent = rec.content;
@@ -18072,13 +18171,20 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       return { ...base, kind: 'gif', klipyId: String(parsed.id || ''), title: String(parsed.title || 'GIF').slice(0, 200), url: parsed.url };
     }
     if (parsed.type === 'call-event' && typeof parsed.text === 'string') {
-      const perspective = callEventForViewer(parsed.callEvent, fromToken === room.token);
+      const fromMe = fromToken === room.token;
+      const perspective = callEventForViewer(parsed.callEvent, fromMe);
+      // callEventForViewer() only resolves role+text for the three outcomes
+      // that have distinct initiator/receiver text. 'connected' calls (and
+      // any other outcome) still need the same role-flip for direction —
+      // callEventViewerRoleFor() does just that half, independent of text.
+      const viewerRole = perspective?.viewerRole || callEventViewerRoleFor(parsed.callEvent, fromMe);
       const callRecord = {
         ...base,
         kind:'sys',
         content:perspective ? `${perspective.text} · ${time}` : parsed.text.slice(0, 240),
         callEvent:parsed.callEvent || null,
-        callEventViewerRole:perspective?.viewerRole || null,
+        callEventViewerRole:viewerRole,
+        callWasVideo:!!parsed.callEvent?.isVideo,
       };
       return isDuplicateCallHistoryRecord(room, callRecord) ? null : callRecord;
     }
@@ -20423,9 +20529,9 @@ function hideVanishOverlay() {
 // dissolves upward itself, and only then does the room's system message
 // land. The moment always reads as call → silence → memory, never a hard
 // cut.
-async function dissolveCallScreen(room, duration, eventId = null) {
+async function dissolveCallScreen(room, duration, eventId = null, callEvent = null) {
   const overlay = document.getElementById('call-overlay');
-  if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId); return; }
+  if (!overlay) { addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId, callEvent); return; }
 
   // The moving matrix belongs only to a live call. Stop and remove it at
   // the first frame of hang-up so it cannot continue behind the slower
@@ -20496,7 +20602,7 @@ async function dissolveCallScreen(room, duration, eventId = null) {
   await delay(650);
 
   overlay.remove();
-  addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId);
+  addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId, callEvent);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

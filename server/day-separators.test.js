@@ -70,7 +70,7 @@ test('the divider markup is escaped and carries its day', () => {
 
 test('wiring: one-to-one rows carry their time, dividers refresh after every render, groups add them inline', () => {
   const render = extract(client, 'renderMessageRecord');
-  assert.equal((render.match(/div\.dataset\.ts = String\(Number\(rec\.ts\)\)/g) || []).length, 2, 'sys rows and message rows');
+  assert.equal((render.match(/div\.dataset\.ts = String\(Number\(rec\.ts\)\)/g) || []).length, 3, 'sys rows, the in-chat call-card rows, and message rows');
   assert.match(extract(client, 'renderChatBody'), /refreshDaySeparators\(body, \{ stick:false \}\);\s*watchChatDaySeparators\(body\);/);
   assert.match(client, /\.day-sep\{display:flex;justify-content:center/);
   assert.match(render, /class="msg-time" title="\$\{escHtml\(formatFullDateTime\(rec\.ts\)\)\}"/);
