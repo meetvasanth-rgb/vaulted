@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v124';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v125';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',

@@ -5673,7 +5673,8 @@ function importAccountBundle(bundle, accountId) {
     const selected = !current || (ownedSession.savedAt || 0) > (current.savedAt || 0) ? ownedSession : current;
     // Whichever copy wins, a message deleted on either one stays deleted.
     const deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(current?.deleteLedger, ownedSession.deleteLedger));
-    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger });
+    const callHistoryClearedAt = Math.max(Number(current?.callHistoryClearedAt) || 0, Number(ownedSession.callHistoryClearedAt) || 0);
+    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
@@ -5696,13 +5697,14 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId }) {
+function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
     // currently signed-in account. Explicit null comes from a restored guest
     // session and must remain guest-owned even while an account is signed in.
     ownerAccountId:ownerAccountId === undefined ? (loadAccountState()?.accountId || null) : (ownerAccountId || null),
+    callHistoryClearedAt:Number(callHistoryClearedAt) || 0,
     // Where a named vault's user-typed label ends and the server-appended
     // random suffix begins, in characters — null for an anonymous room
     // (nothing to distinguish, the whole code is server-random). Only ever
@@ -6289,6 +6291,7 @@ async function persistRoom(room) {
       nativeRoomHandle: room.nativeRoomHandle,
       ownerAccountId: room.ownerAccountId || null,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
+      callHistoryClearedAt:Number(room.callHistoryClearedAt) || 0,
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
       // call after persistDeleteLedger() had already written entries (e.g.
@@ -6387,6 +6390,7 @@ function persistDeleteLedger(room) {
     const existing = JSON.parse(localStorage.getItem(key) || 'null');
     if (!existing) return;
     existing.deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(existing.deleteLedger, Object.fromEntries(room.deleteLedger)));
+    existing.callHistoryClearedAt = Math.max(Number(existing.callHistoryClearedAt) || 0, Number(room.callHistoryClearedAt) || 0);
     localStorage.setItem(key, JSON.stringify(existing));
     scheduleAccountSync();
   } catch(e) {}
@@ -8015,7 +8019,7 @@ function addCallSysMsg(room, text, eventId = null, callEvent = null) {
   // bridges) never consulted the delete ledger at all — a queued/stale
   // native call-end notification arriving after the user had already
   // deleted this call's history entry would silently resurrect it.
-  if (eventId && room.deleteLedger.get(eventId)) return;
+  if (callHistoryRecordDeleted(room, rec)) return;
   room.seenMsgIds?.add(rec.id);
   room.messages.push(rec);
   room.lastMessageAt = Math.max(Number(room.lastMessageAt) || 0, occurredAt);
@@ -14574,6 +14578,28 @@ function callHistoryFamily(rec) {
   return '';
 }
 
+function callHistoryDeletionKey(rec) {
+  const family = callHistoryFamily(rec);
+  const occurredAt = Number(rec?.ts) || 0;
+  return family && occurredAt > 0 ? `call-history:${family}:${occurredAt}` : '';
+}
+
+function callHistoryRecordDeleted(room, rec) {
+  if (!room || !rec) return false;
+  if (rec.id && room.deleteLedger.get(rec.id)) return true;
+  const family = callHistoryFamily(rec);
+  const occurredAt = Number(rec.ts) || 0;
+  if (!family || occurredAt <= 0) return false;
+  if ((Number(room.callHistoryClearedAt) || 0) >= occurredAt) return true;
+  const prefix = `call-history:${family}:`;
+  for (const key of room.deleteLedger.keys()) {
+    if (!String(key).startsWith(prefix)) continue;
+    const deletedCallAt = Number(String(key).slice(prefix.length)) || 0;
+    if (deletedCallAt > 0 && Math.abs(deletedCallAt - occurredAt) <= CALL_HISTORY_DEDUPE_WINDOW_MS) return true;
+  }
+  return false;
+}
+
 // Everything the in-chat WhatsApp-style call card needs, derived from the
 // same sys-msg record the Calls tab already reads — returns null for any
 // sys message that isn't a call event (key-change notices, "Conversation
@@ -15596,12 +15622,21 @@ function confirmClearAllCalls(entries) {
   const close = () => overlay.remove();
   overlay.querySelector('#clear-calls-confirm').onclick = async () => {
     close();
+    const clearedAt = Date.now();
     const byRoom = new Map();
-    for (const { room, rec } of entries) {
-      if (!byRoom.has(room.code)) byRoom.set(room.code, { room, ids: [] });
-      byRoom.get(room.code).ids.push(rec.id);
+    for (const room of rooms.values()) {
+      room.callHistoryClearedAt = Math.max(Number(room.callHistoryClearedAt) || 0, clearedAt);
+      if (room.lastCallHistoryEventId) room.deleteLedger.set(room.lastCallHistoryEventId, clearedAt);
+      const ids = room.messages.filter(record => callHistoryFamily(record)).map(record => record.id).filter(Boolean);
+      byRoom.set(room.code, { room, ids });
+      // Persist the cutoff even when this room has not finished restoring and
+      // therefore has no visible rows yet. Older server pages must stay
+      // cleared when they are loaded after this confirmation or next launch.
+      persistDeleteLedger(room);
     }
-    for (const { room, ids } of byRoom.values()) await deleteMessage(room, ids, false);
+    for (const { room, ids } of byRoom.values()) {
+      if (ids.length) await deleteMessage(room, ids, false);
+    }
     if (currentVaultListMode === 'calls') renderVaultList();
     toast('Call history cleared');
   };
@@ -17044,15 +17079,22 @@ function showDeleteOptions(room, msgIdOrIds, isMe) {
 async function deleteMessage(room, msgIdOrIds, forEveryone) {
   const requestedIds = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
   const ids = [];
+  const callDeletionKeys = [];
   for (const msgId of requestedIds) {
     const record = room.messages.find(message => message.id === msgId);
     const expanded = !forEveryone && callHistoryFamily(record) ? callHistoryRecordIds(room, record) : [msgId];
+    if (!forEveryone) {
+      const callDeletionKey = callHistoryDeletionKey(record);
+      if (callDeletionKey && !callDeletionKeys.includes(callDeletionKey)) callDeletionKeys.push(callDeletionKey);
+    }
     for (const id of expanded.length ? expanded : [msgId]) if (!ids.includes(id)) ids.push(id);
   }
+  const deletedAt = Date.now();
   for (const msgId of ids) {
     removeMessageRecord(room, msgId);
-    room.deleteLedger.set(msgId, Date.now());
+    room.deleteLedger.set(msgId, deletedAt);
   }
+  for (const key of callDeletionKeys) room.deleteLedger.set(key, deletedAt);
   persistDeleteLedger(room);
   if (forEveryone) {
     // Sequential, not parallel — a multi-select batch shouldn't fire a burst
@@ -18360,6 +18402,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
         callEventViewerRole:viewerRole,
         callWasVideo:!!parsed.callEvent?.isVideo,
       };
+      if (callHistoryRecordDeleted(room, callRecord)) return null;
       const duplicate = room.messages.find(existing => isSameCallHistoryRecord(existing, callRecord));
       if (duplicate) {
         rememberCallHistoryAlias(duplicate, msgId);
@@ -21313,7 +21356,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const code of idx) {
       const session = loadRoomSession(code);
       if (!session) continue;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt });
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;

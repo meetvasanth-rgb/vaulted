@@ -71,7 +71,8 @@ test('conversation menu closes on navigation, outside tap and Escape', () => {
 test('duplicate encrypted call records are coalesced by content and event time', () => {
   assert.match(client, /const CALL_HISTORY_DEDUPE_WINDOW_MS = 12000/);
   assert.match(client, /function isDuplicateCallHistoryRecord\(room, candidate\)/);
-  assert.match(client, /return isDuplicateCallHistoryRecord\(room, callRecord\) \? null : callRecord/);
+  assert.match(client, /const duplicate = room\.messages\.find\(existing => isSameCallHistoryRecord\(existing, callRecord\)\);/);
+  assert.match(client, /rememberCallHistoryAlias\(duplicate, msgId\);/);
   assert.match(client, /for \(const rec of uniqueVisibleConversationRecords\(room\.messages\)\)/);
   assert.match(client, /const visibleMessages = uniqueVisibleConversationRecords\(room\.messages\)/);
 });

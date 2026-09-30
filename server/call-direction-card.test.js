@@ -200,11 +200,12 @@ test('each Calls tab row carries data-msg-id and is long-press-wired to delete t
   assert.match(render, /attachLongPress\(el, entry\.rec\.id, \(\) => showDeleteOptions\(entry\.room, entry\.rec\.id, false\)\);/);
 });
 
-test('confirmClearAllCalls groups entries by room and calls deleteMessage per room with "delete for me" only', () => {
+test('confirmClearAllCalls records a cutoff for every room, including rooms whose older calls are not loaded yet', () => {
   const fn = extract(client, 'confirmClearAllCalls');
-  assert.match(fn, /if \(!byRoom\.has\(room\.code\)\) byRoom\.set\(room\.code, \{ room, ids: \[\] \}\);/);
-  assert.match(fn, /byRoom\.get\(room\.code\)\.ids\.push\(rec\.id\);/);
-  assert.match(fn, /await deleteMessage\(room, ids, false\);/);
+  assert.match(fn, /for \(const room of rooms\.values\(\)\) \{/);
+  assert.match(fn, /room\.callHistoryClearedAt = Math\.max\(Number\(room\.callHistoryClearedAt\) \|\| 0, clearedAt\);/);
+  assert.match(fn, /persistDeleteLedger\(room\);/);
+  assert.match(fn, /if \(ids\.length\) await deleteMessage\(room, ids, false\);/);
 });
 
 test('callHistoryRecordIds expands one visible call row to every hidden and suppressed duplicate id', () => {
@@ -229,6 +230,30 @@ test('deleteMessage expands a local call deletion before removing records or wri
   assert.match(fn, /const requestedIds = Array\.isArray\(msgIdOrIds\) \? msgIdOrIds : \[msgIdOrIds\];/);
   assert.match(fn, /const expanded = !forEveryone && callHistoryFamily\(record\) \? callHistoryRecordIds\(room, record\) : \[msgId\];/);
   assert.match(fn, /for \(const id of expanded\.length \? expanded : \[msgId\]\) if \(!ids\.includes\(id\)\) ids\.push\(id\);/);
+  assert.match(fn, /const callDeletionKey = callHistoryDeletionKey\(record\);/);
+  assert.match(fn, /for \(const key of callDeletionKeys\) room\.deleteLedger\.set\(key, deletedAt\);/);
+});
+
+test('a deleted call fingerprint also suppresses a hidden peer copy with a different message id', () => {
+  const context = vm.createContext({ CALL_HISTORY_DEDUPE_WINDOW_MS:12000 });
+  vm.runInContext(extract(client, 'callHistoryFamily'), context);
+  vm.runInContext(extract(client, 'callHistoryDeletionKey'), context);
+  vm.runInContext(extract(client, 'callHistoryRecordDeleted'), context);
+  context.visible = { id:'local-id', kind:'sys', content:'Encrypted call · 00:10 · 14:05', ts:100000 };
+  context.hidden = { id:'peer-id', kind:'sys', content:'Encrypted call · 00:11 · 14:05', ts:108000 };
+  context.room = { callHistoryClearedAt:0, deleteLedger:new Map([[context.callHistoryDeletionKey(context.visible), Date.now()]]) };
+  assert.equal(vm.runInContext('callHistoryRecordDeleted(room, hidden)', context), true);
+});
+
+test('the clear-all cutoff suppresses older call records while allowing later calls', () => {
+  const context = vm.createContext({ CALL_HISTORY_DEDUPE_WINDOW_MS:12000 });
+  vm.runInContext(extract(client, 'callHistoryFamily'), context);
+  vm.runInContext(extract(client, 'callHistoryRecordDeleted'), context);
+  context.room = { callHistoryClearedAt:200000, deleteLedger:new Map() };
+  context.oldCall = { id:'old', kind:'sys', content:'Missed encrypted call · 14:05', ts:150000 };
+  context.newCall = { id:'new', kind:'sys', content:'Encrypted call · 00:10 · 14:10', ts:250000 };
+  assert.equal(vm.runInContext('callHistoryRecordDeleted(room, oldCall)', context), true);
+  assert.equal(vm.runInContext('callHistoryRecordDeleted(room, newCall)', context), false);
 });
 
 test('restored call duplicates retain the suppressed server id as a deletion alias', () => {
@@ -288,7 +313,15 @@ test('deleteLedger is loaded in the first synchronous per-room hydration pass, n
 
 test('addCallSysMsg also checks the delete ledger directly, so a queued native call-end notification cannot resurrect an already-deleted call', () => {
   const fn = extract(client, 'addCallSysMsg');
-  assert.match(fn, /if \(eventId && room\.deleteLedger\.get\(eventId\)\) return;/);
+  assert.match(fn, /if \(callHistoryRecordDeleted\(room, rec\)\) return;/);
+});
+
+test('call-history clear cutoff is persisted, restored synchronously, and merged across account copies', () => {
+  const persist = extract(client, 'persistDeleteLedger');
+  assert.match(persist, /existing\.callHistoryClearedAt = Math\.max/);
+  const importBundle = extract(client, 'importAccountBundle');
+  assert.match(importBundle, /const callHistoryClearedAt = Math\.max/);
+  assert.match(client, /callHistoryClearedAt:session\.callHistoryClearedAt/);
 });
 
 // ── renderMessageRecord: the in-chat call card branch (structural) ──
