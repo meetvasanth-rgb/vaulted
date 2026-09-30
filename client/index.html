@@ -21995,7 +21995,13 @@ function showSendImageOptions(room, items, options = {}) {
   const { groupMode = false, onSend } = options;
   const overlay = document.createElement('div');
   overlay.id = 'send-img-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  // z-index:999 (this dialog's original value, fine when only ever opened
+  // from 1:1 chat) rendered BEHIND .group-chat's own z-index:10018 once this
+  // same dialog started being reused for groups — the dialog was there and
+  // working, just invisible/unreachable underneath the group chat screen
+  // until that screen closed. 10060 clears every existing overlay z-index
+  // in this file (.group-chat 10018, .locker-fullscreen 10046, etc.).
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:10060;padding:24px;';
   const first = items[0];
   const countBadge = items.length > 1
     ? `<div style="position:absolute;top:8px;right:8px;background:#1A1916;color:#fff;font-size:11px;padding:3px 8px;border-radius:12px">+${items.length - 1} more</div>`
