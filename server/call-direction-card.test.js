@@ -253,6 +253,30 @@ test('wasVideoCall also checks the call\'s video INTENT (pendingVideoStart/incom
   assert.match(endCall, /const wasVideoCall = !!\(room\.pendingVideoStart \|\| room\.incomingVideoCall \|\| room\.callHadVideo \|\| room\.callVideoOn \|\| room\.remoteVideoActive\);/);
 });
 
+// ── pendingVideoStart is a "hasn't started yet" flag, cleared the instant
+// the call connects (beginPendingVideoStart) — so for a call that DID
+// connect, wasVideoCall could only still see it via callHadVideo/
+// callVideoOn/remoteVideoActive. Those are only ever set by iOS's own
+// vaultlix:native-video-state event (SceneDelegate.swift); Android's
+// dedicated native call screen owns video entirely on the native side and
+// never dispatches an Android equivalent, so a connected Android video
+// call had no JS-visible record of ever being one by the time it ended —
+// "in iOS it's all fine [but Android video still shows as voice]".
+
+test('beginPendingVideoStart records callHadVideo before clearing pendingVideoStart, so the fact survives past call-connect on every platform', () => {
+  const fn = extract(client, 'beginPendingVideoStart');
+  const clearIdx = fn.indexOf('room.pendingVideoStart = false;');
+  const recordIdx = fn.indexOf('room.callHadVideo = true;');
+  const androidEarlyReturnIdx = fn.indexOf("if (room.nativeCallActive && window.VaultlixAndroid?.supportsNativeWebRtc?.()) return;");
+  assert.notEqual(clearIdx, -1);
+  assert.notEqual(recordIdx, -1);
+  assert.notEqual(androidEarlyReturnIdx, -1);
+  // Must run for every platform, including Android's native early return —
+  // not just the iOS/browser toggleCamera() path below it.
+  assert.ok(recordIdx > clearIdx && recordIdx < androidEarlyReturnIdx,
+    'callHadVideo must be set before the Android-native early return, not after it');
+});
+
 test('regression check: a room that has already transitioned to callState "active" (a connected call) still resolves a definite direction', () => {
   // Simulates exactly the bug scenario: by the time a connected call ends,
   // callState is 'active', not 'outgoing'/'incoming' — the fix must not
@@ -288,14 +312,13 @@ test('the vaultlixNativeCallEnded idle-fallback branch builds a real callEvent f
   assert.match(fn, /room\.callWasOutgoing = null;/);
 });
 
-// ── Color scheme: orange for both directions, red only when missed (per
-// explicit user feedback — not green/burgundy, which read as too similar
-// to tell apart at a glance) ──
+// ── Color scheme: green outgoing, orange incoming, red only when missed
+// (per explicit user feedback across two rounds) ──
 
-test('the direction arrow is orange for both incoming and outgoing, and red only for missed', () => {
-  assert.match(client, /\.vault-call-direction\.outgoing,\.vault-call-direction\.incoming\{stroke:#D9822B\}/);
+test('the direction arrow is green outgoing, orange incoming, and red only for missed', () => {
+  assert.match(client, /\.vault-call-direction\.outgoing\{stroke:var\(--green\)\}/);
+  assert.match(client, /\.vault-call-direction\.incoming\{stroke:#D9822B\}/);
   assert.match(client, /\.vault-call-direction\.missed\{stroke:#C0293F\}/);
-  assert.doesNotMatch(client, /\.vault-call-direction\.outgoing\{stroke:var\(--green\)\}/);
 });
 
 // ── processIncomingContent: the synced call-event decode path (receiving side) ──
