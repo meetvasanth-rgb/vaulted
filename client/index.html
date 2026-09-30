@@ -332,8 +332,7 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-row-preview.alert{color:#A84964;font-weight:600}
 .vault-call-direction{width:15px;height:15px;vertical-align:-2.5px;margin-right:4px;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
 .vault-call-direction.incoming{transform:rotate(180deg)}
-.vault-call-direction.outgoing{stroke:var(--green)}
-.vault-call-direction.incoming{stroke:#682C43}
+.vault-call-direction.outgoing,.vault-call-direction.incoming{stroke:#D9822B}
 .vault-call-direction.missed{stroke:#C0293F}
 .vault-list-row-meta{grid-column:3;grid-row:1/3;display:flex;flex-direction:column;align-items:flex-end;gap:7px;min-width:58px}
 .vault-list-row-time{font-size:10.5px;color:#9A9095;white-space:nowrap}
@@ -7985,9 +7984,8 @@ function callRecDirection(rec) {
 
 // Shared by the Calls tab row and the in-chat call card — same up-right
 // arrow glyph for both directions ('incoming' rotates it 180deg in CSS to
-// point down-left), color-coded (outgoing green, incoming burgundy, missed
-// red) rather than relying on inherited text color, per user feedback that
-// a single currentColor arrow was too subtle to tell directions apart.
+// point down-left), orange for both directions and red only when missed
+// (WhatsApp's own convention), rather than relying on inherited text color.
 function callDirectionIconHtml(direction, missed = false) {
   if (!direction) return '';
   const cls = missed ? `${direction} missed` : direction;
@@ -8220,8 +8218,27 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
     if (historyText) room.callStartedAt = null;
     endCall(room, null, historyText || null);
   } else if (room && historyText) {
-    addCallSysMsg(room, historyText, room.lastCallHistoryEventId || null);
+    // This device's own callState already reset to 'idle' by the time the
+    // dedicated Android call activity reports back — the endCall() branch
+    // above never runs for it, so its callRole/wasVideoCall computation
+    // (and the direction/video info that rides on it) never applied here
+    // either. room.callWasOutgoing/pendingVideoStart/incomingVideoCall are
+    // set once at call start and untouched by anything except endCall's
+    // own cleanup, so they are still trustworthy at this point even though
+    // callState itself has already moved on.
+    const nativeCallRole = room.callWasOutgoing === true ? 'initiator' : 'receiver';
+    const nativeWasVideo = !!(room.pendingVideoStart || room.incomingVideoCall || room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
+    const nativeOutcome = /^(?:Missed call|Missed encrypted call|No answer|Call not answered)$/i.test(historyText)
+      ? 'unanswered'
+      : (/^(?:Call declined|Declined call)$/i.test(historyText)
+        ? 'declined'
+        : (/^(?:Call canceled|Cancelled call|Caller cancelled)$/i.test(historyText) ? 'cancelled' : null));
+    const nativeCallEvent = nativeOutcome
+      ? callOutcomeEvent(nativeOutcome, nativeCallRole, nativeWasVideo)
+      : connectedCallEvent(nativeCallRole, nativeWasVideo);
+    addCallSysMsg(room, historyText, room.lastCallHistoryEventId || null, nativeCallEvent);
     room.lastCallHistoryEventId = null;
+    room.callWasOutgoing = null;
   } else {
     hideCallOverlay();
     activeCallRoomCode = null;
@@ -14556,10 +14573,14 @@ function callCardDetails(rec) {
     title = isVideo ? 'Video call' : 'Voice call';
     subtitle = rawText;
   }
-  // Direction unknown (a record from before this data model existed, or one
-  // of the narrow native-bridge fallback paths that doesn't have role info)
-  // defaults to the left/"them" side rather than guessing "me".
-  return { direction:callRecDirection(rec) || 'incoming', isVideo, missed, title, subtitle };
+  // Direction stays null when genuinely unknown (a record from before this
+  // data model existed) rather than guessing 'incoming' — a wrong guessed
+  // arrow is worse than no arrow, and callDirectionIconHtml() already
+  // renders nothing for a null direction, same as the Calls tab. The
+  // bubble still needs a side to render on; the render call site's own
+  // `direction === 'outgoing' ? 'me' : 'them'` already defaults null to
+  // 'them' without any help needed here.
+  return { direction:callRecDirection(rec), isVideo, missed, title, subtitle };
 }
 
 function isSameCallHistoryRecord(existing, candidate) {

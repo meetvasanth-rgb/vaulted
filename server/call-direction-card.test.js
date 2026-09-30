@@ -126,9 +126,12 @@ test('a non-call sys message (e.g. "Conversation cleared") is not a call card at
   assert.equal(cardDetails({ kind:'sys', content:'Conversation cleared · 14:05' }), null);
 });
 
-test('a legacy record with no direction data defaults to the left/"them" side rather than guessing "me"', () => {
+test('a legacy record with no direction data leaves direction null (no guessed arrow) rather than defaulting to "incoming"', () => {
+  // A wrong guessed arrow is worse than no arrow — the render call site's
+  // own `direction === 'outgoing' ? 'me' : 'them'` still puts the bubble
+  // on the left without callCardDetails needing to guess a fake direction.
   const details = cardDetails({ kind:'sys', content:'Encrypted call · 00:10 · 14:05' });
-  assert.equal(details.direction, 'incoming');
+  assert.equal(details.direction, null);
 });
 
 // ── renderCallHistoryList: the direction arrow icon on the Calls tab ──
@@ -259,6 +262,40 @@ test('regression check: a room that has already transitioned to callState "activ
   const roleFor = room => room.callWasOutgoing === true ? 'initiator' : 'receiver';
   assert.equal(roleFor(roomOutgoing), 'initiator');
   assert.equal(roleFor(roomIncoming), 'receiver');
+});
+
+// ── vaultlixNativeCallEnded: Android's dedicated call activity bridge ──
+// bypasses endCall() entirely whenever this device's own callState already
+// reset to 'idle' by the time the native host reports back (the common
+// case for a call handled by the separate keyguard-safe WebView) — so
+// endCall()'s callRole/wasVideoCall fix never applied to it, and every
+// call ending through this specific path kept showing as incoming/voice
+// regardless of what it actually was, exactly matching the "all calls
+// show the down arrow of incoming only" and "video call shown as voice"
+// reports.
+
+test('the vaultlixNativeCallEnded idle-fallback branch builds a real callEvent from callWasOutgoing/video-intent instead of passing null', () => {
+  const start = client.indexOf('window.vaultlixNativeCallEnded = function(roomCode, historyText = \'\') {');
+  assert.notEqual(start, -1);
+  const end = client.indexOf('\n};', start);
+  const fn = client.slice(start, end);
+  assert.match(fn, /const nativeCallRole = room\.callWasOutgoing === true \? 'initiator' : 'receiver';/);
+  assert.match(fn, /const nativeWasVideo = !!\(room\.pendingVideoStart \|\| room\.incomingVideoCall \|\| room\.callHadVideo \|\| room\.callVideoOn \|\| room\.remoteVideoActive\);/);
+  assert.match(fn, /const nativeCallEvent = nativeOutcome\s*\n\s*\? callOutcomeEvent\(nativeOutcome, nativeCallRole, nativeWasVideo\)\s*\n\s*: connectedCallEvent\(nativeCallRole, nativeWasVideo\);/);
+  assert.match(fn, /addCallSysMsg\(room, historyText, room\.lastCallHistoryEventId \|\| null, nativeCallEvent\);/);
+  // Must also clean up after itself — this path bypasses endCall's own
+  // reset entirely, so nothing else clears callWasOutgoing for it.
+  assert.match(fn, /room\.callWasOutgoing = null;/);
+});
+
+// ── Color scheme: orange for both directions, red only when missed (per
+// explicit user feedback — not green/burgundy, which read as too similar
+// to tell apart at a glance) ──
+
+test('the direction arrow is orange for both incoming and outgoing, and red only for missed', () => {
+  assert.match(client, /\.vault-call-direction\.outgoing,\.vault-call-direction\.incoming\{stroke:#D9822B\}/);
+  assert.match(client, /\.vault-call-direction\.missed\{stroke:#C0293F\}/);
+  assert.doesNotMatch(client, /\.vault-call-direction\.outgoing\{stroke:var\(--green\)\}/);
 });
 
 // ── processIncomingContent: the synced call-event decode path (receiving side) ──
