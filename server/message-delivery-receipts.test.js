@@ -55,6 +55,20 @@ test('a push with no msgId and not a call (e.g. a connection request) keeps the 
   assert.equal(message.android.notification.channelId, 'vaultlix_messages_bright_v1');
 });
 
+test('a private-group message (carries groupId, no msgId) is sent data-only, with groupId/privateGroup forwarded', async () => {
+  const message = await buildFcmMessage({ title: 'Vaultlix', body: 'New encrypted group message', privateGroup: true, groupId: 'grp1' });
+  assert.equal(message.notification, undefined);
+  assert.equal(message.android.notification, undefined);
+  assert.equal(message.data.privateGroup, 'true');
+  assert.equal(message.data.groupId, 'grp1');
+});
+
+test('groupId is never forwarded for a non-group push, even if a caller accidentally set it', async () => {
+  const message = await buildFcmMessage({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1', groupId: 'leaked' });
+  assert.equal(message.data.privateGroup, 'false');
+  assert.equal(message.data.groupId, '');
+});
+
 test('the message push payload sent server-side is the only one carrying msgId', () => {
   assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: `New message from \$\{m\.name\}`, tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId \}\);/);
 });
@@ -133,6 +147,18 @@ test('a call push does not set mutable-content (unchanged behavior — calls hav
 test('a push with no msgId (e.g. a connection request) does not set mutable-content', async () => {
   const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1' });
   assert.equal(body.aps['mutable-content'], undefined);
+});
+
+test('a private-group push forwards groupId/privateGroup so the client can navigate to it on tap', async () => {
+  const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New encrypted group message', privateGroup: true, groupId: 'grp1' });
+  assert.equal(body.privateGroup, true);
+  assert.equal(body.groupId, 'grp1');
+});
+
+test('groupId is never forwarded for a non-group push, even if a caller accidentally set it', async () => {
+  const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1', groupId: 'leaked' });
+  assert.equal(body.privateGroup, false);
+  assert.equal(body.groupId, '');
 });
 
 test('the Notification Service Extension target exists, is embedded, and is registered under the app team', () => {

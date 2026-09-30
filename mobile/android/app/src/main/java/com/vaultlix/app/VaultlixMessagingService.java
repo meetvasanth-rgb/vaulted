@@ -86,6 +86,17 @@ public class VaultlixMessagingService extends MessagingService {
             reportMessageDelivered(safe(data.get("code")), msgId);
             return;
         }
+        // Private-group messages carry a groupId instead of a msgId/code
+        // (see server/index.js) — same underlying reliability reason as
+        // above: server/index.js now sends these data-only too, so this is
+        // the only place a notification (and its ?group= deep link) gets
+        // built for them. No mark-delivered report here — group delivery
+        // receipts aren't tracked per-message the way 1:1 messages are.
+        String groupId = safe(data.get("groupId"));
+        if (!groupId.isEmpty()) {
+            showGroupMessageNotification(data);
+            return;
+        }
         super.onMessageReceived(remoteMessage);
     }
 
@@ -122,6 +133,46 @@ public class VaultlixMessagingService extends MessagingService {
                 .appendQueryParameter("room", code)
                 .build();
         int notificationId = ("message:" + code).hashCode();
+        Intent openConversation = new Intent(Intent.ACTION_VIEW, conversationUri, this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this,
+                notificationId,
+                openConversation,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        manager.notify(notificationId, new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_vaultlix)
+                .setColor(Color.rgb(104, 44, 67))
+                .setContentTitle(title.isEmpty() ? "Vaultlix" : title)
+                .setContentText(body.isEmpty() ? "New message" : body)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setAutoCancel(true)
+                .setContentIntent(contentIntent)
+                .build());
+    }
+
+    // Group-message equivalent of showMessageNotification above — same
+    // shape, but deep-links to ?group=<groupId> (read by client/index.html's
+    // startup ?group= handling, the same param sw.js's web-push path already
+    // uses) instead of ?room=<code>, and uses its own "group:"-prefixed
+    // notification-id namespace so it can never collide with or be silently
+    // replaced by a room notification.
+    private void showGroupMessageNotification(Map<String, String> data) {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        ensureMessageChannel(manager);
+
+        String groupId = safe(data.get("groupId"));
+        String title = safe(data.get("title"));
+        String body = safe(data.get("body"));
+        Uri conversationUri = Uri.parse("https://vaultlix.com/").buildUpon()
+                .appendQueryParameter("group", groupId)
+                .build();
+        int notificationId = ("group:" + groupId).hashCode();
         Intent openConversation = new Intent(Intent.ACTION_VIEW, conversationUri, this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(

@@ -1405,11 +1405,14 @@ function privateGroupHistoryPut(groupId, messages) {
 
 // Adds decoded messages to the group, newest last, with no repeats. The window
 // is how many stay in memory; it only grows when the reader asks for earlier ones.
+// Returns the fresh (not-already-known) messages themselves, not just a
+// count — pollPrivateGroup needs the actual records to decide which ones
+// should count toward group.unread (see there).
 function mergePrivateGroupMessages(group, incoming) {
   const known = new Set((group.messages || []).map(item => item.id));
   const fresh = incoming.filter(item => !known.has(item.id));
   group.messages = [...(group.messages || []), ...fresh].sort((a, b) => a.createdAt - b.createdAt).slice(-(group.messageWindow || 200));
-  return fresh.length;
+  return fresh;
 }
 
 function privateGroupOldestCreatedAt(group) {
@@ -1465,12 +1468,24 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
   const incomingRaw = result.messages || [];
   await privateGroupHistoryPut(group.id, incomingRaw);
   const decoded = await decodePrivateGroupBatch(group, state, incomingRaw);
-  const changed = mergePrivateGroupMessages(group, decoded) > 0;
+  const fresh = mergePrivateGroupMessages(group, decoded);
+  const changed = fresh.length > 0;
   group.messageCursor = Math.max(group.messageCursor || 0, Number(result.cursor) || 0);
   group.updatedAt = group.messages[group.messages.length - 1]?.createdAt || group.updatedAt;
   if (typeof result.hasOlder === 'boolean') group.hasOlder = result.hasOlder;
   const wasHydrated = group.historyHydrated;
   group.historyHydrated = true;
+  // Server-authoritative catch-up path for group.unread — mirrors doPoll's
+  // room.unread++ (client/index.html), which is what lets a room's badge
+  // rebuild correctly even after messages arrived while nothing was polling
+  // live. Without this, group.unread only ever moved via the live /ws/inbox
+  // socket handler, which silently misses anything that arrived while the
+  // app wasn't connected (locked/backgrounded device, exactly what a push
+  // notification announces) — the badge just never appeared.
+  if (changed && group.id !== activePrivateGroupId) {
+    const newUnread = fresh.filter(message => message.senderId !== state.accountId).length;
+    if (newUnread > 0) { group.unread = (group.unread || 0) + newUnread; renderVaultList(); }
+  }
   if ((render || changed || !wasHydrated) && group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
   return true;
 }

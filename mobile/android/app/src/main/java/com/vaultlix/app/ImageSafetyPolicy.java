@@ -37,6 +37,11 @@ final class ImageSafetyPolicy {
         if (scores == null || scores.length != 2) return "unavailable";
         for (float score : scores) if (!Float.isFinite(score) || score < 0 || score > 1) return "unavailable";
         if (Math.abs(scores[0] + scores[1] - 1) > 0.02) return "unavailable";
-        return scores[1] >= 0.70f ? "blocked" : "allowed";
+        // Raised from the initial 0.70 after a confirmed real-device false
+        // positive on an ordinary food photo. 0.85 is a deliberate, reasoned
+        // trade-off (fewer false positives on ordinary photos, at the cost
+        // of catching fewer borderline images) — not a calibrated accuracy
+        // guarantee either, same as before.
+        return scores[1] >= 0.85f ? "blocked" : "allowed";
     }
 }

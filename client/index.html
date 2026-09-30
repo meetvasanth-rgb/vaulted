@@ -473,6 +473,17 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
    checkbox and the reaction badge have somewhere to anchor — an <img>/<a>
    can't usefully host absolutely positioned children of its own. */
 .msg-media-wrap{position:relative;display:inline-block;max-width:100%}
+/* has-caption: image/album + a caption share ONE card (background, border,
+   outer radius matching each theme's bubble color) instead of looking like
+   two separate stacked bubbles — the media flows flush into the card, the
+   caption text sits padded below it. Scoped to this modifier only: bare
+   .msg-media-wrap (voice notes, GIFs — never captioned) stays untouched. */
+.msg-media-wrap.has-caption{display:block;width:min(280px,68vw);border-radius:17px;overflow:hidden;border:1px solid #E7DDE1;background:#fff}
+.msg.me .msg-media-wrap.has-caption{border-color:#E8C9D1;background:#F2DDE3;border-radius:17px 17px 5px 17px}
+.msg.them .msg-media-wrap.has-caption{border-color:#E7DDE1;background:#fff;border-radius:17px 17px 17px 5px}
+.msg-media-wrap.has-caption .msg-image{width:100%;max-width:none;max-height:none;border-radius:0;margin-top:0;display:block}
+.msg-media-wrap.has-caption .msg-album-grid{max-width:none;border-radius:0;margin-top:0}
+.msg-caption-text{padding:8px 12px 10px;font:450 14px/1.42 Inter,sans-serif;color:#30242B;white-space:pre-wrap;overflow-wrap:anywhere}
 /* The browser's own "save/copy/share image" long-press menu (both iOS
    Safari's callout and Android Chrome's context menu) would otherwise pop
    up on top of / instead of the app's own action row. Long-press is now a
@@ -14079,6 +14090,18 @@ async function ensureNativePushListeners() {
       openConnectionRequest(notification.data.requestId || null).catch(() => {});
       return;
     }
+    if (notification?.data?.privateGroup === true || notification?.data?.privateGroup === 'true') {
+      const groupId = notification.data.groupId;
+      if (!groupId) return;
+      // privateGroups may not have finished loading yet (this listener can
+      // fire before startup restore completes) — same race
+      // pendingNotificationRoomCode exists for below. If it's already
+      // loaded, navigate immediately; otherwise queue it for the startup
+      // consumption block to pick up once refreshPrivateGroups() has run.
+      if (privateGroups.has(groupId)) refreshPrivateGroups().then(() => openPrivateGroup(groupId)).catch(() => {});
+      else pendingNotificationGroupId = groupId;
+      return;
+    }
     const code = notification?.data?.code;
     if (code && !switchToRoomByCode(code)) pendingNotificationRoomCode = code;
   });
@@ -15553,6 +15576,10 @@ function switchToRoomByCode(code) {
 // named room hasn't finished restoring yet, queue it rather than drop it —
 // the load handler checks this queue once restore completes.
 let pendingNotificationRoomCode = null;
+// Same idea, for a tapped group-message notification on native (see the
+// pushNotificationActionPerformed listener above) — privateGroups may not
+// have finished loading yet when the tap arrives.
+let pendingNotificationGroupId = null;
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'session-replaced') {
@@ -17290,14 +17317,21 @@ function renderMessageRecord(room, rec, animate) {
     // photo itself is opened — that would defeat the "hidden until tapped"
     // point of view-once.
     const captionHiddenByViewOnce = rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed;
-    const captionHtml = rec.caption && !captionHiddenByViewOnce ? `<div class="bubble">${escHtml(rec.caption)}</div>` : '';
-    contentHtml = `<div class="msg-media-wrap">${mediaHtml}</div>${captionHtml}`;
+    const captionHtml = rec.caption && !captionHiddenByViewOnce ? `<div class="msg-caption-text">${escHtml(rec.caption)}</div>` : '';
+    // has-caption turns this same .msg-media-wrap into a single combined
+    // card (image + caption sharing one background/border/radius, like
+    // WhatsApp) instead of the image and caption looking like two separate
+    // stacked bubbles. Scoped to the modifier class, not the base
+    // .msg-media-wrap rule, since that class is also used bare for voice
+    // notes and GIFs, which never have a caption and must not gain a card
+    // background they were never designed to show.
+    contentHtml = `<div class="msg-media-wrap${captionHtml ? ' has-caption' : ''}">${mediaHtml}${captionHtml}</div>`;
   } else if (rec.kind === 'album') {
     // Several photos sent together — one grid bubble, not a wall of
     // separate image messages (see sendAlbumMessage/buildAlbumGridHtml).
     const albumCaptionHiddenByViewOnce = rec.viewOnce && !rec.isMe && !(rec.images || []).some(img => img.viewed);
-    const albumCaptionHtml = rec.caption && !albumCaptionHiddenByViewOnce ? `<div class="bubble">${escHtml(rec.caption)}</div>` : '';
-    contentHtml = `<div class="msg-media-wrap">${buildAlbumGridHtml(rec)}</div>${albumCaptionHtml}`;
+    const albumCaptionHtml = rec.caption && !albumCaptionHiddenByViewOnce ? `<div class="msg-caption-text">${escHtml(rec.caption)}</div>` : '';
+    contentHtml = `<div class="msg-media-wrap${albumCaptionHtml ? ' has-caption' : ''}">${buildAlbumGridHtml(rec)}${albumCaptionHtml}</div>`;
   } else if (rec.kind === 'voice') {
     contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
   } else if (rec.kind === 'gif') {
@@ -21218,10 +21252,19 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (loadAccountState()) {
     await refreshPrivateGroups();
     connectInbox();
-    if (startupPrivateGroupId && privateGroups.has(startupPrivateGroupId)) {
+    // Either a ?group= URL param (web push cold start, see sw.js) or a
+    // native group-notification tap that arrived before privateGroups had
+    // loaded (pendingNotificationGroupId, set in the pushNotificationActionPerformed
+    // listener above) — same "explicit navigation" priority notifyCode gets
+    // for rooms above.
+    const notifyGroupId = (startupPrivateGroupId && privateGroups.has(startupPrivateGroupId)) ? startupPrivateGroupId
+      : (pendingNotificationGroupId && privateGroups.has(pendingNotificationGroupId)) ? pendingNotificationGroupId
+      : null;
+    if (notifyGroupId) {
       history.replaceState(null, '', '/');
-      await openPrivateGroup(startupPrivateGroupId);
+      await openPrivateGroup(notifyGroupId);
     }
+    pendingNotificationGroupId = null;
   }
   if (startupSessionWasReplaced) toast('This device was signed out because your Vaultlix identity was used on another device.');
   // VLX-01: shown last, on top of whatever screen the logic above settled

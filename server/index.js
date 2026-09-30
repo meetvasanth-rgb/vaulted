@@ -818,6 +818,8 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     // included. `code` only lets an authenticated local session select the
     // correct already-open vault after a notification tap.
     code: parsed.code || '',
+    privateGroup: !!parsed.privateGroup,
+    groupId: parsed.privateGroup ? String(parsed.groupId || '') : '',
     isCall: !!parsed.isCall,
     isCallEnd: !!parsed.isCallEnd,
     missedCall: !!parsed.missedCall,
@@ -888,6 +890,8 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
       token: member.fcmToken,
       data: {
         code: String(parsed.code || ''),
+        privateGroup: parsed.privateGroup ? 'true' : 'false',
+        groupId: parsed.privateGroup ? String(parsed.groupId || '') : '',
         isCall: parsed.isCall ? 'true' : 'false',
         hasVideo: parsed.hasVideo ? 'true' : 'false',
         isCallEnd: parsed.isCallEnd ? 'true' : 'false',
@@ -911,19 +915,21 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
     };
     // Calls are data-only so Android can build a native full-screen incoming
     // call notification. Ordinary messages (identified by carrying a msgId)
-    // are now data-only too, for the same underlying reason: a hybrid
+    // and private-group messages (identified by carrying groupId) are now
+    // data-only too, for the same underlying reason: a hybrid
     // notification+data FCM message is often shown straight from the system
     // tray without reliably invoking onMessageReceived() while the app is
     // backgrounded or the device is locked, which meant VaultlixMessagingService
-    // never got a chance to run code on receipt — including the
-    // /api/mark-delivered call that reports a message actually reached this
-    // device, the reason the sender's tick stayed stuck on "sent" until the
-    // recipient opened the app. Data-only + a self-built notification (see
-    // showMessageNotification in VaultlixMessagingService) makes that
-    // callback fire reliably. Everything else routed through this function
-    // (connection requests, session-replaced notices — anything with no
-    // msgId) keeps the existing system-rendered path unchanged.
-    if (!parsed.isCall && !parsed.isCallEnd && !parsed.msgId) {
+    // never got a chance to run code on receipt — for regular messages that
+    // broke the /api/mark-delivered report; for group messages it also meant
+    // a tap on the notification had no group id to navigate to, since the
+    // system-rendered notification carries no custom data at all. Data-only +
+    // a self-built notification (see showMessageNotification/
+    // showGroupMessageNotification in VaultlixMessagingService) makes both
+    // reliable. Everything else routed through this function (connection
+    // requests, session-replaced notices — anything with no msgId or groupId)
+    // keeps the existing system-rendered path unchanged.
+    if (!parsed.isCall && !parsed.isCallEnd && !parsed.msgId && !parsed.groupId) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',

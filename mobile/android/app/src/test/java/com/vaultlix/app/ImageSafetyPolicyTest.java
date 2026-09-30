@@ -24,7 +24,11 @@ public class ImageSafetyPolicyTest {
     }
     @Test public void policyBlocksAtThresholdAndFailsClosedOnInvalidOutput() {
         assertEquals("allowed", ImageSafetyPolicy.verdict(new float[]{0.95f,0.05f}));
-        assertEquals("blocked", ImageSafetyPolicy.verdict(new float[]{0.3f,0.7f}));
+        // 0.70 is now BELOW the raised 0.85 threshold — the confirmed false
+        // positive this raise addresses (an ordinary food photo) scored in
+        // roughly this range.
+        assertEquals("allowed", ImageSafetyPolicy.verdict(new float[]{0.3f,0.7f}));
+        assertEquals("blocked", ImageSafetyPolicy.verdict(new float[]{0.15f,0.85f}));
         assertEquals("blocked", ImageSafetyPolicy.verdict(new float[]{0.01f,0.99f}));
         assertEquals("unavailable", ImageSafetyPolicy.verdict(new float[]{0,0}));
         assertEquals("unavailable", ImageSafetyPolicy.verdict(new float[]{1,Float.NaN}));

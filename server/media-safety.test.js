@@ -198,7 +198,11 @@ test('approval fingerprints survive reload without storing photos and changed co
 });
 test('policy changes, expired approvals and storage failures require native checks',async()=>{
   const storage=approvalStorage(); await runtime({storage}).api.check('YQ==');
-  const revised=runtime({storage,source:code.replace('nsfw-ios-android-v1','nsfw-ios-android-v2')});
+  // Simulates a FUTURE policy bump relative to whatever the source's own
+  // current version is (not a hardcoded v1->v2, which would silently become
+  // a no-op the next time the real policy string is bumped).
+  const currentPolicyMatch = code.match(/const policy = '([^']+)';/);
+  const revised=runtime({storage,source:code.replace(currentPolicyMatch[0], `const policy = '${currentPolicyMatch[1]}-next';`)});
   await revised.api.check('YQ=='); assert.equal(revised.calls.length,1);
   for(const [key,value] of storage.values) storage.setItem(key,JSON.stringify(JSON.parse(value).map(([hash])=>[hash,1])));
   const expired=runtime({storage}); await expired.api.check('YQ=='); assert.equal(expired.calls.length,1);

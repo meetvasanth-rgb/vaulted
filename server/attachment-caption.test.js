@@ -140,8 +140,23 @@ test('an un-revealed view-once photo never leaks its caption before the photo it
   assert.match(client, /const albumCaptionHiddenByViewOnce = rec\.viewOnce && !rec\.isMe && !\(rec\.images \|\| \[\]\)\.some\(img => img\.viewed\);/);
 });
 
-test('the caption bubble is only appended when a caption exists, reusing the same escaped .bubble markup as text messages', () => {
-  assert.match(client, /captionHtml = rec\.caption && !captionHiddenByViewOnce \? `<div class="bubble">\$\{escHtml\(rec\.caption\)\}<\/div>` : '';/);
+test('the caption text is only appended when a caption exists, and escaped the same way text messages are', () => {
+  assert.match(client, /captionHtml = rec\.caption && !captionHiddenByViewOnce \? `<div class="msg-caption-text">\$\{escHtml\(rec\.caption\)\}<\/div>` : '';/);
+  assert.match(client, /albumCaptionHtml = rec\.caption && !albumCaptionHiddenByViewOnce \? `<div class="msg-caption-text">\$\{escHtml\(rec\.caption\)\}<\/div>` : '';/);
+});
+
+test('a captioned image/album shares one combined card (has-caption) instead of rendering as two separate-looking bubbles', () => {
+  // The has-caption modifier is applied to the SAME .msg-media-wrap element
+  // the media renders inside (not a new wrapper) — existing querySelector
+  // anchors for the select checkbox/reaction badge/long-press menu must
+  // keep finding it for captioned messages too.
+  assert.match(client, /contentHtml = `<div class="msg-media-wrap\$\{captionHtml \? ' has-caption' : ''\}">\$\{mediaHtml\}\$\{captionHtml\}<\/div>`;/);
+  assert.match(client, /contentHtml = `<div class="msg-media-wrap\$\{albumCaptionHtml \? ' has-caption' : ''\}">\$\{buildAlbumGridHtml\(rec\)\}\$\{albumCaptionHtml\}<\/div>`;/);
+  // The modifier CSS must be scoped to .has-caption, not the bare
+  // .msg-media-wrap rule that voice notes and GIFs (never captioned) also use.
+  assert.match(client, /\.msg-media-wrap\.has-caption\{/);
+  assert.match(client, /\.msg\.me \.msg-media-wrap\.has-caption\{/);
+  assert.match(client, /\.msg\.them \.msg-media-wrap\.has-caption\{/);
 });
 
 test('private groups: handlePrivateGroupFileSelect batches picked images into one caption-entry dialog instead of sending each immediately', () => {

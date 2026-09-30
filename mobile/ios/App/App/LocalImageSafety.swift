@@ -64,8 +64,12 @@ final class LocalImageSafety {
             guard let results = request.results as? [VNClassificationObservation],
                   let score = results.first(where: { $0.identifier == "NSFW" })?.confidence,
                   score.isFinite else { return "unavailable" }
-            // Conservative initial policy; real-device evaluation is required before release.
-            if score >= 0.70 { return "blocked" }
+            // Raised from the initial 0.70 after a confirmed real-device false
+            // positive on an ordinary food photo. 0.85 is a deliberate,
+            // reasoned trade-off (fewer false positives on ordinary photos,
+            // at the cost of catching fewer borderline images) — not a
+            // calibrated accuracy guarantee either, same as before.
+            if score >= 0.85 { return "blocked" }
         }
         return "allowed"
     }

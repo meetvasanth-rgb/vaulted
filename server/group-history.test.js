@@ -76,7 +76,11 @@ test('saved rows are keyed by group and ordered by the server time', async () =>
 
 test('merging never repeats a message, keeps order, and honours the window', () => {
   const { sandbox } = load();
-  const run = (group, incoming) => plain(vm.runInContext(`(() => { const g = ${JSON.stringify(group)}; const n = mergePrivateGroupMessages(g, ${JSON.stringify(incoming)}); return { n, ids:g.messages.map(m => m.id) }; })()`, sandbox));
+  // mergePrivateGroupMessages now returns the fresh records themselves
+  // (not just a count), so callers elsewhere can decide what counts as
+  // unread — .length here preserves this test's original "how many were
+  // actually new" assertion.
+  const run = (group, incoming) => plain(vm.runInContext(`(() => { const g = ${JSON.stringify(group)}; const n = mergePrivateGroupMessages(g, ${JSON.stringify(incoming)}).length; return { n, ids:g.messages.map(m => m.id) }; })()`, sandbox));
   assert.deepEqual(run({ messages:[{ id:'b', createdAt:2 }] }, [{ id:'a', createdAt:1 }, { id:'b', createdAt:2 }, { id:'c', createdAt:3 }]), { n:2, ids:['a', 'b', 'c'] });
   const many = Array.from({ length:250 }, (_, i) => ({ id:`m${i}`, createdAt:i + 1 }));
   assert.equal(run({ messages:[] }, many).ids.length, 200);

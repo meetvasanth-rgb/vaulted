@@ -4,7 +4,7 @@
   const enabled = /VaultlixImageSafety\/1/.test(root.navigator?.userAgent || '') || root.__vaultlixLocalImageSafety === true;
   const pending = new Map(), cache = new Map();
   // Bump this policy whenever either bundled model, preprocessing or thresholds change.
-  const policy = 'nsfw-ios-android-v1';
+  const policy = 'nsfw-ios-android-v2';
   const storageKey = 'vaultlix:image-approvals:' + policy + ':' + (/Android/.test(root.navigator?.userAgent || '') ? 'android' : 'ios');
   const maxAge = 30 * 24 * 60 * 60 * 1000;
   let approvals = new Map(), generation = 0;
