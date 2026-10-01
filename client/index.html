@@ -5697,7 +5697,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt }) {
+function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, unread, unreadSystemCount }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -5889,8 +5889,10 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     msgTimers: new Map(),   // msgId -> setTimeout handle (disappearing messages)
     pollInterval: null, typingInterval: null, typingTimer: null, waitInterval: null,
     isPollRunning: false,
-    unread: 0,
-    unreadSystemCount: 0,
+    // Local inbox metadata only: retaining these counters means closing the
+    // app cannot make a genuine unread badge disappear before the chat opens.
+    unread: Math.max(0, Number(unread) || 0),
+    unreadSystemCount: Math.max(0, Number(unreadSystemCount) || 0),
   };
 }
 
@@ -6292,6 +6294,8 @@ async function persistRoom(room) {
       ownerAccountId: room.ownerAccountId || null,
       lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       callHistoryClearedAt:Number(room.callHistoryClearedAt) || 0,
+      unread:Math.max(0, Number(room.unread) || 0),
+      unreadSystemCount:Math.max(0, Number(room.unreadSystemCount) || 0),
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
       // call after persistDeleteLedger() had already written entries (e.g.
@@ -6327,6 +6331,8 @@ function persistRoomSeq(room) {
     existing.lastReceiptSeq = room.lastReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
     existing.lastDeletionSeq = room.lastDeletionSeq;
+    existing.unread = Math.max(0, Number(room.unread) || 0);
+    existing.unreadSystemCount = Math.max(0, Number(room.unreadSystemCount) || 0);
     existing.inboxActivityAt = vaultLastActivity(room) || existing.inboxActivityAt || Date.now();
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
@@ -6963,6 +6969,7 @@ async function flushPendingDecrypt(room) {
   if (!room.pendingDecrypt.length || !room.sharedKey) return;
   const queued = room.pendingDecrypt;
   room.pendingDecrypt = [];
+  let unreadChanged = false;
   for (const item of queued) {
     const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts, item.from, item.deleteTimerSeconds || 0, item.readAt);
     if (!rec || rec.pending) continue; // still not ready (shouldn't happen), or genuinely empty
@@ -6974,10 +6981,12 @@ async function flushPendingDecrypt(room) {
     } else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') {
       room.unread++;
       if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
+      unreadChanged = true;
     }
     if (!isPerspectiveCallEvent) notifyMsg(room);
     room.readConfirmIds.push(item.msgId);
   }
+  if (unreadChanged) persistRoomSeq(room);
   if (isRoomVisible(room)) { renderRoomTabs(); updateDocumentTitle(); }
 }
 
@@ -8322,7 +8331,12 @@ function resumeForegroundWork() {
   tabFocused = true;
   lastInteractionTime = Date.now();
   const active = getActiveRoom();
-  if (isRoomVisible(active)) { active.unread = 0; active.unreadSystemCount = 0; flushPendingReads(active); }
+  if (isRoomVisible(active)) {
+    active.unread = 0;
+    active.unreadSystemCount = 0;
+    persistRoomSeq(active);
+    flushPendingReads(active);
+  }
   updateDocumentTitle();
 
   // Android dispatches both visibilitychange and focus when its WebView is
@@ -15838,6 +15852,7 @@ function setActiveRoom(code, { deferMessages = false } = {}) {
   activeRoomCode = code;
   saveActiveRoomCode(code);
   room.unread = 0; room.unreadSystemCount = 0;
+  persistRoomSeq(room);
   flushPendingReads(room);
   closeAllMsgActions();
   exitSelectMode();
@@ -18655,6 +18670,24 @@ async function restoreRoomHistory(room) {
     reconcileLocalHistory(room, localMessages, data);
 
     if (data.messages && data.messages.length > 0) await applyRestoredHistory(room, data.messages, nowTs);
+    if (Array.isArray(data.messages)) {
+      let restoredUnread = 0;
+      let restoredUnreadSystemCount = 0;
+      for (const msg of data.messages) {
+        if (msg.type !== 'message' || msg.from === room.token || msg.readAt) continue;
+        const rec = room.messages.find(candidate => candidate.id === msg.id);
+        if (!rec) continue;
+        const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
+        if (isPerspectiveCallEvent && rec.callEventViewerRole !== 'receiver') continue;
+        restoredUnread++;
+        if (rec.kind === 'sys') restoredUnreadSystemCount++;
+      }
+      // The server read receipts are authoritative after a successful full
+      // restore. This discovers messages received while Vaultlix was closed
+      // without counting old, already-read history again.
+      room.unread = restoredUnread;
+      room.unreadSystemCount = restoredUnreadSystemCount;
+    }
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
       for (const r of data.readReceipts) if (r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
@@ -20561,6 +20594,7 @@ function clearRoomChatLocally(room) {
   room.deleteLedger.clear();
   persistDeleteLedger(room);
   room.unread = 0; room.unreadSystemCount = 0;
+  persistRoomSeq(room);
   if (room.code === activeRoomCode) {
     const body = document.getElementById('chat-body');
     if (body) body.innerHTML = '';
@@ -21356,7 +21390,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const code of idx) {
       const session = loadRoomSession(code);
       if (!session) continue;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:session.unread, unreadSystemCount:session.unreadSystemCount });
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;
