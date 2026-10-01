@@ -437,3 +437,42 @@ test('the iOS wrapper removes the inconsistent WKWebView form-navigation strip',
   assert.match(iosScene, /class_addMethod\(responderClass, selector, nilAccessory, "@@:"\)/);
   assert.doesNotMatch(iosScene, /reloadInputViews\(\)/);
 });
+
+// markComposerFocus() drops the footer's home-bar padding (see the comment
+// above it), which resizes the footer — a real layout change. Previously this
+// ran the instant the input was tapped, a beat before the native keyboard
+// event and Capacitor's own view resize. Two uncoordinated layout passes
+// landing inside one transition produced a visible double-image/ghost frame
+// on real devices: the keyboard appeared correctly, then ~150ms later the
+// composer and the last couple of messages vanished behind a blurred ghost
+// of the keyboard before the correct layout caught up a moment later.
+// Android has no such split (one native resize owns the whole transition),
+// which is why it was never affected. Folding markComposerFocus into the
+// same native-driven keyboardWillShow/keyboardWillHide calls — instead of
+// the independent focusin/focusout DOM events — removes the second pass.
+test('under native resize, tapping the composer does not move the footer until the real native keyboard event arrives', () => {
+  const t = setup({ nativeResize:true });
+  t.listeners.doc.focusin({ target:{ id:'msg-input' } });
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false, 'no footer change yet — only the real native event should trigger it');
+  t.layout.keyboardWillShow(336);
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'synced to the native event instead');
+});
+
+test('under native resize, leaving the composer does not move the footer back until the native hide event settles', () => {
+  const t = setup({ nativeResize:true });
+  t.layout.keyboardWillShow(336);
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true);
+  t.listeners.doc.focusout({ target:{ id:'msg-input' } });
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'still native-event-driven, not the DOM blur');
+  t.layout.keyboardWillHide();
+  t.flush();
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
+});
+
+test('without native resize (Android, browser), the footer still moves immediately on focus — unaffected by the native-event sync', () => {
+  const t = setup({ nativeResize:false });
+  t.listeners.doc.focusin({ target:{ id:'msg-input' } });
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'Android has one native resize already — no second pass to coordinate with');
+  t.listeners.doc.focusout({ target:{ id:'msg-input' } });
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
+});

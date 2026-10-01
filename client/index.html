@@ -21328,6 +21328,13 @@ function createChatKeyboardLayout(env) {
     if (env.remember) env.remember(height);
     if (chat.list !== lastList) { lastList = chat.list; pinned = true; }
     if (chat.fixed) chat.shell.style.top = '0px';
+    // Under native resize, composer-focused (which drops the footer's home-bar
+    // padding) used to apply the instant the input was tapped — a beat before
+    // this native event and its own view resize. Two uncoordinated layout
+    // passes inside one transition produced a visible double-image/ghost
+    // frame. Folding it into this same native-driven update makes it land in
+    // the same paint as everything else nativeResize already owns here.
+    if (env.nativeResize) markComposerFocus(true);
     if (hideTimer) { cancel(hideTimer); hideTimer = null; }
     holdHide = false; holdShow = true;
     if (holdTimer) cancel(holdTimer);
@@ -21342,7 +21349,7 @@ function createChatKeyboardLayout(env) {
 
   function keyboardWillHide() {
     if (hideTimer) cancel(hideTimer);
-    hideTimer = schedule(() => { hideTimer = null; growBack(); }, HIDE_DELAY_MS);
+    hideTimer = schedule(() => { hideTimer = null; if (env.nativeResize) markComposerFocus(false); growBack(); }, HIDE_DELAY_MS);
   }
 
   function growBack() {
@@ -21393,14 +21400,18 @@ function createChatKeyboardLayout(env) {
 
   function onFocusOut(event) {
     const target = event && event.target;
-    if (target && (target.id === 'msg-input' || target.id === 'group-message-input')) markComposerFocus(false);
+    // Under native resize this is applied from keyboardWillHide instead, synced
+    // to the real native dismiss transition — see the comment there.
+    if (target && (target.id === 'msg-input' || target.id === 'group-message-input') && !env.nativeResize) markComposerFocus(false);
     settle();
   }
 
   function onFocusIn(event) {
     const target = event.target;
     if (!target || (target.id !== 'msg-input' && target.id !== 'group-message-input')) return;
-    markComposerFocus(true);
+    // Under native resize this is applied from keyboardWillShow instead, synced
+    // to the real native show transition — see the comment there.
+    if (!env.nativeResize) markComposerFocus(true);
     pinned = true; // starting to type always shows the latest message
     // Start with the height the keyboard had last time; the announcement corrects it.
     if (env.preShrinkOnFocus) { const known = env.recall ? env.recall() : 0; if (known) keyboardWillShow(known); }
