@@ -815,7 +815,7 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .msg-meta { display:flex; align-items:center; gap:5px; }
 .msg-receipt { font-size:11px; color:#B0A898; font-weight:400; }
 .msg-receipt.delivered { color:#7A6E65; font-weight:500; }
-.msg-receipt.read { color:#E2703A; font-weight:600; font-size:12px; }
+.msg-receipt.read { color:#682C43; font-weight:600; font-size:12px; }
 .msg-progress-wrap { height:2px; border-radius:1px; background:rgba(0,0,0,0.06); margin-top:3px; overflow:hidden; }
 .msg.me .msg-progress-wrap { background:rgba(104,44,67,0.15); }
 .msg-progress { height:100%; border-radius:1px; background:var(--gold); transition:width 1s linear; }
@@ -1903,7 +1903,7 @@ body.native-call-only{background:#271D25!important;overflow:hidden!important}
 .msg-time{color:#7D7077!important}.msg.them .msg-name{color:#682C43!important}
 .msg-receipt{color:#A0949A!important}
 .msg-receipt.delivered{color:#8A7C84!important;font-weight:600!important}
-.msg-receipt.read{color:#71947C!important;font-weight:700!important;font-size:12px!important}
+.msg-receipt.read{color:#682C43!important;font-weight:700!important;font-size:12px!important}
 .install-btn,.install-btn:hover,.install-btn:active,
 #s-setup .btn-gold,#s-setup .btn-gold:hover,#s-setup .btn-gold:active{color:#FFFFFF!important}
 .install-btn svg{stroke:#FFFFFF!important}
@@ -6454,6 +6454,28 @@ function persistDeleteLedger(room) {
     if (!existing) return;
     existing.deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(existing.deleteLedger, Object.fromEntries(room.deleteLedger)));
     existing.callHistoryClearedAt = Math.max(Number(existing.callHistoryClearedAt) || 0, Number(room.callHistoryClearedAt) || 0);
+    localStorage.setItem(key, JSON.stringify(existing));
+    scheduleAccountSync();
+  } catch(e) {}
+}
+
+// Narrow, targeted patch for the fast synchronous startup hydration pass
+// below — deliberately NOT persistRoomSeq(room), which also writes
+// lastSeq/lastReceiptSeq/lastReactionSeq/lastDeletionSeq. At the point
+// this runs, room.lastSeq is still makeRoom()'s own default (0) — the
+// real value isn't set onto room until later, in the slow per-room
+// network loop — so persistRoomSeq here would have overwritten the
+// correctly stored lastSeq with 0, corrupting it (and triggering the
+// exact "stuck lastSeq causes message redelivery" failure mode this whole
+// fix is guarding against). Same read-modify-write shape as
+// persistDeleteLedger just above: patch only this write's own fields.
+function persistHealedUnread(code) {
+  try {
+    const key = roomStorageKey(code);
+    const existing = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!existing) return;
+    existing.unread = 0;
+    existing.unreadSystemCount = 0;
     localStorage.setItem(key, JSON.stringify(existing));
     scheduleAccountSync();
   } catch(e) {}
@@ -21497,7 +21519,25 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const code of idx) {
       const session = loadRoomSession(code);
       if (!session) continue;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:session.unread, unreadSystemCount:session.unreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.savedAt });
+      // Same self-healing invariant as the slow per-room loop below (and
+      // the cross-device account-sync merge), but applied here instead —
+      // this fast loop is synchronous, local-only, and runs for every room
+      // before the very first frame paints. Doing it only in the slow loop
+      // meant each room's badge only got corrected once that room's own
+      // turn came up in its sequential, network-bound iteration (one real
+      // /api/join round-trip at a time) — with enough rooms, a stale badge
+      // could sit visibly wrong for seconds before quietly correcting
+      // itself, which just reads as "the unread count is flaky" to anyone
+      // who doesn't know to wait it out. Computed from session.* (the raw
+      // persisted values) since room.lastSeq/lastReadSeq don't exist yet
+      // at this point — makeRoom() below is what actually creates room.
+      const sessionLastSeq = Number(session.lastSeq) || 0;
+      const sessionLastReadSeq = session.lastReadSeq === undefined ? sessionLastSeq : (Number(session.lastReadSeq) || 0);
+      const sessionUnreadStale = sessionLastReadSeq >= sessionLastSeq && ((Number(session.unread) || 0) > 0 || (Number(session.unreadSystemCount) || 0) > 0);
+      const healedUnread = sessionUnreadStale ? 0 : session.unread;
+      const healedUnreadSystemCount = sessionUnreadStale ? 0 : session.unreadSystemCount;
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.savedAt });
+      if (sessionUnreadStale) persistHealedUnread(session.code);
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;
