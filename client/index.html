@@ -18702,7 +18702,7 @@ async function restoreRoomHistory(room) {
       // this one-time baseline, so offline/error launches never discard a
       // potentially genuine badge.
       const legacyReadBaseline = (data.messages || []).reduce((highest, msg) => {
-        if ((Number(msg.ts) || 0) > room.unreadMigrationCutoffAt) return highest;
+        if ((new Date(msg.ts || 0).getTime() || 0) > room.unreadMigrationCutoffAt) return highest;
         return Math.max(highest, Number(msg.seq) || 0);
       }, 0);
       room.lastReadSeq = Math.max(Number(room.lastReadSeq) || 0, legacyReadBaseline);
@@ -21538,7 +21538,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         // it stops the cycle so new messages start working normally again.
         await persistRoom(room);
       }
-      const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name });
+      const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name, unreadCutoffAt:room.unreadMigrationPending ? room.unreadMigrationCutoffAt : undefined });
       if (result.error) {
         // A failed reconnect is not an authoritative deletion. Keep the
         // encrypted local session visible and retryable; previously any
@@ -21581,6 +21581,20 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (result.connectedSince) room.connectedSince = result.connectedSince;
       if (result.totalMessageCount !== undefined) room.totalMessageCount = result.totalMessageCount;
       if (result.lastMessageAt !== undefined) room.lastMessageAt = result.lastMessageAt;
+      if (room.unreadMigrationPending && result.unreadBaselineSeq !== undefined) {
+        // Repair every legacy room during its lightweight authenticated
+        // reconnect. Full history remains lazy so Android does not decrypt
+        // every old photo/video at launch, but old messages can no longer
+        // reappear as unread merely because that conversation was not opened.
+        const baseline = Math.max(0, Number(result.unreadBaselineSeq) || 0);
+        room.lastReadSeq = Math.max(Number(room.lastReadSeq) || 0, baseline);
+        room.lastSeq = Math.max(Number(room.lastSeq) || 0, baseline);
+        room.unread = 0;
+        room.unreadSystemCount = 0;
+        room.unreadStateVersion = 2;
+        room.unreadMigrationPending = false;
+        persistRoomSeq(room);
+      }
       room.sharedKey = null;
       // Prefer the server's current key, but fall back to the last key that
       // this device already verified. An offline peer's temporary absence

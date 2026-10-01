@@ -4520,6 +4520,18 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0, persistent, labelLength: namedLabel ? namedLabel.length : null });
   }
 
+  function unreadBaselineSeqForCutoff(room, rawCutoff) {
+    if (rawCutoff === undefined || rawCutoff === null) return undefined;
+    const requested = Number(rawCutoff);
+    if (!Number.isFinite(requested) || requested <= 0) return undefined;
+    const cutoff = Math.min(Date.now(), requested);
+    return (room.msgs || []).reduce((highest, message) => {
+      const timestamp = new Date(message?.ts || 0).getTime() || 0;
+      if (!timestamp || timestamp > cutoff || message?.deleted) return highest;
+      return Math.max(highest, Number(message.seq) || 0);
+    }, 0);
+  }
+
   // POST /api/join
   if (path==='/api/join' && method==='POST') {
     const roomCode = (d.code||'').toLowerCase().trim();
@@ -4551,7 +4563,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       // was even slightly delayed.
       let peerPubKey = null, peerName = null;
       for (const [t,mb] of room.members) if (!sameConversationToken(t, d.token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
-      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
+      const unreadBaselineSeq = unreadBaselineSeqForCutoff(room, d.unreadCutoffAt);
+      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0, unreadBaselineSeq });
     }
 
     // Everything past this point is either a fresh join or a probe for a
@@ -4670,7 +4683,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     let peerPubKey = null, peerName = null;
     for (const [t,mb] of room.members) if (!sameConversationToken(t, token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
     console.log(`Member joined conversation ${logCode(roomCode)}`);
-    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
+    const unreadBaselineSeq = unreadBaselineSeqForCutoff(room, d.unreadCutoffAt);
+    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0, unreadBaselineSeq });
   }
 
   // POST /api/attachment/prepare — authorize an opaque, client-encrypted

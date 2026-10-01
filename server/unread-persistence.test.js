@@ -7,9 +7,10 @@ const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 const worker = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
+const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 
 test('the Android unread fix ships in a fresh app-shell cache', () => {
-  assert.match(worker, /vaultlix-app-shell-v127/);
+  assert.match(worker, /vaultlix-app-shell-v128/);
 });
 
 test('direct-chat unread state survives restart and clears only when viewed', () => {
@@ -31,6 +32,14 @@ test('successful full restore rebuilds unread counts from server read receipts',
   assert.match(client, /room\.unreadSystemCount = restoredUnreadSystemCount/);
   assert.match(client, /Number\(msg\.seq\) <= \(Number\(room\.lastReadSeq\) \|\| 0\)/);
   assert.match(client, /if \(room\.unreadMigrationPending\)[\s\S]{0,1200}room\.unreadStateVersion = 2/);
-  assert.match(client, /legacyReadBaseline[\s\S]{0,400}Number\(msg\.ts\)[\s\S]{0,400}Number\(msg\.seq\)/);
+  assert.match(client, /legacyReadBaseline[\s\S]{0,400}new Date\(msg\.ts \|\| 0\)\.getTime\(\)[\s\S]{0,400}Number\(msg\.seq\)/);
   assert.match(client, /if \(unreadChanged\) persistRoomSeq\(room\)/);
+});
+
+test('legacy unread state migrates during lightweight startup reconnects', () => {
+  assert.match(client, /unreadCutoffAt:room\.unreadMigrationPending \? room\.unreadMigrationCutoffAt : undefined/);
+  assert.match(client, /if \(room\.unreadMigrationPending && result\.unreadBaselineSeq !== undefined\)[\s\S]{0,900}room\.unreadStateVersion = 2/);
+  assert.match(client, /room\.lastSeq = Math\.max\(Number\(room\.lastSeq\) \|\| 0, baseline\)/);
+  assert.match(server, /function unreadBaselineSeqForCutoff\(room, rawCutoff\)[\s\S]{0,700}new Date\(message\?\.ts \|\| 0\)\.getTime\(\)/);
+  assert.match(server, /lastMessageAt: room\.lastMessageAt \|\| 0, unreadBaselineSeq/);
 });
