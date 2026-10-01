@@ -29,7 +29,7 @@ function extract(source, name) {
 }
 const factory = vm.runInNewContext(`(${extract(client, 'createChatKeyboardLayout')})`, {});
 
-function setup({ chat = 'direct', innerHeight = 800 } = {}) {
+function setup({ chat = 'direct', innerHeight = 800, nativeResize = false } = {}) {
   const listeners = { vv:{}, win:{}, doc:{} };
   const mk = (id, extra = {}) => {
     const classes = new Set();
@@ -49,7 +49,7 @@ function setup({ chat = 'direct', innerHeight = 800 } = {}) {
   const doc = { getElementById:id => els[id] || null, addEventListener:(type, fn) => { listeners.doc[type] = fn; } };
   const queue = [];
   const remembered = [];
-  const layout = factory({ vv, win, doc, remember:height => remembered.push(height), schedule:(fn, ms) => { const t = { fn, ms, cancelled:false }; queue.push(t); return t; }, cancel:t => { t.cancelled = true; } });
+  const layout = factory({ vv, win, doc, nativeResize, remember:height => remembered.push(height), schedule:(fn, ms) => { const t = { fn, ms, cancelled:false }; queue.push(t); return t; }, cancel:t => { t.cancelled = true; } });
   layout.start();
   const flush = () => { for (const t of queue.splice(0)) if (!t.cancelled) t.fn(); };
   // Only the pin-after-settling timers (0/120/320/650 ms), not the hold and animation timers.
@@ -330,6 +330,39 @@ test('the native iOS wrapper owns the single keyboard resize', () => {
   assert.equal(iosCapacitorConfig.plugins.Keyboard.resize, 'native');
   assert.equal(capacitorConfig.plugins.Keyboard.style, 'LIGHT');
   assert.equal(iosCapacitorConfig.plugins.Keyboard.style, 'LIGHT');
+});
+
+// keyboardWillShow() was updated to skip resizeShell() under native resize
+// (Capacitor already shrinks the whole web view), but layout() — called
+// independently on every visualViewport resize/scroll — kept deriving its
+// own height and translateY from vv.height/vv.pageTop regardless of
+// nativeResize. Under native resize, window.innerHeight shrinks together
+// with the web view, but visualViewport can still transiently disagree with
+// it mid-transition for reasons that have nothing to do with a keyboard
+// overlay. When that happened, layout() applied a stale translateY on top
+// of a web view iOS had already resized and positioned correctly, pushing
+// the whole chat shell — including its header — out of view. This matches
+// a real report: the peer name/header vanished above the keyboard on an
+// iPhone 16, same build, while another device (whose visualViewport never
+// transiently disagreed) looked fine.
+test('under native resize, layout() never derives its own height or transform — iOS already positioned the web view', () => {
+  const t = setup({ nativeResize:true });
+  // Simulate exactly the transient mismatch that triggered the bug: iOS has
+  // already resized the native web view (win.innerHeight shrank), but
+  // visualViewport briefly reports a different height/pageTop mid-transition.
+  t.win.innerHeight = 430;
+  t.vv.height = 386;
+  t.vv.pageTop = 120;
+  t.listeners.vv.resize(); t.flush();
+  assert.equal(t.els['s-chat'].style.height, undefined, 'no CSS height override — the native web view is already the right size');
+  assert.equal(t.els['s-chat'].style.transform, undefined, 'no translateY — applying one here would shift the header off-screen on top of an already-correct native layout');
+});
+
+test('under native resize, keyboardWillShow skips resizeShell for the fixed group chat too', () => {
+  const t = setup({ chat:'group', nativeResize:true });
+  t.layout.keyboardWillShow(336);
+  t.flush();
+  assert.equal(t.els['group-chat'].style.height, undefined, 'resizeShell is skipped for native resize — only chat.fixed\'s top:0px (unrelated to sizing) still applies');
 });
 
 test('typing drops the bottom room kept for the home bar, and leaving the box gives it back', () => {

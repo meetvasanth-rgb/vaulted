@@ -21259,6 +21259,14 @@ function createChatKeyboardLayout(env) {
     const chat = activeChat();
     if (!chat || !vv) return null;
     if (chat.list !== lastList) { lastList = chat.list; pinned = true; } // a different conversation starts at its newest message
+    // Capacitor's native keyboard resize already sizes and positions the whole
+    // web view (see keyboardWillShow's identical guard), so visualViewport can
+    // briefly disagree with window.innerHeight mid-transition for reasons that
+    // have nothing to do with a keyboard overlay. Deriving a height/translateY
+    // from that here would apply a stale transform on top of an already-correct
+    // native layout — this was shifting the whole chat shell, header included,
+    // out of view on some devices.
+    if (env.nativeResize) return chat;
     const keyboardUp = vv.height < win.innerHeight - 1; // false when the web view itself was resized natively
     const { shell } = chat;
     if (keyboardUp && env.remember) env.remember(win.innerHeight - vv.height);
