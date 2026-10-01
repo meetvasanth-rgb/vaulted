@@ -358,6 +358,12 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         if let roomHandle = payload["roomHandle"] as? String { detail["roomHandle"] = roomHandle }
         if let inviteID = payload["inviteId"] as? String { detail["inviteId"] = inviteID }
         if let caller = payload["caller"] as? String { detail["caller"] = String(caller.prefix(80)) }
+        if let connected = payload["connected"] as? Bool { detail["connected"] = connected }
+        if let outgoing = payload["outgoing"] as? Bool { detail["outgoing"] = outgoing }
+        if let hasVideo = payload["hasVideo"] as? Bool { detail["hasVideo"] = hasVideo }
+        if let connectedAt = payload["connectedAt"] as? Double { detail["connectedAt"] = connectedAt }
+        if let endedAt = payload["endedAt"] as? Double { detail["endedAt"] = endedAt }
+        if let durationSeconds = payload["durationSeconds"] as? Int { detail["durationSeconds"] = durationSeconds }
         // When iOS keeps the WebView suspended behind the lock screen, it can
         // queue connected/audio events and the later terminal event together.
         // Replaying that history on the next foreground used to resurrect the
@@ -378,6 +384,25 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             postMissedCallNotification(callID: callID, payload: payload)
         }
         if terminalActions.contains(action) { releaseAppKeyboardIfIdle() }
+    }
+
+    /// Preserve the minimum encrypted-call history facts before CallKit and
+    /// the native media engine discard their in-memory call state. WKWebView
+    /// can remain suspended for the entire lifetime of a lock-screen call,
+    /// so a later terminal event must be sufficient to create its history row
+    /// without relying on an earlier `nativeConnected` UI event being replayed.
+    private func callHistoryPayload(callID: UUID, payload: [String: Any]) -> [String: Any] {
+        var result = payload
+        let endedAt = Date().timeIntervalSince1970 * 1000
+        let connectedAt = result["connectedAt"] as? Double
+        let connected = connectedCalls.contains(callID) || connectedAt != nil
+        result["connected"] = connected
+        result["outgoing"] = outgoingCalls.contains(callID)
+        result["endedAt"] = endedAt
+        if let connectedAt {
+            result["durationSeconds"] = max(0, Int((endedAt - connectedAt) / 1000))
+        }
+        return result
     }
 
     /// The encrypted conversation row is restored by the WebView when the app
@@ -611,7 +636,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     @discardableResult
     private func endCallLocally(callID: UUID, source: String) -> String {
         stopRingback(callID: callID)
-        let payload = calls.removeValue(forKey: callID) ?? [:]
+        let payload = callHistoryPayload(callID: callID, payload: calls[callID] ?? [:])
+        calls.removeValue(forKey: callID)
         let wasAnswered = answeredCalls.contains(callID)
         let wasOutgoing = outgoingCalls.contains(callID)
         let outcome = wasAnswered ? "ended" : (wasOutgoing ? "cancelled" : "declined")
@@ -890,9 +916,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     }
 
     func endCall(callID: UUID, outcome: String? = nil) {
-        guard let payload = calls[callID] else { return }
+        guard let rawPayload = calls[callID] else { return }
         stopRingback(callID: callID)
         let wasAnswered = answeredCalls.contains(callID)
+        let payload = callHistoryPayload(callID: callID, payload: rawPayload)
         NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
         provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
         calls.removeValue(forKey: callID)
@@ -916,7 +943,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// signaling and media owner for the call.
     func nativeCallDidConnect(callID: UUID) {
         DispatchQueue.main.async {
-            guard let payload = self.calls[callID],
+            guard var payload = self.calls[callID],
                   self.nativeMediaCalls.contains(callID),
                   !self.connectedCalls.contains(callID) else { return }
             self.connectedCalls.insert(callID)
@@ -924,9 +951,9 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             if self.outgoingCalls.contains(callID) {
                 self.provider.reportOutgoingCall(with: callID, connectedAt: Date())
             }
-            var connectedPayload = payload
-            connectedPayload["connectedAt"] = Date().timeIntervalSince1970 * 1000
-            self.postAction("nativeConnected", callID: callID, payload: connectedPayload)
+            payload["connectedAt"] = Date().timeIntervalSince1970 * 1000
+            self.calls[callID] = payload
+            self.postAction("nativeConnected", callID: callID, payload: payload)
         }
     }
 
@@ -948,8 +975,9 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func nativeCallDidEnd(callID: UUID, action: String) {
         DispatchQueue.main.async {
-            guard let payload = self.calls[callID] else { return }
+            guard let rawPayload = self.calls[callID] else { return }
             self.stopRingback(callID: callID)
+            let payload = self.callHistoryPayload(callID: callID, payload: rawPayload)
             NativeWebRTCCallEngine.shared.end(callID: callID, notifyPeer: false)
             self.provider.reportCall(with: callID, endedAt: Date(), reason: .remoteEnded)
             self.calls.removeValue(forKey: callID)

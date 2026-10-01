@@ -5949,6 +5949,11 @@ const pendingNativeMissedCallActions = new Map();
 const pendingNativeCallEnds = new Map();
 
 function replayPendingNativeMissedCalls(room) {
+  // Native terminal events may arrive during the first room-hydration pass,
+  // before the E2E key is available. Keep them queued until addRoomToState()
+  // runs again with a usable key, otherwise the local row appears briefly
+  // but its encrypted history upload cannot be created.
+  if (!room?.sharedKey) return;
   for (const [key, detail] of pendingNativeMissedCallActions) {
     const matchesCode = typeof detail.code === 'string' && detail.code === room.code;
     const matchesHandle = typeof detail.roomHandle === 'string'
@@ -6029,6 +6034,7 @@ acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
   const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeCancelled','nativeBusy','nativeFailed','microphoneDenied']);
+  const hasConnectedCallHistory = terminalNativeActions.has(detail.action) && detail.connected === true;
   const occurredAt = Number(detail.occurredAt || 0);
   const staleTerminalAction = terminalNativeActions.has(detail.action) && occurredAt > 0 && Date.now() - occurredAt > 5000;
   const nativeRoomCode = typeof detail.code === 'string' ? detail.code : '';
@@ -6041,7 +6047,7 @@ async function handleNativeCallAction(detail) {
       ? Array.from(rooms.values()).find(candidate => candidate.nativeRoomHandle === nativeRoomHandle)
       : (activeCallRoomCode ? rooms.get(activeCallRoomCode) : null));
   if (!room) {
-    if (detail.action === 'missed' && (nativeRoomCode || nativeRoomHandle)) {
+    if ((detail.action === 'missed' || hasConnectedCallHistory) && (nativeRoomCode || nativeRoomHandle)) {
       const key = typeof detail.callId === 'string' && detail.callId
         ? detail.callId
         : `${nativeRoomCode}|${nativeRoomHandle}|${occurredAt}`;
@@ -6073,6 +6079,34 @@ async function handleNativeCallAction(detail) {
     if (nativeRoomCode) pendingNativeCallActions.set(nativeRoomCode, detail);
     else pendingNativeUnscopedAction = detail;
     return;
+  }
+  // A CallKit call can connect, run and end entirely while WKWebView is
+  // suspended behind the lock screen. The terminal native event therefore
+  // carries its own connected-at/duration/direction facts and must be able to
+  // create history without depending on an earlier nativeConnected UI event.
+  if (hasConnectedCallHistory) {
+    const eventId = typeof detail.inviteId === 'string' && detail.inviteId
+      ? `call-event-${detail.inviteId}`
+      : (typeof detail.callId === 'string' ? `native-call-${detail.callId}` : null);
+    const alreadyRecorded = eventId && room.messages.some(record => record.id === eventId);
+    const duration = Math.max(0, Number(detail.durationSeconds) || 0);
+    const callRole = detail.outgoing === true ? 'initiator' : 'receiver';
+    const callEvent = connectedCallEvent(callRole, detail.hasVideo === true);
+    if (room.callState === 'idle') {
+      if (!alreadyRecorded) {
+        addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, eventId, callEvent);
+        if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+      }
+      finishNativeIOSCallOverAppLock();
+      return;
+    }
+    room.callWasOutgoing = detail.outgoing === true;
+    room.callHadVideo = room.callHadVideo || detail.hasVideo === true;
+    if (typeof detail.inviteId === 'string' && detail.inviteId) room.callInviteId = detail.inviteId;
+    const connectedAt = Number(detail.connectedAt || 0);
+    const endedAt = Number(detail.endedAt || detail.occurredAt || Date.now());
+    room.callStartedAt = connectedAt > 0 ? connectedAt : endedAt - duration * 1000;
+    room.callState = 'active';
   }
   const presentNativeCallRoom = () => {
     // CallKit can wake/foreground the wrapper while the Vault Inbox is the
@@ -8225,7 +8259,8 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // presenting a several-minutes-late call-ending screen over a new message.
   if (options.silentPresentation) {
     hideCallOverlay();
-    if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
+    if (wasActive) addCallSysMsg(room, `Encrypted call · ${formatCallTime(duration)}`, callHistoryEventId, callEventConnected);
+    else if (sysMsgText) addCallSysMsg(room, callEvent ? callEvent[`${callRole}Text`] : sysMsgText, callHistoryEventId, callEvent);
     notifyLockedCallEnded();
     return;
   }
