@@ -5679,7 +5679,31 @@ function importAccountBundle(bundle, accountId) {
     const callHistoryClearedAt = Math.max(Number(current?.callHistoryClearedAt) || 0, Number(ownedSession.callHistoryClearedAt) || 0);
     const lastReadSeq = Math.max(Number(current?.lastReadSeq) || 0, Number(ownedSession.lastReadSeq) || 0);
     const unreadStateVersion = Math.max(Number(current?.unreadStateVersion) || 0, Number(ownedSession.unreadStateVersion) || 0);
-    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion });
+    // lastSeq/unread/unreadSystemCount were NOT field-merged — they only
+    // ever came from whichever whole session "won" above by savedAt. That
+    // let an older device's stale unread counter resurrect itself even
+    // though lastReadSeq (already correctly merged as a max, just above)
+    // had moved past it: a multi-device equivalent of the exact
+    // "unreadStateVersion already 2, so the migration never re-runs, but
+    // unread was never reconciled against it" bug already fixed for the
+    // single-device startup path (see the self-healing invariant in the
+    // startup room-restore loop). Never regress lastSeq backward — an
+    // older lastSeq causes the server to redeliver already-handled
+    // messages as if new, which is exactly how unread gets inflated in
+    // the first place. Then apply the SAME invariant here: if the merged
+    // lastReadSeq has already caught up to the merged lastSeq, nothing is
+    // outstanding by either device's own bookkeeping, so unread must be 0
+    // — not whichever side's stale number happened to "win". Otherwise, a
+    // genuine gap exists; take the smaller of the two counts rather than
+    // trusting either one outright, since over-counting is the failure
+    // mode being guarded against here, not under-counting.
+    const lastSeq = Math.max(Number(current?.lastSeq) || 0, Number(ownedSession.lastSeq) || 0);
+    const bothUnreadKnown = current !== undefined;
+    const unread = lastReadSeq >= lastSeq ? 0
+      : (bothUnreadKnown ? Math.min(Number(current?.unread) || 0, Number(ownedSession.unread) || 0) : (Number(ownedSession.unread) || 0));
+    const unreadSystemCount = lastReadSeq >= lastSeq ? 0
+      : (bothUnreadKnown ? Math.min(Number(current?.unreadSystemCount) || 0, Number(ownedSession.unreadSystemCount) || 0) : (Number(ownedSession.unreadSystemCount) || 0));
+    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion, lastSeq, unread, unreadSystemCount });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
