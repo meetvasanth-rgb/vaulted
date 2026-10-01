@@ -502,6 +502,11 @@ test('the iOS wrapper resizes the web view with the keyboard so the peer header 
   assert.match(iosScene, /webView\.scrollView\.setContentOffset\(\.zero, animated: false\)/);
 });
 
+test('the iOS wrapper restores the full web view with keyboard dismissal', () => {
+  assert.match(iosScene, /forName: UIResponder\.keyboardWillHideNotification/);
+  assert.match(iosScene, /height: window\.bounds\.height - webView\.frame\.origin\.y/);
+});
+
 test('without native resize (Android, browser), the footer still moves immediately on focus — unaffected by the native-event sync', () => {
   const t = setup({ nativeResize:false });
   t.listeners.doc.focusin({ target:{ id:'msg-input' } });

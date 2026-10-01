@@ -124,11 +124,23 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             DispatchQueue.main.async { [weak self, weak bridgeController] in
                 self?.suppressKeyboardInputAssistant(in: bridgeController?.webView)
             }
-#if DEBUG
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak bridgeController] in
-                self?.logKeyboardLayout(in: bridgeController?.webView)
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main
+        ) { [weak bridgeController, weak window] note in
+            guard let webView = bridgeController?.webView, let window else { return }
+            let target = CGRect(x: webView.frame.origin.x,
+                                y: webView.frame.origin.y,
+                                width: window.bounds.width - webView.frame.origin.x,
+                                height: window.bounds.height - webView.frame.origin.y)
+            let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+            let curve = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+            UIView.animate(withDuration: duration,
+                           delay: 0,
+                           options: UIView.AnimationOptions(rawValue: curve << 16).union(.beginFromCurrentState)) {
+                webView.frame = target
+                webView.scrollView.setContentOffset(.zero, animated: false)
             }
-#endif
         })
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
         // A friend's invitation the App Clip saved before the person installed Vaultlix. The code
@@ -299,31 +311,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             class_replaceMethod(responderClass, controllerSelector, nilAccessoryController, "@@:")
         }
     }
-
-#if DEBUG
-    private func logKeyboardLayout(in webView: WKWebView?) {
-        guard let webView else { return }
-        func visit(_ view: UIView) {
-            let name = NSStringFromClass(type(of: view))
-            if name.contains("WKContent") || view.isFirstResponder {
-                let accessory = view.inputAccessoryView
-                let controller = view.inputAccessoryViewController
-                print("VAULTLIX_KEYBOARD_NATIVE class=\(name) first=\(view.isFirstResponder) frame=\(view.frame) accessory=\(String(describing: accessory?.frame)) controller=\(String(describing: controller?.view.frame))")
-            }
-            view.subviews.forEach(visit)
-        }
-        visit(webView)
-        webView.evaluateJavaScript("""
-          (() => {
-            const footer = document.getElementById('chat-ftr')?.getBoundingClientRect();
-            const input = document.getElementById('msg-input')?.getBoundingClientRect();
-            return JSON.stringify({innerHeight, vvHeight:visualViewport?.height, vvTop:visualViewport?.offsetTop, footer, input, focused:document.activeElement?.id, shell:document.getElementById('s-chat')?.className});
-          })()
-        """) { value, error in
-            print("VAULTLIX_KEYBOARD_WEB \(String(describing: value)) error=\(String(describing: error))")
-        }
-    }
-#endif
 
     private func emit(name: String, detail: [AnyHashable: Any]?) {
         guard let controller = window?.rootViewController as? CAPBridgeViewController,
