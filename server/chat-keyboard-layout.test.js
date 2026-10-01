@@ -12,6 +12,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+const iosScene = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
+const capacitorConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'capacitor.config.json'), 'utf8'));
+const iosCapacitorConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'capacitor.config.json'), 'utf8'));
 
 function extract(source, name) {
   const start = source.indexOf(`function ${name}(`);
@@ -247,7 +250,8 @@ test('a browser without the native event starts from the height the keyboard had
 test('wiring: the app listens for the iOS keyboard events and the ring is off for both message boxes', () => {
   assert.match(client, /window\.addEventListener\('keyboardWillShow', willShow\)/);
   assert.match(client, /plugin\?\.addListener\?\.\('keyboardWillHide', willHide\)/);
-  assert.match(client, /preShrinkOnFocus: \/iP\(hone\|ad\|od\)\/\.test\(navigator\.userAgent\),/);
+  assert.match(client, /preShrinkOnFocus: \/iP\(hone\|ad\|od\)\/\.test\(navigator\.userAgent\) && !isNativeIOS\(\),/);
+  assert.match(client, /nativeResize: isNativeIOS\(\),/);
   const block = client.slice(client.lastIndexOf('<style>'));
   for (const selector of ['#msg-input:focus-visible', '#group-message-input:focus-visible', '#s-chat #msg-input:focus']) assert.ok(block.includes(selector), selector);
   assert.match(block, /outline:none!important;box-shadow:none!important/);
@@ -309,7 +313,7 @@ test('the height the native keyboard announces is remembered for next time', () 
   assert.deepEqual(t.remembered, [336]);
 });
 
-test('on an iPhone the tap itself starts the move from the remembered height, and the announcement corrects it', () => {
+test('a browser iPhone can pre-shrink from memory and the announcement corrects it', () => {
   const t = setup({ chat:'group', innerHeight:800 });
   const listeners = {};
   const doc = { getElementById:id => t.els[id] || null, addEventListener:(type, fn) => { listeners[type] = fn; } };
@@ -319,6 +323,13 @@ test('on an iPhone the tap itself starts the move from the remembered height, an
   assert.equal(t.els['group-chat'].style.height, '500px');
   layout.keyboardWillShow(336);
   assert.equal(t.els['group-chat'].style.height, '464px');
+});
+
+test('the native iOS wrapper owns the single keyboard resize', () => {
+  assert.equal(capacitorConfig.plugins.Keyboard.resize, 'native');
+  assert.equal(iosCapacitorConfig.plugins.Keyboard.resize, 'native');
+  assert.equal(capacitorConfig.plugins.Keyboard.style, 'LIGHT');
+  assert.equal(iosCapacitorConfig.plugins.Keyboard.style, 'LIGHT');
 });
 
 test('typing drops the bottom room kept for the home bar, and leaving the box gives it back', () => {
@@ -379,4 +390,17 @@ test('wiring: Send keeps focus in the message box on touch screens', () => {
 test('the iOS app asks for the light keyboard, and any exposed page area is white', () => {
   assert.match(client, /Keyboard\?\.setStyle\(\{ style:'LIGHT' \}\)/);
   assert.match(client, /\nhtml\{background:#fff\}\n/);
+});
+
+test('the iOS wrapper removes the inconsistent WKWebView form-navigation strip', () => {
+  assert.match(iosScene, /inputAssistantItem\.leadingBarButtonGroups = \[\]/);
+  assert.match(iosScene, /inputAssistantItem\.trailingBarButtonGroups = \[\]/);
+  assert.match(iosScene, /forName: UIResponder\.keyboardWillShowNotification/);
+  assert.match(iosScene, /suppressKeyboardInputAssistant\(in: bridgeController\?\.webView\)/);
+  assert.match(iosScene, /for subview in view\.subviews \{\s*suppressKeyboardInputAssistant\(in: subview\)/);
+  assert.match(iosScene, /let responderClass: AnyClass = type\(of: responder\)/);
+  assert.match(iosScene, /guard className\.contains\("WKContent"\)/);
+  assert.match(iosScene, /#selector\(getter: UIResponder\.inputAccessoryView\)/);
+  assert.match(iosScene, /class_addMethod\(responderClass, selector, nilAccessory, "@@:"\)/);
+  assert.doesNotMatch(iosScene, /reloadInputViews\(\)/);
 });

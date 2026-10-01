@@ -21324,7 +21324,11 @@ function createChatKeyboardLayout(env) {
     holdHide = false; holdShow = true;
     if (holdTimer) cancel(holdTimer);
     holdTimer = schedule(() => { holdShow = false; layout(); }, 900); // native resize mode never reports a keyboard
-    resizeShell(chat, win.innerHeight - height);
+    // Capacitor already resizes the native WKWebView with the system keyboard.
+    // Applying a second guessed CSS height at the same time made the chat move
+    // twice (most visibly around tall call cards). Let the native viewport make
+    // that single transition and only keep its message list pinned.
+    if (!env.nativeResize) resizeShell(chat, win.innerHeight - height);
     settle();
   }
 
@@ -21424,7 +21428,8 @@ const chatKeyboardLayout = createChatKeyboardLayout({
   // iPhone and iPad report the keyboard late. Starting from the height it had last
   // time lets the chat move at the moment of the tap, a beat before the keyboard's
   // own announcement (which then corrects it if it differs).
-  preShrinkOnFocus: /iP(hone|ad|od)/.test(navigator.userAgent),
+  preShrinkOnFocus: /iP(hone|ad|od)/.test(navigator.userAgent) && !isNativeIOS(),
+  nativeResize: isNativeIOS(),
 });
 chatKeyboardLayout.start();
 // In the iOS app the Keyboard plugin announces the keyboard, and its exact height,

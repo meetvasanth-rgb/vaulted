@@ -15,5 +15,11 @@
   },
   "ios": {
     "appendUserAgent": "VaultlixImageSafety/1"
+  },
+  "plugins": {
+    "Keyboard": {
+      "resize": "native",
+      "style": "LIGHT"
+    }
   }
 }

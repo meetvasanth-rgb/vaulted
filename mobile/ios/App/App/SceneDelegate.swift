@@ -6,6 +6,7 @@ import AVKit
 import UserNotifications
 import LocalAuthentication
 import WebRTC
+import ObjectiveC.runtime
 #if DEBUG
 import OSLog
 #endif
@@ -53,6 +54,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var nativeVideoSessionActive = false
     private weak var nativeVideoConsentAlert: UIAlertController?
     private var pendingNativeVideoConsentRequest = false
+    private var keyboardAccessorySuppressedClasses = Set<ObjectIdentifier>()
     private let nativeVideoRequestNotificationID = "vaultlix-video-request"
     // A source video is streamed to disk in bounded chunks from the web side
     // (see beginVideoCompression/appendVideoCompressionChunk below) rather
@@ -80,6 +82,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         bridgeController.view.backgroundColor = .white
         bridgeController.webView?.backgroundColor = .white
         bridgeController.webView?.scrollView.backgroundColor = .white
+        // WKWebView may expose iOS's form-navigation accessory (previous,
+        // next and Done) above the software keyboard. Whether it appears can
+        // vary with the device's keyboard state, which made two phones on the
+        // same build show different composer layouts. Vaultlix has its own
+        // chat controls, so keep the native assistant groups empty on every
+        // device while leaving QuickType and the keyboard itself untouched.
+        bridgeController.webView?.inputAssistantItem.leadingBarButtonGroups = []
+        bridgeController.webView?.inputAssistantItem.trailingBarButtonGroups = []
+        suppressKeyboardInputAssistant(in: bridgeController.webView)
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main
+        ) { [weak self, weak bridgeController] _ in
+            // The responder that owns this assistant is WebKit's internal
+            // content view, not the outer WKWebView. It may be recreated and
+            // only becomes the responder while a message box is focused, so
+            // clear the current view tree every time the keyboard opens.
+            self?.suppressKeyboardInputAssistant(in: bridgeController?.webView)
+            DispatchQueue.main.async { [weak self, weak bridgeController] in
+                self?.suppressKeyboardInputAssistant(in: bridgeController?.webView)
+            }
+        })
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
         // A friend's invitation the App Clip saved before the person installed Vaultlix. The code
         // is validated, so it is safe to place in the script; the page shows the friend's page once
@@ -203,6 +226,39 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if let customURL = connectionOptions.urlContexts.first?.url,
            let translated = translatedVaultlixConnectURL(customURL) {
             pendingUniversalLink = translated
+        }
+    }
+
+    private func suppressKeyboardInputAssistant(in view: UIView?) {
+        guard let view else { return }
+        view.inputAssistantItem.leadingBarButtonGroups = []
+        view.inputAssistantItem.trailingBarButtonGroups = []
+        suppressWebKitAccessory(on: view)
+        for subview in view.subviews {
+            suppressKeyboardInputAssistant(in: subview)
+        }
+    }
+
+    private func suppressWebKitAccessory(on responder: UIView) {
+        let responderClass: AnyClass = type(of: responder)
+        let className = NSStringFromClass(responderClass)
+        guard className.contains("WKContent") else { return }
+        let classID = ObjectIdentifier(responderClass)
+        guard keyboardAccessorySuppressedClasses.insert(classID).inserted else { return }
+
+        // Capacitor's keyboard plugin hides the form toolbar by overriding
+        // inputAccessoryView on two historical WebKit classes. iOS 26 can
+        // focus a newer private subclass instead, so install the same nil
+        // override on the concrete responder class we actually observed.
+        // Only the public UIResponder selector is used; no private selector
+        // or class name is assumed.
+        let selector = #selector(getter: UIResponder.inputAccessoryView)
+        let nilAccessory = imp_implementationWithBlock(
+            { (_: AnyObject) -> UIView? in nil }
+                as @convention(block) (AnyObject) -> UIView?
+        )
+        if !class_addMethod(responderClass, selector, nilAccessory, "@@:") {
+            class_replaceMethod(responderClass, selector, nilAccessory, "@@:")
         }
     }
 
