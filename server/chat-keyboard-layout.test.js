@@ -249,7 +249,8 @@ test('a browser without the native event starts from the height the keyboard had
 
 test('wiring: the app listens for the iOS keyboard events and the ring is off for both message boxes', () => {
   assert.match(client, /window\.addEventListener\('keyboardWillShow', willShow\)/);
-  assert.match(client, /plugin\?\.addListener\?\.\('keyboardWillHide', willHide\)/);
+  assert.match(client, /if \(isNativeIOS\(\) && plugin\?\.addListener\)/);
+  assert.match(client, /plugin\.addListener\('keyboardWillHide', willHide\)/);
   assert.match(client, /preShrinkOnFocus: \/iP\(hone\|ad\|od\)\/\.test\(navigator\.userAgent\) && !isNativeIOS\(\),/);
   assert.match(client, /nativeResize: isNativeIOS\(\),/);
   const block = client.slice(client.lastIndexOf('<style>'));
@@ -257,6 +258,29 @@ test('wiring: the app listens for the iOS keyboard events and the ring is off fo
   assert.match(block, /outline:none!important;box-shadow:none!important/);
   assert.match(block, /#s-chat #msg-input:focus,#s-chat #msg-input:focus-visible\{background:#FBF8F9!important;border-color:#E3D6DB!important\}/);
   assert.match(block, /\.group-chat\.kb-animating,#s-chat\.kb-animating\{transition:height/);
+});
+
+test('native iOS pins on the next frame without delayed second-stage movement', () => {
+  const t = setup({ chat:'direct', innerHeight:800 });
+  const nativeQueue = [];
+  const layout = factory({
+    vv:t.vv, win:t.win,
+    doc:{ getElementById:id => t.els[id] || null, addEventListener:() => {} },
+    nativeResize:true,
+    schedule:(fn, ms) => { const item = { fn, ms, cancelled:false }; nativeQueue.push(item); return item; },
+    cancel:item => { item.cancelled = true; },
+  });
+  layout.keyboardWillShow(336);
+  assert.deepEqual(nativeQueue.filter(item => !item.cancelled && item.ms !== 900).map(item => item.ms), [0]);
+  assert.equal(nativeQueue.some(item => !item.cancelled && [120, 320, 650].includes(item.ms)), false);
+});
+
+test('native keyboard wiring chooses one event channel instead of handling each event twice', () => {
+  const blockStart = client.indexOf('(function listenForNativeKeyboard()');
+  const blockEnd = client.indexOf('// ── LANDING ANIMATION', blockStart);
+  const block = client.slice(blockStart, blockEnd);
+  assert.match(block, /plugin\.addListener\('keyboardWillShow', willShow\);[^]*return;[^]*window\.addEventListener\('keyboardWillShow', willShow\);/);
+  assert.doesNotMatch(block, /window\.addEventListener\('keyboardWillShow', willShow\);[^]*plugin\.addListener\('keyboardWillShow', willShow\)/);
 });
 
 test('while the chat eases to its new height the list keeps the newest message in view on every frame', () => {

@@ -21371,9 +21371,16 @@ function createChatKeyboardLayout(env) {
   function settle() {
     timers.forEach(cancel);
     settling = true;
-    timers = SETTLE_DELAYS_MS.map((ms, index) => schedule(() => {
+    // Capacitor resizes the WKWebView itself. Pinning again hundreds of
+    // milliseconds later makes the keyboard appear first and the last message
+    // visibly catch up afterwards. One animation-frame pass on each real native
+    // viewport change keeps those two movements together. Browser iOS still
+    // needs the longer settling ladder because its visual viewport changes in
+    // several stages while the keyboard and suggestion strip animate.
+    const delays = env.nativeResize ? [0] : SETTLE_DELAYS_MS;
+    timers = delays.map((ms, index) => schedule(() => {
       pin();
-      if (index === SETTLE_DELAYS_MS.length - 1) settling = false;
+      if (index === delays.length - 1) settling = false;
     }, ms));
   }
 
@@ -21456,13 +21463,20 @@ chatKeyboardLayout.start();
 (function listenForNativeKeyboard() {
   const willShow = info => chatKeyboardLayout.keyboardWillShow(info?.keyboardHeight);
   const willHide = () => chatKeyboardLayout.keyboardWillHide();
-  window.addEventListener('keyboardWillShow', willShow);
-  window.addEventListener('keyboardWillHide', willHide);
   try {
     const plugin = window.Capacitor?.Plugins?.Keyboard;
-    plugin?.addListener?.('keyboardWillShow', willShow);
-    plugin?.addListener?.('keyboardWillHide', willHide);
+    if (isNativeIOS() && plugin?.addListener) {
+      // Capacitor emits both a window event and a plugin event for the same
+      // native notification. Listening to both made every iOS keyboard opening
+      // run twice. Use the plugin event in the app and keep window events only
+      // as the browser/fallback path.
+      plugin.addListener('keyboardWillShow', willShow);
+      plugin.addListener('keyboardWillHide', willHide);
+      return;
+    }
   } catch (error) {}
+  window.addEventListener('keyboardWillShow', willShow);
+  window.addEventListener('keyboardWillHide', willHide);
 })();
 
 // ── LANDING ANIMATION ────────────────────────────────────────────────────
