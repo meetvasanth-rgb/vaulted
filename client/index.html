@@ -298,6 +298,9 @@ input,textarea{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',s
 .vault-list-hdr{flex-shrink:0;background:#682C43;color:#fff;padding:calc(16px + env(safe-area-inset-top)) 20px 16px;display:flex;align-items:center;gap:13px}
 .vault-list-heading{min-width:0;flex:1}
 .vault-list-title{font-size:26px;line-height:1.05;font-weight:700;color:#fff;letter-spacing:-.025em}
+.vault-list-search{min-width:0;flex:1}
+.vault-search-input{width:100%;background:rgba(255,255,255,.14);border:0;border-radius:11px;color:#fff;font-size:16px;padding:9px 12px;outline:0}
+.vault-search-input::placeholder{color:rgba(255,255,255,.65)}
 .vault-list-nav{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .vault-list-settings{width:42px;height:42px;border-radius:50%;border:0;background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .vault-list-settings:active{background:rgba(255,255,255,.12)}
@@ -1678,6 +1681,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 #s-vault-list{background:var(--vx-ivory)}
 .vault-list-hdr{background:rgba(255,255,255,.94)!important;border-color:var(--vx-line)!important;box-shadow:0 5px 18px rgba(31,28,23,.05)}
 .vault-list-title{font-size:20px!important;color:var(--vx-ink)!important}
+.vault-search-input{background:#F7EFF2!important;color:var(--vx-ink)!important;border:1px solid #E6D4DA!important}
+.vault-search-input::placeholder{color:#9A8891!important}
 .vault-list-settings{color:#682C43!important;background:#F7EFF2!important;border:1px solid #E6D4DA!important}
 .vault-list-settings:active{background:#EEDFE4!important}
 .vault-list-body{padding:16px!important;gap:10px!important}#status-rail+#vault-list-body{padding-top:6px!important}
@@ -3487,11 +3492,14 @@ html{background:#fff}
      encryption before it ever leaves this device. -->
 <div id="s-vault-list" class="screen">
   <div class="vault-list-hdr">
-    <div class="vault-list-heading">
+    <div class="vault-list-heading" id="vault-list-heading">
       <div class="vault-list-title" id="vault-list-title" data-i18n="chats">Chats</div>
     </div>
+    <div class="vault-list-search" id="vault-list-search" hidden>
+      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)"/>
+    </div>
     <div class="vault-list-nav">
-      <button class="vault-list-settings" type="button" onclick="openNewConnection()" title="Add your friend" aria-label="Find a Vaultlix private number">
+      <button class="vault-list-settings" type="button" id="vault-search-toggle" onclick="toggleVaultSearch()" title="Search chats" aria-label="Search chats">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
       </button>
       <button class="vault-list-settings" type="button" onclick="openCreateGroup()" title="New private group" aria-label="Create a private group">
@@ -14883,6 +14891,8 @@ function vaultAvatarPalette(seed) {
 }
 
 let currentVaultListMode = 'chats';
+let vaultSearchActive = false;
+let vaultSearchQuery = '';
 let statusFeed = [];
 let statusFeedLoading = false;
 let statusFeedRefreshQueued = false;
@@ -15591,6 +15601,48 @@ function updateVaultNavigationBadges() {
 
 function setVaultListMode(mode) {
   currentVaultListMode = mode === 'calls' ? 'calls' : 'chats';
+  if (currentVaultListMode === 'calls' && vaultSearchActive) closeVaultSearch();
+  renderVaultList();
+}
+
+const VAULT_SEARCH_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>';
+const VAULT_SEARCH_CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>';
+
+function toggleVaultSearch() {
+  if (vaultSearchActive) closeVaultSearch();
+  else openVaultSearch();
+}
+
+function openVaultSearch() {
+  vaultSearchActive = true;
+  document.getElementById('vault-list-heading')?.setAttribute('hidden', '');
+  document.getElementById('vault-list-search')?.removeAttribute('hidden');
+  const toggleBtn = document.getElementById('vault-search-toggle');
+  if (toggleBtn) {
+    toggleBtn.innerHTML = VAULT_SEARCH_CLOSE_ICON;
+    toggleBtn.title = 'Close search';
+    toggleBtn.setAttribute('aria-label', 'Close search');
+  }
+  const input = document.getElementById('vault-search-input');
+  if (input) { input.value = ''; input.focus(); }
+}
+
+function closeVaultSearch() {
+  vaultSearchActive = false;
+  vaultSearchQuery = '';
+  document.getElementById('vault-list-search')?.setAttribute('hidden', '');
+  document.getElementById('vault-list-heading')?.removeAttribute('hidden');
+  const toggleBtn = document.getElementById('vault-search-toggle');
+  if (toggleBtn) {
+    toggleBtn.innerHTML = VAULT_SEARCH_ICON;
+    toggleBtn.title = 'Search chats';
+    toggleBtn.setAttribute('aria-label', 'Search chats');
+  }
+  renderVaultList();
+}
+
+function filterVaultList(value) {
+  vaultSearchQuery = (value || '').trim().toLowerCase();
   renderVaultList();
 }
 
@@ -15829,7 +15881,8 @@ function renderVaultList() {
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
   }
-  let html = `${requestHtml}${outgoingRequestHtml}`;
+  const searchQuery = vaultSearchActive ? vaultSearchQuery : '';
+  let html = searchQuery ? '' : `${requestHtml}${outgoingRequestHtml}`;
   const hiddenStatusIds = statusHiddenIds();
   const liveStatusAuthors = new Set(statusFeed
     .filter(item => !item.own && !hiddenStatusIds.has(item.id))
@@ -15844,7 +15897,18 @@ function renderVaultList() {
     return { kind:'room', room, sortKey: vaultLastActivity(room) };
   });
   const orderedEntries = [...groupEntries, ...roomEntries].sort((a, b) => b.sortKey - a.sortKey);
-  for (const entry of orderedEntries) {
+  const filteredEntries = searchQuery
+    ? orderedEntries.filter(entry => entry.kind === 'group'
+      ? (entry.group.name || '').toLowerCase().includes(searchQuery)
+      : roomDisplayLabel(entry.room).toLowerCase().includes(searchQuery)
+        || formatPrivateNumber(entry.room.peerPrivateNumber || '').toLowerCase().includes(searchQuery))
+    : orderedEntries;
+  if (searchQuery && filteredEntries.length === 0) {
+    body._vaultlixChatListHtml = null;
+    body.innerHTML = `<div class="vault-list-empty"><strong>No matches</strong>No chats match "${escHtml(searchQuery)}".</div>`;
+    return;
+  }
+  for (const entry of filteredEntries) {
     if (entry.kind === 'group') {
       const group = entry.group;
       const opening = openingPrivateGroupId === group.id;

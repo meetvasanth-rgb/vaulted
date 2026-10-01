@@ -64,5 +64,9 @@ test('renderVaultList no longer renders every group before the room loop uncondi
   const body = client.slice(start, end);
   assert.doesNotMatch(body, /for \(const group of orderedGroups\)/);
   assert.doesNotMatch(body, /for \(const room of orderedRooms\)/);
-  assert.match(body, /for \(const entry of orderedEntries\)/);
+  // The render loop iterates filteredEntries now (orderedEntries narrowed by
+  // an active inbox search query) — unfiltered when no search is active, so
+  // this is still exactly the same ordering as before, just filterable.
+  assert.match(body, /const filteredEntries = searchQuery[\s\S]{0,400}: orderedEntries;/);
+  assert.match(body, /for \(const entry of filteredEntries\)/);
 });
