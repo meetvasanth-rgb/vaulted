@@ -5678,7 +5678,8 @@ function importAccountBundle(bundle, accountId) {
     const deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(current?.deleteLedger, ownedSession.deleteLedger));
     const callHistoryClearedAt = Math.max(Number(current?.callHistoryClearedAt) || 0, Number(ownedSession.callHistoryClearedAt) || 0);
     const lastReadSeq = Math.max(Number(current?.lastReadSeq) || 0, Number(ownedSession.lastReadSeq) || 0);
-    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq });
+    const unreadStateVersion = Math.max(Number(current?.unreadStateVersion) || 0, Number(ownedSession.unreadStateVersion) || 0);
+    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
@@ -5701,7 +5702,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, unread, unreadSystemCount, lastReadSeq }) {
+function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, unread, unreadSystemCount, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -5901,6 +5902,12 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // this records what this device has genuinely displayed and prevents old
     // history from becoming "new" again during a later full restore.
     lastReadSeq: Math.max(0, Number(lastReadSeq) || 0),
+    // Version 2 introduces lastReadSeq. Existing installations establish a
+    // baseline only after one successful full history restore; new rooms are
+    // born current and need no migration.
+    unreadStateVersion: unreadStateVersion === undefined ? 2 : Math.max(0, Number(unreadStateVersion) || 0),
+    unreadMigrationPending: unreadStateVersion !== undefined && Number(unreadStateVersion) < 2,
+    unreadMigrationCutoffAt:Math.max(0, Number(unreadMigrationCutoffAt) || 0),
   };
 }
 
@@ -6305,6 +6312,7 @@ async function persistRoom(room) {
       unread:Math.max(0, Number(room.unread) || 0),
       unreadSystemCount:Math.max(0, Number(room.unreadSystemCount) || 0),
       lastReadSeq:Math.max(0, Number(room.lastReadSeq) || 0),
+      unreadStateVersion:Math.max(0, Number(room.unreadStateVersion) || 0),
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
       // call after persistDeleteLedger() had already written entries (e.g.
@@ -6343,6 +6351,7 @@ function persistRoomSeq(room) {
     existing.unread = Math.max(0, Number(room.unread) || 0);
     existing.unreadSystemCount = Math.max(0, Number(room.unreadSystemCount) || 0);
     existing.lastReadSeq = Math.max(0, Number(room.lastReadSeq) || 0);
+    existing.unreadStateVersion = Math.max(0, Number(room.unreadStateVersion) || 0);
     existing.inboxActivityAt = vaultLastActivity(room) || existing.inboxActivityAt || Date.now();
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
@@ -18686,6 +18695,22 @@ async function restoreRoomHistory(room) {
     reconcileLocalHistory(room, localMessages, data);
 
     if (data.messages && data.messages.length > 0) await applyRestoredHistory(room, data.messages, nowTs);
+    if (room.unreadMigrationPending) {
+      // Pre-v2 builds persisted a counter but no trustworthy read sequence;
+      // some older rooms therefore rebuilt every historic unreadAt-null
+      // record as new. Only a successful authoritative restore may establish
+      // this one-time baseline, so offline/error launches never discard a
+      // potentially genuine badge.
+      const legacyReadBaseline = (data.messages || []).reduce((highest, msg) => {
+        if ((Number(msg.ts) || 0) > room.unreadMigrationCutoffAt) return highest;
+        return Math.max(highest, Number(msg.seq) || 0);
+      }, 0);
+      room.lastReadSeq = Math.max(Number(room.lastReadSeq) || 0, legacyReadBaseline);
+      room.unread = 0;
+      room.unreadSystemCount = 0;
+      room.unreadStateVersion = 2;
+      room.unreadMigrationPending = false;
+    }
     if (Array.isArray(data.messages)) {
       let restoredUnread = 0;
       let restoredUnreadSystemCount = 0;
@@ -21416,7 +21441,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const code of idx) {
       const session = loadRoomSession(code);
       if (!session) continue;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:session.unread, unreadSystemCount:session.unreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:session.unread, unreadSystemCount:session.unreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.savedAt });
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;
