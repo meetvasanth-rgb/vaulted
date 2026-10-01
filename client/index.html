@@ -21548,6 +21548,24 @@ window.addEventListener('DOMContentLoaded', async () => {
     room.lastReceiptSeq = session.lastReceiptSeq || 0;
     room.lastReactionSeq = session.lastReactionSeq || 0;
     room.lastDeletionSeq = session.lastDeletionSeq || 0;
+    // Self-healing invariant, independent of (and running on every launch,
+    // unlike) the one-time version-gated migration below: if lastReadSeq
+    // has already caught up to lastSeq, this room has nothing outstanding
+    // by its own bookkeeping, so a nonzero unread counter is provably
+    // stale — confirmed live on a device where a never-opened room sat at
+    // unreadStateVersion:2 (migration already considered "done", so that
+    // one-time block never re-runs) with lastReadSeq===lastSeq but
+    // unread:4 anyway, the counter evidently bumped by some live-arrival
+    // path after the migration had already run once. There is nothing
+    // left to re-derive a correct nonzero value from at this point, so
+    // zero is the only value that's actually defensible here.
+    const preHealUnread = room.unread, preHealUnreadSystemCount = room.unreadSystemCount;
+    const staleUnreadSelfHealed = room.lastReadSeq >= room.lastSeq && (room.unread > 0 || room.unreadSystemCount > 0);
+    if (staleUnreadSelfHealed) {
+      room.unread = 0;
+      room.unreadSystemCount = 0;
+      persistRoomSeq(room);
+    }
     // The delete ledger is the one thing that survives a reload for message
     // history purposes — msgId -> deleteAt only, never content. Everything
     // else about the chat log itself gets rebuilt fresh below by re-fetching
@@ -21582,8 +21600,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       // (no badge change) but need completely different fixes.
       const unreadMigrationDiagBefore = {
         storedVersion: room.unreadStateVersion, pending: room.unreadMigrationPending,
-        storedUnread: room.unread, storedLastSeq: room.lastSeq, storedLastReadSeq: room.lastReadSeq,
-        cutoffAt: room.unreadMigrationCutoffAt,
+        storedUnread: preHealUnread, storedUnreadSystemCount: preHealUnreadSystemCount,
+        storedLastSeq: room.lastSeq, storedLastReadSeq: room.lastReadSeq,
+        cutoffAt: room.unreadMigrationCutoffAt, staleUnreadSelfHealed,
       };
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name, unreadCutoffAt:room.unreadMigrationPending ? room.unreadMigrationCutoffAt : undefined });
       logUnreadMigrationDiagnostic(room, { ...unreadMigrationDiagBefore, joinSucceeded: !result.error, returnedBaseline: result.unreadBaselineSeq });

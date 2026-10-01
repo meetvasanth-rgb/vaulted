@@ -4536,9 +4536,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (await rateLimited(`debug-log:${ip}`, 30, 60 * 1000)) return res200(res, { ok: false });
     const roomHash = typeof d.code === 'string' && d.code ? logCode(d.code.toLowerCase().trim()) : 'none';
     const fields = {};
-    for (const key of ['event', 'storedVersion', 'pending', 'storedUnread', 'storedLastSeq', 'storedLastReadSeq',
-      'cutoffAt', 'joinSucceeded', 'returnedBaseline', 'finalUnread', 'finalLastSeq', 'finalLastReadSeq',
-      'finalVersion', 'persisted', 'messagesInRestore']) {
+    for (const key of ['event', 'storedVersion', 'pending', 'storedUnread', 'storedUnreadSystemCount',
+      'storedLastSeq', 'storedLastReadSeq', 'cutoffAt', 'staleUnreadSelfHealed', 'joinSucceeded',
+      'returnedBaseline', 'finalUnread', 'finalLastSeq', 'finalLastReadSeq', 'finalVersion', 'persisted',
+      'messagesInRestore']) {
       const value = d[key];
       if (typeof value === 'number' || typeof value === 'boolean') fields[key] = value;
       else if (typeof value === 'string') fields[key] = value.slice(0, 40);
