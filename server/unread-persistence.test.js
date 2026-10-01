@@ -6,6 +6,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+const worker = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
+
+test('the Android unread fix ships in a fresh app-shell cache', () => {
+  assert.match(worker, /vaultlix-app-shell-v126/);
+});
 
 test('direct-chat unread state survives restart and clears only when viewed', () => {
   assert.match(client, /unread: Math\.max\(0, Number\(unread\) \|\| 0\)/);
