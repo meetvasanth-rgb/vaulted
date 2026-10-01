@@ -93,7 +93,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         suppressKeyboardInputAssistant(in: bridgeController.webView)
         observers.append(NotificationCenter.default.addObserver(
             forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main
-        ) { [weak self, weak bridgeController] _ in
+        ) { [weak self, weak bridgeController, weak window] note in
+            // Capacitor applies its final WKWebView frame only after the keyboard
+            // animation. Until then WebKit pans the focused textarea upward and
+            // the peer header leaves the visible viewport. Animate that same
+            // final frame alongside the system keyboard instead.
+            if let webView = bridgeController?.webView,
+               let window,
+               let keyboardValue = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
+                let keyboardFrame = window.convert(keyboardValue.cgRectValue, from: nil)
+                let overlap = max(0, window.bounds.maxY - keyboardFrame.minY)
+                let target = CGRect(x: webView.frame.origin.x,
+                                    y: webView.frame.origin.y,
+                                    width: window.bounds.width - webView.frame.origin.x,
+                                    height: window.bounds.height - webView.frame.origin.y - overlap)
+                let duration = (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+                let curve = (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? NSNumber)?.uintValue ?? 7
+                UIView.animate(withDuration: duration,
+                               delay: 0,
+                               options: UIView.AnimationOptions(rawValue: curve << 16).union(.beginFromCurrentState)) {
+                    webView.frame = target
+                    webView.scrollView.setContentOffset(.zero, animated: false)
+                }
+            }
             // The responder that owns this assistant is WebKit's internal
             // content view, not the outer WKWebView. It may be recreated and
             // only becomes the responder while a message box is focused, so
@@ -102,6 +124,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             DispatchQueue.main.async { [weak self, weak bridgeController] in
                 self?.suppressKeyboardInputAssistant(in: bridgeController?.webView)
             }
+#if DEBUG
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak bridgeController] in
+                self?.logKeyboardLayout(in: bridgeController?.webView)
+            }
+#endif
         })
         bridgeController.webView?.configuration.userContentController.add(self, name: "vaultlixCall")
         // A friend's invitation the App Clip saved before the person installed Vaultlix. The code
@@ -248,19 +275,55 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
         // Capacitor's keyboard plugin hides the form toolbar by overriding
         // inputAccessoryView on two historical WebKit classes. iOS 26 can
-        // focus a newer private subclass instead, so install the same nil
-        // override on the concrete responder class we actually observed.
-        // Only the public UIResponder selector is used; no private selector
-        // or class name is assumed.
-        let selector = #selector(getter: UIResponder.inputAccessoryView)
+        // focus a newer private subclass and can retain an accessory view
+        // controller after its buttons have gone. That leaves a blank white
+        // strip between the composer and keyboard. Override both public
+        // UIResponder accessory properties on the concrete responder class
+        // we actually observed so neither the toolbar nor its empty container
+        // reserves any height.
+        let viewSelector = #selector(getter: UIResponder.inputAccessoryView)
         let nilAccessory = imp_implementationWithBlock(
             { (_: AnyObject) -> UIView? in nil }
                 as @convention(block) (AnyObject) -> UIView?
         )
-        if !class_addMethod(responderClass, selector, nilAccessory, "@@:") {
-            class_replaceMethod(responderClass, selector, nilAccessory, "@@:")
+        if !class_addMethod(responderClass, viewSelector, nilAccessory, "@@:") {
+            class_replaceMethod(responderClass, viewSelector, nilAccessory, "@@:")
+        }
+
+        let controllerSelector = #selector(getter: UIResponder.inputAccessoryViewController)
+        let nilAccessoryController = imp_implementationWithBlock(
+            { (_: AnyObject) -> UIInputViewController? in nil }
+                as @convention(block) (AnyObject) -> UIInputViewController?
+        )
+        if !class_addMethod(responderClass, controllerSelector, nilAccessoryController, "@@:") {
+            class_replaceMethod(responderClass, controllerSelector, nilAccessoryController, "@@:")
         }
     }
+
+#if DEBUG
+    private func logKeyboardLayout(in webView: WKWebView?) {
+        guard let webView else { return }
+        func visit(_ view: UIView) {
+            let name = NSStringFromClass(type(of: view))
+            if name.contains("WKContent") || view.isFirstResponder {
+                let accessory = view.inputAccessoryView
+                let controller = view.inputAccessoryViewController
+                print("VAULTLIX_KEYBOARD_NATIVE class=\(name) first=\(view.isFirstResponder) frame=\(view.frame) accessory=\(String(describing: accessory?.frame)) controller=\(String(describing: controller?.view.frame))")
+            }
+            view.subviews.forEach(visit)
+        }
+        visit(webView)
+        webView.evaluateJavaScript("""
+          (() => {
+            const footer = document.getElementById('chat-ftr')?.getBoundingClientRect();
+            const input = document.getElementById('msg-input')?.getBoundingClientRect();
+            return JSON.stringify({innerHeight, vvHeight:visualViewport?.height, vvTop:visualViewport?.offsetTop, footer, input, focused:document.activeElement?.id, shell:document.getElementById('s-chat')?.className});
+          })()
+        """) { value, error in
+            print("VAULTLIX_KEYBOARD_WEB \(String(describing: value)) error=\(String(describing: error))")
+        }
+    }
+#endif
 
     private func emit(name: String, detail: [AnyHashable: Any]?) {
         guard let controller = window?.rootViewController as? CAPBridgeViewController,

@@ -21407,18 +21407,17 @@ function createChatKeyboardLayout(env) {
 
   function onFocusOut(event) {
     const target = event && event.target;
-    // Under native resize this is applied from keyboardWillHide instead, synced
-    // to the real native dismiss transition — see the comment there.
-    if (target && (target.id === 'msg-input' || target.id === 'group-message-input') && !env.nativeResize) markComposerFocus(false);
+    if (target && (target.id === 'msg-input' || target.id === 'group-message-input')) markComposerFocus(false);
     settle();
   }
 
   function onFocusIn(event) {
     const target = event.target;
     if (!target || (target.id !== 'msg-input' && target.id !== 'group-message-input')) return;
-    // Under native resize this is applied from keyboardWillShow instead, synced
-    // to the real native show transition — see the comment there.
-    if (!env.nativeResize) markComposerFocus(true);
+    // Drop the home-indicator safe-area as soon as the field owns focus. Waiting
+    // for a native callback left a 44px white band on iOS versions where the
+    // Capacitor plugin event was not delivered to this listener.
+    markComposerFocus(true);
     pinned = true; // starting to type always shows the latest message
     // Start with the height the keyboard had last time; the announcement corrects it.
     if (env.preShrinkOnFocus) { const known = env.recall ? env.recall() : 0; if (known) keyboardWillShow(known); }

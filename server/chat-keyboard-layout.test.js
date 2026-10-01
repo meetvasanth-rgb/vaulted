@@ -458,7 +458,9 @@ test('the iOS wrapper removes the inconsistent WKWebView form-navigation strip',
   assert.match(iosScene, /let responderClass: AnyClass = type\(of: responder\)/);
   assert.match(iosScene, /guard className\.contains\("WKContent"\)/);
   assert.match(iosScene, /#selector\(getter: UIResponder\.inputAccessoryView\)/);
-  assert.match(iosScene, /class_addMethod\(responderClass, selector, nilAccessory, "@@:"\)/);
+  assert.match(iosScene, /#selector\(getter: UIResponder\.inputAccessoryViewController\)/);
+  assert.match(iosScene, /class_addMethod\(responderClass, viewSelector, nilAccessory, "@@:"\)/);
+  assert.match(iosScene, /class_addMethod\(responderClass, controllerSelector, nilAccessoryController, "@@:"\)/);
   assert.doesNotMatch(iosScene, /reloadInputViews\(\)/);
 });
 
@@ -474,23 +476,30 @@ test('the iOS wrapper removes the inconsistent WKWebView form-navigation strip',
 // which is why it was never affected. Folding markComposerFocus into the
 // same native-driven keyboardWillShow/keyboardWillHide calls — instead of
 // the independent focusin/focusout DOM events — removes the second pass.
-test('under native resize, tapping the composer does not move the footer until the real native keyboard event arrives', () => {
+test('under native resize, tapping the composer immediately removes the footer safe-area', () => {
   const t = setup({ nativeResize:true });
   t.listeners.doc.focusin({ target:{ id:'msg-input' } });
-  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false, 'no footer change yet — only the real native event should trigger it');
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'the home-indicator gap closes even if the native plugin event is absent');
   t.layout.keyboardWillShow(336);
-  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'synced to the native event instead');
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true);
 });
 
-test('under native resize, leaving the composer does not move the footer back until the native hide event settles', () => {
+test('under native resize, leaving the composer restores the footer safe-area', () => {
   const t = setup({ nativeResize:true });
   t.layout.keyboardWillShow(336);
   assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true);
   t.listeners.doc.focusout({ target:{ id:'msg-input' } });
-  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'still native-event-driven, not the DOM blur');
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
   t.layout.keyboardWillHide();
   t.flush();
   assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
+});
+
+test('the iOS wrapper resizes the web view with the keyboard so the peer header stays visible', () => {
+  assert.match(iosScene, /keyboardFrameEndUserInfoKey/);
+  assert.match(iosScene, /UIView\.animate\(withDuration: duration/);
+  assert.match(iosScene, /webView\.frame = target/);
+  assert.match(iosScene, /webView\.scrollView\.setContentOffset\(\.zero, animated: false\)/);
 });
 
 test('without native resize (Android, browser), the footer still moves immediately on focus — unaffected by the native-event sync', () => {
