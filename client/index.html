@@ -6343,7 +6343,7 @@ function persistRoomSeq(room) {
   try {
     const key = roomStorageKey(room.code);
     const existing = JSON.parse(localStorage.getItem(key) || 'null');
-    if (!existing) return; // not persisted yet (still connecting) — nothing to update
+    if (!existing) return false; // not persisted yet (still connecting) — nothing to update
     existing.lastSeq = room.lastSeq;
     existing.lastReceiptSeq = room.lastReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
@@ -6356,7 +6356,21 @@ function persistRoomSeq(room) {
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
     scheduleAccountSync();
-  } catch(e) {}
+    return true;
+  } catch(e) { return false; }
+}
+
+// TEMPORARY DIAGNOSTIC — tracing the Android legacy-unread migration
+// (commits ad6fc5d..dab456b) for a device where a cleared/never-opened
+// room's unread badge was still reappearing after a full app reopen
+// despite the migration appearing to run. Routed through the server
+// (Railway logs) rather than a native Logcat bridge so it ships and can be
+// read back without a new Android build — remove once confirmed fixed.
+// Only pseudonymized/numeric state leaves the device; the server hashes
+// the room code the same way every other server log line already does
+// (logCode()), never logging the raw code, token, key or any content.
+function logUnreadMigrationDiagnostic(room, fields) {
+  try { api('/api/debug-log', { code: room.code, event:'unread_migration', ...fields }).catch(() => {}); } catch (e) {}
 }
 // Same lightweight read-modify-write as persistRoomSeq — patches only the
 // reconnect-comeback counters onto whatever's already stored, never the
@@ -18695,6 +18709,17 @@ async function restoreRoomHistory(room) {
     reconcileLocalHistory(room, localMessages, data);
 
     if (data.messages && data.messages.length > 0) await applyRestoredHistory(room, data.messages, nowTs);
+    // TEMPORARY DIAGNOSTIC — see logUnreadMigrationDiagnostic's own comment.
+    // This is the SECOND migration path (a full-history restore, as opposed
+    // to the lightweight /api/join one) — an unopened room is only expected
+    // to reach this one if something eagerly restored its history before
+    // the app fully settled, so logging here separately from the join path
+    // helps tell which of the two actually ran for a given room.
+    const restoreMigrationDiagBefore = room.unreadMigrationPending ? {
+      event:'full_restore', storedVersion: room.unreadStateVersion, pending: room.unreadMigrationPending,
+      storedUnread: room.unread, storedLastSeq: room.lastSeq, storedLastReadSeq: room.lastReadSeq,
+      cutoffAt: room.unreadMigrationCutoffAt, messagesInRestore: (data.messages || []).length,
+    } : null;
     if (room.unreadMigrationPending) {
       // Pre-v2 builds persisted a counter but no trustworthy read sequence;
       // some older rooms therefore rebuilt every historic unreadAt-null
@@ -18759,7 +18784,14 @@ async function restoreRoomHistory(room) {
     // created records with restored history in chronological order before
     // the chat is repainted.
     room.messages.sort((left, right) => (Number(left?.ts) || 0) - (Number(right?.ts) || 0));
-    persistRoomSeq(room);
+    const restoreMigrationPersisted = persistRoomSeq(room);
+    if (restoreMigrationDiagBefore) {
+      logUnreadMigrationDiagnostic(room, {
+        ...restoreMigrationDiagBefore,
+        finalUnread: room.unread, finalLastSeq: room.lastSeq, finalLastReadSeq: room.lastReadSeq,
+        finalVersion: room.unreadStateVersion, persisted: restoreMigrationPersisted,
+      });
+    }
     room.historyLoaded = true;
   } catch(e) {
     room.historyLoadFailed = true;
@@ -21538,7 +21570,19 @@ window.addEventListener('DOMContentLoaded', async () => {
         // it stops the cycle so new messages start working normally again.
         await persistRoom(room);
       }
+      // Snapshot BEFORE the request — everything below this line mutates
+      // room.unread/lastSeq/lastReadSeq/unreadStateVersion in place, so a
+      // post-hoc read could no longer tell "what the migration started
+      // from" apart from "what it ended with".
+      const unreadMigrationDiagBefore = room.unreadMigrationPending ? {
+        storedVersion: room.unreadStateVersion, pending: room.unreadMigrationPending,
+        storedUnread: room.unread, storedLastSeq: room.lastSeq, storedLastReadSeq: room.lastReadSeq,
+        cutoffAt: room.unreadMigrationCutoffAt,
+      } : null;
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name, unreadCutoffAt:room.unreadMigrationPending ? room.unreadMigrationCutoffAt : undefined });
+      if (unreadMigrationDiagBefore) {
+        logUnreadMigrationDiagnostic(room, { ...unreadMigrationDiagBefore, joinSucceeded: !result.error, returnedBaseline: result.unreadBaselineSeq });
+      }
       if (result.error) {
         // A failed reconnect is not an authoritative deletion. Keep the
         // encrypted local session visible and retryable; previously any
@@ -21593,7 +21637,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         room.unreadSystemCount = 0;
         room.unreadStateVersion = 2;
         room.unreadMigrationPending = false;
-        persistRoomSeq(room);
+        const persisted = persistRoomSeq(room);
+        logUnreadMigrationDiagnostic(room, {
+          finalUnread: room.unread, finalLastSeq: room.lastSeq, finalLastReadSeq: room.lastReadSeq,
+          finalVersion: room.unreadStateVersion, persisted,
+        });
       }
       room.sharedKey = null;
       // Prefer the server's current key, but fall back to the last key that

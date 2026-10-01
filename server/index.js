@@ -4520,6 +4520,33 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { code: roomCode, token, name, deleteTimer: parseInt(d.deleteTimer)||0, persistent, labelLength: namedLabel ? namedLabel.length : null });
   }
 
+  // TEMPORARY DIAGNOSTIC — tracing the Android legacy-unread migration
+  // (commits ad6fc5d..dab456b) for a device where a cleared/never-opened
+  // room's unread badge was still reappearing after a full app reopen
+  // despite the migration appearing to run. The production Android
+  // release WebView has no DevTools socket, so there's no way to inspect
+  // this client-side; routed through here (and visible in Railway logs)
+  // instead of adding a native Logcat bridge, which would need a new
+  // signed build before a single data point could come back. Only
+  // pseudonymized/numeric state is ever logged — logCode() is the exact
+  // same room-code hash every other server log line already uses, never
+  // the raw code, token, key or any message content. Remove this route
+  // once the migration is confirmed working on the affected device.
+  if (path === '/api/debug-log' && method === 'POST') {
+    if (await rateLimited(`debug-log:${ip}`, 30, 60 * 1000)) return res200(res, { ok: false });
+    const roomHash = typeof d.code === 'string' && d.code ? logCode(d.code.toLowerCase().trim()) : 'none';
+    const fields = {};
+    for (const key of ['event', 'storedVersion', 'pending', 'storedUnread', 'storedLastSeq', 'storedLastReadSeq',
+      'cutoffAt', 'joinSucceeded', 'returnedBaseline', 'finalUnread', 'finalLastSeq', 'finalLastReadSeq',
+      'finalVersion', 'persisted', 'messagesInRestore']) {
+      const value = d[key];
+      if (typeof value === 'number' || typeof value === 'boolean') fields[key] = value;
+      else if (typeof value === 'string') fields[key] = value.slice(0, 40);
+    }
+    console.log(`UNREAD_MIGRATION roomHash=${roomHash} ${JSON.stringify(fields)}`);
+    return res200(res, { ok: true });
+  }
+
   function unreadBaselineSeqForCutoff(room, rawCutoff) {
     if (rawCutoff === undefined || rawCutoff === null) return undefined;
     const requested = Number(rawCutoff);
