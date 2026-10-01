@@ -21573,16 +21573,20 @@ window.addEventListener('DOMContentLoaded', async () => {
       // Snapshot BEFORE the request — everything below this line mutates
       // room.unread/lastSeq/lastReadSeq/unreadStateVersion in place, so a
       // post-hoc read could no longer tell "what the migration started
-      // from" apart from "what it ended with".
-      const unreadMigrationDiagBefore = room.unreadMigrationPending ? {
+      // from" apart from "what it ended with". Logged UNCONDITIONALLY
+      // (not just when pending) — this is the one definitive signal that
+      // tells apart "the new JS never ran on this device" (stale
+      // service-worker cache) from "it ran, but this room's
+      // unreadStateVersion was already 2" (migration already considered
+      // done, correctly or not) — both look identical from the outside
+      // (no badge change) but need completely different fixes.
+      const unreadMigrationDiagBefore = {
         storedVersion: room.unreadStateVersion, pending: room.unreadMigrationPending,
         storedUnread: room.unread, storedLastSeq: room.lastSeq, storedLastReadSeq: room.lastReadSeq,
         cutoffAt: room.unreadMigrationCutoffAt,
-      } : null;
+      };
       const result = await api('/api/join', { code: session.code, token: session.token, pubKey, name: session.name, unreadCutoffAt:room.unreadMigrationPending ? room.unreadMigrationCutoffAt : undefined });
-      if (unreadMigrationDiagBefore) {
-        logUnreadMigrationDiagnostic(room, { ...unreadMigrationDiagBefore, joinSucceeded: !result.error, returnedBaseline: result.unreadBaselineSeq });
-      }
+      logUnreadMigrationDiagnostic(room, { ...unreadMigrationDiagBefore, joinSucceeded: !result.error, returnedBaseline: result.unreadBaselineSeq });
       if (result.error) {
         // A failed reconnect is not an authoritative deletion. Keep the
         // encrypted local session visible and retryable; previously any

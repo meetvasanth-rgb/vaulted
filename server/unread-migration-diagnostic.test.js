@@ -59,11 +59,11 @@ test('persistRoomSeq now reports whether it actually wrote, instead of a bare ea
   assert.match(fn, /catch\(e\) \{ return false; \}/);
 });
 
-test('the /api/join migration path logs a before-snapshot (captured before the request mutates room state) and an after-snapshot once persisted', () => {
-  const idx = client.indexOf('const unreadMigrationDiagBefore = room.unreadMigrationPending ? {');
+test('the /api/join path logs a before-snapshot UNCONDITIONALLY (not only when migration is pending), so a stale service-worker cache is distinguishable from "already migrated"', () => {
+  const idx = client.indexOf('const unreadMigrationDiagBefore = {');
   assert.notEqual(idx, -1);
   const section = client.slice(idx, idx + 4700);
-  assert.match(section, /joinSucceeded: !result\.error, returnedBaseline: result\.unreadBaselineSeq/);
+  assert.match(section, /logUnreadMigrationDiagnostic\(room, \{ \.\.\.unreadMigrationDiagBefore, joinSucceeded: !result\.error, returnedBaseline: result\.unreadBaselineSeq \}\);/);
   assert.match(section, /const persisted = persistRoomSeq\(room\);/);
   assert.match(section, /finalUnread: room\.unread, finalLastSeq: room\.lastSeq, finalLastReadSeq: room\.lastReadSeq,\s*\n\s*finalVersion: room\.unreadStateVersion, persisted,/);
 });
