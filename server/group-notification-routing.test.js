@@ -86,5 +86,18 @@ test('mergePrivateGroupMessages returns the actual fresh records (not just a cou
 
 test('pollPrivateGroup increments group.unread from poll catch-up (not just the live socket), excluding the open group and this account\'s own messages', () => {
   assert.match(groups,
-    /if \(changed && group\.id !== activePrivateGroupId\) \{\s*\n\s*const newUnread = fresh\.filter\(message => message\.senderId !== state\.accountId\)\.length;\s*\n\s*if \(newUnread > 0\) \{ group\.unread = \(group\.unread \|\| 0\) \+ newUnread; renderVaultList\(\); \}/);
+    /const newUnread = fresh\.filter\(message => message\.senderId !== state\.accountId && Number\(message\.createdAt\) > lastReadAt\)\.length;[\s\S]{0,220}group\.unread = \(group\.unread \|\| 0\) \+ newUnread;[\s\S]{0,100}savePrivateGroupSessions\(\)/);
+});
+
+test('the live group invalidation never increments unread before the deduplicated message fetch', () => {
+  const handler = client.slice(client.indexOf("if (message.type === 'account-update')"), client.indexOf("const room = message.roomCode"));
+  assert.doesNotMatch(handler, /group\.unread\s*=|group\.unread\+\+/);
+  assert.match(handler, /refreshPrivateGroups\(\)/);
+});
+
+test('group unread state and its read watermark survive an Android WebView pause/resume', () => {
+  assert.match(client, /unread:Math\.max\(0, Number\(group\.unread\) \|\| 0\)/);
+  assert.match(client, /lastReadAt:Math\.max\(0, Number\(group\.lastReadAt\) \|\| 0\)/);
+  assert.match(client, /group\.lastReadAt === undefined[\s\S]{0,100}Number\(group\.updatedAt\)/);
+  assert.match(groups, /activePrivateGroupId = id; group\.unread = 0;[\s\S]{0,260}savePrivateGroupSessions\(\)/);
 });

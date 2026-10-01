@@ -99,7 +99,7 @@ function clientFunction(name) {
 }
 test('client ignores room timer for old messages and repeated reads never extend a countdown',()=>{
   const scheduled=[];
-  const context={api:()=>Promise.resolve({}),Date:{now:()=>10000},activeRoomCode:null,persistDeleteLedger(){},setTimeout:(fn,ms)=>{scheduled.push(ms);return scheduled.length;},removeMessageRecord(){}};
+  const context={api:()=>Promise.resolve({}),Date:{now:()=>10000},activeRoomCode:null,persistDeleteLedger(){},persistRoomSeq(){},setTimeout:(fn,ms)=>{scheduled.push(ms);return scheduled.length;},removeMessageRecord(){}};
   vm.createContext(context);
   for(const name of ['confirmRead','startReceiveDeleteTimer','startDeleteTimer','handleReadReceipts'])vm.runInContext(clientFunction(name),context);
   const old={id:'old',deleteTimerSeconds:0},current={id:'new',deleteTimerSeconds:60};

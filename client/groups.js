@@ -408,7 +408,11 @@ async function refreshPrivateGroups() {
       try { name = await decryptPrivateGroupValue(keys[serverGroup.keyVersion], serverGroup.encryptedName); } catch (_) {}
     }
     privateGroups.set(serverGroup.id, { ...local, ...serverGroup, name, keys,
-      ownerAccountId:state.accountId, messages:local?.messages || [], unread:local?.unread || 0 });
+      ownerAccountId:state.accountId, messages:local?.messages || [],
+      unread:Math.max(0, Number(local?.unread) || 0),
+      lastReadAt:local?.lastReadAt === undefined
+        ? Math.max(0, Number(local?.updatedAt) || 0)
+        : Math.max(0, Number(local?.lastReadAt) || 0) });
   }
   for (const id of [...privateGroups.keys()]) if (!live.has(id)) { forgetPrivateGroupData(id); privateGroups.delete(id); }
   if ([...privateGroups.values()].some(group => !group.keys?.[group.keyVersion])) await restorePrivateGroupKeysFromBackup();
@@ -487,6 +491,9 @@ async function openPrivateGroup(id) {
   renderVaultList();
   try {
     activePrivateGroupId = id; group.unread = 0;
+    group.lastReadAt = Math.max(Number(group.lastReadAt) || 0, Number(group.messageCursor) || 0,
+      ...(group.messages || []).map(message => Number(message.createdAt) || 0));
+    savePrivateGroupSessions();
     const input = document.getElementById('group-message-input');
     if (input) input.value = '';
     updatePrivateGroupComposer();
@@ -1483,8 +1490,13 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
   // app wasn't connected (locked/backgrounded device, exactly what a push
   // notification announces) — the badge just never appeared.
   if (changed && group.id !== activePrivateGroupId) {
-    const newUnread = fresh.filter(message => message.senderId !== state.accountId).length;
-    if (newUnread > 0) { group.unread = (group.unread || 0) + newUnread; renderVaultList(); }
+    const lastReadAt = Number(group.lastReadAt) || 0;
+    const newUnread = fresh.filter(message => message.senderId !== state.accountId && Number(message.createdAt) > lastReadAt).length;
+    if (newUnread > 0) {
+      group.unread = (group.unread || 0) + newUnread;
+      savePrivateGroupSessions();
+      renderVaultList();
+    }
   }
   if ((render || changed || !wasHydrated) && group.id === activePrivateGroupId) renderPrivateGroupMessages(group);
   return true;

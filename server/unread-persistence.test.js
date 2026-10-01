@@ -13,12 +13,15 @@ test('direct-chat unread state survives restart and clears only when viewed', ()
   assert.match(client, /existing\.unread = Math\.max\(0, Number\(room\.unread\) \|\| 0\)/);
   assert.match(client, /existing\.unreadSystemCount = Math\.max\(0, Number\(room\.unreadSystemCount\) \|\| 0\)/);
   assert.match(client, /makeRoom\(\{[^\n]+unread:session\.unread, unreadSystemCount:session\.unreadSystemCount/);
-  assert.match(client, /function setActiveRoom[\s\S]{0,600}room\.unread = 0; room\.unreadSystemCount = 0;[\s\S]{0,80}persistRoomSeq\(room\)/);
+  assert.match(client, /function setActiveRoom[\s\S]{0,600}room\.unread = 0; room\.unreadSystemCount = 0;[\s\S]{0,240}persistRoomSeq\(room\)/);
+  assert.match(client, /lastReadSeq:Math\.max\(0, Number\(room\.lastReadSeq\) \|\| 0\)/);
+  assert.match(client, /lastReadSeq:session\.lastReadSeq === undefined \? session\.lastSeq : session\.lastReadSeq/);
 });
 
 test('successful full restore rebuilds unread counts from server read receipts', () => {
   assert.match(client, /msg\.type !== 'message' \|\| msg\.from === room\.token \|\| msg\.readAt/);
   assert.match(client, /room\.unread = restoredUnread/);
   assert.match(client, /room\.unreadSystemCount = restoredUnreadSystemCount/);
+  assert.match(client, /Number\(msg\.seq\) <= \(Number\(room\.lastReadSeq\) \|\| 0\)/);
   assert.match(client, /if \(unreadChanged\) persistRoomSeq\(room\)/);
 });
