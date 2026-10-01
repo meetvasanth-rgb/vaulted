@@ -20,6 +20,15 @@ test('locked iOS terminal call actions cannot resurrect stale call UI', () => {
   assert.match(client, /silentPresentation:true/);
 });
 
+test('connected iOS CallKit calls retain enough terminal metadata to restore encrypted history', () => {
+  assert.match(ios, /private func callHistoryPayload[\s\S]*"connected"[\s\S]*"outgoing"[\s\S]*"durationSeconds"/);
+  assert.match(ios, /payload\["connectedAt"\][\s\S]*self\.calls\[callID\] = payload/);
+  assert.match(ios, /let payload = self\.callHistoryPayload\(callID: callID, payload: rawPayload\)/);
+  assert.match(client, /hasConnectedCallHistory[\s\S]*pendingNativeMissedCallActions\.set/);
+  assert.match(client, /hasConnectedCallHistory[\s\S]*Encrypted call · \$\{formatCallTime\(duration\)\}/);
+  assert.match(client, /options\.silentPresentation[\s\S]*if \(wasActive\) addCallSysMsg/);
+});
+
 test('iOS unanswered CallKit timeout records a missed call before native state disappears', () => {
   assert.match(ios, /let payload = self\.calls\[callID\][\s\S]*reason: \.unanswered/);
   assert.match(ios, /reason: \.unanswered[\s\S]*self\.postAction\("missed", callID: callID, payload: payload\)/);

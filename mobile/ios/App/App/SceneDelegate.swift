@@ -52,6 +52,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var nativeLocalVideoEnabled = false
     private var nativeVideoSessionActive = false
     private weak var nativeVideoConsentAlert: UIAlertController?
+    private var pendingNativeVideoConsentRequest = false
+    private let nativeVideoRequestNotificationID = "vaultlix-video-request"
     // A source video is streamed to disk in bounded chunks from the web side
     // (see beginVideoCompression/appendVideoCompressionChunk below) rather
     // than arriving as one giant base64 data: URL — that used to mean a
@@ -160,6 +162,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 return
             }
             if requested {
+                self?.pendingNativeVideoConsentRequest = true
                 self?.nativeVideoSessionActive = true
                 self?.updateNativeVideoPlaceholder(waiting: true)
                 self?.showNativeVideoViews(remote: false)
@@ -414,6 +417,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func presentNativeVideoConsentPrompt() {
+        guard pendingNativeVideoConsentRequest else { return }
+        guard window?.windowScene?.activationState == .foregroundActive else {
+            postNativeVideoRequestNotification()
+            return
+        }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(
+            withIdentifiers: [nativeVideoRequestNotificationID]
+        )
         guard nativeVideoConsentAlert == nil,
               let root = window?.rootViewController else { return }
         let alert = UIAlertController(
@@ -422,11 +433,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Not now", style: .cancel) { [weak self] _ in
+            self?.pendingNativeVideoConsentRequest = false
             self?.nativeVideoConsentAlert = nil
             VaultlixCallManager.shared.respondToVideoRequestFromWeb(roomCode: "", accepted: false) { _ in }
             self?.hideNativeVideoViews()
         })
         alert.addAction(UIAlertAction(title: "Turn on camera", style: .default) { [weak self] _ in
+            self?.pendingNativeVideoConsentRequest = false
             self?.nativeVideoConsentAlert = nil
             VaultlixCallManager.shared.respondToVideoRequestFromWeb(roomCode: "", accepted: true) { success in
                 guard !success else { return }
@@ -438,6 +451,25 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         var presenter = root
         while let presented = presenter.presentedViewController { presenter = presented }
         presenter.present(alert, animated: true)
+    }
+
+    /// iOS does not allow an app to present its camera-consent UI above the
+    /// lock screen after a CallKit answer. Surface the request as a local
+    /// notification instead, retain it natively, and show the real accept /
+    /// decline prompt as soon as the user unlocks Vaultlix.
+    private func postNativeVideoRequestNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Vaultlix"
+        content.body = "Video requested — unlock Vaultlix to accept."
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("vault_chime.caf"))
+        content.userInfo["videoRequest"] = true
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(
+                identifier: nativeVideoRequestNotificationID,
+                content: content,
+                trigger: nil
+            )
+        )
     }
 
     private func installNativeVideoControlsIfNeeded(in root: UIView) {
@@ -540,6 +572,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func hideNativeVideoViews() {
+        pendingNativeVideoConsentRequest = false
+        UNUserNotificationCenter.current().removeDeliveredNotifications(
+            withIdentifiers: [nativeVideoRequestNotificationID]
+        )
         nativeVideoConsentAlert?.dismiss(animated: false)
         nativeVideoConsentAlert = nil
         if let track = nativeRemoteVideoTrack { track.remove(nativeRemoteVideoView) }
@@ -1264,6 +1300,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     func sceneDidBecomeActive(_ scene: UIScene) {
         hideAppSwitcherPrivacyCover()
         VaultlixCallManager.shared.enforceCallKeyboardGuard()
+        presentNativeVideoConsentPrompt()
         if webReady,
            let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {

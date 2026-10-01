@@ -98,3 +98,11 @@ test('native iOS call setup cannot remain connecting forever', () => {
   assert.match(engine, /nativeCallDidEnd\(callID: callID, action: "nativeFailed"\)/);
   assert.match(engine, /connectionWatchdogGeneration \+= 1/);
 });
+
+test('locked iOS calls retain video-upgrade requests until the user unlocks', () => {
+  const scene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
+  assert.match(scene, /pendingNativeVideoConsentRequest = true/);
+  assert.match(scene, /activationState == \.foregroundActive[\s\S]*postNativeVideoRequestNotification\(\)/);
+  assert.match(scene, /Video requested — unlock Vaultlix to accept\./);
+  assert.match(scene, /func sceneDidBecomeActive[\s\S]*presentNativeVideoConsentPrompt\(\)/);
+});
