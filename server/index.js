@@ -5714,7 +5714,11 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
         };
       })
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      // lastActiveAt (kept fresh by the inbox socket's pong heartbeat) reflects
+      // genuine recent use; updatedAt only moves on account-record changes
+      // (password, recovery, profile, bundle sync) and can sit stale for a
+      // continuously active user, so it ranked real activity wrong here.
+      .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
     for (const identity of identities) {
       activeIdentitySessions += identity.activeDevices;
       if (identity.notificationDevices > 0) notificationReadyIdentities++;
@@ -6176,6 +6180,18 @@ inboxWss.on('connection', (ws) => {
       const member = rooms.get(code)?.members.get(token);
       if (member) member.lastSeen = now;
       realtimeCoordinator.markPresence(code, token, ws.connectionId).catch(() => {});
+    }
+    // account.lastActiveAt otherwise only moved at the socket's initial auth
+    // handshake — a healthy connection can then sit open for days of real
+    // use (messages flow over the room-token-authenticated HTTP routes, not
+    // this socket) without ever looking active again. The 25s ping/pong
+    // already happening to keep the connection alive doubles as the signal;
+    // touchAccountActivity's own persistence is already throttled (see
+    // ACTIVITY_PERSIST_INTERVAL_MS), so this is just a cheap in-memory stamp
+    // most of the time.
+    if (ws.authenticated && ws.accountId) {
+      const account = accounts.get(ws.accountId);
+      if (account) touchAccountActivity(ws.accountId, account);
     }
   });
   ws.on('error', (err) => console.error('Inbox socket error:', err.message));
