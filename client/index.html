@@ -16578,19 +16578,28 @@ function activeScreenId() {
   return document.querySelector('.screen.active')?.id || null;
 }
 
+function privateGroupChatOpen() {
+  return document.getElementById('group-chat')?.classList.contains('open') === true;
+}
+
 function nativeSwipeNavigationBlocked(target) {
   if (quickLockActive || [...rooms.values()].some(room => room.callState && room.callState !== 'idle')) return true;
   if (settingsOpen || document.querySelector(
     '#conversation-menu.open, #qr-overlay, #connect-overlay, #call-overlay, ' +
     '.app-lock-overlay.open, .account-overlay.open, .safety-overlay.open, ' +
     '.emergency-overlay.open, .achievement-celebration.open, .achievements-overlay.open, .number-card-overlay.open, ' +
-    '.pdf-preview-overlay.open, .image-viewer-overlay, #status-composer'
+    '.pdf-preview-overlay.open, .image-viewer-overlay, #status-composer, ' +
+    '#group-chat.selecting, #group-members.open, #group-create-overlay.open, #group-add-overlay.open'
   )) return true;
-  return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile');
+  return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile, .group-message');
 }
 
 function navigateBackFromNativeSwipe() {
   closeConversationMenu();
+  // Private groups are a full-screen layer above the inbox rather than a
+  // regular `.screen`, so activeScreenId() cannot identify them. Give that
+  // layer the same back gesture as a one-to-one conversation.
+  if (privateGroupChatOpen()) { closePrivateGroup(); return; }
   // The status viewer floats above whatever screen opened it rather than
   // being a screen of its own, so it needs its own check ahead of the
   // screen-id switch below — same "swipe to go back" the other tabs get.
@@ -16619,6 +16628,10 @@ function navigateHomeFromNativeSwipe() {
     window.VaultlixAndroid.goToDeviceHome();
     return;
   }
+  // iOS and older native wrappers use the in-app Chats screen as the same
+  // safe fallback. Remove the group layer first or it would remain over the
+  // inbox and make the right-to-left gesture appear to do nothing.
+  if (privateGroupChatOpen()) closePrivateGroup();
   if (loadAccountState() || rooms.size > 0) openVaultInbox();
   else openMainHome();
 }

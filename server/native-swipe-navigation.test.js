@@ -15,6 +15,14 @@ test('native horizontal swipes provide back and app-home navigation', () => {
   assert.match(client, /window\.VaultlixAndroid\.goToDeviceHome\(\)/);
 });
 
+test('private group chat uses the same native swipe navigation as one-to-one chat', () => {
+  assert.match(client, /function privateGroupChatOpen\(\)/);
+  assert.match(client, /if \(privateGroupChatOpen\(\)\) \{ closePrivateGroup\(\); return; \}/);
+  assert.match(client, /if \(privateGroupChatOpen\(\)\) closePrivateGroup\(\);\s*if \(loadAccountState\(\) \|\| rooms\.size > 0\) openVaultInbox\(\)/);
+  assert.match(client, /\.msg-album-tile, \.group-message/);
+  assert.match(client, /#group-chat\.selecting, #group-members\.open/);
+});
+
 test('native swipes do not take over calls, overlays, or interactive content', () => {
   assert.match(client, /room\.callState && room\.callState !== 'idle'/);
   assert.match(client, /#conversation-menu\.open/);
@@ -24,7 +32,7 @@ test('native swipes do not take over calls, overlays, or interactive content', (
   assert.match(client, /Math\.abs\(dx\) < Math\.abs\(dy\) \* 1\.25/);
   // Composing a status (caption/audience picker) must not be interrupted by
   // an accidental back/home swipe underneath it.
-  assert.match(client, /'\.pdf-preview-overlay\.open, \.image-viewer-overlay, #status-composer'/);
+  assert.match(client, /'\.pdf-preview-overlay\.open, \.image-viewer-overlay, #status-composer, '/);
 });
 
 test('the status viewer answers the same native back/home swipe as every other screen', () => {
