@@ -52,7 +52,7 @@ test('a call push stays data-only (unchanged behavior)', async () => {
 test('a push with no msgId and not a call (e.g. a connection request) keeps the existing system-rendered path', async () => {
   const message = await buildFcmMessage({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1' });
   assert.deepEqual(message.notification, { title: 'Vaultlix', body: 'New connection request' });
-  assert.equal(message.android.notification.channelId, 'vaultlix_messages_bright_v1');
+  assert.equal(message.android.notification.channelId, 'vaultlix_messages_universal_v2');
 });
 
 test('a private-group message (carries groupId, no msgId) is sent data-only, with groupId/privateGroup forwarded', async () => {

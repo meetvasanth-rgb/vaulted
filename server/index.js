@@ -935,7 +935,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         body: parsed.body || 'New activity',
       };
       message.android.notification = {
-        channelId: 'vaultlix_messages_bright_v1',
+        channelId: 'vaultlix_messages_universal_v2',
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
         sound: 'vault_chime',
