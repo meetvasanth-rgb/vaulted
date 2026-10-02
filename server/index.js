@@ -6177,6 +6177,18 @@ inboxWss.on('connection', (ws) => {
       if (member) member.lastSeen = now;
       realtimeCoordinator.markPresence(code, token, ws.connectionId).catch(() => {});
     }
+    // account.lastActiveAt otherwise only moved at the socket's initial auth
+    // handshake — a healthy connection can then sit open for days of real
+    // use (messages flow over the room-token-authenticated HTTP routes, not
+    // this socket) without ever looking active again. The 25s ping/pong
+    // already happening to keep the connection alive doubles as the signal;
+    // touchAccountActivity's own persistence is already throttled (see
+    // ACTIVITY_PERSIST_INTERVAL_MS), so this is just a cheap in-memory stamp
+    // most of the time.
+    if (ws.authenticated && ws.accountId) {
+      const account = accounts.get(ws.accountId);
+      if (account) touchAccountActivity(ws.accountId, account);
+    }
   });
   ws.on('error', (err) => console.error('Inbox socket error:', err.message));
   const authTimer = setTimeout(() => {
