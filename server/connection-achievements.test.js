@@ -58,12 +58,12 @@ test('achievements animate as a poised, badge-first moment without a share card'
 });
 
 test('each direct conversation exposes earned badges and upcoming progress', () => {
-  assert.match(client, /onclick="openConversationAchievements\(\)"[\s\S]{0,300}<span>Achievements<\/span>/);
+  assert.match(client, /onclick="openConversationAchievements\(\)"[\s\S]{0,300}<span data-i18n="achievements">Achievements<\/span>/);
   assert.match(client, /id="achievements-overlay"[^>]*role="dialog"/);
-  assert.match(client, /300 messages[\s\S]*500 messages[\s\S]*1,000 messages/);
-  assert.match(client, /First secure call[\s\S]*60 call minutes[\s\S]*5 call hours[\s\S]*25 call hours/);
-  assert.match(client, /First video call[\s\S]*10 video calls/);
-  assert.match(client, /First voice note[\s\S]*100 voice notes[\s\S]*First media share[\s\S]*100 media shares/);
+  assert.match(client, /name:`300 \$\{i18n\('messages_unit'\)\}`[\s\S]*name:`500 \$\{i18n\('messages_unit'\)\}`[\s\S]*name:`1,000 \$\{i18n\('messages_unit'\)\}`/);
+  assert.match(client, /name:i18n\('first_secure_call'\)[\s\S]*i18nFormat\('call_minutes',[\s\S]*i18nFormat\('call_hours'/);
+  assert.match(client, /name:i18n\('first_video_call'\)[\s\S]*i18nFormat\('video_calls'/);
+  assert.match(client, /name:i18n\('first_voice_note'\)[\s\S]*i18nFormat\('voice_notes'[\s\S]*name:i18n\('first_media_share'\)[\s\S]*i18nFormat\('media_shares'/);
   assert.match(client, /achievement-badge-card\$\{achieved \? ' earned' : ''\}/);
 });
 

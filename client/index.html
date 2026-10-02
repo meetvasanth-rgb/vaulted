@@ -3421,18 +3421,18 @@ html{background:#fff}
       <button class="chat-call-btn" id="video-call-btn" type="button" onclick="startVideoCall()" title="Video call" aria-label="Start video call" disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg>
       </button>
-      <button class="conversation-menu-btn" id="conversation-menu-btn" type="button" onclick="toggleConversationMenu(event)" title="Conversation menu" aria-label="Open conversation menu" aria-expanded="false" aria-controls="conversation-menu">
+      <button class="conversation-menu-btn" id="conversation-menu-btn" type="button" onclick="toggleConversationMenu(event)" title="Conversation menu" aria-label="Open conversation menu" data-i18n-title="conversation_actions" data-i18n-aria-label="open_conversation_menu" aria-expanded="false" aria-controls="conversation-menu">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
       </button>
     </div>
   </div>
-  <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" onclick="event.stopPropagation()">
-    <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span>Conversation settings</span></button>
-    <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationAchievements()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 13v4M8 20h8M10 17h4"/></svg></span><span>Achievements</span></button>
-    <button class="conversation-menu-item" type="button" role="menuitem" onclick="quickLockFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>Quick Lock</span></button>
-    <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span>Clear chat</span></button>
-    <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span>Leave conversation</span></button>
-    <button class="conversation-menu-item destructive" type="button" role="menuitem" onclick="deleteConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></span><span>Delete conversation</span></button>
+  <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" data-i18n-aria-label="conversation_actions" onclick="event.stopPropagation()">
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span data-i18n="conversation_settings">Conversation settings</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationAchievements()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 13v4M8 20h8M10 17h4"/></svg></span><span data-i18n="achievements">Achievements</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="quickLockFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span data-i18n="quick_lock">Quick Lock</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span data-i18n="clear_chat">Clear chat</span></button>
+    <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span data-i18n="leave_conversation">Leave conversation</span></button>
+    <button class="conversation-menu-item destructive" type="button" role="menuitem" onclick="deleteConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></span><span data-i18n="delete_conversation">Delete conversation</span></button>
   </div>
   <button class="cross-vault-banner" id="cross-vault-banner" type="button" onclick="openCrossVaultMessage()" aria-live="polite">
     <span class="cross-vault-banner-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12" rx="4"/><path d="m8 20 3-3"/></svg></span>
@@ -4179,14 +4179,14 @@ html{background:#fff}
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
       </div>
       <div class="settings-row-text">
-        <div class="settings-row-title" id="settings-peer-number-name">Participant’s Private Number</div>
-        <div class="settings-row-sub" id="settings-peer-private-number">Unavailable</div>
+        <div class="settings-row-title" id="settings-peer-number-name" data-i18n="participant_private_number">Participant’s Private Number</div>
+        <div class="settings-row-sub" id="settings-peer-private-number" data-i18n="private_number_unavailable">Private Number unavailable</div>
         <div class="settings-row-sub" data-i18n="peer_number_privacy">Visible only inside your connected conversation with this participant.</div>
       </div>
     </div>
     <div id="settings-peer-number-actions" style="display:none;gap:8px;padding:0 20px 18px">
-      <button class="account-secondary" type="button" onclick="copyActivePeerPrivateNumber()" style="margin:0">Copy number</button>
-      <button class="account-secondary" type="button" onclick="shareActivePeerPrivateNumber()" style="margin:0">Share number</button>
+      <button class="account-secondary" type="button" onclick="copyActivePeerPrivateNumber()" style="margin:0" data-i18n="copy_number">Copy number</button>
+      <button class="account-secondary" type="button" onclick="shareActivePeerPrivateNumber()" style="margin:0" data-i18n="share_number">Share number</button>
     </div>
 
     <div class="settings-divider"></div>
@@ -4209,11 +4209,11 @@ html{background:#fff}
           <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title">Keep this conversation?</div>
-          <div class="settings-row-sub">You've returned to this conversation several times. Keep it available until either person closes it.</div>
+          <div class="settings-row-title" data-i18n="keep_conversation_question">Keep this conversation?</div>
+          <div class="settings-row-sub" data-i18n="keep_conversation_subtitle">You've returned to this conversation several times. Keep it available until either person closes it.</div>
           <div style="display:flex;gap:8px;margin-top:10px">
-            <button onclick="acceptPersistentSuggestion()" style="background:#682C43;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Keep conversation</button>
-            <button onclick="dismissPersistentSuggestion()" style="background:transparent;color:#9A8C7E;border:0.5px solid #E4DDD3;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer">Not now</button>
+            <button onclick="acceptPersistentSuggestion()" style="background:#682C43;color:#FFFFFF;border:none;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer" data-i18n="keep_conversation">Keep conversation</button>
+            <button onclick="dismissPersistentSuggestion()" style="background:transparent;color:#9A8C7E;border:0.5px solid #E4DDD3;border-radius:6px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer" data-i18n="not_now">Not now</button>
           </div>
         </div>
       </div>
@@ -4221,14 +4221,14 @@ html{background:#fff}
     </div>
 
     <div id="anon-link-section" style="display:none">
-      <div class="settings-section-label">Persistent conversation</div>
+      <div class="settings-section-label" data-i18n="persistent_conversation">Persistent conversation</div>
 
       <div class="settings-row" style="cursor:default">
         <div class="settings-row-icon" style="background:#FBF6EC;color:#682C43;">
           <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title">This conversation stays available</div>
+          <div class="settings-row-title" data-i18n="conversation_stays_available">This conversation stays available</div>
           <div class="settings-row-sub" id="anon-link-stats">—</div>
         </div>
       </div>
@@ -4238,8 +4238,8 @@ html{background:#fff}
           <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
         </div>
         <div class="settings-row-text">
-          <div class="settings-row-title" style="color:#C87588;">Revoke &amp; get new link</div>
-          <div class="settings-row-sub">Current link stops working immediately for both of you</div>
+          <div class="settings-row-title" style="color:#C87588;" data-i18n="revoke_get_new_link">Revoke &amp; get new link</div>
+          <div class="settings-row-sub" data-i18n="current_link_stops">Current link stops working immediately for both of you</div>
         </div>
       </div>
 
@@ -4247,7 +4247,7 @@ html{background:#fff}
     </div>
     </div>
 
-    <div class="settings-empty-note" id="settings-chat-empty" style="display:none">Open a conversation to manage its label, clear its messages, or use participant safety controls.</div>
+    <div class="settings-empty-note" id="settings-chat-empty" style="display:none" data-i18n="open_conversation_to_manage">Open a conversation to manage its label, clear its messages, or use participant safety controls.</div>
 
     <div id="settings-about-section">
     <div class="settings-section-label">About</div>
@@ -4305,14 +4305,14 @@ html{background:#fff}
 
 <div class="safety-overlay" id="report-overlay" role="dialog" aria-modal="true" aria-labelledby="report-title" onclick="if(event.target===this)closeReportPanel()">
   <div class="safety-sheet">
-    <h2 class="safety-title" id="report-title">Report and block</h2>
-    <p class="safety-copy">Vaultlix cannot read encrypted conversations. Your report sends the reason and a one-way conversation identifier. Recent decrypted messages are included only if you explicitly choose to share them.</p>
-    <label class="safety-reason" for="report-reason">Reason</label>
-    <select class="safety-select" id="report-reason"><option value="spam">Spam or scam</option><option value="harassment">Harassment or bullying</option><option value="threats">Threats or violence</option><option value="sexual">Sexual or exploitative content</option><option value="illegal">Suspected illegal activity</option><option value="other">Other</option></select>
-    <textarea class="safety-details" id="report-details" maxlength="500" placeholder="Optional details (do not include passwords or private keys)"></textarea>
-    <label class="safety-consent"><input type="checkbox" id="report-include-messages"><span>Include up to five recent readable text messages with this report. I understand this shares their decrypted content with Vaultlix safety staff.</span></label>
-    <p class="settings-desc">Your category, details and account/conversation references go to the operator for review within 24 hours. Text messages are included only if you select the option above. For follow-up: privacy@vaultlix.com.</p>
-    <div class="safety-actions"><button type="button" onclick="closeReportPanel()">Cancel</button><button class="danger" id="report-submit" type="button" onclick="submitReportAndBlock()">Report and block</button></div>
+    <h2 class="safety-title" id="report-title" data-i18n="report_and_block">Report and block</h2>
+    <p class="safety-copy" data-i18n="report_privacy_explanation">Vaultlix cannot read encrypted conversations. Your report sends the reason and a one-way conversation identifier. Recent decrypted messages are included only if you explicitly choose to share them.</p>
+    <label class="safety-reason" for="report-reason" data-i18n="reason">Reason</label>
+    <select class="safety-select" id="report-reason"><option value="spam" data-i18n="spam_or_scam">Spam or scam</option><option value="harassment" data-i18n="harassment_or_bullying">Harassment or bullying</option><option value="threats" data-i18n="threats_or_violence">Threats or violence</option><option value="sexual" data-i18n="sexual_or_exploitative_content">Sexual or exploitative content</option><option value="illegal" data-i18n="suspected_illegal_activity">Suspected illegal activity</option><option value="other" data-i18n="other">Other</option></select>
+    <textarea class="safety-details" id="report-details" maxlength="500" placeholder="Optional details (do not include passwords or private keys)" data-i18n-placeholder="optional_report_details"></textarea>
+    <label class="safety-consent"><input type="checkbox" id="report-include-messages"><span data-i18n="report_message_consent">Include up to five recent readable text messages with this report. I understand this shares their decrypted content with Vaultlix safety staff.</span></label>
+    <p class="settings-desc" data-i18n="report_review_note">Your category, details and account/conversation references go to the operator for review within 24 hours. Text messages are included only if you select the option above. For follow-up: privacy@vaultlix.com.</p>
+    <div class="safety-actions"><button type="button" onclick="closeReportPanel()" data-i18n="cancel">Cancel</button><button class="danger" id="report-submit" type="button" onclick="submitReportAndBlock()" data-i18n="report_and_block">Report and block</button></div>
   </div>
 </div>
 
@@ -4548,8 +4548,8 @@ html{background:#fff}
 </div>
 <div class="achievements-overlay" id="achievements-overlay" role="dialog" aria-modal="true" aria-labelledby="achievements-title">
   <div class="achievements-head">
-    <button class="achievements-close" type="button" onclick="closeConversationAchievements()" aria-label="Close achievements">‹</button>
-    <div class="achievements-heading"><strong id="achievements-title">Achievements</strong><span id="achievements-peer">Private connection</span></div>
+    <button class="achievements-close" type="button" onclick="closeConversationAchievements()" aria-label="Close achievements" data-i18n-aria-label="close_achievements">‹</button>
+    <div class="achievements-heading"><strong id="achievements-title" data-i18n="achievements">Achievements</strong><span id="achievements-peer" data-i18n="private_connection">Private connection</span></div>
     <span aria-hidden="true"></span>
   </div>
   <div class="achievements-body" id="achievements-body"></div>
@@ -4652,6 +4652,55 @@ Object.assign(VAULTLIX_TRANSLATIONS.ru, { new_connection:'Продлить ва�
 Object.assign(VAULTLIX_TRANSLATIONS.hi, { new_connection:'अपनी निजी लाइन बढ़ाएँ', new_private_connection:'अपनी निजी लाइन बढ़ाएँ' });
 Object.assign(VAULTLIX_TRANSLATIONS.ar, { new_connection:'وسّع خطك الخاص', new_private_connection:'وسّع خطك الخاص' });
 Object.assign(VAULTLIX_TRANSLATIONS.hy, { new_connection:'Ընդլայնեք ձեր գիծը', new_private_connection:'Ընդլայնեք ձեր գիծը' });
+const VAULTLIX_CONVERSATION_TRANSLATIONS = {
+  en: {
+    conversation_actions:'Conversation actions', open_conversation_menu:'Open conversation menu', achievements:'Achievements', quick_lock:'Quick Lock', leave_conversation:'Leave conversation', delete_conversation:'Delete conversation', close_achievements:'Close achievements', private_connection:'Private connection',
+    participant_private_number:'Participant’s Private Number', private_number_unavailable:'Private Number unavailable', copy_number:'Copy number', share_number:'Share number', keep_conversation_question:'Keep this conversation?', keep_conversation_subtitle:"You've returned to this conversation several times. Keep it available until either person closes it.", keep_conversation:'Keep conversation', not_now:'Not now',
+    report_privacy_explanation:'Vaultlix cannot read encrypted conversations. Your report sends the reason and a one-way conversation identifier. Recent decrypted messages are included only if you explicitly choose to share them.', reason:'Reason', spam_or_scam:'Spam or scam', harassment_or_bullying:'Harassment or bullying', threats_or_violence:'Threats or violence', sexual_or_exploitative_content:'Sexual or exploitative content', suspected_illegal_activity:'Suspected illegal activity', other:'Other', optional_report_details:'Optional details (do not include passwords or private keys)', report_message_consent:'Include up to five recent readable text messages with this report. I understand this shares their decrypted content with Vaultlix safety staff.', report_review_note:'Your category, details and account/conversation references go to the operator for review within 24 hours. Text messages are included only if you select the option above. For follow-up: privacy@vaultlix.com.', reporting:'Reporting…',
+    label_private_note:'Only visible to you on this device — never sent to the other person or the server. Useful for telling conversations apart.', remove_label:'Remove label', achievement_intro:'Private milestones shared only between you and this connection. Earned badges stay here; upcoming badges show your progress.', messages:'Messages', connection:'Connection', connection_sparks:'Connection Sparks', secure_calls:'Secure calls', shared_moments:'Shared moments',
+    persistent_conversation:'Persistent conversation', conversation_stays_available:'This conversation stays available', revoke_get_new_link:'Revoke & get new link', current_link_stops:'Current link stops working immediately for both of you', open_conversation_to_manage:'Open a conversation to manage its label, clear its messages, or use participant safety controls.', connected_since:'Connected since {date}', waiting_to_join:'Waiting for them to join', message_exchanged:'1 message exchanged', messages_exchanged:'{count} messages exchanged', earned:'Earned', first_mutual_conversation:'First mutual conversation', days_connected:'{count} days connected', one_year_connected:'One year connected', day_spark:'{count}-day Spark', first_secure_call:'First secure call', call_minutes:'{count} call minutes', call_hours:'{count} call hours', first_video_call:'First video call', video_calls:'{count} video calls', first_voice_note:'First voice note', voice_notes:'{count} voice notes', first_media_share:'First media share', media_shares:'{count} media shares', messages_unit:'messages', days_unit:'days', minutes_unit:'minutes', calls_unit:'calls', notes_unit:'notes', items_unit:'items'
+  },
+  zh: {
+    conversation_actions:'对话操作', open_conversation_menu:'打开对话菜单', achievements:'成就', quick_lock:'快速锁定', leave_conversation:'离开对话', delete_conversation:'删除对话', close_achievements:'关闭成就', private_connection:'私人连接',
+    participant_private_number:'参与者的私人号码', private_number_unavailable:'私人号码不可用', copy_number:'复制号码', share_number:'分享号码', keep_conversation_question:'保留此对话？', keep_conversation_subtitle:'你已多次返回此对话。保留它，直到任一方将其关闭。', keep_conversation:'保留对话', not_now:'暂不',
+    report_privacy_explanation:'Vaultlix 无法读取加密对话。举报会发送原因和单向对话标识符。只有在你明确选择时，才会附上最近解密的消息。', reason:'原因', spam_or_scam:'垃圾信息或诈骗', harassment_or_bullying:'骚扰或欺凌', threats_or_violence:'威胁或暴力', sexual_or_exploitative_content:'色情或剥削性内容', suspected_illegal_activity:'疑似违法活动', other:'其他', optional_report_details:'可选详情（请勿包含密码或私钥）', report_message_consent:'在此举报中附上最多五条最近可读的文字消息。我了解这会与 Vaultlix 安全人员分享解密内容。', report_review_note:'你的类别、详情以及账户和对话引用将提交给运营方，并在 24 小时内审核。只有选择上方选项时才会附上文字消息。后续联系：privacy@vaultlix.com。', reporting:'正在举报…',
+    label_private_note:'仅在此设备上对你可见，不会发送给对方或服务器。可用于区分不同对话。', remove_label:'移除标签', achievement_intro:'仅你和此连接共享的私人里程碑。已获得的徽章会保留，未获得的徽章会显示进度。', messages:'消息', connection:'连接', connection_sparks:'连接火花', secure_calls:'安全通话', shared_moments:'共享时刻',
+    persistent_conversation:'持续对话', conversation_stays_available:'此对话将保持可用', revoke_get_new_link:'撤销并获取新链接', current_link_stops:'当前链接会立即对双方失效', open_conversation_to_manage:'打开一个对话以管理标签、清除消息或使用参与者安全控制。', connected_since:'连接始于 {date}', waiting_to_join:'等待对方加入', message_exchanged:'已交换 1 条消息', messages_exchanged:'已交换 {count} 条消息', earned:'已获得', first_mutual_conversation:'首次双向对话', days_connected:'已连接 {count} 天', one_year_connected:'已连接一年', day_spark:'{count} 天火花', first_secure_call:'首次安全通话', call_minutes:'通话 {count} 分钟', call_hours:'通话 {count} 小时', first_video_call:'首次视频通话', video_calls:'{count} 次视频通话', first_voice_note:'首条语音消息', voice_notes:'{count} 条语音消息', first_media_share:'首次分享媒体', media_shares:'{count} 次媒体分享', messages_unit:'条消息', days_unit:'天', minutes_unit:'分钟', calls_unit:'次通话', notes_unit:'条语音', items_unit:'项'
+  },
+  ru: {
+    conversation_settings:'Настройки разговора', conversation_actions:'Действия с разговором', open_conversation_menu:'Открыть меню разговора', achievements:'Достижения', quick_lock:'Быстрая блокировка', clear_chat:'Очистить чат', leave_conversation:'Покинуть разговор', delete_conversation:'Удалить разговор', close_achievements:'Закрыть достижения', private_connection:'Приватное соединение',
+    current_conversation_safety:'Безопасность текущего разговора', block_participant:'Заблокировать участника', block_participant_subtitle:'Прекратить контакт через этот разговор и удалить доступ с устройства', report_and_block:'Пожаловаться и заблокировать', report_and_block_subtitle:'Сообщить о нарушении и сразу заблокировать участника', current_conversation:'Текущий разговор', participant_private_number:'Личный номер участника', private_number_unavailable:'Личный номер недоступен', peer_number_privacy:'Виден только в связанном разговоре с этим участником.', copy_number:'Копировать номер', share_number:'Поделиться номером', label_conversation:'Добавить метку разговору', edit_conversation_label:'Изменить метку разговора', conversation_label_subtitle:'Личная метка, видимая только вам и включённая в зашифрованную синхронизацию аккаунта',
+    keep_conversation_question:'Сохранить этот разговор?', keep_conversation_subtitle:'Вы возвращались к этому разговору несколько раз. Сохраните его, пока один из участников не закроет его.', keep_conversation:'Сохранить разговор', not_now:'Не сейчас', close_erase_confirm:'Закрыть и удалить этот разговор? Он и всё его содержимое будут немедленно удалены у обоих участников. Это действие нельзя отменить.', clear_chat_confirm:'Очистить все сообщения у обоих участников? Это действие нельзя отменить. Сам разговор останется открытым.', clear_chat_failed:'Не удалось очистить чат. Повторите попытку.', chat_cleared:'Чат очищен',
+    report_privacy_explanation:'Vaultlix не может читать зашифрованные разговоры. Жалоба передаёт причину и односторонний идентификатор разговора. Последние расшифрованные сообщения добавляются только с вашего явного согласия.', reason:'Причина', spam_or_scam:'Спам или мошенничество', harassment_or_bullying:'Преследование или травля', threats_or_violence:'Угрозы или насилие', sexual_or_exploitative_content:'Сексуальный или эксплуататорский контент', suspected_illegal_activity:'Предполагаемая незаконная деятельность', other:'Другое', optional_report_details:'Дополнительные сведения (не указывайте пароли или закрытые ключи)', report_message_consent:'Добавить до пяти последних читаемых текстовых сообщений. Я понимаю, что их расшифрованное содержимое будет передано сотрудникам безопасности Vaultlix.', report_review_note:'Категория, сведения и ссылки на аккаунт и разговор поступят оператору для проверки в течение 24 часов. Сообщения добавляются только при выборе пункта выше. Для связи: privacy@vaultlix.com.', reporting:'Отправка жалобы…',
+    label_private_note:'Видно только вам на этом устройстве. Метка не отправляется собеседнику или на сервер и помогает различать разговоры.', remove_label:'Удалить метку', achievement_intro:'Личные этапы, доступные только вам и этому контакту. Полученные значки сохраняются, а будущие показывают прогресс.', messages:'Сообщения', connection:'Соединение', connection_sparks:'Искры общения', secure_calls:'Защищённые звонки', shared_moments:'Общие моменты',
+    persistent_conversation:'Постоянный разговор', conversation_stays_available:'Этот разговор остаётся доступным', revoke_get_new_link:'Отозвать и получить новую ссылку', current_link_stops:'Текущая ссылка сразу перестанет работать для обоих', open_conversation_to_manage:'Откройте разговор, чтобы изменить метку, очистить сообщения или использовать инструменты безопасности.', connected_since:'На связи с {date}', waiting_to_join:'Ожидание собеседника', message_exchanged:'Обменено 1 сообщение', messages_exchanged:'Обменено сообщений: {count}', earned:'Получено', first_mutual_conversation:'Первый взаимный разговор', days_connected:'На связи {count} дней', one_year_connected:'Год на связи', day_spark:'Искра {count} дней', first_secure_call:'Первый защищённый звонок', call_minutes:'{count} минут звонков', call_hours:'{count} часов звонков', first_video_call:'Первый видеозвонок', video_calls:'{count} видеозвонков', first_voice_note:'Первое голосовое сообщение', voice_notes:'{count} голосовых сообщений', first_media_share:'Первая отправка медиа', media_shares:'{count} отправок медиа', messages_unit:'сообщений', days_unit:'дней', minutes_unit:'минут', calls_unit:'звонков', notes_unit:'сообщений', items_unit:'объектов'
+  },
+  hi: {
+    conversation_settings:'बातचीत की सेटिंग्स', conversation_actions:'बातचीत के विकल्प', open_conversation_menu:'बातचीत का मेनू खोलें', achievements:'उपलब्धियाँ', quick_lock:'त्वरित लॉक', clear_chat:'चैट साफ़ करें', leave_conversation:'बातचीत छोड़ें', delete_conversation:'बातचीत हटाएँ', close_achievements:'उपलब्धियाँ बंद करें', private_connection:'निजी कनेक्शन',
+    current_conversation_safety:'मौजूदा बातचीत की सुरक्षा', block_participant:'प्रतिभागी को ब्लॉक करें', block_participant_subtitle:'इस बातचीत से संपर्क रोकें और इस डिवाइस से इसकी पहुँच मिटाएँ', report_and_block:'रिपोर्ट और ब्लॉक करें', report_and_block_subtitle:'दुरुपयोग की रिपोर्ट करें और प्रतिभागी को तुरंत ब्लॉक करें', current_conversation:'मौजूदा बातचीत', participant_private_number:'प्रतिभागी का निजी नंबर', private_number_unavailable:'निजी नंबर उपलब्ध नहीं है', peer_number_privacy:'केवल इस प्रतिभागी के साथ जुड़ी बातचीत में दिखाई देता है।', copy_number:'नंबर कॉपी करें', share_number:'नंबर शेयर करें', label_conversation:'बातचीत को लेबल दें', edit_conversation_label:'बातचीत का लेबल बदलें', conversation_label_subtitle:'एक निजी लेबल जो केवल आपको दिखाई देता है और आपके एन्क्रिप्टेड अकाउंट सिंक में शामिल रहता है',
+    keep_conversation_question:'इस बातचीत को बनाए रखें?', keep_conversation_subtitle:'आप इस बातचीत पर कई बार लौटे हैं। इसे तब तक उपलब्ध रखें जब तक कोई एक व्यक्ति इसे बंद न करे।', keep_conversation:'बातचीत बनाए रखें', not_now:'अभी नहीं', close_erase_confirm:'इस बातचीत को बंद करके मिटाएँ? यह दोनों लोगों के लिए बातचीत और उसकी सारी सामग्री तुरंत हटा देगा। इसे वापस नहीं किया जा सकता।', clear_chat_confirm:'दोनों लोगों के लिए इस बातचीत के सभी संदेश साफ़ करें? इसे वापस नहीं किया जा सकता। बातचीत खुली रहेगी।', clear_chat_failed:'चैट साफ़ नहीं हो सकी—फिर कोशिश करें।', chat_cleared:'चैट साफ़ हो गई',
+    report_privacy_explanation:'Vaultlix एन्क्रिप्टेड बातचीत नहीं पढ़ सकता। आपकी रिपोर्ट कारण और बातचीत का एकतरफ़ा पहचानकर्ता भेजती है। हाल के डिक्रिप्ट किए गए संदेश केवल आपकी स्पष्ट अनुमति से शामिल किए जाते हैं।', reason:'कारण', spam_or_scam:'स्पैम या धोखाधड़ी', harassment_or_bullying:'उत्पीड़न या धमकाना', threats_or_violence:'धमकी या हिंसा', sexual_or_exploitative_content:'यौन या शोषणकारी सामग्री', suspected_illegal_activity:'संदिग्ध गैरकानूनी गतिविधि', other:'अन्य', optional_report_details:'वैकल्पिक विवरण (पासवर्ड या निजी कुंजियाँ शामिल न करें)', report_message_consent:'इस रिपोर्ट के साथ हाल के अधिकतम पाँच पढ़ने योग्य टेक्स्ट संदेश शामिल करें। मैं समझता/समझती हूँ कि इससे उनकी डिक्रिप्ट की गई सामग्री Vaultlix सुरक्षा टीम के साथ साझा होगी।', report_review_note:'आपकी श्रेणी, विवरण और अकाउंट/बातचीत संदर्भ 24 घंटे के भीतर समीक्षा के लिए ऑपरेटर को भेजे जाते हैं। टेक्स्ट संदेश केवल ऊपर का विकल्प चुनने पर शामिल होते हैं। संपर्क: privacy@vaultlix.com।', reporting:'रिपोर्ट भेजी जा रही है…',
+    label_private_note:'केवल इस डिवाइस पर आपको दिखाई देता है—दूसरे व्यक्ति या सर्वर को कभी नहीं भेजा जाता। बातचीत पहचानने में मदद करता है।', remove_label:'लेबल हटाएँ', achievement_intro:'निजी पड़ाव जो केवल आपके और इस कनेक्शन के बीच साझा होते हैं। मिले हुए बैज यहीं रहते हैं और आने वाले बैज आपकी प्रगति दिखाते हैं।', messages:'संदेश', connection:'कनेक्शन', connection_sparks:'कनेक्शन स्पार्क', secure_calls:'सुरक्षित कॉल', shared_moments:'साझा पल',
+    persistent_conversation:'स्थायी बातचीत', conversation_stays_available:'यह बातचीत उपलब्ध रहेगी', revoke_get_new_link:'लिंक रद्द करें और नया पाएँ', current_link_stops:'मौजूदा लिंक आप दोनों के लिए तुरंत काम करना बंद कर देगा', open_conversation_to_manage:'लेबल संभालने, संदेश साफ़ करने या सुरक्षा नियंत्रण इस्तेमाल करने के लिए कोई बातचीत खोलें।', connected_since:'{date} से जुड़े हैं', waiting_to_join:'उनके जुड़ने की प्रतीक्षा है', message_exchanged:'1 संदेश का आदान-प्रदान', messages_exchanged:'{count} संदेशों का आदान-प्रदान', earned:'प्राप्त', first_mutual_conversation:'पहली आपसी बातचीत', days_connected:'{count} दिन से जुड़े', one_year_connected:'एक साल से जुड़े', day_spark:'{count}-दिन का स्पार्क', first_secure_call:'पहली सुरक्षित कॉल', call_minutes:'{count} कॉल मिनट', call_hours:'{count} कॉल घंटे', first_video_call:'पहली वीडियो कॉल', video_calls:'{count} वीडियो कॉल', first_voice_note:'पहला वॉइस नोट', voice_notes:'{count} वॉइस नोट', first_media_share:'पहली मीडिया शेयर', media_shares:'{count} मीडिया शेयर', messages_unit:'संदेश', days_unit:'दिन', minutes_unit:'मिनट', calls_unit:'कॉल', notes_unit:'नोट', items_unit:'आइटम'
+  },
+  ar: {
+    conversation_settings:'إعدادات المحادثة', conversation_actions:'إجراءات المحادثة', open_conversation_menu:'فتح قائمة المحادثة', achievements:'الإنجازات', quick_lock:'القفل السريع', clear_chat:'مسح الدردشة', leave_conversation:'مغادرة المحادثة', delete_conversation:'حذف المحادثة', close_achievements:'إغلاق الإنجازات', private_connection:'اتصال خاص',
+    current_conversation_safety:'أمان المحادثة الحالية', block_participant:'حظر المشارك', block_participant_subtitle:'إيقاف التواصل عبر هذه المحادثة ومسح وصولها من هذا الجهاز', report_and_block:'الإبلاغ والحظر', report_and_block_subtitle:'الإبلاغ عن إساءة ثم حظر هذا المشارك فورًا', current_conversation:'المحادثة الحالية', participant_private_number:'الرقم الخاص للمشارك', private_number_unavailable:'الرقم الخاص غير متاح', peer_number_privacy:'يظهر فقط داخل محادثتك المتصلة بهذا المشارك.', copy_number:'نسخ الرقم', share_number:'مشاركة الرقم', label_conversation:'تسمية هذه المحادثة', edit_conversation_label:'تعديل اسم المحادثة', conversation_label_subtitle:'تسمية خاصة لا تظهر إلا لك وتُضمّن في مزامنة حسابك المشفرة',
+    keep_conversation_question:'الاحتفاظ بهذه المحادثة؟', keep_conversation_subtitle:'عدت إلى هذه المحادثة عدة مرات. احتفظ بها حتى يغلقها أحد الطرفين.', keep_conversation:'الاحتفاظ بالمحادثة', not_now:'ليس الآن', close_erase_confirm:'إغلاق هذه المحادثة ومسحها؟ سيؤدي ذلك إلى حذفها وكل محتوياتها فورًا لدى الطرفين، ولا يمكن التراجع عنه.', clear_chat_confirm:'مسح جميع الرسائل في هذه المحادثة لدى الطرفين؟ لا يمكن التراجع عن ذلك، وستظل المحادثة مفتوحة.', clear_chat_failed:'تعذر مسح الدردشة. حاول مرة أخرى.', chat_cleared:'تم مسح الدردشة',
+    report_privacy_explanation:'لا يستطيع Vaultlix قراءة المحادثات المشفرة. يرسل بلاغك السبب ومعرّفًا أحادي الاتجاه للمحادثة. لا تُرفق الرسائل الحديثة بعد فك تشفيرها إلا إذا اخترت مشاركتها صراحةً.', reason:'السبب', spam_or_scam:'رسائل مزعجة أو احتيال', harassment_or_bullying:'مضايقة أو تنمر', threats_or_violence:'تهديدات أو عنف', sexual_or_exploitative_content:'محتوى جنسي أو استغلالي', suspected_illegal_activity:'نشاط غير قانوني مشتبه به', other:'أخرى', optional_report_details:'تفاصيل اختيارية (لا تذكر كلمات المرور أو المفاتيح الخاصة)', report_message_consent:'إرفاق ما يصل إلى خمس رسائل نصية حديثة قابلة للقراءة. أفهم أن هذا يشارك محتواها المفكوك التشفير مع فريق أمان Vaultlix.', report_review_note:'تُرسل الفئة والتفاصيل ومراجع الحساب والمحادثة إلى المشغّل لمراجعتها خلال 24 ساعة. لا تُرفق الرسائل النصية إلا إذا اخترت الخيار أعلاه. للمتابعة: privacy@vaultlix.com.', reporting:'جارٍ إرسال البلاغ…',
+    label_private_note:'تظهر لك فقط على هذا الجهاز ولا تُرسل إلى الطرف الآخر أو الخادم. تساعدك على تمييز المحادثات.', remove_label:'إزالة التسمية', achievement_intro:'إنجازات خاصة مشتركة بينك وبين هذا الاتصال فقط. تبقى الشارات المكتسبة هنا وتعرض الشارات القادمة تقدمك.', messages:'الرسائل', connection:'الاتصال', connection_sparks:'شرارات الاتصال', secure_calls:'المكالمات الآمنة', shared_moments:'اللحظات المشتركة',
+    persistent_conversation:'محادثة دائمة', conversation_stays_available:'تظل هذه المحادثة متاحة', revoke_get_new_link:'إلغاء الرابط والحصول على رابط جديد', current_link_stops:'سيتوقف الرابط الحالي فورًا لدى الطرفين', open_conversation_to_manage:'افتح محادثة لإدارة تسميتها أو مسح رسائلها أو استخدام أدوات أمان المشارك.', connected_since:'متصلان منذ {date}', waiting_to_join:'بانتظار انضمام الطرف الآخر', message_exchanged:'تم تبادل رسالة واحدة', messages_exchanged:'تم تبادل {count} رسالة', earned:'تم الحصول عليها', first_mutual_conversation:'أول محادثة متبادلة', days_connected:'متصلان منذ {count} يومًا', one_year_connected:'عام من الاتصال', day_spark:'شرارة {count} أيام', first_secure_call:'أول مكالمة آمنة', call_minutes:'{count} دقيقة مكالمات', call_hours:'{count} ساعات مكالمات', first_video_call:'أول مكالمة فيديو', video_calls:'{count} مكالمات فيديو', first_voice_note:'أول رسالة صوتية', voice_notes:'{count} رسائل صوتية', first_media_share:'أول مشاركة وسائط', media_shares:'{count} مشاركات وسائط', messages_unit:'رسائل', days_unit:'أيام', minutes_unit:'دقائق', calls_unit:'مكالمات', notes_unit:'رسائل', items_unit:'عناصر'
+  },
+  hy: {
+    conversation_settings:'Զրույցի կարգավորումներ', conversation_actions:'Զրույցի գործողություններ', open_conversation_menu:'Բացել զրույցի ընտրացանկը', achievements:'Ձեռքբերումներ', quick_lock:'Արագ կողպում', clear_chat:'Մաքրել զրույցը', leave_conversation:'Լքել զրույցը', delete_conversation:'Ջնջել զրույցը', close_achievements:'Փակել ձեռքբերումները', private_connection:'Մասնավոր կապ',
+    current_conversation_safety:'Ընթացիկ զրույցի անվտանգություն', block_participant:'Արգելափակել մասնակցին', block_participant_subtitle:'Դադարեցնել կապը այս զրույցով և ջնջել դրա հասանելիությունն այս սարքից', report_and_block:'Հաղորդել և արգելափակել', report_and_block_subtitle:'Հաղորդել չարաշահման մասին և անմիջապես արգելափակել մասնակցին', current_conversation:'Ընթացիկ զրույց', participant_private_number:'Մասնակցի անձնական համարը', private_number_unavailable:'Անձնական համարը հասանելի չէ', peer_number_privacy:'Տեսանելի է միայն այս մասնակցի հետ կապված զրույցում։', copy_number:'Պատճենել համարը', share_number:'Կիսվել համարով', label_conversation:'Պիտակավորել զրույցը', edit_conversation_label:'Փոխել զրույցի պիտակը', conversation_label_subtitle:'Մասնավոր պիտակ, որը տեսանելի է միայն ձեզ և ներառված է հաշվի գաղտնագրված համաժամացման մեջ',
+    keep_conversation_question:'Պահե՞լ այս զրույցը', keep_conversation_subtitle:'Դուք մի քանի անգամ վերադարձել եք այս զրույցին։ Պահեք այն հասանելի, մինչև կողմերից մեկը փակի այն։', keep_conversation:'Պահել զրույցը', not_now:'Ոչ հիմա', close_erase_confirm:'Փակե՞լ և ջնջե՞լ այս զրույցը։ Այն և ամբողջ բովանդակությունը անմիջապես կջնջվեն երկու կողմերի համար։ Սա հնարավոր չէ հետարկել։', clear_chat_confirm:'Մաքրե՞լ այս զրույցի բոլոր հաղորդագրությունները երկու կողմերի համար։ Սա հնարավոր չէ հետարկել։ Զրույցը կմնա բաց։', clear_chat_failed:'Չհաջողվեց մաքրել զրույցը։ Կրկին փորձեք։', chat_cleared:'Զրույցը մաքրված է',
+    report_privacy_explanation:'Vaultlix-ը չի կարող կարդալ գաղտնագրված զրույցները։ Հաղորդումն ուղարկում է պատճառը և զրույցի միակողմանի նույնացուցիչը։ Վերջին վերծանված հաղորդագրությունները ներառվում են միայն ձեր հստակ ընտրությամբ։', reason:'Պատճառ', spam_or_scam:'Սպամ կամ խարդախություն', harassment_or_bullying:'Հետապնդում կամ ահաբեկում', threats_or_violence:'Սպառնալիքներ կամ բռնություն', sexual_or_exploitative_content:'Սեռական կամ շահագործող բովանդակություն', suspected_illegal_activity:'Կասկածելի անօրինական գործունեություն', other:'Այլ', optional_report_details:'Լրացուցիչ մանրամասներ (մի նշեք գաղտնաբառեր կամ մասնավոր բանալիներ)', report_message_consent:'Հաղորդմանը կցել մինչև հինգ վերջին ընթեռնելի տեքստային հաղորդագրություն։ Հասկանում եմ, որ դրանց վերծանված բովանդակությունը կկիսվի Vaultlix-ի անվտանգության թիմի հետ։', report_review_note:'Կատեգորիան, մանրամասները և հաշվի/զրույցի հղումները ուղարկվում են օպերատորին՝ 24 ժամվա ընթացքում վերանայման համար։ Հաղորդագրությունները ներառվում են միայն վերևի ընտրության դեպքում։ Կապ՝ privacy@vaultlix.com։', reporting:'Հաղորդումն ուղարկվում է…',
+    label_private_note:'Տեսանելի է միայն ձեզ այս սարքում և չի ուղարկվում մյուս անձին կամ սերվերին։ Օգնում է տարբերել զրույցները։', remove_label:'Հեռացնել պիտակը', achievement_intro:'Մասնավոր փուլեր, որոնք կիսվում են միայն ձեր և այս կապի միջև։ Ստացած նշանները մնում են այստեղ, իսկ առաջիկա նշանները ցույց են տալիս առաջընթացը։', messages:'Հաղորդագրություններ', connection:'Կապ', connection_sparks:'Կապի կայծեր', secure_calls:'Անվտանգ զանգեր', shared_moments:'Համատեղ պահեր',
+    persistent_conversation:'Մշտական զրույց', conversation_stays_available:'Այս զրույցը կմնա հասանելի', revoke_get_new_link:'Չեղարկել և ստանալ նոր հղում', current_link_stops:'Ընթացիկ հղումն անմիջապես կդադարի աշխատել երկուսիդ համար', open_conversation_to_manage:'Բացեք զրույց՝ պիտակը կառավարելու, հաղորդագրությունները մաքրելու կամ անվտանգության գործիքներն օգտագործելու համար։', connected_since:'Կապված եք {date}-ից', waiting_to_join:'Սպասում ենք մյուս մասնակցին', message_exchanged:'Փոխանակվել է 1 հաղորդագրություն', messages_exchanged:'Փոխանակվել է {count} հաղորդագրություն', earned:'Ստացված է', first_mutual_conversation:'Առաջին փոխադարձ զրույցը', days_connected:'Կապված եք {count} օր', one_year_connected:'Մեկ տարի կապի մեջ', day_spark:'{count}-օրյա կայծ', first_secure_call:'Առաջին անվտանգ զանգը', call_minutes:'{count} րոպե զանգեր', call_hours:'{count} ժամ զանգեր', first_video_call:'Առաջին տեսազանգը', video_calls:'{count} տեսազանգ', first_voice_note:'Առաջին ձայնային հաղորդագրությունը', voice_notes:'{count} ձայնային հաղորդագրություն', first_media_share:'Առաջին մեդիա տարածումը', media_shares:'{count} մեդիա տարածում', messages_unit:'հաղորդագրություն', days_unit:'օր', minutes_unit:'րոպե', calls_unit:'զանգ', notes_unit:'հաղորդագրություն', items_unit:'տարր'
+  }
+};
+for (const language of VAULTLIX_LANGUAGES) Object.assign(VAULTLIX_TRANSLATIONS[language], VAULTLIX_CONVERSATION_TRANSLATIONS[language]);
 function normalizeVaultlixLanguage(value) {
   const base = String(value || '').toLowerCase().split(/[-_]/)[0];
   return VAULTLIX_LANGUAGES.includes(base) ? base : 'en';
@@ -4664,6 +4713,11 @@ function i18n(key) {
   const lang = currentAppLanguage();
   return VAULTLIX_TRANSLATIONS[lang]?.[key] || VAULTLIX_TRANSLATIONS.en[key] || key;
 }
+function i18nFormat(key, values = {}) {
+  return i18n(key).replace(/\{([a-zA-Z0-9_]+)\}/g, (match, name) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match
+  );
+}
 function applyAppLanguage() {
   const lang = currentAppLanguage();
   document.documentElement.lang = lang === 'zh' ? 'zh-Hans' : lang;
@@ -4671,6 +4725,8 @@ function applyAppLanguage() {
   document.body?.classList.toggle('vaultlix-rtl', lang === 'ar');
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = i18n(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = i18n(el.dataset.i18nPlaceholder); });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = i18n(el.dataset.i18nTitle); });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(el => { el.setAttribute('aria-label', i18n(el.dataset.i18nAriaLabel)); });
   const select = document.getElementById('app-language-select');
   if (select) select.value = localStorage.getItem(VAULTLIX_LANGUAGE_KEY) || 'system';
   document.dispatchEvent(new CustomEvent('vaultlixlanguagechange', { detail:{ language:lang } }));
@@ -6696,7 +6752,8 @@ function achievementBadgeHtml({ name, icon, current = 0, target = 1, unit = '', 
   const safeCurrent = Math.max(0, Math.floor(Number(current) || 0));
   const safeTarget = Math.max(1, Math.floor(Number(target) || 1));
   const progress = achieved ? 100 : Math.min(100, Math.round(safeCurrent / safeTarget * 100));
-  const status = achieved ? 'Earned' : `${safeCurrent.toLocaleString()} / ${safeTarget.toLocaleString()}${unit ? ` ${unit}` : ''}`;
+  const locale = document.documentElement.lang || currentAppLanguage();
+  const status = achieved ? i18n('earned') : `${safeCurrent.toLocaleString(locale)} / ${safeTarget.toLocaleString(locale)}${unit ? ` ${i18n(unit)}` : ''}`;
   return `<div class="achievement-badge-card${achieved ? ' earned' : ''}">
     <div class="achievement-badge-icon" aria-hidden="true">${escHtml(icon)}</div>
     <div class="achievement-badge-name">${escHtml(name)}</div>
@@ -6725,39 +6782,39 @@ function openConversationAchievements() {
   const activities = Object.values(ledger.activeDays || {});
   const mutualConversation = activities.some(day => day?.me) && activities.some(day => day?.peer);
   document.getElementById('achievements-peer').textContent = roomDisplayLabel(room);
-  body.innerHTML = `<p class="achievements-intro">Private milestones shared only between you and this connection. Earned badges stay here; upcoming badges show your progress.</p>${[
-    achievementGroupHtml('Messages', [
-      {name:'300 messages',icon:'300',current:messages,target:300,unit:'messages'},
-      {name:'500 messages',icon:'500',current:messages,target:500,unit:'messages'},
-      {name:'1,000 messages',icon:'1K',current:messages,target:1000,unit:'messages'},
+  body.innerHTML = `<p class="achievements-intro">${escHtml(i18n('achievement_intro'))}</p>${[
+    achievementGroupHtml(i18n('messages'), [
+      {name:`300 ${i18n('messages_unit')}`,icon:'300',current:messages,target:300,unit:'messages_unit'},
+      {name:`500 ${i18n('messages_unit')}`,icon:'500',current:messages,target:500,unit:'messages_unit'},
+      {name:`1,000 ${i18n('messages_unit')}`,icon:'1K',current:messages,target:1000,unit:'messages_unit'},
     ]),
-    achievementGroupHtml('Connection', [
-      {name:'First mutual conversation',icon:'✦',current:mutualConversation?1:0,target:1},
-      {name:'7 days connected',icon:'7',current:days,target:7,unit:'days'},
-      {name:'30 days connected',icon:'30',current:days,target:30,unit:'days'},
-      {name:'100 days connected',icon:'100',current:days,target:100,unit:'days'},
-      {name:'One year connected',icon:'1Y',current:days,target:365,unit:'days'},
+    achievementGroupHtml(i18n('connection'), [
+      {name:i18n('first_mutual_conversation'),icon:'✦',current:mutualConversation?1:0,target:1},
+      {name:i18nFormat('days_connected',{count:7}),icon:'7',current:days,target:7,unit:'days_unit'},
+      {name:i18nFormat('days_connected',{count:30}),icon:'30',current:days,target:30,unit:'days_unit'},
+      {name:i18nFormat('days_connected',{count:100}),icon:'100',current:days,target:100,unit:'days_unit'},
+      {name:i18n('one_year_connected'),icon:'1Y',current:days,target:365,unit:'days_unit'},
     ]),
-    achievementGroupHtml('Connection Sparks', [
-      {name:'3-day Spark',icon:'✦3',current:spark,target:3,unit:'days'},
-      {name:'7-day Spark',icon:'✦7',current:spark,target:7,unit:'days'},
-      {name:'14-day Spark',icon:'✦14',current:spark,target:14,unit:'days'},
-      {name:'30-day Spark',icon:'✦30',current:spark,target:30,unit:'days'},
-      {name:'100-day Spark',icon:'✦100',current:spark,target:100,unit:'days'},
+    achievementGroupHtml(i18n('connection_sparks'), [
+      {name:i18nFormat('day_spark',{count:3}),icon:'✦3',current:spark,target:3,unit:'days_unit'},
+      {name:i18nFormat('day_spark',{count:7}),icon:'✦7',current:spark,target:7,unit:'days_unit'},
+      {name:i18nFormat('day_spark',{count:14}),icon:'✦14',current:spark,target:14,unit:'days_unit'},
+      {name:i18nFormat('day_spark',{count:30}),icon:'✦30',current:spark,target:30,unit:'days_unit'},
+      {name:i18nFormat('day_spark',{count:100}),icon:'✦100',current:spark,target:100,unit:'days_unit'},
     ]),
-    achievementGroupHtml('Secure calls', [
-      {name:'First secure call',icon:'✦',current:callCount,target:1},
-      {name:'60 call minutes',icon:'60m',current:callMinutes,target:60,unit:'minutes'},
-      {name:'5 call hours',icon:'5h',current:callMinutes,target:300,unit:'minutes'},
-      {name:'25 call hours',icon:'25h',current:callMinutes,target:1500,unit:'minutes'},
-      {name:'First video call',icon:'✦',current:videoCount,target:1},
-      {name:'10 video calls',icon:'10',current:videoCount,target:10,unit:'calls'},
+    achievementGroupHtml(i18n('secure_calls'), [
+      {name:i18n('first_secure_call'),icon:'✦',current:callCount,target:1},
+      {name:i18nFormat('call_minutes',{count:60}),icon:'60m',current:callMinutes,target:60,unit:'minutes_unit'},
+      {name:i18nFormat('call_hours',{count:5}),icon:'5h',current:callMinutes,target:300,unit:'minutes_unit'},
+      {name:i18nFormat('call_hours',{count:25}),icon:'25h',current:callMinutes,target:1500,unit:'minutes_unit'},
+      {name:i18n('first_video_call'),icon:'✦',current:videoCount,target:1},
+      {name:i18nFormat('video_calls',{count:10}),icon:'10',current:videoCount,target:10,unit:'calls_unit'},
     ]),
-    achievementGroupHtml('Shared moments', [
-      {name:'First voice note',icon:'◉',current:voiceCount,target:1},
-      {name:'100 voice notes',icon:'◉100',current:voiceCount,target:100,unit:'notes'},
-      {name:'First media share',icon:'◇',current:mediaCount,target:1},
-      {name:'100 media shares',icon:'◇100',current:mediaCount,target:100,unit:'items'},
+    achievementGroupHtml(i18n('shared_moments'), [
+      {name:i18n('first_voice_note'),icon:'◉',current:voiceCount,target:1},
+      {name:i18nFormat('voice_notes',{count:100}),icon:'◉100',current:voiceCount,target:100,unit:'notes_unit'},
+      {name:i18n('first_media_share'),icon:'◇',current:mediaCount,target:1},
+      {name:i18nFormat('media_shares',{count:100}),icon:'◇100',current:mediaCount,target:100,unit:'items_unit'},
     ]),
   ].join('')}`;
   overlay.classList.add('open');
@@ -9832,16 +9889,16 @@ function showRenameRoomPanel() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
   overlay.innerHTML = `
     <div style="background:#fff;border-radius:16px;padding:26px 22px;max-width:340px;width:100%;text-align:center;font-family:inherit">
-      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:8px">Label this conversation</div>
+      <div style="font-size:15px;font-weight:600;color:#1A1916;margin-bottom:8px">${escHtml(i18n(hasNickname ? 'edit_conversation_label' : 'label_conversation'))}</div>
       <div style="font-size:12.5px;color:#7A6E65;line-height:1.55;margin-bottom:16px">
-        Only visible to you on this device — never sent to the other person or the server. Useful for telling conversations apart.
+        ${escHtml(i18n('label_private_note'))}
       </div>
       <input id="rename-room-input" type="text" maxlength="24" placeholder="${escHtml(placeholder)}" value="${escHtml(room.nickname || '')}"
         style="width:100%;box-sizing:border-box;font-size:14px;color:#1A1916;background:#F7F5F1;border:1px solid #EFEFEF;border-radius:10px;padding:11px 12px;margin-bottom:16px;font-family:inherit;text-align:center" />
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        ${hasNickname ? `<button id="rename-room-remove" style="background:none;color:#B3473F;border:1px solid #EFEFEF;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer">Remove label</button>` : ''}
-        <button style="background:none;color:#7A6E65;border:1px solid #EFEFEF;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer" onclick="closeRenameRoomPanel()">Cancel</button>
-        <button id="rename-room-save" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer">Save</button>
+        ${hasNickname ? `<button id="rename-room-remove" style="background:none;color:#B3473F;border:1px solid #EFEFEF;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer">${escHtml(i18n('remove_label'))}</button>` : ''}
+        <button style="background:none;color:#7A6E65;border:1px solid #EFEFEF;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer" onclick="closeRenameRoomPanel()">${escHtml(i18n('cancel'))}</button>
+        <button id="rename-room-save" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:9px 18px;font-size:13px;cursor:pointer">${escHtml(i18n('save'))}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -10474,6 +10531,11 @@ function openSettingsCategory(category) {
   document.getElementById('settings-general-safety-section').style.display = category === 'privacy' ? '' : 'none';
   document.getElementById('settings-room-section').style.display = category === 'chats' && room ? '' : 'none';
   document.getElementById('settings-chat-empty').style.display = category === 'chats' && !room ? '' : 'none';
+  if (category === 'chats' && room) {
+    populateConversationPeerNumber(room);
+    const labelTitle = document.getElementById('settings-label-title');
+    if (labelTitle) labelTitle.textContent = room.nickname ? i18n('edit_conversation_label') : i18n('label_conversation');
+  }
   const shareSection = document.getElementById('settings-share-section');
   shareSection.classList.toggle('active', category === 'share');
   shareSection.style.display = category === 'share' ? '' : 'none';
@@ -10529,9 +10591,9 @@ function populateConversationPeerNumber(room = getActiveRoom()) {
   const actions = document.getElementById('settings-peer-number-actions');
   const privateNumber = normalizePrivateNumber(room?.peerPrivateNumber);
   if (name) name.textContent = room?.peerName
-    ? `${room.peerName}’s Private Number`
-    : 'Participant’s Private Number';
-  if (number) number.textContent = privateNumber ? formatPrivateNumber(privateNumber) : 'Private Number unavailable';
+    ? `${room.peerName} · ${i18n('private_number')}`
+    : i18n('participant_private_number');
+  if (number) number.textContent = privateNumber ? formatPrivateNumber(privateNumber) : i18n('private_number_unavailable');
   if (actions) actions.style.display = privateNumber ? 'flex' : 'none';
 }
 
@@ -10815,12 +10877,13 @@ async function blockActiveVault() {
 function openReportPanel() {
   if (!getActiveRoom()) return;
   closeSettings(); document.getElementById('report-details').value = ''; document.getElementById('report-include-messages').checked = false;
+  applyAppLanguage();
   document.getElementById('report-overlay').classList.add('open');
 }
 function closeReportPanel() { document.getElementById('report-overlay')?.classList.remove('open'); }
 async function submitReportAndBlock() {
   const room = getActiveRoom(); if (!room) return;
-  const button = document.getElementById('report-submit'); button.disabled = true; button.textContent = 'Reporting…';
+  const button = document.getElementById('report-submit'); button.disabled = true; button.textContent = i18n('reporting');
   const includeMessages = document.getElementById('report-include-messages').checked;
   const recentMessages = includeMessages ? (room.messages || []).filter(m => !m.deleted && m.kind === 'text' && typeof m.content === 'string').slice(-5).map(m => ({ content:m.content.slice(0,500), isMe:!!m.isMe, ts:Number(m.ts || Date.now()) })) : [];
   try {
@@ -10831,7 +10894,7 @@ async function submitReportAndBlock() {
     const blocked = await finishBlockingRoom(room, `Report ${result.reportId} received. Account blocked. Review within 24 hours.`, result.reportId);
     if (!blocked) toast(`Report ${result.reportId} saved. Blocking did not complete; please retry Block.`);
   } catch (error) { toast(error?.message || 'Report could not be sent. Nothing was blocked.'); }
-  finally { button.disabled = false; button.textContent = 'Report and block'; }
+  finally { button.disabled = false; button.textContent = i18n('report_and_block'); }
 }
 function openDeleteAccount() {
   if (!loadAccountState()) { toast('Sign in to delete an account'); return; }
@@ -10903,12 +10966,12 @@ function updateAnonLinkSection() {
   const statsEl = document.getElementById('anon-link-stats');
   if (!statsEl) return;
   const count = room.totalMessageCount || 0;
-  const countTxt = `${count} message${count === 1 ? '' : 's'} exchanged`;
+  const countTxt = count === 1 ? i18n('message_exchanged') : i18nFormat('messages_exchanged', {count});
   if (room.connectedSince) {
-    const since = new Date(room.connectedSince).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    statsEl.textContent = `Connected since ${since} · ${countTxt}`;
+    const since = new Date(room.connectedSince).toLocaleDateString(currentAppLanguage(), { year: 'numeric', month: 'short', day: 'numeric' });
+    statsEl.textContent = `${i18nFormat('connected_since', {date:since})} · ${countTxt}`;
   } else {
-    statsEl.textContent = `Waiting for them to join · ${countTxt}`;
+    statsEl.textContent = `${i18n('waiting_to_join')} · ${countTxt}`;
   }
 }
 
