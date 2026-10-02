@@ -13,6 +13,7 @@ const APP_SHELL_FILES = [
   '/vendor/safety-words.js',
   '/vendor/jsQR.js',
   '/manifest.json',
+  '/vault_chime.mp3',
   '/favicon.ico',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

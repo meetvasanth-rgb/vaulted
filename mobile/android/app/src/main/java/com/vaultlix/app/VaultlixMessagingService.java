@@ -32,7 +32,7 @@ import java.util.Map;
 
 public class VaultlixMessagingService extends MessagingService {
     public static final String CALL_CHANNEL_PREFIX = "vaultlix_calls_";
-    private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_bright_v1";
+    private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_universal_v2";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
     @Override

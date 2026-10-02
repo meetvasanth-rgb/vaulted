@@ -94,11 +94,17 @@ test('large compressed videos remain downloadable and shareable in both native a
   assert.match(ios, /compressed\.count <= Self\.maxCompressedVideoBytes/);
 });
 
-test('message notifications use the new original Vaultlix chime', () => {
-  assert.match(messaging, /vaultlix_messages_bright_v1/);
+test('message notifications and the in-app player use the supplied Vaultlix chime', () => {
+  assert.match(messaging, /vaultlix_messages_universal_v2/);
   assert.match(messaging, /R\.raw\.vault_chime/);
   assert.match(server, /sound: 'vault_chime\.caf'/);
   assert.match(server, /sound: 'vault_chime'/);
+  assert.match(client, /fetch\('\/vault_chime\.mp3', \{ cache:'force-cache' \}\)/);
+  assert.match(client, /source\.buffer = buffer;[\s\S]*source\.start\(0\)/);
+  assert.doesNotMatch(client.slice(client.indexOf('function playChime()'), client.indexOf('// ── TAB VISIBILITY')), /createOscillator/);
+  assert.ok(fs.statSync(path.join(root, 'client', 'vault_chime.mp3')).size > 1000);
+  assert.ok(fs.statSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'res', 'raw', 'vault_chime.wav')).size > 1000);
+  assert.ok(fs.statSync(path.join(root, 'mobile', 'ios', 'App', 'App', 'Sounds', 'vault_chime.caf')).size > 1000);
 });
 
 test('Android startup avoids synchronous caching of multi-megabyte media history', () => {
