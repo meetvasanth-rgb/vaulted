@@ -35,6 +35,10 @@ test('admin identity directory returns useful metadata without account secrets',
   assert.doesNotMatch(route, /authVerifier: account/);
   assert.doesNotMatch(route, /bundle: account/);
   assert.match(js, /function renderIdentities/);
+  // Sorted by genuine recent activity (lastActiveAt), not updatedAt — which
+  // only moves on account-record changes and ranked a continuously active
+  // user below people who'd merely edited their profile recently.
+  assert.match(route, /\.sort\(\(a, b\) => \(b\.lastActiveAt \|\| 0\) - \(a\.lastActiveAt \|\| 0\)\)/);
 });
 
 // "Updated" (account.updatedAt) only moves on password/recovery/profile

@@ -5714,7 +5714,11 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
         };
       })
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      // lastActiveAt (kept fresh by the inbox socket's pong heartbeat) reflects
+      // genuine recent use; updatedAt only moves on account-record changes
+      // (password, recovery, profile, bundle sync) and can sit stale for a
+      // continuously active user, so it ranked real activity wrong here.
+      .sort((a, b) => (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
     for (const identity of identities) {
       activeIdentitySessions += identity.activeDevices;
       if (identity.notificationDevices > 0) notificationReadyIdentities++;

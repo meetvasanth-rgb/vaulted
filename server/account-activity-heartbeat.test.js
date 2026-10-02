@@ -69,7 +69,7 @@ function nextMessage(ws, predicate, timeout = 3000) {
   });
 }
 
-test('functional: an authenticated socket sending a pong advances account.lastActiveAt, visible on the admin dashboard', { timeout:15000 }, async t => {
+test('functional: pong advances lastActiveAt, and the admin list ranks genuine activity above a merely-newer registration', { timeout:15000 }, async t => {
   const port = await freePort();
   const snapshotDir = await mkdtemp(join(tmpdir(), 'vaultlix-heartbeat-test-'));
   const vapid = webpush.generateVAPIDKeys();
@@ -129,6 +129,28 @@ test('functional: an authenticated socket sending a pong advances account.lastAc
   const afterAuth = await lastActiveAt();
   assert.ok(afterAuth >= afterRegister, 'the auth handshake itself already touches it (existing behavior)');
 
+  // Bob registers now, strictly after Alice's auth handshake — so at this
+  // instant Bob's lastActiveAt (set at his own registration) is newer than
+  // Alice's, and he'd rank above her. Only Alice's pong afterward, which the
+  // old sort-by-updatedAt never reflected at all, should put her back ahead.
+  await new Promise(resolve => setTimeout(resolve, 80));
+  const bob = (await post(base, '/api/account/register', {
+    accountId:'b'.repeat(64), privateNumber:'3456789012', displayName:'Bob',
+    authSecret:'auth-b'.padEnd(48, 'b'), recoverySecret:'recovery-b'.padEnd(48, 'b'),
+    passwordWrap:'p'.repeat(24), recoveryWrap:'r'.repeat(24), bundle:'b'.repeat(24),
+  })).data;
+  assert.ok(bob);
+
+  async function order() {
+    const response = await fetch(`${base}/api/admin/stats`, { headers:{ Authorization:'Bearer ' + adminKey } });
+    const stats = await response.json();
+    const numbers = stats.identities.map(identity => identity.privateNumber);
+    return { aliceIndex:numbers.indexOf('2345678901'), bobIndex:numbers.indexOf('3456789012') };
+  }
+
+  const beforePong = await order();
+  assert.ok(beforePong.bobIndex < beforePong.aliceIndex, 'Bob (just registered) outranks Alice until she is active again');
+
   await new Promise(resolve => setTimeout(resolve, 80));
   // Sending an unsolicited pong exercises the exact server-side 'pong' event
   // the real 25s keepalive ping would eventually trigger, without the test
@@ -137,4 +159,8 @@ test('functional: an authenticated socket sending a pong advances account.lastAc
   await new Promise(resolve => setTimeout(resolve, 150));
   const afterPong = await lastActiveAt();
   assert.ok(afterPong > afterAuth, `pong should advance lastActiveAt further (${afterAuth} -> ${afterPong})`);
+
+  const afterPongOrder = await order();
+  assert.ok(afterPongOrder.aliceIndex !== -1 && afterPongOrder.bobIndex !== -1);
+  assert.ok(afterPongOrder.aliceIndex < afterPongOrder.bobIndex, 'Alice (genuinely active via the heartbeat) now outranks Bob again');
 });
