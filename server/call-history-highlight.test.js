@@ -18,6 +18,7 @@ function harness() {
     escHtml: s => String(s),
     roomDisplayLabel: room => room.name || room.code,
     formatVaultInboxTime: () => '10:00',
+    formatCallHistoryTimestamp: () => '10:00',
     document: {
       hidden: false,
       getElementById: id => id === 's-vault-list' ? { classList: { contains: () => true } } : null,
