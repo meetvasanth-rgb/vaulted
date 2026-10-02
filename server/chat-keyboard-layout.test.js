@@ -273,7 +273,7 @@ test('wiring: the app listens for the iOS keyboard events and the ring is off fo
   assert.match(block, /\.group-chat\.kb-animating,#s-chat\.kb-animating\{transition:height/);
 });
 
-test('native iOS pins on the next frame without delayed second-stage movement', () => {
+test('native iOS pins immediately and follows through the animation without staged jumps', () => {
   const t = setup({ chat:'direct', innerHeight:800 });
   const nativeQueue = [];
   const layout = factory({
@@ -284,7 +284,7 @@ test('native iOS pins on the next frame without delayed second-stage movement', 
     cancel:item => { item.cancelled = true; },
   });
   layout.keyboardWillShow(336);
-  assert.deepEqual(nativeQueue.filter(item => !item.cancelled && item.ms !== 900).map(item => item.ms), [0]);
+  assert.deepEqual(nativeQueue.filter(item => !item.cancelled && item.ms !== 900).map(item => item.ms), [0, 400, 0]);
   assert.equal(nativeQueue.some(item => !item.cancelled && [120, 320, 650].includes(item.ms)), false);
 });
 
@@ -400,6 +400,28 @@ test('under native resize, keyboardWillShow skips resizeShell for the fixed grou
   t.layout.keyboardWillShow(336);
   t.flush();
   assert.equal(t.els['group-chat'].style.height, undefined, 'resizeShell is skipped for native resize — only chat.fixed\'s top:0px (unrelated to sizing) still applies');
+});
+
+test('under native resize, the newest message follows the full keyboard animation', () => {
+  const t = setup({ nativeResize:true });
+  t.list.scrollTop = 500;
+  t.listeners.doc.scroll({ target:t.list });
+  t.layout.keyboardWillShow(336);
+
+  // Run the first scheduled frame, then reproduce WebKit's synthetic scroll
+  // after the native view has become shorter but before its animation ends.
+  const firstFrame = t.queue.find(item => !item.cancelled && item.ms === 0);
+  firstFrame.cancelled = true;
+  firstFrame.fn();
+  t.list.clientHeight = 220;
+  t.list.scrollTop = 420;
+  t.listeners.doc.scroll({ target:t.list });
+
+  const nextFrame = t.queue.find(item => !item.cancelled && item.ms === 0);
+  nextFrame.cancelled = true;
+  nextFrame.fn();
+  assert.equal(t.layout.isPinned(), true, 'the resize scroll is not mistaken for a reader scrolling up');
+  assert.equal(t.list.scrollTop, 1000, 'the last message stays directly above the moving composer');
 });
 
 test('typing drops the bottom room kept for the home bar, and leaving the box gives it back', () => {

@@ -21431,6 +21431,23 @@ function createChatKeyboardLayout(env) {
     schedule(follow, 0);
   }
 
+  // The native iOS wrapper animates the WKWebView frame alongside the system
+  // keyboard. WebKit does not guarantee a resize event for every frame of that
+  // animation, so a single pin at keyboardWillShow can run before the list has
+  // actually become shorter. Follow it for the whole native transition and
+  // ignore the synthetic scrolls produced as the list shrinks under the user.
+  function followNativeResize() {
+    if (!env.nativeResize) return;
+    if (animationTimer) cancel(animationTimer);
+    settling = true;
+    if (!animating) { animating = true; follow(); }
+    animationTimer = schedule(() => {
+      animating = false;
+      settling = false;
+      pin();
+    }, ANIMATION_MS + 120);
+  }
+
   function keyboardWillShow(keyboardHeight) {
     const chat = activeChat();
     const height = Number(keyboardHeight);
@@ -21453,7 +21470,8 @@ function createChatKeyboardLayout(env) {
     // Applying a second guessed CSS height at the same time made the chat move
     // twice (most visibly around tall call cards). Let the native viewport make
     // that single transition and only keep its message list pinned.
-    if (!env.nativeResize) resizeShell(chat, win.innerHeight - height);
+    if (env.nativeResize) followNativeResize();
+    else resizeShell(chat, win.innerHeight - height);
     settle();
   }
 
@@ -21481,16 +21499,15 @@ function createChatKeyboardLayout(env) {
   function settle() {
     timers.forEach(cancel);
     settling = true;
-    // Capacitor resizes the WKWebView itself. Pinning again hundreds of
-    // milliseconds later makes the keyboard appear first and the last message
-    // visibly catch up afterwards. One animation-frame pass on each real native
-    // viewport change keeps those two movements together. Browser iOS still
-    // needs the longer settling ladder because its visual viewport changes in
-    // several stages while the keyboard and suggestion strip animate.
+    // Capacitor resizes the WKWebView itself. The native animation is followed
+    // continuously by followNativeResize(); this immediate pass also covers a
+    // viewport report that lands just after the native notification. Browser
+    // iOS still needs the longer settling ladder because its visual viewport
+    // changes in several stages while the keyboard and suggestion strip animate.
     const delays = env.nativeResize ? [0] : SETTLE_DELAYS_MS;
     timers = delays.map((ms, index) => schedule(() => {
       pin();
-      if (index === delays.length - 1) settling = false;
+      if (index === delays.length - 1 && !(env.nativeResize && animating)) settling = false;
     }, ms));
   }
 
