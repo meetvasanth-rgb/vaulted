@@ -51,13 +51,21 @@ test('the focused-field reveal is iOS-app only and leaves the chat composers to 
 function openChatHarness({ native = true, disabled = false, active = true } = {}) {
   const calls = [], pins = [], timers = [];
   const input = { disabled, readOnly:false, focus:options => calls.push(['focus', options]) };
+  let groupOpen = true;
+  const groupInput = { disabled, readOnly:false, focus:options => calls.push(['group-focus', options]) };
+  const setGroupOpen = value => { groupOpen = value; };
   const context = vm.createContext({
     isNativeIOS: () => native, pins, setTimeout: (fn, ms) => { timers.push([ms, fn]); },
     chatKeyboardLayout: { pin: () => pins.push('pin') },
-    document: { getElementById: id => id === 'msg-input' ? input : id === 's-chat' ? { classList:{ contains:name => name === 'active' && active } } : null },
+    document: { getElementById: id => id === 'msg-input' ? input
+      : id === 'group-message-input' ? groupInput
+      : id === 's-chat' ? { classList:{ contains:name => name === 'active' && active } }
+      : id === 'group-chat' ? { classList:{ contains:name => name === 'open' && groupOpen } } : null },
   });
+  vm.runInContext(extract(client, 'pinChatAgainAfterKeyboardResize'), context);
   vm.runInContext(extract(client, 'focusComposerOnOpenFromTap'), context);
-  return { context, calls, pins, timers };
+  vm.runInContext(extract(client, 'focusGroupComposerOnOpenFromTap'), context);
+  return { context, calls, pins, timers, input, setGroupOpen };
 }
 
 test('tapping a 1:1 chat in the iOS app focuses the message box so the keyboard opens', () => {
@@ -97,4 +105,32 @@ test('a delayed re-pin does nothing if the person already left the chat', () => 
   context.document.getElementById = id => id === 's-chat' ? { classList:{ contains:() => false } } : null;
   for (const [, fn] of timers) fn();
   assert.equal(pins.length, 0);
+});
+
+test('tapping a group in the iOS app opens the keyboard and pins its newest message after the native resize', () => {
+  const { context, calls, pins, timers } = openChatHarness();
+  context.focusGroupComposerOnOpenFromTap();
+  assert.deepEqual(calls.map(([name]) => name), ['group-focus']);
+  assert.deepEqual(timers.map(([ms]) => ms), [350, 700, 1100]);
+  for (const [, fn] of timers) fn();
+  assert.equal(pins.length, 3);
+});
+
+test('no automatic group keyboard outside the iOS app, for a closed group, or after leaving it', () => {
+  const web = openChatHarness({ native:false });
+  web.context.focusGroupComposerOnOpenFromTap();
+  assert.equal(web.calls.length, 0);
+  const closed = openChatHarness();
+  closed.setGroupOpen(false);
+  closed.context.focusGroupComposerOnOpenFromTap();
+  assert.equal(closed.calls.length, 0);
+  const left = openChatHarness();
+  left.context.focusGroupComposerOnOpenFromTap();
+  left.setGroupOpen(false);
+  for (const [, fn] of left.timers) fn();
+  assert.equal(left.pins.length, 0);
+});
+
+test('the group inbox-row tap focuses the composer synchronously after opening the group', () => {
+  assert.match(client, /openPrivateGroup\(el\.dataset\.group\); focusGroupComposerOnOpenFromTap\(\);/);
 });

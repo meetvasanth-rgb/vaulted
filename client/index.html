@@ -15803,17 +15803,32 @@ function focusComposerOnOpenFromTap() {
   if (!input || input.disabled || input.readOnly) return;
   if (!document.getElementById('s-chat')?.classList.contains('active')) return;
   try { input.focus({ preventScroll:true }); } catch (error) { input.focus(); }
-  // The message list is rendered a frame after this tap and scrolled to its
-  // newest row at the height it has *then*; the native web view only finishes
-  // shrinking for the keyboard a quarter second later, which would leave the
-  // newest messages under the keyboard. Pin again once the shrink has landed
-  // and the rows have laid out (pin() leaves a reader who scrolled up alone).
+  pinChatAgainAfterKeyboardResize(() => document.getElementById('s-chat')?.classList.contains('active'));
+}
+
+// The message list is scrolled to its newest row a frame after the tap, at the
+// height it has *then*; the native web view only finishes shrinking for the
+// keyboard a quarter second later, which would leave the newest messages under
+// it. Pin again once the shrink has landed and the rows have laid out (pin()
+// leaves a reader who scrolled up alone).
+function pinChatAgainAfterKeyboardResize(stillShowing) {
   for (const delay of [350, 700, 1100]) {
     setTimeout(() => {
-      if (!document.getElementById('s-chat')?.classList.contains('active')) return;
+      if (!stillShowing()) return;
       chatKeyboardLayout.pin();
     }, delay);
   }
+}
+
+// Same as the 1:1 chat: tapping a group in the inbox opens the keyboard with
+// the newest message still visible above it. Called from the inbox-row tap.
+function focusGroupComposerOnOpenFromTap() {
+  if (!isNativeIOS()) return;
+  const input = document.getElementById('group-message-input');
+  if (!input || input.disabled || input.readOnly) return;
+  if (!document.getElementById('group-chat')?.classList.contains('open')) return;
+  try { input.focus({ preventScroll:true }); } catch (error) { input.focus(); }
+  pinChatAgainAfterKeyboardResize(() => document.getElementById('group-chat')?.classList.contains('open'));
 }
 
 function renderCallHistoryList(body) {
@@ -16087,7 +16102,7 @@ function renderVaultList() {
     avatar.onclick = event => { event.stopPropagation(); openPeerStatusFromInbox(avatar.dataset.statusAuthor); };
   });
   body.querySelectorAll('.vault-list-row[data-room]').forEach(el => { el.onclick = () => openVaultListRoom(el.dataset.room); });
-  body.querySelectorAll('.vault-list-row[data-group]').forEach(el => { el.onclick = () => { if (el.dataset.groupOpening !== 'true') openPrivateGroup(el.dataset.group); }; });
+  body.querySelectorAll('.vault-list-row[data-group]').forEach(el => { el.onclick = () => { if (el.dataset.groupOpening !== 'true') { openPrivateGroup(el.dataset.group); focusGroupComposerOnOpenFromTap(); } }; });
 }
 
 // Startup restoration used to await every conversation from beginning to
