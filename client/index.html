@@ -15803,6 +15803,17 @@ function focusComposerOnOpenFromTap() {
   if (!input || input.disabled || input.readOnly) return;
   if (!document.getElementById('s-chat')?.classList.contains('active')) return;
   try { input.focus({ preventScroll:true }); } catch (error) { input.focus(); }
+  // The message list is rendered a frame after this tap and scrolled to its
+  // newest row at the height it has *then*; the native web view only finishes
+  // shrinking for the keyboard a quarter second later, which would leave the
+  // newest messages under the keyboard. Pin again once the shrink has landed
+  // and the rows have laid out (pin() leaves a reader who scrolled up alone).
+  for (const delay of [350, 700, 1100]) {
+    setTimeout(() => {
+      if (!document.getElementById('s-chat')?.classList.contains('active')) return;
+      chatKeyboardLayout.pin();
+    }, delay);
+  }
 }
 
 function renderCallHistoryList(body) {

@@ -49,14 +49,15 @@ test('the focused-field reveal is iOS-app only and leaves the chat composers to 
 });
 
 function openChatHarness({ native = true, disabled = false, active = true } = {}) {
-  const calls = [];
+  const calls = [], pins = [], timers = [];
   const input = { disabled, readOnly:false, focus:options => calls.push(['focus', options]) };
   const context = vm.createContext({
-    isNativeIOS: () => native,
+    isNativeIOS: () => native, pins, setTimeout: (fn, ms) => { timers.push([ms, fn]); },
+    chatKeyboardLayout: { pin: () => pins.push('pin') },
     document: { getElementById: id => id === 'msg-input' ? input : id === 's-chat' ? { classList:{ contains:name => name === 'active' && active } } : null },
   });
   vm.runInContext(extract(client, 'focusComposerOnOpenFromTap'), context);
-  return { context, calls };
+  return { context, calls, pins, timers };
 }
 
 test('tapping a 1:1 chat in the iOS app focuses the message box so the keyboard opens', () => {
@@ -79,4 +80,21 @@ test('the focus happens synchronously in the inbox-row tap, only after the chat 
   assert.match(fn, /if \(openConversationAfterPaint\(code\)\) focusComposerOnOpenFromTap\(\);/);
   // Rooms still restoring have a disabled composer; they keep the plain open.
   assert.match(fn, /if \(room\?\.restorePending\) \{[\s\S]*?openConversationAfterPaint\(code\);\s*\} else if/);
+});
+
+test('after the tap, the newest message is pinned again once the native keyboard resize has landed', () => {
+  const { context, pins, timers } = openChatHarness();
+  context.focusComposerOnOpenFromTap();
+  assert.deepEqual(timers.map(([ms]) => ms), [350, 700, 1100]);
+  assert.equal(pins.length, 0, 'nothing pinned synchronously — the shrink has not happened yet');
+  for (const [, fn] of timers) fn();
+  assert.equal(pins.length, 3);
+});
+
+test('a delayed re-pin does nothing if the person already left the chat', () => {
+  const { context, pins, timers } = openChatHarness();
+  context.focusComposerOnOpenFromTap();
+  context.document.getElementById = id => id === 's-chat' ? { classList:{ contains:() => false } } : null;
+  for (const [, fn] of timers) fn();
+  assert.equal(pins.length, 0);
 });
