@@ -15788,8 +15788,21 @@ function openVaultListRoom(code) {
   } else if (room && !room.everOnline) {
     resumeWaitingScreen(room);
   } else {
-    openConversationAfterPaint(code);
+    if (openConversationAfterPaint(code)) focusComposerOnOpenFromTap();
   }
+}
+
+// Like Snapchat, the iOS app opens the keyboard as soon as a 1:1 chat is
+// tapped instead of waiting for a second tap on the message box. WebKit only
+// shows the keyboard for a programmatic focus() made synchronously inside the
+// user's tap, so this must run in the same call stack as the inbox row click
+// (openConversationAfterPaint has already made s-chat visible by then).
+function focusComposerOnOpenFromTap() {
+  if (!isNativeIOS()) return;
+  const input = document.getElementById('msg-input');
+  if (!input || input.disabled || input.readOnly) return;
+  if (!document.getElementById('s-chat')?.classList.contains('active')) return;
+  try { input.focus({ preventScroll:true }); } catch (error) { input.focus(); }
 }
 
 function renderCallHistoryList(body) {
@@ -21611,6 +21624,34 @@ chatKeyboardLayout.start();
   } catch (error) {}
   window.addEventListener('keyboardWillShow', willShow);
   window.addEventListener('keyboardWillHide', willHide);
+})();
+
+// In the iOS app the keyboard shrinks the native web view *after* WebKit has
+// already decided the tapped field was visible in the full-height frame, so a
+// field in the lower half of a form (the Username box on the signup screen)
+// ends up under the keyboard and nothing scrolls it back into view. Once the
+// native resize has settled, scroll the focused field into the visible area.
+// The chat composers are positioned by chatKeyboardLayout and are skipped.
+function fieldNeedsReveal(rect, viewportHeight, margin = 12) {
+  if (!rect) return false;
+  return rect.bottom > viewportHeight - margin || rect.top < 0;
+}
+(function revealFieldsAboveKeyboard() {
+  if (!isNativeIOS()) return;
+  const EDITABLE = 'input, textarea, select, [contenteditable="true"]';
+  const SKIP_IDS = new Set(['msg-input', 'group-message-input']);
+  function reveal(el) {
+    if (!el || !el.isConnected || document.activeElement !== el) return;
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    if (!fieldNeedsReveal(el.getBoundingClientRect(), viewportHeight)) return;
+    try { el.scrollIntoView({ block:'center', inline:'nearest', behavior:'smooth' }); } catch (error) { el.scrollIntoView(); }
+  }
+  document.addEventListener('focusin', event => {
+    const el = event.target;
+    if (!el?.matches?.(EDITABLE) || SKIP_IDS.has(el.id)) return;
+    // The native frame animates for ~0.25s; check again as it lands.
+    for (const delay of [150, 400, 800]) setTimeout(() => reveal(el), delay);
+  });
 })();
 
 // ── LANDING ANIMATION ────────────────────────────────────────────────────
