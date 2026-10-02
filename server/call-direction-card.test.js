@@ -144,7 +144,7 @@ function callsListHarness() {
     localStorage:{ getItem:() => null, setItem:() => {} },
     currentVaultListMode:'calls', tabFocused:true, quickLockActive:false, activePrivateGroupId:null,
     escHtml:s => String(s), roomDisplayLabel:room => room.name || room.code,
-    formatVaultInboxTime:() => '10:00',
+    formatCallHistoryTimestamp:() => '10:00',
     document:{ hidden:false, getElementById:id => id === 's-vault-list' ? { classList:{ contains:() => true } } : null },
   });
   vm.runInContext(client.slice(client.indexOf('let vaultMissedCallsSeenAccount'), client.indexOf('\nfunction callHistoryEntries')), context);
@@ -268,6 +268,20 @@ test('restored call duplicates retain the suppressed server id as a deletion ali
 test('the in-chat call card carries data-msg-id, so a deletion can find and fade its DOM element if that chat happens to be open', () => {
   const render = extract(client, 'renderMessageRecord');
   assert.match(render, /div\.className = `msg call-msg \$\{callDetails\.direction === 'outgoing' \? 'me' : 'them'\}\$\{animate \? ' msg-enter' : ''\}`;\s*\n\s*div\.dataset\.msgId = rec\.id;/);
+});
+
+test('call cards display their event timestamp below the duration or call result', () => {
+  const render = extract(client, 'renderMessageRecord');
+  assert.match(render, /class="msg-meta call-card-meta"/);
+  assert.match(render, /class="msg-time" title="\$\{escHtml\(formatFullDateTime\(rec\.ts\)\)\}">\$\{escHtml\(messageTimeLabel\(rec\)\)\}<\/span>/);
+});
+
+test('Calls tab rows retain the clock time as well as the relative day', () => {
+  const render = extract(client, 'renderCallHistoryList');
+  assert.match(render, /formatCallHistoryTimestamp\(occurredAt\)/);
+  const formatter = extract(client, 'formatCallHistoryTimestamp');
+  assert.match(formatter, /const clock = date\.toLocaleTimeString/);
+  assert.match(formatter, /return `\$\{day\} · \$\{clock\}`;/);
 });
 
 // ── Bug: deleting an individual call from the Calls tab silently did

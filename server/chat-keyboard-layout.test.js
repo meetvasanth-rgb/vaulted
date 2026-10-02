@@ -149,6 +149,19 @@ test('opening a different conversation starts pinned to its newest message', () 
   assert.equal(t.els['group-chat-body'].scrollTop, 1000);
 });
 
+test('rapidly leaving and reopening a direct chat cannot reuse a hidden focused composer', () => {
+  const showScreen = extract(client, 'showScreen');
+  const setActiveRoom = extract(client, 'setActiveRoom');
+  assert.match(showScreen, /if \(leavingChat\) \{[\s\S]*?getElementById\('msg-input'\)\?\.blur\(\)/);
+  assert.match(showScreen, /classList\.remove\('composer-focused', 'kb-animating'\)/);
+  assert.match(setActiveRoom, /enableInput\(!!\(room\.everOnline && room\.sharedKey && !room\.reconnectRequired\), false\)/);
+  assert.doesNotMatch(setActiveRoom, /enableInput\([^\n]+, true\)/);
+});
+
+test('native iOS pins the active direct-chat shell to its resized web view', () => {
+  assert.match(client, /html\.vaultlix-native-ios #s-chat\.active\{position:fixed!important;inset:0!important;[^}]*transform:none!important\}/);
+});
+
 test('pending settle passes are cancelled when a new change arrives', () => {
   const t = setup();
   t.vv.height = 430; t.listeners.vv.resize();
@@ -249,7 +262,8 @@ test('a browser without the native event starts from the height the keyboard had
 
 test('wiring: the app listens for the iOS keyboard events and the ring is off for both message boxes', () => {
   assert.match(client, /window\.addEventListener\('keyboardWillShow', willShow\)/);
-  assert.match(client, /plugin\?\.addListener\?\.\('keyboardWillHide', willHide\)/);
+  assert.match(client, /if \(isNativeIOS\(\) && plugin\?\.addListener\)/);
+  assert.match(client, /plugin\.addListener\('keyboardWillHide', willHide\)/);
   assert.match(client, /preShrinkOnFocus: \/iP\(hone\|ad\|od\)\/\.test\(navigator\.userAgent\) && !isNativeIOS\(\),/);
   assert.match(client, /nativeResize: isNativeIOS\(\),/);
   const block = client.slice(client.lastIndexOf('<style>'));
@@ -257,6 +271,29 @@ test('wiring: the app listens for the iOS keyboard events and the ring is off fo
   assert.match(block, /outline:none!important;box-shadow:none!important/);
   assert.match(block, /#s-chat #msg-input:focus,#s-chat #msg-input:focus-visible\{background:#FBF8F9!important;border-color:#E3D6DB!important\}/);
   assert.match(block, /\.group-chat\.kb-animating,#s-chat\.kb-animating\{transition:height/);
+});
+
+test('native iOS pins on the next frame without delayed second-stage movement', () => {
+  const t = setup({ chat:'direct', innerHeight:800 });
+  const nativeQueue = [];
+  const layout = factory({
+    vv:t.vv, win:t.win,
+    doc:{ getElementById:id => t.els[id] || null, addEventListener:() => {} },
+    nativeResize:true,
+    schedule:(fn, ms) => { const item = { fn, ms, cancelled:false }; nativeQueue.push(item); return item; },
+    cancel:item => { item.cancelled = true; },
+  });
+  layout.keyboardWillShow(336);
+  assert.deepEqual(nativeQueue.filter(item => !item.cancelled && item.ms !== 900).map(item => item.ms), [0]);
+  assert.equal(nativeQueue.some(item => !item.cancelled && [120, 320, 650].includes(item.ms)), false);
+});
+
+test('native keyboard wiring chooses one event channel instead of handling each event twice', () => {
+  const blockStart = client.indexOf('(function listenForNativeKeyboard()');
+  const blockEnd = client.indexOf('// ── LANDING ANIMATION', blockStart);
+  const block = client.slice(blockStart, blockEnd);
+  assert.match(block, /plugin\.addListener\('keyboardWillShow', willShow\);[^]*return;[^]*window\.addEventListener\('keyboardWillShow', willShow\);/);
+  assert.doesNotMatch(block, /window\.addEventListener\('keyboardWillShow', willShow\);[^]*plugin\.addListener\('keyboardWillShow', willShow\)/);
 });
 
 test('while the chat eases to its new height the list keeps the newest message in view on every frame', () => {
@@ -434,7 +471,9 @@ test('the iOS wrapper removes the inconsistent WKWebView form-navigation strip',
   assert.match(iosScene, /let responderClass: AnyClass = type\(of: responder\)/);
   assert.match(iosScene, /guard className\.contains\("WKContent"\)/);
   assert.match(iosScene, /#selector\(getter: UIResponder\.inputAccessoryView\)/);
-  assert.match(iosScene, /class_addMethod\(responderClass, selector, nilAccessory, "@@:"\)/);
+  assert.match(iosScene, /#selector\(getter: UIResponder\.inputAccessoryViewController\)/);
+  assert.match(iosScene, /class_addMethod\(responderClass, viewSelector, nilAccessory, "@@:"\)/);
+  assert.match(iosScene, /class_addMethod\(responderClass, controllerSelector, nilAccessoryController, "@@:"\)/);
   assert.doesNotMatch(iosScene, /reloadInputViews\(\)/);
 });
 
@@ -450,23 +489,35 @@ test('the iOS wrapper removes the inconsistent WKWebView form-navigation strip',
 // which is why it was never affected. Folding markComposerFocus into the
 // same native-driven keyboardWillShow/keyboardWillHide calls — instead of
 // the independent focusin/focusout DOM events — removes the second pass.
-test('under native resize, tapping the composer does not move the footer until the real native keyboard event arrives', () => {
+test('under native resize, tapping the composer immediately removes the footer safe-area', () => {
   const t = setup({ nativeResize:true });
   t.listeners.doc.focusin({ target:{ id:'msg-input' } });
-  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false, 'no footer change yet — only the real native event should trigger it');
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'the home-indicator gap closes even if the native plugin event is absent');
   t.layout.keyboardWillShow(336);
-  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'synced to the native event instead');
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true);
 });
 
-test('under native resize, leaving the composer does not move the footer back until the native hide event settles', () => {
+test('under native resize, leaving the composer restores the footer safe-area', () => {
   const t = setup({ nativeResize:true });
   t.layout.keyboardWillShow(336);
   assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true);
   t.listeners.doc.focusout({ target:{ id:'msg-input' } });
-  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), true, 'still native-event-driven, not the DOM blur');
+  assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
   t.layout.keyboardWillHide();
   t.flush();
   assert.equal(t.els['s-chat'].classList.contains('composer-focused'), false);
+});
+
+test('the iOS wrapper resizes the web view with the keyboard so the peer header stays visible', () => {
+  assert.match(iosScene, /keyboardFrameEndUserInfoKey/);
+  assert.match(iosScene, /UIView\.animate\(withDuration: duration/);
+  assert.match(iosScene, /webView\.frame = target/);
+  assert.match(iosScene, /webView\.scrollView\.setContentOffset\(\.zero, animated: false\)/);
+});
+
+test('the iOS wrapper restores the full web view with keyboard dismissal', () => {
+  assert.match(iosScene, /forName: UIResponder\.keyboardWillHideNotification/);
+  assert.match(iosScene, /height: window\.bounds\.height - webView\.frame\.origin\.y/);
 });
 
 test('without native resize (Android, browser), the footer still moves immediately on focus — unaffected by the native-event sync', () => {
