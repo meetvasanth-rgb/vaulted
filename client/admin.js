@@ -183,10 +183,11 @@
       <td><a href="/${encodeURIComponent(identity.privateNumber)}" target="_blank" rel="noopener">${escapeHtml(formatPrivateNumber(identity.privateNumber))}</a></td>
       <td>${escapeHtml(formatDate(identity.createdAt))}</td>
       <td>${escapeHtml(formatDate(identity.updatedAt))}</td>
+      <td>${escapeHtml(formatDate(identity.lastActiveAt))}</td>
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>
-    </tr>`).join('') : '<tr><td colspan="7" class="empty-row">No registered identities yet.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="8" class="empty-row">No registered identities yet.</td></tr>';
   }
 
   function setGauge(prefix, value, max) {

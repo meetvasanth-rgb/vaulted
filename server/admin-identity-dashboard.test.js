@@ -36,3 +36,24 @@ test('admin identity directory returns useful metadata without account secrets',
   assert.doesNotMatch(route, /bundle: account/);
   assert.match(js, /function renderIdentities/);
 });
+
+// "Updated" (account.updatedAt) only moves on password/recovery/profile
+// changes and account-bundle syncs — not on ordinary message activity, so
+// it went stale for a continuously active user whose client mostly talks
+// over the inbox WebSocket. lastActiveAt is the field that actually tracks
+// activity (see the inbox socket's pong handler, which now refreshes it on
+// every heartbeat) — this is a separate "Last Online" column rather than
+// replacing "Updated", so an admin can still see both account-record
+// changes and genuine recent activity.
+test('the identity table has a separate Last Online column sourced from lastActiveAt, alongside Updated', () => {
+  assert.match(html, /<th>Updated<\/th><th>Last Online<\/th>/);
+  const row = js.slice(js.indexOf('function renderIdentities'), js.indexOf('function setGauge'));
+  const updatedIndex = row.indexOf('identity.updatedAt');
+  const lastOnlineIndex = row.indexOf('identity.lastActiveAt');
+  assert.notEqual(updatedIndex, -1);
+  assert.notEqual(lastOnlineIndex, -1);
+  assert.ok(lastOnlineIndex > updatedIndex, 'Last Online column comes after Updated, matching the header order');
+  // Both empty-state and loading-state colspans must match the real <th> count.
+  assert.match(html, /<td colspan="8" class="empty-row">Loading identities…<\/td>/);
+  assert.match(js, /<tr><td colspan="8" class="empty-row">No registered identities yet\.<\/td><\/tr>/);
+});
