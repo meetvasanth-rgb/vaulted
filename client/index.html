@@ -2833,6 +2833,10 @@ html.vaultlix-native-android #new-connection-overlay .account-title{font-size:26
 #s-chat.composer-focused .chat-ftr,#s-chat.composer-focused #chat-ftr{padding-bottom:10px!important}
 .group-chat.composer-focused .group-chat-footer{padding-bottom:10px}
 html{background:#fff}
+/* Capacitor resizes the WKWebView itself for the iOS keyboard. Keep the active
+   direct-chat shell attached to that resized view so WebKit cannot pan the
+   whole document to reveal the composer and leave the header off-screen. */
+html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!important;width:100%!important;max-width:100%!important;transform:none!important}
 /* The line under the name is only about 80px wide on a phone, so it can never hold the word
    "Online" as well as the lock and the timer: they used to be drawn over each other.
    The green dot alone says online; the word comes back where there is room. Nothing on
@@ -10087,6 +10091,13 @@ function showScreen(id) {
   closeConversationAchievements();
   const leavingChat = id !== 's-chat' && document.getElementById('s-chat')?.classList.contains('active');
   if (leavingChat) {
+    // Finish the old keyboard session before hiding the conversation. Leaving
+    // a focused textarea inside display:none makes WKWebView dismiss it late;
+    // a quick tap on another inbox row can then reopen that same responder
+    // while iOS is still restoring the previous viewport, pushing the new
+    // header and messages above the screen for several seconds.
+    document.getElementById('msg-input')?.blur();
+    document.getElementById('s-chat')?.classList.remove('composer-focused', 'kb-animating');
     // Do not retain decoded photos and running GIFs behind the Android inbox.
     if (klipyGifObserver) klipyGifObserver.disconnect();
     klipyGifObserver = null;
@@ -16123,7 +16134,12 @@ function setActiveRoom(code, { deferMessages = false } = {}) {
   setStatus(room.peerOnline, room.peerName);
   if (deferMessages) prepareChatBodyForFirstPaint();
   else renderChatBody(room);
-  enableInput(!!(room.everOnline && room.sharedKey && !room.reconnectRequired), true);
+  // The room is still hidden when setActiveRoom runs from the inbox. Focusing
+  // its textarea here asks iOS to reveal an element with stale/zero geometry.
+  // Leave it enabled and let the user's tap focus it after s-chat is visible.
+  // When switching room tabs inside an already-open chat, any existing focus
+  // stays on the shared textarea, so this does not dismiss an active keyboard.
+  enableInput(!!(room.everOnline && room.sharedKey && !room.reconnectRequired), false);
   updateSecureReconnectBanner(room);
   updateE2EBar(room);
   renderRoomTabs();

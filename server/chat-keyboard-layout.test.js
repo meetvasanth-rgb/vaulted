@@ -149,6 +149,19 @@ test('opening a different conversation starts pinned to its newest message', () 
   assert.equal(t.els['group-chat-body'].scrollTop, 1000);
 });
 
+test('rapidly leaving and reopening a direct chat cannot reuse a hidden focused composer', () => {
+  const showScreen = extract(client, 'showScreen');
+  const setActiveRoom = extract(client, 'setActiveRoom');
+  assert.match(showScreen, /if \(leavingChat\) \{[\s\S]*?getElementById\('msg-input'\)\?\.blur\(\)/);
+  assert.match(showScreen, /classList\.remove\('composer-focused', 'kb-animating'\)/);
+  assert.match(setActiveRoom, /enableInput\(!!\(room\.everOnline && room\.sharedKey && !room\.reconnectRequired\), false\)/);
+  assert.doesNotMatch(setActiveRoom, /enableInput\([^\n]+, true\)/);
+});
+
+test('native iOS pins the active direct-chat shell to its resized web view', () => {
+  assert.match(client, /html\.vaultlix-native-ios #s-chat\.active\{position:fixed!important;inset:0!important;[^}]*transform:none!important\}/);
+});
+
 test('pending settle passes are cancelled when a new change arrives', () => {
   const t = setup();
   t.vv.height = 430; t.listeners.vv.resize();
