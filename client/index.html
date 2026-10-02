@@ -15400,6 +15400,11 @@ function renderStatusViewer() {
   const media = () => stageEl?.querySelector('img,video');
   const pinchDistance = touches => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
   overlay.ontouchstart = event => {
+    // Start media gestures only inside the full-screen stage. Image tap zones
+    // cover most of that stage and the video is the stage itself, so both must
+    // remain valid swipe targets; only real controls inside an error/loading
+    // state are excluded.
+    if (!event.target?.closest?.('.status-stage') || event.target.closest('button:not(.status-tap-zone)')) return;
     if (event.touches.length === 2) {
       pinching = true; dragging = false; touchX = touchY = null;
       if (statusViewerTimer) clearTimeout(statusViewerTimer);
@@ -15413,7 +15418,7 @@ function renderStatusViewer() {
       }
       return;
     }
-    if (event.target.closest('button,video') || currentScale > 1.02) return;
+    if (currentScale > 1.02) return;
     touchX = event.touches[0]?.clientX ?? null;
     touchY = event.touches[0]?.clientY ?? null;
     dragging = true;
@@ -15453,7 +15458,10 @@ function renderStatusViewer() {
     const dx = (endTouch?.clientX ?? touchX) - touchX, dy = (endTouch?.clientY ?? touchY) - touchY;
     touchX = touchY = null;
     overlay.style.transition = 'transform .3s cubic-bezier(.22,1,.36,1), opacity .3s ease';
-    if (dy > 90 && dy > Math.abs(dx)) { overlay.style.transform = 'translateY(100%)'; overlay.style.opacity = '0'; setTimeout(closeStatusViewer, 220); return; }
+    if (dy > 90 && dy > Math.abs(dx)) {
+      if (event.cancelable) event.preventDefault();
+      overlay.style.transform = 'translateY(100%)'; overlay.style.opacity = '0'; setTimeout(closeStatusViewer, 220); return;
+    }
     overlay.style.transform = ''; overlay.style.opacity = '';
     // Horizontal drags used to step prev/next here too, but that competed
     // with the app-wide native swipe (back/home) on the same axis. Prev/next

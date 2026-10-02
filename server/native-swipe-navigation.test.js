@@ -52,3 +52,14 @@ test('the status viewer answers the same native back/home swipe as every other s
   assert.doesNotMatch(touchEnd, /statusViewerStep\(dx < 0 \? 1 : -1\)/);
   assert.match(touchEnd, /translateY\(100%\)/);
 });
+
+test('swipe down can close a status from either the image surface or the video', () => {
+  const viewerStart = client.indexOf('function renderStatusViewer()');
+  const touchStart = client.slice(client.indexOf('overlay.ontouchstart = event => {', viewerStart), client.indexOf('overlay.ontouchmove = event => {', viewerStart));
+  const touchEnd = client.slice(client.indexOf('overlay.ontouchend = event => {', viewerStart), client.indexOf('overlay.ontouchcancel', viewerStart));
+  assert.match(touchStart, /closest\?\.\('\.status-stage'\)/, 'the dismiss gesture starts only inside the status media stage');
+  assert.match(touchStart, /button:not\(\.status-tap-zone\)/, 'image navigation zones remain valid swipe targets');
+  assert.doesNotMatch(touchStart, /closest\('button,video'\)/, 'the video itself is no longer excluded from swipe down');
+  assert.match(touchEnd, /dy > 90 && dy > Math\.abs\(dx\)/);
+  assert.match(touchEnd, /event\.preventDefault\(\)[\s\S]*setTimeout\(closeStatusViewer, 220\)/, 'a completed swipe cannot also trigger an image navigation tap');
+});
