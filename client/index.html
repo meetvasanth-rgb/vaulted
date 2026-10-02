@@ -15792,6 +15792,28 @@ function openVaultListRoom(code) {
   }
 }
 
+// While a call is up, the iOS wrapper blurs the composer and marks it
+// readOnly (dataset.vaultlixCallKeyboardGuard) so the keyboard cannot cover the
+// call UI. It lifts that again only on some call-ending paths, so after a call
+// that was cancelled or unanswered the composer could stay readOnly for good:
+// taps on "Type a message" did nothing and iOS showed a floating AutoFill pill
+// instead of the keyboard. If no call is actually in progress, drop the guard.
+function clearStaleCallKeyboardGuard() {
+  const input = document.getElementById('msg-input');
+  if (!input || input.dataset.vaultlixCallKeyboardGuard !== '1') return false;
+  const inCall = [...rooms.values()].some(room => room.callState && room.callState !== 'idle');
+  if (inCall) return false;
+  input.readOnly = false;
+  delete input.dataset.vaultlixCallKeyboardGuard;
+  return true;
+}
+// Capture phase, before the tap focuses (or fails to focus) the textarea.
+for (const type of ['touchstart', 'pointerdown']) {
+  document.addEventListener(type, event => {
+    if (event.target?.closest?.('#msg-input')) clearStaleCallKeyboardGuard();
+  }, { capture:true, passive:true });
+}
+
 // Like Snapchat, the iOS app opens the keyboard as soon as a 1:1 chat is
 // tapped instead of waiting for a second tap on the message box. WebKit only
 // shows the keyboard for a programmatic focus() made synchronously inside the
@@ -15799,6 +15821,7 @@ function openVaultListRoom(code) {
 // (openConversationAfterPaint has already made s-chat visible by then).
 function focusComposerOnOpenFromTap() {
   if (!isNativeIOS()) return;
+  clearStaleCallKeyboardGuard();
   const input = document.getElementById('msg-input');
   if (!input || input.disabled || input.readOnly) return;
   if (!document.getElementById('s-chat')?.classList.contains('active')) return;
