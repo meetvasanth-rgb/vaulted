@@ -198,9 +198,10 @@ test('the hidden-chats list lives under its own storage key and is saved by patc
   assert.deepEqual([...storage.keys()].filter(key => /hidden/.test(key)), ['vaultlix_hidden_chats_v1']);
 });
 
-test('the app advertises no hidden-chat control in Chats or Settings', () => {
+test('Chats has no persistent hidden-chat control; password management lives in Privacy & Security', () => {
   assert.doesNotMatch(client, /id="hidden-chats-toggle"/);
-  assert.doesNotMatch(client, /id="settings-hidden-chats-row"/);
+  assert.match(client, /id="settings-hidden-chats-row" onclick="openHiddenChatsSettings\(\)"/);
+  assert.match(client, /id="hidden-chats-settings-status">Set up</);
   assert.doesNotMatch(client, /HIDDEN_CHATS_EYE_|toggleHiddenChatsFromInbox|updateHiddenChatsOpener/);
   assert.match(client, /type it into the normal Chats search and press Enter/);
 });
@@ -256,10 +257,10 @@ test('hidden chats re-lock when the app goes to the background', () => {
   assert.match(client, /let hiddenChatsUnlocked = false; \/\/ memory only/);
 });
 
-test('the conversation menu offers Hide chat / Unhide chat without a persistent Settings clue', () => {
+test('the conversation menu offers Hide chat / Unhide chat and Settings manages its password', () => {
   assert.match(client, /onclick="hideChatFromConversationMenu\(\)"[\s\S]{0,400}id="conversation-menu-hide-label">Hide chat</);
   assert.match(client, /hideLabel\.textContent = isChatHidden\(activeRoomCode\) \? 'Unhide chat' : 'Hide chat'/);
-  assert.doesNotMatch(client, /id="settings-hidden-chats-row"/);
+  assert.match(client, /id="settings-hidden-chats-row" onclick="openHiddenChatsSettings\(\)"/);
   assert.match(client, /id="hidden-chats-overlay"/);
 });
 
@@ -383,11 +384,12 @@ test('setup and change reject non-numeric passwords with a clear message, and th
   assert.match(client, /Choose a numeric password \(4 to 12 digits\)/);
 });
 
-test('Settings → Privacy & Security does not disclose the hidden-chat feature', () => {
+test('Settings → Privacy & Security contains hidden-chat password management', () => {
   const fn = extractFn('openSettingsCategory');
   const rows = fn.match(/const generalRows = \{([\s\S]*?)\n  \};/)?.[1] || '';
-  assert.match(rows, /privacy:\['settings-app-lock-row','settings-locker-row'\]/);
-  assert.doesNotMatch(rows, /hidden-chat/);
+  assert.match(rows, /privacy:\['settings-app-lock-row','settings-hidden-chats-row','settings-locker-row'\]/);
+  assert.match(client, /function updateHiddenChatsSettingsStatus\(\)[\s\S]{0,500}configured \? 'On' : 'Set up'/);
+  assert.match(client, /updateAppLockStatus\(\);\s*updateHiddenChatsSettingsStatus\(\);\s*updateLockerStatus\(\);/);
 });
 
 test('every row in the general settings section is reachable from some category page', () => {

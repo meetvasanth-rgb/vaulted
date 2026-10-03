@@ -4015,7 +4015,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <div class="settings-menu" id="settings-menu">
 <div class="settings-link-row" onclick="openSettingsCategory('share')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43" aria-hidden="true">↗</div><div class="settings-row-text"><div class="settings-row-title">Share</div><div class="settings-row-sub">Your number card, Vaultlix app and iPhone App Store card</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
 <div class="settings-link-row" onclick="openSettingsCategory('profile')"><div class="settings-row-icon" style="background:#F2E8EC;color:#682C43"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="profile">Profile</div><div class="settings-row-sub" data-i18n="profile_subtitle">Private number, name, account and encrypted sync</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
-<div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub" data-i18n="privacy_security_subtitle">App lock, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
+<div class="settings-link-row" onclick="openSettingsCategory('privacy')"><div class="settings-row-icon" style="background:#FFF2F4;color:#9B2945"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="privacy_security">Privacy &amp; Security</div><div class="settings-row-sub" data-i18n="privacy_security_subtitle">App lock, hidden chats, account deletion and Emergency Exit</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('notifications')"><div class="settings-row-icon" style="background:#EEF2FF;color:#6366F1"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="notifications">Notifications</div><div class="settings-row-sub" data-i18n="notifications_subtitle">Message sounds, alerts and device permission status</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('chats')"><div class="settings-row-icon" style="background:#F0F7F3;color:#71947C"><svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg></div><div class="settings-row-text"><div class="settings-row-title" data-i18n="chats">Chats</div><div class="settings-row-sub" data-i18n="chats_subtitle">Conversation label, message controls and chat safety</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
       <div class="settings-link-row" onclick="openSettingsCategory('storage')"><div class="settings-row-icon" style="background:#EEF2F6;color:#4C6A82"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></div><div class="settings-row-text"><div class="settings-row-title">Storage</div><div class="settings-row-sub">Saved messages and downloaded attachments</div></div><div class="settings-link-chevron"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div></div>
@@ -4036,6 +4036,19 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         <div class="settings-row-sub">Use an independent passcode and lock immediately in the background</div>
       </div>
       <div class="settings-status settings-status-action" id="app-lock-status">Set up</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row" id="settings-hidden-chats-row" onclick="openHiddenChatsSettings()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
+        <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Hidden chats password</div>
+        <div class="settings-row-sub">Set or change the password used to reveal hidden conversations</div>
+      </div>
+      <div class="settings-status settings-status-action" id="hidden-chats-settings-status">Set up</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -4659,7 +4672,7 @@ const VAULTLIX_TRANSLATIONS = {
     search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
     start_conversation:'Start your first private conversation', start_conversation_help:"Tap Add your friend and enter the other person's Vaultlix private number.",
     message_placeholder:'Type a message…', system_language:'System default', create:'Create', recover:'Recover',
-    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings', profile_subtitle:'Private number, name, account and encrypted sync', privacy_security_subtitle:'App lock, account deletion and Emergency Exit', private_vault:'Private conversation', encrypted:'Encrypted', disappearing_messages:'Disappearing messages', off:'Off', one_minute:'1 minute', five_minutes:'5 minutes', thirty_minutes:'30 minutes', one_hour:'1 hour', eight_hours:'8 hours', yesterday:'Yesterday', missed_encrypted_call:'Missed encrypted call', new_encrypted_message:'New encrypted message', new_encrypted_messages:'new encrypted messages', waiting_for_other_person:'Waiting for the other person', online_encrypted_conversation:'Online · encrypted conversation', you_prefix:'You: ', photo:'Photo', voice_message:'Voice message', attachment:'Attachment', connection_request_text:'Wants to start a private conversation', accept:'Accept', decline:'Decline', close_erase_confirm:'Close & erase this conversation? This deletes it and everything in it for both of you immediately. This cannot be undone.', reconnected:'Reconnected', current_conversation_safety:'Current conversation safety', block_participant:'Block participant', block_participant_subtitle:'Stop contact through this conversation and erase its access from this device', report_and_block:'Report and block', report_and_block_subtitle:'Report abuse, then immediately block this participant', current_conversation:'Current conversation', profile_details:'Profile / Details', view_participant_private_number:'View this participant’s Vaultlix private number', open:'Open', label_conversation:'Label this conversation', edit_conversation_label:'Edit conversation label', conversation_label_subtitle:'A private label visible only to you and included in your encrypted account sync', clear_chat:'Clear chat', clear_chat_subtitle:'Erase all messages for both participants while keeping the connection open', conversation:'Conversation', peer_number_privacy:'Visible only inside your connected conversation with this participant.', copy_private_number:'Copy private number', share_private_number:'Share private number', clear_chat_confirm:'Clear all messages in this conversation for both of you? This cannot be undone. The conversation itself stays open.', clear_chat_failed:'Could not clear chat — try again.', chat_cleared:'Chat cleared', new_private_connection:'New private connection', enter_their_private_number:'Enter their private number', new_connection_instructions:'Enter the exact 6–10 digit Vaultlix private number shared with you. Vaultlix does not search contacts or suggest people.', find_person:'Find person', invalid_private_number:'Enter a valid 6–10 digit Vaultlix private number', own_private_number:'That is your own private number', private_number_not_found:'Vaultlix private number not found'
+    notifications_subtitle:'Message sounds, alerts and device permission status', chats_subtitle:'Conversation label, message controls and chat safety', calls_subtitle:'Call privacy, permissions and audio routing guidance', help_subtitle:'How to use Vaultlix, FAQ, policies and version', conversation_settings:'Conversation settings', profile_subtitle:'Private number, name, account and encrypted sync', privacy_security_subtitle:'App lock, hidden chats, account deletion and Emergency Exit', private_vault:'Private conversation', encrypted:'Encrypted', disappearing_messages:'Disappearing messages', off:'Off', one_minute:'1 minute', five_minutes:'5 minutes', thirty_minutes:'30 minutes', one_hour:'1 hour', eight_hours:'8 hours', yesterday:'Yesterday', missed_encrypted_call:'Missed encrypted call', new_encrypted_message:'New encrypted message', new_encrypted_messages:'new encrypted messages', waiting_for_other_person:'Waiting for the other person', online_encrypted_conversation:'Online · encrypted conversation', you_prefix:'You: ', photo:'Photo', voice_message:'Voice message', attachment:'Attachment', connection_request_text:'Wants to start a private conversation', accept:'Accept', decline:'Decline', close_erase_confirm:'Close & erase this conversation? This deletes it and everything in it for both of you immediately. This cannot be undone.', reconnected:'Reconnected', current_conversation_safety:'Current conversation safety', block_participant:'Block participant', block_participant_subtitle:'Stop contact through this conversation and erase its access from this device', report_and_block:'Report and block', report_and_block_subtitle:'Report abuse, then immediately block this participant', current_conversation:'Current conversation', profile_details:'Profile / Details', view_participant_private_number:'View this participant’s Vaultlix private number', open:'Open', label_conversation:'Label this conversation', edit_conversation_label:'Edit conversation label', conversation_label_subtitle:'A private label visible only to you and included in your encrypted account sync', clear_chat:'Clear chat', clear_chat_subtitle:'Erase all messages for both participants while keeping the connection open', conversation:'Conversation', peer_number_privacy:'Visible only inside your connected conversation with this participant.', copy_private_number:'Copy private number', share_private_number:'Share private number', clear_chat_confirm:'Clear all messages in this conversation for both of you? This cannot be undone. The conversation itself stays open.', clear_chat_failed:'Could not clear chat — try again.', chat_cleared:'Chat cleared', new_private_connection:'New private connection', enter_their_private_number:'Enter their private number', new_connection_instructions:'Enter the exact 6–10 digit Vaultlix private number shared with you. Vaultlix does not search contacts or suggest people.', find_person:'Find person', invalid_private_number:'Enter a valid 6–10 digit Vaultlix private number', own_private_number:'That is your own private number', private_number_not_found:'Vaultlix private number not found'
   },
   zh: {
     settings:'设置', profile:'个人资料', privacy_security:'隐私与安全', notifications:'通知', chats:'聊天', calls:'通话', help:'帮助',
@@ -10468,6 +10481,15 @@ async function setHiddenChatsPassword(password) {
   const verifier = await deriveAppLockVerifier(String(password), salt, HIDDEN_CHATS_ITERATIONS);
   saveHiddenChatsStore({ salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier), iterations:HIDDEN_CHATS_ITERATIONS, passwordLength:String(password).length, numeric:/^\d+$/.test(String(password)), setupConfirmed:true });
   try { localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY); } catch (error) {}
+  updateHiddenChatsSettingsStatus();
+}
+
+function updateHiddenChatsSettingsStatus() {
+  const status = document.getElementById('hidden-chats-settings-status');
+  if (!status) return;
+  const configured = hiddenChatsSetupConfirmed();
+  status.textContent = configured ? 'On' : 'Set up';
+  status.className = configured ? 'settings-status settings-status-on' : 'settings-status settings-status-action';
 }
 
 function refreshHiddenChatsViews() {
@@ -10689,6 +10711,7 @@ async function submitHiddenChatsForm(event) {
       for (const code of hiddenChatCodes()) { const room = rooms.get(code); if (room) syncChatNotificationPrivacy(room, false); }
       saveHiddenChatsStore({ codes:[], salt:null, verifier:null, passwordLength:0, numeric:false, setupConfirmed:false });
       hiddenChatsUnlocked = false;
+      updateHiddenChatsSettingsStatus();
       closeHiddenChatsDialog();
       refreshHiddenChatsViews();
       toast('Hidden chats password removed. All chats are visible again.');
@@ -11009,7 +11032,7 @@ function openSettingsCategory(category) {
   const generalSection = document.getElementById('settings-general-section');
   const generalRows = {
     profile:['settings-account-row','settings-profile-controls'],
-    privacy:['settings-app-lock-row','settings-locker-row'],
+    privacy:['settings-app-lock-row','settings-hidden-chats-row','settings-locker-row'],
     notifications:['settings-chime-row','settings-push-row']
   };
   const selectedRows = generalRows[category] || [];
@@ -11073,6 +11096,7 @@ function openSettings(mode = 'general', initialCategory = null) {
   updateAnonLinkSection();
   updatePersistentSuggestion();
   updateAppLockStatus();
+  updateHiddenChatsSettingsStatus();
   updateLockerStatus();
   const room = getActiveRoom();
   const labelTitleEl = document.getElementById('settings-label-title');
