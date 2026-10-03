@@ -8705,6 +8705,7 @@ function resumeForegroundWork() {
     catchUpPoll();
     checkStaleIncomingCalls();
     refreshPushForAllRooms();
+    resyncMessageToneOnResume();
     reconnectSignalingForAllRooms();
   }, 100);
 }
@@ -11011,7 +11012,10 @@ function notifyMsg(room) {
   if (roomConcealed(room)) return;
   const roomVisible = room.code === activeRoomCode && tabFocused && !document.hidden;
   if (!roomVisible) {
-    playChime();
+    // Android shows a system notification for every message, with the chosen tone
+    // as its sound, even while the app is open; a second in-app chime on top of
+    // it doubled the sound. iOS shows no system alert for an open app, so it keeps it.
+    if (nativePlatform() !== 'android') playChime();
     showCrossVaultMessage(room);
   }
 }
@@ -13792,6 +13796,17 @@ let messageToneSyncAttempts = 0;
 const MESSAGE_TONE_SYNC_DELAY_MS = 800;
 const MESSAGE_TONE_SYNC_RETRY_MS = 20000;
 const MESSAGE_TONE_SYNC_MAX_RETRIES = 4;
+
+// A device only tells the server its tone when it registers for push (app start) or
+// when the choice changes. Registering again on return to the app, at most every ten
+// minutes, repairs a server that missed it or lost it (for example after a deploy).
+let lastMessageToneResyncAt = 0;
+const MESSAGE_TONE_RESYNC_INTERVAL_MS = 10 * 60 * 1000;
+function resyncMessageToneOnResume() {
+  if (!isNativeApp() || Date.now() - lastMessageToneResyncAt < MESSAGE_TONE_RESYNC_INTERVAL_MS) return;
+  lastMessageToneResyncAt = Date.now();
+  syncMessageToneToServer({ immediate:true });
+}
 
 function syncMessageToneToServer({ immediate = false } = {}) {
   if (!isNativeApp()) return;

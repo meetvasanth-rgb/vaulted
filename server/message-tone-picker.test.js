@@ -329,3 +329,23 @@ Module._load = function (request, ...rest) {
     fs.rmSync(preload, { force:true });
   }
 });
+
+// Android posts a system notification for every message (with the chosen tone as its
+// sound) even while the app is open, so the in-app chime doubled it.
+test('Android plays no in-app message chime; iOS and the web keep it', () => {
+  const notify = extractBlock(client, 'function notifyMsg(room) {', 'showCrossVaultMessage(room);');
+  assert.match(notify, /if \(nativePlatform\(\) !== 'android'\) playChime\(\);/);
+  assert.doesNotMatch(notify.replace(/if \(nativePlatform\(\) !== 'android'\) playChime\(\);/, ''), /playChime\(\)/);
+});
+
+test('returning to the app re-registers the tone, at most every ten minutes', () => {
+  assert.match(client, /const MESSAGE_TONE_RESYNC_INTERVAL_MS = 10 \* 60 \* 1000;/);
+  assert.match(client, /refreshPushForAllRooms\(\);\s*resyncMessageToneOnResume\(\);\s*reconnectSignalingForAllRooms\(\);/);
+  const harness = clientHarness();
+  harness.resyncMessageToneOnResume();
+  assert.equal(harness.pending().length, 1, 'the first return registers');
+  harness.pending()[0].cleared = true;
+  harness.resyncMessageToneOnResume();
+  assert.equal(harness.pending().length, 0, 'a second return within ten minutes does not');
+  assert.equal(clientHarness({ native:false }).resyncMessageToneOnResume(), undefined);
+});
