@@ -432,7 +432,8 @@ async function refreshPrivateGroups() {
 function openCreateGroup() {
   const state = loadAccountState();
   if (!state) { openAccountPanel(); showAccountTab('login'); return; }
-  const eligible = [...rooms.values()].filter(room => room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === state.accountId && !room.reconnectRequired);
+  const eligible = [...rooms.values()].filter(room => (typeof hiddenChatIsHidden !== 'function' || !hiddenChatIsHidden(room))
+    && room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === state.accountId && !room.reconnectRequired);
   document.getElementById('group-contact-list').innerHTML = eligible.length
     ? eligible.map(room => `<label class="group-contact"><input type="checkbox" value="${escHtml(room.code)}"><span>${escHtml(roomDisplayLabel(room))}<small>${escHtml(formatPrivateNumber(room.peerPrivateNumber))}</small></span></label>`).join('')
     : '<div class="group-chat-empty" style="padding:24px">Connect with a friend before creating a group.</div>';
@@ -1623,7 +1624,8 @@ function closeGroupMembers() { document.getElementById('group-members')?.classLi
 function groupAddCandidates(group, roomList, accountId) {
   const inGroupRooms = new Set((group.members || []).map(member => member.wrapRoomCode).filter(Boolean));
   const inGroupNumbers = new Set((group.members || []).map(member => String(member.privateNumber || '')).filter(Boolean));
-  return roomList.filter(room => room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === accountId
+  return roomList.filter(room => (typeof hiddenChatIsHidden !== 'function' || !hiddenChatIsHidden(room))
+    && room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === accountId
     && !room.reconnectRequired && !inGroupRooms.has(room.code) && !inGroupNumbers.has(String(room.peerPrivateNumber)));
 }
 

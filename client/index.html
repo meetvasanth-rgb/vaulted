@@ -1082,28 +1082,38 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #privacy-cover.quick-locked .pc-lock-copy,#privacy-cover.quick-locked .app-lock-form{display:flex}
 #privacy-cover.unlocking .pc-unlock{opacity:.55;pointer-events:none}
 
-.app-lock-overlay{position:fixed;inset:0;z-index:10030;background:rgba(14,8,11,.72);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.app-lock-overlay{position:fixed;inset:0;z-index:10030;background:rgba(31,18,25,.66);display:none;align-items:flex-end;justify-content:center;padding:16px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
 .app-lock-overlay.open{display:flex}
-.app-lock-sheet{width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#FFFDF9;border-radius:22px;padding:22px;box-sizing:border-box;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.app-lock-title{margin:0 0 8px;font-family:'Cormorant Garamond',serif;font-size:29px;color:#241B1E}
-.app-lock-copy{font-size:13px;line-height:1.55;color:#6B5D61;margin-bottom:16px}
-.app-lock-field{display:block;margin:11px 0}.app-lock-field span{display:block;margin-bottom:6px;color:#5F5055;font-size:12px;font-weight:600}
-.app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
-.app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
+.app-lock-sheet{width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;background:#FBF7F8;border:1px solid rgba(104,44,67,.12);border-radius:28px;padding:26px;box-sizing:border-box;box-shadow:0 26px 80px rgba(47,25,35,.3);font-family:'Inter',sans-serif}
+.app-lock-title{margin:0 0 9px;font:750 25px/1.15 'Manrope',sans-serif;letter-spacing:-.035em;color:#271D25}
+.app-lock-copy{font:500 13px/1.6 'Inter',sans-serif;color:#75666D;margin-bottom:18px}
+.app-lock-field{display:block;margin:13px 0}.app-lock-field span{display:block;margin-bottom:7px;color:#57464E;font:700 11px/1.2 'Inter',sans-serif;letter-spacing:.025em}
+.app-lock-field input{width:100%;height:50px;box-sizing:border-box;border:1px solid #DDCFD5;border-radius:15px;padding:0 15px;background:#fff;color:#271D25;font:600 16px 'Inter',sans-serif;outline:none;transition:border-color .15s,box-shadow .15s}.app-lock-field input:focus{border-color:#A85D76;box-shadow:0 0 0 4px rgba(168,93,118,.12)}
+.app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:21px}.app-lock-actions button{min-height:46px;border:1px solid #DDCFD5;border-radius:14px;background:#fff;color:#682C43;padding:0 18px;font:750 13px 'Manrope',sans-serif;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff;box-shadow:0 8px 20px rgba(104,44,67,.2)}.app-lock-actions .danger{color:#9B2945;border-color:#E3B9C3;background:#FFF7F8}
+.locker-sheet{position:relative;overflow:hidden;background:linear-gradient(160deg,#FFFDFE 0%,#FBF5F7 100%)}
+.locker-sheet::before{content:'';position:absolute;width:180px;height:180px;border-radius:50%;right:-86px;top:-92px;background:rgba(200,117,136,.12);pointer-events:none}
+.locker-brand{display:flex;align-items:center;gap:13px;margin-bottom:20px;position:relative}
+.locker-brand-mark{width:48px;height:48px;border-radius:16px;background:#682C43;color:#fff;display:grid;place-items:center;box-shadow:0 10px 24px rgba(104,44,67,.22)}
+.locker-brand-mark svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.locker-kicker{color:#A85D76;font:800 10px/1 'Inter',sans-serif;letter-spacing:.15em;text-transform:uppercase;margin-bottom:5px}
+.locker-vault-head{display:flex;align-items:center;gap:13px;margin-bottom:18px}.locker-vault-head .app-lock-title{flex:1;margin:0}.locker-vault-head button{min-height:40px;border:1px solid #E0D3D8;border-radius:12px;background:#fff;color:#682C43;padding:0 14px;font:750 12px 'Manrope',sans-serif}.locker-item-list{overflow:hidden;border:1px solid #EADFE3;border-radius:18px;background:#fff}.locker-item-list:empty{display:none}.locker-actions{justify-content:flex-start!important;flex-wrap:wrap}.locker-actions .primary-action{background:#682C43!important;color:#fff!important;border-color:#682C43!important}.locker-actions .close-action{margin-left:auto}
+.locker-item-list .settings-row{padding:14px 15px;border-bottom:1px solid #F0E7EA;transition:background .15s}.locker-item-list .settings-row:last-child{border-bottom:0}.locker-item-list .settings-row:active{background:#FBF4F6}.locker-item-list .settings-row-icon{width:42px;height:42px;border-radius:13px}.locker-item-list .settings-row-title{font:750 14px 'Manrope',sans-serif;color:#34272E}.locker-item-list .settings-row-sub{font:550 11px 'Inter',sans-serif;color:#9A858E;margin-top:3px}
 
-.locker-fullscreen{position:fixed;inset:0;z-index:10046;background:#FFFDF9;display:none;flex-direction:column}
+.locker-fullscreen{position:fixed;inset:0;z-index:10046;background:#FBF7F8;display:none;flex-direction:column;color:#271D25}
 .locker-fullscreen.open{display:flex}
-.locker-fullscreen-head{display:flex;align-items:center;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top)) 12px 8px;flex:none}
-.locker-fullscreen-back{display:flex;align-items:center;gap:4px;border:0;background:transparent;color:#682C43;font:600 15px Inter,sans-serif;padding:8px}
+.locker-fullscreen-head{display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;flex:none;background:#fff;border-bottom:1px solid #EEE4E7;box-shadow:0 2px 12px rgba(72,42,54,.05)}
+.locker-fullscreen-back{display:flex;align-items:center;gap:5px;border:0;background:transparent;color:#682C43;font:750 14px 'Manrope',sans-serif;padding:9px 8px;border-radius:11px}
+.locker-fullscreen-back:active{background:#F4E9ED}
 .locker-fullscreen-back svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.locker-fullscreen-delete{border:0;background:transparent;color:#9B2945;padding:8px;display:flex}
+.locker-fullscreen-delete{width:40px;height:40px;border:0;border-radius:12px;background:#FFF1F3;color:#9B2945;padding:0;display:grid;place-items:center}
 .locker-fullscreen-delete svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.locker-fullscreen-body{flex:1;min-height:0;overflow-y:auto;padding:4px 20px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column}
-.locker-note-heading-input{border:0;outline:none;background:transparent;width:100%;font:700 26px/1.25 'Cormorant Garamond',serif;color:#241B1E;padding:6px 0}
-.locker-note-meta{color:#B0A498;font:600 11px Inter,sans-serif;margin-bottom:10px}
-.locker-note-body-input{flex:1;min-height:220px;border:0;outline:none;resize:none;background:transparent;width:100%;font:500 16px/1.55 Inter,sans-serif;color:#3A322F}
+.locker-fullscreen-body{flex:1;min-height:0;overflow-y:auto;width:min(100%,760px);margin:0 auto;padding:22px 18px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;box-sizing:border-box}
+.locker-note-heading-input{border:0;border-bottom:1px solid #EADFE3;outline:none;background:#fff;width:100%;font:750 25px/1.25 'Manrope',sans-serif;letter-spacing:-.025em;color:#271D25;padding:21px 20px 14px;border-radius:20px 20px 0 0;box-sizing:border-box}
+.locker-note-meta{color:#9B7E89;background:#fff;font:650 10px 'Inter',sans-serif;padding:0 20px 13px;letter-spacing:.02em}
+.locker-note-body-input{flex:1;min-height:280px;border:0;outline:none;resize:none;background:#fff;width:100%;font:500 16px/1.65 'Inter',sans-serif;color:#3A2E34;padding:18px 20px;border-radius:0 0 20px 20px;box-sizing:border-box;box-shadow:0 12px 34px rgba(73,42,54,.07)}
+.locker-note-heading-input::placeholder,.locker-note-body-input::placeholder{color:#B7A7AE}
 .locker-fullscreen-dark{background:#0A0908}
-.locker-fullscreen-dark .locker-fullscreen-back{color:#EDE7DC}
+.locker-fullscreen-dark .locker-fullscreen-head{background:#121012;border-bottom-color:#2A2528;box-shadow:none}.locker-fullscreen-dark .locker-fullscreen-back{color:#F5EDF0}.locker-fullscreen-dark .locker-fullscreen-delete{background:#2A171D;color:#E7A8B8}
 .locker-fullscreen-photo-stage{flex:1;min-height:0;display:grid;place-items:center;overflow:hidden;padding:0 20px calc(20px + env(safe-area-inset-bottom))}
 .locker-fullscreen-photo-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
 
@@ -3433,6 +3443,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   <div class="conversation-menu" id="conversation-menu" role="menu" aria-label="Conversation actions" data-i18n-aria-label="conversation_actions" onclick="event.stopPropagation()">
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span data-i18n="conversation_settings">Conversation settings</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationAchievements()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 13v4M8 20h8M10 17h4"/></svg></span><span data-i18n="achievements">Achievements</span></button>
+    <button class="conversation-menu-item" id="hidden-chat-menu-action" type="button" role="menuitem" onclick="openHiddenChatPrompt()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 8h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/><path d="M8 14h8"/></svg></span><span id="hidden-chat-menu-label">Hide chat</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="quickLockFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span data-i18n="quick_lock">Quick Lock</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span data-i18n="clear_chat">Clear chat</span></button>
     <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span data-i18n="leave_conversation">Leave conversation</span></button>
@@ -3501,7 +3512,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <div class="vault-list-title" id="vault-list-title" data-i18n="chats">Chats</div>
     </div>
     <div class="vault-list-search" id="vault-list-search" hidden>
-      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)"/>
+      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" autocapitalize="none" spellcheck="false" oninput="filterVaultList(this.value)"/>
     </div>
     <div class="vault-list-nav">
       <button class="vault-list-settings" type="button" id="vault-search-toggle" onclick="toggleVaultSearch()" title="Search chats" aria-label="Search chats">
@@ -3868,8 +3879,8 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="app-lock-overlay" id="locker-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-setup-title">
-  <form class="app-lock-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)">
-    <h2 class="app-lock-title" id="locker-setup-title">Vaultlix Locker</h2>
+  <form class="app-lock-sheet locker-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)">
+    <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Private on this device</div><h2 class="app-lock-title" id="locker-setup-title">Create your Locker</h2></div></div>
     <div class="app-lock-copy" id="locker-setup-copy">Choose a password for your Locker, separate from your Vaultlix account password and App Lock passcode. It guards notes and photos stored only on this device. Vaultlix cannot recover it — losing it permanently loses everything in your Locker.</div>
     <label class="app-lock-field"><span>Locker password</span><input id="locker-setup-password" type="password" autocomplete="new-password" minlength="8" required/></label>
     <label class="app-lock-field"><span>Confirm password</span><input id="locker-setup-confirm" type="password" autocomplete="new-password" minlength="8" required/></label>
@@ -3879,9 +3890,9 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="app-lock-overlay" id="locker-unlock-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-unlock-title">
-  <form class="app-lock-sheet" id="locker-unlock-form" onsubmit="submitLockerUnlock(event)">
-    <h2 class="app-lock-title" id="locker-unlock-title">Vaultlix Locker</h2>
-    <div class="app-lock-copy">Enter your Locker password.</div>
+  <form class="app-lock-sheet locker-sheet" id="locker-unlock-form" onsubmit="submitLockerUnlock(event)">
+    <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Encrypted locally</div><h2 class="app-lock-title" id="locker-unlock-title">Unlock Locker</h2></div></div>
+    <div class="app-lock-copy">Your notes and photos stay encrypted until you enter the separate Locker password.</div>
     <label class="app-lock-field"><span>Locker password</span><input id="locker-unlock-password" type="password" autocomplete="current-password" required/></label>
     <div class="app-lock-error" id="locker-unlock-error" aria-live="polite"></div>
     <div class="app-lock-actions"><button type="button" onclick="closeLockerUnlockScreen()">Cancel</button><button class="primary" type="submit">Unlock</button></div>
@@ -3889,19 +3900,30 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="app-lock-overlay" id="locker-vault-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-vault-title">
-  <div class="app-lock-sheet">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 class="app-lock-title" id="locker-vault-title" style="margin:0">Locker</h2>
+  <div class="app-lock-sheet locker-sheet">
+    <div class="locker-vault-head">
+      <span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+      <h2 class="app-lock-title" id="locker-vault-title">Locker</h2>
       <button type="button" onclick="lockLocker()">Lock</button>
     </div>
     <div class="app-lock-copy" id="locker-vault-empty">Your Locker is empty. Add a note or a photo below.</div>
-    <div id="locker-item-list"></div>
-    <div class="app-lock-actions" style="justify-content:flex-start;flex-wrap:wrap">
-      <button type="button" onclick="openLockerNoteScreen()">Add note</button>
+    <div class="locker-item-list" id="locker-item-list"></div>
+    <div class="app-lock-actions locker-actions">
+      <button class="primary-action" type="button" onclick="openLockerNoteScreen()">Add note</button>
       <button type="button" onclick="openLockerImagePicker()">Add photo</button>
-      <button type="button" onclick="closeLockerVault()" style="margin-left:auto">Close</button>
+      <button class="close-action" type="button" onclick="closeLockerVault()">Close</button>
     </div>
   </div>
+</div>
+<div class="app-lock-overlay" id="hidden-chat-overlay" role="dialog" aria-modal="true" aria-labelledby="hidden-chat-title">
+  <form class="app-lock-sheet locker-sheet" id="hidden-chat-form" onsubmit="submitHiddenChatPrompt(event)">
+    <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Private access</div><h2 class="app-lock-title" id="hidden-chat-title">Hide this chat</h2></div></div>
+    <div class="app-lock-copy" id="hidden-chat-copy">Create a secret code. Later, type it exactly into the normal Chats search to reveal hidden conversations.</div>
+    <label class="app-lock-field"><span>Secret code</span><input id="hidden-chat-secret" type="password" autocomplete="new-password" minlength="6" required/></label>
+    <label class="app-lock-field" id="hidden-chat-confirm-wrap"><span>Confirm secret code</span><input id="hidden-chat-confirm" type="password" autocomplete="new-password" minlength="6"/></label>
+    <div class="app-lock-error" id="hidden-chat-error" aria-live="polite"></div>
+    <div class="app-lock-actions"><button type="button" onclick="closeHiddenChatPrompt()">Cancel</button><button class="primary" id="hidden-chat-submit" type="submit">Hide chat</button></div>
+  </form>
 </div>
 <input type="file" id="locker-image-input" accept="image/*" hidden onchange="handleLockerImageSelect(event)"/>
 
@@ -5344,7 +5366,8 @@ async function renderStoragePage() {
     <div class="storage-bar" role="img" aria-label="${percent}% of the download limit used"><span style="width:${percent}%"></span></div>`;
   document.getElementById('storage-limit').innerHTML = `<div class="storage-seg">${ATTACHMENT_CACHE_LIMIT_CHOICES_MB.map(mb =>
     `<button type="button" class="${mb * 1024 * 1024 === limit ? 'on' : ''}" onclick="setAttachmentCacheLimitMb(${mb})">${mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`}</button>`).join('')}</div>`;
-  const codes = [...new Set([...Object.keys(downloads.byRoom), ...Object.keys(messages.byRoom)])];
+  const codes = [...new Set([...Object.keys(downloads.byRoom), ...Object.keys(messages.byRoom)])]
+    .filter(code => String(code).startsWith('group:') || !hiddenChatIsHidden(code));
   const label = storageLabelForCode;
   codes.sort((a, b) => (downloads.byRoom[b] || 0) - (downloads.byRoom[a] || 0));
   document.getElementById('storage-rooms').innerHTML = codes.length ? codes.map(code => {
@@ -10336,7 +10359,7 @@ let crossVaultBannerRoomCode = null;
 function updateVaultUnreadBadge() {
   updateVaultNavigationBadges();
   let total = 0;
-  for (const room of rooms.values()) if (!isRoomVisible(room)) total += room.unread;
+  for (const room of rooms.values()) if (!hiddenChatIsHidden(room) && !isRoomVisible(room)) total += room.unread;
   const badge = document.getElementById('chat-vault-unread');
   const button = document.querySelector('.chat-home-btn');
   if (button) button.setAttribute('aria-label', total > 0 ? `Back to conversations, ${total} unread` : 'Back to conversations');
@@ -10348,7 +10371,7 @@ function updateVaultUnreadBadge() {
 }
 
 function showCrossVaultMessage(room) {
-  if (!room || room.code === activeRoomCode || !document.getElementById('s-chat')?.classList.contains('active') || document.hidden || !tabFocused) return;
+  if (!room || hiddenChatIsHidden(room) || room.code === activeRoomCode || !document.getElementById('s-chat')?.classList.contains('active') || document.hidden || !tabFocused) return;
   const banner = document.getElementById('cross-vault-banner');
   const title = document.getElementById('cross-vault-banner-title');
   if (!banner || !title) return;
@@ -10469,10 +10492,111 @@ function toggleConversationMenu(event) {
   const opening = !menu.classList.contains('open');
   closeConversationMenu();
   if (opening) {
+    syncHiddenChatMenuAction();
     menu.classList.add('open');
     button.setAttribute('aria-expanded', 'true');
     menu.querySelector('.conversation-menu-item')?.focus();
   }
+}
+
+function openHiddenChatPrompt() {
+  closeConversationMenu();
+  const room = getActiveRoom();
+  if (!room) return;
+  hiddenChatPendingRoomCode = room.code;
+  const configured = Boolean(loadHiddenChatConfig());
+  const hidden = hiddenChatIsHidden(room);
+  const title = document.getElementById('hidden-chat-title');
+  const copy = document.getElementById('hidden-chat-copy');
+  const confirmWrap = document.getElementById('hidden-chat-confirm-wrap');
+  const secret = document.getElementById('hidden-chat-secret');
+  const confirmation = document.getElementById('hidden-chat-confirm');
+  const error = document.getElementById('hidden-chat-error');
+  const submit = document.getElementById('hidden-chat-submit');
+  document.getElementById('hidden-chat-form')?.reset();
+  if (title) title.textContent = hidden ? 'Show this chat' : configured ? 'Hide this chat' : 'Create a secret code';
+  if (copy) copy.textContent = hidden
+    ? 'Enter your secret code to return this conversation to the normal Chats list.'
+    : configured
+      ? 'Enter your secret code. This conversation will disappear from Chats, search, badges, calls, status and contact pickers.'
+      : 'Create a secret code. Later, type it exactly into the normal Chats search to reveal hidden conversations.';
+  if (confirmWrap) confirmWrap.hidden = configured;
+  if (confirmation) confirmation.required = !configured;
+  if (secret) secret.autocomplete = configured ? 'current-password' : 'new-password';
+  if (error) error.textContent = '';
+  if (submit) submit.textContent = hidden ? 'Show in Chats' : 'Hide chat';
+  document.getElementById('hidden-chat-overlay')?.classList.add('open');
+  setTimeout(() => secret?.focus(), 50);
+}
+
+function closeHiddenChatPrompt() {
+  hiddenChatPendingRoomCode = null;
+  document.getElementById('hidden-chat-form')?.reset();
+  document.getElementById('hidden-chat-overlay')?.classList.remove('open');
+}
+
+async function submitHiddenChatPrompt(event) {
+  event.preventDefault();
+  const room = rooms.get(hiddenChatPendingRoomCode);
+  if (!room) { closeHiddenChatPrompt(); return; }
+  const secretInput = document.getElementById('hidden-chat-secret');
+  const confirmationInput = document.getElementById('hidden-chat-confirm');
+  const error = document.getElementById('hidden-chat-error');
+  const submit = document.getElementById('hidden-chat-submit');
+  const secret = String(secretInput?.value || '').trim();
+  if (error) error.textContent = '';
+  if (secret.length < 6) { if (error) error.textContent = 'Use at least 6 characters.'; return; }
+  let config = loadHiddenChatConfig();
+  if (!config) {
+    if (secret !== String(confirmationInput?.value || '').trim()) { if (error) error.textContent = 'The secret codes do not match.'; return; }
+    if (submit) submit.disabled = true;
+    try {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const verifier = await hiddenChatVerifier(secret, salt);
+      config = {
+        version:1,
+        iterations:HIDDEN_CHAT_PBKDF2_ITERATIONS,
+        salt:bytesToBase64UrlCompact(salt),
+        verifier:bytesToBase64UrlCompact(verifier),
+        secretLength:secret.length,
+        tagSalt:bytesToBase64UrlCompact(crypto.getRandomValues(new Uint8Array(16))),
+        tags:[],
+      };
+    } catch (_) {
+      if (error) error.textContent = 'Could not create private access on this device.';
+      if (submit) submit.disabled = false;
+      return;
+    }
+  } else {
+    if (submit) submit.disabled = true;
+    if (!await verifyHiddenChatSecret(secret, config)) {
+      if (error) error.textContent = 'Incorrect secret code.';
+      if (secretInput) { secretInput.value = ''; secretInput.focus(); }
+      if (submit) submit.disabled = false;
+      return;
+    }
+  }
+  const tag = hiddenChatRoomTag(room.code, config);
+  const wasHidden = config.tags.includes(tag);
+  config.tags = wasHidden ? config.tags.filter(value => value !== tag) : [...new Set([...config.tags, tag])];
+  if (!saveHiddenChatConfig(config)) {
+    if (error) error.textContent = 'Could not save private access on this device.';
+    if (submit) submit.disabled = false;
+    return;
+  }
+  if (submit) submit.disabled = false;
+  closeHiddenChatPrompt();
+  if (wasHidden) {
+    hiddenChatAuthorizedRoomCode = null;
+    toast('Chat returned to Chats');
+  } else {
+    hiddenChatAuthorizedRoomCode = null;
+    openVaultInbox();
+    renderVaultList();
+    toast('Chat hidden');
+  }
+  updateVaultNavigationBadges();
+  renderRoomTabs();
 }
 
 function openConversationSettingsFromMenu() {
@@ -13990,7 +14114,7 @@ function openEmergencyExit() {
   if (currentRadio) { currentRadio.disabled = !current; currentRadio.checked = Boolean(current); }
   if (!current) document.querySelector('input[name="emergency-scope"][value="device"]')?.click();
   const list = document.getElementById('emergency-vaults');
-  if (list) list.innerHTML = [...rooms.values()].map(room => {
+  if (list) list.innerHTML = [...rooms.values()].filter(room => !hiddenChatIsHidden(room)).map(room => {
     const label = escHtml(room.localLabel || room.peerName || 'Private conversation');
     const detail = room.peerName && room.localLabel ? escHtml(room.peerName) : 'Encrypted one-to-one conversation';
     return `<label class="emergency-choice"><input type="checkbox" value="${escHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${detail}</small></span></label>`;
@@ -14161,6 +14285,7 @@ function confirmRead(room, msgIds) {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    lockHiddenChats({ leaveConversation:true });
     if (appLockConfigured()) activateAppLock(false);
     else showPrivacyCover();
     tabFocused = false;
@@ -14731,12 +14856,13 @@ function openPeerProfileImage() {
 function renderRoomTabs() {
   const wrap = document.getElementById('room-tabs');
   if (wrap) {
-    if (rooms.size === 0) {
+    const visibleRooms = [...rooms.values()].filter(room => !hiddenChatIsHidden(room) || hiddenChatAuthorizedRoomCode === room.code);
+    if (visibleRooms.length === 0) {
       wrap.classList.remove('show'); wrap.innerHTML = '';
     } else {
       wrap.classList.add('show');
       let html = '';
-      for (const room of rooms.values()) {
+      for (const room of visibleRooms) {
         const active = room.code === activeRoomCode;
         const rawLabel = roomDisplayLabel(room);
         const label = rawLabel.length > 14 ? rawLabel.slice(0, 12) + '…' : rawLabel;
@@ -14751,6 +14877,7 @@ function renderRoomTabs() {
       wrap.innerHTML = html;
       wrap.querySelectorAll('.room-tab').forEach(el => { el.onclick = () => {
         const room = rooms.get(el.dataset.room);
+        if (el.dataset.room !== hiddenChatAuthorizedRoomCode) lockHiddenChats();
         // A tab can exist for a room that was restored from a previous session
         // but never actually joined by a peer (see resumeWaitingScreen) — route
         // back to its waiting screen instead of rendering it as if connected.
@@ -14760,7 +14887,7 @@ function renderRoomTabs() {
       const addBtn = document.getElementById('room-tab-add');
       if (addBtn) addBtn.onclick = () => addRoomFlow();
       const listBtn = document.getElementById('vault-list-btn');
-      if (listBtn) listBtn.onclick = () => showScreen('s-vault-list');
+      if (listBtn) listBtn.onclick = () => openVaultInbox();
     }
   }
   // Full vault-list page (if currently open) has no polling of its own —
@@ -14988,6 +15115,97 @@ function vaultAvatarPalette(seed) {
 let currentVaultListMode = 'chats';
 let vaultSearchActive = false;
 let vaultSearchQuery = '';
+let hiddenChatSearchUnlocked = false;
+let hiddenChatAuthorizedRoomCode = null;
+let hiddenChatSearchTimer = null;
+let hiddenChatSearchAttempt = 0;
+let hiddenChatPendingRoomCode = null;
+const HIDDEN_CHAT_CONFIG_PREFIX = 'vaultlix_private_visibility_v1:';
+const HIDDEN_CHAT_PBKDF2_ITERATIONS = 210000;
+
+function hiddenChatConfigKey() {
+  const accountId = loadAccountState()?.accountId;
+  return accountId ? HIDDEN_CHAT_CONFIG_PREFIX + accountId : null;
+}
+
+function loadHiddenChatConfig() {
+  const key = hiddenChatConfigKey();
+  if (!key) return null;
+  try {
+    const config = JSON.parse(localStorage.getItem(key) || 'null');
+    return config && config.version === 1 && Array.isArray(config.tags) ? config : null;
+  } catch (_) { return null; }
+}
+
+function saveHiddenChatConfig(config) {
+  const key = hiddenChatConfigKey();
+  if (!key) return false;
+  try { localStorage.setItem(key, JSON.stringify(config)); return true; }
+  catch (_) { return false; }
+}
+
+// The locally stored list uses opaque per-account tags instead of room codes,
+// so a casual storage inspection does not disclose which conversations were
+// hidden. The secret itself is protected separately by a slow PBKDF2 verifier.
+function hiddenChatRoomTag(code, config = loadHiddenChatConfig()) {
+  if (!config?.tagSalt || !code) return '';
+  const source = `${loadAccountState()?.accountId || ''}:${config.tagSalt}:${String(code).toLowerCase()}`;
+  let first = 2166136261, second = 3335557771;
+  for (let index = 0; index < source.length; index++) {
+    const value = source.charCodeAt(index);
+    first = Math.imul(first ^ value, 16777619);
+    second = Math.imul(second ^ value, 2246822519);
+  }
+  return `${(first >>> 0).toString(16).padStart(8, '0')}${(second >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function hiddenChatIsHidden(roomOrCode) {
+  const config = loadHiddenChatConfig();
+  if (!config) return false;
+  const code = typeof roomOrCode === 'string' ? roomOrCode : roomOrCode?.code;
+  const tag = hiddenChatRoomTag(code, config);
+  return Boolean(tag && config.tags.includes(tag));
+}
+
+function hiddenChatCanOpen(roomOrCode) {
+  const code = typeof roomOrCode === 'string' ? roomOrCode : roomOrCode?.code;
+  return !hiddenChatIsHidden(code) || hiddenChatSearchUnlocked || hiddenChatAuthorizedRoomCode === code;
+}
+
+function hiddenChatPeerIsHidden(privateNumber) {
+  const normalized = normalizePrivateNumber(privateNumber);
+  if (!normalized) return false;
+  return [...rooms.values()].some(room => normalizePrivateNumber(room.peerPrivateNumber) === normalized && hiddenChatIsHidden(room));
+}
+
+async function hiddenChatVerifier(secret, salt, iterations = HIDDEN_CHAT_PBKDF2_ITERATIONS) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations }, key, 256));
+}
+
+async function verifyHiddenChatSecret(secret, config = loadHiddenChatConfig()) {
+  if (!config || !secret || secret.length !== Number(config.secretLength)) return false;
+  try {
+    const actual = await hiddenChatVerifier(secret, base64UrlToBytes(config.salt), config.iterations || HIDDEN_CHAT_PBKDF2_ITERATIONS);
+    return equalBytes(actual, base64UrlToBytes(config.verifier));
+  } catch (_) { return false; }
+}
+
+function lockHiddenChats({ leaveConversation = false } = {}) {
+  hiddenChatSearchAttempt++;
+  clearTimeout(hiddenChatSearchTimer);
+  hiddenChatSearchTimer = null;
+  hiddenChatSearchUnlocked = false;
+  const authorized = hiddenChatAuthorizedRoomCode;
+  hiddenChatAuthorizedRoomCode = null;
+  if (leaveConversation && authorized && activeRoomCode === authorized && document.getElementById('s-chat')?.classList.contains('active')) openVaultInbox();
+}
+
+function syncHiddenChatMenuAction() {
+  const label = document.getElementById('hidden-chat-menu-label');
+  if (label) label.textContent = hiddenChatIsHidden(activeRoomCode) ? 'Show in Chats' : 'Hide chat';
+}
+
 let statusFeed = [];
 let statusFeedLoading = false;
 let statusFeedRefreshQueued = false;
@@ -15130,6 +15348,7 @@ function renderStatusRail() {
   const grouped = new Map();
   const hidden = statusHiddenIds();
   for (const item of statusFeed.filter(candidate => !candidate.own && !hidden.has(candidate.id))) {
+    if (hiddenChatPeerIsHidden(item.authorPrivateNumber)) continue;
     if (!grouped.has(item.authorPrivateNumber)) grouped.set(item.authorPrivateNumber, []);
     grouped.get(item.authorPrivateNumber).push(item);
   }
@@ -15161,6 +15380,7 @@ function renderStatusPage() {
   const hidden = statusHiddenIds();
   const grouped = new Map();
   for (const item of statusFeed.filter(candidate => !candidate.own && !hidden.has(candidate.id))) {
+    if (hiddenChatPeerIsHidden(item.authorPrivateNumber)) continue;
     if (!grouped.has(item.authorPrivateNumber)) grouped.set(item.authorPrivateNumber, []);
     grouped.get(item.authorPrivateNumber).push(item);
   }
@@ -15191,7 +15411,7 @@ function renderStatusPage() {
 }
 
 function openStatusComposer() {
-  const eligible = [...rooms.values()].filter(room => room.everOnline && room.sharedKey && room.peerPrivateNumber && !room.reconnectRequired);
+  const eligible = [...rooms.values()].filter(room => !hiddenChatIsHidden(room) && room.everOnline && room.sharedKey && room.peerPrivateNumber && !room.reconnectRequired);
   if (!eligible.length) { toast('Connect with a friend before posting a status.'); return; }
   closeStatusComposer();
   statusComposerImage = null;
@@ -15309,7 +15529,7 @@ async function publishStatus() {
 function closeStatusViewer() { if(statusViewerTimer)clearTimeout(statusViewerTimer);statusViewerTimer=null;document.getElementById('status-viewer')?.remove();statusViewerItems=[];renderStatusRail(); }
 function openStatusViewer(key) {
   const hidden = statusHiddenIds();
-  statusViewerItems = key === 'own' ? statusFeed.filter(item => item.own) : statusFeed.filter(item => !item.own && item.authorPrivateNumber === key && !hidden.has(item.id));
+  statusViewerItems = key === 'own' ? statusFeed.filter(item => item.own) : statusFeed.filter(item => !item.own && item.authorPrivateNumber === key && !hidden.has(item.id) && !hiddenChatPeerIsHidden(item.authorPrivateNumber));
   if (!statusViewerItems.length) { openStatusComposer(); return; }
   statusViewerIndex = Math.max(0,statusViewerItems.findIndex(item => !statusSeenIds().has(item.id)));
   renderStatusViewer();
@@ -15672,7 +15892,7 @@ function missedCallBadgeEntries() {
 function vaultNavigationCounts() {
   if (!loadAccountState()) return { messages:0, calls:0 };
   let messages = 0;
-  for (const room of rooms.values()) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
+  for (const room of rooms.values()) if (typeof hiddenChatIsHidden !== 'function' || !hiddenChatIsHidden(room)) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
   for (const group of privateGroups.values()) messages += Math.max(0, Number(group.unread) || 0);
   const { seen } = missedCallSeenState();
   const calls = new Set(missedCallBadgeEntries().filter(id => !seen.has(id))).size;
@@ -15717,6 +15937,7 @@ function toggleVaultSearch() {
 }
 
 function openVaultSearch() {
+  lockHiddenChats();
   vaultSearchActive = true;
   document.getElementById('vault-list-heading')?.setAttribute('hidden', '');
   document.getElementById('vault-list-search')?.removeAttribute('hidden');
@@ -15731,6 +15952,7 @@ function openVaultSearch() {
 }
 
 function closeVaultSearch() {
+  lockHiddenChats();
   vaultSearchActive = false;
   vaultSearchQuery = '';
   document.getElementById('vault-list-search')?.setAttribute('hidden', '');
@@ -15745,8 +15967,23 @@ function closeVaultSearch() {
 }
 
 function filterVaultList(value) {
-  vaultSearchQuery = (value || '').trim().toLowerCase();
+  const raw = String(value || '').trim();
+  const attempt = ++hiddenChatSearchAttempt;
+  clearTimeout(hiddenChatSearchTimer);
+  hiddenChatSearchUnlocked = false;
+  vaultSearchQuery = raw.toLowerCase();
   renderVaultList();
+  const config = loadHiddenChatConfig();
+  if (!config || raw.length !== Number(config.secretLength)) return;
+  hiddenChatSearchTimer = setTimeout(async () => {
+    if (attempt !== hiddenChatSearchAttempt || !vaultSearchActive) return;
+    if (!await verifyHiddenChatSecret(raw, config) || attempt !== hiddenChatSearchAttempt || !vaultSearchActive) return;
+    hiddenChatSearchUnlocked = true;
+    vaultSearchQuery = '';
+    const input = document.getElementById('vault-search-input');
+    if (input) input.value = '';
+    renderVaultList();
+  }, 180);
 }
 
 function syncVaultListModeControls() {
@@ -15764,6 +16001,7 @@ function syncVaultListModeControls() {
 function callHistoryEntries(missedOnly = false) {
   const entries = [];
   for (const room of rooms.values()) {
+    if (hiddenChatIsHidden(room)) continue;
     for (const rec of uniqueVisibleConversationRecords(missedOnly
       ? room.messages.filter(rec => rec.kind === 'sys' && /^Missed(?: encrypted)? call\b/i.test(String(rec.content || '')))
       : room.messages)) {
@@ -15781,6 +16019,11 @@ function callHistoryEntries(missedOnly = false) {
 
 function openVaultListRoom(code) {
   const room = rooms.get(code);
+  if (room && hiddenChatIsHidden(room)) {
+    if (!hiddenChatSearchUnlocked) return;
+    hiddenChatAuthorizedRoomCode = room.code;
+    hiddenChatSearchUnlocked = false;
+  }
   if (room?.restorePending) {
     prioritizeStartupRoomRestore(code);
     // The locally authenticated inbox is already visible, so a tap must
@@ -16018,7 +16261,8 @@ function renderVaultList() {
   const previews = vaultPreviewsEnabled();
   const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
   const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
-  if (rooms.size === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
+  const visibleRoomCount = [...rooms.values()].filter(room => !hiddenChatIsHidden(room)).length;
+  if (!hiddenChatSearchUnlocked && visibleRoomCount === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body._vaultlixChatListHtml = null;
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
@@ -16045,6 +16289,13 @@ function renderVaultList() {
       : roomDisplayLabel(entry.room).toLowerCase().includes(searchQuery)
         || formatPrivateNumber(entry.room.peerPrivateNumber || '').toLowerCase().includes(searchQuery))
     : orderedEntries;
+  if (typeof hiddenChatIsHidden === 'function') {
+    const revealHiddenChats = typeof hiddenChatSearchUnlocked !== 'undefined' && hiddenChatSearchUnlocked;
+    for (let index = filteredEntries.length - 1; index >= 0; index--) {
+      const entry = filteredEntries[index];
+      if (revealHiddenChats ? entry.kind !== 'room' || !hiddenChatIsHidden(entry.room) : entry.kind === 'room' && hiddenChatIsHidden(entry.room)) filteredEntries.splice(index, 1);
+    }
+  }
   if (searchQuery && filteredEntries.length === 0) {
     body._vaultlixChatListHtml = null;
     body.innerHTML = `<div class="vault-list-empty"><strong>No matches</strong>No chats match "${escHtml(searchQuery)}".</div>`;
@@ -16207,6 +16458,11 @@ function setActiveRoom(code, { deferMessages = false } = {}) {
 // especially important for Android rooms containing animated GIF history.
 function openConversationAfterPaint(code) {
   if (!code || !rooms.has(code)) return false;
+  if (!hiddenChatCanOpen(code)) {
+    showScreen('s-vault-list');
+    renderVaultList();
+    return false;
+  }
   setActiveRoom(code, { deferMessages:true });
   showScreen('s-chat');
   const room = rooms.get(code);
@@ -16227,6 +16483,7 @@ function openConversationAfterPaint(code) {
 function switchToRoomByCode(code) {
   if (!code || !rooms.has(code)) return false;
   const room = rooms.get(code);
+  if (!hiddenChatCanOpen(room)) return false;
   if (!room.everOnline) { resumeWaitingScreen(room); return true; }
   return openConversationAfterPaint(code);
 }
@@ -16611,7 +16868,9 @@ function openVaultInbox() {
   closeSettings();
   closeAllMsgActions();
   exitSelectMode();
+  lockHiddenChats();
   showScreen('s-vault-list');
+  renderVaultList();
 }
 
 function openMainHome() {
@@ -17255,7 +17514,7 @@ function showForwardAttachmentPicker(recOrRecs, options = {}) {
     return;
   }
   const targets = recs.length ? [...rooms.values()].filter(room =>
-    (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
+    !hiddenChatIsHidden(room) && (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
   ) : [];
   if (recs.length && !targets.length && !shareRec) { toast('No other connected conversations'); return; }
 
