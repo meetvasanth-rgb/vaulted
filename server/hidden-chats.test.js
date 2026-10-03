@@ -312,6 +312,13 @@ test('the chosen 15–60 second inactivity timeout survives inbox navigation and
   assert.equal(vm.runInContext('hiddenChatsUnlocked', context), false);
 });
 
+test('iOS textarea editing and conversation scrolling count as hidden-chat activity', () => {
+  assert.match(client, /document\.addEventListener\('beforeinput', noteHiddenChatsActivity, true\)/);
+  assert.match(client, /document\.addEventListener\('input', noteHiddenChatsActivity, true\)/);
+  assert.match(client, /document\.addEventListener\('compositionupdate', noteHiddenChatsActivity, true\)/);
+  assert.match(client, /document\.addEventListener\('scroll', noteHiddenChatsActivity, true\)/);
+});
+
 test('the conversation menu offers Hide chat / Unhide chat and Settings manages its password', () => {
   assert.match(client, /onclick="hideChatFromConversationMenu\(\)"[\s\S]{0,400}id="conversation-menu-hide-label">Hide chat</);
   assert.match(client, /hideLabel\.textContent = isChatHidden\(activeRoomCode\) \? 'Unhide chat' : 'Hide chat'/);

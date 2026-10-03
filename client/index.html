@@ -10574,6 +10574,14 @@ window.addEventListener('pagehide', lockHiddenChats);
 document.addEventListener('pointerdown', noteHiddenChatsActivity, true);
 document.addEventListener('touchstart', noteHiddenChatsActivity, { capture:true, passive:true });
 document.addEventListener('keydown', noteHiddenChatsActivity, true);
+// iOS software keyboards can update a textarea without dispatching keydown.
+// Count the editing events themselves so continuous typing is continuous
+// activity, and count scrolling so reading an active hidden chat does not
+// expire while the person is still moving through the conversation.
+document.addEventListener('beforeinput', noteHiddenChatsActivity, true);
+document.addEventListener('input', noteHiddenChatsActivity, true);
+document.addEventListener('compositionupdate', noteHiddenChatsActivity, true);
+document.addEventListener('scroll', noteHiddenChatsActivity, true);
 
 // Pushes for a hidden chat say "New message" instead of naming the sender. The
 // server owns the notification wording, so it is told per conversation.
