@@ -1112,6 +1112,8 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .tone-row-note{color:#9B8A92;font-size:13px;margin-left:6px}
 /* While the Chats search box is being typed in, the floating bottom bar would ride up on top of the keyboard. */
 html.vault-search-typing .vault-list-actions{display:none!important}
+/* Android plays no in-app message chime (the system notification carries the tone), so the switch has nothing to control there. */
+html.vaultlix-native-android #settings-chime-row{display:none!important}
 /* iPhone app: Settings pages in the grouped-list style of iOS Settings — a lilac
    page, inset white cards, plain text rows with a grey value and chevron, green
    switches, and a round floating back button. Scoped to the iOS app so the web and

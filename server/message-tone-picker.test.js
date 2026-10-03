@@ -398,3 +398,9 @@ test('Android registers its push token whatever the permission check says, and s
   assert.match(client, /if \(\(nativePushPermission === 'granted' \|\| nativePlatform\(\) === 'android'\) && nativePushToken\) await registerNativeTokenForRoom\(room\);/);
   assert.match(client, /toast\('Notifications are not available in this version of the app\.'\)/);
 });
+
+test('the Message chime switch is hidden in the Android app, where it controls nothing', () => {
+  assert.match(client, /html\.vaultlix-native-android #settings-chime-row\{display:none!important\}/);
+  assert.match(client, /id="settings-chime-row"/, 'the row still exists for iOS and the web');
+  assert.match(client, /if \(nativePlatform\(\) !== 'android'\) playChime\(\);/);
+});
