@@ -445,6 +445,9 @@ test('manage offers a polished timeout control without Lock now', () => {
   assert.match(client, /id="hidden-chats-timeout-options"/);
   assert.match(client, /hidden-chats-change/);
   assert.match(client, /hidden-chats-remove/);
+  assert.doesNotMatch(client, /id="hidden-chats-list"/);
+  assert.match(client, /#hidden-chats-actions\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(client, /#hidden-chats-actions button\{width:100%;white-space:normal\}/);
   assert.doesNotMatch(client, /add\('Lock now'/);
   assert.doesNotMatch(client, /onclick="lockHiddenChats\(\)">Lock<\/button>/);
 });
