@@ -6485,8 +6485,10 @@ wss.on('connection', (ws) => {
           type:msg2.type, from:opaqueRouteId(token), sessionId:msg2.sessionId,
           inviteId:msg2.inviteId,
           hasVideo:msg2.type === 'call-invite' && msg2.hasVideo === true,
+          // Old clients render 'cancelled' as "Caller cancelled"; a hang-up
+          // before answer is a missed call, so relay it as 'unanswered'.
           terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
-            ? msg2.terminalReason : undefined,
+            ? (msg2.terminalReason === 'cancelled' ? 'unanswered' : msg2.terminalReason) : undefined,
           envelope:msg2.envelope,
         };
         const delivered = await deliverSignalToMember(tok, relayedSignal);
@@ -6676,8 +6678,12 @@ wss.on('connection', (ws) => {
           // surfaced anything past that first notification — same as a phone
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
+          // A caller hanging up while the callee's phone is still ringing is a
+          // missed call for the callee and "No answer" for the caller — not a
+          // distinct "cancelled" outcome. 'cancelled' only survives on the wire
+          // when nothing was ringing any more (the callee had just answered).
           const callOutcome = ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
-            ? msg2.terminalReason
+            ? (msg2.terminalReason === 'cancelled' && room2.ringingUntil ? 'unanswered' : msg2.terminalReason)
             : (room2.ringingUntil ? 'unanswered' : 'ended');
           const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
           markInviteTerminated(room2, terminalInviteId, now);

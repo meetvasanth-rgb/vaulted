@@ -6330,7 +6330,7 @@ async function handleNativeCallAction(detail) {
   } else if (detail.action === 'nativeDeclined' && room.callState !== 'idle') {
     endCall(room, `${room.callPeerName || 'They'} declined the call.`, 'Call declined');
   } else if (detail.action === 'nativeCancelled' && room.callState !== 'idle') {
-    endCall(room, null, room.callState === 'incoming' ? 'Caller cancelled' : 'Cancelled call');
+    endCall(room, null, room.callState === 'incoming' ? 'Missed call' : 'No answer');
   } else if (detail.action === 'nativeBusy' && room.callState !== 'idle') {
     endCall(room, room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.', null, 'busy');
   } else if (detail.action === 'nativeFailed' && room.callState !== 'idle') {
@@ -7516,8 +7516,7 @@ function connectSignaling(room) {
         }
         const history = msg.callOutcome === 'declined'
           ? (isIncoming ? 'Declined call' : 'Call declined')
-          : (msg.callOutcome === 'cancelled' && isIncoming ? 'Caller cancelled'
-            : (msg.callOutcome === 'unanswered' && isIncoming ? 'Missed call' : null));
+          : ((msg.callOutcome === 'cancelled' || msg.callOutcome === 'unanswered') && isIncoming ? 'Missed call' : null);
         endCall(room, null, history, null, { silentPresentation:document.hidden });
       }
       return;
@@ -7782,10 +7781,7 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
     // (active) call is ending, endCall() detects that itself and plays the
     // vanish moment instead of a toast — nothing to pass for that case.
     const wasIncoming = room.callState === 'incoming';
-    const wasCancelled = wasIncoming && payload?.reason === 'cancelled';
-    endCall(room,
-      wasCancelled ? null : (wasIncoming ? 'Missed call.' : null),
-      wasCancelled ? 'Caller cancelled' : (wasIncoming ? 'Missed call' : null));
+    endCall(room, wasIncoming ? 'Missed call.' : null, wasIncoming ? 'Missed call' : null);
   } else if (type === 'offer') {
     // Only the answerer (callee) should ever receive an offer. Normally
     // room.pc already exists by the time this arrives — acceptCall() sets
@@ -8138,7 +8134,7 @@ function hangupCall() {
   // Canceling my own outgoing call before it's answered is worth a record
   // too — ending an already-active call is the normal/expected way calls
   // finish, so that case gets no sys message (nothing "missed" about it).
-  endCall(room, null, wasOutgoing ? 'Cancelled call' : null);
+  endCall(room, null, wasOutgoing ? 'No answer' : null);
 }
 
 function clearCallTimeout(room) {
@@ -8178,7 +8174,20 @@ function unansweredCallEvent(authorRole, isVideo) {
   return callOutcomeEvent('unanswered', authorRole, isVideo);
 }
 
+const CANCELLED_CALL_TEXT = /^(?:Call canceled|Cancelled call|Caller cancelled)$/i;
+function isCancelledCallText(text) { return CANCELLED_CALL_TEXT.test(String(text || '').trim()); }
+// "Cancelled call" is always the caller's own wording and "Caller cancelled" the
+// callee's; the generic "Call canceled" falls back to who placed the call.
+function uncancelledCallText(text, placedByMe) {
+  const value = String(text || '').trim();
+  if (!isCancelledCallText(value)) return text;
+  if (/^Cancelled call$/i.test(value)) return 'No answer';
+  if (/^Caller cancelled$/i.test(value)) return 'Missed call';
+  return placedByMe ? 'No answer' : 'Missed call';
+}
+
 function callOutcomeEvent(outcome, authorRole, isVideo) {
+  if (outcome === 'cancelled') outcome = 'unanswered';
   const labels = {
     unanswered: { initiatorText:'No answer', receiverText:'Missed encrypted call' },
     declined: { initiatorText:'Call declined', receiverText:'Declined call' },
@@ -8282,6 +8291,10 @@ function checkStaleIncomingCalls() {
 
 async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   if (!room) return;
+  // Hanging up before the other person answers is "No answer" for the caller
+  // and a "Missed call" for the callee — never a separate "cancelled" record.
+  // Normalised here so every path (web, native bridge, signalling) agrees.
+  sysMsgText = uncancelledCallText(sysMsgText, room.callWasOutgoing === true);
   // room.callState moves on to 'active' the instant a call connects, so by
   // the time a CONNECTED call ends, checking callState for 'outgoing'/
   // 'incoming' here always came back null — silently dropping the
@@ -8446,6 +8459,7 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
   const room = normalizedRoomCode
     ? (rooms.get(roomCode) || Array.from(rooms.values()).find(candidate => String(candidate.code || '').toLowerCase() === normalizedRoomCode))
     : (activeCallRoomCode && rooms.get(activeCallRoomCode));
+  historyText = uncancelledCallText(historyText, room?.callWasOutgoing === true);
   if (!room && normalizedRoomCode && historyText) {
     pendingNativeCallEnds.set(normalizedRoomCode, { roomCode, historyText });
     while (pendingNativeCallEnds.size > 32) {
@@ -19165,7 +19179,10 @@ function callEventForViewer(callEvent, fromMe) {
   if (!callEvent || !['unanswered','declined','cancelled'].includes(callEvent.outcome)) return null;
   const authorRole = callEvent.authorRole === 'initiator' ? 'initiator' : 'receiver';
   const viewerRole = fromMe ? authorRole : (authorRole === 'initiator' ? 'receiver' : 'initiator');
-  const text = viewerRole === 'initiator' ? callEvent.initiatorText : callEvent.receiverText;
+  // Records from older builds still say cancelled; show them as no answer / missed.
+  const text = callEvent.outcome === 'cancelled'
+    ? (viewerRole === 'initiator' ? 'No answer' : 'Missed encrypted call')
+    : (viewerRole === 'initiator' ? callEvent.initiatorText : callEvent.receiverText);
   if (typeof text !== 'string' || !text.trim()) return null;
   return { viewerRole, text:text.trim().slice(0, 120) };
 }
