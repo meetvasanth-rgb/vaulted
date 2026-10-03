@@ -1091,9 +1091,10 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .app-lock-field{display:block;margin:11px 0}.app-lock-field span{display:block;margin-bottom:6px;color:#5F5055;font-size:12px;font-weight:600}
 .app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
 .app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
+.vault-list-settings[hidden]{display:none!important}
 .hidden-chats-list{margin:8px 0 2px;display:flex;flex-direction:column;gap:6px}.hidden-chats-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #E7DDE1;border-radius:12px;background:#fff;font-size:14px;font-weight:600;color:#30242B}.hidden-chats-item span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hidden-chats-item button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#682C43;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.hidden-chats-empty{padding:10px 2px;color:#7A6B71;font-size:13px}
 #hidden-chats-actions{flex-wrap:wrap}#hidden-chats-actions button{white-space:nowrap}
-.hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:9px 12px;border-radius:12px;background:#F2DDE3;color:#682C43;font-size:13px;font-weight:700}.hidden-chats-bar button{border:0;border-radius:999px;background:#682C43;color:#fff;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:9px 12px;border-radius:12px;background:#F2DDE3;color:#682C43;font-size:13px;font-weight:700}.hidden-chats-bar-actions{display:flex;gap:6px}.hidden-chats-bar button.quiet{background:#fff;color:#682C43;border:1px solid #D8A2AE}.hidden-chats-bar button{border:0;border-radius:999px;background:#682C43;color:#fff;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
 .hidden-chat-lock{width:13px;height:13px;margin-left:6px;vertical-align:-1px;fill:none;stroke:#8A3C57;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 .locker-fullscreen{position:fixed;inset:0;z-index:10046;background:#FFFDF9;display:none;flex-direction:column}
@@ -3507,9 +3508,12 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <div class="vault-list-title" id="vault-list-title" data-i18n="chats">Chats</div>
     </div>
     <div class="vault-list-search" id="vault-list-search" hidden>
-      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)" onkeydown="vaultSearchKeydown(event)" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false"/>
+      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false"/>
     </div>
     <div class="vault-list-nav">
+      <button class="vault-list-settings" type="button" id="hidden-chats-toggle" hidden onclick="toggleHiddenChatsFromInbox()" title="Hidden chats" aria-label="Show hidden chats" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.6"/><path d="M4 4l16 16"/></svg>
+      </button>
       <button class="vault-list-settings" type="button" id="vault-search-toggle" onclick="toggleVaultSearch()" title="Search chats" aria-label="Search chats">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
       </button>
@@ -3878,8 +3882,8 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <h2 class="app-lock-title" id="hidden-chats-title">Hidden chats</h2>
     <div class="app-lock-copy" id="hidden-chats-copy"></div>
     <label class="app-lock-field" id="hidden-chats-current-wrap"><span>Hidden-chats password</span><input id="hidden-chats-current" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
-    <label class="app-lock-field" id="hidden-chats-new-wrap"><span id="hidden-chats-new-label">New password</span><input id="hidden-chats-new" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
-    <label class="app-lock-field" id="hidden-chats-confirm-wrap"><span>Confirm password</span><input id="hidden-chats-confirm" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
+    <label class="app-lock-field" id="hidden-chats-new-wrap"><span id="hidden-chats-new-label">New password</span><input id="hidden-chats-new" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
+    <label class="app-lock-field" id="hidden-chats-confirm-wrap"><span>Confirm password</span><input id="hidden-chats-confirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
     <div class="hidden-chats-list" id="hidden-chats-list"></div>
     <div class="app-lock-error" id="hidden-chats-error" aria-live="polite"></div>
     <div class="app-lock-actions" id="hidden-chats-actions"></div>
@@ -4045,7 +4049,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       </div>
       <div class="settings-row-text">
         <div class="settings-row-title">Hidden chats</div>
-        <div class="settings-row-sub">Hide 1:1 chats behind a password and keep their notifications private</div>
+        <div class="settings-row-sub">Hide 1:1 chats behind a numeric password and keep their notifications private</div>
       </div>
       <div class="settings-status settings-status-action" id="hidden-chats-status">Set up</div>
     </div>
@@ -10329,7 +10333,7 @@ document.addEventListener('click', event => {
 // ── HIDDEN CHATS ─────────────────────────────────────────────────────────
 // A 1:1 chat can be hidden behind a password. Hidden chats disappear from the
 // inbox, search, calls, badges, tabs, status and pickers until the password is
-// typed into the Chats search (or entered from Settings). This is a device-only
+// unlocked with the eye button at the top of Chats (or from Settings). This is a device-only
 // privacy feature, not extra encryption: the conversation is the same data on
 // the same phone. The password is never stored; PBKDF2 gives a one-way verifier
 // with a random salt (same primitives as App Lock). The list of hidden chats
@@ -10338,6 +10342,7 @@ const HIDDEN_CHATS_KEY = 'vaultlix_hidden_chats_v1';
 const HIDDEN_CHATS_FAILURE_KEY = 'vaultlix_hidden_chats_failures_v1';
 const HIDDEN_CHATS_ITERATIONS = 310000;
 const HIDDEN_CHATS_MIN_LENGTH = 4;
+const HIDDEN_CHATS_MAX_LENGTH = 12;
 let hiddenChatsUnlocked = false; // memory only: every launch and every background starts locked
 let hiddenChatsCache = null;
 let hiddenChatsDialog = null;
@@ -10351,6 +10356,9 @@ function loadHiddenChatsStore() {
     salt: typeof store.salt === 'string' ? store.salt : null,
     verifier: typeof store.verifier === 'string' ? store.verifier : null,
     iterations: Number(store.iterations) || HIDDEN_CHATS_ITERATIONS,
+    // Passwords are digits only. A password saved by the first release could be
+    // any text; it still unlocks, but has no numeric flag until it is changed.
+    numeric: store.numeric === true,
   };
   return hiddenChatsCache;
 }
@@ -10362,6 +10370,15 @@ function saveHiddenChatsStore(patch) {
   hiddenChatsCache = next;
   try { localStorage.setItem(HIDDEN_CHATS_KEY, JSON.stringify(next)); } catch (error) {}
 }
+
+// Hidden-chats passwords are numbers only (4–12 digits), so the keypad is numeric.
+function hiddenChatsPasswordProblem(value) {
+  const text = String(value ?? '');
+  if (!/^\d+$/.test(text)) return 'Use digits only (0–9).';
+  if (text.length < HIDDEN_CHATS_MIN_LENGTH || text.length > HIDDEN_CHATS_MAX_LENGTH) return `Use ${HIDDEN_CHATS_MIN_LENGTH} to ${HIDDEN_CHATS_MAX_LENGTH} digits.`;
+  return '';
+}
+function hiddenChatsPasswordIsNumeric() { return loadHiddenChatsStore().numeric === true; }
 
 function hiddenChatsPasswordSet() { const store = loadHiddenChatsStore(); return Boolean(store.salt && store.verifier); }
 function hiddenChatCodes() { return new Set(loadHiddenChatsStore().codes); }
@@ -10416,7 +10433,7 @@ async function attemptHiddenChatsUnlock(password) {
 async function setHiddenChatsPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const verifier = await deriveAppLockVerifier(String(password), salt, HIDDEN_CHATS_ITERATIONS);
-  saveHiddenChatsStore({ salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier), iterations:HIDDEN_CHATS_ITERATIONS });
+  saveHiddenChatsStore({ salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier), iterations:HIDDEN_CHATS_ITERATIONS, numeric:/^\d+$/.test(String(password)) });
   try { localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY); } catch (error) {}
 }
 
@@ -10427,7 +10444,30 @@ function refreshHiddenChatsViews() {
   updateHiddenChatsSettingsStatus();
 }
 
+// The eye button in the Chats header only exists once a hidden-chats password is
+// set, so it never shows for someone who does not use the feature. It shows the
+// state: a crossed eye while hidden chats are locked, an open eye while showing.
+const HIDDEN_CHATS_EYE_CLOSED = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.6"/><path d="M4 4l16 16"/></svg>';
+const HIDDEN_CHATS_EYE_OPEN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.6"/></svg>';
+function updateHiddenChatsOpener() {
+  const button = document.getElementById('hidden-chats-toggle');
+  if (!button) return;
+  const available = hiddenChatsPasswordSet();
+  button.hidden = !available;
+  button.innerHTML = hiddenChatsUnlocked ? HIDDEN_CHATS_EYE_OPEN : HIDDEN_CHATS_EYE_CLOSED;
+  button.setAttribute('aria-pressed', hiddenChatsUnlocked ? 'true' : 'false');
+  const label = hiddenChatsUnlocked ? 'Lock hidden chats' : 'Show hidden chats';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+}
+
+function toggleHiddenChatsFromInbox() {
+  if (hiddenChatsUnlocked) { lockHiddenChats(); toast('Hidden chats locked'); return; }
+  promptUnlockHiddenChats(() => toast('Hidden chats unlocked'));
+}
+
 function updateHiddenChatsSettingsStatus() {
+  updateHiddenChatsOpener();
   const status = document.getElementById('hidden-chats-status');
   if (status) status.textContent = !hiddenChatsPasswordSet() ? 'Set up' : (hiddenChatsUnlocked ? 'Unlocked' : 'On');
 }
@@ -10474,7 +10514,7 @@ function hideChat(code) {
     if (document.getElementById('s-chat')?.classList.contains('active')) openVaultInbox();
   }
   refreshHiddenChatsViews();
-  toast('Chat hidden. In Chats, tap search and type your hidden-chats password to see it.');
+  toast('Chat hidden. Tap the eye button at the top of Chats and enter your password to see it.');
 }
 
 function unhideChat(code) {
@@ -10511,9 +10551,9 @@ function openHiddenChatsSettings() {
 
 const HIDDEN_CHATS_DIALOG_MODES = {
   setup:  { title:'Hide chats', fields:['new', 'confirm'], submit:'Save password', primary:true,
-    copy:'Choose a password for hidden chats. A hidden chat disappears from your inbox until you type this password into the Chats search. Notifications for hidden chats will not show the sender’s name. Vaultlix cannot recover this password.' },
+    copy:'Choose a numeric password (4 to 12 digits) for hidden chats. A hidden chat disappears from your inbox until you unlock it with the eye button at the top of Chats. Notifications for hidden chats will not show the sender’s name. Vaultlix cannot recover this password.' },
   unlock: { title:'Hidden chats', fields:['current'], submit:'Unlock', primary:true, copy:'Enter your hidden-chats password.' },
-  change: { title:'Change password', fields:['current', 'new', 'confirm'], submit:'Change password', primary:true, copy:'Enter your current password, then choose a new one.' },
+  change: { title:'Change password', fields:['current', 'new', 'confirm'], submit:'Change password', primary:true, copy:'Enter your current password, then choose a new numeric password (4 to 12 digits).' },
   remove: { title:'Remove password', fields:['current'], submit:'Remove & unhide all', danger:true, copy:'This unhides every hidden chat and deletes the password.' },
   manage: { title:'Hidden chats', fields:[], list:true, copy:'These chats are hidden from your inbox. Hidden-chat notifications do not show the sender’s name.' },
 };
@@ -10533,7 +10573,17 @@ function renderHiddenChatsDialog() {
     input.required = shown;
     input.value = '';
   }
-  document.getElementById('hidden-chats-new-label').textContent = dialog.mode === 'change' ? 'New password' : 'Password';
+  document.getElementById('hidden-chats-new-label').textContent = dialog.mode === 'change' ? 'New password (digits)' : 'Password (digits)';
+  // New and confirm fields are always numeric. The current-password field is too
+  // unless the saved password predates the numbers-only rule.
+  for (const field of ['current', 'new', 'confirm']) {
+    const input = document.getElementById(`hidden-chats-${field}`);
+    const digitsOnly = field !== 'current' || hiddenChatsPasswordIsNumeric();
+    input.dataset.digitsOnly = digitsOnly ? '1' : '';
+    input.setAttribute('inputmode', digitsOnly ? 'numeric' : 'text');
+    if (digitsOnly) { input.setAttribute('pattern', '[0-9]*'); input.setAttribute('maxlength', String(HIDDEN_CHATS_MAX_LENGTH)); }
+    else { input.removeAttribute('pattern'); input.removeAttribute('maxlength'); }
+  }
   const list = document.getElementById('hidden-chats-list');
   list.style.display = config.list ? '' : 'none';
   if (config.list) {
@@ -10578,6 +10628,14 @@ function closeHiddenChatsDialog() {
   for (const field of ['current', 'new', 'confirm']) { const input = document.getElementById(`hidden-chats-${field}`); if (input) input.value = ''; }
 }
 
+document.addEventListener('input', event => {
+  const input = event.target;
+  if (input?.dataset?.digitsOnly === '1') {
+    const digits = input.value.replace(/\D/g, '').slice(0, HIDDEN_CHATS_MAX_LENGTH);
+    if (digits !== input.value) input.value = digits;
+  }
+});
+
 async function submitHiddenChatsForm(event) {
   event.preventDefault();
   const dialog = hiddenChatsDialog;
@@ -10594,7 +10652,8 @@ async function submitHiddenChatsForm(event) {
         if (!checked.ok) { error.textContent = checked.error; return; }
       }
       const next = value('new');
-      if (next.length < HIDDEN_CHATS_MIN_LENGTH) { error.textContent = `Use at least ${HIDDEN_CHATS_MIN_LENGTH} characters.`; return; }
+      const problem = hiddenChatsPasswordProblem(next);
+      if (problem) { error.textContent = problem; return; }
       if (next !== value('confirm')) { error.textContent = 'The passwords do not match.'; return; }
       await setHiddenChatsPassword(next);
       closeHiddenChatsDialog();
@@ -10610,7 +10669,7 @@ async function submitHiddenChatsForm(event) {
       const checked = await checkHiddenChatsPassword(value('current'));
       if (!checked.ok) { error.textContent = checked.error; return; }
       for (const code of hiddenChatCodes()) { const room = rooms.get(code); if (room) syncChatNotificationPrivacy(room, false); }
-      saveHiddenChatsStore({ codes:[], salt:null, verifier:null });
+      saveHiddenChatsStore({ codes:[], salt:null, verifier:null, numeric:false });
       hiddenChatsUnlocked = false;
       closeHiddenChatsDialog();
       refreshHiddenChatsViews();
@@ -10619,20 +10678,6 @@ async function submitHiddenChatsForm(event) {
   } finally {
     if (submit) submit.disabled = false;
   }
-}
-
-// Enter in the Chats search, on a search that matches nothing, tries the typed
-// text as the hidden-chats password. Ordinary searches that match a chat never
-// reach it, so they cannot count as failed attempts.
-function vaultSearchKeydown(event) {
-  if (event.key !== 'Enter') return;
-  const value = event.target.value;
-  if (!hiddenChatsPasswordSet() || hiddenChatsUnlocked || vaultSearchMatchCount !== 0 || value.length < HIDDEN_CHATS_MIN_LENGTH) return;
-  event.preventDefault();
-  attemptHiddenChatsUnlock(value).then(result => {
-    if (result.ok) { event.target.value = ''; closeVaultSearch(); toast('Hidden chats unlocked'); }
-    else if (result.locked || /^Too many/.test(result.error || '')) toast(result.error);
-  });
 }
 
 // ── MEDIA DATA-URI VALIDATION ────────────────────────────────────────────
@@ -15406,7 +15451,6 @@ function vaultAvatarPalette(seed) {
 let currentVaultListMode = 'chats';
 let vaultSearchActive = false;
 let vaultSearchQuery = '';
-let vaultSearchMatchCount = -1; // -1 = not searching; 0 = nothing matched
 let statusFeed = [];
 let statusFeedLoading = false;
 let statusFeedRefreshQueued = false;
@@ -16444,6 +16488,7 @@ function openPeerStatusFromInbox(privateNumber) {
 function renderVaultList() {
   const body = document.getElementById('vault-list-body');
   if (!body) return;
+  updateHiddenChatsOpener();
   syncVaultListModeControls();
   renderStatusRail();
   if (Date.now() - statusFeedRefreshedAt > 30000) refreshStatusFeed({ quiet:true }).catch(() => {});
@@ -16489,9 +16534,8 @@ function renderVaultList() {
       : roomDisplayLabel(entry.room).toLowerCase().includes(searchQuery)
         || formatPrivateNumber(entry.room.peerPrivateNumber || '').toLowerCase().includes(searchQuery))
     : orderedEntries;
-  vaultSearchMatchCount = searchQuery ? filteredEntries.length : -1;
   if (hiddenChatsUnlocked && hiddenChatCodes().size) {
-    html = `<div class="hidden-chats-bar"><span>Hidden chats are showing</span><button type="button" onclick="lockHiddenChats()">Lock</button></div>${html}`;
+    html = `<div class="hidden-chats-bar"><span>Hidden chats are showing</span><span class="hidden-chats-bar-actions"><button type="button" class="quiet" onclick="openHiddenChatsDialog('manage')">Manage</button><button type="button" onclick="lockHiddenChats()">Lock</button></span></div>${html}`;
   }
   if (searchQuery && filteredEntries.length === 0) {
     body._vaultlixChatListHtml = null;

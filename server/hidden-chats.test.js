@@ -178,32 +178,62 @@ test('the hidden-chats list lives under its own storage key and is saved by patc
   assert.deepEqual([...storage.keys()].filter(key => /hidden/.test(key)), ['vaultlix_hidden_chats_v1']);
 });
 
-function search(matchCount, { value = 'secret1', passwordSet = true, unlocked = false } = {}) {
-  const attempts = [];
+function openerHarness({ passwordSet = true, unlocked = false } = {}) {
+  const button = { hidden:true, innerHTML:'', title:'', attrs:{}, setAttribute(name, value) { this.attrs[name] = value; } };
+  const calls = { toasts:[], prompts:[], locked:0 };
   const context = vm.createContext({
-    HIDDEN_CHATS_MIN_LENGTH: 4, vaultSearchMatchCount: matchCount, hiddenChatsUnlocked: unlocked,
-    hiddenChatsPasswordSet: () => passwordSet,
-    attemptHiddenChatsUnlock: async text => { attempts.push(text); return { ok:true }; },
-    closeVaultSearch: () => {}, toast: () => {},
+    hiddenChatsPasswordSet: () => passwordSet, hiddenChatsUnlocked: unlocked,
+    document: { getElementById: id => id === 'hidden-chats-toggle' ? button : null },
+    toast: message => calls.toasts.push(message),
+    promptUnlockHiddenChats: onDone => { calls.prompts.push(onDone); },
+    lockHiddenChats: () => { calls.locked++; },
   });
-  vm.runInContext(extractFn('vaultSearchKeydown'), context);
-  const event = { key:'Enter', target:{ value }, preventDefault() { this.prevented = true; } };
-  context.vaultSearchKeydown(event);
-  return { attempts, event };
+  const start = client.indexOf("const HIDDEN_CHATS_EYE_CLOSED");
+  const end = client.indexOf('function updateHiddenChatsSettingsStatus()');
+  vm.runInContext(client.slice(start, end), context);
+  return { context, button, calls };
 }
 
-test('Enter in a search that matches nothing tries the text as the hidden-chats password', () => {
-  const { attempts, event } = search(0);
-  assert.deepEqual(attempts, ['secret1']);
-  assert.equal(event.prevented, true);
+test('the eye button in the Chats header exists only once a hidden-chats password is set', () => {
+  const none = openerHarness({ passwordSet:false });
+  none.context.updateHiddenChatsOpener();
+  assert.equal(none.button.hidden, true, 'hidden for people who do not use the feature');
+  const set = openerHarness({ passwordSet:true });
+  set.context.updateHiddenChatsOpener();
+  assert.equal(set.button.hidden, false);
+  assert.equal(set.button.attrs['aria-label'], 'Show hidden chats');
+  assert.match(set.button.innerHTML, /M4 4l16 16/, 'a crossed eye while locked');
 });
 
-test('ordinary searches never count as password attempts', () => {
-  assert.equal(search(2).attempts.length, 0, 'a search that matches a chat');
-  assert.equal(search(-1).attempts.length, 0, 'not searching');
-  assert.equal(search(0, { value:'ab' }).attempts.length, 0, 'too short to be a password');
-  assert.equal(search(0, { passwordSet:false }).attempts.length, 0, 'no password set');
-  assert.equal(search(0, { unlocked:true }).attempts.length, 0, 'already unlocked');
+test('the eye button shows the state: open eye and "Lock hidden chats" while unlocked', () => {
+  const { context, button } = openerHarness({ unlocked:true });
+  context.updateHiddenChatsOpener();
+  assert.equal(button.attrs['aria-pressed'], 'true');
+  assert.equal(button.attrs['aria-label'], 'Lock hidden chats');
+  assert.doesNotMatch(button.innerHTML, /M4 4l16 16/);
+});
+
+test('tapping the eye asks for the password when locked, and locks when showing', () => {
+  const locked = openerHarness({ unlocked:false });
+  locked.context.toggleHiddenChatsFromInbox();
+  assert.equal(locked.calls.prompts.length, 1, 'the numeric password dialog opens');
+  assert.equal(locked.calls.locked, 0);
+  locked.calls.prompts[0]();
+  assert.deepEqual(plain(locked.calls.toasts), ['Hidden chats unlocked']);
+  const showing = openerHarness({ unlocked:true });
+  showing.context.toggleHiddenChatsFromInbox();
+  assert.equal(showing.calls.locked, 1);
+  assert.equal(showing.calls.prompts.length, 0);
+  assert.deepEqual(plain(showing.calls.toasts), ['Hidden chats locked']);
+});
+
+test('the Chats search no longer unlocks anything, and the header carries the eye button', () => {
+  assert.doesNotMatch(client, /vaultSearchKeydown|vaultSearchMatchCount/);
+  assert.match(client, /id="hidden-chats-toggle" hidden onclick="toggleHiddenChatsFromInbox\(\)"/);
+  assert.match(client, /\.vault-list-settings\[hidden\]\{display:none!important\}/);
+  assert.match(client, /function renderVaultList\(\) \{\s*const body = document\.getElementById\('vault-list-body'\);\s*if \(!body\) return;\s*updateHiddenChatsOpener\(\);/);
+  assert.match(client, /unlock it with the eye button at the top of Chats/);
+  assert.doesNotMatch(client, /into the Chats search|tap search and type your hidden-chats password/);
 });
 
 test('every place that lists or opens chats honours hidden chats', () => {
@@ -300,4 +330,64 @@ test('server route: only a member of the conversation can set its notification p
   const off = await post('/api/notification-privacy', { code:created.code, token:joined.token, hidden:false });
   assert.equal(off.status, 200);
   assert.deepEqual(off.data, { ok:true, hidden:false });
+});
+
+test('passwords are numbers only, 4 to 12 digits', () => {
+  const { context } = harness();
+  const problem = text => vm.runInContext(`hiddenChatsPasswordProblem(${JSON.stringify(text)})`, context);
+  for (const good of ['1234', '0000', '123456', '123456789012']) assert.equal(problem(good), '', good);
+  assert.match(problem('123'), /Use 4 to 12 digits/);
+  assert.match(problem('1234567890123'), /Use 4 to 12 digits/);
+  for (const bad of ['abcd', '12a4', '12 34', '12-34', '', '１２３４', '1.234', 'letmein']) assert.match(problem(bad), /digits only/, JSON.stringify(bad));
+});
+
+test('a numeric password is flagged numeric; a text one saved by the first release still unlocks but is not', async () => {
+  const { context, storage } = harness();
+  await vm.runInContext("setHiddenChatsPassword('482913')", context);
+  assert.equal(JSON.parse(storage.get('vaultlix_hidden_chats_v1')).numeric, true);
+  assert.equal(vm.runInContext('hiddenChatsPasswordIsNumeric()', context), true);
+  assert.equal((await vm.runInContext("checkHiddenChatsPassword('482913')", context)).ok, true);
+
+  const legacy = harness();
+  await vm.runInContext("setHiddenChatsPassword('letmein')", legacy.context);
+  assert.equal(vm.runInContext('hiddenChatsPasswordIsNumeric()', legacy.context), false);
+  assert.equal((await vm.runInContext("checkHiddenChatsPassword('letmein')", legacy.context)).ok, true, 'old text password still works');
+});
+
+test('changing the password replaces the old one and keeps the hidden list', async () => {
+  const { context } = harness();
+  await vm.runInContext("setHiddenChatsPassword('111111')", context);
+  vm.runInContext("saveHiddenChatsStore({ codes:['room-a'] })", context);
+  await vm.runInContext("setHiddenChatsPassword('222222')", context);
+  assert.equal((await vm.runInContext("checkHiddenChatsPassword('111111')", context)).ok, false);
+  assert.equal((await vm.runInContext("checkHiddenChatsPassword('222222')", context)).ok, true);
+  assert.deepEqual(plain(vm.runInContext('[...hiddenChatCodes()]', context)), ['room-a']);
+});
+
+test('the password fields use the numeric keypad and strip anything that is not a digit', () => {
+  assert.match(client, /id="hidden-chats-new" type="password" inputmode="numeric" pattern="\[0-9\]\*" maxlength="12"/);
+  assert.match(client, /id="hidden-chats-confirm" type="password" inputmode="numeric" pattern="\[0-9\]\*" maxlength="12"/);
+  assert.match(client, /input\.setAttribute\('inputmode', digitsOnly \? 'numeric' : 'text'\)/);
+  assert.match(client, /const digitsOnly = field !== 'current' \|\| hiddenChatsPasswordIsNumeric\(\);/);
+  const start = client.indexOf("document.addEventListener('input', event => {\n  const input = event.target;\n  if (input?.dataset?.digitsOnly === '1')");
+  assert.notEqual(start, -1);
+  const block = client.slice(start, client.indexOf('});\n', start) + 4);
+  let handler;
+  const context = vm.createContext({ HIDDEN_CHATS_MAX_LENGTH: 12, document: { addEventListener: (type, fn) => { if (type === 'input') handler = fn; } } });
+  vm.runInContext(block, context);
+  const digits = { dataset:{ digitsOnly:'1' }, value:'12a-3 4b5678901234567' };
+  handler({ target:digits });
+  assert.equal(digits.value, '123456789012', 'letters, spaces and dashes removed, capped at 12');
+  const text = { dataset:{ digitsOnly:'' }, value:'letmein' };
+  handler({ target:text });
+  assert.equal(text.value, 'letmein', 'a legacy text current-password field is left alone');
+  const other = { dataset:{}, value:'ab c' };
+  handler({ target:other });
+  assert.equal(other.value, 'ab c', 'other inputs are untouched');
+});
+
+test('setup and change reject non-numeric passwords with a clear message, and the inbox bar offers Manage', () => {
+  assert.match(client, /const problem = hiddenChatsPasswordProblem\(next\);\s*if \(problem\) \{ error\.textContent = problem; return; \}/);
+  assert.match(client, /class="hidden-chats-bar-actions"><button type="button" class="quiet" onclick="openHiddenChatsDialog\('manage'\)">Manage<\/button>/);
+  assert.match(client, /Choose a numeric password \(4 to 12 digits\)/);
 });

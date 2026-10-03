@@ -60,7 +60,7 @@ function filteredIds({ privateGroups, rooms, query }) {
   // this logic (vaultSearchQuery = value.trim().toLowerCase()) — mirror
   // that here rather than feeding the raw query straight in.
   const context = {
-    roomConcealed: () => false, hiddenChatsUnlocked: false, vaultSearchMatchCount: -1,
+    roomConcealed: () => false, hiddenChatsUnlocked: false,
     privateGroups, rooms, vaultSearchActive: true, vaultSearchQuery: query.trim().toLowerCase(),
     vaultLastActivity: () => 0,
     syncAchievementActivityFromMessages: () => {},
