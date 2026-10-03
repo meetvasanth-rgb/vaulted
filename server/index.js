@@ -572,6 +572,20 @@ function pushRoomMsg(room, msg) {
   if (totalByteSize < 0) totalByteSize = 0;
 }
 
+// The in-memory projection keeps only the newest 100 live messages, but the
+// deletion tombstones must survive that cap. They carry no `seq`, so they used
+// to sort to the very front and get sliced off whenever a conversation had a
+// full 100 messages — and every mutating request (including the peer's
+// /api/poll) reloads the conversation from PostgreSQL, so in any busy chat the
+// peer was never told about a "delete for everyone".
+function withRetainedTombstones(liveMessages, tombstones) {
+  const live = [...liveMessages].sort((left, right) => (left.seq || 0) - (right.seq || 0)).slice(-100);
+  const liveIds = new Set(live.map(message => message.id));
+  const kept = (tombstones || []).filter(tombstone => !liveIds.has(tombstone.id))
+    .sort((left, right) => (left.deletionSeq || 0) - (right.deletionSeq || 0));
+  return [...kept, ...live];
+}
+
 // PostgreSQL is the durable ciphertext history. The live conversation map is
 // only a bounded projection used by the existing HTTP and signaling protocol.
 // A full client bootstrap therefore reconciles that projection with PostgreSQL
@@ -618,9 +632,7 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
   // ciphertext records with PostgreSQL's authoritative, deletion-aware set.
   const systemMessages = room.msgs.filter(message => message.type === 'system');
   const oldBytes = room.byteSize || 0;
-  room.msgs = [...systemMessages, ...restoredMessages, ...tombstones]
-    .sort((left, right) => (left.seq || 0) - (right.seq || 0))
-    .slice(-100);
+  room.msgs = withRetainedTombstones([...systemMessages, ...restoredMessages], tombstones);
   room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
   totalByteSize = Math.max(0, totalByteSize - oldBytes + room.byteSize);
   const highestSequence = room.msgs.reduce((highest, message) => Math.max(highest, message.seq || 0), 0);
@@ -650,7 +662,7 @@ async function loadConversationFromPostgres(roomCode, client = null) {
     postgresStore.loadEncryptedMessages(roomCode, 100, Date.now(), client || postgresStore.pool),
     postgresStore.loadDeletionTombstones(roomCode, Date.now(), client || postgresStore.pool),
   ]);
-  room.msgs = [...durableMessages.map(message => {
+  room.msgs = withRetainedTombstones(durableMessages.map(message => {
     const member = room.members.get(message.senderTokenHash);
     const sentAt = new Date(message.ts);
     return {
@@ -662,7 +674,7 @@ async function loadConversationFromPostgres(roomCode, client = null) {
       reactions:message.reactions || {}, reactionSeq:message.reactionSequence || 0,
       readReported:false,
     };
-  }), ...tombstones].sort((a, b) => (a.seq || a.deletionSeq || 0) - (b.seq || b.deletionSeq || 0)).slice(-100);
+  }), tombstones);
   room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
   evictConversationCache(roomCode);
   rooms.set(roomCode, room);
