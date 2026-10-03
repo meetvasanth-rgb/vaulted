@@ -8186,6 +8186,18 @@ function uncancelledCallText(text, placedByMe) {
   return placedByMe ? 'No answer' : 'Missed call';
 }
 
+// The wording itself says which side wrote it: only a caller ever sees "No
+// answer", "Call declined" or "Cancelled call", and only a callee "Missed …",
+// "Declined call" or "Caller cancelled". Native hosts hand history text over
+// after the room's own call state was reset, so state alone can't be trusted
+// to say who placed the call; the wording can.
+function callRoleFromHistoryText(text) {
+  const value = String(text || '').trim();
+  if (/^(?:No answer|Call declined|Cancelled call)$/i.test(value)) return 'initiator';
+  if (/^(?:Missed(?: encrypted)? call\.?|Declined call|Caller cancelled)$/i.test(value)) return 'receiver';
+  return null;
+}
+
 function callOutcomeEvent(outcome, authorRole, isVideo) {
   if (outcome === 'cancelled') outcome = 'unanswered';
   const labels = {
@@ -8294,7 +8306,8 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // Hanging up before the other person answers is "No answer" for the caller
   // and a "Missed call" for the callee — never a separate "cancelled" record.
   // Normalised here so every path (web, native bridge, signalling) agrees.
-  sysMsgText = uncancelledCallText(sysMsgText, room.callWasOutgoing === true);
+  const historyRole = callRoleFromHistoryText(sysMsgText);
+  sysMsgText = uncancelledCallText(sysMsgText, historyRole ? historyRole === 'initiator' : room.callWasOutgoing === true);
   // room.callState moves on to 'active' the instant a call connects, so by
   // the time a CONNECTED call ends, checking callState for 'outgoing'/
   // 'incoming' here always came back null — silently dropping the
@@ -8307,7 +8320,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // only startCallForRoom ever sets it true, so anything else (including
   // the narrow cold-launch case where the normal incoming-invite handler
   // never ran) correctly defaults to "I didn't place it, so I received it."
-  const callRole = room.callWasOutgoing === true ? 'initiator' : 'receiver';
+  const callRole = historyRole || (room.callWasOutgoing === true ? 'initiator' : 'receiver');
   // Computed early (moved ahead of its original spot below callEvent) so
   // both callEvent and connectedCallEvent can carry it — needed for the
   // in-chat call card's "Voice call"/"Video call" title. Also widened to
@@ -8459,7 +8472,8 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
   const room = normalizedRoomCode
     ? (rooms.get(roomCode) || Array.from(rooms.values()).find(candidate => String(candidate.code || '').toLowerCase() === normalizedRoomCode))
     : (activeCallRoomCode && rooms.get(activeCallRoomCode));
-  historyText = uncancelledCallText(historyText, room?.callWasOutgoing === true);
+  const historyRole = callRoleFromHistoryText(historyText);
+  historyText = uncancelledCallText(historyText, historyRole ? historyRole === 'initiator' : room?.callWasOutgoing === true);
   if (!room && normalizedRoomCode && historyText) {
     pendingNativeCallEnds.set(normalizedRoomCode, { roomCode, historyText });
     while (pendingNativeCallEnds.size > 32) {
@@ -8482,7 +8496,7 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
     // set once at call start and untouched by anything except endCall's
     // own cleanup, so they are still trustworthy at this point even though
     // callState itself has already moved on.
-    const nativeCallRole = room.callWasOutgoing === true ? 'initiator' : 'receiver';
+    const nativeCallRole = historyRole || (room.callWasOutgoing === true ? 'initiator' : 'receiver');
     const nativeWasVideo = !!(room.pendingVideoStart || room.incomingVideoCall || room.callHadVideo || room.callVideoOn || room.remoteVideoActive);
     const nativeOutcome = /^(?:Missed call|Missed encrypted call|No answer|Call not answered)$/i.test(historyText)
       ? 'unanswered'

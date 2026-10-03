@@ -72,10 +72,25 @@ test('cancelled history wording is rewritten by who placed the call', () => {
   assert.equal(context.uncancelledCallText(null, true), null);
 });
 
+// Native hosts report the call end after the room's own call state was reset,
+// so callWasOutgoing is null there. Reading the role from state alone recorded
+// the caller's own "No answer" as a receiver event — an incoming arrow.
+test('the wording tells which side wrote the record, independent of reset call state', () => {
+  for (const text of ['No answer', 'Call declined', 'Cancelled call']) assert.equal(context.callRoleFromHistoryText(text), 'initiator', text);
+  for (const text of ['Missed call', 'Missed encrypted call', 'Declined call', 'Caller cancelled']) assert.equal(context.callRoleFromHistoryText(text), 'receiver', text);
+  assert.equal(context.callRoleFromHistoryText('Call canceled'), null);
+  assert.equal(context.callRoleFromHistoryText(null), null);
+});
+
+test('endCall and the native call-ended bridge take the role from the wording before falling back to state', () => {
+  assert.match(client, /const callRole = historyRole \|\| \(room\.callWasOutgoing === true \? 'initiator' : 'receiver'\);/);
+  assert.match(client, /const nativeCallRole = historyRole \|\| \(room\.callWasOutgoing === true \? 'initiator' : 'receiver'\);/);
+});
+
 test('no web path writes a cancelled call record any more, and endCall normalises native wording', () => {
   assert.doesNotMatch(client, /endCall\([^\n]*'(?:Caller cancelled|Cancelled call)'/);
-  assert.match(client, /async function endCall\(room, toastMsg, sysMsgText, toastVariant, options = \{\}\) \{\s*if \(!room\) return;[\s\S]{0,400}sysMsgText = uncancelledCallText\(sysMsgText, room\.callWasOutgoing === true\);/);
-  assert.match(client, /historyText = uncancelledCallText\(historyText, room\?\.callWasOutgoing === true\);/);
+  assert.match(client, /async function endCall\(room, toastMsg, sysMsgText, toastVariant, options = \{\}\) \{\s*if \(!room\) return;[\s\S]{0,400}sysMsgText = uncancelledCallText\(sysMsgText, historyRole \? historyRole === 'initiator' : room\.callWasOutgoing === true\);/);
+  assert.match(client, /historyText = uncancelledCallText\(historyText, historyRole \? historyRole === 'initiator' : room\?\.callWasOutgoing === true\);/);
 });
 
 test('the server treats a hang-up during ringing as unanswered so the callee gets a missed-call alert', () => {
