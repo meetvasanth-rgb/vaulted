@@ -1092,9 +1092,11 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
 .app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
 .vault-list-settings[hidden]{display:none!important}
-.hidden-chats-list{margin:8px 0 2px;display:flex;flex-direction:column;gap:6px}.hidden-chats-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #E7DDE1;border-radius:12px;background:#fff;font-size:14px;font-weight:600;color:#30242B}.hidden-chats-item span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hidden-chats-item button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#682C43;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.hidden-chats-empty{padding:10px 2px;color:#7A6B71;font-size:13px}
-#hidden-chats-actions{flex-wrap:wrap}#hidden-chats-actions button{white-space:nowrap}
-.hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:9px 12px;border-radius:12px;background:#F2DDE3;color:#682C43;font-size:13px;font-weight:700}.hidden-chats-bar-actions{display:flex;gap:6px}.hidden-chats-bar button.quiet{background:#fff;color:#682C43;border:1px solid #D8A2AE}.hidden-chats-bar button{border:0;border-radius:999px;background:#682C43;color:#fff;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.hidden-chats-sheet{font-family:'Inter',sans-serif}.hidden-chats-sheet .locker-brand{margin-bottom:17px}.hidden-chats-sheet .app-lock-copy{margin-bottom:18px}.hidden-chats-sheet .app-lock-actions{align-items:stretch}.hidden-chats-sheet .app-lock-actions button{min-height:46px;border-radius:14px;font:750 13px 'Manrope',sans-serif}
+.hidden-chats-list{margin:4px 0 18px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #E9DDE2;border-radius:18px;background:#fff}.hidden-chats-item{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:12px;min-height:68px;padding:10px 12px;border-bottom:1px solid #F0E7EA;color:#30242B}.hidden-chats-item:last-child{border-bottom:0}.hidden-chats-item-avatar{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#F3E8EC;color:#682C43;font:800 15px 'Manrope',sans-serif}.hidden-chats-item-copy{min-width:0}.hidden-chats-item-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:750 14px/1.3 'Manrope',sans-serif;color:#34272E}.hidden-chats-item-copy span{display:block;margin-top:3px;font:550 11px/1.3 'Inter',sans-serif;color:#97848C}.hidden-chats-item button{min-width:76px;height:36px;border:1px solid #DFC9D1;border-radius:12px;background:#FFF9FB;color:#682C43;padding:0 12px;font:750 11px 'Manrope',sans-serif;cursor:pointer}.hidden-chats-empty{padding:16px;color:#7A6B71;font-size:13px}
+.hidden-chats-timeout{margin:0 0 18px}.hidden-chats-section-label{display:block;margin:0 0 8px;color:#57464E;font:750 11px/1.2 'Inter',sans-serif}.hidden-chats-timeout-copy{margin:8px 1px 0;color:#8D7982;font:500 11px/1.45 'Inter',sans-serif}.hidden-chats-timeout-options{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.hidden-chats-timeout-options button{height:40px;border:1px solid #E0D3D8;border-radius:12px;background:#fff;color:#715C65;font:750 12px 'Manrope',sans-serif}.hidden-chats-timeout-options button.active{border-color:#682C43;background:#682C43;color:#fff;box-shadow:0 7px 16px rgba(104,44,67,.17)}
+#hidden-chats-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:4px}#hidden-chats-actions button{white-space:nowrap}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-done{grid-column:1/-1;background:#682C43;border-color:#682C43;color:#fff}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-change{background:#fff;color:#682C43}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-remove{background:#FFF5F6;border-color:#EDCDD4;color:#9B2945}
+.hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;padding:11px 13px;border:1px solid #E8D2DA;border-radius:14px;background:#FAF1F4;color:#682C43;font:750 12px/1.35 'Manrope',sans-serif}.hidden-chats-bar button.quiet{height:34px;border:1px solid #D8BFC8;border-radius:11px;background:#fff;color:#682C43;padding:0 13px;font:750 11px 'Manrope',sans-serif}
 .hidden-chat-lock{width:13px;height:13px;margin-left:6px;vertical-align:-1px;fill:none;stroke:#8A3C57;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .locker-sheet{position:relative;overflow:hidden;background:linear-gradient(160deg,#FFFDFE 0%,#FBF5F7 100%);border:1px solid rgba(104,44,67,.12);border-radius:28px;padding:26px;box-shadow:0 26px 80px rgba(47,25,35,.3);font-family:'Inter',sans-serif}
 .locker-sheet .app-lock-title{margin:0 0 9px;font:750 25px/1.15 'Manrope',sans-serif;letter-spacing:-.035em;color:#271D25}.locker-sheet .app-lock-copy{font:500 13px/1.6 'Inter',sans-serif;color:#75666D;margin-bottom:18px}.locker-sheet .app-lock-field{margin:13px 0}.locker-sheet .app-lock-field span{margin-bottom:7px;color:#57464E;font:700 11px/1.2 'Inter',sans-serif;letter-spacing:.025em}.locker-sheet .app-lock-field input{height:50px;border-color:#DDCFD5;border-radius:15px;padding:0 15px;background:#fff;color:#271D25;font:600 16px 'Inter',sans-serif;transition:border-color .15s,box-shadow .15s}.locker-sheet .app-lock-field input:focus{border-color:#A85D76;box-shadow:0 0 0 4px rgba(168,93,118,.12)}.locker-sheet .app-lock-actions{margin-top:21px}.locker-sheet .app-lock-actions button{min-height:46px;border-color:#DDCFD5;border-radius:14px;color:#682C43;padding:0 18px;font:750 13px 'Manrope',sans-serif}.locker-sheet .app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff;box-shadow:0 8px 20px rgba(104,44,67,.2)}
@@ -3887,13 +3889,18 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="app-lock-overlay" id="hidden-chats-overlay" role="dialog" aria-modal="true" aria-labelledby="hidden-chats-title">
-  <form class="app-lock-sheet" id="hidden-chats-form" onsubmit="submitHiddenChatsForm(event)" autocomplete="off">
-    <h2 class="app-lock-title" id="hidden-chats-title">Hidden chats</h2>
+  <form class="app-lock-sheet locker-sheet hidden-chats-sheet" id="hidden-chats-form" onsubmit="submitHiddenChatsForm(event)" autocomplete="off">
+    <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></span><div><div class="locker-kicker" id="hidden-chats-kicker">Private on this device</div><h2 class="app-lock-title" id="hidden-chats-title">Hidden chats</h2></div></div>
     <div class="app-lock-copy" id="hidden-chats-copy"></div>
     <label class="app-lock-field" id="hidden-chats-current-wrap"><span>Hidden-chats password</span><input id="hidden-chats-current" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
     <label class="app-lock-field" id="hidden-chats-new-wrap"><span id="hidden-chats-new-label">New password</span><input id="hidden-chats-new" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
     <label class="app-lock-field" id="hidden-chats-confirm-wrap"><span>Confirm password</span><input id="hidden-chats-confirm" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
     <div class="hidden-chats-list" id="hidden-chats-list"></div>
+    <div class="hidden-chats-timeout" id="hidden-chats-timeout">
+      <span class="hidden-chats-section-label">Keep hidden chats visible</span>
+      <div class="hidden-chats-timeout-options" id="hidden-chats-timeout-options" role="group" aria-label="Hidden chats inactivity timeout"></div>
+      <div class="hidden-chats-timeout-copy">The timer resets while you interact. Hidden chats lock immediately when Vaultlix goes into the background.</div>
+    </div>
     <div class="app-lock-error" id="hidden-chats-error" aria-live="polite"></div>
     <div class="app-lock-actions" id="hidden-chats-actions"></div>
   </form>
@@ -10382,10 +10389,13 @@ const HIDDEN_CHATS_FAILURE_KEY = 'vaultlix_hidden_chats_failures_v1';
 const HIDDEN_CHATS_ITERATIONS = 310000;
 const HIDDEN_CHATS_MIN_LENGTH = 4;
 const HIDDEN_CHATS_MAX_LENGTH = 12;
+const HIDDEN_CHATS_TIMEOUT_OPTIONS = [15, 30, 45, 60];
+const HIDDEN_CHATS_DEFAULT_TIMEOUT = 15;
 let hiddenChatsUnlocked = false; // memory only: every launch and every background starts locked
 let hiddenChatsCache = null;
 let hiddenChatsDialog = null;
 let hiddenChatsRecoveryPromptShown = false;
+let hiddenChatsRelockTimer = null;
 
 function loadHiddenChatsStore() {
   if (hiddenChatsCache) return hiddenChatsCache;
@@ -10397,6 +10407,7 @@ function loadHiddenChatsStore() {
     verifier: typeof store.verifier === 'string' ? store.verifier : null,
     iterations: Number(store.iterations) || HIDDEN_CHATS_ITERATIONS,
     passwordLength: Number(store.passwordLength) || 0,
+    unlockSeconds: HIDDEN_CHATS_TIMEOUT_OPTIONS.includes(Number(store.unlockSeconds)) ? Number(store.unlockSeconds) : HIDDEN_CHATS_DEFAULT_TIMEOUT,
     // The first hidden-chat release could leave a verifier behind without a
     // completed setup screen. A saved length proves the newer setup completed;
     // setupConfirmed makes that state explicit from now on.
@@ -10427,6 +10438,7 @@ function hiddenChatsPasswordIsNumeric() { return loadHiddenChatsStore().numeric 
 
 function hiddenChatsPasswordSet() { const store = loadHiddenChatsStore(); return Boolean(store.salt && store.verifier); }
 function hiddenChatsSetupConfirmed() { return hiddenChatsPasswordSet() && loadHiddenChatsStore().setupConfirmed === true; }
+function hiddenChatsUnlockSeconds() { return loadHiddenChatsStore().unlockSeconds; }
 function hiddenChatCodes() { return new Set(loadHiddenChatsStore().codes); }
 function isChatHidden(code) { return loadHiddenChatsStore().codes.includes(code); }
 function isChatConcealed(code) { return !hiddenChatsUnlocked && isChatHidden(code); }
@@ -10471,9 +10483,30 @@ async function attemptHiddenChatsUnlock(password) {
   const result = await checkHiddenChatsPassword(password);
   if (result.ok) {
     hiddenChatsUnlocked = true;
+    armHiddenChatsRelockTimer();
     refreshHiddenChatsViews();
   }
   return result;
+}
+
+function armHiddenChatsRelockTimer() {
+  if (hiddenChatsRelockTimer) clearTimeout(hiddenChatsRelockTimer);
+  hiddenChatsRelockTimer = null;
+  if (!hiddenChatsUnlocked) return;
+  hiddenChatsRelockTimer = setTimeout(lockHiddenChats, hiddenChatsUnlockSeconds() * 1000);
+}
+
+function noteHiddenChatsActivity() {
+  if (hiddenChatsUnlocked) armHiddenChatsRelockTimer();
+}
+
+function setHiddenChatsUnlockSeconds(value) {
+  const seconds = Number(value);
+  if (!HIDDEN_CHATS_TIMEOUT_OPTIONS.includes(seconds)) return;
+  saveHiddenChatsStore({ unlockSeconds:seconds });
+  armHiddenChatsRelockTimer();
+  refreshHiddenChatsViews();
+  if (hiddenChatsDialog?.mode === 'manage') renderHiddenChatsDialog();
 }
 
 async function setHiddenChatsPassword(password) {
@@ -10499,6 +10532,8 @@ function refreshHiddenChatsViews() {
 }
 
 function lockHiddenChats() {
+  if (hiddenChatsRelockTimer) clearTimeout(hiddenChatsRelockTimer);
+  hiddenChatsRelockTimer = null;
   if (!hiddenChatsUnlocked) return;
   hiddenChatsUnlocked = false;
   const chatShowing = document.getElementById('s-chat')?.classList.contains('active');
@@ -10509,6 +10544,9 @@ function lockHiddenChats() {
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) lockHiddenChats(); });
 window.addEventListener('pagehide', lockHiddenChats);
+document.addEventListener('pointerdown', noteHiddenChatsActivity, true);
+document.addEventListener('touchstart', noteHiddenChatsActivity, { capture:true, passive:true });
+document.addEventListener('keydown', noteHiddenChatsActivity, true);
 
 // Pushes for a hidden chat say "New message" instead of naming the sender. The
 // server owns the notification wording, so it is told per conversation.
@@ -10573,6 +10611,7 @@ function maybePromptHiddenChatsSetupRecovery() {
   hiddenChatsRecoveryPromptShown = true;
   openHiddenChatsDialog('setup', () => {
     hiddenChatsUnlocked = true;
+    armHiddenChatsRelockTimer();
     refreshHiddenChatsViews();
     toast('Password saved. Your hidden chats are now available.');
   });
@@ -10596,13 +10635,15 @@ const HIDDEN_CHATS_DIALOG_MODES = {
   unlock: { title:'Hidden chats', fields:['current'], submit:'Unlock', primary:true, copy:'Enter your hidden-chats password.' },
   change: { title:'Change password', fields:['current', 'new', 'confirm'], submit:'Change password', primary:true, copy:'Enter your current password, then choose a new numeric password (4 to 12 digits).' },
   remove: { title:'Remove password', fields:['current'], submit:'Remove & unhide all', danger:true, copy:'This unhides every hidden chat and deletes the password.' },
-  manage: { title:'Hidden chats', fields:[], list:true, copy:'These chats are hidden from your inbox. Hidden-chat notifications do not show the sender’s name.' },
+  manage: { title:'Hidden chats', fields:[], list:true, copy:'Manage the conversations protected by your private password and choose how long they remain visible after unlocking.' },
 };
 
 function renderHiddenChatsDialog() {
   const dialog = hiddenChatsDialog;
   const config = dialog && HIDDEN_CHATS_DIALOG_MODES[dialog.mode];
   if (!config) return;
+  document.getElementById('hidden-chats-form')?.classList.toggle('manage-mode', dialog.mode === 'manage');
+  document.getElementById('hidden-chats-kicker').textContent = dialog.mode === 'manage' ? 'Protected conversations' : 'Private on this device';
   document.getElementById('hidden-chats-title').textContent = config.title;
   document.getElementById('hidden-chats-copy').textContent = config.copy;
   document.getElementById('hidden-chats-error').textContent = '';
@@ -10630,9 +10671,16 @@ function renderHiddenChatsDialog() {
   if (config.list) {
     const rows = [...hiddenChatCodes()].map(code => rooms.get(code)).filter(Boolean);
     list.innerHTML = rows.length
-      ? rows.map(room => `<div class="hidden-chats-item"><span>${escHtml(roomDisplayLabel(room))}</span><button type="button" data-unhide="${escHtml(room.code)}">Unhide</button></div>`).join('')
+      ? rows.map(room => { const label = roomDisplayLabel(room); return `<div class="hidden-chats-item"><span class="hidden-chats-item-avatar" aria-hidden="true">${escHtml(String(label || 'V').charAt(0).toUpperCase())}</span><span class="hidden-chats-item-copy"><strong>${escHtml(label)}</strong><span>Hidden from Chats</span></span><button type="button" data-unhide="${escHtml(room.code)}">Unhide</button></div>`; }).join('')
       : '<div class="hidden-chats-empty">No hidden chats yet. Open a conversation and choose “Hide chat”.</div>';
     list.querySelectorAll('[data-unhide]').forEach(button => { button.onclick = () => { unhideChat(button.dataset.unhide); renderHiddenChatsDialog(); }; });
+  }
+  const timeout = document.getElementById('hidden-chats-timeout');
+  timeout.style.display = dialog.mode === 'manage' ? '' : 'none';
+  if (dialog.mode === 'manage') {
+    const selected = hiddenChatsUnlockSeconds();
+    document.getElementById('hidden-chats-timeout-options').innerHTML = HIDDEN_CHATS_TIMEOUT_OPTIONS.map(seconds =>
+      `<button type="button" class="${seconds === selected ? 'active' : ''}" aria-pressed="${seconds === selected}" onclick="setHiddenChatsUnlockSeconds(${seconds})">${seconds}s</button>`).join('');
   }
   const actions = document.getElementById('hidden-chats-actions');
   actions.innerHTML = '';
@@ -10644,10 +10692,9 @@ function renderHiddenChatsDialog() {
     return button;
   };
   if (dialog.mode === 'manage') {
-    add('Remove password', 'danger', () => openHiddenChatsDialog('remove'));
-    add('Change password', '', () => openHiddenChatsDialog('change'));
-    add('Lock now', '', () => lockHiddenChats());
-    add('Done', 'primary', () => closeHiddenChatsDialog());
+    add('Change password', 'hidden-chats-change', () => openHiddenChatsDialog('change'));
+    add('Remove password', 'hidden-chats-remove', () => openHiddenChatsDialog('remove'));
+    add('Done', 'hidden-chats-done', () => closeHiddenChatsDialog());
   } else {
     add('Cancel', '', () => closeHiddenChatsDialog());
     const submit = add(config.submit, config.danger ? 'danger' : 'primary', null, 'submit');
@@ -16222,7 +16269,6 @@ function toggleVaultSearch() {
 }
 
 function openVaultSearch() {
-  if (hiddenChatsUnlocked) hiddenChatsUnlocked = false;
   vaultSearchActive = true;
   document.getElementById('vault-list-heading')?.setAttribute('hidden', '');
   document.getElementById('vault-list-search')?.removeAttribute('hidden');
@@ -16237,7 +16283,6 @@ function openVaultSearch() {
 }
 
 function closeVaultSearch() {
-  hiddenChatsUnlocked = false;
   vaultSearchActive = false;
   vaultSearchQuery = '';
   document.getElementById('vault-list-search')?.setAttribute('hidden', '');
@@ -16616,7 +16661,7 @@ function renderVaultList() {
         || formatPrivateNumber(entry.room.peerPrivateNumber || '').toLowerCase().includes(searchQuery))
     : orderedEntries;
   if (hiddenChatsUnlocked && hiddenChatCodes().size) {
-    html = `<div class="hidden-chats-bar"><span>Hidden chats are showing</span><span class="hidden-chats-bar-actions"><button type="button" class="quiet" onclick="openHiddenChatsDialog('manage')">Manage</button><button type="button" onclick="lockHiddenChats()">Lock</button></span></div>${html}`;
+    html = `<div class="hidden-chats-bar"><span>Hidden chats visible · locks after ${hiddenChatsUnlockSeconds()}s inactive</span><button type="button" class="quiet" onclick="openHiddenChatsDialog('manage')">Manage</button></div>${html}`;
   }
   if (searchQuery && filteredEntries.length === 0) {
     body._vaultlixChatListHtml = null;
@@ -17187,7 +17232,6 @@ function openVaultInbox() {
   closeSettings();
   closeAllMsgActions();
   exitSelectMode();
-  hiddenChatsUnlocked = false;
   showScreen('s-vault-list');
   renderVaultList();
   setTimeout(maybePromptHiddenChatsSetupRecovery, 0);
@@ -22812,6 +22856,7 @@ window.addEventListener('DOMContentLoaded', async () => {
           hiddenChatsRecoveryPromptShown = true;
           openHiddenChatsDialog('setup', () => {
             hiddenChatsUnlocked = true;
+            armHiddenChatsRelockTimer();
             refreshHiddenChatsViews();
             openConversationAfterPaint(concealedNotifyCode);
           });

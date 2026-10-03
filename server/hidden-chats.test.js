@@ -34,7 +34,8 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 function harness() {
   const storage = new Map();
-  const calls = { refresh: 0, api: [], toasts: [], inbox: 0, saved: [] };
+  const calls = { refresh: 0, api: [], toasts: [], inbox: 0, saved: [], timers:new Map(), clearedTimers:[] };
+  let nextTimerId = 0;
   const rooms = new Map([
     ['room-a', { code:'room-a', token:'tok-a', peerPrivateNumber:'2345678901' }],
     ['room-b', { code:'room-b', token:'tok-b', peerPrivateNumber:'3456789012' }],
@@ -43,6 +44,8 @@ function harness() {
   const context = vm.createContext({
     Date, Set, Map, JSON, Math, Number, String, Array, Object, Uint8Array, TextEncoder, Promise, RegExp,
     crypto: webcrypto, atob, btoa,
+    setTimeout: (fn, ms) => { const id = ++nextTimerId; calls.timers.set(id, { fn, ms }); return id; },
+    clearTimeout: id => { calls.clearedTimers.push(id); calls.timers.delete(id); },
     localStorage: { getItem: k => (storage.has(k) ? storage.get(k) : null), setItem: (k, v) => storage.set(k, String(v)), removeItem: k => storage.delete(k) },
     rooms, activeRoomCode:'room-a',
     normalizePrivateNumber: value => String(value || '').replace(/\D/g, ''),
@@ -291,6 +294,24 @@ test('hidden chats re-lock when the app goes to the background', () => {
   assert.match(client, /let hiddenChatsUnlocked = false; \/\/ memory only/);
 });
 
+test('the chosen 15–60 second inactivity timeout survives inbox navigation and resets on activity', async () => {
+  const { context, calls } = harness();
+  await vm.runInContext("setHiddenChatsPassword('482913')", context);
+  vm.runInContext("saveHiddenChatsStore({ codes:['room-a'], unlockSeconds:45 })", context);
+  await vm.runInContext("attemptHiddenChatsUnlock('482913')", context);
+  assert.equal(vm.runInContext('hiddenChatsUnlocked', context), true);
+  assert.equal([...calls.timers.values()].at(-1).ms, 45000);
+  const firstTimer = vm.runInContext('hiddenChatsRelockTimer', context);
+  vm.runInContext('noteHiddenChatsActivity()', context);
+  assert.ok(calls.clearedTimers.includes(firstTimer));
+  assert.equal([...calls.timers.values()].at(-1).ms, 45000);
+  const openInbox = extractFn('openVaultInbox');
+  assert.doesNotMatch(openInbox, /hiddenChatsUnlocked\s*=\s*false/);
+  const activeTimer = vm.runInContext('hiddenChatsRelockTimer', context);
+  calls.timers.get(activeTimer).fn();
+  assert.equal(vm.runInContext('hiddenChatsUnlocked', context), false);
+});
+
 test('the conversation menu offers Hide chat / Unhide chat and Settings manages its password', () => {
   assert.match(client, /onclick="hideChatFromConversationMenu\(\)"[\s\S]{0,400}id="conversation-menu-hide-label">Hide chat</);
   assert.match(client, /hideLabel\.textContent = isChatHidden\(activeRoomCode\) \? 'Unhide chat' : 'Hide chat'/);
@@ -414,8 +435,18 @@ test('the password fields use the numeric keypad and strip anything that is not 
 
 test('setup and change reject non-numeric passwords with a clear message, and the inbox bar offers Manage', () => {
   assert.match(client, /const problem = hiddenChatsPasswordProblem\(next\);\s*if \(problem\) \{ error\.textContent = problem; return; \}/);
-  assert.match(client, /class="hidden-chats-bar-actions"><button type="button" class="quiet" onclick="openHiddenChatsDialog\('manage'\)">Manage<\/button>/);
+  assert.match(client, /class="hidden-chats-bar">[\s\S]{0,300}onclick="openHiddenChatsDialog\('manage'\)">Manage<\/button>/);
   assert.match(client, /Choose a numeric password \(4 to 12 digits\)/);
+});
+
+test('manage offers a polished timeout control without Lock now', () => {
+  assert.match(client, /const HIDDEN_CHATS_TIMEOUT_OPTIONS = \[15, 30, 45, 60\]/);
+  assert.match(client, /id="hidden-chats-form"[^>]*locker-sheet hidden-chats-sheet|locker-sheet hidden-chats-sheet[^>]*id="hidden-chats-form"/);
+  assert.match(client, /id="hidden-chats-timeout-options"/);
+  assert.match(client, /hidden-chats-change/);
+  assert.match(client, /hidden-chats-remove/);
+  assert.doesNotMatch(client, /add\('Lock now'/);
+  assert.doesNotMatch(client, /onclick="lockHiddenChats\(\)">Lock<\/button>/);
 });
 
 test('Settings → Privacy & Security contains hidden-chat password management', () => {

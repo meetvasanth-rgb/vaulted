@@ -18,10 +18,12 @@ test('Locker setup, unlock and vault use the Vaultlix card system', () => {
   assert.match(client, /class="primary-action"[^>]*>Add note</);
 });
 
-test('the Locker redesign is scoped away from App Lock and hidden-chat dialogs', () => {
+test('App Lock stays plain while Hidden chats intentionally shares the trusted Locker card system', () => {
   assert.match(client, /id="app-lock-setup-form"[^>]*class="app-lock-sheet"|class="app-lock-sheet" id="app-lock-setup-form"/);
   assert.doesNotMatch(client, /id="app-lock-setup-form"[^>]*locker-sheet|locker-sheet[^>]*id="app-lock-setup-form"/);
-  assert.doesNotMatch(client, /id="hidden-chats-form"[^>]*locker-sheet|locker-sheet[^>]*id="hidden-chats-form"/);
+  assert.match(client, /id="hidden-chats-form"[^>]*locker-sheet hidden-chats-sheet|locker-sheet hidden-chats-sheet[^>]*id="hidden-chats-form"/);
+  assert.match(client, /\.hidden-chats-sheet\{[^}]*'Inter'/);
+  assert.match(client, /id="hidden-chats-kicker">Private on this device/);
   assert.match(client, /#locker-setup-overlay,#locker-unlock-overlay,#locker-vault-overlay/);
 });
 
