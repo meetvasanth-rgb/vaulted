@@ -195,6 +195,10 @@ public class VaultlixMessagingService extends MessagingService {
     // stable ID per room (not per message) so a burst of messages from the
     // same conversation updates a single tray entry instead of stacking.
     private void showMessageNotification(Map<String, String> data) {
+        // While Vaultlix is on screen the message already appears in the chat (or as the
+        // in-app banner for another conversation). A system pop-up and sound for every
+        // message on top of that was the annoying double alert.
+        if (MainActivity.isAppInForeground()) return;
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
         String channelId = ensureMessageChannel(manager, chosenTone(data));
@@ -235,6 +239,7 @@ public class VaultlixMessagingService extends MessagingService {
     // notification-id namespace so it can never collide with or be silently
     // replaced by a room notification.
     private void showGroupMessageNotification(Map<String, String> data) {
+        if (MainActivity.isAppInForeground()) return; // same reasoning as showMessageNotification
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
         String channelId = ensureMessageChannel(manager, chosenTone(data));

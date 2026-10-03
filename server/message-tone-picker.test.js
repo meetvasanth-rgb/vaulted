@@ -421,3 +421,18 @@ test('every non-call chime caller goes through the Android guard in playChime', 
   const body = extractBlock(client, 'function playChime(', '// ── TAB VISIBILITY');
   assert.ok(body.indexOf("nativePlatform() === 'android'") < body.indexOf('chimeEnabled'), 'the guard comes first');
 });
+
+// With Vaultlix open, every incoming message also raised a system pop-up with a sound
+// on top of the chat itself.
+test('Android shows no message notification while the app is on screen', () => {
+  const oneToOne = extractBlock(android, 'private void showMessageNotification(', 'NotificationManager manager');
+  assert.match(oneToOne, /if \(MainActivity\.isAppInForeground\(\)\) return;/);
+  const group = extractBlock(android, 'private void showGroupMessageNotification(', 'NotificationManager manager');
+  assert.match(group, /if \(MainActivity\.isAppInForeground\(\)\) return;/);
+  assert.match(mainActivity, /public void onPause\(\) \{[\s\S]*?appInForeground = false;/);
+  assert.match(mainActivity, /public void onResume\(\) \{[\s\S]*?appInForeground = true;/);
+});
+
+test('a message received while the app is open is still reported as delivered', () => {
+  assert.match(android, /showMessageNotification\(data\);\s*reportMessageDelivered\(safe\(data\.get\("code"\)\), msgId\);/);
+});
