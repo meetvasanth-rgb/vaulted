@@ -127,18 +127,20 @@ public class VaultlixMessagingService extends MessagingService {
     }
 
     private static final String TONE_CHANNEL_PREFIX = "vaultlix_messages_tone_";
+    // Matches DEFAULT_MESSAGE_TONE in server/index.js: used when no choice is sent.
+    private static final String DEFAULT_TONE = "glow";
 
     // Ids the server may name (server/index.js MESSAGE_TONE_IDS). Anything else
-    // falls back to the original chime channel.
+    // falls back to the default tone. "chime" is the original channel.
     private static String normalizeTone(String tone) {
-        if (tone == null) return "chime";
+        if (tone == null) return DEFAULT_TONE;
         switch (tone) {
-            case "none": case "glow": case "bright": case "sweet": case "notify": case "soft":
+            case "chime": case "none": case "glow": case "bright": case "sweet": case "notify": case "soft":
             case "whistle": case "triplet": case "ripple": case "spark": case "lantern":
             case "harp": case "marimba": case "droplet":
                 return tone;
             default:
-                return "chime";
+                return DEFAULT_TONE;
         }
     }
 

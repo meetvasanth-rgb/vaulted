@@ -812,19 +812,21 @@ function validateApnsToken(value) {
 // Message tones a person can choose in Settings. The files are bundled in the
 // native apps (iOS vault_tone_<id>.caf, Android res/raw/vault_tone_<id>.wav), so
 // only these ids may ever name a sound in a push. 'chime' is the original
-// default and 'none' is silent. A device's choice is stored with its push
+// original chime, 'none' is silent, and DEFAULT_MESSAGE_TONE applies when a
+// device has made no choice. A device's choice is stored with its push
 // registration and applied when that device is pushed to.
 const MESSAGE_TONE_IDS = new Set([
   'chime', 'none', 'glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet',
   'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet',
 ]);
+const DEFAULT_MESSAGE_TONE = 'glow';
 function normalizeMessageTone(value) {
-  return typeof value === 'string' && MESSAGE_TONE_IDS.has(value) ? value : 'chime';
+  return typeof value === 'string' && MESSAGE_TONE_IDS.has(value) ? value : DEFAULT_MESSAGE_TONE;
 }
 // Stored only when it differs from the default so existing records stay unchanged.
 function storedMessageTone(value) {
   const tone = normalizeMessageTone(value);
-  return tone === 'chime' ? undefined : tone;
+  return tone === DEFAULT_MESSAGE_TONE ? undefined : tone;
 }
 
 function sendApnsNotification(member, payload, ttlSeconds) {

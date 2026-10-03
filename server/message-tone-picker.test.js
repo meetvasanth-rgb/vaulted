@@ -34,12 +34,13 @@ function serverTone() {
   return context;
 }
 
-test('the server accepts only known tone ids and falls back to the original chime', () => {
+test('the server accepts only known tone ids and falls back to the default, Glow', () => {
   const { normalizeMessageTone, storedMessageTone } = serverTone();
   for (const id of ['chime', 'none', ...FILE_TONES]) assert.equal(normalizeMessageTone(id), id);
-  for (const bad of ['../../etc/passwd', 'vault_note', '', null, undefined, 7, {}, 'GLOW']) assert.equal(normalizeMessageTone(bad), 'chime');
-  assert.equal(storedMessageTone('chime'), undefined, 'the default is not stored');
+  for (const bad of ['../../etc/passwd', 'vault_note', '', null, undefined, 7, {}, 'GLOW']) assert.equal(normalizeMessageTone(bad), 'glow');
+  assert.equal(storedMessageTone('glow'), undefined, 'the default is not stored');
   assert.equal(storedMessageTone('bogus'), undefined);
+  assert.equal(storedMessageTone('chime'), 'chime', 'the original chime is a real, stored choice');
   assert.equal(storedMessageTone('harp'), 'harp');
 });
 
@@ -60,9 +61,10 @@ async function apnsPayload(member, parsed) {
 
 test('an iOS message push names the sound of the tone the device chose', async () => {
   const message = { code:'room', msgId:'m1', title:'Vaultlix', body:'New message' };
-  assert.equal((await apnsPayload({ apnsToken:'tok' }, message)).aps.sound, 'vault_chime.caf');
+  assert.equal((await apnsPayload({ apnsToken:'tok' }, message)).aps.sound, 'vault_tone_glow.caf', 'no choice = the default tone');
   assert.equal((await apnsPayload({ apnsToken:'tok', tone:'harp' }, message)).aps.sound, 'vault_tone_harp.caf');
-  assert.equal((await apnsPayload({ apnsToken:'tok', tone:'bogus' }, message)).aps.sound, 'vault_chime.caf');
+  assert.equal((await apnsPayload({ apnsToken:'tok', tone:'chime' }, message)).aps.sound, 'vault_chime.caf');
+  assert.equal((await apnsPayload({ apnsToken:'tok', tone:'bogus' }, message)).aps.sound, 'vault_tone_glow.caf');
 });
 
 test('the silent choice sends no sound at all', async () => {
@@ -95,7 +97,10 @@ test('every tone id agrees across the client, the server and the Android service
   assert.deepEqual([...serverIds].sort(), [...clientIds].sort());
   const androidSwitch = extractBlock(android, 'private static String normalizeTone', 'private static String toneLabel');
   const androidIds = [...androidSwitch.matchAll(/case "([a-z]+)"/g)].map(m => m[1]);
-  assert.deepEqual([...androidIds].sort(), ['none', ...FILE_TONES].sort());
+  assert.deepEqual([...androidIds].sort(), ['chime', 'none', ...FILE_TONES].sort());
+  assert.match(android, /DEFAULT_TONE = "glow"/);
+  assert.match(server, /const DEFAULT_MESSAGE_TONE = 'glow';/);
+  assert.match(client, /const DEFAULT_MESSAGE_TONE = 'glow';/);
 });
 
 test('every tone ships as a web mp3, an iOS caf registered in the Xcode project, and an Android raw resource', () => {
@@ -131,10 +136,11 @@ function clientHarness({ native = true, stored = null } = {}) {
   return context;
 }
 
-test('the chosen tone is remembered, defaults to the chime, and ignores junk in storage', () => {
-  assert.equal(clientHarness().selectedMessageTone(), 'chime');
+test('the chosen tone is remembered, defaults to Glow, and ignores junk in storage', () => {
+  assert.equal(clientHarness().selectedMessageTone(), 'glow');
   assert.equal(clientHarness({ stored:'harp' }).selectedMessageTone(), 'harp');
-  assert.equal(clientHarness({ stored:'../x' }).selectedMessageTone(), 'chime');
+  assert.equal(clientHarness({ stored:'chime' }).selectedMessageTone(), 'chime');
+  assert.equal(clientHarness({ stored:'../x' }).selectedMessageTone(), 'glow');
 });
 
 test('choosing a tone saves it, previews it, and re-registers the device so the server learns it', () => {
@@ -160,6 +166,12 @@ test('re-choosing the same tone previews it but does not re-register; browsers n
 test('the in-app sound follows the choice: None is silent, others load their own file', () => {
   assert.match(client, /function prepareChime\(\) \{\s*const id = selectedMessageTone\(\);\s*return id === 'none' \? Promise\.resolve\(null\) : prepareTone\(id\);/);
   assert.match(client, /function messageToneUrl\(id\) \{\s*return id === 'chime' \? '\/vault_chime\.mp3' : `\/tones\/\$\{id\}\.mp3`;/);
+});
+
+test('Glow is marked as the default in the picker and is available offline', () => {
+  assert.match(client, /\{ id:'glow', name:'Glow', note:'default' \}/);
+  assert.doesNotMatch(client, /id:'chime', name:'Vaultlix', note/);
+  assert.match(read('client', 'sw.js'), /'\/tones\/glow\.mp3'/);
 });
 
 test('every native registration sends the tone, and Settings lists the Message sound row', () => {

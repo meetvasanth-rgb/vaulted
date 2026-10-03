@@ -13693,12 +13693,15 @@ function toggleChime(enabled) {
 // The in-app sound plays the chosen tone. For the lock screen the choice is sent
 // to the server with the device's push registration (server/index.js applies it
 // to the APNs sound / Android channel), because the OS plays that sound from a
-// file bundled in the native app. A device with no choice keeps the original chime.
+// file bundled in the native app. A device with no choice uses the default, Glow;
+// "Vaultlix" is the original chime, still selectable.
 const MESSAGE_TONE_KEY = 'vaultlix_message_tone';
+const DEFAULT_MESSAGE_TONE = 'glow'; // keep in step with server/index.js and VaultlixMessagingService
 const MESSAGE_TONES = [
   { id:'none', name:'None' },
-  { id:'chime', name:'Vaultlix', note:'default' },
-  { id:'glow', name:'Glow' }, { id:'bright', name:'Bright' }, { id:'sweet', name:'Sweet' },
+  { id:'glow', name:'Glow', note:'default' },
+  { id:'chime', name:'Vaultlix' },
+  { id:'bright', name:'Bright' }, { id:'sweet', name:'Sweet' },
   { id:'notify', name:'Notify' }, { id:'soft', name:'Soft' }, { id:'whistle', name:'Whistle' },
   { id:'triplet', name:'Triplet' }, { id:'ripple', name:'Ripple' }, { id:'spark', name:'Spark' },
   { id:'lantern', name:'Lantern' }, { id:'harp', name:'Harp' }, { id:'marimba', name:'Marimba' },
@@ -13710,7 +13713,7 @@ function selectedMessageTone() {
     const stored = localStorage.getItem(MESSAGE_TONE_KEY);
     if (MESSAGE_TONES.some(tone => tone.id === stored)) return stored;
   } catch (e) {}
-  return 'chime';
+  return DEFAULT_MESSAGE_TONE;
 }
 
 function messageToneUrl(id) {
@@ -13718,7 +13721,7 @@ function messageToneUrl(id) {
 }
 
 function messageToneName(id) {
-  return (MESSAGE_TONES.find(tone => tone.id === id) || MESSAGE_TONES[1]).name;
+  return (MESSAGE_TONES.find(tone => tone.id === id) || MESSAGE_TONES.find(tone => tone.id === DEFAULT_MESSAGE_TONE)).name;
 }
 
 function updateMessageToneStatus() {
