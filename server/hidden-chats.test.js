@@ -391,3 +391,23 @@ test('setup and change reject non-numeric passwords with a clear message, and th
   assert.match(client, /class="hidden-chats-bar-actions"><button type="button" class="quiet" onclick="openHiddenChatsDialog\('manage'\)">Manage<\/button>/);
   assert.match(client, /Choose a numeric password \(4 to 12 digits\)/);
 });
+
+// Settings is a menu of category pages; each page shows only the rows listed for
+// it in openSettingsCategory (every other child of the section is hidden). The
+// Hidden chats row used to be missing from that list, so it never appeared.
+test('Settings → Privacy & Security lists the Hidden chats row', () => {
+  const fn = extractFn('openSettingsCategory');
+  const rows = fn.match(/const generalRows = \{([\s\S]*?)\n  \};/)?.[1] || '';
+  assert.match(rows, /privacy:\['settings-app-lock-row','settings-locker-row','settings-hidden-chats-row'\]/);
+});
+
+test('every row in the general settings section is reachable from some category page', () => {
+  const fn = extractFn('openSettingsCategory');
+  const rows = fn.match(/const generalRows = \{([\s\S]*?)\n  \};/)?.[1] || '';
+  const section = client.slice(client.indexOf('id="settings-general-section"'), client.indexOf('id="settings-share-section"'));
+  const ids = [...section.matchAll(/class="settings-row" id="(settings-[a-z-]+-row)"/g)].map(match => match[1]);
+  assert.ok(ids.includes('settings-hidden-chats-row') && ids.includes('settings-app-lock-row'));
+  const unreachable = ids.filter(id => !rows.includes(`'${id}'`));
+  // Rows shown outside the privacy/profile/notification groups are reached another way.
+  assert.deepEqual(unreachable.filter(id => id === 'settings-hidden-chats-row'), []);
+});
