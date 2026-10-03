@@ -126,6 +126,61 @@ public class VaultlixMessagingService extends MessagingService {
         manager.createNotificationChannel(channel);
     }
 
+    private static final String TONE_CHANNEL_PREFIX = "vaultlix_messages_tone_";
+
+    // Ids the server may name (server/index.js MESSAGE_TONE_IDS). Anything else
+    // falls back to the original chime channel.
+    private static String normalizeTone(String tone) {
+        if (tone == null) return "chime";
+        switch (tone) {
+            case "none": case "glow": case "bright": case "sweet": case "notify": case "soft":
+            case "whistle": case "triplet": case "ripple": case "spark": case "lantern":
+            case "harp": case "marimba": case "droplet":
+                return tone;
+            default:
+                return "chime";
+        }
+    }
+
+    private static String toneLabel(String tone) {
+        if ("none".equals(tone)) return "Silent";
+        return Character.toUpperCase(tone.charAt(0)) + tone.substring(1);
+    }
+
+    // An Android notification channel fixes its sound when it is created, so each
+    // tone gets its own channel and a message uses the channel of the tone the
+    // person chose. The original chime keeps its existing channel untouched.
+    private String ensureMessageChannel(NotificationManager manager, String requestedTone) {
+        String tone = normalizeTone(requestedTone);
+        if ("chime".equals(tone)) {
+            ensureMessageChannel(manager);
+            return MESSAGE_CHANNEL_ID;
+        }
+        String channelId = TONE_CHANNEL_PREFIX + tone;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return MESSAGE_CHANNEL_ID;
+        if (manager.getNotificationChannel(channelId) != null) return channelId;
+        NotificationChannel channel = new NotificationChannel(
+                channelId,
+                "Messages · " + toneLabel(tone),
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.enableVibration(true);
+        int resource = "none".equals(tone) ? 0
+                : getResources().getIdentifier("vault_tone_" + tone, "raw", getPackageName());
+        if (resource == 0) {
+            channel.setSound(null, null);
+        } else {
+            channel.setSound(Uri.parse("android.resource://" + getPackageName() + "/" + resource),
+                    new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build());
+        }
+        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(channel);
+        return channelId;
+    }
+
     // Stands in for the FCM SDK's own auto-displayed notification, now that
     // regular messages arrive data-only (see onMessageReceived above). One
     // stable ID per room (not per message) so a burst of messages from the
@@ -133,7 +188,7 @@ public class VaultlixMessagingService extends MessagingService {
     private void showMessageNotification(Map<String, String> data) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
-        ensureMessageChannel(manager);
+        String channelId = ensureMessageChannel(manager, data.get("tone"));
 
         String code = safe(data.get("code"));
         String title = safe(data.get("title"));
@@ -151,7 +206,7 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        manager.notify(notificationId, new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+        manager.notify(notificationId, new NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.drawable.ic_stat_vaultlix)
                 .setColor(Color.rgb(104, 44, 67))
                 .setContentTitle(title.isEmpty() ? "Vaultlix" : title)
@@ -173,7 +228,7 @@ public class VaultlixMessagingService extends MessagingService {
     private void showGroupMessageNotification(Map<String, String> data) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
-        ensureMessageChannel(manager);
+        String channelId = ensureMessageChannel(manager, data.get("tone"));
 
         String groupId = safe(data.get("groupId"));
         String title = safe(data.get("title"));
@@ -191,7 +246,7 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        manager.notify(notificationId, new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+        manager.notify(notificationId, new NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.drawable.ic_stat_vaultlix)
                 .setColor(Color.rgb(104, 44, 67))
                 .setContentTitle(title.isEmpty() ? "Vaultlix" : title)

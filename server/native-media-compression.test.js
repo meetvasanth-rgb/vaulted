@@ -97,9 +97,10 @@ test('large compressed videos remain downloadable and shareable in both native a
 test('message notifications and the in-app player use the supplied Vaultlix chime', () => {
   assert.match(messaging, /vaultlix_messages_universal_v2/);
   assert.match(messaging, /R\.raw\.vault_chime/);
-  assert.match(server, /sound: 'vault_chime\.caf'/);
+  assert.match(server, /sound: tone === 'chime' \? 'vault_chime\.caf' : `vault_tone_\$\{tone\}\.caf`/);
   assert.match(server, /sound: 'vault_chime'/);
-  assert.match(client, /fetch\('\/vault_chime\.mp3', \{ cache:'force-cache' \}\)/);
+  assert.match(client, /return id === 'chime' \? '\/vault_chime\.mp3' : `\/tones\/\$\{id\}\.mp3`;/);
+  assert.match(client, /fetch\(messageToneUrl\(id\), \{ cache:'force-cache' \}\)/);
   assert.match(client, /source\.buffer = buffer;[\s\S]*source\.start\(0\)/);
   assert.doesNotMatch(client.slice(client.indexOf('function playChime()'), client.indexOf('// ── TAB VISIBILITY')), /createOscillator/);
   assert.ok(fs.statSync(path.join(root, 'client', 'vault_chime.mp3')).size > 1000);

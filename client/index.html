@@ -1097,6 +1097,19 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #hidden-chats-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;margin-top:4px}#hidden-chats-actions button{width:100%;white-space:normal}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-done{background:#682C43;border-color:#682C43;color:#fff}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-change{background:#fff;color:#682C43}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-remove{background:#FFF5F6;border-color:#EDCDD4;color:#9B2945}
 .hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;padding:11px 13px;border:1px solid #E8D2DA;border-radius:14px;background:#FAF1F4;color:#682C43;font:750 12px/1.35 'Manrope',sans-serif}.hidden-chats-bar button.quiet{height:34px;border:1px solid #D8BFC8;border-radius:11px;background:#fff;color:#682C43;padding:0 13px;font:750 11px 'Manrope',sans-serif}
 .hidden-chat-lock{width:13px;height:13px;margin-left:6px;vertical-align:-1px;fill:none;stroke:#8A3C57;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tone-sheet{width:min(100%,520px);max-height:88vh;display:flex;flex-direction:column;border-radius:26px;background:#F4F1F6;box-shadow:0 26px 80px rgba(20,10,16,.35);overflow:hidden;font-family:inherit}
+.tone-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 16px 10px}
+.tone-sheet-title{font:750 17px/1.2 'Manrope','Inter',sans-serif;color:#271D25;text-align:center;flex:1}
+.tone-sheet-btn{width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.85);color:#4A4038;display:grid;place-items:center;font-size:18px;cursor:pointer}
+.tone-sheet-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.tone-sheet-btn.done{background:#682C43;color:#fff}
+.tone-list{margin:6px 14px calc(18px + env(safe-area-inset-bottom));padding:0;list-style:none;overflow-y:auto;border-radius:18px;background:#fff}
+.tone-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:0;background:#fff;padding:15px 18px;font:500 16px/1.2 'Inter',sans-serif;color:#271D25;text-align:left;cursor:pointer;border-bottom:1px solid #EEE7EA}
+.tone-list li:last-child .tone-row{border-bottom:0}
+.tone-row:active{background:#F7F1F4}
+.tone-row .tone-check{width:18px;height:18px;fill:none;stroke:#682C43;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.tone-row[aria-checked="true"] .tone-check{opacity:1}
+.tone-row-note{color:#9B8A92;font-size:13px;margin-left:6px}
 .locker-sheet{position:relative;overflow:hidden;background:linear-gradient(160deg,#FFFDFE 0%,#FBF5F7 100%);border:1px solid rgba(104,44,67,.12);border-radius:28px;padding:26px;box-shadow:0 26px 80px rgba(47,25,35,.3);font-family:'Inter',sans-serif}
 .locker-sheet .app-lock-title{margin:0 0 9px;font:750 25px/1.15 'Manrope',sans-serif;letter-spacing:-.035em;color:#271D25}.locker-sheet .app-lock-copy{font:500 13px/1.6 'Inter',sans-serif;color:#75666D;margin-bottom:18px}.locker-sheet .app-lock-field{margin:13px 0}.locker-sheet .app-lock-field span{margin-bottom:7px;color:#57464E;font:700 11px/1.2 'Inter',sans-serif;letter-spacing:.025em}.locker-sheet .app-lock-field input{height:50px;border-color:#DDCFD5;border-radius:15px;padding:0 15px;background:#fff;color:#271D25;font:600 16px 'Inter',sans-serif;transition:border-color .15s,box-shadow .15s}.locker-sheet .app-lock-field input:focus{border-color:#A85D76;box-shadow:0 0 0 4px rgba(168,93,118,.12)}.locker-sheet .app-lock-actions{margin-top:21px}.locker-sheet .app-lock-actions button{min-height:46px;border-color:#DDCFD5;border-radius:14px;color:#682C43;padding:0 18px;font:750 13px 'Manrope',sans-serif}.locker-sheet .app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff;box-shadow:0 8px 20px rgba(104,44,67,.2)}
 #locker-setup-overlay,#locker-unlock-overlay,#locker-vault-overlay{background:rgba(31,18,25,.66);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
@@ -3891,6 +3904,17 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   </form>
 </div>
 
+<div class="app-lock-overlay" id="message-tone-overlay" role="dialog" aria-modal="true" aria-labelledby="message-tone-title" onclick="if(event.target===this)closeMessageTonePicker()">
+  <div class="tone-sheet">
+    <div class="tone-sheet-head">
+      <button type="button" class="tone-sheet-btn" aria-label="Close" onclick="closeMessageTonePicker()"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      <div class="tone-sheet-title" id="message-tone-title">Message Sound</div>
+      <button type="button" class="tone-sheet-btn done" aria-label="Done" onclick="closeMessageTonePicker()"><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+    </div>
+    <ul class="tone-list" id="message-tone-list" role="radiogroup" aria-label="Message sound"></ul>
+  </div>
+</div>
+
 <div class="app-lock-overlay" id="hidden-chats-overlay" role="dialog" aria-modal="true" aria-labelledby="hidden-chats-title">
   <form class="app-lock-sheet locker-sheet hidden-chats-sheet" id="hidden-chats-form" onsubmit="submitHiddenChatsForm(event)" autocomplete="off">
     <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v2"/></svg></span><div><div class="locker-kicker" id="hidden-chats-kicker">Private on this device</div><h2 class="app-lock-title" id="hidden-chats-title">Hidden chats</h2></div></div>
@@ -4088,6 +4112,19 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         <div class="toggle-track"></div>
         <div class="toggle-thumb"></div>
       </label>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row" id="settings-tone-row" onclick="openMessageTonePicker()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
+        <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Message sound</div>
+        <div class="settings-row-sub">Choose the tone for new messages</div>
+      </div>
+      <div class="settings-status settings-status-action" id="message-tone-status">Vaultlix</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -10981,19 +11018,26 @@ function updateDocumentTitle() {
 // ── AUDIO — iOS-safe implementation ─────────────────────────────────────
 let _audioCtx = null;
 let _audioUnlocked = false;
-let _chimeBuffer = null;
-let _chimeBufferPromise = null;
+const _toneBuffers = new Map();
+const _tonePromises = new Map();
 
-function prepareChime() {
-  if (_chimeBuffer) return Promise.resolve(_chimeBuffer);
-  if (_chimeBufferPromise) return _chimeBufferPromise;
+function prepareTone(id) {
+  if (_toneBuffers.has(id)) return Promise.resolve(_toneBuffers.get(id));
+  if (_tonePromises.has(id)) return _tonePromises.get(id);
   if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  _chimeBufferPromise = fetch('/vault_chime.mp3', { cache:'force-cache' })
-    .then(response => { if (!response.ok) throw new Error('chime unavailable'); return response.arrayBuffer(); })
+  const promise = fetch(messageToneUrl(id), { cache:'force-cache' })
+    .then(response => { if (!response.ok) throw new Error('tone unavailable'); return response.arrayBuffer(); })
     .then(bytes => _audioCtx.decodeAudioData(bytes))
-    .then(buffer => (_chimeBuffer = buffer))
-    .catch(() => { _chimeBufferPromise = null; return null; });
-  return _chimeBufferPromise;
+    .then(buffer => { _toneBuffers.set(id, buffer); return buffer; })
+    .catch(() => { _tonePromises.delete(id); return null; });
+  _tonePromises.set(id, promise);
+  return promise;
+}
+
+// The in-app message sound follows the tone chosen in Settings; 'none' is silent.
+function prepareChime() {
+  const id = selectedMessageTone();
+  return id === 'none' ? Promise.resolve(null) : prepareTone(id);
 }
 
 function unlockAudio() {
@@ -11108,7 +11152,7 @@ function openSettingsCategory(category) {
   const generalRows = {
     profile:['settings-account-row','settings-profile-controls'],
     privacy:['settings-app-lock-row','settings-hidden-chats-row','settings-locker-row'],
-    notifications:['settings-chime-row','settings-push-row']
+    notifications:['settings-chime-row','settings-tone-row','settings-push-row']
   };
   const selectedRows = generalRows[category] || [];
   // Calls and Language are full category pages nested inside the shared
@@ -11661,6 +11705,7 @@ function loadSettingsState() {
     const chimeToggle = document.getElementById('toggle-chime');
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
   } catch (e) {}
+  updateMessageToneStatus();
   updatePushStatus();
   updateAccountSettingsStatus();
 }
@@ -13644,6 +13689,86 @@ function toggleChime(enabled) {
   saveSetting('chime', enabled);
 }
 
+// ── MESSAGE TONES ────────────────────────────────────────────────────────
+// The in-app sound plays the chosen tone. For the lock screen the choice is sent
+// to the server with the device's push registration (server/index.js applies it
+// to the APNs sound / Android channel), because the OS plays that sound from a
+// file bundled in the native app. A device with no choice keeps the original chime.
+const MESSAGE_TONE_KEY = 'vaultlix_message_tone';
+const MESSAGE_TONES = [
+  { id:'none', name:'None' },
+  { id:'chime', name:'Vaultlix', note:'default' },
+  { id:'glow', name:'Glow' }, { id:'bright', name:'Bright' }, { id:'sweet', name:'Sweet' },
+  { id:'notify', name:'Notify' }, { id:'soft', name:'Soft' }, { id:'whistle', name:'Whistle' },
+  { id:'triplet', name:'Triplet' }, { id:'ripple', name:'Ripple' }, { id:'spark', name:'Spark' },
+  { id:'lantern', name:'Lantern' }, { id:'harp', name:'Harp' }, { id:'marimba', name:'Marimba' },
+  { id:'droplet', name:'Droplet' },
+];
+
+function selectedMessageTone() {
+  try {
+    const stored = localStorage.getItem(MESSAGE_TONE_KEY);
+    if (MESSAGE_TONES.some(tone => tone.id === stored)) return stored;
+  } catch (e) {}
+  return 'chime';
+}
+
+function messageToneUrl(id) {
+  return id === 'chime' ? '/vault_chime.mp3' : `/tones/${id}.mp3`;
+}
+
+function messageToneName(id) {
+  return (MESSAGE_TONES.find(tone => tone.id === id) || MESSAGE_TONES[1]).name;
+}
+
+function updateMessageToneStatus() {
+  const status = document.getElementById('message-tone-status');
+  if (status) status.textContent = messageToneName(selectedMessageTone());
+}
+
+function renderMessageToneList() {
+  const list = document.getElementById('message-tone-list');
+  if (!list) return;
+  const current = selectedMessageTone();
+  list.innerHTML = MESSAGE_TONES.map(tone => `<li><button type="button" class="tone-row" role="radio" aria-checked="${tone.id === current}" data-tone="${tone.id}">
+    <span>${tone.name}${tone.note ? `<span class="tone-row-note">(${tone.note})</span>` : ''}</span>
+    <svg class="tone-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+  </button></li>`).join('');
+}
+
+function openMessageTonePicker() {
+  renderMessageToneList();
+  document.getElementById('message-tone-overlay')?.classList.add('open');
+  unlockAudio();
+}
+
+function closeMessageTonePicker() {
+  document.getElementById('message-tone-overlay')?.classList.remove('open');
+}
+
+// Re-registers this device's push tokens so the server learns the new tone.
+// Only the native apps have a token; browsers keep the OS notification sound.
+function syncMessageToneToServer() {
+  if (!isNativeApp()) return;
+  registerNativeTokenForAccount().catch(() => {});
+  registerNativeTokenForAllRooms().catch(() => {});
+}
+
+function chooseMessageTone(id) {
+  if (!MESSAGE_TONES.some(tone => tone.id === id)) return;
+  const changed = id !== selectedMessageTone();
+  try { localStorage.setItem(MESSAGE_TONE_KEY, id); } catch (e) {}
+  renderMessageToneList();
+  updateMessageToneStatus();
+  playMessageTonePreview(id);
+  if (changed) syncMessageToneToServer();
+}
+
+document.addEventListener('click', event => {
+  const row = event.target?.closest?.('#message-tone-list .tone-row');
+  if (row) chooseMessageTone(row.dataset.tone);
+});
+
 // Only reachable when updatePushStatus() decided there's still something to
 // grant (i.e. permission is 'default', not already granted or denied).
 async function requestPushPermission() {
@@ -13657,6 +13782,23 @@ async function requestPushPermission() {
     if (permission === 'granted') refreshPushForAllRooms();
   } catch (e) {}
   updatePushStatus();
+}
+
+function playMessageTonePreview(id) {
+  if (id === 'none') return;
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _audioCtx;
+    const doPlay = async () => {
+      const buffer = await prepareTone(id);
+      if (!buffer) return;
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    };
+    if (ctx.state === 'suspended') ctx.resume().then(doPlay); else doPlay();
+  } catch (e) {}
 }
 
 function playChime() {
@@ -14981,6 +15123,7 @@ async function registerNativeTokenForRoom(room) {
     deviceToken: nativePushToken,
     platform,
     environment: nativeVoipRegistration?.environment || 'production',
+    tone: selectedMessageTone(),
   });
 }
 
@@ -14995,6 +15138,7 @@ async function registerNativeTokenForAccount() {
     deviceToken: nativePushToken,
     platform,
     environment: nativeVoipRegistration?.environment || 'production',
+    tone: selectedMessageTone(),
   });
 }
 

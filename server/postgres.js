@@ -595,6 +595,7 @@ class PostgresStore {
           voipToken:push.voipToken || null, voipEnvironment:push.voipEnvironment || null,
           nativeRoomHandle:push.nativeRoomHandle || null,
           ...(push.hidePreview ? { hidePreview:true } : {}),
+          ...(push.tone ? { tone:push.tone } : {}),
         }];
       }),
     };
@@ -688,6 +689,7 @@ class PostgresStore {
         voipToken:member.voipToken || null, voipEnvironment:member.voipEnvironment || null,
         nativeRoomHandle:member.nativeRoomHandle || null,
         hidePreview:member.hidePreview === true || undefined,
+        tone:member.tone || undefined,
       }),
       member.lastSeen || 0,
     ]);

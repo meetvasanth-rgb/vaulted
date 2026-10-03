@@ -13,7 +13,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..');
-const TONES = ['chime', 'note', 'soft', 'glass', 'pulse'];
+// The tones offered in Settings -> Message sound ship as vault_tone_<id> files.
+const PICKER_TONE_IDS = ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet'];
+const TONES = ['chime', 'note', 'soft', 'glass', 'pulse', ...PICKER_TONE_IDS.map(id => `tone_${id}`)];
 const TARGET_LUFS = -12;
 const TOLERANCE = 0.6;
 const CEILING_DBFS = -1;

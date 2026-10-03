@@ -809,6 +809,24 @@ function validateApnsToken(value) {
     : null;
 }
 
+// Message tones a person can choose in Settings. The files are bundled in the
+// native apps (iOS vault_tone_<id>.caf, Android res/raw/vault_tone_<id>.wav), so
+// only these ids may ever name a sound in a push. 'chime' is the original
+// default and 'none' is silent. A device's choice is stored with its push
+// registration and applied when that device is pushed to.
+const MESSAGE_TONE_IDS = new Set([
+  'chime', 'none', 'glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet',
+  'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet',
+]);
+function normalizeMessageTone(value) {
+  return typeof value === 'string' && MESSAGE_TONE_IDS.has(value) ? value : 'chime';
+}
+// Stored only when it differs from the default so existing records stay unchanged.
+function storedMessageTone(value) {
+  const tone = normalizeMessageTone(value);
+  return tone === 'chime' ? undefined : tone;
+}
+
 function sendApnsNotification(member, payload, ttlSeconds) {
   if (!APNS_CONFIGURED || !member.apnsToken) return Promise.resolve(false);
   let parsed;
@@ -816,7 +834,13 @@ function sendApnsNotification(member, payload, ttlSeconds) {
   const body = JSON.stringify({
     aps: {
       alert: { title: parsed.title || 'Vaultlix', body: parsed.body || 'New activity' },
-      sound: 'vault_chime.caf',
+      // Calls always ring with the standard sound; only message-type alerts
+      // follow the person's chosen tone ('none' sends no sound at all).
+      ...(() => {
+        const tone = parsed.isCall || parsed.isCallEnd ? 'chime' : normalizeMessageTone(member.tone);
+        if (tone === 'none') return {};
+        return { sound: tone === 'chime' ? 'vault_chime.caf' : `vault_tone_${tone}.caf` };
+      })(),
       'thread-id': parsed.code || 'vaultlix',
       // Scoped to regular chat messages (identified by carrying a msgId,
       // same discriminator used for Android's equivalent fix) — this is
@@ -913,6 +937,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         callId: String(parsed.callId || ''),
         inviteId: String(parsed.inviteId || ''),
         msgId: String(parsed.msgId || ''),
+        tone: normalizeMessageTone(member.tone),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
         sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
@@ -4339,12 +4364,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (d.platform === 'android') {
       const fcmToken = validateFcmToken(d.deviceToken);
       if (!fcmToken) return resErr(res, 'Invalid device token.', 400);
-      destination = { platform:'android', fcmToken, deviceHash, updatedAt:Date.now() };
+      destination = { platform:'android', fcmToken, deviceHash, updatedAt:Date.now(), tone:storedMessageTone(d.tone) };
     } else if (d.platform === 'ios') {
       const apnsToken = validateApnsToken(d.deviceToken);
       if (!apnsToken) return resErr(res, 'Invalid device token.', 400);
       if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res, 'Invalid APNs environment.', 400);
-      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, deviceHash, updatedAt:Date.now() };
+      destination = { platform:'ios', apnsToken, apnsEnvironment:d.environment, deviceHash, updatedAt:Date.now(), tone:storedMessageTone(d.tone) };
     } else {
       return resErr(res, 'Invalid native platform.', 400);
     }
@@ -5019,12 +5044,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const deviceToken = validateFcmToken(d.deviceToken);
       if (!deviceToken) return resErr(res,'Invalid device token.',400);
       m.fcmToken = deviceToken;
+      m.tone = storedMessageTone(d.tone);
     } else if (d.platform === 'ios' || !d.platform) {
       const deviceToken = validateApnsToken(d.deviceToken);
       if (!deviceToken) return resErr(res,'Invalid device token.',400);
       if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
       m.apnsToken = deviceToken;
       m.apnsEnvironment = d.environment;
+      m.tone = storedMessageTone(d.tone);
     } else {
       return resErr(res,'Invalid native platform.',400);
     }
@@ -6874,13 +6901,13 @@ function hydrateAccounts(entries, source) {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
           const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
-          return fcmToken ? [{ platform:'android', fcmToken, deviceHash, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+          return fcmToken ? [{ platform:'android', fcmToken, deviceHash, updatedAt:Number(destination.updatedAt) || 0, tone:storedMessageTone(destination.tone) }] : [];
         }
         if (destination?.platform === 'ios') {
           const apnsToken = validateApnsToken(destination.apnsToken);
           const apnsEnvironment = destination.apnsEnvironment === 'sandbox' ? 'sandbox' : 'production';
           const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
-          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, deviceHash, updatedAt:Number(destination.updatedAt) || 0 }] : [];
+          return apnsToken ? [{ platform:'ios', apnsToken, apnsEnvironment, deviceHash, updatedAt:Number(destination.updatedAt) || 0, tone:storedMessageTone(destination.tone) }] : [];
         }
         return [];
       }).slice(-10);

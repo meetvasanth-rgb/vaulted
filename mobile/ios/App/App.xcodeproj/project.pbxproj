@@ -39,6 +39,19 @@
 		B00D000930B0000100000001 /* vault_call_radiant.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001930B0000100000001 /* vault_call_radiant.caf */; };
 		B00D000A30B0000100000001 /* vault_call_digital.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001A30B0000100000001 /* vault_call_digital.caf */; };
 		B00D000B30B0000100000001 /* vault_call_urgent.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00D001B30B0000100000001 /* vault_call_urgent.caf */; };
+		B00E000130B0000100000001 /* vault_tone_glow.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010130B0000100000001 /* vault_tone_glow.caf */; };
+		B00E000230B0000100000001 /* vault_tone_bright.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010230B0000100000001 /* vault_tone_bright.caf */; };
+		B00E000330B0000100000001 /* vault_tone_sweet.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010330B0000100000001 /* vault_tone_sweet.caf */; };
+		B00E000430B0000100000001 /* vault_tone_notify.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010430B0000100000001 /* vault_tone_notify.caf */; };
+		B00E000530B0000100000001 /* vault_tone_soft.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010530B0000100000001 /* vault_tone_soft.caf */; };
+		B00E000630B0000100000001 /* vault_tone_whistle.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010630B0000100000001 /* vault_tone_whistle.caf */; };
+		B00E000730B0000100000001 /* vault_tone_triplet.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010730B0000100000001 /* vault_tone_triplet.caf */; };
+		B00E000830B0000100000001 /* vault_tone_ripple.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010830B0000100000001 /* vault_tone_ripple.caf */; };
+		B00E000930B0000100000001 /* vault_tone_spark.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010930B0000100000001 /* vault_tone_spark.caf */; };
+		B00E000A30B0000100000001 /* vault_tone_lantern.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010A30B0000100000001 /* vault_tone_lantern.caf */; };
+		B00E000B30B0000100000001 /* vault_tone_harp.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010B30B0000100000001 /* vault_tone_harp.caf */; };
+		B00E000C30B0000100000001 /* vault_tone_marimba.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010C30B0000100000001 /* vault_tone_marimba.caf */; };
+		B00E000D30B0000100000001 /* vault_tone_droplet.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010D30B0000100000001 /* vault_tone_droplet.caf */; };
 		BA7255A4A3A0D1FE970B1E4D /* VaultlixClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */; };
 		C0B21D2DC7951604455920AD /* VaultlixNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10CA11030C1000100000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = C10CA11130C1000100000001 /* Localizable.strings */; };
@@ -140,6 +153,19 @@
 		B00D001930B0000100000001 /* vault_call_radiant.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_radiant.caf; path = App/Sounds/vault_call_radiant.caf; sourceTree = "<group>"; };
 		B00D001A30B0000100000001 /* vault_call_digital.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_digital.caf; path = App/Sounds/vault_call_digital.caf; sourceTree = "<group>"; };
 		B00D001B30B0000100000001 /* vault_call_urgent.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_urgent.caf; path = App/Sounds/vault_call_urgent.caf; sourceTree = "<group>"; };
+		B00E010130B0000100000001 /* vault_tone_glow.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_glow.caf; path = App/Sounds/vault_tone_glow.caf; sourceTree = "<group>"; };
+		B00E010230B0000100000001 /* vault_tone_bright.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_bright.caf; path = App/Sounds/vault_tone_bright.caf; sourceTree = "<group>"; };
+		B00E010330B0000100000001 /* vault_tone_sweet.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_sweet.caf; path = App/Sounds/vault_tone_sweet.caf; sourceTree = "<group>"; };
+		B00E010430B0000100000001 /* vault_tone_notify.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_notify.caf; path = App/Sounds/vault_tone_notify.caf; sourceTree = "<group>"; };
+		B00E010530B0000100000001 /* vault_tone_soft.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_soft.caf; path = App/Sounds/vault_tone_soft.caf; sourceTree = "<group>"; };
+		B00E010630B0000100000001 /* vault_tone_whistle.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_whistle.caf; path = App/Sounds/vault_tone_whistle.caf; sourceTree = "<group>"; };
+		B00E010730B0000100000001 /* vault_tone_triplet.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_triplet.caf; path = App/Sounds/vault_tone_triplet.caf; sourceTree = "<group>"; };
+		B00E010830B0000100000001 /* vault_tone_ripple.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_ripple.caf; path = App/Sounds/vault_tone_ripple.caf; sourceTree = "<group>"; };
+		B00E010930B0000100000001 /* vault_tone_spark.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_spark.caf; path = App/Sounds/vault_tone_spark.caf; sourceTree = "<group>"; };
+		B00E010A30B0000100000001 /* vault_tone_lantern.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_lantern.caf; path = App/Sounds/vault_tone_lantern.caf; sourceTree = "<group>"; };
+		B00E010B30B0000100000001 /* vault_tone_harp.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_harp.caf; path = App/Sounds/vault_tone_harp.caf; sourceTree = "<group>"; };
+		B00E010C30B0000100000001 /* vault_tone_marimba.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_marimba.caf; path = App/Sounds/vault_tone_marimba.caf; sourceTree = "<group>"; };
+		B00E010D30B0000100000001 /* vault_tone_droplet.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_droplet.caf; path = App/Sounds/vault_tone_droplet.caf; sourceTree = "<group>"; };
 		C10CA11230C1000100000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C10CA11330C1000100000001 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		C10CA11430C1000100000001 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -212,6 +238,19 @@
 				B00D001930B0000100000001 /* vault_call_radiant.caf */,
 				B00D001A30B0000100000001 /* vault_call_digital.caf */,
 				B00D001B30B0000100000001 /* vault_call_urgent.caf */,
+				B00E010130B0000100000001 /* vault_tone_glow.caf */,
+				B00E010230B0000100000001 /* vault_tone_bright.caf */,
+				B00E010330B0000100000001 /* vault_tone_sweet.caf */,
+				B00E010430B0000100000001 /* vault_tone_notify.caf */,
+				B00E010530B0000100000001 /* vault_tone_soft.caf */,
+				B00E010630B0000100000001 /* vault_tone_whistle.caf */,
+				B00E010730B0000100000001 /* vault_tone_triplet.caf */,
+				B00E010830B0000100000001 /* vault_tone_ripple.caf */,
+				B00E010930B0000100000001 /* vault_tone_spark.caf */,
+				B00E010A30B0000100000001 /* vault_tone_lantern.caf */,
+				B00E010B30B0000100000001 /* vault_tone_harp.caf */,
+				B00E010C30B0000100000001 /* vault_tone_marimba.caf */,
+				B00E010D30B0000100000001 /* vault_tone_droplet.caf */,
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
@@ -410,6 +449,19 @@
 				B00D000930B0000100000001 /* vault_call_radiant.caf in Resources */,
 				B00D000A30B0000100000001 /* vault_call_digital.caf in Resources */,
 				B00D000B30B0000100000001 /* vault_call_urgent.caf in Resources */,
+				B00E000130B0000100000001 /* vault_tone_glow.caf in Resources */,
+				B00E000230B0000100000001 /* vault_tone_bright.caf in Resources */,
+				B00E000330B0000100000001 /* vault_tone_sweet.caf in Resources */,
+				B00E000430B0000100000001 /* vault_tone_notify.caf in Resources */,
+				B00E000530B0000100000001 /* vault_tone_soft.caf in Resources */,
+				B00E000630B0000100000001 /* vault_tone_whistle.caf in Resources */,
+				B00E000730B0000100000001 /* vault_tone_triplet.caf in Resources */,
+				B00E000830B0000100000001 /* vault_tone_ripple.caf in Resources */,
+				B00E000930B0000100000001 /* vault_tone_spark.caf in Resources */,
+				B00E000A30B0000100000001 /* vault_tone_lantern.caf in Resources */,
+				B00E000B30B0000100000001 /* vault_tone_harp.caf in Resources */,
+				B00E000C30B0000100000001 /* vault_tone_marimba.caf in Resources */,
+				B00E000D30B0000100000001 /* vault_tone_droplet.caf in Resources */,
 				C10CA11030C1000100000001 /* Localizable.strings in Resources */,
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,

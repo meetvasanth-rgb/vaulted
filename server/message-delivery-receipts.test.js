@@ -17,6 +17,15 @@ function extract(name) {
   return server.slice(start, end);
 }
 
+// The push functions pick the member's message tone through these helpers.
+function extractToneHelpers() {
+  const start = server.indexOf('const MESSAGE_TONE_IDS = new Set([');
+  const end = server.indexOf('function sendApnsNotification(');
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  return server.slice(start, end);
+}
+
 // Isolated run of the real sendFcmNotification against a stubbed Firebase
 // client — proves the actual branching logic, not just a regex over the
 // source text, per this class of bug (timing/ordering/delivery-signal
@@ -27,7 +36,7 @@ async function buildFcmMessage(parsed) {
     sentJson: null,
   };
   vm.createContext(context);
-  vm.runInContext(extract('sendFcmNotification') + '\nasync function run(p){ return sendFcmNotification({fcmToken:"tok"}, JSON.stringify(p), 60); }', context);
+  vm.runInContext(extractToneHelpers() + extract('sendFcmNotification') + '\nasync function run(p){ return sendFcmNotification({fcmToken:"tok"}, JSON.stringify(p), 60); }', context);
   await context.run(parsed);
   // JSON round-trip on the way out — comparing a vm-realm object's
   // structure directly against a main-realm object literal can trip
@@ -127,7 +136,7 @@ async function buildApnsRequestBody(parsed) {
     },
   };
   vm.createContext(context);
-  vm.runInContext(extract('sendApnsNotification'), context);
+  vm.runInContext(extractToneHelpers() + extract('sendApnsNotification'), context);
   await vm.runInContext(`sendApnsNotification({apnsToken:'tok'}, ${JSON.stringify(JSON.stringify(parsed))}, 60)`, context);
   return JSON.parse(capturedBody);
 }
