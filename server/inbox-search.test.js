@@ -29,12 +29,13 @@ test('"Add your friend" is still reachable from the bottom inbox action bar', ()
   assert.match(client, /class="vault-list-action" type="button" onclick="openNewConnection\(\)" aria-label="Add your friend"/);
 });
 
-test('toggleVaultSearch, openVaultSearch, closeVaultSearch and filterVaultList are all defined and wired to the DOM', () => {
+test('toggleVaultSearch, openVaultSearch, closeVaultSearch and the input handler are wired to the DOM', () => {
   assert.match(client, /function toggleVaultSearch\(\) \{/);
   assert.match(client, /function openVaultSearch\(\) \{/);
   assert.match(client, /function closeVaultSearch\(\) \{/);
   assert.match(client, /function filterVaultList\(value\) \{/);
-  assert.match(client, /oninput="filterVaultList\(this\.value\)"/);
+  assert.match(client, /function handleVaultSearchInput\(input\) \{/);
+  assert.match(client, /oninput="handleVaultSearchInput\(this\)"/);
 });
 
 test('closing search clears the query and switching to the Calls tab auto-closes an open search', () => {

@@ -3520,7 +3520,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <div class="vault-list-title" id="vault-list-title" data-i18n="chats">Chats</div>
     </div>
     <div class="vault-list-search" id="vault-list-search" hidden>
-      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)" onkeydown="handleVaultSearchKeydown(event)" enterkeyhint="go" autocapitalize="off" autocorrect="off" spellcheck="false"/>
+      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="handleVaultSearchInput(this)" onkeydown="handleVaultSearchKeydown(event)" enterkeyhint="go" autocapitalize="off" autocorrect="off" spellcheck="false"/>
     </div>
     <div class="vault-list-nav">
       <button class="vault-list-settings" type="button" id="vault-search-toggle" onclick="toggleVaultSearch()" title="Search chats" aria-label="Search chats">
@@ -16256,17 +16256,42 @@ function filterVaultList(value) {
   renderVaultList();
 }
 
+async function unlockHiddenChatsFromSearchInput(input) {
+  if (!input || input.dataset.hiddenChatsUnlocking === '1' || hiddenChatsUnlocked || !hiddenChatsPasswordSet() || hiddenChatCodes().size === 0) return false;
+  const password = String(input.value || '').trim();
+  const store = loadHiddenChatsStore();
+  if (!/^\d{4,12}$/.test(password) || (store.passwordLength && password.length !== store.passwordLength)) return false;
+  input.dataset.hiddenChatsUnlocking = '1';
+  try {
+    const result = await attemptHiddenChatsUnlock(password);
+    if (!result.ok) return false;
+    input.value = '';
+    vaultSearchQuery = '';
+    renderVaultList();
+    return true;
+  } finally {
+    delete input.dataset.hiddenChatsUnlocking;
+  }
+}
+
+async function handleVaultSearchInput(input) {
+  filterVaultList(input?.value);
+  const store = loadHiddenChatsStore();
+  const password = String(input?.value || '').trim();
+  // Current passwords have a known length, so iOS can unlock as soon as the
+  // last digit is entered without depending on its keyboard's Go key event.
+  if (store.passwordLength && /^\d+$/.test(password) && password.length === store.passwordLength) {
+    await unlockHiddenChatsFromSearchInput(input);
+  }
+}
+
 async function handleVaultSearchKeydown(event) {
   if (event.key !== 'Enter' || hiddenChatsUnlocked || !hiddenChatsPasswordSet() || hiddenChatCodes().size === 0) return;
   const password = String(event.currentTarget?.value || '').trim();
   const store = loadHiddenChatsStore();
   if (!/^\d{4,12}$/.test(password) || (store.passwordLength && password.length !== store.passwordLength)) return;
   event.preventDefault();
-  const result = await attemptHiddenChatsUnlock(password);
-  if (!result.ok) return;
-  event.currentTarget.value = '';
-  vaultSearchQuery = '';
-  renderVaultList();
+  await unlockHiddenChatsFromSearchInput(event.currentTarget);
 }
 
 function syncVaultListModeControls() {

@@ -218,14 +218,48 @@ test('pressing Enter on the private password in ordinary Chats search reveals hi
     vaultSearchQuery:'482913',
     renderVaultList:() => { renders++; },
   });
-  vm.runInContext(extractFn('handleVaultSearchKeydown'), context);
-  const event = { key:'Enter', currentTarget:{ value:'482913' }, prevented:false, preventDefault() { this.prevented = true; } };
+  vm.runInContext(`${extractFn('unlockHiddenChatsFromSearchInput')}\n${extractFn('handleVaultSearchKeydown')}`, context);
+  const event = { key:'Enter', currentTarget:{ value:'482913', dataset:{} }, prevented:false, preventDefault() { this.prevented = true; } };
   await context.handleVaultSearchKeydown(event);
   assert.equal(attempts, 1);
   assert.equal(event.prevented, true);
   assert.equal(event.currentTarget.value, '');
   assert.equal(context.vaultSearchQuery, '');
   assert.equal(renders, 1);
+});
+
+test('typing the full numeric password auto-unlocks on iOS without relying on Go', async () => {
+  let attempts = 0;
+  let renders = 0;
+  const context = vm.createContext({
+    hiddenChatsUnlocked:false,
+    hiddenChatsPasswordSet:() => true,
+    hiddenChatCodes:() => new Set(['room-a']),
+    loadHiddenChatsStore:() => ({ passwordLength:6 }),
+    attemptHiddenChatsUnlock:async value => { attempts++; return { ok:value === '000000' }; },
+    vaultSearchQuery:'',
+    renderVaultList:() => { renders++; },
+  });
+  vm.runInContext(`${extractFn('filterVaultList')}\n${extractFn('unlockHiddenChatsFromSearchInput')}\n${extractFn('handleVaultSearchInput')}`, context);
+  const input = { value:'000000', dataset:{} };
+  await context.handleVaultSearchInput(input);
+  assert.equal(attempts, 1);
+  assert.equal(input.value, '', 'the password is removed from the visible search field');
+  assert.equal(context.vaultSearchQuery, '');
+  assert.equal(renders, 2, 'the ordinary search renders, then the unlocked inbox renders');
+});
+
+test('000000 survives the real password verifier and unlocks through search input', async () => {
+  const { context } = harness();
+  await vm.runInContext("setHiddenChatsPassword('000000')", context);
+  vm.runInContext("saveHiddenChatsStore({ codes:['room-b'] }); let vaultSearchQuery = '';", context);
+  vm.runInContext(`${extractFn('filterVaultList')}\n${extractFn('unlockHiddenChatsFromSearchInput')}\n${extractFn('handleVaultSearchInput')}`, context);
+  const input = { value:'000000', dataset:{} };
+  context.searchInput = input;
+  await vm.runInContext('handleVaultSearchInput(searchInput)', context);
+  assert.equal(vm.runInContext('hiddenChatsUnlocked', context), true);
+  assert.equal(input.value, '');
+  assert.equal(vm.runInContext('vaultSearchQuery', context), '');
 });
 
 test('every place that lists or opens chats honours hidden chats', () => {
