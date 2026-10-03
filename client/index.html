@@ -10372,6 +10372,7 @@ const HIDDEN_CHATS_MAX_LENGTH = 12;
 let hiddenChatsUnlocked = false; // memory only: every launch and every background starts locked
 let hiddenChatsCache = null;
 let hiddenChatsDialog = null;
+let hiddenChatsRecoveryPromptShown = false;
 
 function loadHiddenChatsStore() {
   if (hiddenChatsCache) return hiddenChatsCache;
@@ -10383,6 +10384,10 @@ function loadHiddenChatsStore() {
     verifier: typeof store.verifier === 'string' ? store.verifier : null,
     iterations: Number(store.iterations) || HIDDEN_CHATS_ITERATIONS,
     passwordLength: Number(store.passwordLength) || 0,
+    // The first hidden-chat release could leave a verifier behind without a
+    // completed setup screen. A saved length proves the newer setup completed;
+    // setupConfirmed makes that state explicit from now on.
+    setupConfirmed: store.setupConfirmed === true || Number(store.passwordLength) > 0,
     // Passwords are digits only. A password saved by the first release could be
     // any text; it still unlocks, but has no numeric flag until it is changed.
     numeric: store.numeric === true,
@@ -10408,6 +10413,7 @@ function hiddenChatsPasswordProblem(value) {
 function hiddenChatsPasswordIsNumeric() { return loadHiddenChatsStore().numeric === true; }
 
 function hiddenChatsPasswordSet() { const store = loadHiddenChatsStore(); return Boolean(store.salt && store.verifier); }
+function hiddenChatsSetupConfirmed() { return hiddenChatsPasswordSet() && loadHiddenChatsStore().setupConfirmed === true; }
 function hiddenChatCodes() { return new Set(loadHiddenChatsStore().codes); }
 function isChatHidden(code) { return loadHiddenChatsStore().codes.includes(code); }
 function isChatConcealed(code) { return !hiddenChatsUnlocked && isChatHidden(code); }
@@ -10460,7 +10466,7 @@ async function attemptHiddenChatsUnlock(password) {
 async function setHiddenChatsPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const verifier = await deriveAppLockVerifier(String(password), salt, HIDDEN_CHATS_ITERATIONS);
-  saveHiddenChatsStore({ salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier), iterations:HIDDEN_CHATS_ITERATIONS, passwordLength:String(password).length, numeric:/^\d+$/.test(String(password)) });
+  saveHiddenChatsStore({ salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier), iterations:HIDDEN_CHATS_ITERATIONS, passwordLength:String(password).length, numeric:/^\d+$/.test(String(password)), setupConfirmed:true });
   try { localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY); } catch (error) {}
 }
 
@@ -10497,8 +10503,12 @@ function syncHiddenChatNotificationPrivacy() {
 }
 
 function hideChat(code) {
+  // Never conceal a conversation unless the user has completed the password
+  // setup screen. This also protects against incomplete state left by an older
+  // build that stored a verifier without visibly asking the user for a password.
+  if (!hiddenChatsSetupConfirmed()) return false;
   const room = rooms.get(code);
-  if (!room) return;
+  if (!room) return false;
   const codes = hiddenChatCodes();
   codes.add(code);
   saveHiddenChatsStore({ codes:[...codes] });
@@ -10513,6 +10523,7 @@ function hideChat(code) {
   }
   refreshHiddenChatsViews();
   toast('Chat hidden. Enter your private password in Chats search and press Enter to reveal it.');
+  return true;
 }
 
 function unhideChat(code) {
@@ -10531,8 +10542,18 @@ function hideChatFromConversationMenu() {
   const room = getActiveRoom();
   if (!room) return;
   if (isChatHidden(room.code)) { unhideChat(room.code); return; }
-  if (!hiddenChatsPasswordSet()) { openHiddenChatsDialog('setup', () => hideChat(room.code)); return; }
+  if (!hiddenChatsSetupConfirmed()) { openHiddenChatsDialog('setup', () => hideChat(room.code)); return; }
   hideChat(room.code);
+}
+
+function maybePromptHiddenChatsSetupRecovery() {
+  if (hiddenChatsRecoveryPromptShown || hiddenChatCodes().size === 0 || hiddenChatsSetupConfirmed()) return;
+  hiddenChatsRecoveryPromptShown = true;
+  openHiddenChatsDialog('setup', () => {
+    hiddenChatsUnlocked = true;
+    refreshHiddenChatsViews();
+    toast('Password saved. Your hidden chats are now available.');
+  });
 }
 
 function promptUnlockHiddenChats(onDone) {
@@ -10542,7 +10563,7 @@ function promptUnlockHiddenChats(onDone) {
 
 function openHiddenChatsSettings() {
   closeSettings();
-  if (!hiddenChatsPasswordSet()) { openHiddenChatsDialog('setup', () => toast('Password saved. Use “Hide chat” in a conversation’s menu.')); return; }
+  if (!hiddenChatsSetupConfirmed()) { openHiddenChatsDialog('setup', () => toast('Password saved. Use “Hide chat” in a conversation’s menu.')); return; }
   if (!hiddenChatsUnlocked) openHiddenChatsDialog('unlock', () => openHiddenChatsDialog('manage'));
   else openHiddenChatsDialog('manage');
 }
@@ -10666,7 +10687,7 @@ async function submitHiddenChatsForm(event) {
       const checked = await checkHiddenChatsPassword(value('current'));
       if (!checked.ok) { error.textContent = checked.error; return; }
       for (const code of hiddenChatCodes()) { const room = rooms.get(code); if (room) syncChatNotificationPrivacy(room, false); }
-      saveHiddenChatsStore({ codes:[], salt:null, verifier:null, passwordLength:0, numeric:false });
+      saveHiddenChatsStore({ codes:[], salt:null, verifier:null, passwordLength:0, numeric:false, setupConfirmed:false });
       hiddenChatsUnlocked = false;
       closeHiddenChatsDialog();
       refreshHiddenChatsViews();
@@ -17120,6 +17141,7 @@ function openVaultInbox() {
   hiddenChatsUnlocked = false;
   showScreen('s-vault-list');
   renderVaultList();
+  setTimeout(maybePromptHiddenChatsSetupRecovery, 0);
 }
 
 function openMainHome() {
@@ -22735,7 +22757,22 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (urlRoomCode) history.replaceState(null, '', location.pathname);
     pendingNotificationRoomCode = null;
     syncHiddenChatNotificationPrivacy();
-    if (concealedNotifyCode) setTimeout(() => promptUnlockHiddenChats(() => openConversationAfterPaint(concealedNotifyCode)), 600);
+    if (concealedNotifyCode) {
+      setTimeout(() => {
+        if (!hiddenChatsSetupConfirmed()) {
+          hiddenChatsRecoveryPromptShown = true;
+          openHiddenChatsDialog('setup', () => {
+            hiddenChatsUnlocked = true;
+            refreshHiddenChatsViews();
+            openConversationAfterPaint(concealedNotifyCode);
+          });
+        } else {
+          promptUnlockHiddenChats(() => openConversationAfterPaint(concealedNotifyCode));
+        }
+      }, 600);
+    } else {
+      setTimeout(maybePromptHiddenChatsSetupRecovery, 0);
+    }
     // An invite link for a room we're NOT already in takes priority over
     // whatever we just settled into above — surface the join screen on top
     // so the person can actually accept it, same idea as a notification tap.

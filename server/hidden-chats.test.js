@@ -120,6 +120,7 @@ test('repeated wrong passwords lock further attempts out, even for the right pas
 
 test('hiding stores only this chat, re-locks, tells the server, and leaves the open chat', async () => {
   const { context, calls } = harness();
+  await vm.runInContext("setHiddenChatsPassword('482913')", context);
   vm.runInContext("hideChat('room-a')", context);
   assert.deepEqual(plain(vm.runInContext('[...hiddenChatCodes()]', context)), ['room-a']);
   assert.equal(vm.runInContext('hiddenChatsUnlocked', context), false);
@@ -128,6 +129,25 @@ test('hiding stores only this chat, re-locks, tells the server, and leaves the o
   assert.deepEqual(plain(calls.saved), [''], 'the remembered active chat is cleared');
   assert.equal(vm.runInContext('activeRoomCode', context), 'room-b', 'focus moves to a visible chat');
   assert.ok(calls.toasts.some(text => /Chat hidden/.test(text)));
+});
+
+test('a chat cannot be hidden until password setup has visibly completed', async () => {
+  const { context, calls, storage } = harness();
+  const salt = Buffer.alloc(16, 7).toString('base64url');
+  storage.set('vaultlix_hidden_chats_v1', JSON.stringify({
+    codes:[], salt, verifier:Buffer.alloc(32, 9).toString('base64url'),
+    iterations:310000, numeric:true,
+  }));
+  assert.equal(vm.runInContext('hiddenChatsPasswordSet()', context), true, 'an incomplete older verifier exists');
+  assert.equal(vm.runInContext('hiddenChatsSetupConfirmed()', context), false, 'the setup screen was not confirmed');
+  assert.equal(vm.runInContext("hideChat('room-a')", context), false);
+  assert.deepEqual(plain(vm.runInContext('[...hiddenChatCodes()]', context)), []);
+  assert.equal(calls.api.length, 0);
+
+  await vm.runInContext("setHiddenChatsPassword('482913')", context);
+  assert.equal(vm.runInContext('hiddenChatsSetupConfirmed()', context), true);
+  assert.equal(vm.runInContext("hideChat('room-a')", context), true);
+  assert.deepEqual(plain(vm.runInContext('[...hiddenChatCodes()]', context)), ['room-a']);
 });
 
 test('unhiding removes only that chat and tells the server', async () => {
