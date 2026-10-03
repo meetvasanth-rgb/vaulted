@@ -78,16 +78,19 @@ test('calls keep the standard sound whatever tone was chosen', async () => {
 });
 
 test('the Android push data carries the chosen tone', () => {
-  assert.match(server, /msgId: String\(parsed\.msgId \|\| ''\),\s*tone: normalizeMessageTone\(member\.tone\),/);
+  assert.match(server, /msgId: String\(parsed\.msgId \|\| ''\),\s*tone: messageToneForPush\(member, 'android'\),/);
 });
 
 test('both native registration routes store the tone, in the live record and in what is persisted', () => {
-  assert.equal((server.match(/m\.tone = storedMessageTone\(d\.tone\);/g) || []).length, 2);
+  assert.match(server, /m\.fcmToken = deviceToken;\s*m\.fcmTone = storedMessageTone\(d\.tone\);/);
+  assert.match(server, /m\.apnsEnvironment = d\.environment;\s*m\.apnsTone = storedMessageTone\(d\.tone\);/);
   assert.equal((server.match(/tone:storedMessageTone\(d\.tone\) \}/g) || []).length, 2, 'account destinations (create)');
   assert.equal((server.match(/tone:storedMessageTone\(destination\.tone\) \}\] : \[\]/g) || []).length, 2, 'account destinations (reload)');
   const postgres = read('server', 'postgres.js');
   assert.match(postgres, /\.\.\.\(push\.tone \? \{ tone:push\.tone \} : \{\}\),/);
   assert.match(postgres, /tone:member\.tone \|\| undefined,/);
+  assert.match(postgres, /apnsTone:member\.apnsTone \|\| undefined,\s*fcmTone:member\.fcmTone \|\| undefined,/);
+  assert.match(postgres, /\.\.\.\(push\.apnsTone \? \{ apnsTone:push\.apnsTone \} : \{\}\),\s*\.\.\.\(push\.fcmTone \? \{ fcmTone:push\.fcmTone \} : \{\}\),/);
 });
 
 test('every tone id agrees across the client, the server and the Android service', () => {
@@ -260,4 +263,69 @@ test('the floating Chats bar is hidden while the search box has the keyboard', (
   assert.match(client, /document\.addEventListener\('focusin', event => \{\s*if \(event\.target\?\.id === 'vault-search-input'\) document\.documentElement\.classList\.add\('vault-search-typing'\);/);
   assert.match(client, /document\.addEventListener\('focusout', event => \{\s*if \(event\.target\?\.id === 'vault-search-input'\) document\.documentElement\.classList\.remove\('vault-search-typing'\);/);
   assert.match(client, /function closeVaultSearch\(\) \{\s*document\.documentElement\.classList\.remove\('vault-search-typing'\);/);
+});
+
+// One conversation member is shared by every device signed in to the account, with a
+// separate APNs and FCM token. A single `tone` field meant the iPhone and the Android
+// phone overwrote each other's choice (the one that registered last won for both).
+test('the tone is chosen per platform on a shared member, falling back to the older shared field', () => {
+  const { messageToneForPush } = serverTone();
+  const member = { apnsTone:'harp', fcmTone:'triplet' };
+  assert.equal(messageToneForPush(member, 'ios'), 'harp');
+  assert.equal(messageToneForPush(member, 'android'), 'triplet');
+  assert.equal(messageToneForPush({ apnsTone:'harp' }, 'android'), 'glow', 'the other platform keeps the default');
+  assert.equal(messageToneForPush({ tone:'spark' }, 'ios'), 'spark', 'a member registered before this change');
+  assert.equal(messageToneForPush({ tone:'spark', fcmTone:'harp' }, 'android'), 'harp');
+  assert.equal(messageToneForPush({}, 'ios'), 'glow');
+});
+
+test('an iPhone and an Android phone sharing one conversation member keep their own tones', async () => {
+  const preload = path.join(require('node:os').tmpdir(), `vaultlix-firebase-stub-${process.pid}.js`);
+  fs.writeFileSync(preload, `const Module = require('module'); const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === 'firebase-admin/app') return { initializeApp: () => ({}), cert: () => ({}) };
+  if (request === 'firebase-admin/messaging') return { getMessaging: () => ({ send: async message => { console.log('FCM_SEND ' + JSON.stringify(message)); return 'ok'; } }) };
+  return load.call(this, request, ...rest);
+};`);
+  const { spawn } = require('node:child_process');
+  const net = require('node:net');
+  const webpush = require('web-push');
+  const probe = net.createServer();
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+  const vapid = webpush.generateVAPIDKeys();
+  const snapshotDir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vaultlix-tone-test-'));
+  const child = spawn(process.execPath, ['-r', preload, 'server/index.js'], {
+    cwd: root, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, NODE_ENV:'test', PORT:String(port), SNAPSHOT_DIR:snapshotDir, VAPID_PUBLIC_KEY:vapid.publicKey, VAPID_PRIVATE_KEY:vapid.privateKey, FIREBASE_SERVICE_ACCOUNT_JSON:'{"project_id":"x"}' },
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('test server did not start')), 8000);
+      const poll = setInterval(() => { if (output.includes(`Vaultlix on port ${port}`)) { clearTimeout(timer); clearInterval(poll); resolve(); } }, 50);
+      child.once('exit', code => reject(new Error(`test server exited early (${code})`)));
+    });
+    const post = async (route, body) => {
+      const response = await fetch(`http://127.0.0.1:${port}${route}`, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) });
+      return { status:response.status, data:await response.json().catch(() => ({})) };
+    };
+    const alice = (await post('/api/create', { name:'Alice', pubKey:'a', persistent:true })).data;
+    const bob = (await post('/api/join', { name:'Bob', code:alice.code, pubKey:'b' })).data;
+    const fcm = `${'f'.repeat(30)}:APA91b${'x'.repeat(40)}`;
+    // Bob's Android phone chooses triplet; then his iPhone (same member) registers with another tone.
+    assert.equal((await post('/api/native-push-subscribe', { code:alice.code, token:bob.token, deviceToken:fcm, platform:'android', tone:'triplet' })).status, 200);
+    assert.equal((await post('/api/native-push-subscribe', { code:alice.code, token:bob.token, deviceToken:'a'.repeat(64), platform:'ios', environment:'production', tone:'harp' })).status, 200);
+    assert.equal((await post('/api/send', { code:alice.code, token:alice.token, content:'x', msgId:'tonetest1' })).status, 200);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    const sent = output.split('\n').filter(line => line.startsWith('FCM_SEND')).map(line => JSON.parse(line.slice(9)));
+    assert.equal(sent.at(-1)?.data?.tone, 'triplet', "the iPhone's registration must not overwrite the Android choice");
+  } finally {
+    child.kill('SIGTERM');
+    await new Promise(resolve => child.once('exit', resolve));
+    fs.rmSync(snapshotDir, { recursive:true, force:true });
+    fs.rmSync(preload, { force:true });
+  }
 });

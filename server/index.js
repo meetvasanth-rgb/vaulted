@@ -828,6 +828,15 @@ function storedMessageTone(value) {
   const tone = normalizeMessageTone(value);
   return tone === DEFAULT_MESSAGE_TONE ? undefined : tone;
 }
+// A conversation member is shared by every device signed in to that account (one
+// APNs token and one FCM token per member), so the tone is kept per platform:
+// otherwise the iPhone and the Android phone of one person overwrite each other's
+// choice and both play whichever registered last. An account's own push destination
+// is already one device, so it just carries `tone`.
+function messageToneForPush(member, platform) {
+  const own = platform === 'ios' ? member.apnsTone : member.fcmTone;
+  return normalizeMessageTone(own !== undefined ? own : member.tone);
+}
 
 function sendApnsNotification(member, payload, ttlSeconds) {
   if (!APNS_CONFIGURED || !member.apnsToken) return Promise.resolve(false);
@@ -839,7 +848,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
       // Calls always ring with the standard sound; only message-type alerts
       // follow the person's chosen tone ('none' sends no sound at all).
       ...(() => {
-        const tone = parsed.isCall || parsed.isCallEnd ? 'chime' : normalizeMessageTone(member.tone);
+        const tone = parsed.isCall || parsed.isCallEnd ? 'chime' : messageToneForPush(member, 'ios');
         if (tone === 'none') return {};
         return { sound: tone === 'chime' ? 'vault_chime.caf' : `vault_tone_${tone}.caf` };
       })(),
@@ -939,7 +948,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         callId: String(parsed.callId || ''),
         inviteId: String(parsed.inviteId || ''),
         msgId: String(parsed.msgId || ''),
-        tone: normalizeMessageTone(member.tone),
+        tone: messageToneForPush(member, 'android'),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
         sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
@@ -5046,14 +5055,16 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const deviceToken = validateFcmToken(d.deviceToken);
       if (!deviceToken) return resErr(res,'Invalid device token.',400);
       m.fcmToken = deviceToken;
-      m.tone = storedMessageTone(d.tone);
+      m.fcmTone = storedMessageTone(d.tone);
+      delete m.tone; // the older shared field; per-platform tones replace it
     } else if (d.platform === 'ios' || !d.platform) {
       const deviceToken = validateApnsToken(d.deviceToken);
       if (!deviceToken) return resErr(res,'Invalid device token.',400);
       if (d.environment !== 'sandbox' && d.environment !== 'production') return resErr(res,'Invalid APNs environment.',400);
       m.apnsToken = deviceToken;
       m.apnsEnvironment = d.environment;
-      m.tone = storedMessageTone(d.tone);
+      m.apnsTone = storedMessageTone(d.tone);
+      delete m.tone;
     } else {
       return resErr(res,'Invalid native platform.',400);
     }

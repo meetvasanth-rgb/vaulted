@@ -596,6 +596,8 @@ class PostgresStore {
           nativeRoomHandle:push.nativeRoomHandle || null,
           ...(push.hidePreview ? { hidePreview:true } : {}),
           ...(push.tone ? { tone:push.tone } : {}),
+          ...(push.apnsTone ? { apnsTone:push.apnsTone } : {}),
+          ...(push.fcmTone ? { fcmTone:push.fcmTone } : {}),
         }];
       }),
     };
@@ -690,6 +692,8 @@ class PostgresStore {
         nativeRoomHandle:member.nativeRoomHandle || null,
         hidePreview:member.hidePreview === true || undefined,
         tone:member.tone || undefined,
+        apnsTone:member.apnsTone || undefined,
+        fcmTone:member.fcmTone || undefined,
       }),
       member.lastSeen || 0,
     ]);
