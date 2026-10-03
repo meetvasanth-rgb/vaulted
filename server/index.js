@@ -572,6 +572,20 @@ function pushRoomMsg(room, msg) {
   if (totalByteSize < 0) totalByteSize = 0;
 }
 
+// The in-memory projection keeps only the newest 100 live messages, but the
+// deletion tombstones must survive that cap. They carry no `seq`, so they used
+// to sort to the very front and get sliced off whenever a conversation had a
+// full 100 messages — and every mutating request (including the peer's
+// /api/poll) reloads the conversation from PostgreSQL, so in any busy chat the
+// peer was never told about a "delete for everyone".
+function withRetainedTombstones(liveMessages, tombstones) {
+  const live = [...liveMessages].sort((left, right) => (left.seq || 0) - (right.seq || 0)).slice(-100);
+  const liveIds = new Set(live.map(message => message.id));
+  const kept = (tombstones || []).filter(tombstone => !liveIds.has(tombstone.id))
+    .sort((left, right) => (left.deletionSeq || 0) - (right.deletionSeq || 0));
+  return [...kept, ...live];
+}
+
 // PostgreSQL is the durable ciphertext history. The live conversation map is
 // only a bounded projection used by the existing HTTP and signaling protocol.
 // A full client bootstrap therefore reconciles that projection with PostgreSQL
@@ -618,9 +632,7 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
   // ciphertext records with PostgreSQL's authoritative, deletion-aware set.
   const systemMessages = room.msgs.filter(message => message.type === 'system');
   const oldBytes = room.byteSize || 0;
-  room.msgs = [...systemMessages, ...restoredMessages, ...tombstones]
-    .sort((left, right) => (left.seq || 0) - (right.seq || 0))
-    .slice(-100);
+  room.msgs = withRetainedTombstones([...systemMessages, ...restoredMessages], tombstones);
   room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
   totalByteSize = Math.max(0, totalByteSize - oldBytes + room.byteSize);
   const highestSequence = room.msgs.reduce((highest, message) => Math.max(highest, message.seq || 0), 0);
@@ -650,7 +662,7 @@ async function loadConversationFromPostgres(roomCode, client = null) {
     postgresStore.loadEncryptedMessages(roomCode, 100, Date.now(), client || postgresStore.pool),
     postgresStore.loadDeletionTombstones(roomCode, Date.now(), client || postgresStore.pool),
   ]);
-  room.msgs = [...durableMessages.map(message => {
+  room.msgs = withRetainedTombstones(durableMessages.map(message => {
     const member = room.members.get(message.senderTokenHash);
     const sentAt = new Date(message.ts);
     return {
@@ -662,7 +674,7 @@ async function loadConversationFromPostgres(roomCode, client = null) {
       reactions:message.reactions || {}, reactionSeq:message.reactionSequence || 0,
       readReported:false,
     };
-  }), ...tombstones].sort((a, b) => (a.seq || a.deletionSeq || 0) - (b.seq || b.deletionSeq || 0)).slice(-100);
+  }), tombstones);
   room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
   evictConversationCache(roomCode);
   rooms.set(roomCode, room);
@@ -2971,6 +2983,7 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
     '/api/delete-message', '/api/view-once-opened', '/api/set-timer',
     '/api/clear-chat', '/api/mark-delivered', '/api/read', '/api/leave',
     '/api/close', '/api/make-persistent', '/api/revoke-link', '/api/poll',
+    '/api/notification-privacy',
   ]);
   if (!mutationPaths.has(path)) {
     await ensureConversationLoaded(roomCode);
@@ -4913,7 +4926,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // handler itself, the moment the notification is shown, rather
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
-        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview ? 'New message' : `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
@@ -4977,6 +4990,21 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     m.voipEnvironment = null;
     m.nativeRoomHandle = null;
     return res200(res, { ok: true });
+  }
+
+  // POST /api/notification-privacy — a person who hides a conversation on their
+  // device asks that pushes for it stop naming the other person. Applies only
+  // to the caller's own member record (the random member bearer token is
+  // required, same as the push-subscribe routes) and only changes the wording
+  // of the notification: "New message" instead of "New message from <name>".
+  if (path==='/api/notification-privacy' && method==='POST') {
+    const room = await ensureConversationLoaded(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (typeof d.hidden !== 'boolean') return resErr(res,'Invalid request.',400);
+    if (await rateLimited(`notification-privacy:${d.token}`, 30, 60 * 1000)) return resErr(res,'Too many requests.',429);
+    const m = room.members.get(d.token);
+    if (d.hidden) m.hidePreview = true; else delete m.hidePreview;
+    return res200(res, { ok: true, hidden: d.hidden });
   }
 
   // POST /api/native-push-subscribe — bind an APNs or FCM device token to an
@@ -6457,8 +6485,10 @@ wss.on('connection', (ws) => {
           type:msg2.type, from:opaqueRouteId(token), sessionId:msg2.sessionId,
           inviteId:msg2.inviteId,
           hasVideo:msg2.type === 'call-invite' && msg2.hasVideo === true,
+          // Old clients render 'cancelled' as "Caller cancelled"; a hang-up
+          // before answer is a missed call, so relay it as 'unanswered'.
           terminalReason:msg2.type === 'call-hangup' && ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
-            ? msg2.terminalReason : undefined,
+            ? (msg2.terminalReason === 'cancelled' ? 'unanswered' : msg2.terminalReason) : undefined,
           envelope:msg2.envelope,
         };
         const delivered = await deliverSignalToMember(tok, relayedSignal);
@@ -6543,7 +6573,7 @@ wss.on('connection', (ws) => {
             // "the room on screen when you unlock" are often different rooms.
             const payload = JSON.stringify({
               title: 'Vaultlix',
-              body: caller && caller.name
+              body: caller && caller.name && !peerMember.hidePreview
                 ? `${caller.name} is ${msg2.hasVideo === true ? 'video calling' : 'calling'}`
                 : (msg2.hasVideo === true ? 'Incoming video call' : 'Incoming call'),
               tag: `vaultlix-call-${roomCode}`,
@@ -6648,8 +6678,12 @@ wss.on('connection', (ws) => {
           // surfaced anything past that first notification — same as a phone
           // showing a missed-call notification separate from the ringing one.
           const now = Date.now();
+          // A caller hanging up while the callee's phone is still ringing is a
+          // missed call for the callee and "No answer" for the caller — not a
+          // distinct "cancelled" outcome. 'cancelled' only survives on the wire
+          // when nothing was ringing any more (the callee had just answered).
           const callOutcome = ['cancelled','unanswered','ended'].includes(msg2.terminalReason)
-            ? msg2.terminalReason
+            ? (msg2.terminalReason === 'cancelled' && room2.ringingUntil ? 'unanswered' : msg2.terminalReason)
             : (room2.ringingUntil ? 'unanswered' : 'ended');
           const terminalInviteId = msg2.inviteId || room2.nativeInviteId;
           markInviteTerminated(room2, terminalInviteId, now);
@@ -6696,7 +6730,7 @@ wss.on('connection', (ws) => {
               isCallEnd: true,
               missedCall: isMissedCall,
               callOutcome,
-              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
+              caller: peerMember.hidePreview ? '' : (caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller'),
               callId: nativeCallId || '',
               inviteId: terminalInviteId || '',
               code: roomCode,
@@ -6706,11 +6740,11 @@ wss.on('connection', (ws) => {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
               title: 'Vaultlix',
-              body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
+              body: caller && caller.name && !peerMember.hidePreview ? `Missed call from ${caller.name}` : 'Missed call',
               tag: `vaultlix-missed-${roomCode}-${now}`,
               isCall: false,
               missedCall: true,
-              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
+              caller: peerMember.hidePreview ? '' : (caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller'),
               callId: nativeCallId || '',
               inviteId: terminalInviteId || '',
               code: roomCode,

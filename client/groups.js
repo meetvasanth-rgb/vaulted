@@ -432,8 +432,7 @@ async function refreshPrivateGroups() {
 function openCreateGroup() {
   const state = loadAccountState();
   if (!state) { openAccountPanel(); showAccountTab('login'); return; }
-  const eligible = [...rooms.values()].filter(room => (typeof hiddenChatIsHidden !== 'function' || !hiddenChatIsHidden(room))
-    && room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === state.accountId && !room.reconnectRequired);
+  const eligible = [...rooms.values()].filter(room => !roomConcealed(room) && room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === state.accountId && !room.reconnectRequired);
   document.getElementById('group-contact-list').innerHTML = eligible.length
     ? eligible.map(room => `<label class="group-contact"><input type="checkbox" value="${escHtml(room.code)}"><span>${escHtml(roomDisplayLabel(room))}<small>${escHtml(formatPrivateNumber(room.peerPrivateNumber))}</small></span></label>`).join('')
     : '<div class="group-chat-empty" style="padding:24px">Connect with a friend before creating a group.</div>';
@@ -645,7 +644,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
           : MEDIA_BLOCKED_HTML);
       usable = !!safeSrc && !(message.imageSafety && message.imageSafety !== 'allowed');
       if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
-      if (message.attachment.caption && usable) content += `<div class="group-message-text">${escHtml(message.attachment.caption)}</div>`;
+      if (message.attachment.caption && usable) content += `<div class="group-message-text">${linkifyHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
@@ -669,7 +668,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
     } else {
       const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
       const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
-      content = `<div class="group-message-text">${escHtml(visibleText)}</div>`;
+      content = `<div class="group-message-text">${linkifyHtml(visibleText)}</div>`;
       usable = !unsafe && !message.unavailable && typeof message.text === 'string' && !!message.text.trim();
     }
     const mine = message.senderId === state?.accountId;
@@ -1624,15 +1623,14 @@ function closeGroupMembers() { document.getElementById('group-members')?.classLi
 function groupAddCandidates(group, roomList, accountId) {
   const inGroupRooms = new Set((group.members || []).map(member => member.wrapRoomCode).filter(Boolean));
   const inGroupNumbers = new Set((group.members || []).map(member => String(member.privateNumber || '')).filter(Boolean));
-  return roomList.filter(room => (typeof hiddenChatIsHidden !== 'function' || !hiddenChatIsHidden(room))
-    && room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === accountId
+  return roomList.filter(room => room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === accountId
     && !room.reconnectRequired && !inGroupRooms.has(room.code) && !inGroupNumbers.has(String(room.peerPrivateNumber)));
 }
 
 function openAddGroupMembers() {
   const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState();
   if (!group || !state || group.ownerId !== state.accountId) return;
-  const eligible = groupAddCandidates(group, [...rooms.values()], state.accountId);
+  const eligible = groupAddCandidates(group, [...rooms.values()].filter(room => !roomConcealed(room)), state.accountId);
   const room = 49 - Math.max(0, (group.members?.length || 1) - 1);
   document.getElementById('group-add-list').innerHTML = eligible.length
     ? eligible.map(entry => `<label class="group-contact" data-search-name="${escHtml(roomDisplayLabel(entry))}" data-search-number="${escHtml(String(entry.peerPrivateNumber))}"><input type="checkbox" value="${escHtml(entry.code)}"><span>${escHtml(roomDisplayLabel(entry))}<small>${escHtml(formatPrivateNumber(entry.peerPrivateNumber))}</small></span></label>`).join('')

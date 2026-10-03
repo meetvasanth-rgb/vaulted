@@ -19,7 +19,16 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private let provider: CXProvider
     private let callController = CXCallController()
     private var registry: PKPushRegistry?
-    private var calls: [UUID: [String: Any]] = [:]
+    // Many call-ending paths remove the entry without going through
+    // releaseAppKeyboardIfIdle(), which left the composer locked read-only
+    // (no keyboard, floating AutoFill pill) after a cancelled or unanswered
+    // call. Release whenever the last call disappears, whatever removed it.
+    private var calls: [UUID: [String: Any]] = [:] {
+        didSet {
+            guard calls.isEmpty, appKeyboardLockedForCall else { return }
+            DispatchQueue.main.async { [weak self] in self?.releaseAppKeyboardIfIdle() }
+        }
+    }
     private var answeredCalls: Set<UUID> = []
     private var nativeMediaCalls: Set<UUID> = []
     private var connectedCalls: Set<UUID> = []

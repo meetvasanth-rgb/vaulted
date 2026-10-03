@@ -19,6 +19,7 @@ function extractMergeSortBlock() {
 
 function orderedIds({ privateGroups, rooms, activityByRoom }) {
   const context = {
+    roomConcealed: () => false,
     privateGroups, rooms,
     vaultLastActivity: room => activityByRoom.get(room),
     syncAchievementActivityFromMessages: () => {},

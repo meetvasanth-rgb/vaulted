@@ -384,7 +384,7 @@ test('dissolveCallScreen threads its callEvent parameter into both of its addCal
 test('endCall no longer derives callRole from room.callState (the bug) — it uses the persistent room.callWasOutgoing instead', () => {
   const endCall = extract(client, 'endCall');
   assert.doesNotMatch(endCall, /const callRole = room\.callState === 'outgoing'/, 'the buggy state-snapshot derivation must be gone');
-  assert.match(endCall, /const callRole = room\.callWasOutgoing === true \? 'initiator' : 'receiver';/);
+  assert.match(endCall, /const callRole = historyRole \|\| \(room\.callWasOutgoing === true \? 'initiator' : 'receiver'\);/);
 });
 
 test('startCallForRoom sets the persistent callWasOutgoing flag, independent of the transient callState', () => {
@@ -462,7 +462,7 @@ test('the vaultlixNativeCallEnded idle-fallback branch builds a real callEvent f
   assert.notEqual(start, -1);
   const end = client.indexOf('\n};', start);
   const fn = client.slice(start, end);
-  assert.match(fn, /const nativeCallRole = room\.callWasOutgoing === true \? 'initiator' : 'receiver';/);
+  assert.match(fn, /const nativeCallRole = historyRole \|\| \(room\.callWasOutgoing === true \? 'initiator' : 'receiver'\);/);
   assert.match(fn, /const nativeWasVideo = !!\(room\.pendingVideoStart \|\| room\.incomingVideoCall \|\| room\.callHadVideo \|\| room\.callVideoOn \|\| room\.remoteVideoActive\);/);
   assert.match(fn, /const nativeCallEvent = nativeOutcome\s*\n\s*\? callOutcomeEvent\(nativeOutcome, nativeCallRole, nativeWasVideo\)\s*\n\s*: connectedCallEvent\(nativeCallRole, nativeWasVideo\);/);
   assert.match(fn, /addCallSysMsg\(room, historyText, room\.lastCallHistoryEventId \|\| null, nativeCallEvent\);/);

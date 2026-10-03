@@ -55,7 +55,7 @@ function openChatHarness({ native = true, disabled = false, active = true } = {}
   const groupInput = { disabled, readOnly:false, focus:options => calls.push(['group-focus', options]) };
   const setGroupOpen = value => { groupOpen = value; };
   const context = vm.createContext({
-    isNativeIOS: () => native, pins, setTimeout: (fn, ms) => { timers.push([ms, fn]); },
+    isNativeIOS: () => native, pins, clearStaleCallKeyboardGuard: () => false, setTimeout: (fn, ms) => { timers.push([ms, fn]); },
     chatKeyboardLayout: { pin: () => pins.push('pin') },
     document: { getElementById: id => id === 'msg-input' ? input
       : id === 'group-message-input' ? groupInput
@@ -133,4 +133,48 @@ test('no automatic group keyboard outside the iOS app, for a closed group, or af
 
 test('the group inbox-row tap focuses the composer synchronously after opening the group', () => {
   assert.match(client, /openPrivateGroup\(el\.dataset\.group\); focusGroupComposerOnOpenFromTap\(\);/);
+});
+
+// While a call is up the iOS wrapper blurs #msg-input and marks it readOnly
+// (dataset.vaultlixCallKeyboardGuard) so the keyboard cannot cover the call UI.
+// Several call-ending paths never lifted that again, so after a cancelled or
+// unanswered call the composer stayed readOnly: taps on "Type a message" did
+// nothing ("freezes") and iOS floated an AutoFill pill instead of the keyboard.
+function guardHarness({ guarded = true, roomStates = ['idle'] } = {}) {
+  const input = { readOnly:true, dataset:guarded ? { vaultlixCallKeyboardGuard:'1' } : {} };
+  const context = vm.createContext({
+    document: { getElementById: id => id === 'msg-input' ? input : null },
+    rooms: new Map(roomStates.map((callState, index) => [String(index), { callState }])),
+  });
+  vm.runInContext(extract(client, 'clearStaleCallKeyboardGuard'), context);
+  return { context, input };
+}
+
+test('a call keyboard guard left on after the call ended is lifted so the composer opens the keyboard again', () => {
+  const { context, input } = guardHarness({ roomStates:['idle', 'idle'] });
+  assert.equal(context.clearStaleCallKeyboardGuard(), true);
+  assert.equal(input.readOnly, false);
+  assert.equal('vaultlixCallKeyboardGuard' in input.dataset, false);
+});
+
+test('the guard stays while a call is genuinely in progress, and a normal readOnly composer is untouched', () => {
+  const live = guardHarness({ roomStates:['idle', 'active'] });
+  assert.equal(live.context.clearStaleCallKeyboardGuard(), false);
+  assert.equal(live.input.readOnly, true);
+  const ringing = guardHarness({ roomStates:['incoming'] });
+  assert.equal(ringing.context.clearStaleCallKeyboardGuard(), false);
+  const unguarded = guardHarness({ guarded:false });
+  assert.equal(unguarded.context.clearStaleCallKeyboardGuard(), false);
+  assert.equal(unguarded.input.readOnly, true, 'only the wrapper\'s own guard is ever lifted');
+});
+
+test('tapping the composer, or opening a chat from the inbox, clears a stale guard first', () => {
+  assert.match(client, /for \(const type of \['touchstart', 'pointerdown'\]\) \{\s*document\.addEventListener\(type, event => \{\s*if \(event\.target\?\.closest\?\.\('#msg-input'\)\) clearStaleCallKeyboardGuard\(\);\s*\}, \{ capture:true, passive:true \}\);/);
+  const fn = extract(client, 'focusComposerOnOpenFromTap');
+  assert.ok(fn.indexOf('clearStaleCallKeyboardGuard()') > 0 && fn.indexOf('clearStaleCallKeyboardGuard()') < fn.indexOf("getElementById('msg-input')"));
+});
+
+test('the native call manager releases the keyboard lock whenever the last call disappears', () => {
+  const app = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'AppDelegate.swift'), 'utf8');
+  assert.match(app, /private var calls: \[UUID: \[String: Any\]\] = \[:\] \{\s*didSet \{\s*guard calls\.isEmpty, appKeyboardLockedForCall else \{ return \}\s*DispatchQueue\.main\.async \{ \[weak self\] in self\?\.releaseAppKeyboardIfIdle\(\) \}/);
 });
