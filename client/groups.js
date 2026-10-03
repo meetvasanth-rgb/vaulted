@@ -644,7 +644,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
           : MEDIA_BLOCKED_HTML);
       usable = !!safeSrc && !(message.imageSafety && message.imageSafety !== 'allowed');
       if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
-      if (message.attachment.caption && usable) content += `<div class="group-message-text">${escHtml(message.attachment.caption)}</div>`;
+      if (message.attachment.caption && usable) content += `<div class="group-message-text">${linkifyHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
       content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
@@ -668,7 +668,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
     } else {
       const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
       const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
-      content = `<div class="group-message-text">${escHtml(visibleText)}</div>`;
+      content = `<div class="group-message-text">${linkifyHtml(visibleText)}</div>`;
       usable = !unsafe && !message.unavailable && typeof message.text === 'string' && !!message.text.trim();
     }
     const mine = message.senderId === state?.accountId;

@@ -140,9 +140,9 @@ test('an un-revealed view-once photo never leaks its caption before the photo it
   assert.match(client, /const albumCaptionHiddenByViewOnce = rec\.viewOnce && !rec\.isMe && !\(rec\.images \|\| \[\]\)\.some\(img => img\.viewed\);/);
 });
 
-test('the caption text is only appended when a caption exists, and escaped the same way text messages are', () => {
-  assert.match(client, /captionHtml = rec\.caption && !captionHiddenByViewOnce \? `<div class="msg-caption-text">\$\{escHtml\(rec\.caption\)\}<\/div>` : '';/);
-  assert.match(client, /albumCaptionHtml = rec\.caption && !albumCaptionHiddenByViewOnce \? `<div class="msg-caption-text">\$\{escHtml\(rec\.caption\)\}<\/div>` : '';/);
+test('the caption text is only appended when a caption exists, and escaped the same way text messages are (linkifyHtml escapes every non-link character)', () => {
+  assert.match(client, /captionHtml = rec\.caption && !captionHiddenByViewOnce \? `<div class="msg-caption-text">\$\{linkifyHtml\(rec\.caption\)\}<\/div>` : '';/);
+  assert.match(client, /albumCaptionHtml = rec\.caption && !albumCaptionHiddenByViewOnce \? `<div class="msg-caption-text">\$\{linkifyHtml\(rec\.caption\)\}<\/div>` : '';/);
 });
 
 test('a captioned image/album shares one combined card (has-caption) instead of rendering as two separate-looking bubbles', () => {
@@ -168,9 +168,9 @@ test('private groups: handlePrivateGroupFileSelect batches picked images into on
   assert.match(groups, /await sendPrivateGroupAttachment\(\{ type:'group-file',/);
 });
 
-test('private groups: an incoming attachment caption is bounded/sanitized the same way as 1:1, and rendered with escHtml', () => {
+test('private groups: an incoming attachment caption is bounded/sanitized the same way as 1:1, and rendered through linkifyHtml, which escapes', () => {
   assert.match(groups, /payload\.caption = typeof payload\.caption === 'string' \? payload\.caption\.slice\(0, 2000\) : '';/);
-  assert.match(groups, /if \(message\.attachment\.caption && usable\) content \+= `<div class="group-message-text">\$\{escHtml\(message\.attachment\.caption\)\}<\/div>`;/);
+  assert.match(groups, /if \(message\.attachment\.caption && usable\) content \+= `<div class="group-message-text">\$\{linkifyHtml\(message\.attachment\.caption\)\}<\/div>`;/);
 });
 
 test('private groups: sendPrivateGroupAttachment payload carries caption through to the pending optimistic record', () => {

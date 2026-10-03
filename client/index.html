@@ -491,6 +491,7 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .msg.them .msg-media-wrap.has-caption{border-color:#E7DDE1;background:#fff;border-radius:17px 17px 17px 5px}
 .msg-media-wrap.has-caption .msg-image{width:100%;max-width:none;max-height:none;border-radius:0;margin-top:0;display:block}
 .msg-media-wrap.has-caption .msg-album-grid{max-width:none;border-radius:0;margin-top:0}
+.msg-link{color:#0B63C5;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;-webkit-tap-highlight-color:rgba(11,99,197,.18)}.group-message.mine .msg-link{color:#FFD9E5}
 .msg-caption-text{padding:8px 12px 10px;font:450 14px/1.42 Inter,sans-serif;color:#30242B;white-space:pre-wrap;overflow-wrap:anywhere}
 /* The browser's own "save/copy/share image" long-press menu (both iOS
    Safari's callout and Android Chrome's context menu) would otherwise pop
@@ -10222,6 +10223,78 @@ function escHtml(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── LINKS IN MESSAGES ────────────────────────────────────────────────────
+// Message text is end-to-end encrypted and only ever drawn on the device, so
+// links are found here when a message is rendered — for sent and received
+// messages alike, in 1:1 chats and groups. The text is escaped first and only
+// http(s) links without embedded credentials become anchors. External taps are
+// handed to the system browser by the native shells (Capacitor).
+// No lookbehind: iOS 15 web views do not support it.
+const LINK_TLDS = 'com|net|org|in|io|co|app|dev|me|ai|edu|gov|info|biz|xyz|us|uk|tv|gg|ly|to|ca|au|de|fr|jp|cn|ru|br|it|es|nl|se|ch|sg|ae|id|pk|lk|bd|np|gl|link|page|so|sh|cc';
+const LINK_PATTERN = new RegExp(
+  '(?:https?:\\/\\/[^\\s<>"\']+' +
+  '|www\\.[^\\s<>"\']+' +
+  '|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:' + LINK_TLDS + ')(?![a-z0-9-])(?::\\d{2,5})?(?:[\\/?#][^\\s<>"\']*)?)',
+  'gi');
+
+function trimLinkTail(raw) {
+  let value = raw.replace(/[.,!?;:'"*_~]+$/, '');
+  const pairs = [[')', '('], [']', '['], ['}', '{']];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [close, open] of pairs) {
+      if (value.endsWith(close) && value.split(close).length > value.split(open).length) {
+        value = value.slice(0, -1).replace(/[.,!?;:'"*_~]+$/, '');
+        changed = true;
+      }
+    }
+  }
+  return value;
+}
+
+function safeMessageLinkHref(display) {
+  const candidate = /^https?:\/\//i.test(display) ? display : 'https://' + display;
+  if (candidate.length > 2048) return null;
+  let url;
+  try { url = new URL(candidate); } catch (error) { return null; }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.username || url.password) return null;
+  if (!/\.[a-z]{2,}$/i.test(url.hostname) && !/^\d{1,3}(\.\d{1,3}){3}$/.test(url.hostname)) return null;
+  return url.href;
+}
+
+function linkifyHtml(text) {
+  const source = String(text ?? '');
+  let html = '';
+  let last = 0;
+  LINK_PATTERN.lastIndex = 0;
+  let match;
+  while ((match = LINK_PATTERN.exec(source))) {
+    const start = match.index;
+    const explicit = /^(?:https?:\/\/|www\.)/i.test(match[0]);
+    const before = start > 0 ? source[start - 1] : '';
+    // "me@site.com", "a.b/c.com" or a hostname glued to a word is not a link.
+    if (!explicit && /[@\w.\/-]/.test(before)) continue;
+    const display = trimLinkTail(match[0]);
+    const href = display ? safeMessageLinkHref(display) : null;
+    if (!href) continue;
+    html += escHtml(source.slice(last, start));
+    html += `<a class="msg-link" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer nofollow">${escHtml(display)}</a>`;
+    last = start + display.length;
+    LINK_PATTERN.lastIndex = last;
+  }
+  return html + escHtml(source.slice(last));
+}
+
+// A tap on a link must not also run the message's own actions: ignore it while
+// messages are being selected and right after a long-press.
+document.addEventListener('click', event => {
+  const link = event.target?.closest?.('a.msg-link');
+  if (!link) return;
+  event.stopPropagation();
+  if (selectMode || (typeof groupSelectMode !== 'undefined' && groupSelectMode) || wasJustLongPressed()) event.preventDefault();
+}, true);
+
 // ── MEDIA DATA-URI VALIDATION ────────────────────────────────────────────
 // rec.mime / rec.base64 for any file, album, or voice message come straight
 // from the peer's decrypted (but otherwise untrusted) payload — a malicious
@@ -18067,7 +18140,7 @@ function renderMessageRecord(room, rec, animate) {
     // photo itself is opened — that would defeat the "hidden until tapped"
     // point of view-once.
     const captionHiddenByViewOnce = rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed;
-    const captionHtml = rec.caption && !captionHiddenByViewOnce ? `<div class="msg-caption-text">${escHtml(rec.caption)}</div>` : '';
+    const captionHtml = rec.caption && !captionHiddenByViewOnce ? `<div class="msg-caption-text">${linkifyHtml(rec.caption)}</div>` : '';
     // has-caption turns this same .msg-media-wrap into a single combined
     // card (image + caption sharing one background/border/radius, like
     // WhatsApp) instead of the image and caption looking like two separate
@@ -18080,7 +18153,7 @@ function renderMessageRecord(room, rec, animate) {
     // Several photos sent together — one grid bubble, not a wall of
     // separate image messages (see sendAlbumMessage/buildAlbumGridHtml).
     const albumCaptionHiddenByViewOnce = rec.viewOnce && !rec.isMe && !(rec.images || []).some(img => img.viewed);
-    const albumCaptionHtml = rec.caption && !albumCaptionHiddenByViewOnce ? `<div class="msg-caption-text">${escHtml(rec.caption)}</div>` : '';
+    const albumCaptionHtml = rec.caption && !albumCaptionHiddenByViewOnce ? `<div class="msg-caption-text">${linkifyHtml(rec.caption)}</div>` : '';
     contentHtml = `<div class="msg-media-wrap${albumCaptionHtml ? ' has-caption' : ''}">${buildAlbumGridHtml(rec)}${albumCaptionHtml}</div>`;
   } else if (rec.kind === 'voice') {
     contentHtml = `<div class="msg-media-wrap">${buildVoicePlayerHtml(rec)}</div>`;
@@ -18114,7 +18187,7 @@ function renderMessageRecord(room, rec, animate) {
             ? buildReplyQuotePhotoHtml(rec.replyData)
             : `<div class="msg-reply-quote"${rec.replyData.msgId ? ` data-reply-to="${escHtml(rec.replyData.msgId)}"` : ''}>${escHtml(rec.replyData.text)}</div>`)
       : '';
-    contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${escHtml(rec.content)}</div>`;
+    contentHtml = `${replyHtml}<div class="bubble${rec.jumbo ? ' emoji-jumbo' : ''}" oncontextmenu="return false">${linkifyHtml(rec.content)}</div>`;
   }
 
   const progressHtml = rec.deleteTimerSeconds > 0 && !rec.isMe && rec.kind !== 'file' && rec.kind !== 'album' && rec.kind !== 'voice'
