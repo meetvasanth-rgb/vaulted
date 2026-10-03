@@ -1104,6 +1104,11 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(MainActivity.this::restoreAudioRoute);
         }
 
+        // Remembers the message tone chosen in Settings so notifications use it even
+        // when the server's copy is missing; see MessageTone.
+        @JavascriptInterface
+        public void setMessageTone(String tone) { MessageTone.store(MainActivity.this, tone); }
+
         @JavascriptInterface
         public boolean supportsNativeWebRtc() { return true; }
 

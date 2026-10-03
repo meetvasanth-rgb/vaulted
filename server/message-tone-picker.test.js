@@ -120,7 +120,7 @@ test('Android uses one notification channel per tone and keeps the original chan
   assert.match(android, /TONE_CHANNEL_PREFIX = "vaultlix_messages_tone_"/);
   assert.match(android, /if \("chime"\.equals\(tone\)\) \{\s*ensureMessageChannel\(manager\);\s*return MESSAGE_CHANNEL_ID;/);
   assert.match(android, /getIdentifier\("vault_tone_" \+ tone, "raw", getPackageName\(\)\)/);
-  assert.equal((android.match(/String channelId = ensureMessageChannel\(manager, data\.get\("tone"\)\);/g) || []).length, 2, '1:1 and group message notifications');
+  assert.equal((android.match(/String channelId = ensureMessageChannel\(manager, chosenTone\(data\)\);/g) || []).length, 2, '1:1 and group message notifications');
   assert.equal((android.match(/new NotificationCompat\.Builder\(this, channelId\)/g) || []).length, 2);
 });
 
@@ -132,13 +132,14 @@ function clientHarness({ native = true, stored = null, result = () => ({ ok:true
     setTimeout: (fn, ms) => { const timer = { fn, ms, cleared:false }; timers.push(timer); return timer; },
     clearTimeout: timer => { if (timer) timer.cleared = true; },
     rooms: new Map([['r1', { code:'r1' }], ['r2', { code:'r2' }]]),
-    isNativeApp: () => native,
+    window: {}, isNativeApp: () => native,
     registerNativeTokenForAccount: async () => { calls.push('account'); return result(); },
     registerNativeTokenForRoom: async room => { calls.push(`room:${room.code}`); return result(); },
     playMessageTonePreview: id => previews.push(id), renderMessageToneList: () => {}, updateMessageToneStatus: () => {},
   });
   const source = extractBlock(client, "const MESSAGE_TONE_KEY = 'vaultlix_message_tone';", '// The floating Chats/Calls bar is hidden while the search box has the keyboard');
   vm.runInContext(source.replace(/function (renderMessageToneList|updateMessageToneStatus)\(\) \{[\s\S]*?\n\}\n/g, ''), context);
+  timers.length = 0; // the start-up hand-off to the Android bridge is not part of these scenarios
   context.pending = () => timers.filter(timer => !timer.cleared);
   context.flush = async () => { const timer = context.pending().pop(); if (timer) { timer.cleared = true; await timer.fn(); } };
   return context;
@@ -363,4 +364,37 @@ test('the Push notifications tap works for every not-yet-decided Android permiss
   assert.equal((client.match(/el\.onclick = nativePushCanPrompt\(\)/g) || []).length, 1, 'one place decides the tap handler');
   assert.doesNotMatch(client, /nativePushPermission === 'prompt' \? \(\) => requestPushPermission\(\)/);
   assert.match(client, /Turn on notifications in Android Settings → Apps → Vaultlix → Notifications\./);
+});
+
+// The Android phone keeps the chosen tone itself, so the lock-screen sound does not
+// depend on the server's copy (which only arrives with a push registration).
+const messageToneJava = read('mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MessageTone.java');
+const mainActivity = read('mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java');
+
+test('the Android phone stores the chosen tone locally and the notification uses it before the push', () => {
+  assert.match(mainActivity, /@JavascriptInterface\s*public void setMessageTone\(String tone\) \{ MessageTone\.store\(MainActivity\.this, tone\); \}/);
+  assert.match(android, /private String chosenTone\(Map<String, String> data\) \{\s*String local = MessageTone\.stored\(this\);\s*return local != null \? local : data\.get\("tone"\);/);
+  assert.match(messageToneJava, /if \(context == null \|\| !isKnown\(tone\)\) return;/);
+});
+
+test('the locally stored tone accepts exactly the same ids as the server and the client', () => {
+  const ids = [...extractBlock(messageToneJava, 'static boolean isKnown', 'default:').matchAll(/case "([a-z]+)"/g)].map(m => m[1]);
+  assert.deepEqual([...ids].sort(), ['chime', 'none', ...FILE_TONES].sort());
+});
+
+test('the web layer hands every choice, and the current one at start and on resume, to the Android bridge', () => {
+  assert.match(client, /try \{ window\.VaultlixAndroid\?\.setMessageTone\?\.\(selectedMessageTone\(\)\); \} catch \(e\) \{\}/);
+  assert.match(client, /setTimeout\(syncMessageToneToNative, 500\);/);
+  assert.match(client, /try \{ localStorage\.setItem\(MESSAGE_TONE_KEY, id\); \} catch \(e\) \{\}\s*syncMessageToneToNative\(\);/);
+  assert.match(client, /function resyncMessageToneOnResume\(\) \{\s*syncMessageToneToNative\(\);/);
+});
+
+// A phone that reports the notification permission as undecided (or whose permission
+// check or channel set-up throws) never registered its token, so the server never
+// learned its tone and the push fell back to the default.
+test('Android registers its push token whatever the permission check says, and set-up errors do not stop it', () => {
+  assert.match(client, /try \{ await ensureAndroidNotificationChannels\(\); \} catch \(e\) \{\}/);
+  assert.match(client, /if \(nativePushPermission === 'granted' \|\| nativePlatform\(\) === 'android'\) \{\s*try \{ await plugin\.register\(\); \} catch \(e\) \{\}/);
+  assert.match(client, /if \(\(nativePushPermission === 'granted' \|\| nativePlatform\(\) === 'android'\) && nativePushToken\) await registerNativeTokenForRoom\(room\);/);
+  assert.match(client, /toast\('Notifications are not available in this version of the app\.'\)/);
 });

@@ -126,6 +126,13 @@ public class VaultlixMessagingService extends MessagingService {
         manager.createNotificationChannel(channel);
     }
 
+    // The tone saved on this phone (see MessageTone) wins; the one the server put in
+    // the push is only the fallback for a phone that has not saved one yet.
+    private String chosenTone(Map<String, String> data) {
+        String local = MessageTone.stored(this);
+        return local != null ? local : data.get("tone");
+    }
+
     private static final String TONE_CHANNEL_PREFIX = "vaultlix_messages_tone_";
     // Matches DEFAULT_MESSAGE_TONE in server/index.js: used when no choice is sent.
     private static final String DEFAULT_TONE = "glow";
@@ -190,7 +197,7 @@ public class VaultlixMessagingService extends MessagingService {
     private void showMessageNotification(Map<String, String> data) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
-        String channelId = ensureMessageChannel(manager, data.get("tone"));
+        String channelId = ensureMessageChannel(manager, chosenTone(data));
 
         String code = safe(data.get("code"));
         String title = safe(data.get("title"));
@@ -230,7 +237,7 @@ public class VaultlixMessagingService extends MessagingService {
     private void showGroupMessageNotification(Map<String, String> data) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
-        String channelId = ensureMessageChannel(manager, data.get("tone"));
+        String channelId = ensureMessageChannel(manager, chosenTone(data));
 
         String groupId = safe(data.get("groupId"));
         String title = safe(data.get("title"));

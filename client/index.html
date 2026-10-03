@@ -13795,6 +13795,7 @@ const MESSAGE_TONE_SYNC_MAX_RETRIES = 4;
 let lastMessageToneResyncAt = 0;
 const MESSAGE_TONE_RESYNC_INTERVAL_MS = 10 * 60 * 1000;
 function resyncMessageToneOnResume() {
+  syncMessageToneToNative();
   if (!isNativeApp() || Date.now() - lastMessageToneResyncAt < MESSAGE_TONE_RESYNC_INTERVAL_MS) return;
   lastMessageToneResyncAt = Date.now();
   syncMessageToneToServer({ immediate:true });
@@ -13823,10 +13824,18 @@ async function runMessageToneSync() {
   messageToneSyncTimer = setTimeout(runMessageToneSync, MESSAGE_TONE_SYNC_RETRY_MS);
 }
 
+// The Android app keeps the chosen tone on the phone itself and plays its alerts with
+// it, so the lock-screen sound no longer depends on the server remembering the choice.
+function syncMessageToneToNative() {
+  try { window.VaultlixAndroid?.setMessageTone?.(selectedMessageTone()); } catch (e) {}
+}
+setTimeout(syncMessageToneToNative, 500);
+
 function chooseMessageTone(id) {
   if (!MESSAGE_TONES.some(tone => tone.id === id)) return;
   const changed = id !== selectedMessageTone();
   try { localStorage.setItem(MESSAGE_TONE_KEY, id); } catch (e) {}
+  syncMessageToneToNative();
   renderMessageToneList();
   updateMessageToneStatus();
   playMessageTonePreview(id);
@@ -15229,7 +15238,9 @@ async function registerNativeTokenForAllRooms() {
 async function ensureNativePushListeners() {
   const plugin = nativePushPlugin();
   if (!plugin || nativePushListenersReady) return;
-  await ensureAndroidNotificationChannels();
+  // A failure creating the channel must not stop the registration listener below
+  // from being attached: without it the device token (and the tone) is never sent.
+  try { await ensureAndroidNotificationChannels(); } catch (e) {}
   nativePushListenersReady = true;
   await plugin.addListener('registration', token => {
     nativePushToken = token?.value || null;
@@ -15300,19 +15311,33 @@ async function refreshNativePushPermission() {
   const plugin = nativePushPlugin();
   if (!plugin) return;
   await ensureNativePushListeners();
-  const status = await plugin.checkPermissions();
-  nativePushPermission = status?.receive || 'prompt';
+  try {
+    const status = await plugin.checkPermissions();
+    nativePushPermission = status?.receive || 'prompt';
+  } catch (e) { /* keep the last known state */ }
   applyNativePushStatus(document.getElementById('push-status'));
-  if (nativePushPermission === 'granted') await plugin.register();
+  // On Android the FCM token does not depend on the notification permission (the
+  // permission only governs whether alerts are shown), so register regardless —
+  // otherwise a phone that reports the permission as undecided never sends its
+  // token or its tone to the server.
+  if (nativePushPermission === 'granted' || nativePlatform() === 'android') {
+    try { await plugin.register(); } catch (e) {}
+  }
 }
 
 async function requestNativePushPermission() {
   const plugin = nativePushPlugin();
-  if (!plugin) return;
-  await ensureNativePushListeners();
-  let status = await plugin.checkPermissions();
-  if (status.receive === 'prompt' || status.receive === 'prompt-with-rationale') {
-    status = await plugin.requestPermissions();
+  if (!plugin) { toast('Notifications are not available in this version of the app.'); return; }
+  let status;
+  try {
+    await ensureNativePushListeners();
+    status = await plugin.checkPermissions();
+    if (status.receive === 'prompt' || status.receive === 'prompt-with-rationale') {
+      status = await plugin.requestPermissions();
+    }
+  } catch (error) {
+    toast(`Could not turn on notifications: ${error?.message || 'unknown error'}`);
+    return;
   }
   nativePushPermission = status.receive;
   if (status.receive === 'granted') {
@@ -15488,7 +15513,7 @@ async function initPushForRoom(room) {
   if (isNativeApp()) {
     await ensureNativePushListeners();
     await refreshNativePushPermission();
-    if (nativePushPermission === 'granted' && nativePushToken) await registerNativeTokenForRoom(room);
+    if ((nativePushPermission === 'granted' || nativePlatform() === 'android') && nativePushToken) await registerNativeTokenForRoom(room);
     return;
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
