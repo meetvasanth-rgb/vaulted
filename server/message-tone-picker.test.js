@@ -121,18 +121,23 @@ test('Android uses one notification channel per tone and keeps the original chan
   assert.equal((android.match(/new NotificationCompat\.Builder\(this, channelId\)/g) || []).length, 2);
 });
 
-function clientHarness({ native = true, stored = null } = {}) {
-  const calls = [], previews = [], store = new Map(stored ? [['vaultlix_message_tone', stored]] : []);
+function clientHarness({ native = true, stored = null, result = () => ({ ok:true }) } = {}) {
+  const calls = [], previews = [], timers = [], store = new Map(stored ? [['vaultlix_message_tone', stored]] : []);
   const context = vm.createContext({
     localStorage: { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, value) },
-    document: { getElementById: () => null }, calls, previews, store,
+    document: { getElementById: () => null }, calls, previews, store, timers,
+    setTimeout: (fn, ms) => { const timer = { fn, ms, cleared:false }; timers.push(timer); return timer; },
+    clearTimeout: timer => { if (timer) timer.cleared = true; },
+    rooms: new Map([['r1', { code:'r1' }], ['r2', { code:'r2' }]]),
     isNativeApp: () => native,
-    registerNativeTokenForAccount: async () => calls.push('account'),
-    registerNativeTokenForAllRooms: async () => calls.push('rooms'),
+    registerNativeTokenForAccount: async () => { calls.push('account'); return result(); },
+    registerNativeTokenForRoom: async room => { calls.push(`room:${room.code}`); return result(); },
     playMessageTonePreview: id => previews.push(id), renderMessageToneList: () => {}, updateMessageToneStatus: () => {},
   });
   const source = extractBlock(client, "const MESSAGE_TONE_KEY = 'vaultlix_message_tone';", '// The floating Chats/Calls bar is hidden while the search box has the keyboard');
   vm.runInContext(source.replace(/function (renderMessageToneList|updateMessageToneStatus)\(\) \{[\s\S]*?\n\}\n/g, ''), context);
+  context.pending = () => timers.filter(timer => !timer.cleared);
+  context.flush = async () => { const timer = context.pending().pop(); if (timer) { timer.cleared = true; await timer.fn(); } };
   return context;
 }
 
@@ -143,24 +148,75 @@ test('the chosen tone is remembered, defaults to Glow, and ignores junk in stora
   assert.equal(clientHarness({ stored:'../x' }).selectedMessageTone(), 'glow');
 });
 
-test('choosing a tone saves it, previews it, and re-registers the device so the server learns it', () => {
+test('choosing a tone saves it and previews it at once, then tells the server in a single debounced sync', async () => {
   const harness = clientHarness();
   harness.chooseMessageTone('marimba');
   assert.equal(harness.store.get('vaultlix_message_tone'), 'marimba');
   assert.deepEqual(JSON.parse(JSON.stringify(harness.previews)), ['marimba']);
-  assert.deepEqual(JSON.parse(JSON.stringify(harness.calls)), ['account', 'rooms']);
+  assert.equal(harness.calls.length, 0, 'nothing is registered until the taps settle');
+  assert.equal(harness.pending().length, 1);
+  assert.equal(harness.pending()[0].ms, 800);
+  await harness.flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.calls)), ['account', 'room:r1', 'room:r2']);
+});
+
+test('auditioning several tones in a row sends ONE registration per conversation, not one per tap', async () => {
+  // The server answers 429 after 10 registrations a minute per conversation; one per tap
+  // used to exhaust that and the final choice was never stored.
+  const harness = clientHarness();
+  for (const id of ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba']) harness.chooseMessageTone(id);
+  assert.equal(harness.pending().length, 1, 'each tap replaces the pending sync');
+  await harness.flush();
+  assert.equal(harness.calls.filter(call => call === 'room:r1').length, 1);
+  assert.equal(harness.store.get('vaultlix_message_tone'), 'marimba');
+});
+
+test('a sync the server rejects is retried, and gives up after a few tries', async () => {
+  const harness = clientHarness({ result:() => ({ error:'Too many notification registrations.' }) });
+  harness.chooseMessageTone('harp');
+  await harness.flush();
+  assert.equal(harness.pending().length, 1, 'a retry is scheduled');
+  assert.equal(harness.pending()[0].ms, 20000);
+  for (let i = 0; i < 6; i++) await harness.flush();
+  assert.equal(harness.pending().length, 0, 'it stops retrying');
+  assert.equal(harness.calls.filter(call => call === 'account').length, 5, 'first try plus four retries');
+});
+
+test('a successful retry stops retrying, and a newer choice supersedes a pending retry', async () => {
+  let fail = true;
+  const harness = clientHarness({ result:() => (fail ? { error:'429' } : { ok:true }) });
+  harness.chooseMessageTone('harp');
+  await harness.flush();
+  fail = false;
+  await harness.flush();
+  assert.equal(harness.pending().length, 0);
+  fail = true;
+  harness.chooseMessageTone('spark');
+  await harness.flush();
+  harness.chooseMessageTone('droplet'); // supersedes the retry scheduled for 'spark'
+  assert.equal(harness.pending().length, 1);
+  assert.equal(harness.pending()[0].ms, 800);
 });
 
 test('re-choosing the same tone previews it but does not re-register; browsers never register', () => {
   const same = clientHarness({ stored:'harp' });
   same.chooseMessageTone('harp');
   assert.equal(same.previews.length, 1);
-  assert.equal(same.calls.length, 0);
+  assert.equal(same.pending().length, 0);
   const web = clientHarness({ native:false });
   web.chooseMessageTone('spark');
-  assert.equal(web.calls.length, 0);
+  assert.equal(web.pending().length, 0);
   web.chooseMessageTone('not-a-tone');
   assert.equal(web.store.get('vaultlix_message_tone'), 'spark', 'unknown ids are ignored');
+});
+
+test('closing the picker sends a pending sync straight away instead of waiting out the debounce', () => {
+  assert.match(client, /function closeMessageTonePicker\(\) \{[\s\S]*?if \(messageToneSyncTimer\) syncMessageToneToServer\(\{ immediate:true \}\);/);
+});
+
+test('the registration helpers return the server answer so a rejection can be seen', () => {
+  assert.match(client, /return api\('\/api\/native-push-subscribe', \{/);
+  assert.match(client, /return api\('\/api\/account\/native-push-subscribe', \{/);
 });
 
 test('the in-app sound follows the choice: None is silent, others load their own file', () => {

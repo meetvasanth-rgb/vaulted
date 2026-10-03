@@ -13777,14 +13777,43 @@ function openMessageTonePicker() {
 
 function closeMessageTonePicker() {
   document.getElementById('message-tone-overlay')?.classList.remove('open');
+  if (messageToneSyncTimer) syncMessageToneToServer({ immediate:true }); // do not wait out the debounce
 }
 
 // Re-registers this device's push tokens so the server learns the new tone.
 // Only the native apps have a token; browsers keep the OS notification sound.
-function syncMessageToneToServer() {
+// The server accepts only 10 registrations a minute per conversation (429
+// beyond that), and trying out several tones in a row used to fire one
+// registration per tap per conversation — the later choices were rejected and
+// the lock-screen sound stayed on the old tone. So taps are debounced into a
+// single sync, the server's answer is checked, and a rejected sync is retried.
+let messageToneSyncTimer = null;
+let messageToneSyncAttempts = 0;
+const MESSAGE_TONE_SYNC_DELAY_MS = 800;
+const MESSAGE_TONE_SYNC_RETRY_MS = 20000;
+const MESSAGE_TONE_SYNC_MAX_RETRIES = 4;
+
+function syncMessageToneToServer({ immediate = false } = {}) {
   if (!isNativeApp()) return;
-  registerNativeTokenForAccount().catch(() => {});
-  registerNativeTokenForAllRooms().catch(() => {});
+  clearTimeout(messageToneSyncTimer);
+  messageToneSyncTimer = setTimeout(runMessageToneSync, immediate ? 0 : MESSAGE_TONE_SYNC_DELAY_MS);
+}
+
+async function runMessageToneSync() {
+  messageToneSyncTimer = null;
+  const tone = selectedMessageTone();
+  let failed = false;
+  const check = result => { if (result && result.error) failed = true; };
+  try { check(await registerNativeTokenForAccount()); } catch (e) { failed = true; }
+  for (const room of [...rooms.values()]) {
+    try { check(await registerNativeTokenForRoom(room)); } catch (e) { failed = true; }
+  }
+  if (!failed) { messageToneSyncAttempts = 0; return; }
+  // Another change since this run started schedules its own sync.
+  if (tone !== selectedMessageTone() || messageToneSyncTimer) return;
+  if (messageToneSyncAttempts >= MESSAGE_TONE_SYNC_MAX_RETRIES) { messageToneSyncAttempts = 0; return; }
+  messageToneSyncAttempts++;
+  messageToneSyncTimer = setTimeout(runMessageToneSync, MESSAGE_TONE_SYNC_RETRY_MS);
 }
 
 function chooseMessageTone(id) {
@@ -15158,8 +15187,8 @@ async function ensureAndroidNotificationChannels() {
 
 async function registerNativeTokenForRoom(room) {
   const platform = nativePlatform();
-  if (!platform || !nativePushToken || !room?.code || !room?.token) return;
-  await api('/api/native-push-subscribe', {
+  if (!platform || !nativePushToken || !room?.code || !room?.token) return null;
+  return api('/api/native-push-subscribe', {
     code: room.code,
     token: room.token,
     deviceToken: nativePushToken,
@@ -15172,8 +15201,8 @@ async function registerNativeTokenForRoom(room) {
 async function registerNativeTokenForAccount() {
   const platform = nativePlatform();
   const account = loadAccountState();
-  if (!platform || !nativePushToken || !account?.accountId || !account?.sessionToken) return;
-  await api('/api/account/native-push-subscribe', {
+  if (!platform || !nativePushToken || !account?.accountId || !account?.sessionToken) return null;
+  return api('/api/account/native-push-subscribe', {
     accountId: account.accountId,
     sessionToken: account.sessionToken,
     deviceId: accountDeviceId(),
