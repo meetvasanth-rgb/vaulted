@@ -13660,15 +13660,7 @@ function updatePushStatus() {
   const el = document.getElementById('push-status');
   if (!el) return;
   if (isNativeApp()) {
-    const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
-    el.textContent = nativePushPermission === 'granted' ? 'Enabled' :
-      nativePushPermission === 'denied' ? `Blocked in ${settingsName}` : 'Tap to enable';
-    el.className = nativePushPermission === 'granted'
-      ? 'settings-status settings-status-on'
-      : nativePushPermission === 'denied'
-        ? 'settings-status settings-status-off'
-        : 'settings-status settings-status-action';
-    el.onclick = nativePushPermission === 'prompt' ? () => requestPushPermission() : null;
+    applyNativePushStatus(el);
     refreshNativePushPermission().catch(() => {});
     return;
   }
@@ -15284,23 +15276,33 @@ async function ensureNativePushListeners() {
   });
 }
 
+// Capacitor reports Android's "ask again" state as 'prompt-with-rationale' (the
+// permission was dismissed once before). It still reads "Tap to enable", so the tap
+// must still work — it used to be wired for 'prompt' only and did nothing.
+function nativePushCanPrompt() {
+  return nativePushPermission !== 'granted' && nativePushPermission !== 'denied';
+}
+
+function applyNativePushStatus(el) {
+  if (!el) return;
+  const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
+  el.textContent = nativePushPermission === 'granted' ? 'Enabled' :
+    nativePushPermission === 'denied' ? `Blocked in ${settingsName}` : 'Tap to enable';
+  el.className = nativePushPermission === 'granted'
+    ? 'settings-status settings-status-on'
+    : nativePushPermission === 'denied'
+      ? 'settings-status settings-status-off'
+      : 'settings-status settings-status-action';
+  el.onclick = nativePushCanPrompt() ? () => requestPushPermission() : null;
+}
+
 async function refreshNativePushPermission() {
   const plugin = nativePushPlugin();
   if (!plugin) return;
   await ensureNativePushListeners();
   const status = await plugin.checkPermissions();
   nativePushPermission = status?.receive || 'prompt';
-  const el = document.getElementById('push-status');
-  if (el) {
-    const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
-    el.textContent = nativePushPermission === 'granted' ? 'Enabled' :
-      nativePushPermission === 'denied' ? `Blocked in ${settingsName}` : 'Tap to enable';
-    el.className = nativePushPermission === 'granted'
-      ? 'settings-status settings-status-on'
-      : nativePushPermission === 'denied'
-        ? 'settings-status settings-status-off'
-        : 'settings-status settings-status-action';
-  }
+  applyNativePushStatus(document.getElementById('push-status'));
   if (nativePushPermission === 'granted') await plugin.register();
 }
 
@@ -15318,6 +15320,10 @@ async function requestNativePushPermission() {
   } else if (status.receive === 'denied') {
     const settingsName = nativePlatform() === 'android' ? 'Android Settings' : 'iPhone Settings';
     toast(`Notifications are blocked. Enable Vaultlix in ${settingsName} → Notifications.`);
+  } else if (nativePlatform() === 'android') {
+    // Android shows its permission dialog only a limited number of times; when it
+    // did not appear, say where to switch notifications on instead of doing nothing.
+    toast('Turn on notifications in Android Settings → Apps → Vaultlix → Notifications.');
   }
 }
 

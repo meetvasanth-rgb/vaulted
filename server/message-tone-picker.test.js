@@ -349,3 +349,18 @@ test('returning to the app re-registers the tone, at most every ten minutes', ()
   assert.equal(harness.pending().length, 0, 'a second return within ten minutes does not');
   assert.equal(clientHarness({ native:false }).resyncMessageToneOnResume(), undefined);
 });
+
+// Android reports an already-dismissed permission as 'prompt-with-rationale'. The
+// Settings row read "Tap to enable" but the tap was wired for 'prompt' only, so
+// it did nothing and notifications stayed off.
+test('the Push notifications tap works for every not-yet-decided Android permission state', () => {
+  const canPrompt = vm.runInNewContext(`${extractBlock(client, 'function nativePushCanPrompt() {', 'function applyNativePushStatus')} nativePushCanPrompt`, { nativePushPermission:'prompt-with-rationale' });
+  for (const [state, expected] of [['prompt', true], ['prompt-with-rationale', true], ['granted', false], ['denied', false]]) {
+    const check = vm.runInNewContext(`${extractBlock(client, 'function nativePushCanPrompt() {', 'function applyNativePushStatus')} nativePushCanPrompt`, { nativePushPermission:state });
+    assert.equal(check(), expected, state);
+  }
+  assert.equal(typeof canPrompt, 'function');
+  assert.equal((client.match(/el\.onclick = nativePushCanPrompt\(\)/g) || []).length, 1, 'one place decides the tap handler');
+  assert.doesNotMatch(client, /nativePushPermission === 'prompt' \? \(\) => requestPushPermission\(\)/);
+  assert.match(client, /Turn on notifications in Android Settings → Apps → Vaultlix → Notifications\./);
+});
