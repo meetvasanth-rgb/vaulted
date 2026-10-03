@@ -432,7 +432,7 @@ async function refreshPrivateGroups() {
 function openCreateGroup() {
   const state = loadAccountState();
   if (!state) { openAccountPanel(); showAccountTab('login'); return; }
-  const eligible = [...rooms.values()].filter(room => room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === state.accountId && !room.reconnectRequired);
+  const eligible = [...rooms.values()].filter(room => !roomConcealed(room) && room.sharedKey && room.peerPrivateNumber && room.ownerAccountId === state.accountId && !room.reconnectRequired);
   document.getElementById('group-contact-list').innerHTML = eligible.length
     ? eligible.map(room => `<label class="group-contact"><input type="checkbox" value="${escHtml(room.code)}"><span>${escHtml(roomDisplayLabel(room))}<small>${escHtml(formatPrivateNumber(room.peerPrivateNumber))}</small></span></label>`).join('')
     : '<div class="group-chat-empty" style="padding:24px">Connect with a friend before creating a group.</div>';
@@ -1630,7 +1630,7 @@ function groupAddCandidates(group, roomList, accountId) {
 function openAddGroupMembers() {
   const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState();
   if (!group || !state || group.ownerId !== state.accountId) return;
-  const eligible = groupAddCandidates(group, [...rooms.values()], state.accountId);
+  const eligible = groupAddCandidates(group, [...rooms.values()].filter(room => !roomConcealed(room)), state.accountId);
   const room = 49 - Math.max(0, (group.members?.length || 1) - 1);
   document.getElementById('group-add-list').innerHTML = eligible.length
     ? eligible.map(entry => `<label class="group-contact" data-search-name="${escHtml(roomDisplayLabel(entry))}" data-search-number="${escHtml(String(entry.peerPrivateNumber))}"><input type="checkbox" value="${escHtml(entry.code)}"><span>${escHtml(roomDisplayLabel(entry))}<small>${escHtml(formatPrivateNumber(entry.peerPrivateNumber))}</small></span></label>`).join('')

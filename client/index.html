@@ -1091,6 +1091,10 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .app-lock-field{display:block;margin:11px 0}.app-lock-field span{display:block;margin-bottom:6px;color:#5F5055;font-size:12px;font-weight:600}
 .app-lock-field input{width:100%;box-sizing:border-box;border:1px solid #DDD1D4;border-radius:12px;padding:12px 13px;font-size:16px;outline:none}.app-lock-field input:focus{border-color:#8A3C57}
 .app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
+.hidden-chats-list{margin:8px 0 2px;display:flex;flex-direction:column;gap:6px}.hidden-chats-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #E7DDE1;border-radius:12px;background:#fff;font-size:14px;font-weight:600;color:#30242B}.hidden-chats-item span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hidden-chats-item button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#682C43;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.hidden-chats-empty{padding:10px 2px;color:#7A6B71;font-size:13px}
+#hidden-chats-actions{flex-wrap:wrap}#hidden-chats-actions button{white-space:nowrap}
+.hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;padding:9px 12px;border-radius:12px;background:#F2DDE3;color:#682C43;font-size:13px;font-weight:700}.hidden-chats-bar button{border:0;border-radius:999px;background:#682C43;color:#fff;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.hidden-chat-lock{width:13px;height:13px;margin-left:6px;vertical-align:-1px;fill:none;stroke:#8A3C57;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 .locker-fullscreen{position:fixed;inset:0;z-index:10046;background:#FFFDF9;display:none;flex-direction:column}
 .locker-fullscreen.open{display:flex}
@@ -3435,6 +3439,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationSettingsFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.05.05-2.87 2.87-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21h-4v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.05.05-2.87-2.87.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.05-.05 2.87-2.87.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.05-.05 2.87 2.87-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21v4h-.05a1.7 1.7 0 0 0-1.55 1z"/></svg></span><span data-i18n="conversation_settings">Conversation settings</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="openConversationAchievements()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0V4Z"/><path d="M8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 13v4M8 20h8M10 17h4"/></svg></span><span data-i18n="achievements">Achievements</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="quickLockFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span data-i18n="quick_lock">Quick Lock</span></button>
+    <button class="conversation-menu-item" type="button" role="menuitem" onclick="hideChatFromConversationMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.6"/><path d="M4 4l16 16"/></svg></span><span id="conversation-menu-hide-label">Hide chat</span></button>
     <button class="conversation-menu-item" type="button" role="menuitem" onclick="clearConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="m7 7 1 13h8l1-13"/><path d="M10 11v5M14 11v5"/></svg></span><span data-i18n="clear_chat">Clear chat</span></button>
     <button class="conversation-menu-item leave" type="button" role="menuitem" onclick="leaveConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg></span><span data-i18n="leave_conversation">Leave conversation</span></button>
     <button class="conversation-menu-item destructive" type="button" role="menuitem" onclick="deleteConversationFromMenu()"><span class="conversation-menu-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg></span><span data-i18n="delete_conversation">Delete conversation</span></button>
@@ -3502,7 +3507,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <div class="vault-list-title" id="vault-list-title" data-i18n="chats">Chats</div>
     </div>
     <div class="vault-list-search" id="vault-list-search" hidden>
-      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)"/>
+      <input type="text" id="vault-search-input" class="vault-search-input" placeholder="Search chats" autocomplete="off" oninput="filterVaultList(this.value)" onkeydown="vaultSearchKeydown(event)" enterkeyhint="search" autocapitalize="off" autocorrect="off" spellcheck="false"/>
     </div>
     <div class="vault-list-nav">
       <button class="vault-list-settings" type="button" id="vault-search-toggle" onclick="toggleVaultSearch()" title="Search chats" aria-label="Search chats">
@@ -3868,6 +3873,19 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   </form>
 </div>
 
+<div class="app-lock-overlay" id="hidden-chats-overlay" role="dialog" aria-modal="true" aria-labelledby="hidden-chats-title">
+  <form class="app-lock-sheet" id="hidden-chats-form" onsubmit="submitHiddenChatsForm(event)" autocomplete="off">
+    <h2 class="app-lock-title" id="hidden-chats-title">Hidden chats</h2>
+    <div class="app-lock-copy" id="hidden-chats-copy"></div>
+    <label class="app-lock-field" id="hidden-chats-current-wrap"><span>Hidden-chats password</span><input id="hidden-chats-current" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
+    <label class="app-lock-field" id="hidden-chats-new-wrap"><span id="hidden-chats-new-label">New password</span><input id="hidden-chats-new" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
+    <label class="app-lock-field" id="hidden-chats-confirm-wrap"><span>Confirm password</span><input id="hidden-chats-confirm" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"/></label>
+    <div class="hidden-chats-list" id="hidden-chats-list"></div>
+    <div class="app-lock-error" id="hidden-chats-error" aria-live="polite"></div>
+    <div class="app-lock-actions" id="hidden-chats-actions"></div>
+  </form>
+</div>
+
 <div class="app-lock-overlay" id="locker-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-setup-title">
   <form class="app-lock-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)">
     <h2 class="app-lock-title" id="locker-setup-title">Vaultlix Locker</h2>
@@ -4017,6 +4035,19 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         <div class="settings-row-sub">Password-protected notes and photos, separate from App Lock</div>
       </div>
       <div class="settings-status settings-status-action" id="locker-status">Set up</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row" id="settings-hidden-chats-row" onclick="openHiddenChatsSettings()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#F7EFF2;color:#682C43;">
+        <svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"/><circle cx="12" cy="12" r="2.6"/><path d="M4 4l16 16"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Hidden chats</div>
+        <div class="settings-row-sub">Hide 1:1 chats behind a password and keep their notifications private</div>
+      </div>
+      <div class="settings-status settings-status-action" id="hidden-chats-status">Set up</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -10295,6 +10326,315 @@ document.addEventListener('click', event => {
   if (selectMode || (typeof groupSelectMode !== 'undefined' && groupSelectMode) || wasJustLongPressed()) event.preventDefault();
 }, true);
 
+// ── HIDDEN CHATS ─────────────────────────────────────────────────────────
+// A 1:1 chat can be hidden behind a password. Hidden chats disappear from the
+// inbox, search, calls, badges, tabs, status and pickers until the password is
+// typed into the Chats search (or entered from Settings). This is a device-only
+// privacy feature, not extra encryption: the conversation is the same data on
+// the same phone. The password is never stored; PBKDF2 gives a one-way verifier
+// with a random salt (same primitives as App Lock). The list of hidden chats
+// lives under its own storage key so it never touches a room's saved blob.
+const HIDDEN_CHATS_KEY = 'vaultlix_hidden_chats_v1';
+const HIDDEN_CHATS_FAILURE_KEY = 'vaultlix_hidden_chats_failures_v1';
+const HIDDEN_CHATS_ITERATIONS = 310000;
+const HIDDEN_CHATS_MIN_LENGTH = 4;
+let hiddenChatsUnlocked = false; // memory only: every launch and every background starts locked
+let hiddenChatsCache = null;
+let hiddenChatsDialog = null;
+
+function loadHiddenChatsStore() {
+  if (hiddenChatsCache) return hiddenChatsCache;
+  let store = {};
+  try { store = JSON.parse(localStorage.getItem(HIDDEN_CHATS_KEY) || '{}') || {}; } catch (error) {}
+  hiddenChatsCache = {
+    codes: Array.isArray(store.codes) ? store.codes.filter(code => typeof code === 'string') : [],
+    salt: typeof store.salt === 'string' ? store.salt : null,
+    verifier: typeof store.verifier === 'string' ? store.verifier : null,
+    iterations: Number(store.iterations) || HIDDEN_CHATS_ITERATIONS,
+  };
+  return hiddenChatsCache;
+}
+
+// Read-modify-write of this feature's own key only.
+function saveHiddenChatsStore(patch) {
+  hiddenChatsCache = null;
+  const next = { ...loadHiddenChatsStore(), ...patch };
+  hiddenChatsCache = next;
+  try { localStorage.setItem(HIDDEN_CHATS_KEY, JSON.stringify(next)); } catch (error) {}
+}
+
+function hiddenChatsPasswordSet() { const store = loadHiddenChatsStore(); return Boolean(store.salt && store.verifier); }
+function hiddenChatCodes() { return new Set(loadHiddenChatsStore().codes); }
+function isChatHidden(code) { return loadHiddenChatsStore().codes.includes(code); }
+function isChatConcealed(code) { return !hiddenChatsUnlocked && isChatHidden(code); }
+function roomConcealed(room) { return Boolean(room) && isChatConcealed(room.code); }
+function firstVisibleRoomCode() { for (const code of rooms.keys()) if (!isChatConcealed(code)) return code; return null; }
+
+// A hidden contact's status must not show in the rail either.
+function statusAuthorConcealed(authorPrivateNumber) {
+  if (hiddenChatsUnlocked) return false;
+  const normalized = normalizePrivateNumber(authorPrivateNumber);
+  if (!normalized) return false;
+  for (const code of loadHiddenChatsStore().codes) {
+    const room = rooms.get(code);
+    if (room && normalizePrivateNumber(room.peerPrivateNumber) === normalized) return true;
+  }
+  return false;
+}
+
+function loadHiddenChatsFailures() {
+  try { return JSON.parse(localStorage.getItem(HIDDEN_CHATS_FAILURE_KEY) || '{"count":0,"blockedUntil":0}'); }
+  catch (error) { return { count:0, blockedUntil:0 }; }
+}
+
+async function checkHiddenChatsPassword(password) {
+  const store = loadHiddenChatsStore();
+  if (!store.salt || !store.verifier) return { ok:false, error:'No password is set.' };
+  const wait = appLockWaitCopy(loadHiddenChatsFailures());
+  if (wait) return { ok:false, error:wait, locked:true };
+  const actual = await deriveAppLockVerifier(String(password), base64UrlToBytes(store.salt), store.iterations);
+  if (equalBytes(actual, base64UrlToBytes(store.verifier))) {
+    try { localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY); } catch (error) {}
+    return { ok:true };
+  }
+  const failures = loadHiddenChatsFailures();
+  failures.count = Number(failures.count || 0) + 1;
+  failures.blockedUntil = Date.now() + appLockDelayMs(failures.count);
+  try { localStorage.setItem(HIDDEN_CHATS_FAILURE_KEY, JSON.stringify(failures)); } catch (error) {}
+  return { ok:false, error:appLockWaitCopy(failures) || 'Incorrect password.' };
+}
+
+async function attemptHiddenChatsUnlock(password) {
+  const result = await checkHiddenChatsPassword(password);
+  if (result.ok) {
+    hiddenChatsUnlocked = true;
+    refreshHiddenChatsViews();
+  }
+  return result;
+}
+
+async function setHiddenChatsPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const verifier = await deriveAppLockVerifier(String(password), salt, HIDDEN_CHATS_ITERATIONS);
+  saveHiddenChatsStore({ salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier), iterations:HIDDEN_CHATS_ITERATIONS });
+  try { localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY); } catch (error) {}
+}
+
+function refreshHiddenChatsViews() {
+  try { renderVaultList(); } catch (error) {}
+  try { renderRoomTabs(); } catch (error) {}
+  try { updateDocumentTitle(); } catch (error) {}
+  updateHiddenChatsSettingsStatus();
+}
+
+function updateHiddenChatsSettingsStatus() {
+  const status = document.getElementById('hidden-chats-status');
+  if (status) status.textContent = !hiddenChatsPasswordSet() ? 'Set up' : (hiddenChatsUnlocked ? 'Unlocked' : 'On');
+}
+
+function lockHiddenChats() {
+  if (!hiddenChatsUnlocked) return;
+  hiddenChatsUnlocked = false;
+  const chatShowing = document.getElementById('s-chat')?.classList.contains('active');
+  if (chatShowing && isChatHidden(activeRoomCode)) openVaultInbox();
+  if (vaultSearchActive) closeVaultSearch();
+  closeHiddenChatsDialog();
+  refreshHiddenChatsViews();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) lockHiddenChats(); });
+window.addEventListener('pagehide', lockHiddenChats);
+
+// Pushes for a hidden chat say "New message" instead of naming the sender. The
+// server owns the notification wording, so it is told per conversation.
+function syncChatNotificationPrivacy(room, hidden) {
+  if (!room?.code || !room.token) return Promise.resolve(false);
+  return api('/api/notification-privacy', { code:room.code, token:room.token, hidden })
+    .then(result => !result?.error).catch(() => false);
+}
+function syncHiddenChatNotificationPrivacy() {
+  for (const code of hiddenChatCodes()) {
+    const room = rooms.get(code);
+    if (room) syncChatNotificationPrivacy(room, true);
+  }
+}
+
+function hideChat(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  const codes = hiddenChatCodes();
+  codes.add(code);
+  saveHiddenChatsStore({ codes:[...codes] });
+  hiddenChatsUnlocked = false;
+  syncChatNotificationPrivacy(room, true);
+  closeConversationMenu();
+  const wasOpen = activeRoomCode === code;
+  if (wasOpen) {
+    saveActiveRoomCode('');
+    activeRoomCode = firstVisibleRoomCode();
+    if (document.getElementById('s-chat')?.classList.contains('active')) openVaultInbox();
+  }
+  refreshHiddenChatsViews();
+  toast('Chat hidden. In Chats, tap search and type your hidden-chats password to see it.');
+}
+
+function unhideChat(code) {
+  const codes = hiddenChatCodes();
+  if (!codes.delete(code)) return;
+  saveHiddenChatsStore({ codes:[...codes] });
+  const room = rooms.get(code);
+  if (room) syncChatNotificationPrivacy(room, false);
+  closeConversationMenu();
+  refreshHiddenChatsViews();
+  toast('Chat unhidden');
+}
+
+function hideChatFromConversationMenu() {
+  closeConversationMenu();
+  const room = getActiveRoom();
+  if (!room) return;
+  if (isChatHidden(room.code)) { unhideChat(room.code); return; }
+  if (!hiddenChatsPasswordSet()) { openHiddenChatsDialog('setup', () => hideChat(room.code)); return; }
+  hideChat(room.code);
+}
+
+function promptUnlockHiddenChats(onDone) {
+  if (!hiddenChatsPasswordSet()) return;
+  openHiddenChatsDialog('unlock', onDone);
+}
+
+function openHiddenChatsSettings() {
+  closeSettings();
+  if (!hiddenChatsPasswordSet()) { openHiddenChatsDialog('setup', () => toast('Password saved. Use “Hide chat” in a conversation’s menu.')); return; }
+  if (!hiddenChatsUnlocked) openHiddenChatsDialog('unlock', () => openHiddenChatsDialog('manage'));
+  else openHiddenChatsDialog('manage');
+}
+
+const HIDDEN_CHATS_DIALOG_MODES = {
+  setup:  { title:'Hide chats', fields:['new', 'confirm'], submit:'Save password', primary:true,
+    copy:'Choose a password for hidden chats. A hidden chat disappears from your inbox until you type this password into the Chats search. Notifications for hidden chats will not show the sender’s name. Vaultlix cannot recover this password.' },
+  unlock: { title:'Hidden chats', fields:['current'], submit:'Unlock', primary:true, copy:'Enter your hidden-chats password.' },
+  change: { title:'Change password', fields:['current', 'new', 'confirm'], submit:'Change password', primary:true, copy:'Enter your current password, then choose a new one.' },
+  remove: { title:'Remove password', fields:['current'], submit:'Remove & unhide all', danger:true, copy:'This unhides every hidden chat and deletes the password.' },
+  manage: { title:'Hidden chats', fields:[], list:true, copy:'These chats are hidden from your inbox. Hidden-chat notifications do not show the sender’s name.' },
+};
+
+function renderHiddenChatsDialog() {
+  const dialog = hiddenChatsDialog;
+  const config = dialog && HIDDEN_CHATS_DIALOG_MODES[dialog.mode];
+  if (!config) return;
+  document.getElementById('hidden-chats-title').textContent = config.title;
+  document.getElementById('hidden-chats-copy').textContent = config.copy;
+  document.getElementById('hidden-chats-error').textContent = '';
+  for (const field of ['current', 'new', 'confirm']) {
+    const wrap = document.getElementById(`hidden-chats-${field}-wrap`);
+    const input = document.getElementById(`hidden-chats-${field}`);
+    const shown = config.fields.includes(field);
+    wrap.style.display = shown ? '' : 'none';
+    input.required = shown;
+    input.value = '';
+  }
+  document.getElementById('hidden-chats-new-label').textContent = dialog.mode === 'change' ? 'New password' : 'Password';
+  const list = document.getElementById('hidden-chats-list');
+  list.style.display = config.list ? '' : 'none';
+  if (config.list) {
+    const rows = [...hiddenChatCodes()].map(code => rooms.get(code)).filter(Boolean);
+    list.innerHTML = rows.length
+      ? rows.map(room => `<div class="hidden-chats-item"><span>${escHtml(roomDisplayLabel(room))}</span><button type="button" data-unhide="${escHtml(room.code)}">Unhide</button></div>`).join('')
+      : '<div class="hidden-chats-empty">No hidden chats yet. Open a conversation and choose “Hide chat”.</div>';
+    list.querySelectorAll('[data-unhide]').forEach(button => { button.onclick = () => { unhideChat(button.dataset.unhide); renderHiddenChatsDialog(); }; });
+  }
+  const actions = document.getElementById('hidden-chats-actions');
+  actions.innerHTML = '';
+  const add = (label, className, onclick, type = 'button') => {
+    const button = document.createElement('button');
+    button.type = type; button.textContent = label; if (className) button.className = className;
+    if (onclick) button.onclick = onclick;
+    actions.appendChild(button);
+    return button;
+  };
+  if (dialog.mode === 'manage') {
+    add('Remove password', 'danger', () => openHiddenChatsDialog('remove'));
+    add('Change password', '', () => openHiddenChatsDialog('change'));
+    add('Lock now', '', () => lockHiddenChats());
+    add('Done', 'primary', () => closeHiddenChatsDialog());
+  } else {
+    add('Cancel', '', () => closeHiddenChatsDialog());
+    const submit = add(config.submit, config.danger ? 'danger' : 'primary', null, 'submit');
+    submit.id = 'hidden-chats-submit';
+  }
+}
+
+function openHiddenChatsDialog(mode, onDone = null) {
+  hiddenChatsDialog = { mode, onDone };
+  renderHiddenChatsDialog();
+  document.getElementById('hidden-chats-overlay')?.classList.add('open');
+  const first = HIDDEN_CHATS_DIALOG_MODES[mode].fields[0];
+  if (first) setTimeout(() => document.getElementById(`hidden-chats-${first}`)?.focus(), 50);
+}
+
+function closeHiddenChatsDialog() {
+  hiddenChatsDialog = null;
+  document.getElementById('hidden-chats-overlay')?.classList.remove('open');
+  for (const field of ['current', 'new', 'confirm']) { const input = document.getElementById(`hidden-chats-${field}`); if (input) input.value = ''; }
+}
+
+async function submitHiddenChatsForm(event) {
+  event.preventDefault();
+  const dialog = hiddenChatsDialog;
+  if (!dialog) return;
+  const error = document.getElementById('hidden-chats-error');
+  const value = id => document.getElementById(`hidden-chats-${id}`).value;
+  const submit = document.getElementById('hidden-chats-submit');
+  error.textContent = '';
+  if (submit) submit.disabled = true;
+  try {
+    if (dialog.mode === 'setup' || dialog.mode === 'change') {
+      if (dialog.mode === 'change') {
+        const checked = await checkHiddenChatsPassword(value('current'));
+        if (!checked.ok) { error.textContent = checked.error; return; }
+      }
+      const next = value('new');
+      if (next.length < HIDDEN_CHATS_MIN_LENGTH) { error.textContent = `Use at least ${HIDDEN_CHATS_MIN_LENGTH} characters.`; return; }
+      if (next !== value('confirm')) { error.textContent = 'The passwords do not match.'; return; }
+      await setHiddenChatsPassword(next);
+      closeHiddenChatsDialog();
+      updateHiddenChatsSettingsStatus();
+      if (dialog.mode === 'change') toast('Hidden-chats password changed');
+      dialog.onDone?.();
+    } else if (dialog.mode === 'unlock') {
+      const result = await attemptHiddenChatsUnlock(value('current'));
+      if (!result.ok) { error.textContent = result.error; return; }
+      closeHiddenChatsDialog();
+      dialog.onDone?.();
+    } else if (dialog.mode === 'remove') {
+      const checked = await checkHiddenChatsPassword(value('current'));
+      if (!checked.ok) { error.textContent = checked.error; return; }
+      for (const code of hiddenChatCodes()) { const room = rooms.get(code); if (room) syncChatNotificationPrivacy(room, false); }
+      saveHiddenChatsStore({ codes:[], salt:null, verifier:null });
+      hiddenChatsUnlocked = false;
+      closeHiddenChatsDialog();
+      refreshHiddenChatsViews();
+      toast('Hidden chats password removed. All chats are visible again.');
+    }
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+// Enter in the Chats search, on a search that matches nothing, tries the typed
+// text as the hidden-chats password. Ordinary searches that match a chat never
+// reach it, so they cannot count as failed attempts.
+function vaultSearchKeydown(event) {
+  if (event.key !== 'Enter') return;
+  const value = event.target.value;
+  if (!hiddenChatsPasswordSet() || hiddenChatsUnlocked || vaultSearchMatchCount !== 0 || value.length < HIDDEN_CHATS_MIN_LENGTH) return;
+  event.preventDefault();
+  attemptHiddenChatsUnlock(value).then(result => {
+    if (result.ok) { event.target.value = ''; closeVaultSearch(); toast('Hidden chats unlocked'); }
+    else if (result.locked || /^Too many/.test(result.error || '')) toast(result.error);
+  });
+}
+
 // ── MEDIA DATA-URI VALIDATION ────────────────────────────────────────────
 // rec.mime / rec.base64 for any file, album, or voice message come straight
 // from the peer's decrypted (but otherwise untrusted) payload — a malicious
@@ -10409,7 +10749,7 @@ let crossVaultBannerRoomCode = null;
 function updateVaultUnreadBadge() {
   updateVaultNavigationBadges();
   let total = 0;
-  for (const room of rooms.values()) if (!isRoomVisible(room)) total += room.unread;
+  for (const room of rooms.values()) if (!isRoomVisible(room) && !roomConcealed(room)) total += room.unread;
   const badge = document.getElementById('chat-vault-unread');
   const button = document.querySelector('.chat-home-btn');
   if (button) button.setAttribute('aria-label', total > 0 ? `Back to conversations, ${total} unread` : 'Back to conversations');
@@ -10446,6 +10786,8 @@ function openCrossVaultMessage() {
 // visible on screen right now (in which case you're already watching it
 // arrive, no need to also make noise).
 function notifyMsg(room) {
+  // A hidden chat makes no sound and shows no banner while it is locked.
+  if (roomConcealed(room)) return;
   const roomVisible = room.code === activeRoomCode && tabFocused && !document.hidden;
   if (!roomVisible) {
     playChime();
@@ -10542,6 +10884,8 @@ function toggleConversationMenu(event) {
   const opening = !menu.classList.contains('open');
   closeConversationMenu();
   if (opening) {
+    const hideLabel = document.getElementById('conversation-menu-hide-label');
+    if (hideLabel) hideLabel.textContent = isChatHidden(activeRoomCode) ? 'Unhide chat' : 'Hide chat';
     menu.classList.add('open');
     button.setAttribute('aria-expanded', 'true');
     menu.querySelector('.conversation-menu-item')?.focus();
@@ -14063,7 +14407,7 @@ function openEmergencyExit() {
   if (currentRadio) { currentRadio.disabled = !current; currentRadio.checked = Boolean(current); }
   if (!current) document.querySelector('input[name="emergency-scope"][value="device"]')?.click();
   const list = document.getElementById('emergency-vaults');
-  if (list) list.innerHTML = [...rooms.values()].map(room => {
+  if (list) list.innerHTML = [...rooms.values()].filter(room => !roomConcealed(room)).map(room => {
     const label = escHtml(room.localLabel || room.peerName || 'Private conversation');
     const detail = room.peerName && room.localLabel ? escHtml(room.peerName) : 'Encrypted one-to-one conversation';
     return `<label class="emergency-choice"><input type="checkbox" value="${escHtml(room.code)}" onchange="updateEmergencyConfirm()"><span>${label}<small>${detail}</small></span></label>`;
@@ -14804,12 +15148,13 @@ function openPeerProfileImage() {
 function renderRoomTabs() {
   const wrap = document.getElementById('room-tabs');
   if (wrap) {
-    if (rooms.size === 0) {
+    const tabRooms = [...rooms.values()].filter(room => !roomConcealed(room));
+    if (tabRooms.length === 0) {
       wrap.classList.remove('show'); wrap.innerHTML = '';
     } else {
       wrap.classList.add('show');
       let html = '';
-      for (const room of rooms.values()) {
+      for (const room of tabRooms) {
         const active = room.code === activeRoomCode;
         const rawLabel = roomDisplayLabel(room);
         const label = rawLabel.length > 14 ? rawLabel.slice(0, 12) + '…' : rawLabel;
@@ -15061,6 +15406,7 @@ function vaultAvatarPalette(seed) {
 let currentVaultListMode = 'chats';
 let vaultSearchActive = false;
 let vaultSearchQuery = '';
+let vaultSearchMatchCount = -1; // -1 = not searching; 0 = nothing matched
 let statusFeed = [];
 let statusFeedLoading = false;
 let statusFeedRefreshQueued = false;
@@ -15202,7 +15548,7 @@ function renderStatusRail() {
   const seen = statusSeenIds();
   const grouped = new Map();
   const hidden = statusHiddenIds();
-  for (const item of statusFeed.filter(candidate => !candidate.own && !hidden.has(candidate.id))) {
+  for (const item of statusFeed.filter(candidate => !candidate.own && !hidden.has(candidate.id) && !statusAuthorConcealed(candidate.authorPrivateNumber))) {
     if (!grouped.has(item.authorPrivateNumber)) grouped.set(item.authorPrivateNumber, []);
     grouped.get(item.authorPrivateNumber).push(item);
   }
@@ -15233,7 +15579,7 @@ function renderStatusPage() {
   const seen = statusSeenIds();
   const hidden = statusHiddenIds();
   const grouped = new Map();
-  for (const item of statusFeed.filter(candidate => !candidate.own && !hidden.has(candidate.id))) {
+  for (const item of statusFeed.filter(candidate => !candidate.own && !hidden.has(candidate.id) && !statusAuthorConcealed(candidate.authorPrivateNumber))) {
     if (!grouped.has(item.authorPrivateNumber)) grouped.set(item.authorPrivateNumber, []);
     grouped.get(item.authorPrivateNumber).push(item);
   }
@@ -15264,7 +15610,7 @@ function renderStatusPage() {
 }
 
 function openStatusComposer() {
-  const eligible = [...rooms.values()].filter(room => room.everOnline && room.sharedKey && room.peerPrivateNumber && !room.reconnectRequired);
+  const eligible = [...rooms.values()].filter(room => !roomConcealed(room) && room.everOnline && room.sharedKey && room.peerPrivateNumber && !room.reconnectRequired);
   if (!eligible.length) { toast('Connect with a friend before posting a status.'); return; }
   closeStatusComposer();
   statusComposerImage = null;
@@ -15745,7 +16091,7 @@ function missedCallBadgeEntries() {
 function vaultNavigationCounts() {
   if (!loadAccountState()) return { messages:0, calls:0 };
   let messages = 0;
-  for (const room of rooms.values()) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
+  for (const room of rooms.values()) if (!roomConcealed(room)) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
   for (const group of privateGroups.values()) messages += Math.max(0, Number(group.unread) || 0);
   const { seen } = missedCallSeenState();
   const calls = new Set(missedCallBadgeEntries().filter(id => !seen.has(id))).size;
@@ -15837,6 +16183,7 @@ function syncVaultListModeControls() {
 function callHistoryEntries(missedOnly = false) {
   const entries = [];
   for (const room of rooms.values()) {
+    if (roomConcealed(room)) continue;
     for (const rec of uniqueVisibleConversationRecords(missedOnly
       ? room.messages.filter(rec => rec.kind === 'sys' && /^Missed(?: encrypted)? call\b/i.test(String(rec.content || '')))
       : room.messages)) {
@@ -16005,7 +16352,7 @@ function renderCallHistoryList(body) {
   // equivalent across every room at once, reusing the same
   // loadEarlierMessages/historyOldestSeq machinery.
   const loadMoreEligible = Array.from(rooms.values()).filter(room =>
-    room.historyLoaded && !room.historyEarlierExhausted && Number(room.historyOldestSeq) > 1);
+    !roomConcealed(room) && room.historyLoaded && !room.historyEarlierExhausted && Number(room.historyOldestSeq) > 1);
   if (loadMoreEligible.length) {
     body.insertAdjacentHTML('beforeend', '<div class="load-earlier"><button type="button" class="load-earlier-btn load-earlier-calls-btn">Load earlier calls</button></div>');
     const loadMoreBtn = body.querySelector('.load-earlier-calls-btn');
@@ -16048,6 +16395,7 @@ function confirmClearAllCalls(entries) {
     const clearedAt = Date.now();
     const byRoom = new Map();
     for (const room of rooms.values()) {
+      if (roomConcealed(room)) continue;
       room.callHistoryClearedAt = Math.max(Number(room.callHistoryClearedAt) || 0, clearedAt);
       if (room.lastCallHistoryEventId) room.deleteLedger.set(room.lastCallHistoryEventId, clearedAt);
       const ids = room.messages.filter(record => callHistoryFamily(record)).map(record => record.id).filter(Boolean);
@@ -16130,7 +16478,7 @@ function renderVaultList() {
   // timestamp — same as a regular chat app inbox — rather than pinning
   // every group above every room regardless of how stale it is.
   const groupEntries = [...privateGroups.values()].map(group => ({ kind:'group', group, sortKey: group.updatedAt || 0 }));
-  const roomEntries = [...rooms.values()].map(room => {
+  const roomEntries = [...rooms.values()].filter(room => !roomConcealed(room)).map(room => {
     syncAchievementActivityFromMessages(room);
     return { kind:'room', room, sortKey: vaultLastActivity(room) };
   });
@@ -16141,6 +16489,10 @@ function renderVaultList() {
       : roomDisplayLabel(entry.room).toLowerCase().includes(searchQuery)
         || formatPrivateNumber(entry.room.peerPrivateNumber || '').toLowerCase().includes(searchQuery))
     : orderedEntries;
+  vaultSearchMatchCount = searchQuery ? filteredEntries.length : -1;
+  if (hiddenChatsUnlocked && hiddenChatCodes().size) {
+    html = `<div class="hidden-chats-bar"><span>Hidden chats are showing</span><button type="button" onclick="lockHiddenChats()">Lock</button></div>${html}`;
+  }
   if (searchQuery && filteredEntries.length === 0) {
     body._vaultlixChatListHtml = null;
     body.innerHTML = `<div class="vault-list-empty"><strong>No matches</strong>No chats match "${escHtml(searchQuery)}".</div>`;
@@ -16179,9 +16531,10 @@ function renderVaultList() {
     const avatar = hasLiveStatus
       ? `<button class="vault-list-avatar has-live-status" type="button" data-status-author="${escHtml(normalizePrivateNumber(room.peerPrivateNumber))}" aria-label="View ${escHtml(label)} status" style="${avatarStyle}">${avatarContent}<span class="vault-list-row-dot${room.peerOnline ? ' online' : ''}"></span></button>`
       : `<span class="vault-list-avatar" style="${avatarStyle}">${avatarContent}<span class="vault-list-row-dot${room.peerOnline ? ' online' : ''}"></span></span>`;
-    html += `<div class="vault-list-row" data-room="${room.code}">
+    const hiddenRow = hiddenChatsUnlocked && isChatHidden(room.code);
+    html += `<div class="vault-list-row${hiddenRow ? ' hidden-chat-row' : ''}" data-room="${room.code}">
       ${avatar}
-      <span class="vault-list-row-name">${escHtml(label)}</span>
+      <span class="vault-list-row-name">${escHtml(label)}${hiddenRow ? '<svg class="hidden-chat-lock" viewBox="0 0 24 24" aria-label="Hidden chat"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>' : ''}</span>
       <span class="vault-list-row-preview${preview.alert ? ' alert' : ''}">${escHtml(preview.text)}</span>
       <span class="vault-list-row-meta">
         ${activity ? `<span class="vault-list-row-time">${formatVaultInboxTime(activity)}</span>` : ''}
@@ -16264,6 +16617,7 @@ function prepareChatBodyForFirstPaint() {
 function setActiveRoom(code, { deferMessages = false } = {}) {
   const room = rooms.get(code);
   if (!room) return;
+  if (isChatConcealed(code)) return; // a hidden chat only opens once unlocked
   // Switching which room is on screen (room-tabs tap) doesn't always go
   // through showScreen() — already on s-chat, just picking a different tab,
   // is the common case — so this needs its own closeQrPanel() call too;
@@ -16303,6 +16657,7 @@ function setActiveRoom(code, { deferMessages = false } = {}) {
 // especially important for Android rooms containing animated GIF history.
 function openConversationAfterPaint(code) {
   if (!code || !rooms.has(code)) return false;
+  if (isChatConcealed(code)) { promptUnlockHiddenChats(() => openConversationAfterPaint(code)); return false; }
   setActiveRoom(code, { deferMessages:true });
   showScreen('s-chat');
   const room = rooms.get(code);
@@ -17351,7 +17706,7 @@ function showForwardAttachmentPicker(recOrRecs, options = {}) {
     return;
   }
   const targets = recs.length ? [...rooms.values()].filter(room =>
-    (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
+    !roomConcealed(room) && (options.includeActiveRoom || room.code !== activeRoomCode) && room.everOnline && room.sharedKey && !room.reconnectRequired
   ) : [];
   if (recs.length && !targets.length && !shareRec) { toast('No other connected conversations'); return; }
 
@@ -22268,7 +22623,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // last-active-room preference — tapping "X is calling" should open that
     // room, not whatever tab was left open last.
     const urlRoomCode = new URLSearchParams(location.search).get('room');
-    const notifyCode = (urlRoomCode && rooms.has(urlRoomCode)) ? urlRoomCode
+    const notifyCandidate = (urlRoomCode && rooms.has(urlRoomCode)) ? urlRoomCode
       : (pendingNotificationRoomCode && rooms.has(pendingNotificationRoomCode)) ? pendingNotificationRoomCode
       // Already a member of the room this invite link points to (e.g. they
       // tapped their own share link, or a link to a room they'd already
@@ -22276,8 +22631,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       // them through the join screen again.
       : (joinLinkCode && rooms.has(joinLinkCode)) ? joinLinkCode
       : null;
+    // A tap on a hidden chat's notification asks for the password first
+    // instead of opening it (see the prompt after this block).
+    const concealedNotifyCode = notifyCandidate && isChatConcealed(notifyCandidate) ? notifyCandidate : null;
+    const notifyCode = concealedNotifyCode ? null : notifyCandidate;
     const preferred = loadActiveRoomCode();
-    let activate = notifyCode || ((preferred && rooms.has(preferred)) ? preferred : rooms.keys().next().value);
+    let activate = notifyCode || ((preferred && rooms.has(preferred) && !isChatConcealed(preferred)) ? preferred : firstVisibleRoomCode());
     // An unjoined room only ends up as the pick above if it was the last
     // (or only) room open — if a genuinely connected room is also open,
     // show that instead of stranding the person on a waiting screen with
@@ -22315,6 +22674,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // re-forcing this room over whatever the user switches to afterward.
     if (urlRoomCode) history.replaceState(null, '', location.pathname);
     pendingNotificationRoomCode = null;
+    syncHiddenChatNotificationPrivacy();
+    if (concealedNotifyCode) setTimeout(() => promptUnlockHiddenChats(() => openConversationAfterPaint(concealedNotifyCode)), 600);
     // An invite link for a room we're NOT already in takes priority over
     // whatever we just settled into above — surface the join screen on top
     // so the person can actually accept it, same idea as a notification tap.

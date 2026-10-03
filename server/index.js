@@ -2971,6 +2971,7 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
     '/api/delete-message', '/api/view-once-opened', '/api/set-timer',
     '/api/clear-chat', '/api/mark-delivered', '/api/read', '/api/leave',
     '/api/close', '/api/make-persistent', '/api/revoke-link', '/api/poll',
+    '/api/notification-privacy',
   ]);
   if (!mutationPaths.has(path)) {
     await ensureConversationLoaded(roomCode);
@@ -4913,7 +4914,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // handler itself, the moment the notification is shown, rather
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
-        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview ? 'New message' : `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
@@ -4977,6 +4978,21 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     m.voipEnvironment = null;
     m.nativeRoomHandle = null;
     return res200(res, { ok: true });
+  }
+
+  // POST /api/notification-privacy — a person who hides a conversation on their
+  // device asks that pushes for it stop naming the other person. Applies only
+  // to the caller's own member record (the random member bearer token is
+  // required, same as the push-subscribe routes) and only changes the wording
+  // of the notification: "New message" instead of "New message from <name>".
+  if (path==='/api/notification-privacy' && method==='POST') {
+    const room = await ensureConversationLoaded(d.code);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (typeof d.hidden !== 'boolean') return resErr(res,'Invalid request.',400);
+    if (await rateLimited(`notification-privacy:${d.token}`, 30, 60 * 1000)) return resErr(res,'Too many requests.',429);
+    const m = room.members.get(d.token);
+    if (d.hidden) m.hidePreview = true; else delete m.hidePreview;
+    return res200(res, { ok: true, hidden: d.hidden });
   }
 
   // POST /api/native-push-subscribe — bind an APNs or FCM device token to an
@@ -6543,7 +6559,7 @@ wss.on('connection', (ws) => {
             // "the room on screen when you unlock" are often different rooms.
             const payload = JSON.stringify({
               title: 'Vaultlix',
-              body: caller && caller.name
+              body: caller && caller.name && !peerMember.hidePreview
                 ? `${caller.name} is ${msg2.hasVideo === true ? 'video calling' : 'calling'}`
                 : (msg2.hasVideo === true ? 'Incoming video call' : 'Incoming call'),
               tag: `vaultlix-call-${roomCode}`,
@@ -6696,7 +6712,7 @@ wss.on('connection', (ws) => {
               isCallEnd: true,
               missedCall: isMissedCall,
               callOutcome,
-              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
+              caller: peerMember.hidePreview ? '' : (caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller'),
               callId: nativeCallId || '',
               inviteId: terminalInviteId || '',
               code: roomCode,
@@ -6706,11 +6722,11 @@ wss.on('connection', (ws) => {
             const caller = room2.members.get(token);
             const missedPayload = JSON.stringify({
               title: 'Vaultlix',
-              body: caller && caller.name ? `Missed call from ${caller.name}` : 'Missed call',
+              body: caller && caller.name && !peerMember.hidePreview ? `Missed call from ${caller.name}` : 'Missed call',
               tag: `vaultlix-missed-${roomCode}-${now}`,
               isCall: false,
               missedCall: true,
-              caller: caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller',
+              caller: peerMember.hidePreview ? '' : (caller && caller.name ? String(caller.name).slice(0, 80) : 'Vaultlix caller'),
               callId: nativeCallId || '',
               inviteId: terminalInviteId || '',
               code: roomCode,

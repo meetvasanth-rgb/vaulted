@@ -594,6 +594,7 @@ class PostgresStore {
           apnsToken:push.apnsToken || null, apnsEnvironment:push.apnsEnvironment || null,
           voipToken:push.voipToken || null, voipEnvironment:push.voipEnvironment || null,
           nativeRoomHandle:push.nativeRoomHandle || null,
+          ...(push.hidePreview ? { hidePreview:true } : {}),
         }];
       }),
     };
@@ -686,6 +687,7 @@ class PostgresStore {
         apnsEnvironment:member.apnsEnvironment || null, fcmToken:member.fcmToken || null,
         voipToken:member.voipToken || null, voipEnvironment:member.voipEnvironment || null,
         nativeRoomHandle:member.nativeRoomHandle || null,
+        hidePreview:member.hidePreview === true || undefined,
       }),
       member.lastSeen || 0,
     ]);

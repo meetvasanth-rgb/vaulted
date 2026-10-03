@@ -68,7 +68,7 @@ test('the status page is a full screen reachable via goBack, listing every conne
   // Same data (statusFeed, seen/hidden sets) and same actions as the rail —
   // one row per connection, own status first, tapping opens the existing
   // full-screen viewer (or the composer if there's no status yet).
-  assert.match(renderFn, /statusFeed\.filter\(candidate => !candidate\.own && !hidden\.has\(candidate\.id\)\)/);
+  assert.match(renderFn, /statusFeed\.filter\(candidate => !candidate\.own && !hidden\.has\(candidate\.id\) && !statusAuthorConcealed\(candidate\.authorPrivateNumber\)\)/);
   assert.match(renderFn, /openStatusViewer\('\$\{escapeHtml\(key\)\}'\)/);
   assert.match(renderFn, /ownItems\.length \? "openStatusViewer\('own'\)" : 'openStatusComposer\(\)'/);
   assert.match(renderFn, /status-page-empty/);
