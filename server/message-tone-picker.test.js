@@ -404,3 +404,20 @@ test('the Message chime switch is hidden in the Android app, where it controls n
   assert.match(client, /id="settings-chime-row"/, 'the row still exists for iOS and the web');
   assert.match(client, /if \(nativePlatform\(\) !== 'android'\) playChime\(\);/);
 });
+
+// Beyond messages, playChime() also announced "peer is online" and "peer joined"; on
+// Android those kept playing the chosen tone in the background at random moments.
+test('the Android app plays no in-app chime for any event except an incoming-call ring', () => {
+  assert.match(client, /function playChime\(\{ force = false \} = \{\}\) \{\s*if \(nativePlatform\(\) === 'android' && !force\) return;/);
+  const callers = [...client.matchAll(/\bplayChime\(([^)]*)\)/g)].map(match => match[1].trim()).filter(arg => arg !== '' || true);
+  const forced = callers.filter(arg => arg === '{ force:true }');
+  assert.equal(forced.length, 1, 'only the call ring forces the chime');
+  assert.match(client, /foregroundNativeIncoming\) playChime\(\{ force:true \}\);/);
+});
+
+test('every non-call chime caller goes through the Android guard in playChime', () => {
+  const plain = client.match(/^\s*(?:if \([^\n]*\) )?\{?\s*playChime\(\);/gm) || [];
+  assert.ok(plain.length >= 4, 'peer online / joined / message callers still exist');
+  const body = extractBlock(client, 'function playChime(', '// ── TAB VISIBILITY');
+  assert.ok(body.indexOf("nativePlatform() === 'android'") < body.indexOf('chimeEnabled'), 'the guard comes first');
+});

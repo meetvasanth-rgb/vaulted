@@ -7820,7 +7820,7 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
         !document.hidden && !document.body.classList.contains('native-call-only');
       if (!room.nativeIncomingPrepared || foregroundNativeIncoming) renderCallOverlay(room);
       refreshCallButton();
-      if (!room.nativeIncomingPrepared || foregroundNativeIncoming) playChime();
+      if (!room.nativeIncomingPrepared || foregroundNativeIncoming) playChime({ force:true });
     }
     // Ack receipt so the caller can show "Ringing…" instead of a flat
     // "Calling…" the whole way through — same idea as WhatsApp distinguishing
@@ -13890,7 +13890,12 @@ function playMessageTonePreview(id) {
   } catch (e) {}
 }
 
-function playChime() {
+// The in-app chime. The Android app plays no in-app chime at all — the system
+// notification carries the tone — so the "peer is online" / "peer joined" sounds that
+// went through here kept playing the chosen tone at random in the background. Only
+// the incoming-call ring asks for it explicitly ({ force:true }).
+function playChime({ force = false } = {}) {
+  if (nativePlatform() === 'android' && !force) return;
   if (!chimeEnabled) return;
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
