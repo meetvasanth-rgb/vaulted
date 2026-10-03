@@ -131,7 +131,7 @@ function clientHarness({ native = true, stored = null } = {}) {
     registerNativeTokenForAllRooms: async () => calls.push('rooms'),
     playMessageTonePreview: id => previews.push(id), renderMessageToneList: () => {}, updateMessageToneStatus: () => {},
   });
-  const source = extractBlock(client, "const MESSAGE_TONE_KEY = 'vaultlix_message_tone';", 'document.addEventListener(\'click\', event => {\n  const row = event.target?.closest?.(\'#message-tone-list');
+  const source = extractBlock(client, "const MESSAGE_TONE_KEY = 'vaultlix_message_tone';", '// The floating Chats/Calls bar is hidden while the search box has the keyboard');
   vm.runInContext(source.replace(/function (renderMessageToneList|updateMessageToneStatus)\(\) \{[\s\S]*?\n\}\n/g, ''), context);
   return context;
 }
@@ -179,4 +179,29 @@ test('every native registration sends the tone, and Settings lists the Message s
   assert.match(client, /id="settings-tone-row" onclick="openMessageTonePicker\(\)"/);
   assert.match(client, /notifications:\['settings-chime-row','settings-tone-row','settings-push-row'\]/);
   assert.match(client, /id="message-tone-overlay"/);
+});
+
+// The iPhone app draws Settings pages like iOS Settings (grouped white cards on a
+// lilac page, plain rows, grey value + chevron, green switches). It must stay
+// scoped to the iOS app and must not change the rows' ids or behaviour.
+test('the grouped-list Settings style applies only inside the iPhone app', () => {
+  const block = extractBlock(client, '/* iPhone app: Settings pages in the grouped-list style', 'input:checked ~ .toggle-thumb{transform:translateX(20px)}');
+  const selectors = block.split('\n').filter(line => line.startsWith('html') || line.includes('{')).map(line => line.trim());
+  assert.ok(selectors.length > 10);
+  for (const line of selectors) if (line.includes('{')) assert.match(line, /^html\.vaultlix-native-ios #settings-panel/, line.slice(0, 80));
+  assert.match(block, /#34C759/, 'green switch');
+});
+
+test('the last visible row of a Settings card carries the no-divider marker', () => {
+  assert.match(client, /generalSection\.querySelectorAll\('\.settings-row\.ios-last'\)\.forEach\(row => row\.classList\.remove\('ios-last'\)\);/);
+  assert.match(client, /lastShownRow\.classList\.add\('ios-last'\)/);
+});
+
+// With the Chats search box focused, the keyboard lifted the floating bottom bar on
+// top of it (Android resizes the page, iOS lifts fixed elements).
+test('the floating Chats bar is hidden while the search box has the keyboard', () => {
+  assert.match(client, /html\.vault-search-typing \.vault-list-actions\{display:none!important\}/);
+  assert.match(client, /document\.addEventListener\('focusin', event => \{\s*if \(event\.target\?\.id === 'vault-search-input'\) document\.documentElement\.classList\.add\('vault-search-typing'\);/);
+  assert.match(client, /document\.addEventListener\('focusout', event => \{\s*if \(event\.target\?\.id === 'vault-search-input'\) document\.documentElement\.classList\.remove\('vault-search-typing'\);/);
+  assert.match(client, /function closeVaultSearch\(\) \{\s*document\.documentElement\.classList\.remove\('vault-search-typing'\);/);
 });

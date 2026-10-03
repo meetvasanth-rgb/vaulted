@@ -1110,6 +1110,31 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .tone-row .tone-check{width:18px;height:18px;fill:none;stroke:#682C43;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:0}
 .tone-row[aria-checked="true"] .tone-check{opacity:1}
 .tone-row-note{color:#9B8A92;font-size:13px;margin-left:6px}
+/* While the Chats search box is being typed in, the floating bottom bar would ride up on top of the keyboard. */
+html.vault-search-typing .vault-list-actions{display:none!important}
+/* iPhone app: Settings pages in the grouped-list style of iOS Settings — a lilac
+   page, inset white cards, plain text rows with a grey value and chevron, green
+   switches, and a round floating back button. Scoped to the iOS app so the web and
+   Android keep their own look. The icon tiles stay on the top-level menu. */
+html.vaultlix-native-ios #settings-panel{background:#EFEEF5;border-left:0;box-shadow:none}
+html.vaultlix-native-ios #settings-panel .settings-header{background:transparent;border-bottom:0;gap:0;padding:calc(10px + env(safe-area-inset-top)) 14px 8px}
+html.vaultlix-native-ios #settings-panel .settings-back{width:38px;height:38px;background:rgba(255,255,255,.92);color:#271D25;box-shadow:0 1px 8px rgba(30,20,40,.1)}
+html.vaultlix-native-ios #settings-panel .settings-back svg{width:18px;height:18px}
+html.vaultlix-native-ios #settings-panel .settings-header-title{font:650 17px/1.2 'Inter',-apple-system,sans-serif;letter-spacing:-.01em;text-align:center;margin-right:38px;color:#1B1720}
+html.vaultlix-native-ios #settings-panel #settings-general-section{margin:8px 14px 0;background:#fff;border-radius:18px;overflow:hidden}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-section-label{display:none}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-row{padding:14px 16px;gap:10px;border-bottom:.5px solid #E7E4EB}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-row.ios-last{border-bottom:0}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-row-icon{display:none}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-row-title{font:500 16px/1.25 'Inter',-apple-system,sans-serif;color:#1B1720;margin-bottom:0}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-row-sub{font:400 12.5px/1.4 'Inter',-apple-system,sans-serif;color:#8A8590;margin-top:2px}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-status{font:400 15px/1.2 'Inter',-apple-system,sans-serif;letter-spacing:0;color:#8A8590;max-width:42%;white-space:normal}
+html.vaultlix-native-ios #settings-panel #settings-general-section .settings-status-action::after{content:'\203A';margin-left:8px;color:#C4C0CB;font-size:22px;line-height:1;vertical-align:-2px}
+html.vaultlix-native-ios #settings-panel .toggle-switch{width:51px;height:31px}
+html.vaultlix-native-ios #settings-panel .toggle-track{border-radius:16px;background:#E5E5EA}
+html.vaultlix-native-ios #settings-panel .toggle-switch input:checked + .toggle-track{background:#34C759}
+html.vaultlix-native-ios #settings-panel .toggle-thumb{top:2px;left:2px;width:27px;height:27px;box-shadow:0 2px 6px rgba(0,0,0,.22)}
+html.vaultlix-native-ios #settings-panel .toggle-switch input:checked ~ .toggle-thumb{transform:translateX(20px)}
 .locker-sheet{position:relative;overflow:hidden;background:linear-gradient(160deg,#FFFDFE 0%,#FBF5F7 100%);border:1px solid rgba(104,44,67,.12);border-radius:28px;padding:26px;box-shadow:0 26px 80px rgba(47,25,35,.3);font-family:'Inter',sans-serif}
 .locker-sheet .app-lock-title{margin:0 0 9px;font:750 25px/1.15 'Manrope',sans-serif;letter-spacing:-.035em;color:#271D25}.locker-sheet .app-lock-copy{font:500 13px/1.6 'Inter',sans-serif;color:#75666D;margin-bottom:18px}.locker-sheet .app-lock-field{margin:13px 0}.locker-sheet .app-lock-field span{margin-bottom:7px;color:#57464E;font:700 11px/1.2 'Inter',sans-serif;letter-spacing:.025em}.locker-sheet .app-lock-field input{height:50px;border-color:#DDCFD5;border-radius:15px;padding:0 15px;background:#fff;color:#271D25;font:600 16px 'Inter',sans-serif;transition:border-color .15s,box-shadow .15s}.locker-sheet .app-lock-field input:focus{border-color:#A85D76;box-shadow:0 0 0 4px rgba(168,93,118,.12)}.locker-sheet .app-lock-actions{margin-top:21px}.locker-sheet .app-lock-actions button{min-height:46px;border-color:#DDCFD5;border-radius:14px;color:#682C43;padding:0 18px;font:750 13px 'Manrope',sans-serif}.locker-sheet .app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff;box-shadow:0 8px 20px rgba(104,44,67,.2)}
 #locker-setup-overlay,#locker-unlock-overlay,#locker-vault-overlay{background:rgba(31,18,25,.66);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
@@ -11166,6 +11191,11 @@ function openSettingsCategory(category) {
     sectionLabel.style.display = '';
   }
   selectedRows.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
+  // The iPhone app draws these rows as one grouped card; mark the last visible row
+  // so it carries no divider line (CSS cannot tell which hidden sibling is last).
+  generalSection.querySelectorAll('.settings-row.ios-last').forEach(row => row.classList.remove('ios-last'));
+  const lastShownRow = [...selectedRows].reverse().map(id => document.getElementById(id)).find(el => el && el.classList.contains('settings-row'));
+  if (lastShownRow) lastShownRow.classList.add('ios-last');
   if (category === 'profile') {
     populateAccountProfileSettings();
     const accountState = loadAccountState();
@@ -13766,6 +13796,15 @@ function chooseMessageTone(id) {
   playMessageTonePreview(id);
   if (changed) syncMessageToneToServer();
 }
+
+// The floating Chats/Calls bar is hidden while the search box has the keyboard, so it
+// does not sit on top of it (Android and iOS both lift fixed bottom elements).
+document.addEventListener('focusin', event => {
+  if (event.target?.id === 'vault-search-input') document.documentElement.classList.add('vault-search-typing');
+});
+document.addEventListener('focusout', event => {
+  if (event.target?.id === 'vault-search-input') document.documentElement.classList.remove('vault-search-typing');
+});
 
 document.addEventListener('click', event => {
   const row = event.target?.closest?.('#message-tone-list .tone-row');
@@ -16463,6 +16502,7 @@ function openVaultSearch() {
 }
 
 function closeVaultSearch() {
+  document.documentElement.classList.remove('vault-search-typing');
   vaultSearchActive = false;
   vaultSearchQuery = '';
   document.getElementById('vault-list-search')?.setAttribute('hidden', '');
