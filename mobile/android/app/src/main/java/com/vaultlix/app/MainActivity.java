@@ -79,6 +79,7 @@ public class MainActivity extends BridgeActivity {
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
     private volatile Uri preparedNumberCardUri;
+    private volatile String preparedNumberCardLink;
     private volatile File pendingSaveMediaFile;
     private final ExecutorService mediaCacheCleanupExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "vaultlix-media-cache-cleanup");
@@ -890,6 +891,7 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean prepareShareImage(String dataUrl) {
+            preparedNumberCardLink = null;
             if (dataUrl == null || !dataUrl.startsWith("data:image/png;base64,") || dataUrl.length() > 12_000_000) return false;
             try {
                 int comma = dataUrl.indexOf(',');
@@ -905,6 +907,26 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean prepareShareImageWithLink(String dataUrl, String shareUrl) {
+            boolean prepared = prepareShareImage(dataUrl);
+            if (!prepared) return false;
+            preparedNumberCardLink = validNumberCardShareUrl(shareUrl);
+            return true;
+        }
+
+        private String validNumberCardShareUrl(String shareUrl) {
+            if (shareUrl == null) return null;
+            try {
+                Uri uri = Uri.parse(shareUrl);
+                String path = uri.getPath();
+                if (!"https".equalsIgnoreCase(uri.getScheme())
+                        || !"vaultlix.com".equalsIgnoreCase(uri.getHost())
+                        || path == null || !path.matches("/[2-9][0-9]{5,9}")) return null;
+                return uri.toString();
+            } catch (RuntimeException ignored) { return null; }
+        }
+
+        @JavascriptInterface
         public boolean sharePreparedImage() {
             Uri uri = preparedNumberCardUri;
             if (uri == null) return false;
@@ -913,6 +935,7 @@ public class MainActivity extends BridgeActivity {
                     Intent sendIntent = new Intent(Intent.ACTION_SEND);
                     sendIntent.setType("image/png");
                     sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                    if (preparedNumberCardLink != null) sendIntent.putExtra(Intent.EXTRA_TEXT, preparedNumberCardLink);
                     sendIntent.setClipData(ClipData.newRawUri("Vaultlix number card", uri));
                     sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(Intent.createChooser(sendIntent, "Share your Vaultlix number"));
@@ -924,6 +947,11 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean shareImage(String dataUrl) {
             return prepareShareImage(dataUrl) && sharePreparedImage();
+        }
+
+        @JavascriptInterface
+        public boolean shareImageWithLink(String dataUrl, String shareUrl) {
+            return prepareShareImageWithLink(dataUrl, shareUrl) && sharePreparedImage();
         }
 
         @JavascriptInterface

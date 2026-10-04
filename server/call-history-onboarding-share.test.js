@@ -71,7 +71,7 @@ test('public invitations retain branded previews while number-card QR uses the v
   assert.match(shareBody, /quickConnectQrUrl\(state\.privateNumber/);
   assert.match(client, /intent:\/\/vaultlix\.com\/\$\{path\}#Intent;scheme=https;package=com\.vaultlix\.app/);
   assert.match(shareBody, /VaultlixAndroid\.shareImage/);
-  assert.match(shareBody, /navigator\.share\(\{ title:'My Vaultlix Private Number', files:\[file\] \}\)/);
+  assert.match(shareBody, /navigator\.share\(\{[\s\S]*title:'My Vaultlix Private Number'[\s\S]*url:shareUrl[\s\S]*files:\[file\]/);
 });
 
 test('number-card preparation starts quietly before the first Android share tap', () => {

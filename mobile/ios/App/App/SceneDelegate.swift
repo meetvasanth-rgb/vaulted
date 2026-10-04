@@ -30,6 +30,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var pendingUniversalLink: URL?
     private var appSwitcherPrivacyCover: UIView?
     private var preparedShareImageURL: URL?
+    private var preparedShareLinkURL: URL?
     private var pendingDocumentExportURL: URL?
     private var pendingOpenFileURL: URL?
     private var nativeMediaPlayer: AVPlayerViewController?
@@ -754,7 +755,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         return controller
     }
 
-    private func presentShareImage(_ fileURL: URL) {
+    private func presentShareImage(_ fileURL: URL, shareURL: URL? = nil) {
         guard let presenter = topViewController(from: window?.rootViewController),
               presenter.viewIfLoaded?.window != nil else {
             emit(name: "vaultlix:share-image-failed", detail: [:])
@@ -764,7 +765,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emit(name: "vaultlix:share-image-presented", detail: [:])
             return
         }
-        let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        let sheet = UIActivityViewController(activityItems: [fileURL, shareURL].compactMap { $0 }, applicationActivities: nil)
         sheet.completionWithItemsHandler = { [weak self] _, _, _, _ in
             // The prepared private-number card is deliberately retained for
             // instant repeat sharing. Conversation media uses unique URLs and
@@ -779,6 +780,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         presenter.present(sheet, animated: true) { [weak self] in
             self?.emit(name: "vaultlix:share-image-presented", detail: [:])
         }
+    }
+
+    private func validNumberCardShareURL(_ value: Any?) -> URL? {
+        guard let raw = value as? String,
+              let url = URL(string: raw),
+              url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == "vaultlix.com" else { return nil }
+        let number = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard (6...10).contains(number.count),
+              number.first.map({ "23456789".contains($0) }) == true,
+              number.allSatisfy({ $0.isNumber }) else { return nil }
+        return url
     }
 
     private func presentSaveFile(_ fileURL: URL) {
@@ -1037,6 +1050,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             do {
                 try data.write(to: fileURL, options: .atomic)
                 preparedShareImageURL = fileURL
+                preparedShareLinkURL = validNumberCardShareURL(body["shareUrl"])
                 emit(name: "vaultlix:share-image-ready", detail: [:])
             } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
@@ -1046,7 +1060,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 emit(name: "vaultlix:share-image-failed", detail: [:])
                 return
             }
-            presentShareImage(fileURL)
+            presentShareImage(fileURL, shareURL: preparedShareLinkURL)
             return
         }
         if action == "shareImage" {
@@ -1063,7 +1077,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             do {
                 try data.write(to: fileURL, options: .atomic)
                 preparedShareImageURL = fileURL
-                presentShareImage(fileURL)
+                preparedShareLinkURL = validNumberCardShareURL(body["shareUrl"])
+                presentShareImage(fileURL, shareURL: preparedShareLinkURL)
             } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }

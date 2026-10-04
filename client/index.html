@@ -11388,6 +11388,11 @@ function quickConnectQrUrl(privateNumber, profileShareCode = loadAccountState()?
   return code ? `https://vaultlix.com/p-${code}?ref=qr` : `https://vaultlix.com/${privateNumber}?ref=qr`;
 }
 
+function numberCardShareUrl(privateNumber) {
+  const number = normalizePrivateNumber(privateNumber);
+  return number ? `https://vaultlix.com/${number}` : '';
+}
+
 let numberCardPrewarmScheduled = false;
 function scheduleNumberCardPrewarm(state = loadAccountState()) {
   if (!state?.privateNumber || numberCardPrewarmScheduled) return;
@@ -11428,7 +11433,7 @@ async function renderNumberCard(state = loadAccountState()) {
     numberCardNativePrepared = false;
     numberCardAssetPromise = prepareNumberCardAsset(canvas);
     numberCardAssetPromise.then(asset => {
-      if (numberCardAssetKey === assetKey) prepareNativeNumberCard(asset.dataUrl);
+      if (numberCardAssetKey === assetKey) prepareNativeNumberCard(asset.dataUrl, numberCardShareUrl(state.privateNumber));
     }).catch(() => {});
     return numberCardAssetPromise;
   } finally { URL.revokeObjectURL(objectUrl); }
@@ -11446,14 +11451,18 @@ function prepareNumberCardAsset(canvas) {
   });
 }
 
-function prepareNativeNumberCard(dataUrl) {
+function prepareNativeNumberCard(dataUrl, shareUrl = numberCardShareUrl(loadAccountState()?.privateNumber)) {
   try {
+    if (typeof window.VaultlixAndroid?.prepareShareImageWithLink === 'function') {
+      numberCardNativePrepared = window.VaultlixAndroid.prepareShareImageWithLink(dataUrl, shareUrl) !== false;
+      return numberCardNativePrepared;
+    }
     if (typeof window.VaultlixAndroid?.prepareShareImage === 'function') {
       numberCardNativePrepared = window.VaultlixAndroid.prepareShareImage(dataUrl) !== false;
       return numberCardNativePrepared;
     }
     if (window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'prepareShareImage', dataUrl });
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'prepareShareImage', dataUrl, shareUrl });
       return null;
     }
   } catch (error) { numberCardNativePrepared = false; return false; }
@@ -11466,10 +11475,16 @@ async function shareNumberCard() {
   try {
     const asset = await (numberCardAssetPromise || (numberCardAssetPromise = prepareNumberCardAsset(canvas)));
     const file = new File([asset.blob], 'vaultlix-private-number.png', { type:'image/png' });
+    const shareUrl = numberCardShareUrl(loadAccountState()?.privateNumber);
     if (typeof window.VaultlixAndroid?.sharePreparedImage === 'function') {
-      const prepared = numberCardNativePrepared || prepareNativeNumberCard(asset.dataUrl) === true;
+      const prepared = numberCardNativePrepared || prepareNativeNumberCard(asset.dataUrl, shareUrl) === true;
       const opened = prepared && window.VaultlixAndroid.sharePreparedImage() === true;
       if (opened) { closeNumberCard(); return; }
+      if (typeof window.VaultlixAndroid.shareImageWithLink === 'function'
+          && window.VaultlixAndroid.shareImageWithLink(asset.dataUrl, shareUrl) === true) {
+        closeNumberCard();
+        return;
+      }
       if (typeof window.VaultlixAndroid.shareImage === 'function'
           && window.VaultlixAndroid.shareImage(asset.dataUrl) === true) {
         closeNumberCard();
@@ -11480,7 +11495,7 @@ async function shareNumberCard() {
     if (window.webkit?.messageHandlers?.vaultlixCall) {
       const message = numberCardNativePrepared
         ? { action:'sharePreparedImage' }
-        : { action:'shareImage', dataUrl:asset.dataUrl };
+        : { action:'shareImage', dataUrl:asset.dataUrl, shareUrl };
       window.webkit.messageHandlers.vaultlixCall.postMessage(message);
       // Keep the card visible until iOS confirms that its share sheet was
       // presented. Closing immediately made a failed share look like a redirect
@@ -11494,7 +11509,12 @@ async function shareNumberCard() {
     }
     if (navigator.canShare?.({ files:[file] })) {
       try {
-        await navigator.share({ title:'My Vaultlix Private Number', files:[file] });
+        await navigator.share({
+          title:'My Vaultlix Private Number',
+          text:`Connect with me privately on Vaultlix: ${shareUrl}`,
+          url:shareUrl,
+          files:[file],
+        });
         closeNumberCard();
         return;
       } catch (error) {
