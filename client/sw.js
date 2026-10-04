@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v159';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v160';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
@@ -103,6 +103,20 @@ self.addEventListener('fetch', (event) => {
   if (APP_SHELL_FILES.includes(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(APP_SHELL_CACHE);
+      // The Private Number card is a separately loaded generator. Keeping it
+      // cache-first allowed an updated native Android bridge to share the new
+      // link while an older cached generator still rendered the previous card.
+      // Refresh it whenever online, with the installed copy retained for
+      // offline sharing.
+      if (url.pathname === '/number-card.js') {
+        try {
+          const response = await fetch(request);
+          if (response.ok) await cache.put(url.pathname, response.clone());
+          return response;
+        } catch (error) {
+          return (await cache.match(request, { ignoreSearch:true })) || Response.error();
+        }
+      }
       const cached = await cache.match(request, { ignoreSearch:true });
       if (cached) return cached;
       const response = await fetch(request);

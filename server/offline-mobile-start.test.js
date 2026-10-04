@@ -30,6 +30,11 @@ test('service worker caches only static app-shell routes for offline navigation'
   assert.doesNotMatch(client, /You’re offline\. Vaultlix will reconnect automatically\./);
 });
 
+test('Android refreshes the number-card generator while retaining an offline copy', () => {
+  assert.match(worker, /vaultlix-app-shell-v160/);
+  assert.match(worker, /url\.pathname === '\/number-card\.js'[\s\S]{0,500}await fetch\(request\)[\s\S]{0,500}cache\.match\(request, \{ ignoreSearch:true \}\)/);
+});
+
 test('incoming CallKit flow holds the keyboard guard until the call is over', () => {
   assert.match(iosManager, /private var appKeyboardLockedForCall = false/);
   assert.match(iosManager, /input\.dataset\.vaultlixCallKeyboardGuard = '1'/);
