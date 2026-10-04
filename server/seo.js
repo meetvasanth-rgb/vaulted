@@ -102,7 +102,7 @@ const PAGES = {
 
 // Indexable URLs for sitemap.xml. Only public marketing/legal pages — never
 // app routes, invitations, profiles, admin or API paths.
-const SITEMAP_PATHS = ['/', '/delete-account', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/use-cases/online-dating', '/compare/vaultlix-vs-zangi', '/faq', '/privacy', '/terms', '/install', '/get-app'];
+const SITEMAP_PATHS = ['/', '/delete-account', '/messaging-without-phone-number', '/how-vaultlix-numbers-work', '/use-cases/online-dating', '/compare/vaultlix-vs-zangi', '/faq', '/privacy', '/terms', '/install', '/app'];
 
 const SCREEN_TO_PATH = Object.fromEntries(Object.entries(PAGES).filter(([, cfg]) => cfg.screen).map(([p, cfg]) => [cfg.screen, p]));
 

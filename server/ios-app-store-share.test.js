@@ -12,6 +12,7 @@ const generator = fs.readFileSync(path.join(root, 'scripts', 'generate-ios-app-s
 const png = fs.readFileSync(path.join(root, 'client', 'media', 'vaultlix-ios-app-store-card.png'));
 const appStoreBadge = fs.readFileSync(path.join(root, 'client', 'media', 'download-on-the-app-store.svg'), 'utf8');
 const playStoreBadge = fs.readFileSync(path.join(root, 'client', 'media', 'get-it-on-google-play.png'));
+const server = fs.readFileSync(path.join(root, 'server', 'index.js'), 'utf8');
 
 const APP_STORE_URL = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
 
@@ -29,6 +30,8 @@ test('Get the app QR routes each phone to its correct store', () => {
   assert.match(getApp, /Android/);
   assert.match(getApp, /https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.vaultlix\.app/);
   assert.match(getApp, /location\.replace/);
+  assert.match(client, /VAULTLIX_PUBLIC_APP_LINK = 'https:\/\/vaultlix\.com\/app'/);
+  assert.match(server, /url === '\/app'/);
 });
 
 test('website uses official black store badge artwork at matching visual sizes', () => {

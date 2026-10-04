@@ -3040,14 +3040,14 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         </div>
       </div>
       <div class="landing-header-actions">
-        <a class="landing-account-btn landing-account-btn-app" href="/get-app" onclick="event.preventDefault();openWebsiteGetApp()" aria-label="Get the Vaultlix app" style="text-decoration:none"><span class="landing-account-label">Get the app</span></a>
+        <a class="landing-account-btn landing-account-btn-app" href="/app" onclick="event.preventDefault();openWebsiteGetApp()" aria-label="Get the Vaultlix app" style="text-decoration:none"><span class="landing-account-label">Get the app</span></a>
         <details class="landing-menu">
           <summary aria-label="Open website menu">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
             <span class="landing-menu-label">Menu</span>
           </summary>
           <nav class="landing-menu-panel" aria-label="Website sections">
-            <a href="/get-app" onclick="this.closest('details').removeAttribute('open')">Get the app</a>
+            <a href="/app" onclick="this.closest('details').removeAttribute('open')">Get the app</a>
             <a href="#everyday-privacy" onclick="this.closest('details').removeAttribute('open')">Why Vaultlix</a>
             <a href="#privacy-difference" onclick="this.closest('details').removeAttribute('open')">Privacy difference</a>
             <a href="#how-it-works" onclick="this.closest('details').removeAttribute('open')">How it works</a>
@@ -4044,7 +4044,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <div class="account-head"><div><div class="account-kicker">Better with friends</div><div class="account-title" id="share-vaultlix-title">Share Vaultlix</div></div><button id="share-vaultlix-close" class="account-close" type="button" onclick="closeShareVaultlix()" aria-label="Close share dialog">×</button></div>
     <p class="account-copy">Invite friends to private chats and calls. Scan the QR code to see app availability.</p>
     <div style="display:flex;justify-content:center;overflow:hidden"><canvas id="share-vaultlix-qr" style="max-width:100%;height:auto" role="img" aria-label="QR code for the Vaultlix app download page"></canvas></div>
-    <input id="share-vaultlix-link" aria-label="Public app link" readonly value="https://vaultlix.com/get-app" style="width:100%;box-sizing:border-box;margin:16px 0;padding:12px;border:1px solid #ded5d8;border-radius:10px;font:inherit"/>
+    <input id="share-vaultlix-link" aria-label="Public app link" readonly value="https://vaultlix.com/app" style="width:100%;box-sizing:border-box;margin:16px 0;padding:12px;border:1px solid #ded5d8;border-radius:10px;font:inherit"/>
     <button class="account-primary" type="button" onclick="shareVaultlixApp()">Share app</button>
     <button class="account-secondary" type="button" onclick="copyVaultlixAppLink()">Copy link</button>
     <button class="account-secondary" type="button" onclick="saveVaultlixAppQr()">Save QR image</button>
@@ -15077,7 +15077,7 @@ function nativePlatform() {
 function isNativeApp() { return nativePlatform() !== null; }
 function isNativeIosApp() { return nativePlatform() === 'ios'; }
 
-const VAULTLIX_PUBLIC_APP_LINK = 'https://vaultlix.com/get-app';
+const VAULTLIX_PUBLIC_APP_LINK = 'https://vaultlix.com/app';
 const VAULTLIX_IOS_APP_STORE_LINK = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
 const VAULTLIX_GOOGLE_PLAY_LINK = 'https://play.google.com/store/apps/details?id=com.vaultlix.app';
 const VAULTLIX_IOS_APP_STORE_CARD = '/media/vaultlix-ios-app-store-card.png';
