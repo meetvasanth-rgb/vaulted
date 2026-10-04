@@ -20,7 +20,7 @@ test('share-card screenshot remains visually stable at 1080 by 1350', () => {
   assert.equal(BRAND, '#6B1F3A');
   assert.equal(
     crypto.createHash('sha256').update(svg).digest('hex'),
-    'cf11c29226e6348026b8eabc26f1b86da315a53cb3e33d00973d206852c0b92f',
+    '062f6da35937e2ebf61177772ca3967f019e31347352065deca4bd404941084f',
   );
 });
 
@@ -34,7 +34,7 @@ test('number card explains the scan and includes a readable connection fallback'
   const svg = createNumberCardSvg({
     number:'2480599999', shareCode:'ABC234', username:'Vasanthkumar', tier:'founding', qrMatrix:[[true]],
   });
-  assert.match(svg, /Scan to connect privately with Vasanthkumar/);
+  assert.match(svg, /Scan to connect privately<\/tspan><tspan[^>]*>with Vasanthkumar/);
   assert.match(svg, /vaultlix\.com\/2480599999/);
   assert.match(svg, /NO SIM REQUIRED/);
   assert.doesNotMatch(svg, /vaultlix\.com\/p-ABC234/);
