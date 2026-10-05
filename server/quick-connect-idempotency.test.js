@@ -84,6 +84,15 @@ test('Quick Connect classifies both directions of an existing relationship witho
   });
   assert.equal(accepted.data.status, 'accepted');
 
+  const acceptedRetry = await post(base, '/api/connections/respond', {
+    ...auth(bob), requestId:first.data.requestId, action:'accepted',
+    inviteUrl:'https://vaultlix.com/join/ignored-retry#k=BBBBBBBBBBBBBBBBBBBBBB',
+  });
+  assert.equal(acceptedRetry.status, 200);
+  assert.equal(acceptedRetry.data.status, 'accepted');
+  assert.equal(acceptedRetry.data.repeated, true);
+  assert.equal(acceptedRetry.data.inviteUrl, `https://vaultlix.com/join/${room.data.code}#k=AAAAAAAAAAAAAAAAAAAAAA`);
+
   const aliceAgain = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
   const bobAgain = await post(base, '/api/connections/request', { ...auth(bob), privateNumber:'2345678901' });
   assert.equal(aliceAgain.data.status, 'connected');
@@ -141,4 +150,7 @@ test('accepted relationships survive request-expiry cleanup and the client opens
   assert.match(client, /backedUpSession = \(bundle\.sessions \|\| \[\]\)\.find/);
   assert.match(client, /Existing private conversation restored securely/);
   assert.match(client, /replaceExisting:true/);
+  assert.match(client, /if \(pendingConnectionAcceptance\) return;/);
+  assert.match(client, /acceptedCodesByPeer/);
+  assert.match(client, /!room\.persistent \|\| room\.ownerAccountId !== state\.accountId/);
 });

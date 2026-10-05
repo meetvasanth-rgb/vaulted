@@ -12908,12 +12908,18 @@ function peerIdentityFromConnection(request, state = loadAccountState()) {
   return { privateNumber:null, displayName:null, profileImage:null };
 }
 async function reconcileConversationPeerIdentities(requests, state) {
+  const acceptedCodesByPeer = new Map();
   for (const request of requests || []) {
     if (request.status !== 'accepted' || !request.inviteUrl) continue;
     const peer = peerIdentityFromConnection(request, state);
     if (!peer.privateNumber) continue;
     let code = null;
     try { code = new URL(request.inviteUrl).pathname.split('/').filter(Boolean).pop()?.toLowerCase() || null; } catch (e) {}
+    if (code) {
+      const codes = acceptedCodesByPeer.get(peer.privateNumber) || new Set();
+      codes.add(code);
+      acceptedCodesByPeer.set(peer.privateNumber, codes);
+    }
     const room = code ? rooms.get(code) : null;
     if (!room) continue;
     const current = normalizePrivateNumber(room.peerPrivateNumber);
@@ -12935,6 +12941,20 @@ async function reconcileConversationPeerIdentities(requests, state) {
     }
     if (!room.everOnline) { room.everOnline = true; changed = true; }
     if (changed) await persistRoom(room);
+  }
+  // Repair installations affected by the old acceptance race. A room is
+  // eligible only when it belongs to this account, never connected, carries
+  // the accepted peer's private number, and is not one of that relationship's
+  // server-recorded invitations. Ordinary share-code rooms have no peer
+  // private number and cannot be selected by this cleanup.
+  for (const room of [...rooms.values()]) {
+    const peerNumber = normalizePrivateNumber(room.peerPrivateNumber);
+    const acceptedCodes = peerNumber ? acceptedCodesByPeer.get(peerNumber) : null;
+    if (!acceptedCodes || acceptedCodes.has(room.code) || room.everOnline || !room.persistent || room.ownerAccountId !== state.accountId) continue;
+    try {
+      const closed = await api('/api/close', { code:room.code, token:room.token });
+      if (!closed.error || closed.status === 404) removeRoomFromState(room.code);
+    } catch (error) {}
   }
 }
 async function refreshConnectionRequests() {
@@ -12981,7 +13001,13 @@ async function openConnectionRequest(requestId = null) {
   scrollToFocusedConnectionRequest();
 }
 async function acceptConnectionRequest(requestId) {
+  // Creating the encrypted room takes long enough for an inbox refresh (or
+  // a second tap on a slow phone) to paint the same request again. Treat the
+  // whole create + respond sequence as one operation; otherwise each tap
+  // creates another permanent room before the server sees the acceptance.
+  if (pendingConnectionAcceptance) return;
   const request = pendingIncomingConnections.find(item => item.id === requestId);
+  if (!request) return;
   const peer = peerIdentityFromConnection(request);
   pendingConnectionPeerName = peer.displayName;
   pendingConnectionPeerPrivateNumber = peer.privateNumber;
@@ -13544,6 +13570,39 @@ async function prepareAndConfirmAccountBackup(state) {
 }
 let accountReplacementActive = false;
 let accountReauthenticationActive = false;
+let accountReauthenticationCheck = null;
+async function confirmAccountReauthentication() {
+  if (accountReplacementActive || accountReauthenticationActive) return;
+  if (accountReauthenticationCheck) return accountReauthenticationCheck;
+  const state = loadAccountState();
+  if (!state) return;
+  const accountId = state.accountId;
+  const sessionToken = state.sessionToken;
+  accountReauthenticationCheck = (async () => {
+    // A WebSocket can be rejected by a stale deployment replica while the
+    // same session is still valid. Confirm through the account API twice
+    // before interrupting an existing user with the sign-in sheet.
+    for (const delay of [250, 1000]) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      const current = loadAccountState();
+      if (!current || current.accountId !== accountId || current.sessionToken !== sessionToken) return;
+      let result;
+      try {
+        result = await api('/api/account/fetch', { accountId, sessionToken });
+      } catch (error) {
+        return;
+      }
+      if (!result?.error) {
+        connectInbox();
+        return;
+      }
+      if (result.status !== 401) return;
+    }
+    const current = loadAccountState();
+    if (current?.accountId === accountId && current.sessionToken === sessionToken) requestAccountReauthentication();
+  })().finally(() => { accountReauthenticationCheck = null; });
+  return accountReauthenticationCheck;
+}
 function requestAccountReauthentication() {
   if (accountReplacementActive || accountReauthenticationActive) return;
   const state = loadAccountState();
@@ -20131,7 +20190,7 @@ async function syncInbox({ refreshAll = false } = {}) {
   } catch (e) { return; }
   if (!result) return;
   if (result.error) {
-    if (result.status === 401) requestAccountReauthentication();
+    if (result.status === 401) confirmAccountReauthentication();
     return;
   }
   if (Number.isFinite(result.sequence)) inboxSequence = Math.max(inboxSequence, result.sequence);
@@ -20201,7 +20260,7 @@ function connectInbox() {
       return;
     }
     if (event.code === 4001) {
-      requestAccountReauthentication();
+      confirmAccountReauthentication();
       return;
     }
     if (!loadAccountState()) return;
@@ -21483,7 +21542,16 @@ async function handleSetup({ silent = false } = {}) {
       const room = makeRoom({ code: null, token: null, myName: name, deleteTimerSeconds: timerVal, persistent: persistentVal });
       const pubKey = await getOrGenerateKeyPair(room);
       const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal });
-      if (result.error) { showErr(result.error); resetSetupBtn(); return; }
+      if (result.error) {
+        if (mode === 'connection') {
+          pendingConnectionAcceptance = null;
+          pendingConnectionPeerName = null;
+          pendingConnectionPeerPrivateNumber = null;
+          pendingConnectionPeerProfileImage = null;
+          refreshConnectionRequests().catch(() => {});
+        }
+        showErr(result.error); resetSetupBtn(); return;
+      }
 
       room.code = result.code;
       room.token = result.token;
@@ -21496,12 +21564,13 @@ async function handleSetup({ silent = false } = {}) {
       addRoomToState(room);
       persistRoom(room);
       if (pendingConnectionAcceptance) {
-        const requestId = pendingConnectionAcceptance; pendingConnectionAcceptance = null;
+        const requestId = pendingConnectionAcceptance;
+        const state = loadAccountState();
+        const accepted = await api('/api/connections/respond', { accountId:state.accountId, sessionToken:state.sessionToken, requestId, action:'accepted', inviteUrl:await buildInviteLink(room.code) });
+        pendingConnectionAcceptance = null;
         pendingConnectionPeerName = null;
         pendingConnectionPeerPrivateNumber = null;
         pendingConnectionPeerProfileImage = null;
-        const state = loadAccountState();
-        const accepted = await api('/api/connections/respond', { accountId:state.accountId, sessionToken:state.sessionToken, requestId, action:'accepted', inviteUrl:await buildInviteLink(room.code) });
         if (accepted.error) toast(accepted.error); else toast('Private conversation created — the requester can now join');
       }
       // Register this creator-side room while it is still on the waiting
@@ -21603,6 +21672,13 @@ async function handleSetup({ silent = false } = {}) {
       });
     }
   } catch(e) {
+    if (mode === 'connection') {
+      pendingConnectionAcceptance = null;
+      pendingConnectionPeerName = null;
+      pendingConnectionPeerPrivateNumber = null;
+      pendingConnectionPeerProfileImage = null;
+      refreshConnectionRequests().catch(() => {});
+    }
     if (silent) {
       toast('Connection failed. Please try again.');
       showScreen('s-vault-list');

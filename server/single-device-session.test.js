@@ -169,9 +169,17 @@ test('session replacement is carried through native and web notification paths',
 
 test('ordinary authentication and restoration failures preserve local conversations', () => {
   const client = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf8');
-  assert.match(client, /if \(result\.status === 401\) requestAccountReauthentication\(\)/);
+  assert.match(client, /if \(result\.status === 401\) confirmAccountReauthentication\(\)/);
   assert.doesNotMatch(client, /event\.code === 4001 \|\| event\.code === 4004/);
-  assert.match(client, /if \(event\.code === 4001\) \{[\s\S]*requestAccountReauthentication\(\)/);
+  assert.match(client, /if \(event\.code === 4001\) \{[\s\S]*confirmAccountReauthentication\(\)/);
+  assert.match(client, /for \(const delay of \[250, 1000\]\)/);
   assert.match(client, /if \(result\.error\) \{[\s\S]*room\.restoreUnavailable = true;[\s\S]*addRoomToState\(room\);[\s\S]*restoredAny = true;[\s\S]*continue;/);
   assert.match(client, /Connection unavailable · tap to retry/);
+});
+
+test('active account sessions renew before their rolling expiry', () => {
+  const server = readFileSync(join(__dirname, 'index.js'), 'utf8');
+  assert.match(server, /const ACCOUNT_SESSION_TTL_MS = 30 \* DAY_MS/);
+  assert.match(server, /session\.expiresAt - now <= ACCOUNT_SESSION_RENEW_WINDOW_MS/);
+  assert.match(server, /touchAccountActivity\(accountId, account, \{ persist:renew \}\)/);
 });

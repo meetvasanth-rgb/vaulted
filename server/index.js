@@ -335,6 +335,8 @@ const NUMBER_RETENTION_SWEEP_MS = process.env.NODE_ENV === 'test' && process.env
   ? Number(process.env.TEST_NUMBER_RETENTION_SWEEP_MS)
   : 6 * 60 * 60 * 1000;
 const ACTIVITY_PERSIST_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const ACCOUNT_SESSION_TTL_MS = 30 * DAY_MS;
+const ACCOUNT_SESSION_RENEW_WINDOW_MS = 7 * DAY_MS;
 const activityPersistedAt = new Map();
 const RECLAIM_WARNING_WINDOWS = [
   { id:'6-months', remainingMs:183 * DAY_MS, label:'6 months' },
@@ -1578,7 +1580,7 @@ function newAccountSession(account, deviceHash = null) {
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const now = Date.now();
   account.sessions = (account.sessions || []).filter(s => s.expiresAt > now).slice(-4);
-  account.sessions.push({ tokenHash, deviceHash, createdAt: now, expiresAt: now + 30 * 24 * 60 * 60 * 1000 });
+  account.sessions.push({ tokenHash, deviceHash, createdAt: now, expiresAt: now + ACCOUNT_SESSION_TTL_MS });
   account.lastActiveAt = now;
   account.reclaimWarnings = [];
   return token;
@@ -1592,7 +1594,12 @@ function authenticateAccountSession(accountId, token) {
   for (const session of account.sessions) {
     const expected = Buffer.from(session.tokenHash, 'hex');
     if (actual.length === expected.length && crypto.timingSafeEqual(actual, expected)) {
-      touchAccountActivity(accountId, account);
+      // Keep an actively used installation signed in. Renew only near expiry
+      // so ordinary requests do not write the account record each time; a
+      // device unused for the full period still expires normally.
+      const renew = session.expiresAt - now <= ACCOUNT_SESSION_RENEW_WINDOW_MS;
+      if (renew) session.expiresAt = now + ACCOUNT_SESSION_TTL_MS;
+      touchAccountActivity(accountId, account, { persist:renew });
       return account;
     }
   }
@@ -4434,8 +4441,15 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   if (path === '/api/connections/respond' && method === 'POST') {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);
-    const request = (account.connectionRequests || []).find(r => r.id === d.requestId && r.direction === 'incoming' && r.status === 'pending');
+    const request = (account.connectionRequests || []).find(r => r.id === d.requestId && r.direction === 'incoming');
     if (!request) return resErr(res, 'Request is no longer available.', 404);
+    // Retried taps and retried HTTP requests must resolve to the room that
+    // already won. Returning the established invitation makes acceptance
+    // idempotent and avoids converting a harmless retry into an orphan room.
+    if (request.status === 'accepted' && d.action === 'accepted' && request.inviteUrl) {
+      return res200(res, { ok:true, status:'accepted', inviteUrl:request.inviteUrl, repeated:true });
+    }
+    if (request.status !== 'pending') return resErr(res, 'Request is no longer available.', 404);
     if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(request.senderAccountId) || await safetyStore.blocked(d.accountId, request.senderAccountId)) return resErr(res, 'This connection is unavailable.', 403);
     if (!['accepted','rejected'].includes(d.action)) return resErr(res, 'Invalid response.', 400);
     request.status = d.action; request.respondedAt = Date.now();
@@ -4448,7 +4462,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (outgoing) { outgoing.status=request.status; outgoing.respondedAt=request.respondedAt; if (request.inviteUrl) outgoing.inviteUrl=request.inviteUrl; }
     await Promise.all([persistAccount(d.accountId), request.senderAccountId ? persistAccount(request.senderAccountId) : Promise.resolve()]);
     publishInboxAccount(request.senderAccountId, 'connection-response');
-    return res200(res, { ok:true, status:request.status });
+    return res200(res, { ok:true, status:request.status, inviteUrl:request.inviteUrl || null });
   }
 
   // POST /api/create

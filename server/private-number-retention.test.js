@@ -12,7 +12,7 @@ test('free Private Numbers use a two-year inactivity clock with staged warnings'
   for (const stage of ['6-months', '3-months', '30-days', '7-days']) {
     assert.match(server, new RegExp(`id:'${stage}'`));
   }
-  assert.match(server, /touchAccountActivity\(accountId, account\)/);
+  assert.match(server, /touchAccountActivity\(accountId, account, \{ persist:renew \}\)/);
   assert.match(server, /account\.reclaimWarnings = \[\]/);
 });
 
