@@ -15,6 +15,12 @@ test('inbox bottom bar exposes compact icon-only add, chats and calls actions', 
   assert.match(client, /\.vault-list-action\[data-tooltip\]:hover::after/);
 });
 
+test('native Android bottom navigation stays above Samsung system controls', () => {
+  assert.match(client, /const bottom=Math\.max\(24,reportedBottom\)/);
+  assert.match(client, /function scheduleAndroidSystemInsetSync\(\)[\s\S]*\[120,400,1000\]\.forEach/);
+  assert.match(client, /window\.addEventListener\('load',scheduleAndroidSystemInsetSync/);
+});
+
 test('calls view is derived only from decrypted encrypted-conversation call records', () => {
   assert.match(client, /function callHistoryEntries\(missedOnly = false\)[\s\S]*for \(const room of rooms\.values\(\)\)[\s\S]*uniqueVisibleConversationRecords\(missedOnly[\s\S]*room\.messages[\s\S]*callHistoryFamily\(rec\)/);
   assert.match(client, /function renderCallHistoryList\(body\)[\s\S]*callHistoryEntries\(\)[\s\S]*openVaultListRoom\(el\.dataset\.room\)/);

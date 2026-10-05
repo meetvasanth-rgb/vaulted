@@ -89,3 +89,8 @@ test('Android App Links authorize the certificate used by direct tester builds',
     'DC:24:C4:65:C6:F8:53:F7:65:6C:7A:B8:41:70:7E:2C:4D:B3:A1:31:8F:A5:71:37:F3:3F:DD:6A:2C:DA:03:25'
   ));
 });
+
+test('Android reports the stable navigation inset even during system-bar transitions', () => {
+  assert.match(mainActivity, /getInsetsIgnoringVisibility\(WindowInsets\.Type\.navigationBars\(\)\)/);
+  assert.match(mainActivity, /Math\.max\(visibleInset, stableInset\)/);
+});

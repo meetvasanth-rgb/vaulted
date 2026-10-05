@@ -829,7 +829,9 @@ public class MainActivity extends BridgeActivity {
             if (insets == null) return 0;
             int insetPx;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                insetPx = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                int visibleInset = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                int stableInset = insets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()).bottom;
+                insetPx = Math.max(visibleInset, stableInset);
             } else {
                 insetPx = insets.getStableInsetBottom();
             }

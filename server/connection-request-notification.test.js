@@ -73,6 +73,11 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /quickConnectQrUrl\(privateNumber, profileShareCode\)/);
   assert.match(client, /\/p-\$\{code\}\?ref=qr/);
   assert.match(client, /package=com\.vaultlix\.app/);
+  assert.match(client, /function attemptMobileAppHandoff\(target\)/);
+  assert.match(client, /if \(opened\) attemptMobileAppHandoff\(publicProfileShareCode\)/);
+  assert.match(client, /if \(opened\) attemptMobileAppHandoff\(publicPrivateNumber\)/);
+  assert.match(client, /vaultlix:\/\/connect\/\$\{encodeURIComponent\(privateNumber\)\}/);
+  assert.doesNotMatch(client, /params\.get\('ref'\) !== 'qr'/);
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);
   assert.match(client, /if \(opened && fromQr && loadAccountState\(\)\) await requestPrivateVault\(\)/);

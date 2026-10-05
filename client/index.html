@@ -4895,10 +4895,18 @@ function syncAndroidSystemInsets(){
   const root=document.documentElement;
   root.classList.add('vaultlix-native-android');
   const top=Math.max(0,Number(bridge.statusBarInsetCssPx())||0);
-  const bottom=typeof bridge.navigationBarInsetCssPx==='function'
+  const reportedBottom=typeof bridge.navigationBarInsetCssPx==='function'
     ?Math.max(0,Number(bridge.navigationBarInsetCssPx())||0):0;
+  // Some Samsung WebViews return zero while the first frame is being laid
+  // out even though the three-button navigation bar is visible. Keep a small
+  // native-only floor so Vaultlix controls never share that system area.
+  const bottom=Math.max(24,reportedBottom);
   root.style.setProperty('--android-safe-area-top',`${top}px`);
   root.style.setProperty('--android-safe-area-bottom',`${bottom}px`);
+}
+function scheduleAndroidSystemInsetSync(){
+  syncAndroidSystemInsets();
+  [120,400,1000].forEach(delay=>setTimeout(syncAndroidSystemInsets,delay));
 }
 if(window.VaultlixAndroid||window.webkit?.messageHandlers?.vaultlixCall||window.Capacitor?.isNativePlatform?.()){
   document.documentElement.classList.add('vaultlix-native');
@@ -5528,10 +5536,11 @@ function historyStoreSent(request, response, room) {
     name:room.myName || null, content:request.content, viewOnce:!!request.viewOnce, deleteTimerSeconds:room.deleteTimerSeconds || 0,
     ts:Date.now() }]);
 }
-syncAndroidSystemInsets();
-window.addEventListener('resize',syncAndroidSystemInsets,{passive:true});
+scheduleAndroidSystemInsetSync();
+window.addEventListener('load',scheduleAndroidSystemInsetSync,{once:true});
+window.addEventListener('resize',scheduleAndroidSystemInsetSync,{passive:true});
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden)syncAndroidSystemInsets();
+  if(!document.hidden)scheduleAndroidSystemInsetSync();
 });
 
 // No WebSockets — uses HTTP polling every 2s. Works on iOS even when the
@@ -20791,19 +20800,34 @@ function parseProfileShareCode(pathname = location.pathname) {
   const match = String(pathname || '').match(/^\/(?:p\/|p-)([a-hj-np-z2-9]{6})\/?$/i);
   return match ? normalizeProfileShareCode(match[1]) : null;
 }
-function attemptAndroidQrAppHandoff(target) {
+function attemptMobileAppHandoff(target) {
   const params = new URLSearchParams(location.search);
-  if (!target || params.get('ref') !== 'qr' || params.get('appAttempted') === '1' || isNativeApp() || !/android/i.test(navigator.userAgent)) return;
-  // Android camera apps consistently recognize the HTTPS QR. Normally the
-  // verified App Link opens Vaultlix before a browser appears; this explicit
-  // package-targeted handoff covers devices whose domain preference was reset
-  // or whose scanner deliberately opened Chrome. If Vaultlix is not installed,
-  // Chrome returns to the same invitation page without retrying the handoff.
+  if (!target || params.get('appAttempted') === '1' || isNativeApp()) return;
+  const android = /android/i.test(navigator.userAgent);
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  if (!android && !ios) return;
   const code = normalizeProfileShareCode(target);
   const path = code ? `p-${code}` : String(target);
-  const fallback = `https://vaultlix.com/${path}?ref=qr&appAttempted=1`;
-  const intent = `intent://vaultlix.com/${path}#Intent;scheme=https;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
-  setTimeout(() => { location.href = intent; }, 120);
+  const fallbackUrl = new URL(`/${path}`, location.origin);
+  for (const [key,value] of params.entries()) fallbackUrl.searchParams.set(key,value);
+  fallbackUrl.searchParams.set('appAttempted','1');
+  if (android) {
+    // Verified links normally open Vaultlix before Chrome appears. This
+    // package-targeted intent also covers links typed into Chrome and devices
+    // whose domain preference was reset. Its fallback returns to this page
+    // once and does not repeat the handoff when the app is not installed.
+    const intent = `intent://vaultlix.com/${path}#Intent;scheme=https;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallbackUrl.href)};end`;
+    setTimeout(() => { location.href = intent; }, 160);
+    return;
+  }
+  // Safari does not invoke Universal Links for an address typed into its own
+  // bar. Try the installed app's scheme after the invitation is visible; if
+  // Vaultlix is absent, the web page remains available with its install link.
+  const privateNumber = normalizePrivateNumber(activePublicProfile?.privateNumber || target);
+  if (!privateNumber) return;
+  history.replaceState(null,'',`${fallbackUrl.pathname}${fallbackUrl.search}${fallbackUrl.hash}`);
+  setTimeout(() => { location.href = `vaultlix://connect/${encodeURIComponent(privateNumber)}`; }, 240);
 }
 function parseRecoveryLink(rawURL = location.href) {
   try {
@@ -23330,7 +23354,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     openCreateAccount();
   } else if (publicProfileShareCode) {
     const opened = await openPublicProfileShareCode(publicProfileShareCode);
-    attemptAndroidQrAppHandoff(publicProfileShareCode);
+    if (opened) attemptMobileAppHandoff(publicProfileShareCode);
     if (opened && startupParams.get('ref') === 'qr') {
       quickConnectHandshakePending = true;
       sessionStorage.setItem('vaultlix:qr-handshake', '1');
@@ -23339,7 +23363,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   } else if (publicPrivateNumber) {
     const opened = await openPublicProfile(publicPrivateNumber);
-    attemptAndroidQrAppHandoff(publicPrivateNumber);
+    if (opened) attemptMobileAppHandoff(publicPrivateNumber);
     if (opened && startupParams.get('ref') === 'qr') {
       quickConnectHandshakePending = true;
       sessionStorage.setItem('vaultlix:qr-handshake', '1');
