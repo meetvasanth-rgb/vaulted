@@ -38,7 +38,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Vaultlix uses the camera only when you choose to make a video call or share camera media.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Vaultlix uses the microphone only when you choose to send audio or make a voice or video call.</string>
+	<string>Vaultlix uses the microphone only when you choose to dictate a message, send audio, or make a voice or video call.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Vaultlix uses speech recognition only when you choose to turn your speech into an editable message.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

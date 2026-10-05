@@ -5,6 +5,7 @@ import AVFoundation
 import AVKit
 import UserNotifications
 import LocalAuthentication
+import Speech
 import WebRTC
 import ObjectiveC.runtime
 #if DEBUG
@@ -36,6 +37,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var nativeMediaPlayer: AVPlayerViewController?
     private var pendingNativePlaybackURL: URL?
     private var documentInteractionController: UIDocumentInteractionController?
+    private let speechAudioEngine = AVAudioEngine()
+    private var speechRecognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var speechRecognitionTask: SFSpeechRecognitionTask?
+    private var speechTapInstalled = false
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeVideoBackdropView = UIView(frame: .zero)
@@ -327,6 +332,116 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             : ""
         let script = "\(persist)window.dispatchEvent(new CustomEvent(\(String(reflecting: name)),{detail:\(json)}));"
         webView.evaluateJavaScript(script)
+    }
+
+    private func emitSpeechToText(state: String, text: String = "", error: String = "", onDevice: Bool) {
+        emit(name: "vaultlix:speech-to-text", detail: [
+            "state": state, "text": text, "error": error, "onDevice": onDevice
+        ])
+    }
+
+    private func requestSpeechMicrophonePermission(_ completion: @escaping (Bool) -> Void) {
+        AVAudioSession.sharedInstance().requestRecordPermission { allowed in
+            DispatchQueue.main.async { completion(allowed) }
+        }
+    }
+
+    private func startSpeechToText(localeIdentifier: String) {
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard status == .authorized else {
+                    self.emitSpeechToText(
+                        state: "error",
+                        error: "Speech recognition permission is required for voice typing.",
+                        onDevice: false
+                    )
+                    return
+                }
+                self.requestSpeechMicrophonePermission { [weak self] allowed in
+                    guard let self else { return }
+                    guard allowed else {
+                        self.emitSpeechToText(
+                            state: "error",
+                            error: "Microphone permission is required for voice typing.",
+                            onDevice: false
+                        )
+                        return
+                    }
+                    self.beginSpeechToText(localeIdentifier: localeIdentifier)
+                }
+            }
+        }
+    }
+
+    private func beginSpeechToText(localeIdentifier: String) {
+        cancelSpeechToText(notifyPage: false)
+        let locale = localeIdentifier.isEmpty ? Locale.current : Locale(identifier: localeIdentifier)
+        guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+            emitSpeechToText(state: "error", error: "Voice typing is not available for this language.", onDevice: false)
+            return
+        }
+        let onDevice = recognizer.supportsOnDeviceRecognition
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = onDevice
+        speechRecognitionRequest = request
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+            let input = speechAudioEngine.inputNode
+            let format = input.outputFormat(forBus: 0)
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                request.append(buffer)
+            }
+            speechTapInstalled = true
+            speechAudioEngine.prepare()
+            try speechAudioEngine.start()
+        } catch {
+            finishSpeechToText(cancelTask: true)
+            emitSpeechToText(state: "error", error: "Voice typing could not start on this device.", onDevice: onDevice)
+            return
+        }
+        emitSpeechToText(state: "listening", onDevice: onDevice)
+        speechRecognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, recognitionError in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let result {
+                    let transcript = result.bestTranscription.formattedString
+                    self.emitSpeechToText(state: result.isFinal ? "final" : "partial", text: transcript, onDevice: onDevice)
+                    if result.isFinal { self.finishSpeechToText(cancelTask: false) }
+                } else if recognitionError != nil {
+                    self.finishSpeechToText(cancelTask: false)
+                    self.emitSpeechToText(state: "error", error: "Voice typing stopped. Please try again.", onDevice: onDevice)
+                }
+            }
+        }
+    }
+
+    private func stopSpeechToText() {
+        if speechAudioEngine.isRunning { speechAudioEngine.stop() }
+        if speechTapInstalled {
+            speechAudioEngine.inputNode.removeTap(onBus: 0)
+            speechTapInstalled = false
+        }
+        speechRecognitionRequest?.endAudio()
+    }
+
+    private func finishSpeechToText(cancelTask: Bool) {
+        stopSpeechToText()
+        if cancelTask { speechRecognitionTask?.cancel() }
+        speechRecognitionTask = nil
+        speechRecognitionRequest = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func cancelSpeechToText(notifyPage: Bool) {
+        let wasActive = speechRecognitionTask != nil || speechAudioEngine.isRunning
+        finishSpeechToText(cancelTask: true)
+        if notifyPage && wasActive {
+            emitSpeechToText(state: "cancelled", onDevice: false)
+        }
     }
 
     private func emitVideoCompression(requestId: String, data: Data? = nil, mime: String? = nil) {
@@ -945,6 +1060,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
         if action == "ready" {
             webReady = true
+            emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             if let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {
                 let environment = UserDefaults.standard.string(forKey: "vaultlix.voipEnvironment") ?? "production"
@@ -952,6 +1068,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             }
             flushPendingCallActions()
             flushPendingUniversalLink()
+            return
+        }
+        if action == "startSpeechToText" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com" else { return }
+            startSpeechToText(localeIdentifier: (body["locale"] as? String) ?? "")
+            return
+        }
+        if action == "stopSpeechToText" {
+            stopSpeechToText()
+            return
+        }
+        if action == "cancelSpeechToText" {
+            cancelSpeechToText(notifyPage: true)
             return
         }
         if action == "clearInstallInvite" {
@@ -1416,6 +1546,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
     func sceneWillResignActive(_ scene: UIScene) {
         showAppSwitcherPrivacyCover()
+        cancelSpeechToText(notifyPage: false)
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {

@@ -18,6 +18,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.CancellationSignal;
 import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -57,9 +60,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Locale;
 
 public class MainActivity extends BridgeActivity {
     private static final int SAVE_MEDIA_REQUEST = 4107;
+    private static final int SPEECH_TO_TEXT_PERMISSION_REQUEST = 74;
     // A share to WhatsApp (and most other apps) often uses Android's Direct
     // Share: control returns to Vaultlix (onResume) almost immediately, while
     // the receiving app reads the granted file asynchronously in the
@@ -78,6 +84,8 @@ public class MainActivity extends BridgeActivity {
     private SecureMessageStore secureMessageStore;
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
+    private SpeechRecognizer speechRecognizer;
+    private String pendingSpeechLocale;
     private volatile Uri preparedNumberCardUri;
     private volatile String preparedNumberCardLink;
     private volatile File pendingSaveMediaFile;
@@ -142,6 +150,7 @@ public class MainActivity extends BridgeActivity {
     public void onPause() {
         showAppSwitcherPrivacyCover();
         super.onPause();
+        cancelNativeSpeechToText(false);
         appInForeground = false;
     }
 
@@ -255,6 +264,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        cancelNativeSpeechToText(false);
+        if (speechRecognizer != null) {
+            speechRecognizer.destroy();
+            speechRecognizer = null;
+        }
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
         mediaCacheCleanupExecutor.shutdownNow();
         mediaCompressionExecutor.shutdownNow();
@@ -337,6 +351,17 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == SPEECH_TO_TEXT_PERMISSION_REQUEST) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                String locale = pendingSpeechLocale;
+                pendingSpeechLocale = null;
+                startNativeSpeechToText(locale);
+            } else {
+                pendingSpeechLocale = null;
+                emitSpeechToText("error", "", "Microphone permission is required for voice typing.", false);
+            }
+            return;
+        }
         if (requestCode == 73 && grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED
                 && audioRouteConfigured) {
@@ -584,6 +609,92 @@ public class MainActivity extends BridgeActivity {
         return path.matches("/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?");
     }
 
+    private boolean hasOnDeviceSpeechRecognition() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && SpeechRecognizer.isOnDeviceRecognitionAvailable(this);
+    }
+
+    private void emitSpeechToText(String state, String text, String error, boolean onDevice) {
+        if (isFinishing() || isDestroyed() || getBridge() == null || getBridge().getWebView() == null) return;
+        String current = getBridge().getWebView().getUrl();
+        if (current == null || !current.startsWith("https://vaultlix.com/")) return;
+        String detail = "{state:" + JSONObject.quote(state)
+                + ",text:" + JSONObject.quote(text == null ? "" : text)
+                + ",error:" + JSONObject.quote(error == null ? "" : error)
+                + ",onDevice:" + onDevice + "}";
+        getBridge().getWebView().evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('vaultlix:speech-to-text',{detail:" + detail + "}));",
+                null
+        );
+    }
+
+    private String firstSpeechResult(Bundle results) {
+        if (results == null) return "";
+        ArrayList<String> choices = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        return choices == null || choices.isEmpty() ? "" : choices.get(0);
+    }
+
+    private void startNativeSpeechToText(String localeTag) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            emitSpeechToText("error", "", "Voice typing is not available on this device.", false);
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingSpeechLocale = localeTag;
+            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, SPEECH_TO_TEXT_PERMISSION_REQUEST);
+            return;
+        }
+        cancelNativeSpeechToText(false);
+        if (speechRecognizer != null) speechRecognizer.destroy();
+        final boolean onDevice = hasOnDeviceSpeechRecognition();
+        try {
+            speechRecognizer = onDevice
+                    ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                    : SpeechRecognizer.createSpeechRecognizer(this);
+        } catch (RuntimeException unavailable) {
+            speechRecognizer = null;
+            emitSpeechToText("error", "", "Voice typing could not start on this device.", onDevice);
+            return;
+        }
+        speechRecognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) { emitSpeechToText("listening", "", "", onDevice); }
+            @Override public void onBeginningOfSpeech() { }
+            @Override public void onRmsChanged(float rmsdB) { }
+            @Override public void onBufferReceived(byte[] buffer) { }
+            @Override public void onEndOfSpeech() { emitSpeechToText("processing", "", "", onDevice); }
+            @Override public void onError(int error) {
+                String message = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                        ? "No speech was recognized. Please try again."
+                        : error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                        ? "Microphone permission is required for voice typing."
+                        : "Voice typing stopped. Please try again.";
+                emitSpeechToText("error", "", message, onDevice);
+            }
+            @Override public void onResults(Bundle results) {
+                emitSpeechToText("final", firstSpeechResult(results), "", onDevice);
+            }
+            @Override public void onPartialResults(Bundle partialResults) {
+                String text = firstSpeechResult(partialResults);
+                if (!text.isEmpty()) emitSpeechToText("partial", text, "", onDevice);
+            }
+            @Override public void onEvent(int eventType, Bundle params) { }
+        });
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, onDevice);
+        String requestedLocale = localeTag == null ? "" : localeTag.trim();
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
+                requestedLocale.isEmpty() ? Locale.getDefault().toLanguageTag() : requestedLocale);
+        speechRecognizer.startListening(intent);
+    }
+
+    private void cancelNativeSpeechToText(boolean notifyPage) {
+        if (speechRecognizer == null) return;
+        try { speechRecognizer.cancel(); } catch (RuntimeException ignored) { }
+        if (notifyPage) emitSpeechToText("cancelled", "", "", hasOnDeviceSpeechRecognition());
+    }
+
     private final class AndroidCallBridge {
         // The six-character invite code carried through the Play Store install, or "".
         @JavascriptInterface
@@ -595,6 +706,28 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void clearInstallInvite() { InstallInvite.clear(MainActivity.this); }
+
+        @JavascriptInterface
+        public boolean supportsNativeSpeechToText() {
+            return SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void startSpeechToText(String localeTag) {
+            runOnUiThread(() -> startNativeSpeechToText(localeTag));
+        }
+
+        @JavascriptInterface
+        public void stopSpeechToText() {
+            runOnUiThread(() -> {
+                if (speechRecognizer != null) speechRecognizer.stopListening();
+            });
+        }
+
+        @JavascriptInterface
+        public void cancelSpeechToText() {
+            runOnUiThread(() -> cancelNativeSpeechToText(true));
+        }
 
         @JavascriptInterface
         public void screenImage(String requestId, String base64) {
