@@ -12498,6 +12498,10 @@ function showFirstConnectionQr() {
 function openAccountPanel() {
   closeSettings();
   const state = loadAccountState();
+  if (state && accountReauthenticationActive) {
+    showAccountReauthentication();
+    return;
+  }
   document.getElementById('account-guest-view').style.display = state ? 'none' : '';
   document.getElementById('account-signed-view').classList.toggle('open', !!state);
   document.getElementById('account-recovery-result').style.display = 'none';
@@ -13604,15 +13608,23 @@ async function confirmAccountReauthentication() {
   return accountReauthenticationCheck;
 }
 function requestAccountReauthentication() {
-  if (accountReplacementActive || accountReauthenticationActive) return;
+  if (accountReplacementActive) return;
   const state = loadAccountState();
   if (!state) return;
+  if (accountReauthenticationActive) return;
   accountReauthenticationActive = true;
   clearTimeout(accountSyncTimer);
   disconnectInbox();
   // An expired or temporarily rejected account session is not proof that
-  // this installation was replaced. Preserve all local E2EE credentials
-  // and ask for authentication again instead of deleting conversations.
+  // this installation was replaced. Preserve all local E2EE credentials and
+  // keep the inbox available. Account controls will offer reconnection when
+  // the user deliberately opens them; a background sync must never cover
+  // locally authenticated encrypted chats with a sign-in sheet.
+}
+function showAccountReauthentication() {
+  if (accountReplacementActive) return;
+  const state = loadAccountState();
+  if (!state) return;
   const guest = document.getElementById('account-guest-view');
   if (guest) guest.style.display = '';
   document.getElementById('account-signed-view')?.classList.remove('open');
@@ -13627,7 +13639,6 @@ function requestAccountReauthentication() {
     status.textContent = 'Your conversations are preserved on this device. Sign in again to reconnect them.';
     status.hidden = false;
   }
-  toast('Session expired · conversations preserved');
 }
 function clearReplacedAccountLocally(accountId, reload = true) {
   const state = loadAccountState();

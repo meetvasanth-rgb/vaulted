@@ -173,6 +173,10 @@ test('ordinary authentication and restoration failures preserve local conversati
   assert.doesNotMatch(client, /event\.code === 4001 \|\| event\.code === 4004/);
   assert.match(client, /if \(event\.code === 4001\) \{[\s\S]*confirmAccountReauthentication\(\)/);
   assert.match(client, /for \(const delay of \[250, 1000\]\)/);
+  assert.match(client, /if \(state && accountReauthenticationActive\) \{[\s\S]*showAccountReauthentication\(\)/);
+  assert.match(client, /function requestAccountReauthentication\(\) \{[\s\S]*disconnectInbox\(\);[\s\S]*\n\}/);
+  assert.match(client, /function showAccountReauthentication\(\)/);
+  assert.doesNotMatch(client, /toast\('Session expired · conversations preserved'\)/);
   assert.match(client, /if \(result\.error\) \{[\s\S]*room\.restoreUnavailable = true;[\s\S]*addRoomToState\(room\);[\s\S]*restoredAny = true;[\s\S]*continue;/);
   assert.match(client, /Connection unavailable · tap to retry/);
 });
