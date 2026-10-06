@@ -51,6 +51,8 @@ test('Android retries a failed transcript pass and reports the real recognizer e
   assert.match(android, /ERROR_LANGUAGE_NOT_SUPPORTED[\s\S]{0,200}ERROR_LANGUAGE_UNAVAILABLE/);
   assert.match(android, /runVoiceTranscriptAttempt\(requestId, "en-US", onDevice, 1\)/);
   assert.match(android, /runVoiceTranscriptAttempt\(requestId, locale, false, attempt \+ 2\)/);
+  assert.doesNotMatch(android, /onDevice && attempt < 2 && !noSpeech/);
+  assert.match(android, /!"en-US"\.equalsIgnoreCase\(locale\)/);
   assert.match(android, /voiceTranscriptErrorMessage\(error\)/);
   assert.match(android, /"Transcript failed \(code " \+ error \+ "\)\."/);
   assert.match(android, /\+ ",code:" \+ code/);

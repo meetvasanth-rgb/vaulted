@@ -782,13 +782,15 @@ public class MainActivity extends BridgeActivity {
                 if (attemptRecognizer != voiceTranscriptRecognizer) return; // a superseded pass
                 boolean languageProblem = error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                         || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE;
-                boolean noSpeech = error == SpeechRecognizer.ERROR_NO_MATCH
-                        || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
-                if (attempt == 0 && languageProblem && !locale.toLowerCase(Locale.ROOT).startsWith("en")) {
+                if (attempt == 0 && languageProblem && !"en-US".equalsIgnoreCase(locale)) {
                     runVoiceTranscriptAttempt(requestId, "en-US", onDevice, 1);
                     return;
                 }
-                if (onDevice && attempt < 2 && !noSpeech) {
+                // Some vendor on-device recognizers advertise support but ignore EXTRA_AUDIO_SOURCE,
+                // open the microphone instead, and return NO_MATCH for a perfectly valid saved note.
+                // Retry every on-device failure through the system recognizer, including NO_MATCH and
+                // SPEECH_TIMEOUT. Only report "no speech" after the supplied audio has failed there too.
+                if (onDevice && attempt < 2) {
                     runVoiceTranscriptAttempt(requestId, locale, false, attempt + 2);
                     return;
                 }
