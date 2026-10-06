@@ -13776,7 +13776,10 @@ const INTRO_MAX_MESSAGES = 3;
 const INTRO_HKDF_INFO = 'vaultlix-message-request-v1';
 let inboxKeyReadyFor = null;
 let inboxKeyEnsurePromise = null;
-const introTextCache = new Map(); // request id -> decrypted texts (null = unreadable)
+// Decrypted messages, one entry per ciphertext (request id + its ct). Keyed per message, not
+// per request: a request gains messages while it waits, and a per-request cache froze the
+// card on the first one.
+const introTextCache = new Map();
 let pendingIntroNotice = null; // { requestId, name, texts } while a request is being accepted
 
 function inboxKeyStorageKey(state = loadAccountState()) {
@@ -13891,13 +13894,16 @@ async function runEnsureInboxKey(state) {
 
 // Reads a request's messages with this account's inbox key; unreadable ones are null.
 async function decryptRequestIntros(request) {
-  if (introTextCache.has(request.id)) return introTextCache.get(request.id);
   const local = loadLocalInboxKey();
   const out = [];
   for (const message of (Array.isArray(request.intro) ? request.intro : []).slice(0, INTRO_MAX_MESSAGES)) {
-    try { out.push(local ? await decryptIntroMessage(local.privJwk, message) : null); } catch (e) { out.push(null); }
+    const cacheKey = `${request.id}:${message?.ct || ''}`;
+    if (introTextCache.has(cacheKey)) { out.push(introTextCache.get(cacheKey)); continue; }
+    let text = null;
+    try { text = local ? await decryptIntroMessage(local.privJwk, message) : null; } catch (e) { text = null; }
+    if (text !== null) introTextCache.set(cacheKey, text); // an unreadable one is retried next time
+    out.push(text);
   }
-  if (local) introTextCache.set(request.id, out);
   return out;
 }
 

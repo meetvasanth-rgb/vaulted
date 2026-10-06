@@ -231,7 +231,7 @@ test('a request card shows the decrypted messages, and unreadable or filtered on
   assert.doesNotMatch(slot.innerHTML, /<b>/);
   assert.match(slot.innerHTML, /Hidden by the safety filter/);
   assert.match(slot.innerHTML, /Message unavailable/);
-  assert.equal(run(ctx, 'introTextCache.has("r1")'), true);
+  assert.equal(run(ctx, 'introTextCache.size'), 2, 'both decryptable messages are cached; the foreign one is retried');
 });
 
 test('without the private key the messages are unavailable and are not cached as unreadable', async () => {
@@ -242,7 +242,7 @@ test('without the private key the messages are unavailable and are not cached as
   const ctx = harness();
   ctx.request = { id:'r2', intro:[message] };
   assert.deepEqual(plain(await run(ctx, 'decryptRequestIntros(request)')), [null]);
-  assert.equal(run(ctx, 'introTextCache.has("r2")'), false, 'retried once the key arrives');
+  assert.equal(run(ctx, 'introTextCache.size'), 0, 'retried once the key arrives');
 });
 
 test('a request with no messages has no slot; one with messages has one', () => {
@@ -506,4 +506,50 @@ test('no QR-only setting or profile code is sent or kept on the client any more'
   assert.doesNotMatch(extractFn(client, 'fetchRequestTarget'), /shareCode/);
   assert.doesNotMatch(extractFn(client, 'requestPrivateVault'), /shareCode/);
   assert.doesNotMatch(client, /QR code or link only/);
+});
+
+// Report: when a second message arrived the card showed the new count but only the first
+// message, because the decrypted list was cached per request and never refreshed.
+test('a message that arrives later is shown, and the earlier ones are not decrypted again', async () => {
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const sender = harness();
+  sender.recipient = record.pubJwk;
+  const first = plain(await run(sender, "encryptIntroMessage(recipient, 'first')"));
+  const second = plain(await run(sender, "encryptIntroMessage(recipient, 'second')"));
+  const third = plain(await run(sender, "encryptIntroMessage(recipient, 'third')"));
+  const ctx = harness();
+  ctx.storage.set('vaultlix_inbox_key:acc1', JSON.stringify(record));
+  ctx.request = { id:'r1', intro:[first] };
+  assert.deepEqual(plain(await run(ctx, 'decryptRequestIntros(request)')), ['first']);
+  ctx.request = { id:'r1', intro:[first, second] };
+  assert.deepEqual(plain(await run(ctx, 'decryptRequestIntros(request)')), ['first', 'second'], 'the second message appears');
+  ctx.request = { id:'r1', intro:[first, second, third] };
+  assert.deepEqual(plain(await run(ctx, 'decryptRequestIntros(request)')), ['first', 'second', 'third']);
+  assert.equal(run(ctx, 'introTextCache.size'), 3, 'one cached entry per message');
+});
+
+test('the card updates in place when a new message arrives on an open request', async () => {
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const sender = harness();
+  sender.recipient = record.pubJwk;
+  const first = plain(await run(sender, "encryptIntroMessage(recipient, 'one')"));
+  const second = plain(await run(sender, "encryptIntroMessage(recipient, 'two')"));
+  const ctx = harness();
+  ctx.storage.set('vaultlix_inbox_key:acc1', JSON.stringify(record));
+  const slot = { dataset:{ requestIntro:'r1' }, isConnected:true, innerHTML:'' };
+  ctx.slots.push(slot);
+  ctx.pendingIncomingConnections.push({ id:'r1', intro:[first] });
+  await run(ctx, 'hydrateRequestIntros()');
+  assert.equal((slot.innerHTML.match(/request-intro-bubble/g) || []).length, 1);
+  ctx.pendingIncomingConnections[0] = { id:'r1', intro:[first, second] };
+  await run(ctx, 'hydrateRequestIntros()');
+  assert.equal((slot.innerHTML.match(/request-intro-bubble/g) || []).length, 2);
+  assert.match(slot.innerHTML, /two/);
+});
+
+test('accepting shows every message that arrived, not just the first', () => {
+  assert.match(extractFn(client, 'acceptConnectionRequest'), /texts:\(await decryptRequestIntros\(request\)\)\.filter\(Boolean\)/);
+  assert.doesNotMatch(client, /introTextCache\.get\(request\.id\)/, 'no per-request cache is read any more');
 });
