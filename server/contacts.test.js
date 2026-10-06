@@ -398,6 +398,34 @@ test('after accepting, an erased old room for the same person is dropped; live r
 });
 
 test('the stale-room cleanup runs only after a successful accept, and never throws into the accept flow', () => {
-  assert.match(client, /else toast\('Private conversation created — the requester can now join'\);\s*dropStaleRoomsForPeer\(room\)\.catch\(\(\) => \{\}\);/);
+  assert.match(client, /toast\('Private conversation created — the requester can now join'\);[\s\S]{0,260}dropStaleRoomsForPeer\(room\)\.catch\(\(\) => \{\}\);/);
   assert.match(extractFn('dropStaleRoomsForPeer'), /if \(!\(await localRoomIsGone\(other\)\)\) continue;/);
+});
+
+// Video report: after tapping Accept the request card stayed on screen (an inbox refresh that
+// was already in flight painted it again), and a second tap on it created a second
+// conversation for the same person (two "Skin" chats, one stuck on "Waiting").
+test('a request that was already accepted is not shown again, and a second tap creates nothing', () => {
+  const body = client.slice(client.indexOf('const handledConnectionRequests = new Map();'), client.indexOf('let pendingConnectionFocusId'));
+  const ctx = vm.createContext({});
+  vm.runInContext(body, ctx);
+  assert.equal(vm.runInContext("connectionRequestAlreadyHandled('r1')", ctx), false);
+  vm.runInContext("handledConnectionRequests.set('r1', Date.now())", ctx);
+  assert.equal(vm.runInContext("connectionRequestAlreadyHandled('r1')", ctx), true);
+  vm.runInContext("handledConnectionRequests.set('r2', Date.now() - HANDLED_CONNECTION_REQUEST_MS - 1)", ctx);
+  assert.equal(vm.runInContext("connectionRequestAlreadyHandled('r2')", ctx), false, 'forgotten after ten minutes');
+});
+
+test('the accept path marks the request handled up front, skips a repeat tap, and forgets it on failure', () => {
+  const accept = extractFn('acceptConnectionRequest');
+  assert.match(accept, /if \(connectionRequestAlreadyHandled\(requestId\)\) \{\s*pendingIncomingConnections = pendingIncomingConnections\.filter\(item => item\.id !== requestId\);\s*renderVaultList\(\);\s*return;\s*\}/);
+  assert.match(accept, /handledConnectionRequests\.set\(requestId, Date\.now\(\)\);/);
+  assert.match(accept, /if \(!identity\) \{ handledConnectionRequests\.delete\(requestId\);/);
+  assert.match(client, /if \(pendingConnectionAcceptance\) handledConnectionRequests\.delete\(pendingConnectionAcceptance\);/);
+  assert.match(client, /if \(accepted\.error\) \{ handledConnectionRequests\.delete\(requestId\); toast\(accepted\.error\); \}/);
+  assert.match(client, /pendingIncomingConnections = pendingIncomingConnections\.filter\(item => item\.id !== requestId\);\s*renderVaultList\(\);\s*\}\s*dropStaleRoomsForPeer\(room\)/);
+});
+
+test('an inbox refresh does not list a request this device already accepted', () => {
+  assert.match(extractFn('refreshConnectionRequests'), /r\.direction === 'incoming' && r\.status === 'pending' && !connectionRequestAlreadyHandled\(r\.id\)/);
 });

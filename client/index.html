@@ -13156,6 +13156,18 @@ let pendingJoinPeerName = null;
 let pendingJoinPeerProfileImage = null;
 let pendingIncomingConnections = [];
 let pendingOutgoingConnections = [];
+// Requests this device has already accepted (or is accepting). An inbox refresh that was
+// already in flight when the person tapped Accept can still list the request as pending
+// and paint its card again; a second tap on that stale card used to create a second
+// conversation for the same person. Remembered for ten minutes, or until the accept fails.
+const handledConnectionRequests = new Map();
+const HANDLED_CONNECTION_REQUEST_MS = 10 * 60 * 1000;
+function connectionRequestAlreadyHandled(requestId) {
+  const at = handledConnectionRequests.get(requestId);
+  if (!at) return false;
+  if (Date.now() - at > HANDLED_CONNECTION_REQUEST_MS) { handledConnectionRequests.delete(requestId); return false; }
+  return true;
+}
 let pendingConnectionFocusId = null;
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function connectionRequestAvatar(request) {
@@ -13704,7 +13716,7 @@ async function refreshConnectionRequests() {
   if (result.error) { list.textContent = result.error; return; }
   await reconcileConversationPeerIdentities(result.requests, state);
   contactsSyncFromRequests(result.requests, state);
-  const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending');
+  const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending' && !connectionRequestAlreadyHandled(r.id));
   const outgoing = result.requests.filter(r => r.direction === 'outgoing' && r.status === 'pending');
   pendingIncomingConnections = incoming;
   pendingOutgoingConnections = outgoing;
@@ -13748,8 +13760,14 @@ async function acceptConnectionRequest(requestId) {
   // whole create + respond sequence as one operation; otherwise each tap
   // creates another permanent room before the server sees the acceptance.
   if (pendingConnectionAcceptance) return;
+  if (connectionRequestAlreadyHandled(requestId)) {
+    pendingIncomingConnections = pendingIncomingConnections.filter(item => item.id !== requestId);
+    renderVaultList();
+    return;
+  }
   const request = pendingIncomingConnections.find(item => item.id === requestId);
   if (!request) return;
+  handledConnectionRequests.set(requestId, Date.now());
   const peer = peerIdentityFromConnection(request);
   pendingConnectionPeerName = peer.displayName;
   pendingConnectionPeerPrivateNumber = peer.privateNumber;
@@ -13759,7 +13777,7 @@ async function acceptConnectionRequest(requestId) {
   pendingConnectionAcceptance = requestId;
   closeAccountPanel();
   const identity = loadAccountState();
-  if (!identity) { openAccountPanel(); return; }
+  if (!identity) { handledConnectionRequests.delete(requestId); pendingConnectionAcceptance = null; openAccountPanel(); return; }
   mode = 'connection';
   document.getElementById('setup-title').textContent = 'Creating your private conversation…';
   document.getElementById('join-field').style.display = 'none';
@@ -22318,6 +22336,7 @@ async function handleSetup({ silent = false } = {}) {
       const result = await api('/api/create', { name, pubKey, namedCode, password, deleteTimer: timerVal, persistent: persistentVal });
       if (result.error) {
         if (mode === 'connection') {
+          if (pendingConnectionAcceptance) handledConnectionRequests.delete(pendingConnectionAcceptance);
           pendingConnectionAcceptance = null;
           pendingConnectionPeerName = null;
           pendingConnectionPeerPrivateNumber = null;
@@ -22349,7 +22368,13 @@ async function handleSetup({ silent = false } = {}) {
         pendingConnectionPeerName = null;
         pendingConnectionPeerPrivateNumber = null;
         pendingConnectionPeerProfileImage = null;
-        if (accepted.error) toast(accepted.error); else toast('Private conversation created — the requester can now join');
+        if (accepted.error) { handledConnectionRequests.delete(requestId); toast(accepted.error); }
+        else {
+          toast('Private conversation created — the requester can now join');
+          // A refresh that was already in flight may have painted this request again.
+          pendingIncomingConnections = pendingIncomingConnections.filter(item => item.id !== requestId);
+          renderVaultList();
+        }
         dropStaleRoomsForPeer(room).catch(() => {});
       }
       // Register this creator-side room while it is still on the waiting
