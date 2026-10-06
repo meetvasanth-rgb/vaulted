@@ -22838,7 +22838,12 @@ function startWaitingForPeer(room, { silent = false } = {}) {
   if (room.waitInterval) clearInterval(room.waitInterval);
   room.waitInterval = setInterval(async () => {
     const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0 });
-    if (d.peerOnline) {
+    // "Online" is only a moment-in-time presence reading (the peer's live connection, or a poll
+    // within the last few seconds), so a peer who joined and then went to another screen can
+    // read offline here for a long while. A peer's name and public key only exist once they
+    // have actually joined, which is what this waiting screen is waiting for.
+    const peerJoined = !!d.peerOnline || !!(d.peerName && d.peerPubKey);
+    if (peerJoined) {
       clearInterval(room.waitInterval); room.waitInterval = null;
       pendingRoomCode = null;
       room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
@@ -25570,6 +25575,9 @@ async function voiceNotePcmBase64(mime, base64) {
     source.start();
     const rendered = await offline.startRendering();
     const samples = rendered.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < samples.length; i++) { const level = Math.abs(samples[i]); if (level > peak) peak = level; }
+    if (peak < 0.004) throw new Error('silent-audio');
     const pcm = new Uint8Array(samples.length * 2);
     const view = new DataView(pcm.buffer);
     for (let i = 0; i < samples.length; i++) {
@@ -25607,9 +25615,10 @@ async function requestVoiceTranscript(key, mime, base64) {
     } else {
       throw new Error('native-unavailable');
     }
-  } catch (_) {
+  } catch (error) {
     voiceTranscriptRequests.delete(requestId);
-    voiceTranscriptStates.set(key, { status:'error', text:'', error:'Transcript isn’t available on this device.', hidden:false });
+    const silent = error?.message === 'silent-audio';
+    voiceTranscriptStates.set(key, { status:'error', text:'', error:silent ? 'No speech could be recognized.' : 'Transcript isn’t available on this device.', hidden:false });
     syncVoiceTranscriptUi(key);
   }
 }

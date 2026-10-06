@@ -44,3 +44,22 @@ test('Android injects PCM audio on supported recognizers and removes the tempora
   assert.match(android, /public boolean supportsVoiceNoteTranscription\(\)/);
   assert.match(android, /voiceTranscriptFile\.delete\(\)/);
 });
+
+test('Android retries a failed transcript pass and reports the real recognizer error, not a blanket "no speech"', () => {
+  assert.match(android, /private void runVoiceTranscriptAttempt\(/);
+  // Language problems fall back to en-US; other on-device failures fall back to the system recognizer.
+  assert.match(android, /ERROR_LANGUAGE_NOT_SUPPORTED[\s\S]{0,200}ERROR_LANGUAGE_UNAVAILABLE/);
+  assert.match(android, /runVoiceTranscriptAttempt\(requestId, "en-US", onDevice, 1\)/);
+  assert.match(android, /runVoiceTranscriptAttempt\(requestId, locale, false, attempt \+ 2\)/);
+  assert.match(android, /voiceTranscriptErrorMessage\(error\)/);
+  assert.match(android, /"Transcript failed \(code " \+ error \+ "\)\."/);
+  assert.match(android, /\+ ",code:" \+ code/);
+  // The saved PCM survives between attempts; only the final outcome deletes it.
+  const release = android.slice(android.indexOf('private void releaseVoiceTranscriptRecognizer()'), android.indexOf('private void clearVoiceTranscript()'));
+  assert.doesNotMatch(release, /voiceTranscriptFile/);
+});
+
+test('a silent decoded voice note is reported before anything is sent to the native recognizer', () => {
+  assert.match(client, /if \(peak < 0\.004\) throw new Error\('silent-audio'\)/);
+  assert.match(client, /silent \? 'No speech could be recognized\.'/);
+});

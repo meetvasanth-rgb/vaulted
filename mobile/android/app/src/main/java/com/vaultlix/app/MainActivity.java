@@ -706,7 +706,7 @@ public class MainActivity extends BridgeActivity {
         if (notifyPage) emitSpeechToText("cancelled", "", "", hasOnDeviceSpeechRecognition());
     }
 
-    private void emitVoiceTranscript(String requestId, String state, String text, String error, boolean onDevice) {
+    private void emitVoiceTranscript(String requestId, String state, String text, String error, boolean onDevice, int code) {
         if (isFinishing() || isDestroyed() || getBridge() == null || getBridge().getWebView() == null) return;
         String current = getBridge().getWebView().getUrl();
         if (current == null || !current.startsWith("https://vaultlix.com/")) return;
@@ -714,20 +714,26 @@ public class MainActivity extends BridgeActivity {
                 + ",state:" + JSONObject.quote(state)
                 + ",text:" + JSONObject.quote(text == null ? "" : text)
                 + ",error:" + JSONObject.quote(error == null ? "" : error)
+                + ",code:" + code
                 + ",onDevice:" + onDevice + "}";
         getBridge().getWebView().evaluateJavascript(
                 "window.dispatchEvent(new CustomEvent('vaultlix:voice-transcript',{detail:" + detail + "}));", null);
     }
 
-    private void clearVoiceTranscript() {
+    private void releaseVoiceTranscriptRecognizer() {
         if (voiceTranscriptRecognizer != null) {
-            try { voiceTranscriptRecognizer.destroy(); } catch (RuntimeException ignored) { }
+            SpeechRecognizer old = voiceTranscriptRecognizer;
             voiceTranscriptRecognizer = null;
+            try { old.destroy(); } catch (RuntimeException ignored) { }
         }
         if (voiceTranscriptAudio != null) {
             try { voiceTranscriptAudio.close(); } catch (Exception ignored) { }
             voiceTranscriptAudio = null;
         }
+    }
+
+    private void clearVoiceTranscript() {
+        releaseVoiceTranscriptRecognizer();
         if (voiceTranscriptFile != null) {
             //noinspection ResultOfMethodCallIgnored
             voiceTranscriptFile.delete();
@@ -739,34 +745,59 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !SpeechRecognizer.isRecognitionAvailable(this)) {
             //noinspection ResultOfMethodCallIgnored
             pcmFile.delete();
-            emitVoiceTranscript(requestId, "error", "", "Transcription is not available on this device.", false);
+            emitVoiceTranscript(requestId, "error", "", "Transcription is not available on this device.", false, 0);
             return;
         }
         clearVoiceTranscript();
-        final boolean onDevice = hasOnDeviceSpeechRecognition();
+        voiceTranscriptFile = pcmFile;
+        String requested = localeTag == null ? "" : localeTag.trim();
+        if (requested.isEmpty()) requested = Locale.getDefault().toLanguageTag();
+        // Attempt 0: the on-device recognizer in the person's own language.
+        runVoiceTranscriptAttempt(requestId, requested, hasOnDeviceSpeechRecognition(), 0);
+    }
+
+    // One recognition pass over the saved PCM. A failed pass is retried (language fallback, then the
+    // system recognizer) before the person is told anything, and the real error code is always reported.
+    private void runVoiceTranscriptAttempt(String requestId, String locale, boolean onDevice, int attempt) {
+        if (voiceTranscriptFile == null) return;
+        releaseVoiceTranscriptRecognizer();
         try {
             voiceTranscriptRecognizer = onDevice
                     ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
                     : SpeechRecognizer.createSpeechRecognizer(this);
-            voiceTranscriptFile = pcmFile;
-            voiceTranscriptAudio = ParcelFileDescriptor.open(pcmFile, ParcelFileDescriptor.MODE_READ_ONLY);
+            voiceTranscriptAudio = ParcelFileDescriptor.open(voiceTranscriptFile, ParcelFileDescriptor.MODE_READ_ONLY);
         } catch (Exception unavailable) {
             clearVoiceTranscript();
-            emitVoiceTranscript(requestId, "error", "", "Transcript could not be started.", onDevice);
+            emitVoiceTranscript(requestId, "error", "", "Transcript could not be started.", onDevice, 0);
             return;
         }
-        voiceTranscriptRecognizer.setRecognitionListener(new RecognitionListener() {
+        final SpeechRecognizer attemptRecognizer = voiceTranscriptRecognizer;
+        attemptRecognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onReadyForSpeech(Bundle params) { }
             @Override public void onBeginningOfSpeech() { }
             @Override public void onRmsChanged(float rmsdB) { }
             @Override public void onBufferReceived(byte[] buffer) { }
             @Override public void onEndOfSpeech() { }
             @Override public void onError(int error) {
-                emitVoiceTranscript(requestId, "error", "", "No speech could be recognized.", onDevice);
+                if (attemptRecognizer != voiceTranscriptRecognizer) return; // a superseded pass
+                boolean languageProblem = error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
+                        || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE;
+                boolean noSpeech = error == SpeechRecognizer.ERROR_NO_MATCH
+                        || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+                if (attempt == 0 && languageProblem && !locale.toLowerCase(Locale.ROOT).startsWith("en")) {
+                    runVoiceTranscriptAttempt(requestId, "en-US", onDevice, 1);
+                    return;
+                }
+                if (onDevice && attempt < 2 && !noSpeech) {
+                    runVoiceTranscriptAttempt(requestId, locale, false, attempt + 2);
+                    return;
+                }
+                emitVoiceTranscript(requestId, "error", "", voiceTranscriptErrorMessage(error), onDevice, error);
                 clearVoiceTranscript();
             }
             @Override public void onResults(Bundle results) {
-                emitVoiceTranscript(requestId, "final", firstSpeechResult(results), "", onDevice);
+                if (attemptRecognizer != voiceTranscriptRecognizer) return;
+                emitVoiceTranscript(requestId, "final", firstSpeechResult(results), "", onDevice, 0);
                 clearVoiceTranscript();
             }
             @Override public void onPartialResults(Bundle partialResults) { }
@@ -781,10 +812,28 @@ public class MainActivity extends BridgeActivity {
         intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT);
         intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, 16000);
         intent.putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY);
-        String requestedLocale = localeTag == null ? "" : localeTag.trim();
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
-                requestedLocale.isEmpty() ? Locale.getDefault().toLanguageTag() : requestedLocale);
-        voiceTranscriptRecognizer.startListening(intent);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale);
+        attemptRecognizer.startListening(intent);
+    }
+
+    private String voiceTranscriptErrorMessage(int error) {
+        switch (error) {
+            case SpeechRecognizer.ERROR_NO_MATCH:
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                return "No speech could be recognized.";
+            case SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED:
+            case SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE:
+                return "Transcripts aren't available in this language on this device.";
+            case SpeechRecognizer.ERROR_NETWORK:
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+            case SpeechRecognizer.ERROR_SERVER:
+            case SpeechRecognizer.ERROR_SERVER_DISCONNECTED:
+                return "Transcript needs the speech language pack. Check your connection and try again.";
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                return "The speech recognizer is busy. Try again in a moment.";
+            default:
+                return "Transcript failed (code " + error + ").";
+        }
     }
 
     private final class AndroidCallBridge {
@@ -844,7 +893,7 @@ public class MainActivity extends BridgeActivity {
                     if (pcmFile != null) { //noinspection ResultOfMethodCallIgnored
                         pcmFile.delete();
                     }
-                    runOnUiThread(() -> emitVoiceTranscript(requestId, "error", "", "Transcript could not be created.", false));
+                    runOnUiThread(() -> emitVoiceTranscript(requestId, "error", "", "Transcript could not be created.", false, 0));
                 }
             });
         }
