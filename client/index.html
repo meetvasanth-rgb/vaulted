@@ -38,11 +38,6 @@
 <meta name="twitter:title" content="Vaultlix">
 <meta name="twitter:description" content="Message, share and call privately without sharing your personal phone number or uploading your contacts.">
 <meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap"/>
-<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"/>
-<noscript><link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500;6..96,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Inter:wght@300;400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"/></noscript>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -2987,6 +2982,17 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 /* Invitations: the "Have an invite code?" link and the store button on a friend's page. */
 .landing-invite-link{display:block;margin:12px 0 0;padding:6px 2px;border:0;background:none;color:#682C43;font:650 13px/1.3 'Manrope',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .public-profile-get-app .account-copy{margin-top:-4px;font-size:12.5px}
+</style>
+<style id="vaultlix-native-typography">
+/* Match WhatsApp's platform-native typography throughout the application:
+   SF Pro on Apple platforms, Roboto on Android, and the native UI face on
+   desktop. This replaces older screen-level families while retaining their
+   existing size, weight, line-height and spacing. */
+:root{--vaultlix-system-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+:root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body,
+:root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body *,
+:root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body *::before,
+:root:not(#vaultlix-font-override-a):not(#vaultlix-font-override-b) body *::after{font-family:var(--vaultlix-system-font)!important}
 </style>
 <script type="application/ld+json">
 {

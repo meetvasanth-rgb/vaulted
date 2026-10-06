@@ -33,7 +33,8 @@ test('App Lock describes its screen-lock boundary accurately', () => {
 });
 
 test('authenticated launch paints the local inbox before network restoration', () => {
-  assert.match(client, /rel="stylesheet" media="print" onload="this\.media='all'"/);
+  assert.doesNotMatch(client, /fonts\.googleapis\.com/);
+  assert.match(client, /id="vaultlix-native-typography"/);
   assert.match(client, /window\.addEventListener\('DOMContentLoaded', async \(\) => \{/);
   assert.match(client, /window\.addEventListener\('DOMContentLoaded', \(\) => \{\s*try \{ window\.webkit\?\.messageHandlers\?\.vaultlixCall/);
   const hydrateAt = client.indexOf('room.restorePending = true;');
