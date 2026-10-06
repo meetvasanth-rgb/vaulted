@@ -1156,6 +1156,7 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .request-intro{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;text-align:left}
 .request-intro-bubble{align-self:flex-start;max-width:100%;padding:9px 12px;border-radius:14px 14px 14px 4px;background:#fff;border:1px solid #E7DDE1;color:#271D25;font:500 14px/1.4 'Inter',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 .request-intro-bubble.muted{color:#8A7C83;font-style:italic}
+#request-message-overlay{z-index:13000}
 .request-message-input{width:100%;box-sizing:border-box;border:1px solid #E7DDE1;border-radius:14px;padding:11px 12px;font:500 15px/1.4 'Inter',sans-serif;color:#271D25;resize:none;outline:none}
 /* While the Chats search box is being typed in, the floating bottom bar would ride up on top of the keyboard. */
 html.vault-search-typing .vault-list-actions{display:none!important}
@@ -13541,11 +13542,12 @@ async function openContactChat(number) {
   if (!state) { openAccountPanel(); return; }
   const contact = getContact(normalized);
   const label = contact ? contactDisplayName(contact) : formatPrivateNumber(normalized);
-  const introText = await promptRequestMessage(label);
+  const target = await fetchRequestTarget(normalized);
+  if (target.error) { toast(target.error); return; }
+  const introText = await promptRequestMessage(label, { supported:!!target.inboxKey });
   if (introText === null) return;
-  const prepared = await prepareRequestIntro(normalized, introText);
+  const prepared = await prepareRequestIntro(normalized, introText, target);
   if (prepared.error) { toast(prepared.error); return; }
-  if (prepared.unsupported) toast('They need the latest Vaultlix to read a message with a request. Sending the request only.');
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized, ...(prepared.intro ? { intro:prepared.intro } : {}) });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
@@ -13880,29 +13882,44 @@ function requestIntroSlot(request) {
 
 // What the person types is checked locally before it is encrypted, then fetched key + encrypt.
 // Returns { intro } (maybe null when there is no message) or { error }.
-async function prepareRequestIntro(number, rawText) {
+async function prepareRequestIntro(number, rawText, target = null) {
   const text = String(rawText || '').trim().slice(0, INTRO_MAX_CHARS);
   if (!text) return { intro:null };
   if (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(text).blocked) return { error:'This text cannot be shared. Edit it and try again.' };
-  const state = loadAccountState();
-  if (!state) return { error:'Sign in to send a request.' };
-  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number });
+  const prepared = target || await fetchRequestTarget(number);
   if (prepared.error) return { error:prepared.error };
   if (!prepared.inboxKey) return { intro:null, unsupported:true };
   return { intro:await encryptIntroMessage(prepared.inboxKey, text) };
 }
 
+// Looks up whether the person can receive a message with a request (they have published an
+// inbox key, i.e. have opened a recent version of the app). Asked BEFORE the dialog so
+// nobody types a message that could not be sent.
+async function fetchRequestTarget(number) {
+  const state = loadAccountState();
+  if (!state) return { error:'Sign in to send a request.' };
+  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number });
+  if (prepared.error) return { error:prepared.error };
+  return { inboxKey:prepared.inboxKey || null };
+}
+
 // Asks for the optional first message. -> string (maybe '') or null when cancelled.
-function promptRequestMessage(label) {
+function promptRequestMessage(label, { supported = true } = {}) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.id = 'request-message-overlay';
     overlay.className = 'contact-sheet-overlay';
-    overlay.innerHTML = `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Message request">
+    overlay.innerHTML = supported
+      ? `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Message request">
       <div class="contact-sheet-head"><strong>Message ${escapeHtml(label)}</strong><span>Say hello with your request. It is encrypted so only ${escapeHtml(label)} can read it. They can accept or ignore it.</span></div>
       <textarea id="request-message-input" class="request-message-input" maxlength="${INTRO_MAX_CHARS}" rows="3" placeholder="Hi, it's me…"></textarea>
       <button type="button" class="contact-sheet-btn primary" data-choice="send">Send request</button>
       <button type="button" class="contact-sheet-btn" data-choice="plain">Send without a message</button>
+      <button type="button" class="contact-sheet-btn quiet" data-choice="">Cancel</button>
+    </div>`
+      : `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Connection request">
+      <div class="contact-sheet-head"><strong>Send a request to ${escapeHtml(label)}?</strong><span>${escapeHtml(label)} has not opened the latest Vaultlix yet, so a message cannot go with the request. They will see it as a normal connection request.</span></div>
+      <button type="button" class="contact-sheet-btn primary" data-choice="plain">Send request</button>
       <button type="button" class="contact-sheet-btn quiet" data-choice="">Cancel</button>
     </div>`;
     const finish = value => { overlay.remove(); resolve(value); };
@@ -22302,11 +22319,12 @@ async function requestPrivateVault(authenticationMode = 'create') {
     toast('Opened your existing private conversation');
     return;
   }
-  const introText = await promptRequestMessage(activePublicProfile.displayName || formatPrivateNumber(activePublicProfile.privateNumber));
+  const target = await fetchRequestTarget(activePublicProfile.privateNumber);
+  if (target.error) { toast(target.error); return; }
+  const introText = await promptRequestMessage(activePublicProfile.displayName || formatPrivateNumber(activePublicProfile.privateNumber), { supported:!!target.inboxKey });
   if (introText === null) return;
-  const prepared = await prepareRequestIntro(activePublicProfile.privateNumber, introText);
+  const prepared = await prepareRequestIntro(activePublicProfile.privateNumber, introText, target);
   if (prepared.error) { toast(prepared.error); return; }
-  if (prepared.unsupported) toast('They need the latest Vaultlix to read a message with a request. Sending the request only.');
   if (quickConnectHandshakePending) await triggerSecureHandshake();
   const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber, ...(prepared.intro ? { intro:prepared.intro } : {}) });
   if (result.error) { toast(result.error); return; }

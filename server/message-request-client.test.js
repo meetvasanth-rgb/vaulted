@@ -301,10 +301,10 @@ test('accepting captures the messages and the new chat queues them; polling flus
 
 test('both ways of sending a request ask for the optional message first, then encrypt it', () => {
   const contact = extractFn(client, 'openContactChat');
-  assert.match(contact, /const introText = await promptRequestMessage\(label\);\s*if \(introText === null\) return;\s*const prepared = await prepareRequestIntro\(normalized, introText\);/);
+  assert.match(contact, /const target = await fetchRequestTarget\(normalized\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\(label, \{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;\s*const prepared = await prepareRequestIntro\(normalized, introText, target\);/);
   assert.match(contact, /replaceExisting:true, \.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   const profile = extractFn(client, 'requestPrivateVault');
-  assert.match(profile, /const introText = await promptRequestMessage\(activePublicProfile\.displayName \|\| formatPrivateNumber\(activePublicProfile\.privateNumber\)\);\s*if \(introText === null\) return;/);
+  assert.match(profile, /const target = await fetchRequestTarget\(activePublicProfile\.privateNumber\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\([^;]*\{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;/);
   assert.match(profile, /\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   assert.match(profile, /replaceExisting:true,\s*\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
 });
@@ -326,4 +326,43 @@ test('request cards in the chat list and the account panel carry a slot, filled 
 
 test('the inbox key is ensured whenever requests are refreshed', () => {
   assert.match(extractFn(client, 'refreshConnectionRequests'), /ensureInboxKey\(\)\.catch\(\(\) => \{\}\);\s*await reconcileConversationPeerIdentities/);
+});
+
+// Video report: tapping "Connect privately" seemed to do nothing. The message dialog opened
+// BEHIND the Quick Connect panel (z-index 12000), so only the panel was visible, and the
+// message the person then typed (after closing the panel) went to someone whose app had
+// not published an inbox key, so only a plain request arrived.
+test('the message dialog sits above the Quick Connect panel instead of hiding behind it', () => {
+  const panelZ = Number(/\.account-overlay\{position:fixed;inset:0;z-index:(\d+)/.exec(client)[1]);
+  const dialogZ = Number(/#request-message-overlay\{z-index:(\d+)\}/.exec(client)[1]);
+  assert.ok(dialogZ > panelZ, `dialog z-index ${dialogZ} must exceed the panel's ${panelZ}`);
+});
+
+test('whether the person can receive a message is checked before the dialog, and the dialog says so when they cannot', async () => {
+  const none = harness({ answers:{ '/api/connections/prepare': () => ({ ok:true, inboxKey:null, introMax:3 }) } });
+  assert.deepEqual(plain(await run(none, "fetchRequestTarget('2345678901')")), { inboxKey:null });
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const some = harness({ answers:{ '/api/connections/prepare': () => ({ ok:true, inboxKey:record.pubJwk, introMax:3 }) } });
+  assert.deepEqual(plain(await run(some, "fetchRequestTarget('2345678901')")), { inboxKey:record.pubJwk });
+  const refused = harness({ answers:{ '/api/connections/prepare': () => ({ error:'This person cannot be contacted.' }) } });
+  assert.equal((await run(refused, "fetchRequestTarget('2345678901')")).error, 'This person cannot be contacted.');
+  assert.equal((await run(harness({ state:null }), "fetchRequestTarget('2345678901')")).error, 'Sign in to send a request.');
+  const dialog = extractFn(client, 'promptRequestMessage');
+  assert.match(dialog, /function promptRequestMessage\(label, \{ supported = true \} = \{\}\)/);
+  assert.match(dialog, /has not opened the latest Vaultlix yet, so a message cannot go with the request/);
+  const unsupportedPart = dialog.slice(dialog.indexOf('has not opened the latest'));
+  assert.doesNotMatch(unsupportedPart.slice(0, unsupportedPart.indexOf('</div>`')), /request-message-input/, 'no text box when a message cannot be sent');
+});
+
+test('a prefetched target is reused, so the lookup happens once per request', async () => {
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const ctx = harness();
+  ctx.target = { inboxKey:record.pubJwk };
+  const prepared = plain(await run(ctx, "prepareRequestIntro('2345678901', 'hello', target)"));
+  assert.ok(prepared.intro.ct);
+  assert.equal(ctx.calls.length, 0, 'no second network call');
+  ctx.noKey = { inboxKey:null };
+  assert.deepEqual(plain(await run(ctx, "prepareRequestIntro('2345678901', 'hello', noKey)")), { intro:null, unsupported:true });
 });
