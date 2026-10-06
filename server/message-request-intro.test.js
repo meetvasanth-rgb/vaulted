@@ -154,3 +154,109 @@ test('a request with no message still works exactly as before', { timeout:20000 
   const bobList = (await post(base, '/api/connections/list', auth(bob))).data.requests;
   assert.equal('intro' in bobList[0], false);
 });
+
+// ── Phase 3: who may send requests, and the quiet cooldown after a decline ──────────
+
+async function registerExtra(base, letter, privateNumber) {
+  const result = await post(base, '/api/account/register', {
+    accountId:letter.repeat(64), privateNumber, displayName:`User ${letter}`,
+    authSecret:`auth-${letter}`.padEnd(48, letter), recoverySecret:`recovery-${letter}`.padEnd(48, letter),
+    passwordWrap:'p'.repeat(24), recoveryWrap:'r'.repeat(24), bundle:'b'.repeat(24),
+  });
+  assert.equal(result.status, 200);
+  return result.data;
+}
+
+test('the privacy choice defaults to anyone, can be changed, and rejects anything else', { timeout:20000 }, async t => {
+  const { base, bob, auth } = await startServer(t);
+  assert.deepEqual((await post(base, '/api/account/request-policy', auth(bob))).data, { ok:true, policy:'anyone' });
+  assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'qr' })).data.policy, 'qr');
+  assert.equal((await post(base, '/api/account/request-policy', auth(bob))).data.policy, 'qr');
+  assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'everyone' })).status, 400);
+  assert.equal((await post(base, '/api/account/request-policy', { accountId:bob.accountId, sessionToken:'x', policy:'none' })).status, 401);
+});
+
+test('"no one for now" refuses new requests but not people you already chat with', { timeout:20000 }, async t => {
+  const { base, alice, bob, auth } = await startServer(t);
+  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'none' });
+  const refused = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
+  assert.equal(refused.status, 403);
+  assert.match(refused.data.error, /not accepting new requests/);
+  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012' })).status, 403, 'refused before a message is written');
+
+  // An existing, accepted relationship is unaffected: first connect while open, then close the door.
+  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'anyone' });
+  const first = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
+  const room = await post(base, '/api/create', { name:'User a', pubKey:'k', persistent:true });
+  await post(base, '/api/connections/respond', { ...auth(bob), requestId:first.data.requestId, action:'accepted', inviteUrl:`https://vaultlix.com/join/${room.data.code}#k=AAAAAAAAAAAAAAAAAAAAAA` });
+  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'none' });
+  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012' })).status, 200);
+  const again = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
+  assert.equal(again.data.status, 'connected', 'the existing relationship is still recognised');
+  const reopened = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', replaceExisting:true });
+  assert.equal(reopened.status, 200, 'reopening a chat is not held back by the privacy choice');
+  assert.equal(reopened.data.status, 'pending');
+});
+
+test('"QR or link only" needs the profile code, and a number lookup does not reveal it', { timeout:20000 }, async t => {
+  const { base, alice, bob, auth } = await startServer(t);
+  const code = bob.profileShareCode;
+  assert.ok(code, 'the account has a profile code');
+  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'qr' });
+  const lookup = await (await fetch(`${base}/api/profile/3456789012`)).json();
+  assert.equal(lookup.profile.profileShareCode, null, 'not leaked through the number lookup');
+  assert.equal(lookup.profile.address, null);
+  const byLink = await (await fetch(`${base}/api/profile-share/${code}`)).json();
+  assert.equal(byLink.profile.profileShareCode, code, 'the link itself still works');
+
+  const noCode = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
+  assert.equal(noCode.status, 403);
+  assert.match(noCode.data.error, /QR code or profile link/);
+  assert.equal((await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', shareCode:'ZZZZZZ' })).status, 403);
+  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012' })).status, 403);
+  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012', shareCode:code })).status, 200);
+  const withCode = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', shareCode:code });
+  assert.equal(withCode.data.status, 'pending');
+
+  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'anyone' });
+  const open = await (await fetch(`${base}/api/profile/3456789012`)).json();
+  assert.equal(open.profile.profileShareCode, code, 'visible again when anyone may request');
+});
+
+test('after a decline the same sender is quietly held back for 15 days; others are not', { timeout:20000 }, async t => {
+  const { base, alice, bob, auth } = await startServer(t);
+  const carol = await registerExtra(base, 'c', '4567890123');
+  const first = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', intro:intro() });
+  assert.equal(first.data.status, 'pending');
+  const declined = await post(base, '/api/connections/respond', { ...auth(bob), requestId:first.data.requestId, action:'rejected' });
+  assert.equal(declined.data.status, 'rejected');
+
+  const retry = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', intro:intro('R'.repeat(30)) });
+  assert.equal(retry.status, 200, 'the sender is not told');
+  assert.equal(retry.data.status, 'pending');
+  assert.notEqual(retry.data.requestId, first.data.requestId);
+  const bobList = (await post(base, '/api/connections/list', auth(bob))).data.requests;
+  assert.equal(bobList.length, 0, 'nothing was delivered, and the decline marker is never sent to a client');
+  assert.equal((await post(base, '/api/connections/list', auth(alice))).data.requests.filter(r => r.status === 'pending').length, 0, 'the sender has no live request either');
+
+  const other = await post(base, '/api/connections/request', { ...auth(carol), privateNumber:'3456789012' });
+  assert.equal(other.data.status, 'pending');
+  assert.equal((await post(base, '/api/connections/list', auth(bob))).data.requests.length, 1, 'a different sender is delivered normally');
+});
+
+test('the cooldown ends after fifteen days', () => {
+  const server = require('node:fs').readFileSync(join(__dirname, 'index.js'), 'utf8');
+  assert.match(server, /const REQUEST_COOLDOWN_MS = 15 \* 24 \* 60 \* 60 \* 1000;/);
+  const fn = server.slice(server.indexOf('function declinedRecently('), server.indexOf('function connectionPairKey('));
+  const vm = require('node:vm');
+  const ctx = vm.createContext({});
+  vm.runInContext(server.slice(server.indexOf('const REQUEST_COOLDOWN_MS'), server.indexOf('function connectionPairKey(')) + '\nfunction normalizeProfileShareCode(v){return v}', ctx);
+  const day = 24 * 60 * 60 * 1000;
+  const now = 100 * day;
+  ctx.account = { connectionRequests:[{ status:'rejected', direction:'incoming', senderAccountId:'a', respondedAt:now - 14 * day }] };
+  assert.equal(vm.runInContext('declinedRecently(account, "a", ' + now + ')', ctx), true);
+  assert.equal(vm.runInContext('declinedRecently(account, "b", ' + now + ')', ctx), false, 'another sender');
+  ctx.account = { connectionRequests:[{ status:'rejected', direction:'incoming', senderAccountId:'a', respondedAt:now - 16 * day }] };
+  assert.equal(vm.runInContext('declinedRecently(account, "a", ' + now + ')', ctx), false, 'after fifteen days');
+  assert.match(fn, /request\.status === 'rejected' && request\.direction === 'incoming'/);
+});

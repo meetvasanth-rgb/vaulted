@@ -463,7 +463,7 @@ test('manage offers a polished timeout control without Lock now', () => {
 test('Settings → Privacy & Security contains hidden-chat password management', () => {
   const fn = extractFn('openSettingsCategory');
   const rows = fn.match(/const generalRows = \{([\s\S]*?)\n  \};/)?.[1] || '';
-  assert.match(rows, /privacy:\['settings-app-lock-row','settings-hidden-chats-row','settings-locker-row'\]/);
+  assert.match(rows, /privacy:\['settings-app-lock-row','settings-request-policy-row','settings-hidden-chats-row','settings-locker-row'\]/);
   assert.match(client, /function updateHiddenChatsSettingsStatus\(\)[\s\S]{0,500}configured \? 'On' : 'Set up'/);
   assert.match(client, /updateAppLockStatus\(\);\s*updateHiddenChatsSettingsStatus\(\);\s*updateLockerStatus\(\);/);
 });

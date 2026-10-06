@@ -105,7 +105,7 @@ test('account persistence uses parameterized upserts', async () => {
   assert.equal(calls.length, 2);
   assert.match(calls[1][0], /ON CONFLICT \(account_id\) DO UPDATE/);
   assert.match(calls[1][0], /profile_share_code=EXCLUDED\.profile_share_code/);
-  assert.equal(calls[1][1].length, 28); // includes inbox_key
+  assert.equal(calls[1][1].length, 29); // includes inbox_key and request_policy
   assert.equal(calls[1][1][0], 'a'.repeat(64));
 });
 

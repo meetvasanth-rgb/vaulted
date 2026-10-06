@@ -1157,6 +1157,11 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .request-intro-bubble{align-self:flex-start;max-width:100%;padding:9px 12px;border-radius:14px 14px 14px 4px;background:#fff;border:1px solid #E7DDE1;color:#271D25;font:500 14px/1.4 'Inter',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 .request-intro-bubble.muted{color:#8A7C83;font-style:italic}
 #request-message-overlay{z-index:13000}
+.request-outgoing-meta{margin-top:6px;font:500 12.5px 'Inter',sans-serif;color:#8A7C83}
+.request-outgoing-add{margin-top:8px;border:1px solid #E0CED6;border-radius:12px;background:#fff;color:#682C43;padding:8px 12px;font:600 13px 'Inter',sans-serif;cursor:pointer}
+.policy-option{text-align:left;display:flex;flex-direction:column;gap:3px}
+.policy-option span{font:400 12.5px/1.4 'Inter',sans-serif;color:#8A7C83}
+.policy-option.selected{border-color:#682C43;background:#FBF4F7}
 .request-message-input{width:100%;box-sizing:border-box;border:1px solid #E7DDE1;border-radius:14px;padding:11px 12px;font:500 15px/1.4 'Inter',sans-serif;color:#271D25;resize:none;outline:none}
 /* While the Chats search box is being typed in, the floating bottom bar would ride up on top of the keyboard. */
 html.vault-search-typing .vault-list-actions{display:none!important}
@@ -4178,6 +4183,19 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         <div class="settings-row-sub">Use an independent passcode and lock immediately in the background</div>
       </div>
       <div class="settings-status settings-status-action" id="app-lock-status">Set up</div>
+    </div>
+
+    <div class="settings-divider"></div>
+
+    <div class="settings-row" id="settings-request-policy-row" onclick="openRequestPolicySheet()" style="cursor:pointer">
+      <div class="settings-row-icon" style="background:#EEF5F0;color:#4F8A66;">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+      </div>
+      <div class="settings-row-text">
+        <div class="settings-row-title">Who can send me requests</div>
+        <div class="settings-row-sub">Choose who can message you before you connect</div>
+      </div>
+      <div class="settings-status settings-status-action" id="request-policy-status">Anyone with my number</div>
     </div>
 
     <div class="settings-divider"></div>
@@ -11461,7 +11479,7 @@ function openSettingsCategory(category) {
   const generalSection = document.getElementById('settings-general-section');
   const generalRows = {
     profile:['settings-account-row','settings-profile-controls'],
-    privacy:['settings-app-lock-row','settings-hidden-chats-row','settings-locker-row'],
+    privacy:['settings-app-lock-row','settings-request-policy-row','settings-hidden-chats-row','settings-locker-row'],
     notifications:['settings-chime-row','settings-tone-row','settings-push-row']
   };
   const selectedRows = generalRows[category] || [];
@@ -12041,6 +12059,7 @@ function loadSettingsState() {
     if (chimeToggle) { chimeToggle.checked = saved.chime !== false; chimeEnabled = chimeToggle.checked; }
   } catch (e) {}
   updateMessageToneStatus();
+  refreshRequestPolicyStatus().catch(() => {});
   updatePushStatus();
   updateAccountSettingsStatus();
 }
@@ -13895,21 +13914,28 @@ async function prepareRequestIntro(number, rawText, target = null) {
 // Looks up whether the person can receive a message with a request (they have published an
 // inbox key, i.e. have opened a recent version of the app). Asked BEFORE the dialog so
 // nobody types a message that could not be sent.
-async function fetchRequestTarget(number) {
+async function fetchRequestTarget(number, shareCode = '') {
   const state = loadAccountState();
   if (!state) return { error:'Sign in to send a request.' };
-  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number });
+  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number, ...(shareCode ? { shareCode } : {}) });
   if (prepared.error) return { error:prepared.error };
   return { inboxKey:prepared.inboxKey || null };
 }
 
 // Asks for the optional first message. -> string (maybe '') or null when cancelled.
-function promptRequestMessage(label, { supported = true } = {}) {
+function promptRequestMessage(label, { supported = true, remaining = 0 } = {}) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.id = 'request-message-overlay';
     overlay.className = 'contact-sheet-overlay';
-    overlay.innerHTML = supported
+    overlay.innerHTML = supported && remaining
+      ? `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Another message">
+      <div class="contact-sheet-head"><strong>Send another message</strong><span>${remaining} of ${INTRO_MAX_MESSAGES} left until ${escapeHtml(label)} replies. It is encrypted so only they can read it.</span></div>
+      <textarea id="request-message-input" class="request-message-input" maxlength="${INTRO_MAX_CHARS}" rows="3" placeholder="Write a message…"></textarea>
+      <button type="button" class="contact-sheet-btn primary" data-choice="send">Send message</button>
+      <button type="button" class="contact-sheet-btn quiet" data-choice="">Cancel</button>
+    </div>`
+      : supported
       ? `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Message request">
       <div class="contact-sheet-head"><strong>Message ${escapeHtml(label)}</strong><span>Say hello with your request. It is encrypted so only ${escapeHtml(label)} can read it. They can accept or ignore it.</span></div>
       <textarea id="request-message-input" class="request-message-input" maxlength="${INTRO_MAX_CHARS}" rows="3" placeholder="Hi, it's me…"></textarea>
@@ -13954,6 +13980,104 @@ function queueIntroNotices(room, info) {
     room.pendingIntroNotices.push({ id:rec.id, actorName:info.name, text });
     if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
   }
+}
+
+// While a request waits the sender can add messages, up to INTRO_MAX_MESSAGES in total.
+function outgoingIntroHtml(request) {
+  const count = Number(request.introCount) || 0;
+  const meta = count ? `<div class="request-outgoing-meta">${count} of ${INTRO_MAX_MESSAGES} messages sent</div>` : '';
+  if (count >= INTRO_MAX_MESSAGES) return `${meta}<div class="request-outgoing-meta">Waiting for a reply</div>`;
+  return `${meta}<button type="button" class="request-outgoing-add" onclick="sendRequestFollowUp('${escapeHtml(request.id)}')">${count ? 'Send another message' : 'Add a message'}</button>`;
+}
+
+async function sendRequestFollowUp(requestId) {
+  const request = pendingOutgoingConnections.find(item => item.id === requestId);
+  const state = loadAccountState();
+  const number = normalizePrivateNumber(request?.recipientPrivateNumber);
+  if (!request || !state || !number) return;
+  const count = Number(request.introCount) || 0;
+  if (count >= INTRO_MAX_MESSAGES) { toast(`You can send ${INTRO_MAX_MESSAGES} messages until they reply.`); return; }
+  const label = request.recipientDisplayName || formatPrivateNumber(number);
+  const target = await fetchRequestTarget(number);
+  if (target.error) { toast(target.error); return; }
+  if (!target.inboxKey) { toast(`${label} has not opened the latest Vaultlix yet, so a message cannot be sent.`); return; }
+  const text = await promptRequestMessage(label, { supported:true, remaining:INTRO_MAX_MESSAGES - count });
+  if (text === null || !String(text).trim()) return;
+  const prepared = await prepareRequestIntro(number, text, target);
+  if (prepared.error) { toast(prepared.error); return; }
+  if (!prepared.intro) return;
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number, intro:prepared.intro });
+  if (result.error) { toast(result.error); return; }
+  if (result.status !== 'pending') { await refreshConnectionRequests(); return; }
+  request.introCount = Number.isFinite(result.introCount) ? result.introCount : count + 1;
+  renderVaultList();
+  toast(request.introCount >= INTRO_MAX_MESSAGES ? 'Message sent. Now waiting for a reply.' : 'Message sent');
+}
+
+// ── Who can send me requests (privacy) ──
+const REQUEST_POLICY_LABELS = { anyone:'Anyone with my number', qr:'QR code or link only', none:'No one for now' };
+const REQUEST_POLICY_HELP = {
+  anyone:'People who have your Vaultlix number can send you a request.',
+  qr:'Only people who scan your QR card or open your profile link can send a request.',
+  none:'No new requests. People you already chat with can still reopen a chat.',
+};
+const REQUEST_POLICY_KEY_PREFIX = 'vaultlix_request_policy:';
+
+function cachedRequestPolicy(state = loadAccountState()) {
+  try {
+    const value = state?.accountId ? localStorage.getItem(REQUEST_POLICY_KEY_PREFIX + state.accountId) : null;
+    return REQUEST_POLICY_LABELS[value] ? value : 'anyone';
+  } catch (e) { return 'anyone'; }
+}
+
+function updateRequestPolicyStatus(policy = cachedRequestPolicy()) {
+  const status = document.getElementById('request-policy-status');
+  if (status) status.textContent = REQUEST_POLICY_LABELS[policy] || REQUEST_POLICY_LABELS.anyone;
+}
+
+async function refreshRequestPolicyStatus() {
+  const state = loadAccountState();
+  updateRequestPolicyStatus();
+  if (!state) return;
+  try {
+    const result = await api('/api/account/request-policy', { accountId:state.accountId, sessionToken:state.sessionToken });
+    if (result && REQUEST_POLICY_LABELS[result.policy]) {
+      try { localStorage.setItem(REQUEST_POLICY_KEY_PREFIX + state.accountId, result.policy); } catch (e) {}
+      updateRequestPolicyStatus(result.policy);
+    }
+  } catch (e) {}
+}
+
+function closeRequestPolicySheet() { document.getElementById('request-policy-overlay')?.remove(); }
+
+function openRequestPolicySheet() {
+  const state = loadAccountState();
+  if (!state) { openAccountPanel(); return; }
+  closeRequestPolicySheet();
+  const current = cachedRequestPolicy(state);
+  const overlay = document.createElement('div');
+  overlay.id = 'request-policy-overlay';
+  overlay.className = 'contact-sheet-overlay';
+  overlay.innerHTML = `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Who can send me requests">
+    <div class="contact-sheet-head"><strong>Who can send me requests</strong><span>Applies to people you have not connected with yet. Chats you already have are not affected.</span></div>
+    ${Object.keys(REQUEST_POLICY_LABELS).map(key => `<button type="button" class="contact-sheet-btn policy-option${key === current ? ' selected' : ''}" data-policy="${key}" role="radio" aria-checked="${key === current}">
+      <strong>${escapeHtml(REQUEST_POLICY_LABELS[key])}</strong><span>${escapeHtml(REQUEST_POLICY_HELP[key])}</span></button>`).join('')}
+    <button type="button" class="contact-sheet-btn quiet" data-policy="">Close</button>
+  </div>`;
+  overlay.addEventListener('click', async event => {
+    if (event.target === overlay) { closeRequestPolicySheet(); return; }
+    const button = event.target.closest?.('[data-policy]');
+    if (!button) return;
+    const policy = button.dataset.policy;
+    if (!policy) { closeRequestPolicySheet(); return; }
+    const result = await api('/api/account/request-policy', { accountId:state.accountId, sessionToken:state.sessionToken, policy });
+    if (result.error) { toast(result.error); return; }
+    try { localStorage.setItem(REQUEST_POLICY_KEY_PREFIX + state.accountId, policy); } catch (e) {}
+    updateRequestPolicyStatus(policy);
+    closeRequestPolicySheet();
+    toast('Saved');
+  });
+  document.body.appendChild(overlay);
 }
 
 async function flushIntroNotices(room) {
@@ -18047,7 +18171,7 @@ function renderVaultList() {
   }
   const previews = vaultPreviewsEnabled();
   const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div>${requestIntroSlot(request)}<div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
-  const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
+  const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div>${outgoingIntroHtml(request)}</div>`).join('');
   if (rooms.size === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body._vaultlixChatListHtml = null;
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
@@ -22235,7 +22359,7 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
       history.replaceState(null, '', '/');
       return false;
     }
-    activePublicProfile = result.profile;
+    activePublicProfile = byShareCode ? { ...result.profile, requestShareCode:privateNumber } : result.profile;
     const signedIn = loadAccountState();
     const profileName = document.getElementById('public-profile-name');
     const profilePhoto = document.getElementById('public-profile-photo');
@@ -22319,14 +22443,17 @@ async function requestPrivateVault(authenticationMode = 'create') {
     toast('Opened your existing private conversation');
     return;
   }
-  const target = await fetchRequestTarget(activePublicProfile.privateNumber);
+  // A person who only accepts requests from their QR code or profile link needs the code the
+  // profile was opened with.
+  const requestShareCode = activePublicProfile.requestShareCode || '';
+  const target = await fetchRequestTarget(activePublicProfile.privateNumber, requestShareCode);
   if (target.error) { toast(target.error); return; }
   const introText = await promptRequestMessage(activePublicProfile.displayName || formatPrivateNumber(activePublicProfile.privateNumber), { supported:!!target.inboxKey });
   if (introText === null) return;
   const prepared = await prepareRequestIntro(activePublicProfile.privateNumber, introText, target);
   if (prepared.error) { toast(prepared.error); return; }
   if (quickConnectHandshakePending) await triggerSecureHandshake();
-  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber, ...(prepared.intro ? { intro:prepared.intro } : {}) });
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber, ...(requestShareCode ? { shareCode:requestShareCode } : {}), ...(prepared.intro ? { intro:prepared.intro } : {}) });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
     const peerNumber = activePublicProfile.privateNumber;

@@ -304,7 +304,7 @@ test('both ways of sending a request ask for the optional message first, then en
   assert.match(contact, /const target = await fetchRequestTarget\(normalized\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\(label, \{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;\s*const prepared = await prepareRequestIntro\(normalized, introText, target\);/);
   assert.match(contact, /replaceExisting:true, \.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   const profile = extractFn(client, 'requestPrivateVault');
-  assert.match(profile, /const target = await fetchRequestTarget\(activePublicProfile\.privateNumber\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\([^;]*\{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;/);
+  assert.match(profile, /const requestShareCode = activePublicProfile\.requestShareCode \|\| '';\s*const target = await fetchRequestTarget\(activePublicProfile\.privateNumber, requestShareCode\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\([^;]*\{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;/);
   assert.match(profile, /\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   assert.match(profile, /replaceExisting:true,\s*\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
 });
@@ -349,7 +349,7 @@ test('whether the person can receive a message is checked before the dialog, and
   assert.equal((await run(refused, "fetchRequestTarget('2345678901')")).error, 'This person cannot be contacted.');
   assert.equal((await run(harness({ state:null }), "fetchRequestTarget('2345678901')")).error, 'Sign in to send a request.');
   const dialog = extractFn(client, 'promptRequestMessage');
-  assert.match(dialog, /function promptRequestMessage\(label, \{ supported = true \} = \{\}\)/);
+  assert.match(dialog, /function promptRequestMessage\(label, \{ supported = true, remaining = 0 \} = \{\}\)/);
   assert.match(dialog, /has not opened the latest Vaultlix yet, so a message cannot go with the request/);
   const unsupportedPart = dialog.slice(dialog.indexOf('has not opened the latest'));
   assert.doesNotMatch(unsupportedPart.slice(0, unsupportedPart.indexOf('</div>`')), /request-message-input/, 'no text box when a message cannot be sent');
@@ -365,4 +365,142 @@ test('a prefetched target is reused, so the lookup happens once per request', as
   assert.equal(ctx.calls.length, 0, 'no second network call');
   ctx.noKey = { inboxKey:null };
   assert.deepEqual(plain(await run(ctx, "prepareRequestIntro('2345678901', 'hello', noKey)")), { intro:null, unsupported:true });
+});
+
+// ── Phase 3: follow-up messages, the privacy choice, and the profile code ──────────────
+
+function phase3Harness({ pending = [], answers = {}, prompts = [], state = { accountId:'acc1', sessionToken:'tok', masterKey:'MK' } } = {}) {
+  const ctx = harness({ answers, state });
+  ctx.pendingOutgoingConnections = pending;
+  ctx.toasts = [];
+  ctx.toast = message => ctx.toasts.push(message);
+  ctx.renderCount = 0;
+  ctx.renderVaultList = () => { ctx.renderCount++; };
+  ctx.refreshConnectionRequests = async () => { ctx.calls.push(['refresh']); };
+  ctx.normalizePrivateNumber = value => String(value || '').replace(/\D/g, '');
+  ctx.formatPrivateNumber = value => `fmt-${value}`;
+  ctx.promptQueue = prompts;
+  ctx.promptRequestMessage = async (label, options) => { ctx.promptArgs = [label, options]; return ctx.promptQueue.shift(); };
+  return ctx;
+}
+
+test('an outgoing request shows how many messages were sent and offers another until three', () => {
+  const ctx = phase3Harness();
+  assert.match(run(ctx, 'outgoingIntroHtml({ id:"q1", introCount:0 })'), /Add a message/);
+  assert.doesNotMatch(run(ctx, 'outgoingIntroHtml({ id:"q1", introCount:0 })'), /messages sent/);
+  const one = run(ctx, 'outgoingIntroHtml({ id:"q1", introCount:1 })');
+  assert.match(one, /1 of 3 messages sent/);
+  assert.match(one, /Send another message/);
+  assert.match(one, /sendRequestFollowUp\('q1'\)/);
+  const full = run(ctx, 'outgoingIntroHtml({ id:"q1", introCount:3 })');
+  assert.match(full, /3 of 3 messages sent/);
+  assert.match(full, /Waiting for a reply/);
+  assert.doesNotMatch(full, /sendRequestFollowUp/, 'no button once the limit is reached');
+});
+
+test('a follow-up message is encrypted to the recipient and added to the same request', async () => {
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const request = { id:'q1', recipientPrivateNumber:'3456789012', recipientDisplayName:'Bob', introCount:1 };
+  const ctx = phase3Harness({
+    pending:[request], prompts:['Are you there?'],
+    answers:{
+      '/api/connections/prepare': () => ({ ok:true, inboxKey:record.pubJwk, introMax:3 }),
+      '/api/connections/request': () => ({ ok:true, requestId:'q1', status:'pending', introCount:2 }),
+    },
+  });
+  await run(ctx, "sendRequestFollowUp('q1')");
+  assert.deepEqual(plain(ctx.promptArgs[1]), { supported:true, remaining:2 });
+  const sent = ctx.calls.find(([route]) => route === '/api/connections/request');
+  assert.equal(sent[1].privateNumber, '3456789012');
+  assert.ok(sent[1].intro.ct);
+  assert.doesNotMatch(JSON.stringify(ctx.calls), /Are you there/, 'plaintext never leaves the device');
+  assert.equal(request.introCount, 2);
+  assert.ok(ctx.renderCount >= 1);
+  assert.deepEqual(ctx.toasts, ['Message sent']);
+  origin.priv = record.privJwk; origin.message = sent[1].intro;
+  assert.equal(await run(origin, 'decryptIntroMessage(priv, message)'), 'Are you there?');
+});
+
+test('the third follow-up says the sender is now waiting; a fourth never reaches the dialog', async () => {
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const request = { id:'q1', recipientPrivateNumber:'3456789012', recipientDisplayName:'Bob', introCount:2 };
+  const ctx = phase3Harness({ pending:[request], prompts:['Last one'], answers:{
+    '/api/connections/prepare': () => ({ ok:true, inboxKey:record.pubJwk }),
+    '/api/connections/request': () => ({ ok:true, status:'pending', introCount:3 }),
+  } });
+  await run(ctx, "sendRequestFollowUp('q1')");
+  assert.deepEqual(ctx.toasts, ['Message sent. Now waiting for a reply.']);
+  const callsBefore = ctx.calls.length;
+  await run(ctx, "sendRequestFollowUp('q1')");
+  assert.equal(ctx.calls.length, callsBefore, 'no network call at three');
+  assert.match(ctx.toasts.at(-1), /3 messages until they reply/);
+});
+
+test('follow-up: cancelling or an empty message sends nothing; a server refusal is shown', async () => {
+  const origin = harness();
+  const record = plain(await run(origin, 'generateInboxKeyRecord()'));
+  const base = { '/api/connections/prepare': () => ({ ok:true, inboxKey:record.pubJwk }) };
+  for (const answer of [null, '', '   ']) {
+    const request = { id:'q1', recipientPrivateNumber:'3456789012', introCount:0 };
+    const ctx = phase3Harness({ pending:[request], prompts:[answer], answers:base });
+    await run(ctx, "sendRequestFollowUp('q1')");
+    assert.equal(ctx.calls.filter(([route]) => route === '/api/connections/request').length, 0, JSON.stringify(answer));
+    assert.equal(request.introCount, 0);
+  }
+  const refused = { id:'q1', recipientPrivateNumber:'3456789012', introCount:1 };
+  const ctx = phase3Harness({ pending:[refused], prompts:['hello'], answers:{ ...base, '/api/connections/request': () => ({ error:'You can send 3 messages until they reply.' }) } });
+  await run(ctx, "sendRequestFollowUp('q1')");
+  assert.deepEqual(ctx.toasts, ['You can send 3 messages until they reply.']);
+  assert.equal(refused.introCount, 1, 'the count is unchanged');
+});
+
+test('follow-up: a recipient without an inbox key cannot receive messages, and a refused lookup is shown', async () => {
+  const request = { id:'q1', recipientPrivateNumber:'3456789012', recipientDisplayName:'Bob', introCount:0 };
+  const none = phase3Harness({ pending:[request], prompts:['x'], answers:{ '/api/connections/prepare': () => ({ ok:true, inboxKey:null }) } });
+  await run(none, "sendRequestFollowUp('q1')");
+  assert.match(none.toasts[0], /Bob has not opened the latest Vaultlix yet/);
+  assert.equal(none.promptArgs, undefined, 'the dialog is not shown');
+  const refused = phase3Harness({ pending:[request], answers:{ '/api/connections/prepare': () => ({ error:'This person cannot be contacted.' }) } });
+  await run(refused, "sendRequestFollowUp('q1')");
+  assert.deepEqual(refused.toasts, ['This person cannot be contacted.']);
+});
+
+test('the follow-up dialog shows how many are left and has no "send without a message" choice', () => {
+  const dialog = extractFn(client, 'promptRequestMessage');
+  assert.match(dialog, /supported && remaining/);
+  assert.match(dialog, /\$\{remaining\} of \$\{INTRO_MAX_MESSAGES\} left until/);
+  const followUp = dialog.slice(dialog.indexOf('supported && remaining'), dialog.indexOf(': supported'));
+  assert.match(followUp, /data-choice="send">Send message/);
+  assert.doesNotMatch(followUp, /Send without a message/);
+});
+
+test('the outgoing card on the Chats list carries the count and the add button', () => {
+  assert.match(client, /Connection request sent · awaiting acceptance<\/div>\$\{outgoingIntroHtml\(request\)\}<\/div>/);
+});
+
+test('the privacy choice is cached per account, defaults to anyone, and lists three options', () => {
+  const ctx = phase3Harness();
+  assert.equal(run(ctx, 'cachedRequestPolicy()'), 'anyone');
+  ctx.storage.set('vaultlix_request_policy:acc1', 'qr');
+  assert.equal(run(ctx, 'cachedRequestPolicy()'), 'qr');
+  ctx.storage.set('vaultlix_request_policy:acc1', 'bogus');
+  assert.equal(run(ctx, 'cachedRequestPolicy()'), 'anyone');
+  assert.deepEqual(plain(run(ctx, 'Object.keys(REQUEST_POLICY_LABELS)')), ['anyone', 'qr', 'none']);
+  assert.equal(run(ctx, 'REQUEST_POLICY_LABELS.anyone'), 'Anyone with my number');
+});
+
+test('the Settings row sits in Privacy & Security and the status refreshes when Settings opens', () => {
+  assert.match(client, /id="settings-request-policy-row" onclick="openRequestPolicySheet\(\)"/);
+  assert.match(client, /privacy:\['settings-app-lock-row','settings-request-policy-row','settings-hidden-chats-row','settings-locker-row'\]/);
+  assert.match(extractFn(client, 'loadSettingsState'), /refreshRequestPolicyStatus\(\)\.catch\(\(\) => \{\}\);/);
+  assert.match(extractFn(client, 'openRequestPolicySheet'), /api\('\/api\/account\/request-policy', \{ accountId:state\.accountId, sessionToken:state\.sessionToken, policy \}\)/);
+});
+
+test('a profile opened from a QR code or link remembers its code, and the request sends it', () => {
+  assert.match(client, /activePublicProfile = byShareCode \? \{ \.\.\.result\.profile, requestShareCode:privateNumber \} : result\.profile;/);
+  const profile = extractFn(client, 'requestPrivateVault');
+  assert.match(profile, /\.\.\.\(requestShareCode \? \{ shareCode:requestShareCode \} : \{\}\)/);
+  assert.match(extractFn(client, 'fetchRequestTarget'), /\.\.\.\(shareCode \? \{ shareCode \} : \{\}\)/);
 });

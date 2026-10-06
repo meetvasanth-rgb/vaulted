@@ -1510,14 +1510,36 @@ function normalizeIntroMessage(message) {
   return { epk, iv:message.iv, ct:message.ct };
 }
 
+// Who may send a NEW connection request to an account, and the quiet cooldown after one
+// is declined. Existing relationships (accepted chats being reopened) are never affected.
+const REQUEST_COOLDOWN_MS = 15 * 24 * 60 * 60 * 1000;
+const REQUEST_POLICIES = new Set(['anyone', 'qr', 'none']);
+function normalizeRequestPolicy(value) { return REQUEST_POLICIES.has(value) ? value : 'anyone'; }
+function requestPolicyRefusal(recipientAccount, shareCode) {
+  const policy = normalizeRequestPolicy(recipientAccount?.requestPolicy);
+  if (policy === 'none') return 'This person is not accepting new requests right now.';
+  if (policy === 'qr' && (!recipientAccount.profileShareCode || normalizeProfileShareCode(shareCode) !== recipientAccount.profileShareCode)) {
+    return 'This person only accepts requests from their QR code or profile link.';
+  }
+  return null;
+}
+function declinedRecently(recipientAccount, senderAccountId, now = Date.now()) {
+  return (recipientAccount?.connectionRequests || []).some(request =>
+    request.status === 'rejected' && request.direction === 'incoming' && request.senderAccountId === senderAccountId &&
+    (Number(request.respondedAt) || 0) > now - REQUEST_COOLDOWN_MS);
+}
+
 function connectionPairKey(request) {
   const first = String(request?.senderAccountId || '');
   const second = String(request?.recipientAccountId || '');
   return first && second ? [first, second].sort().join(':') : '';
 }
 function compactConnectionRequests(requests, now = Date.now()) {
+  // A declined request stays on the RECIPIENT's copy for the cooldown so the same person cannot
+  // immediately ask again; it is never sent to a client (see /api/connections/list).
   const live = (requests || []).filter(request =>
-    request.status === 'accepted' || (request.expiresAt > now && request.status !== 'rejected'));
+    request.status === 'accepted' || (request.expiresAt > now && request.status !== 'rejected') ||
+    (request.status === 'rejected' && request.direction === 'incoming' && (Number(request.respondedAt) || 0) > now - REQUEST_COOLDOWN_MS));
   const acceptedPairs = new Set(live.filter(request => request.status === 'accepted').map(connectionPairKey).filter(Boolean));
   // Remove legacy pending duplicates once the same two identities already
   // have an accepted relationship. This also cleans existing production
@@ -4119,7 +4141,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const found = accountByPrivateNumber(decodeURIComponent(path.slice('/api/profile/'.length)));
     if (!found) return resErr(res, 'Vaultlix Private Number not found.', 404);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, profile:publicAccount(found.account) });
+    // Looking someone up by number must not hand out the code that unlocks "QR / link only".
+    const profile = publicAccount(found.account);
+    if (normalizeRequestPolicy(found.account.requestPolicy) === 'qr') { profile.profileShareCode = null; profile.address = null; }
+    return res200(res, { ok:true, profile });
   }
 
   if (path.startsWith('/api/profile-share/') && method === 'GET') {
@@ -4315,12 +4340,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       (r.senderAccountId === d.accountId && r.recipientAccountId === recipient.accountId) ||
       (r.recipientAccountId === d.accountId && r.senderAccountId === recipient.accountId);
     const acceptedRelationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'accepted');
+    let replacedRelationship = false;
     if (acceptedRelationship) {
       if (d.replaceExisting === true) {
         // A verified key mismatch can leave the durable account relationship
         // marked accepted even though the associated E2EE room is no longer
         // usable. Replacement is never automatic: an authenticated member
         // explicitly requests it, and the other person must consent again.
+        replacedRelationship = true;
         acceptedRelationship.status = 'replaced';
         acceptedRelationship.respondedAt = now;
         const senderMirror = (sender.connectionRequests || []).find(r => r.id === acceptedRelationship.id);
@@ -4387,6 +4414,16 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         await persistAccount(d.accountId);
       }
       return res200(res, { ok:true, requestId:relationship.id, status:needsResponse ? 'action_required' : 'pending', introCount:Array.isArray(relationship.intro) ? relationship.intro.length : 0 });
+    }
+    // A reopened chat (the pair already had an accepted relationship) is a replacement and is
+    // never held back by the privacy choice or the cooldown. A genuinely new request is.
+    if (!replacedRelationship) {
+      const refusal = requestPolicyRefusal(recipient.account, d.shareCode);
+      if (refusal) return resErr(res, refusal, 403);
+      // After a decline the sender is told nothing: the request simply is not delivered.
+      if (declinedRecently(recipient.account, d.accountId, now)) {
+        return res200(res, { ok:true, requestId:uid(), status:'pending', introCount:0 });
+      }
     }
     const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
     if (introMessage) request.intro = [{ ...introMessage, at:now }];
@@ -4457,6 +4494,19 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok:true, accepted:true, inboxKey:publicKey });
   }
 
+  // POST /api/account/request-policy — who may send this account new requests.
+  if (path === '/api/account/request-policy' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    if (await rateLimited(`request-policy:${d.accountId}`, 30, 60 * 1000)) return resErr(res, 'Too many changes.', 429);
+    res.setHeader('Cache-Control', 'no-store');
+    if (d.policy === undefined) return res200(res, { ok:true, policy:normalizeRequestPolicy(account.requestPolicy) });
+    if (!REQUEST_POLICIES.has(d.policy)) return resErr(res, 'Invalid choice.', 400);
+    account.requestPolicy = d.policy;
+    await persistAccount(d.accountId);
+    return res200(res, { ok:true, policy:d.policy });
+  }
+
   // POST /api/connections/prepare — what a sender needs before writing to someone:
   // that person's public inbox key (null when they have not published one yet, for
   // example an older app version). Same refusals as sending a request.
@@ -4468,6 +4518,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
     if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
     if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(recipient.accountId) || await safetyStore.blocked(d.accountId, recipient.accountId)) return resErr(res, 'This person cannot be contacted.', 403);
+    // The same refusal as sending, so nobody writes a message the request could not carry.
+    const related = (recipient.account.connectionRequests || []).some(request =>
+      request.status === 'accepted' && ((request.senderAccountId === d.accountId && request.recipientAccountId === recipient.accountId) ||
+        (request.recipientAccountId === d.accountId && request.senderAccountId === recipient.accountId)));
+    const refusal = related ? null : requestPolicyRefusal(recipient.account, d.shareCode);
+    if (refusal) return resErr(res, refusal, 403);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, inboxKey:normalizeInboxKey(recipient.account.inboxKey), introMax:REQUEST_INTRO_MAX });
   }
@@ -4503,7 +4559,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const peer = r.senderAccountId === d.accountId ? r.recipientAccountId : r.senderAccountId;
       if (!(await safetyStore.blocked(d.accountId, peer))) visibleRequests.push(r);
     }
-    return res200(res, { ok:true, requests:visibleRequests.map(({senderAccountId, recipientAccountId, intro, ...safe}) => ({
+    return res200(res, { ok:true, requests:visibleRequests.filter(r => r.status !== 'rejected').map(({senderAccountId, recipientAccountId, intro, ...safe}) => ({
       ...safe,
       // Only the person a request was sent to receives the (encrypted) messages.
       ...(safe.direction === 'incoming' && Array.isArray(intro) ? { intro } : {}),
@@ -6995,6 +7051,7 @@ function hydrateAccounts(entries, source) {
       record.dailyLookWindowStartedAt = Number(record.dailyLookWindowStartedAt) || null;
       record.dailyLookGenerationCount = Math.max(0, Number(record.dailyLookGenerationCount) || 0);
       record.inboxKey = normalizeInboxKey(record.inboxKey);
+      record.requestPolicy = normalizeRequestPolicy(record.requestPolicy);
       const storedProfileShareCode = normalizeProfileShareCode(record.profileShareCode);
       record.profileShareCode = storedProfileShareCode && !profileShareCodes.has(storedProfileShareCode)
         ? storedProfileShareCode
