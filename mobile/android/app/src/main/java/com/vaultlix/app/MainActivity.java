@@ -11,11 +11,13 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.media.AudioFormat;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.os.CancellationSignal;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
@@ -85,6 +87,9 @@ public class MainActivity extends BridgeActivity {
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
     private SpeechRecognizer speechRecognizer;
+    private SpeechRecognizer voiceTranscriptRecognizer;
+    private ParcelFileDescriptor voiceTranscriptAudio;
+    private File voiceTranscriptFile;
     private String pendingSpeechLocale;
     private volatile Uri preparedNumberCardUri;
     private volatile String preparedNumberCardLink;
@@ -701,6 +706,87 @@ public class MainActivity extends BridgeActivity {
         if (notifyPage) emitSpeechToText("cancelled", "", "", hasOnDeviceSpeechRecognition());
     }
 
+    private void emitVoiceTranscript(String requestId, String state, String text, String error, boolean onDevice) {
+        if (isFinishing() || isDestroyed() || getBridge() == null || getBridge().getWebView() == null) return;
+        String current = getBridge().getWebView().getUrl();
+        if (current == null || !current.startsWith("https://vaultlix.com/")) return;
+        String detail = "{requestId:" + JSONObject.quote(requestId)
+                + ",state:" + JSONObject.quote(state)
+                + ",text:" + JSONObject.quote(text == null ? "" : text)
+                + ",error:" + JSONObject.quote(error == null ? "" : error)
+                + ",onDevice:" + onDevice + "}";
+        getBridge().getWebView().evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('vaultlix:voice-transcript',{detail:" + detail + "}));", null);
+    }
+
+    private void clearVoiceTranscript() {
+        if (voiceTranscriptRecognizer != null) {
+            try { voiceTranscriptRecognizer.destroy(); } catch (RuntimeException ignored) { }
+            voiceTranscriptRecognizer = null;
+        }
+        if (voiceTranscriptAudio != null) {
+            try { voiceTranscriptAudio.close(); } catch (Exception ignored) { }
+            voiceTranscriptAudio = null;
+        }
+        if (voiceTranscriptFile != null) {
+            //noinspection ResultOfMethodCallIgnored
+            voiceTranscriptFile.delete();
+            voiceTranscriptFile = null;
+        }
+    }
+
+    private void beginVoiceTranscript(String requestId, File pcmFile, String localeTag) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !SpeechRecognizer.isRecognitionAvailable(this)) {
+            //noinspection ResultOfMethodCallIgnored
+            pcmFile.delete();
+            emitVoiceTranscript(requestId, "error", "", "Transcription is not available on this device.", false);
+            return;
+        }
+        clearVoiceTranscript();
+        final boolean onDevice = hasOnDeviceSpeechRecognition();
+        try {
+            voiceTranscriptRecognizer = onDevice
+                    ? SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                    : SpeechRecognizer.createSpeechRecognizer(this);
+            voiceTranscriptFile = pcmFile;
+            voiceTranscriptAudio = ParcelFileDescriptor.open(pcmFile, ParcelFileDescriptor.MODE_READ_ONLY);
+        } catch (Exception unavailable) {
+            clearVoiceTranscript();
+            emitVoiceTranscript(requestId, "error", "", "Transcript could not be started.", onDevice);
+            return;
+        }
+        voiceTranscriptRecognizer.setRecognitionListener(new RecognitionListener() {
+            @Override public void onReadyForSpeech(Bundle params) { }
+            @Override public void onBeginningOfSpeech() { }
+            @Override public void onRmsChanged(float rmsdB) { }
+            @Override public void onBufferReceived(byte[] buffer) { }
+            @Override public void onEndOfSpeech() { }
+            @Override public void onError(int error) {
+                emitVoiceTranscript(requestId, "error", "", "No speech could be recognized.", onDevice);
+                clearVoiceTranscript();
+            }
+            @Override public void onResults(Bundle results) {
+                emitVoiceTranscript(requestId, "final", firstSpeechResult(results), "", onDevice);
+                clearVoiceTranscript();
+            }
+            @Override public void onPartialResults(Bundle partialResults) { }
+            @Override public void onEvent(int eventType, Bundle params) { }
+        });
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, onDevice);
+        intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, voiceTranscriptAudio);
+        intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1);
+        intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT);
+        intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, 16000);
+        intent.putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY);
+        String requestedLocale = localeTag == null ? "" : localeTag.trim();
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
+                requestedLocale.isEmpty() ? Locale.getDefault().toLanguageTag() : requestedLocale);
+        voiceTranscriptRecognizer.startListening(intent);
+    }
+
     private final class AndroidCallBridge {
         // The six-character invite code carried through the Play Store install, or "".
         @JavascriptInterface
@@ -733,6 +819,28 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void cancelSpeechToText() {
             runOnUiThread(() -> cancelNativeSpeechToText(true));
+        }
+
+        @JavascriptInterface
+        public void transcribeVoiceNote(String requestId, String pcmBase64, String localeTag) {
+            if (requestId == null || !requestId.matches("[A-Za-z0-9-]{1,80}")
+                    || pcmBase64 == null || pcmBase64.length() > 20_000_000) return;
+            mediaCacheCleanupExecutor.execute(() -> {
+                File pcmFile = null;
+                try {
+                    byte[] pcm = Base64.decode(pcmBase64, Base64.DEFAULT);
+                    if (pcm.length == 0) throw new IllegalArgumentException("empty audio");
+                    pcmFile = File.createTempFile("vaultlix-transcript-", ".pcm", getCacheDir());
+                    try (FileOutputStream output = new FileOutputStream(pcmFile)) { output.write(pcm); }
+                    File ready = pcmFile;
+                    runOnUiThread(() -> beginVoiceTranscript(requestId, ready, localeTag));
+                } catch (Exception error) {
+                    if (pcmFile != null) { //noinspection ResultOfMethodCallIgnored
+                        pcmFile.delete();
+                    }
+                    runOnUiThread(() -> emitVoiceTranscript(requestId, "error", "", "Transcript could not be created.", false));
+                }
+            });
         }
 
         @JavascriptInterface

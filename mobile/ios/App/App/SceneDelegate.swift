@@ -41,6 +41,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var speechRecognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var speechRecognitionTask: SFSpeechRecognitionTask?
     private var speechTapInstalled = false
+    private var voiceTranscriptTasks: [String: SFSpeechRecognitionTask] = [:]
+    private var voiceTranscriptFiles: [String: URL] = [:]
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeLocalVideoView = RTCMTLVideoView(frame: .zero)
     private let nativeVideoBackdropView = UIView(frame: .zero)
@@ -444,6 +446,74 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         finishSpeechToText(cancelTask: true)
         if notifyPage && wasActive {
             emitSpeechToText(state: "cancelled", onDevice: false)
+        }
+    }
+
+    private func pcmWaveData(_ pcm: Data, sampleRate: Int) -> Data {
+        var wave = Data()
+        func appendASCII(_ value: String) { wave.append(value.data(using: .ascii)!) }
+        func appendUInt16(_ value: UInt16) { var little = value.littleEndian; wave.append(Data(bytes: &little, count: 2)) }
+        func appendUInt32(_ value: UInt32) { var little = value.littleEndian; wave.append(Data(bytes: &little, count: 4)) }
+        appendASCII("RIFF"); appendUInt32(UInt32(36 + pcm.count)); appendASCII("WAVE")
+        appendASCII("fmt "); appendUInt32(16); appendUInt16(1); appendUInt16(1)
+        appendUInt32(UInt32(sampleRate)); appendUInt32(UInt32(sampleRate * 2)); appendUInt16(2); appendUInt16(16)
+        appendASCII("data"); appendUInt32(UInt32(pcm.count)); wave.append(pcm)
+        return wave
+    }
+
+    private func emitVoiceTranscript(requestId: String, state: String, text: String = "", error: String = "", onDevice: Bool) {
+        emit(name: "vaultlix:voice-transcript", detail: [
+            "requestId": requestId, "state": state, "text": text, "error": error, "onDevice": onDevice
+        ])
+    }
+
+    private func finishVoiceTranscript(requestId: String) {
+        voiceTranscriptTasks[requestId] = nil
+        if let url = voiceTranscriptFiles.removeValue(forKey: requestId) { try? FileManager.default.removeItem(at: url) }
+    }
+
+    private func transcribeVoiceNote(requestId: String, pcmBase64: String, sampleRate: Int, localeIdentifier: String) {
+        guard requestId.range(of: "^[A-Za-z0-9-]{1,80}$", options: .regularExpression) != nil,
+              pcmBase64.count <= 20_000_000,
+              sampleRate == 16000,
+              let pcm = Data(base64Encoded: pcmBase64), !pcm.isEmpty else { return }
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard status == .authorized else {
+                    self.emitVoiceTranscript(requestId: requestId, state: "error", error: "Speech recognition permission is required.", onDevice: false)
+                    return
+                }
+                let locale = localeIdentifier.isEmpty ? Locale.current : Locale(identifier: localeIdentifier)
+                guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+                    self.emitVoiceTranscript(requestId: requestId, state: "error", error: "Transcription is not available for this language.", onDevice: false)
+                    return
+                }
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-transcript-\(UUID().uuidString).wav")
+                do { try self.pcmWaveData(pcm, sampleRate: sampleRate).write(to: url, options: .atomic) }
+                catch {
+                    self.emitVoiceTranscript(requestId: requestId, state: "error", error: "Transcript could not be created.", onDevice: false)
+                    return
+                }
+                let request = SFSpeechURLRecognitionRequest(url: url)
+                request.shouldReportPartialResults = false
+                if #available(iOS 16.0, *) { request.addsPunctuation = true }
+                let onDevice = recognizer.supportsOnDeviceRecognition
+                request.requiresOnDeviceRecognition = onDevice
+                self.voiceTranscriptFiles[requestId] = url
+                self.voiceTranscriptTasks[requestId] = recognizer.recognitionTask(with: request) { [weak self] result, recognitionError in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if let result, result.isFinal {
+                            self.emitVoiceTranscript(requestId: requestId, state: "final", text: result.bestTranscription.formattedString, onDevice: onDevice)
+                            self.finishVoiceTranscript(requestId: requestId)
+                        } else if recognitionError != nil {
+                            self.emitVoiceTranscript(requestId: requestId, state: "error", error: "No speech could be recognized.", onDevice: onDevice)
+                            self.finishVoiceTranscript(requestId: requestId)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1085,6 +1155,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
         if action == "cancelSpeechToText" {
             cancelSpeechToText(notifyPage: true)
+            return
+        }
+        if action == "transcribeVoiceNote" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com",
+                  let requestId = body["requestId"] as? String,
+                  let pcmBase64 = body["pcmBase64"] as? String else { return }
+            transcribeVoiceNote(
+                requestId: requestId,
+                pcmBase64: pcmBase64,
+                sampleRate: (body["sampleRate"] as? NSNumber)?.intValue ?? 16000,
+                localeIdentifier: (body["locale"] as? String) ?? ""
+            )
             return
         }
         if action == "clearInstallInvite" {

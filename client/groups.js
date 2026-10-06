@@ -648,7 +648,11 @@ function privateGroupRowHtml(group, message, reactions, state) {
       if (message.attachment.caption && usable) content += `<div class="group-message-text">${linkifyHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-voice') {
       const mime = /^audio\/[a-z0-9.+-]+(?:;codecs=[a-z0-9.+-]+)?$/i.test(message.attachment.mime) ? message.attachment.mime : 'audio/webm';
-      content = `<audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>`;
+      const transcript = message.senderId === state?.accountId ? '' : voiceTranscriptControlsHtml(
+        `group:${group.id}:${message.id}`,
+        `requestPrivateGroupVoiceTranscript('${escHtml(message.id)}')`
+      );
+      content = `<div class="voice-note-shell"><audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>${transcript}</div>`;
     } else if (message.attachment?.type === 'group-file') {
       // Same cards as direct conversations: a first-page preview card for
       // PDFs, the plain file card (.msg-file) for everything else.
@@ -676,6 +680,13 @@ function privateGroupRowHtml(group, message, reactions, state) {
     const quote = message.reply
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
     return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div></div>`;
+}
+
+function requestPrivateGroupVoiceTranscript(messageId) {
+  const group = privateGroups.get(activePrivateGroupId);
+  const message = group?.messages?.find(candidate => candidate.id === messageId);
+  if (!group || !message || message.senderId === loadAccountState()?.accountId || message.attachment?.type !== 'group-voice') return;
+  requestVoiceTranscript(`group:${group.id}:${message.id}`, message.attachment.mime, message.attachment.data);
 }
 
 function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {}) {
