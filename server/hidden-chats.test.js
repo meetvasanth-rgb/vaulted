@@ -74,6 +74,7 @@ function harness() {
   vm.runInContext(`function refreshHiddenChatsViews() { refreshHiddenChatsViewsCalls.refresh++; }
     const vaultSearchActive = false; function closeVaultSearch() {}
     function getActiveRoom() { return rooms.get(activeRoomCode); }
+    const contactHiddenCalls = []; function setContactHidden(number, hidden) { contactHiddenCalls.push([number, hidden]); }
     ${extractFn('syncChatNotificationPrivacy')}
     ${extractFn('syncHiddenChatNotificationPrivacy')}
     ${extractFn('hideChat')}

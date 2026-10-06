@@ -1120,6 +1120,39 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .tone-row .tone-check{width:18px;height:18px;fill:none;stroke:#682C43;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:0}
 .tone-row[aria-checked="true"] .tone-check{opacity:1}
 .tone-row-note{color:#9B8A92;font-size:13px;margin-left:6px}
+/* Contacts (private phone book) */
+#s-contacts{background:#FBF7F8;flex-direction:column}
+.contacts-head{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 14px 8px;flex:none}
+.contacts-head h1{flex:1;margin:0;font:750 22px/1.2 'Manrope','Inter',sans-serif;color:#271D25}
+.contacts-back,.contacts-add{width:38px;height:38px;border:0;border-radius:50%;background:#fff;color:#4A4038;display:grid;place-items:center;box-shadow:0 1px 6px rgba(40,25,35,.1);cursor:pointer}
+.contacts-back svg,.contacts-add svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.contacts-search{padding:4px 14px 8px;flex:none}
+.contacts-search input{width:100%;box-sizing:border-box;border:1px solid #E7DDE1;border-radius:14px;background:#fff;padding:11px 14px;font:500 15px 'Inter',sans-serif;color:#271D25;outline:none}
+.contacts-body{flex:1;min-height:0;overflow-y:auto;padding:0 14px calc(24px + env(safe-area-inset-bottom))}
+.contacts-section-label{padding:14px 6px 6px;font:700 12px 'Inter',sans-serif;letter-spacing:.08em;color:#9B7E89;text-transform:uppercase}
+.contact-row{display:flex;align-items:center;gap:12px;width:100%;border:0;border-bottom:1px solid #F0E8EB;background:#fff;padding:11px 14px;text-align:left;cursor:pointer;font-family:inherit}
+.contact-row:first-of-type{border-radius:16px 16px 0 0}
+.contact-row:active{background:#F8F1F4}
+.contact-avatar{width:42px;height:42px;border-radius:50%;background:#EBDDE3;color:#682C43;display:grid;place-items:center;font:700 16px 'Inter',sans-serif;overflow:hidden;flex:none}
+.contact-avatar img{width:100%;height:100%;object-fit:cover}
+.contact-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.contact-text strong{font:600 16px 'Inter',sans-serif;color:#271D25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.contact-text span{font:400 12.5px 'Inter',sans-serif;color:#8A7C83}
+.contact-star{color:#C8A25A;font-size:16px}
+.contacts-empty{margin:40px 10px;text-align:center;color:#75666D;font:400 14px/1.6 'Inter',sans-serif}
+.contacts-empty strong{display:block;font:700 17px 'Inter',sans-serif;color:#271D25;margin-bottom:6px}
+.contacts-empty button{margin-top:14px;border:0;border-radius:14px;background:#682C43;color:#fff;padding:11px 20px;font:600 14px 'Inter',sans-serif;cursor:pointer}
+.contact-sheet-overlay{position:fixed;inset:0;z-index:10040;background:rgba(20,10,16,.6);display:flex;align-items:flex-end;justify-content:center;padding:16px}
+.contact-sheet{width:min(100%,420px);max-height:90vh;overflow-y:auto;background:#fff;border-radius:22px;padding:16px;display:flex;flex-direction:column;gap:8px;margin-bottom:env(safe-area-inset-bottom)}
+.contact-sheet-head{display:flex;flex-direction:column;gap:3px;padding:2px 4px 8px}
+.contact-sheet-head strong{font:700 18px 'Inter',sans-serif;color:#271D25}
+.contact-sheet-head span{font:400 13px/1.45 'Inter',sans-serif;color:#8A7C83}
+.contact-sheet-btn{border:1px solid #E7DDE1;border-radius:14px;background:#fff;color:#271D25;padding:12px;font:600 15px 'Inter',sans-serif;cursor:pointer}
+.contact-sheet-btn.primary{background:#682C43;border-color:#682C43;color:#fff}
+.contact-sheet-btn.danger{color:#9B2945;border-color:#F0D3DA}
+.contact-sheet-btn.quiet{border:0;color:#8A7C83;background:none}
+.contact-sheet-rename{display:flex;flex-direction:column;gap:4px;font:600 12px 'Inter',sans-serif;color:#8A7C83}
+.contact-sheet-rename input{border:1px solid #E7DDE1;border-radius:12px;padding:11px 12px;font:500 15px 'Inter',sans-serif;color:#271D25;outline:none}
 /* While the Chats search box is being typed in, the floating bottom bar would ride up on top of the keyboard. */
 html.vault-search-typing .vault-list-actions{display:none!important}
 /* Android plays no in-app message chime (the system notification carries the tone), so the switch has nothing to control there. */
@@ -3595,6 +3628,9 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <button class="vault-list-settings" type="button" id="vault-search-toggle" onclick="toggleVaultSearch()" title="Search chats" aria-label="Search chats">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
       </button>
+      <button class="vault-list-settings" type="button" onclick="openContacts()" title="Contacts" aria-label="Open contacts">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="2.6"/><path d="M8 17c.8-2 2.4-3 4-3s3.2 1 4 3"/></svg>
+      </button>
       <button class="vault-list-settings" type="button" onclick="openCreateGroup()" title="New private group" aria-label="Create a private group">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg>
       </button>
@@ -3626,6 +3662,22 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <h1>Status</h1>
   </div>
   <div class="status-page-body" id="status-page-body"></div>
+</div>
+
+<!-- Contacts: a private phone book of the people you have connected with. A chat
+     can be deleted and reopened from here without finding the number again. -->
+<div id="s-contacts" class="screen">
+  <div class="contacts-head">
+    <button class="contacts-back" type="button" onclick="closeContacts()" aria-label="Back">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <h1>Contacts</h1>
+    <button class="contacts-add" type="button" onclick="openNewConnection()" aria-label="Add a contact">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+  <div class="contacts-search"><input id="contacts-search" type="search" placeholder="Search contacts" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="filterContacts(this.value)"/></div>
+  <div class="contacts-body" id="contacts-body"></div>
 </div>
 
 <div class="group-create-overlay" id="group-create-overlay" role="dialog" aria-modal="true" aria-labelledby="group-create-title">
@@ -10834,6 +10886,7 @@ function updateHiddenChatsSettingsStatus() {
 
 function refreshHiddenChatsViews() {
   try { renderVaultList(); } catch (error) {}
+  try { renderContactsPageIfOpen(); } catch (error) {}
   try { renderRoomTabs(); } catch (error) {}
   try { updateDocumentTitle(); } catch (error) {}
 }
@@ -10887,6 +10940,7 @@ function hideChat(code) {
   const codes = hiddenChatCodes();
   codes.add(code);
   saveHiddenChatsStore({ codes:[...codes] });
+  setContactHidden(room.peerPrivateNumber, true);
   hiddenChatsUnlocked = false;
   syncChatNotificationPrivacy(room, true);
   closeConversationMenu();
@@ -10906,6 +10960,7 @@ function unhideChat(code) {
   if (!codes.delete(code)) return;
   saveHiddenChatsStore({ codes:[...codes] });
   const room = rooms.get(code);
+  if (room) setContactHidden(room.peerPrivateNumber, false);
   if (room) syncChatNotificationPrivacy(room, false);
   closeConversationMenu();
   refreshHiddenChatsViews();
@@ -13176,17 +13231,438 @@ async function reconcileConversationPeerIdentities(requests, state) {
     } catch (error) {}
   }
 }
+// ── CONTACTS (private phone book) ────────────────────────────────────────
+// A contact is a saved Vaultlix number with a nickname — no messages and no keys.
+// Deleting a chat erases the conversation (and its keys) but leaves the contact, so
+// the person can be messaged again from here without hunting for their number.
+// Device-only for now: kept in its own localStorage key per account and written
+// with read-modify-write (never through persistRoom — see CLAUDE.md). Messaging a
+// contact with no open chat sends an ordinary connection request; the other
+// person's app accepts it automatically if the sender is in THEIR contacts, and
+// otherwise it arrives as a normal request they decide on.
+const CONTACTS_KEY_PREFIX = 'vaultlix_contacts:';
+const CONTACTS_MAX = 500;
+const CONTACTS_SEEN_MAX = 200;
+let contactsSearchQuery = '';
+let contactReopenPending = null; // { requestId, number, name } while an auto-accept is running
+let contactAutoAcceptRunning = false;
+
+function contactsStorageKey(state = loadAccountState()) {
+  return state && state.accountId ? CONTACTS_KEY_PREFIX + state.accountId : null;
+}
+
+function cleanContactText(value) {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, 40) : '';
+}
+
+function normalizeContactRecord(item) {
+  const number = normalizePrivateNumber(item?.number);
+  if (!number) return null;
+  return {
+    number,
+    name:cleanContactText(item.name),
+    nickname:cleanContactText(item.nickname),
+    addedAt:Number(item.addedAt) || 0,
+    favorite:item.favorite === true,
+    hidden:item.hidden === true,
+  };
+}
+
+function readContactsStore() {
+  const empty = () => ({ v:1, migrated:false, seen:[], list:[] });
+  const key = contactsStorageKey();
+  if (!key) return empty();
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!raw || raw.v !== 1) return empty();
+    return {
+      v:1,
+      migrated:raw.migrated === true,
+      seen:Array.isArray(raw.seen) ? raw.seen.filter(id => typeof id === 'string').slice(-CONTACTS_SEEN_MAX) : [],
+      list:Array.isArray(raw.list) ? raw.list.map(normalizeContactRecord).filter(Boolean).slice(0, CONTACTS_MAX) : [],
+    };
+  } catch (e) { return empty(); }
+}
+
+// Read-modify-write on this dedicated key only.
+function updateContactsStore(mutator) {
+  const key = contactsStorageKey();
+  if (!key) return null;
+  const store = readContactsStore();
+  const result = mutator(store);
+  try { localStorage.setItem(key, JSON.stringify(store)); } catch (e) {}
+  return result;
+}
+
+function markContactRequestSeen(store, requestId) {
+  if (typeof requestId !== 'string' || !requestId || store.seen.includes(requestId)) return;
+  store.seen.push(requestId);
+  if (store.seen.length > CONTACTS_SEEN_MAX) store.seen.splice(0, store.seen.length - CONTACTS_SEEN_MAX);
+}
+
+// Returns true when a new contact was created.
+function addContactToStore(store, number, name = '') {
+  const normalized = normalizePrivateNumber(number);
+  if (!normalized) return false;
+  const existing = store.list.find(contact => contact.number === normalized);
+  const cleanName = cleanContactText(name);
+  if (existing) {
+    if (cleanName && existing.name !== cleanName) existing.name = cleanName;
+    return false;
+  }
+  if (store.list.length >= CONTACTS_MAX) return false;
+  const room = roomForPrivateNumber(normalized);
+  store.list.push({ number:normalized, name:cleanName, nickname:'', addedAt:Date.now(), favorite:false, hidden:!!(room && isChatHidden(room.code)) });
+  return true;
+}
+
+function getContact(number) {
+  const normalized = normalizePrivateNumber(number);
+  return normalized ? readContactsStore().list.find(contact => contact.number === normalized) || null : null;
+}
+
+function isContact(number) { return !!getContact(number); }
+
+function addContact(number, name = '', { requestId = null } = {}) {
+  return !!updateContactsStore(store => {
+    markContactRequestSeen(store, requestId);
+    return addContactToStore(store, number, name);
+  });
+}
+
+function removeContact(number) {
+  const normalized = normalizePrivateNumber(number);
+  if (!normalized) return;
+  updateContactsStore(store => { store.list = store.list.filter(contact => contact.number !== normalized); });
+}
+
+function renameContact(number, nickname) {
+  const normalized = normalizePrivateNumber(number);
+  updateContactsStore(store => {
+    const contact = store.list.find(item => item.number === normalized);
+    if (contact) contact.nickname = cleanContactText(nickname);
+  });
+}
+
+function setContactFavorite(number, favorite) {
+  const normalized = normalizePrivateNumber(number);
+  updateContactsStore(store => {
+    const contact = store.list.find(item => item.number === normalized);
+    if (contact) contact.favorite = !!favorite;
+  });
+}
+
+// A hidden chat keeps its contact hidden too, even after the chat is deleted.
+function setContactHidden(number, hidden) {
+  const normalized = normalizePrivateNumber(number);
+  if (!normalized) return;
+  updateContactsStore(store => {
+    const contact = store.list.find(item => item.number === normalized);
+    if (contact) contact.hidden = !!hidden;
+  });
+}
+
+function contactDisplayName(contact) {
+  const room = roomForPrivateNumber(contact.number);
+  return contact.nickname || (room ? roomDisplayLabel(room) : '') || contact.name || formatPrivateNumber(contact.number);
+}
+
+function contactIsVisible(contact) {
+  return !(contact.hidden && !hiddenChatsUnlocked);
+}
+
+function inviteCodeFromUrl(inviteUrl) {
+  try { return new URL(inviteUrl).pathname.split('/').filter(Boolean).pop()?.toLowerCase() || null; } catch (e) { return null; }
+}
+
+// Accepting a request (either direction) saves the person as a contact. Each accepted
+// request id is handled once, so a contact the person removed does not come back on
+// the next refresh; a later reopen is a new request and saves them again. The first
+// run also saves everyone the person already has a chat with.
+function contactsSyncFromRequests(requests, state) {
+  if (!state || !contactsStorageKey(state)) return;
+  const accepted = (requests || []).filter(request => request.status === 'accepted');
+  const selfNumber = normalizePrivateNumber(state.privateNumber);
+  updateContactsStore(store => {
+    if (!store.migrated && rooms.size > 0) {
+      for (const room of rooms.values()) {
+        const number = normalizePrivateNumber(room.peerPrivateNumber);
+        if (number && number !== selfNumber) addContactToStore(store, number, room.peerName);
+      }
+      for (const request of accepted) {
+        const code = inviteCodeFromUrl(request.inviteUrl);
+        if (code && rooms.has(code)) markContactRequestSeen(store, request.id);
+      }
+      store.migrated = true;
+      return;
+    }
+    if (!store.migrated && accepted.length === 0) { store.migrated = true; return; }
+    if (!store.migrated) return; // rooms are not loaded yet; try again on the next refresh
+    for (const request of accepted) {
+      if (store.seen.includes(request.id)) continue;
+      const code = inviteCodeFromUrl(request.inviteUrl);
+      if (!code || !rooms.has(code)) continue;
+      const peer = peerIdentityFromConnection(request, state);
+      if (!peer.privateNumber) continue;
+      markContactRequestSeen(store, request.id);
+      addContactToStore(store, peer.privateNumber, peer.displayName);
+    }
+  });
+  if (document.getElementById('s-contacts')?.classList.contains('active')) renderContactsPage();
+}
+
+// A request from someone who is already in this person's contacts and has no open
+// chat is accepted automatically, so reopening a chat needs no extra step. It only
+// runs while the chat list is on screen so it never pulls the person out of what
+// they are doing. A person's own removal of the contact turns this off for them.
+async function maybeAutoAcceptContactRequests() {
+  if (contactAutoAcceptRunning || pendingConnectionAcceptance) return;
+  if (!document.getElementById('s-vault-list')?.classList.contains('active')) return;
+  const state = loadAccountState();
+  if (!state) return;
+  const target = pendingIncomingConnections.find(request => {
+    const peer = peerIdentityFromConnection(request, state);
+    return peer.privateNumber && isContact(peer.privateNumber) && !roomForPrivateNumber(peer.privateNumber);
+  });
+  if (!target) return;
+  const peer = peerIdentityFromConnection(target, state);
+  contactAutoAcceptRunning = true;
+  contactReopenPending = { requestId:target.id, number:peer.privateNumber, name:peer.displayName || formatPrivateNumber(peer.privateNumber) };
+  try { await acceptConnectionRequest(target.id); }
+  catch (e) { console.warn('Automatic contact accept failed:', e?.message || e); }
+  finally { contactAutoAcceptRunning = false; contactReopenPending = null; }
+}
+
+// The reopened chat carries a notice for the person whose app accepted it.
+function contactReopenNoticeRecord(actorName) {
+  const now = Date.now();
+  return {
+    id:`contact-reopen-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    ts:now, time:formatMsgTime(now), kind:'sys', contactEvent:true, deleteTimerSeconds:0,
+    content:`${actorName} reopened this chat · ${formatMsgTime(now)}`,
+  };
+}
+
+function queueContactReopenNotice(room, info) {
+  if (!room || !info) return;
+  const rec = contactReopenNoticeRecord(info.name);
+  room.messages.push(rec);
+  room.seenMsgIds?.add(rec.id);
+  room.pendingContactNotice = { id:rec.id, actorName:info.name };
+  if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
+}
+
+// The conversation has no shared key until the other person's app joins, so the
+// notice is sent (encrypted, like call history) once the key exists.
+async function flushContactReopenNotice(room) {
+  const pending = room?.pendingContactNotice;
+  if (!pending || !room.sharedKey) return;
+  room.pendingContactNotice = null;
+  try {
+    const encrypted = await encryptTextMsg(room, JSON.stringify({ type:'call-event', text:'Chat reopened', contactEvent:'reopened', actorName:pending.actorName }));
+    await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId:pending.id, suppressNotification:true });
+  } catch (e) { room.pendingContactNotice = pending; }
+}
+
+// Message from the contact page: open the chat if there is one, otherwise ask to
+// reconnect with the same request the app already uses everywhere else.
+async function openContactChat(number) {
+  const normalized = normalizePrivateNumber(number);
+  if (!normalized) return;
+  const existing = roomForPrivateNumber(normalized);
+  if (existing) { openConversationAfterPaint(existing.code); return; }
+  const state = loadAccountState();
+  if (!state) { openAccountPanel(); return; }
+  const contact = getContact(normalized);
+  const label = contact ? contactDisplayName(contact) : formatPrivateNumber(normalized);
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized });
+  if (result.error) { toast(result.error); return; }
+  if (result.status === 'connected') {
+    if (result.conversationAvailable !== false && await restoreConnectedConversationFromBackup(result, normalized)) return;
+    const replacement = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized, replaceExisting:true });
+    if (replacement.error) { toast(replacement.error); return; }
+    if (replacement.status === 'action_required') { await openConnectionRequest(replacement.requestId); return; }
+    showScreen('s-vault-list');
+    await refreshConnectionRequests();
+    toast(`Chat request sent to ${label} — waiting for their app to connect`);
+    return;
+  }
+  if (result.status === 'action_required') { await openConnectionRequest(result.requestId); toast(`${label} already sent you a request`); return; }
+  showScreen('s-vault-list');
+  await refreshConnectionRequests();
+  toast(`Chat request sent to ${label} — waiting for their app to connect`);
+}
+
+function openContacts() {
+  if (!loadAccountState()) { openAccountPanel(); return; }
+  contactsSearchQuery = '';
+  const input = document.getElementById('contacts-search');
+  if (input) input.value = '';
+  showScreen('s-contacts');
+  renderContactsPage();
+}
+
+function closeContacts() {
+  closeContactSheet();
+  showScreen('s-vault-list');
+}
+
+function filterContacts(value) {
+  contactsSearchQuery = String(value || '');
+  renderContactsPage();
+}
+
+function renderContactsPageIfOpen() {
+  if (document.getElementById('s-contacts')?.classList.contains('active')) renderContactsPage();
+}
+
+function renderContactsPage() {
+  const body = document.getElementById('contacts-body');
+  if (!body) return;
+  const query = contactsSearchQuery.trim().toLowerCase();
+  const digits = query.replace(/\D/g, '');
+  const rows = readContactsStore().list.filter(contactIsVisible)
+    .map(contact => ({ contact, name:contactDisplayName(contact) }))
+    .filter(({ contact, name }) => !query || name.toLowerCase().includes(query) || (digits && contact.number.includes(digits)));
+  if (!rows.length) {
+    body.innerHTML = query
+      ? '<div class="contacts-empty">No contacts match your search.</div>'
+      : '<div class="contacts-empty"><strong>No contacts yet</strong>People you connect with are saved here automatically, so you can message them again after deleting a chat.<button type="button" onclick="openNewConnection()">Add someone</button></div>';
+    return;
+  }
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity:'base' });
+  const favorites = rows.filter(row => row.contact.favorite).sort(byName);
+  const others = rows.filter(row => !row.contact.favorite).sort(byName);
+  const rowHtml = ({ contact, name }) => {
+    const room = roomForPrivateNumber(contact.number);
+    const image = room?.peerProfileImage ? displayProfileImageUri(room.peerProfileImage) : '';
+    const initial = escapeHtml(Array.from(name.replace(/^\W+/, '') || '#')[0].toUpperCase());
+    const avatar = image ? `<img src="${escapeHtml(image)}" alt="" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>${initial}</span>` : `<span>${initial}</span>`;
+    return `<button type="button" class="contact-row" data-contact="${contact.number}">
+      <span class="contact-avatar">${avatar}</span>
+      <span class="contact-text"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatPrivateNumber(contact.number))}${room ? ' · Chat open' : ''}</span></span>
+      ${contact.favorite ? '<span class="contact-star" aria-label="Favourite">★</span>' : ''}
+    </button>`;
+  };
+  let html = '';
+  if (favorites.length) html += `<div class="contacts-section-label">Favourites</div>${favorites.map(rowHtml).join('')}`;
+  let letter = '';
+  for (const row of others) {
+    const first = (Array.from(row.name.replace(/^\W+/, ''))[0] || '#').toUpperCase();
+    const heading = /\p{L}/u.test(first) ? first : '#';
+    if (heading !== letter) { letter = heading; html += `<div class="contacts-section-label">${escapeHtml(heading)}</div>`; }
+    html += rowHtml(row);
+  }
+  body.innerHTML = html;
+}
+
+function closeContactSheet() {
+  document.getElementById('contact-sheet-overlay')?.remove();
+}
+
+function openContactSheet(number) {
+  const contact = getContact(number);
+  if (!contact) return;
+  closeContactSheet();
+  const name = contactDisplayName(contact);
+  const hasChat = !!roomForPrivateNumber(contact.number);
+  const overlay = document.createElement('div');
+  overlay.id = 'contact-sheet-overlay';
+  overlay.className = 'contact-sheet-overlay';
+  overlay.innerHTML = `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(name)}">
+    <div class="contact-sheet-head"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatPrivateNumber(contact.number))}</span></div>
+    <button type="button" class="contact-sheet-btn primary" data-act="message">${hasChat ? 'Open chat' : 'Message'}</button>
+    ${hasChat ? '<button type="button" class="contact-sheet-btn" data-act="call">Voice call</button><button type="button" class="contact-sheet-btn" data-act="video">Video call</button>' : ''}
+    <label class="contact-sheet-rename"><span>Nickname</span><input id="contact-nickname-input" maxlength="40" autocomplete="off" value="${escapeHtml(contact.nickname)}" placeholder="${escapeHtml(contact.name || 'Add a nickname')}"/></label>
+    <button type="button" class="contact-sheet-btn" data-act="rename">Save nickname</button>
+    <button type="button" class="contact-sheet-btn" data-act="favorite">${contact.favorite ? 'Remove from favourites' : 'Add to favourites'}</button>
+    <button type="button" class="contact-sheet-btn danger" data-act="remove">Remove contact</button>
+    <button type="button" class="contact-sheet-btn quiet" data-act="close">Close</button>
+  </div>`;
+  overlay.addEventListener('click', event => {
+    if (event.target === overlay) { closeContactSheet(); return; }
+    const button = event.target.closest?.('[data-act]');
+    if (button) contactSheetAction(button.dataset.act, contact.number);
+  });
+  document.body.appendChild(overlay);
+}
+
+function contactSheetAction(action, number) {
+  const room = roomForPrivateNumber(number);
+  if (action === 'close') { closeContactSheet(); return; }
+  if (action === 'message') { closeContactSheet(); openContactChat(number).catch(error => toast(error?.message || 'Could not open this chat')); return; }
+  if (action === 'call' || action === 'video') {
+    closeContactSheet();
+    if (room) startCallFromHistory(room.code, action === 'video');
+    return;
+  }
+  if (action === 'rename') {
+    renameContact(number, document.getElementById('contact-nickname-input')?.value || '');
+    closeContactSheet();
+    renderContactsPage();
+    renderVaultList();
+    return;
+  }
+  if (action === 'favorite') {
+    setContactFavorite(number, !getContact(number)?.favorite);
+    closeContactSheet();
+    renderContactsPage();
+    return;
+  }
+  if (action === 'remove') {
+    const contact = getContact(number);
+    const hasChat = !!room;
+    if (!confirm(`Remove ${contact ? contactDisplayName(contact) : 'this contact'} from your contacts?${hasChat ? ' Your chat with them stays open.' : ''}`)) return;
+    removeContact(number);
+    closeContactSheet();
+    renderContactsPage();
+  }
+}
+
+document.addEventListener('click', event => {
+  const row = event.target?.closest?.('#contacts-body .contact-row');
+  if (row) openContactSheet(row.dataset.contact);
+});
+
+// Delete chat: one dialog that can also remove the contact (only offered when the
+// person is in this device's contacts). Without a contact it is the plain confirm.
+function askCloseEraseChoice(room) {
+  const number = normalizePrivateNumber(room?.peerPrivateNumber);
+  const contact = number ? getContact(number) : null;
+  if (!contact) return Promise.resolve(confirm(i18n('close_erase_confirm')) ? 'chat' : null);
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.id = 'close-erase-overlay';
+    overlay.className = 'contact-sheet-overlay';
+    overlay.innerHTML = `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Delete chat">
+      <div class="contact-sheet-head"><strong>Delete this chat?</strong><span>${escapeHtml(i18n('close_erase_confirm'))}</span></div>
+      <button type="button" class="contact-sheet-btn danger" data-choice="chat">Delete chat</button>
+      <button type="button" class="contact-sheet-btn danger" data-choice="contact">Delete chat and remove contact</button>
+      <button type="button" class="contact-sheet-btn quiet" data-choice="">Cancel</button>
+    </div>`;
+    const finish = choice => { overlay.remove(); resolve(choice || null); };
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) { finish(null); return; }
+      const button = event.target.closest?.('[data-choice]');
+      if (button) finish(button.dataset.choice);
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
 async function refreshConnectionRequests() {
   const state = loadAccountState(); const list = document.getElementById('connection-request-list');
   if (!state || !list) return;
   const result = await api('/api/connections/list', { accountId:state.accountId, sessionToken:state.sessionToken });
   if (result.error) { list.textContent = result.error; return; }
   await reconcileConversationPeerIdentities(result.requests, state);
+  contactsSyncFromRequests(result.requests, state);
   const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending');
   const outgoing = result.requests.filter(r => r.direction === 'outgoing' && r.status === 'pending');
   pendingIncomingConnections = incoming;
   pendingOutgoingConnections = outgoing;
   if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+  maybeAutoAcceptContactRequests().catch(() => {});
   const accepted = result.requests.find(r => r.direction === 'outgoing' && r.status === 'accepted' && r.inviteUrl && !localStorage.getItem(`vaultlix:connection:${r.id}`));
   if (accepted) {
     localStorage.setItem(`vaultlix:connection:${accepted.id}`, 'opened');
@@ -15941,7 +16417,7 @@ function toggleVaultPreviews() {
 function isVisibleConversationRecord(rec) {
   if (!rec || rec.deleted) return false;
   if (rec.kind !== 'sys') return true;
-  if (rec.timerEvent === true) return true;
+  if (rec.timerEvent === true || rec.contactEvent === true) return true;
   // Other lifecycle events remain hidden; call history keeps its existing chips.
   return /^(?:Encrypted call|Missed(?: encrypted)? call|No answer|Call declined|Declined call|Caller cancelled|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
 }
@@ -17842,6 +18318,7 @@ function openVaultInbox() {
   showScreen('s-vault-list');
   renderVaultList();
   setTimeout(maybePromptHiddenChatsSetupRecovery, 0);
+  maybeAutoAcceptContactRequests().catch(() => {});
 }
 
 function openMainHome() {
@@ -19989,6 +20466,12 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       // any other outcome) still need the same role-flip for direction —
       // callEventViewerRoleFor() does just that half, independent of text.
       const viewerRole = perspective?.viewerRole || callEventViewerRoleFor(parsed.callEvent, fromMe);
+      if (parsed.contactEvent === 'reopened') {
+        // Written by the person whose app accepted the reopened chat: they see who
+        // reopened it, the person who reopened it sees it as their own action.
+        const actor = cleanContactText(parsed.actorName) || 'Your contact';
+        return { ...base, kind:'sys', contactEvent:true, content:fromMe ? `${actor} reopened this chat · ${time}` : `You reopened this chat · ${time}` };
+      }
       const callRecord = {
         ...base,
         kind:'sys',
@@ -20603,6 +21086,7 @@ async function doPoll(room) {
       }
     }
 
+    if (room.pendingContactNotice && room.sharedKey) flushContactReopenNotice(room).catch(() => {});
     const wasOnline = room.peerOnline;
     const wasEverOnline = room.everOnline;
     const previousPeerName = room.peerName;
@@ -21806,6 +22290,10 @@ async function handleSetup({ silent = false } = {}) {
       room.codeLabelLen = result.labelLength || null;
       addRoomToState(room);
       persistRoom(room);
+      if (mode === 'connection' && contactReopenPending && contactReopenPending.requestId === pendingConnectionAcceptance) {
+        queueContactReopenNotice(room, contactReopenPending);
+        contactReopenPending = null;
+      }
       if (pendingConnectionAcceptance) {
         const requestId = pendingConnectionAcceptance;
         const state = loadAccountState();
@@ -22179,9 +22667,12 @@ async function closeActiveRoom() {
   // Destructive and immediate for both people, with no undo — same
   // confirm() pattern already used by Clear Chat, so a mis-tap on "Close &
   // erase" doesn't instantly wipe the room before the person can back out.
-  if (!confirm(i18n('close_erase_confirm'))) return;
+  const eraseChoice = await askCloseEraseChoice(room);
+  if (!eraseChoice) return;
+  const erasedPeerNumber = room.peerPrivateNumber;
   try { await api('/api/close', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
   removeRoomFromState(room.code);
+  if (eraseChoice === 'contact') removeContact(erasedPeerNumber);
   // #chat-body still shows this room's messages at this point — the vanish
   // ceremony plays over them before we swap to whatever screen comes next
   // (homepage if that was the last room, otherwise the next tab).
