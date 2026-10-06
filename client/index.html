@@ -546,6 +546,24 @@ html.speech-to-text-ready .speech-to-text-btn{display:flex}
 .group-chat-footer .speech-to-text-btn{flex-basis:40px!important;width:40px!important;height:40px!important;border-radius:14px;margin-bottom:3px}
 .voice-record-bar{display:none;align-items:center;gap:10px;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
 .voice-record-bar.show{display:flex}
+.voice-record-bar{position:relative}
+.voice-hud{position:absolute;left:50%;bottom:calc(100% + 16px);transform:translateX(-50%);width:96px;height:96px;display:none;place-items:center;pointer-events:none;border-radius:50%;background:rgba(255,255,255,.94);box-shadow:0 8px 26px rgba(60,30,45,.18)}
+.voice-record-bar.show .voice-hud{display:grid}
+.voice-hud-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.voice-hud-ring circle{fill:none;stroke-width:3.5}
+.voice-hud-ring .track{stroke:#EBDDE3}
+.voice-hud-ring .progress{stroke:#C25777;stroke-linecap:round;stroke-dasharray:276.46;stroke-dashoffset:276.46}
+.voice-hud-bars{display:flex;align-items:center;justify-content:center;gap:3px;height:44px}
+.voice-hud-bars span{width:3px;height:6px;border-radius:2px;background:#C25777;transition:height .09s ease}
+.voice-stop-btn{width:38px;height:38px;border-radius:50%;border:none;background:rgba(194,87,119,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+.voice-stop-square{width:14px;height:14px;border-radius:3px;background:#C25777}
+.voice-review-bar{display:none;align-items:center;gap:10px;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+.voice-review-bar.show{display:flex}
+.voice-review-wave{flex:1;min-width:0;height:34px;display:flex;align-items:center;justify-content:space-between;gap:2px;cursor:pointer}
+.voice-review-wave span{flex:1;max-width:4px;min-width:2px;border-radius:2px;background:#D9C6CF;transition:background .12s}
+.voice-review-wave span.played{background:#682C43}
+.voice-review-time{font-size:13px;color:#4A4038;font-variant-numeric:tabular-nums;flex-shrink:0}
+#s-chat .voice-review-bar{background:#fff!important;border-top:1px solid #EEE5E8!important}
 .voice-cancel-btn,.voice-send-btn{width:38px;height:38px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
 .voice-cancel-btn{background:rgba(0,0,0,0.05)}
 .voice-cancel-btn svg{width:16px;height:16px;fill:none;stroke:#9A8C7E;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -3620,7 +3638,12 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     </button>
   </div>
   <div class="voice-record-bar" id="voice-record-bar">
-    <button class="voice-cancel-btn" onclick="cancelVoiceRecording()" title="Cancel">
+    <div class="voice-hud" id="voice-hud" aria-hidden="true">
+      <svg class="voice-hud-ring" viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="44"/><circle class="progress" id="voice-hud-progress" cx="50" cy="50" r="44"/></svg>
+      <div class="voice-hud-bars" id="voice-hud-bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    </div>
+    <button class="voice-stop-btn" onclick="stopVoiceRecording()" title="Stop recording" aria-label="Stop recording"><span class="voice-stop-square"></span></button>
+    <button class="voice-cancel-btn" onclick="cancelVoiceRecording()" title="Cancel recording" aria-label="Cancel recording">
       <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
     </button>
     <div class="voice-record-indicator">
@@ -3629,6 +3652,19 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     </div>
     <button class="voice-send-btn" onclick="finishVoiceRecording()" title="Send">
       <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+    </button>
+  </div>
+  <div class="voice-review-bar" id="voice-review-bar">
+    <button class="voice-cancel-btn" onclick="discardVoiceDraft()" title="Delete voice note" aria-label="Delete voice note">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </button>
+    <button class="voice-play-btn" id="voice-review-play" onclick="toggleVoiceDraftPlayback()" title="Play" aria-label="Play voice note">
+      <svg viewBox="0 0 24 24" id="voice-review-play-icon"><polygon points="7 4 20 12 7 20 7 4"/></svg>
+    </button>
+    <div class="voice-review-wave" id="voice-review-wave" onclick="seekVoiceDraft(event)" role="slider" aria-label="Voice note position"></div>
+    <span class="voice-review-time" id="voice-review-time">0:00</span>
+    <button class="voice-send-btn" onclick="sendVoiceDraft()" title="Send voice note" aria-label="Send voice note">
+      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
   </div>
 </div>
@@ -10406,6 +10442,7 @@ function showScreen(id) {
     // header and messages above the screen for several seconds.
     document.getElementById('msg-input')?.blur();
     document.getElementById('s-chat')?.classList.remove('composer-focused', 'kb-animating');
+    if (voiceDraft) discardVoiceDraft(); // an unsent voice note is not kept behind another screen
     // Do not retain decoded photos and running GIFs behind the Android inbox.
     if (klipyGifObserver) klipyGifObserver.disconnect();
     klipyGifObserver = null;
@@ -25140,6 +25177,200 @@ function formatVoiceTime(ms) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// ── Recording HUD (ring + live bars) and the review bar ──
+// While recording, a ring with live level bars floats above the composer: the arc sweeps once
+// a minute and the bars follow the microphone. Stopping opens a review bar in the composer
+// (delete, play, the recorded waveform, length, send) so the note can be checked before it
+// is sent, like Snapchat.
+const VOICE_WAVE_BARS = 36;
+const VOICE_HUD_BARS = 11;
+const VOICE_RING_CIRCUMFERENCE = 276.46; // 2 * PI * r(44)
+let voiceMeter = null; // { context, source, analyser, timer }
+let voiceLevels = [];
+let voiceDraft = null; // { room, blob, mime, durationMs, url, bars, audio }
+
+function voiceRingOffset(elapsedMs) {
+  const sweep = (Math.max(0, elapsedMs) % 60000) / 60000;
+  return VOICE_RING_CIRCUMFERENCE * (1 - sweep);
+}
+
+// Downsamples the recorded levels to `count` bars, tallest = full height.
+function waveBars(levels, count = VOICE_WAVE_BARS) {
+  if (!Array.isArray(levels) || !levels.length) return new Array(count).fill(0.15);
+  const bars = [];
+  for (let i = 0; i < count; i++) {
+    const from = Math.floor(i * levels.length / count);
+    const to = Math.max(from + 1, Math.floor((i + 1) * levels.length / count));
+    let peak = 0;
+    for (let j = from; j < to && j < levels.length; j++) peak = Math.max(peak, levels[j]);
+    bars.push(peak);
+  }
+  const max = Math.max(...bars, 0.0001);
+  return bars.map(value => Math.max(0.12, value / max));
+}
+
+function voiceLevelFromSamples(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) { const centred = (samples[i] - 128) / 128; sum += centred * centred; }
+  return Math.min(1, Math.sqrt(sum / Math.max(1, samples.length)) * 3.2);
+}
+
+function startVoiceMeter() {
+  voiceLevels = [];
+  stopVoiceMeter();
+  const bars = document.querySelectorAll('#voice-hud-bars span');
+  const progress = document.getElementById('voice-hud-progress');
+  let analyser = null; let context = null; let source = null;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx && voiceStream) {
+      context = new Ctx();
+      source = context.createMediaStreamSource(voiceStream);
+      analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser); // read-only: never connected to the speakers
+    }
+  } catch (e) { analyser = null; }
+  const samples = analyser ? new Uint8Array(analyser.fftSize) : null;
+  const recent = new Array(VOICE_HUD_BARS).fill(0.08);
+  const timer = setInterval(() => {
+    let level = 0.25 + Math.random() * 0.2; // no meter available: a gentle pulse
+    if (analyser) { analyser.getByteTimeDomainData(samples); level = voiceLevelFromSamples(samples); }
+    voiceLevels.push(level);
+    recent.push(Math.max(0.08, level)); recent.shift();
+    bars.forEach((bar, index) => { bar.style.height = `${Math.round(6 + recent[index] * 34)}px`; });
+    if (progress) progress.style.strokeDashoffset = String(voiceRingOffset(Date.now() - voiceStartTime));
+  }, 90);
+  voiceMeter = { context, source, analyser, timer };
+}
+
+function stopVoiceMeter() {
+  if (!voiceMeter) return;
+  clearInterval(voiceMeter.timer);
+  try { voiceMeter.source?.disconnect(); } catch (e) {}
+  try { voiceMeter.context?.close(); } catch (e) {}
+  voiceMeter = null;
+  document.querySelectorAll('#voice-hud-bars span').forEach(bar => { bar.style.height = '6px'; });
+  const progress = document.getElementById('voice-hud-progress');
+  if (progress) progress.style.strokeDashoffset = String(VOICE_RING_CIRCUMFERENCE);
+}
+
+function hideVoiceReviewBar() {
+  document.getElementById('voice-review-bar')?.classList.remove('show');
+}
+
+function setVoiceDraftPlayIcon(playing) {
+  const icon = document.getElementById('voice-review-play-icon');
+  if (!icon) return;
+  icon.innerHTML = playing
+    ? '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
+    : '<polygon points="7 4 20 12 7 20 7 4"/>';
+  document.getElementById('voice-review-play')?.setAttribute('aria-label', playing ? 'Pause voice note' : 'Play voice note');
+}
+
+function paintVoiceDraftProgress(ratio) {
+  const bars = document.querySelectorAll('#voice-review-wave span');
+  const played = Math.round(Math.max(0, Math.min(1, ratio)) * bars.length);
+  bars.forEach((bar, index) => bar.classList.toggle('played', index < played));
+}
+
+function showVoiceReviewBar() {
+  const ftr = document.getElementById('chat-ftr');
+  const bar = document.getElementById('voice-review-bar');
+  const wave = document.getElementById('voice-review-wave');
+  if (!voiceDraft || !bar || !wave) return;
+  if (ftr) ftr.style.display = 'none';
+  wave.innerHTML = voiceDraft.bars.map(value => `<span style="height:${Math.round(6 + value * 26)}px"></span>`).join('');
+  const time = document.getElementById('voice-review-time');
+  if (time) time.textContent = formatVoiceTime(voiceDraft.durationMs);
+  setVoiceDraftPlayIcon(false);
+  bar.classList.add('show');
+}
+
+function voiceDraftAudio() {
+  if (!voiceDraft) return null;
+  if (!voiceDraft.audio) {
+    const audio = new Audio(voiceDraft.url);
+    audio.addEventListener('timeupdate', () => {
+      if (voiceDraft?.audio !== audio) return;
+      paintVoiceDraftProgress(audio.currentTime / Math.max(0.1, voiceDraft.durationMs / 1000));
+      const time = document.getElementById('voice-review-time');
+      if (time) time.textContent = formatVoiceTime(audio.paused && audio.currentTime === 0 ? voiceDraft.durationMs : audio.currentTime * 1000);
+    });
+    audio.addEventListener('ended', () => {
+      paintVoiceDraftProgress(0);
+      setVoiceDraftPlayIcon(false);
+      const time = document.getElementById('voice-review-time');
+      if (time && voiceDraft) time.textContent = formatVoiceTime(voiceDraft.durationMs);
+    });
+    voiceDraft.audio = audio;
+  }
+  return voiceDraft.audio;
+}
+
+function toggleVoiceDraftPlayback() {
+  const audio = voiceDraftAudio();
+  if (!audio) return;
+  if (audio.paused) { audio.play().then(() => setVoiceDraftPlayIcon(true)).catch(() => toast('Could not play this voice note.')); }
+  else { audio.pause(); setVoiceDraftPlayIcon(false); }
+}
+
+function seekVoiceDraft(event) {
+  const audio = voiceDraftAudio();
+  const wave = document.getElementById('voice-review-wave');
+  if (!audio || !wave || !voiceDraft) return;
+  const box = wave.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (event.clientX - box.left) / Math.max(1, box.width)));
+  try { audio.currentTime = ratio * (voiceDraft.durationMs / 1000); } catch (e) {}
+  paintVoiceDraftProgress(ratio);
+}
+
+// Throws the recording away without sending it.
+function discardVoiceDraft() {
+  const draft = voiceDraft;
+  voiceDraft = null;
+  if (draft) {
+    try { draft.audio?.pause(); } catch (e) {}
+    try { URL.revokeObjectURL(draft.url); } catch (e) {}
+  }
+  hideVoiceReviewBar();
+  hideVoiceRecordBar();
+}
+
+async function sendVoiceDraft() {
+  const draft = voiceDraft;
+  if (!draft) return;
+  voiceDraft = null;
+  try { draft.audio?.pause(); } catch (e) {}
+  hideVoiceReviewBar();
+  hideVoiceRecordBar();
+  try { URL.revokeObjectURL(draft.url); } catch (e) {}
+  await sendVoiceMessage(draft.room, draft.blob, Math.round(draft.durationMs / 1000), draft.mime);
+}
+
+// Stops recording and opens the review bar (nothing is sent yet).
+function stopVoiceRecording() {
+  if (!voiceRecorder || voiceRecorder.state === 'inactive') { hideVoiceRecordBar(); return; }
+  if (voiceTimerInterval) { clearInterval(voiceTimerInterval); voiceTimerInterval = null; }
+  const room = getActiveRoom();
+  const durationMs = Date.now() - voiceStartTime;
+  const mimeUsed = voiceMime || voiceRecorder.mimeType || 'audio/webm';
+  const levels = voiceLevels.slice();
+  stopVoiceMeter();
+  voiceRecorder.onstop = () => {
+    if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+    const chunks = voiceChunks;
+    voiceChunks = [];
+    document.getElementById('voice-record-bar')?.classList.remove('show');
+    if (!chunks.length || durationMs < 400) { hideVoiceRecordBar(); return; } // stray tap
+    const blob = new Blob(chunks, { type:mimeUsed });
+    voiceDraft = { room, blob, mime:mimeUsed, durationMs, url:URL.createObjectURL(blob), bars:waveBars(levels), audio:null };
+    showVoiceReviewBar();
+  };
+  voiceRecorder.stop();
+  voiceRecorder = null;
+}
+
 function showVoiceRecordBar() {
   const ftr = document.getElementById('chat-ftr');
   const bar = document.getElementById('voice-record-bar');
@@ -25183,18 +25414,21 @@ async function startVoiceRecording() {
   voiceStartTime = Date.now();
   voiceRecorder.start();
   showVoiceRecordBar();
+  startVoiceMeter();
   const timeEl = document.getElementById('voice-record-time');
   if (timeEl) timeEl.textContent = '0:00';
   voiceTimerInterval = setInterval(() => {
     const el = document.getElementById('voice-record-time');
     const elapsedMs = Date.now() - voiceStartTime;
     if (el) el.textContent = formatVoiceTime(elapsedMs);
-    if (elapsedMs >= VOICE_MAX_MS) finishVoiceRecording(); // auto-send at the cap
+    if (elapsedMs >= VOICE_MAX_MS) stopVoiceRecording(); // at the cap, open the review bar instead of sending
   }, 200);
 }
 
 function cancelVoiceRecording() {
   if (voiceTimerInterval) { clearInterval(voiceTimerInterval); voiceTimerInterval = null; }
+  stopVoiceMeter();
+  discardVoiceDraft();
   if (voiceRecorder && voiceRecorder.state !== 'inactive') {
     voiceRecorder.ondataavailable = null;
     voiceRecorder.onstop = () => { if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; } };
@@ -25212,6 +25446,7 @@ function finishVoiceRecording() {
   const room = getActiveRoom();
   if (!voiceRecorder || voiceRecorder.state === 'inactive') { hideVoiceRecordBar(); return; }
   if (voiceTimerInterval) { clearInterval(voiceTimerInterval); voiceTimerInterval = null; }
+  stopVoiceMeter();
   const durationMs = Date.now() - voiceStartTime;
   const mimeUsed = voiceMime || voiceRecorder.mimeType || 'audio/webm';
   voiceRecorder.onstop = async () => {
