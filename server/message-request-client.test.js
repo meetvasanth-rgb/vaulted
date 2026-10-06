@@ -477,7 +477,7 @@ test('the follow-up dialog shows how many are left and has no "send without a me
 });
 
 test('the outgoing card on the Chats list carries the count and the add button', () => {
-  assert.match(client, /Connection request sent · awaiting acceptance<\/div>\$\{outgoingIntroHtml\(request\)\}<\/div>/);
+  assert.match(client, /Connection request sent · awaiting acceptance<\/div>\$\{outgoingIntroHtml\(request\)\}<button[^>]*request-outgoing-cancel[^>]*>Cancel request<\/button><\/div>/);
 });
 
 test('the privacy choice is cached per account, defaults to anyone, and lists three options', () => {

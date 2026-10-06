@@ -1187,6 +1187,7 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #s-requests{background:#FBF7F8;flex-direction:column}
 #s-requests .vault-list-request{margin:0 0 12px}
 .request-outgoing-meta{margin-top:6px;font:500 12.5px 'Inter',sans-serif;color:#8A7C83}
+.request-outgoing-cancel{display:block;margin-top:10px;border:0;background:none;color:#A0455F;padding:4px 0;font:600 13px 'Inter',sans-serif;cursor:pointer}
 .request-outgoing-add{margin-top:8px;border:1px solid #E0CED6;border-radius:12px;background:#fff;color:#682C43;padding:8px 12px;font:600 13px 'Inter',sans-serif;cursor:pointer}
 .policy-option{text-align:left;display:flex;flex-direction:column;gap:3px}
 .policy-option span{font:400 12.5px/1.4 'Inter',sans-serif;color:#8A7C83}
@@ -14055,6 +14056,44 @@ function outgoingIntroHtml(request) {
   return `${meta}<button type="button" class="request-outgoing-add" onclick="sendRequestFollowUp('${escapeHtml(request.id)}')">${count ? 'Send another message' : 'Add a message'}</button>`;
 }
 
+// The sender can withdraw a request that has not been answered. The recipient's copy and the
+// messages on it are removed, and nothing is held against either side, so it can be sent again.
+function confirmCancelSentRequest(label) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.id = 'cancel-request-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:13000;padding:24px;';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:20px;max-width:320px;width:100%;text-align:center;font-family:inherit">
+        <div style="font-size:13.5px;color:#4A4038;line-height:1.5;margin-bottom:16px">Cancel your request to <b>${escapeHtml(label)}</b>? It disappears for them, along with any messages you sent with it.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" data-answer="yes" style="background:#C87588;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Cancel request</button>
+          <button type="button" data-answer="no" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Keep it</button>
+        </div>
+      </div>`;
+    const done = answer => { overlay.remove(); resolve(answer); };
+    overlay.querySelectorAll('button').forEach(button => { button.onclick = () => done(button.dataset.answer === 'yes'); });
+    overlay.addEventListener('click', event => { if (event.target === overlay) done(false); });
+    document.body.appendChild(overlay);
+  });
+}
+
+async function cancelSentRequest(requestId) {
+  const request = pendingOutgoingConnections.find(item => item.id === requestId);
+  const state = loadAccountState();
+  if (!request || !state) return;
+  const label = request.recipientDisplayName || formatPrivateNumber(request.recipientPrivateNumber) || 'this person';
+  if (!(await confirmCancelSentRequest(label))) return;
+  const result = await api('/api/connections/cancel', { accountId:state.accountId, sessionToken:state.sessionToken, requestId });
+  // "No longer available" means it was answered (or already removed) in the meantime: refresh to show what happened.
+  if (result.error && !/no longer available/i.test(result.error)) { toast(result.error); return; }
+  pendingOutgoingConnections = pendingOutgoingConnections.filter(item => item.id !== requestId);
+  renderVaultList();
+  renderRequestsPageIfOpen();
+  toast(result.error ? 'That request was already answered' : 'Request cancelled');
+  if (result.error) refreshConnectionRequests().catch(() => {});
+}
+
 async function sendRequestFollowUp(requestId) {
   const request = pendingOutgoingConnections.find(item => item.id === requestId);
   const state = loadAccountState();
@@ -14164,7 +14203,7 @@ function incomingRequestCardHtml(request) {
 }
 
 function outgoingRequestCardHtml(request) {
-  return `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div>${outgoingIntroHtml(request)}</div>`;
+  return `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div>${outgoingIntroHtml(request)}<button type="button" class="request-outgoing-cancel" onclick="cancelSentRequest('${escapeHtml(request.id)}')">Cancel request</button></div>`;
 }
 
 // A request counts as "new" until the Requests page has shown it. A request that is still

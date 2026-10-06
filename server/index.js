@@ -4590,6 +4590,23 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok:true, status:request.status, inviteUrl:request.inviteUrl || null });
   }
 
+  // The sender withdraws a request nobody has answered yet. Both mirrors are removed, so the
+  // recipient's copy (and the encrypted messages on it) disappear. Nothing is recorded against
+  // either account: unlike a rejection this starts no cooldown, so the sender can ask again.
+  if (path === '/api/connections/cancel' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    const request = (account.connectionRequests || []).find(r => r.id === d.requestId && r.direction === 'outgoing');
+    if (!request || request.status !== 'pending') return resErr(res, 'Request is no longer available.', 404);
+    const recipientId = request.recipientAccountId;
+    const recipient = accounts.get(recipientId);
+    account.connectionRequests = account.connectionRequests.filter(r => r.id !== request.id);
+    if (recipient) recipient.connectionRequests = (recipient.connectionRequests || []).filter(r => r.id !== request.id);
+    await Promise.all([persistAccount(d.accountId), recipient ? persistAccount(recipientId) : Promise.resolve()]);
+    if (recipient) publishInboxAccount(recipientId, 'connection-cancelled');
+    return res200(res, { ok:true });
+  }
+
   // POST /api/create
   if (path==='/api/create' && method==='POST') {
     // A short-window abuse limit prevents automated room-creation floods;
