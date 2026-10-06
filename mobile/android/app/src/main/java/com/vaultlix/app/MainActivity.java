@@ -683,6 +683,10 @@ public class MainActivity extends BridgeActivity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, onDevice);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING,
+                    RecognizerIntent.FORMATTING_OPTIMIZE_LATENCY);
+        }
         String requestedLocale = localeTag == null ? "" : localeTag.trim();
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,
                 requestedLocale.isEmpty() ? Locale.getDefault().toLanguageTag() : requestedLocale);

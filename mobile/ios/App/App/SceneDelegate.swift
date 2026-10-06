@@ -384,6 +384,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         let onDevice = recognizer.supportsOnDeviceRecognition
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        if #available(iOS 16.0, *) {
+            request.addsPunctuation = true
+        }
         request.requiresOnDeviceRecognition = onDevice
         speechRecognitionRequest = request
         do {

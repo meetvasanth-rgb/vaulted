@@ -25,10 +25,21 @@ test('recognized speech becomes an editable draft and is never auto-sent', () =>
   assert.match(client, /Review the text, then tap Send\./);
 });
 
+test('keyboard and speech drafts grow both composers up to their scroll cap', () => {
+  assert.match(client, /function resizeChatComposer\(inputOrId\)/);
+  assert.match(client, /input\.style\.height = 'auto'/);
+  assert.match(client, /Math\.min\(input\.scrollHeight, maxHeight\)/);
+  assert.match(client, /function onTyping\(\) \{\s*resizeChatComposer\('msg-input'\)/);
+  const groups = fs.readFileSync(path.join(root, 'client/groups.js'), 'utf8');
+  assert.match(groups, /function updatePrivateGroupComposer\(\) \{[\s\S]*resizeChatComposer\(input\)/);
+});
+
 test('Android streams partial speech results through the existing trusted bridge', () => {
   assert.match(android, /SpeechRecognizer\.isRecognitionAvailable/);
   assert.match(android, /createOnDeviceSpeechRecognizer/);
   assert.match(android, /RecognizerIntent\.EXTRA_PARTIAL_RESULTS, true/);
+  assert.match(android, /RecognizerIntent\.EXTRA_ENABLE_FORMATTING/);
+  assert.match(android, /RecognizerIntent\.FORMATTING_OPTIMIZE_LATENCY/);
   assert.match(android, /void startSpeechToText\(String localeTag\)/);
   assert.match(android, /vaultlix:speech-to-text/);
 });
@@ -37,6 +48,7 @@ test('iOS requests speech permission and returns partial on-device-capable resul
   assert.match(ios, /import Speech/);
   assert.match(ios, /SFSpeechRecognizer\.requestAuthorization/);
   assert.match(ios, /request\.shouldReportPartialResults = true/);
+  assert.match(ios, /request\.addsPunctuation = true/);
   assert.match(ios, /request\.requiresOnDeviceRecognition = onDevice/);
   assert.match(ios, /action == "startSpeechToText"/);
   assert.match(info, /<key>NSSpeechRecognitionUsageDescription<\/key>/);

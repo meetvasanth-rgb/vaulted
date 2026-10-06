@@ -524,10 +524,11 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 /* 16px, not 15 — anything smaller than 16px on a text input makes iOS
    Safari auto-zoom the whole page in on focus, which is a likely
    contributor to text looking off afterward. */
-#msg-input{flex:1;background:#F5F5F5;border:1.5px solid #E8E8E8;border-radius:24px;padding:10px 18px;font-size:16px;color:#111;resize:none;min-height:44px;max-height:120px;line-height:1.5;transition:border-color .15s}
+#msg-input{flex:1;background:#F5F5F5;border:1.5px solid #E8E8E8;border-radius:24px;padding:10px 18px;font-size:16px;color:#111;resize:none;min-height:44px;max-height:120px;overflow-y:hidden;line-height:1.5;transition:border-color .15s}
 #msg-input:focus{border-color:#682C43;background:#fff}
 #msg-input::placeholder{color:#BBB}
 #msg-input:disabled{opacity:.35;cursor:not-allowed}
+.group-chat-footer textarea{overflow-y:hidden}
 .send-btn{width:44px;height:44px;background:#682C43;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;border:none;box-shadow:0 2px 8px rgba(104,44,67,0.3)}
 .send-btn:hover{background:#542237;transform:scale(1.05)}
 .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
@@ -10405,6 +10406,23 @@ function updateComposerButtons() {
   const micBtn = document.getElementById('mic-btn');
   if (sendBtn) sendBtn.style.display = hasText ? 'flex' : 'none';
   if (micBtn) micBtn.style.display = hasText ? 'none' : 'flex';
+}
+
+// Grow each message field with its draft, like the native WhatsApp composer.
+// At the CSS maximum it scrolls internally instead of covering the chat.
+function resizeChatComposer(inputOrId) {
+  const input = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+  if (!input) return;
+  input.style.height = 'auto';
+  const style = getComputedStyle(input);
+  const minHeight = parseFloat(style.minHeight) || 44;
+  const maxHeight = parseFloat(style.maxHeight) || 112;
+  const wanted = Math.max(minHeight, Math.min(input.scrollHeight, maxHeight));
+  input.style.height = `${Math.ceil(wanted)}px`;
+  input.style.overflowY = input.scrollHeight > maxHeight + 1 ? 'auto' : 'hidden';
+  if (document.activeElement === input && typeof chatKeyboardLayout !== 'undefined') {
+    requestAnimationFrame(() => chatKeyboardLayout.pin());
+  }
 }
 
 // Native speech recognition writes only into the local composer. Nothing is
@@ -20756,6 +20774,7 @@ async function sendMsg() {
   }
 
   input.value = '';
+  resizeChatComposer(input);
   updateComposerButtons();
   // Keep the active conversation ready for the next message. Hiding the
   // send button after clearing used to move focus away from the textarea,
@@ -20832,6 +20851,7 @@ function triggerEmojiEffect(emoji) {
 
 // ── TYPING ────────────────────────────────────────────────────────────
 function onTyping() {
+  resizeChatComposer('msg-input');
   updateComposerButtons();
   const room = getActiveRoom();
   if (!room) return;

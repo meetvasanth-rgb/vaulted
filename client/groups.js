@@ -83,6 +83,7 @@ function preloadPrivateGroupsInBackground() {
 function updatePrivateGroupComposer() {
   const footer = document.getElementById('group-chat-footer');
   const input = document.getElementById('group-message-input');
+  resizeChatComposer(input);
   footer?.classList.toggle('has-text', !!String(input?.value || '').trim());
 }
 
