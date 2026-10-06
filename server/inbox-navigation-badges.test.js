@@ -13,7 +13,7 @@ function harness() {
   const state = { accountId:'a' };
   const context = vm.createContext({
     roomConcealed: () => false,
-    rooms:new Map(), privateGroups:new Map(), entries:[], state,
+    rooms:new Map(), privateGroups:new Map(), entries:[], state, pendingIncomingConnections:[],
     loadAccountState:() => state.accountId ? state : null,
     callHistoryEntries:() => context.entries,
     localStorage:{ getItem:k => storage.get(k), setItem:(k,v) => storage.set(k,v) },
@@ -54,4 +54,19 @@ test('seen calls survive reload and never leak between accounts; zero hides badg
   state.accountId=null;c.updateVaultNavigationBadges();
   assert.equal(nodes.get('vault-nav-chats-badge').hidden,true);
   assert.equal(nodes.get('vault-nav-calls-badge').hidden,true);
+});
+
+// New message requests are reachable from one row at the top of Chats and also count on the
+// Chats button, so a request is noticed without opening the list.
+test('new message requests count on the Chats badge, with unread messages', () => {
+  const {context:c,nodes} = harness();
+  c.rooms.set('r',{unread:3,unreadSystemCount:0});
+  c.pendingIncomingConnections.push({ id:'q1' }, { id:'q2' });
+  c.updateVaultNavigationBadges();
+  assert.equal(nodes.get('vault-nav-chats-badge').textContent,'5');
+  assert.equal(nodes.get('vault-nav-chats-badge').hidden,false);
+  c.pendingIncomingConnections.length = 0;
+  c.rooms.clear();
+  c.updateVaultNavigationBadges();
+  assert.equal(nodes.get('vault-nav-chats-badge').hidden,true);
 });

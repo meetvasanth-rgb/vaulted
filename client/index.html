@@ -1157,6 +1157,17 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .request-intro-bubble{align-self:flex-start;max-width:100%;padding:9px 12px;border-radius:14px 14px 14px 4px;background:#fff;border:1px solid #E7DDE1;color:#271D25;font:500 14px/1.4 'Inter',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
 .request-intro-bubble.muted{color:#8A7C83;font-style:italic}
 #request-message-overlay{z-index:13000}
+.vault-requests-row{display:flex;align-items:center;gap:12px;width:calc(100% - 28px);margin:10px 14px 4px;padding:12px 14px;border:1px solid #E9D9E0;border-radius:16px;background:linear-gradient(145deg,#FFFDFE,#F8F0F3);color:#271D25;text-align:left;cursor:pointer;font-family:inherit}
+.vault-requests-row:active{background:#F4E8ED}
+.vault-requests-icon{width:40px;height:40px;border-radius:12px;background:#682C43;color:#fff;display:grid;place-items:center;flex:none}
+.vault-requests-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.vault-requests-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.vault-requests-text strong{font:700 15px 'Inter',sans-serif}
+.vault-requests-text span{font:400 12.5px 'Inter',sans-serif;color:#8A7C83;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vault-requests-badge{min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#C25777;color:#fff;font:700 12px/22px 'Inter',sans-serif;text-align:center}
+.vault-requests-chevron{color:#B9A9B1;font-size:22px;line-height:1}
+#s-requests{background:#FBF7F8;flex-direction:column}
+#s-requests .vault-list-request{margin:0 0 12px}
 .request-outgoing-meta{margin-top:6px;font:500 12.5px 'Inter',sans-serif;color:#8A7C83}
 .request-outgoing-add{margin-top:8px;border:1px solid #E0CED6;border-radius:12px;background:#fff;color:#682C43;padding:8px 12px;font:600 13px 'Inter',sans-serif;cursor:pointer}
 .policy-option{text-align:left;display:flex;flex-direction:column;gap:3px}
@@ -3688,6 +3699,17 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   </div>
   <div class="contacts-search"><input id="contacts-search" type="search" placeholder="Search contacts" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oninput="filterContacts(this.value)"/></div>
   <div class="contacts-body" id="contacts-body"></div>
+</div>
+
+<!-- Requests: connection requests received (with their messages) and sent. -->
+<div id="s-requests" class="screen">
+  <div class="contacts-head">
+    <button class="contacts-back" type="button" onclick="closeRequests()" aria-label="Back">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <h1>Requests</h1>
+  </div>
+  <div class="contacts-body" id="requests-body"></div>
 </div>
 
 <div class="group-create-overlay" id="group-create-overlay" role="dialog" aria-modal="true" aria-labelledby="group-create-title">
@@ -14091,6 +14113,62 @@ async function flushIntroNotices(room) {
   }
 }
 
+// ── REQUESTS PAGE ────────────────────────────────────────────────────────
+// Connection requests (and the short messages sent with them) live on their own page, not
+// in the chat list: the Chats list only shows real chats, with one row that opens this page.
+function incomingRequestCardHtml(request) {
+  return `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div>${requestIntroSlot(request)}<div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`;
+}
+
+function outgoingRequestCardHtml(request) {
+  return `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div>${outgoingIntroHtml(request)}</div>`;
+}
+
+function requestsRowHtml() {
+  const incoming = pendingIncomingConnections.length;
+  const outgoing = pendingOutgoingConnections.length;
+  if (!incoming && !outgoing) return '';
+  const names = pendingIncomingConnections.slice(0, 2).map(request => escapeHtml(request.senderDisplayName || 'Vaultlix user')).join(', ');
+  const sub = incoming
+    ? `${incoming} new${names ? ' · ' + names : ''}${outgoing ? ' · ' + outgoing + ' sent' : ''}`
+    : `${outgoing} sent · waiting for a reply`;
+  return `<button type="button" class="vault-requests-row" onclick="openRequests()" aria-label="Requests, ${incoming} new">
+    <span class="vault-requests-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+    <span class="vault-requests-text"><strong>Message requests</strong><span>${sub}</span></span>
+    ${incoming ? `<span class="vault-requests-badge">${incoming > 99 ? '99+' : incoming}</span>` : ''}
+    <span class="vault-requests-chevron" aria-hidden="true">›</span>
+  </button>`;
+}
+
+function openRequests() {
+  if (!loadAccountState()) { openAccountPanel(); return; }
+  showScreen('s-requests');
+  renderRequestsPage();
+}
+
+function closeRequests() {
+  pendingConnectionFocusId = null;
+  showScreen('s-vault-list');
+}
+
+function renderRequestsPageIfOpen() {
+  if (document.getElementById('s-requests')?.classList.contains('active')) renderRequestsPage();
+}
+
+function renderRequestsPage() {
+  const body = document.getElementById('requests-body');
+  if (!body) return;
+  const incoming = pendingIncomingConnections.map(incomingRequestCardHtml).join('');
+  const outgoing = pendingOutgoingConnections.map(outgoingRequestCardHtml).join('');
+  if (!incoming && !outgoing) {
+    body.innerHTML = '<div class="contacts-empty"><strong>No requests</strong>When someone who is not in your chats sends you a request and a message, it appears here. Requests you send wait here until they reply.</div>';
+    return;
+  }
+  body.innerHTML = (incoming ? '<div class="contacts-section-label">Received</div>' + incoming : '') + (outgoing ? '<div class="contacts-section-label">Sent</div>' + outgoing : '');
+  hydrateRequestIntros().catch(() => {});
+  scrollToFocusedConnectionRequest();
+}
+
 async function refreshConnectionRequests() {
   const state = loadAccountState(); const list = document.getElementById('connection-request-list');
   if (!state || !list) return;
@@ -14104,6 +14182,7 @@ async function refreshConnectionRequests() {
   pendingIncomingConnections = incoming;
   pendingOutgoingConnections = outgoing;
   if (document.getElementById('s-vault-list')?.classList.contains('active')) renderVaultList();
+  renderRequestsPageIfOpen();
   maybeAutoAcceptContactRequests().catch(() => {});
   const accepted = result.requests.find(r => r.direction === 'outgoing' && r.status === 'accepted' && r.inviteUrl && !localStorage.getItem(`vaultlix:connection:${r.id}`));
   if (accepted) {
@@ -14134,7 +14213,8 @@ function scrollToFocusedConnectionRequest() {
 }
 async function openConnectionRequest(requestId = null) {
   pendingConnectionFocusId = typeof requestId === 'string' && /^[A-Za-z0-9-]{8,128}$/.test(requestId) ? requestId : null;
-  showScreen('s-vault-list');
+  showScreen('s-requests');
+  renderRequestsPage();
   await refreshConnectionRequests();
   scrollToFocusedConnectionRequest();
 }
@@ -17763,6 +17843,7 @@ function vaultNavigationCounts() {
   let messages = 0;
   for (const room of rooms.values()) if (!roomConcealed(room)) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
   for (const group of privateGroups.values()) messages += Math.max(0, Number(group.unread) || 0);
+  messages += pendingIncomingConnections.length; // new message requests count on the Chats button too
   const { seen } = missedCallSeenState();
   const calls = new Set(missedCallBadgeEntries().filter(id => !seen.has(id))).size;
   return { messages, calls };
@@ -18153,6 +18234,7 @@ function openPeerStatusFromInbox(privateNumber) {
 function renderVaultList() {
   const body = document.getElementById('vault-list-body');
   if (!body) return;
+  renderRequestsPageIfOpen();
   syncVaultListModeControls();
   renderStatusRail();
   if (Date.now() - statusFeedRefreshedAt > 30000) refreshStatusFeed({ quiet:true }).catch(() => {});
@@ -18169,15 +18251,13 @@ function renderVaultList() {
     return;
   }
   const previews = vaultPreviewsEnabled();
-  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div>${requestIntroSlot(request)}<div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
-  const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div>${outgoingIntroHtml(request)}</div>`).join('');
   if (rooms.size === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body._vaultlixChatListHtml = null;
     body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
   }
   const searchQuery = vaultSearchActive ? vaultSearchQuery : '';
-  let html = searchQuery ? '' : `${requestHtml}${outgoingRequestHtml}`;
+  let html = searchQuery ? '' : requestsRowHtml();
   const hiddenStatusIds = statusHiddenIds();
   const liveStatusAuthors = new Set(statusFeed
     .filter(item => !item.own && !hiddenStatusIds.has(item.id))
