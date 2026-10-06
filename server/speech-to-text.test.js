@@ -15,6 +15,8 @@ test('direct and group composers expose a distinct native voice-to-text action',
   assert.match(client, /html\.speech-to-text-ready \.speech-to-text-btn\{display:flex\}/);
   assert.match(client, /supportsNativeSpeechToText/);
   assert.match(client, /vaultlix:speech-to-text-capability/);
+  assert.match(client, /\.chat-ftr\.has-text:not\(\.dictating\) \.speech-to-text-btn/);
+  assert.match(client, /\.group-chat-footer\.has-text:not\(\.dictating\) \.speech-to-text-btn/);
 });
 
 test('recognized speech becomes an editable draft and is never auto-sent', () => {
@@ -23,6 +25,14 @@ test('recognized speech becomes an editable draft and is never auto-sent', () =>
   assert.match(workflow, /input\.dispatchEvent\(new Event\('input'/);
   assert.doesNotMatch(workflow, /sendMsg\(|sendPrivateGroupMessage\(/);
   assert.match(client, /Review the text, then tap Send\./);
+});
+
+test('dictation keeps listening across a ten-second thinking pause', () => {
+  assert.match(client, /const SPEECH_PAUSE_GRACE_MS = 10000/);
+  assert.match(client, /function continueSpeechAfterPause\(draft = speechToTextDraft\)/);
+  assert.match(client, /speechToTextDraft\.committed = joinSpeechPhrases/);
+  assert.match(client, /startNativeSpeechSegment\(draft\)/);
+  assert.match(client, /pauseDeadline > Date\.now\(\)/);
 });
 
 test('keyboard and speech drafts grow both composers up to their scroll cap', () => {
@@ -40,6 +50,8 @@ test('Android streams partial speech results through the existing trusted bridge
   assert.match(android, /RecognizerIntent\.EXTRA_PARTIAL_RESULTS, true/);
   assert.match(android, /RecognizerIntent\.EXTRA_ENABLE_FORMATTING/);
   assert.match(android, /RecognizerIntent\.FORMATTING_OPTIMIZE_LATENCY/);
+  assert.match(android, /EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L/);
+  assert.match(android, /EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 10000L/);
   assert.match(android, /void startSpeechToText\(String localeTag\)/);
   assert.match(android, /vaultlix:speech-to-text/);
 });

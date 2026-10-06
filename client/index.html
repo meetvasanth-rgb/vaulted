@@ -544,6 +544,7 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .mic-btn svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .speech-to-text-btn{display:none;flex:0 0 40px;width:40px;height:40px;margin-bottom:2px;border:1px solid #E7DCE0;border-radius:50%;align-items:center;justify-content:center;background:#F7EEF1;color:#682C43;transition:background .16s,color .16s,transform .16s;box-shadow:none}
 html.speech-to-text-ready .speech-to-text-btn{display:flex}
+.chat-ftr.has-text:not(.dictating) .speech-to-text-btn,.group-chat-footer.has-text:not(.dictating) .speech-to-text-btn{display:none}
 .speech-to-text-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .speech-to-text-btn.listening{background:#682C43;color:#fff;border-color:#682C43;animation:voice-rec-pulse 1.1s ease-in-out infinite}
 .speech-to-text-btn:disabled{opacity:.38;cursor:not-allowed}
@@ -10402,6 +10403,7 @@ async function requestSecureReconnection() {
 function updateComposerButtons() {
   const input = document.getElementById('msg-input');
   const hasText = !!(input && input.value.trim().length > 0);
+  document.getElementById('chat-ftr')?.classList.toggle('has-text', hasText);
   const sendBtn = document.getElementById('send-btn');
   const micBtn = document.getElementById('mic-btn');
   if (sendBtn) sendBtn.style.display = hasText ? 'flex' : 'none';
@@ -10442,6 +10444,16 @@ function speechToTextButton(inputId) {
 
 function setSpeechToTextListening(inputId, listening) {
   speechToTextButton(inputId)?.classList.toggle('listening', !!listening);
+  const footer = document.getElementById(inputId === 'group-message-input' ? 'group-chat-footer' : 'chat-ftr');
+  footer?.classList.toggle('dictating', !!listening);
+}
+
+const SPEECH_PAUSE_GRACE_MS = 10000;
+
+function joinSpeechPhrases(first, second) {
+  const left = String(first || '').trim();
+  const right = String(second || '').trim();
+  return left && right ? `${left} ${right}` : (left || right);
 }
 
 function speechDraftValue(prefix, transcript) {
@@ -10455,12 +10467,49 @@ function applySpeechDraft(transcript) {
   if (!speechToTextDraft) return;
   const input = document.getElementById(speechToTextDraft.inputId);
   if (!input) return;
-  input.value = speechDraftValue(speechToTextDraft.prefix, transcript);
+  const spoken = joinSpeechPhrases(speechToTextDraft.committed, transcript);
+  input.value = speechDraftValue(speechToTextDraft.prefix, spoken);
   input.dispatchEvent(new Event('input', { bubbles:true }));
+}
+
+function clearSpeechPauseTimer(draft = speechToTextDraft) {
+  if (draft?.pauseTimer) clearTimeout(draft.pauseTimer);
+  if (draft) { draft.pauseTimer = null; draft.pauseDeadline = 0; }
+}
+
+function startNativeSpeechSegment(draft = speechToTextDraft) {
+  if (!draft || speechToTextDraft !== draft) return;
+  try {
+    if (typeof window.VaultlixAndroid?.startSpeechToText === 'function') {
+      window.VaultlixAndroid.startSpeechToText(draft.locale);
+    } else if (window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'startSpeechToText', locale:draft.locale });
+    } else {
+      throw new Error('unavailable');
+    }
+  } catch (_) {
+    finishSpeechToTextDraft({ focus:true });
+    toast('Voice typing is not available on this device.');
+  }
+}
+
+function continueSpeechAfterPause(draft = speechToTextDraft) {
+  if (!draft || speechToTextDraft !== draft) return;
+  clearSpeechPauseTimer(draft);
+  draft.pauseDeadline = Date.now() + SPEECH_PAUSE_GRACE_MS;
+  draft.pauseTimer = setTimeout(() => {
+    if (speechToTextDraft !== draft) return;
+    cancelSpeechToText({ notifyNative:true, focus:true });
+    toast('Review the text, then tap Send.');
+  }, SPEECH_PAUSE_GRACE_MS);
+  setTimeout(() => {
+    if (speechToTextDraft === draft && Date.now() < draft.pauseDeadline) startNativeSpeechSegment(draft);
+  }, 140);
 }
 
 function finishSpeechToTextDraft({ focus = true } = {}) {
   if (!speechToTextDraft) return;
+  clearSpeechPauseTimer(speechToTextDraft);
   const inputId = speechToTextDraft.inputId;
   setSpeechToTextListening(inputId, false);
   speechToTextDraft = null;
@@ -10487,10 +10536,8 @@ function toggleSpeechToText(inputId) {
   const input = document.getElementById(inputId);
   if (!speechToTextAvailable || !input || input.disabled) return;
   if (speechToTextDraft?.inputId === inputId) {
-    try {
-      if (typeof window.VaultlixAndroid?.stopSpeechToText === 'function') window.VaultlixAndroid.stopSpeechToText();
-      else window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'stopSpeechToText' });
-    } catch (_) { cancelSpeechToText({ notifyNative:false, focus:true }); }
+    cancelSpeechToText({ notifyNative:true, focus:true });
+    toast('Review the text, then tap Send.');
     return;
   }
   if (speechToTextDraft) cancelSpeechToText({ focus:false });
@@ -10498,22 +10545,10 @@ function toggleSpeechToText(inputId) {
     toast('Finish or cancel the voice note first.');
     return;
   }
-  speechToTextDraft = { inputId, prefix:input.value };
+  speechToTextDraft = { inputId, prefix:input.value, committed:'', locale:navigator.language || '', pauseTimer:null, pauseDeadline:0, serviceNoticeShown:false };
   setSpeechToTextListening(inputId, true);
   input.blur();
-  const locale = navigator.language || '';
-  try {
-    if (typeof window.VaultlixAndroid?.startSpeechToText === 'function') {
-      window.VaultlixAndroid.startSpeechToText(locale);
-    } else if (window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'startSpeechToText', locale });
-    } else {
-      throw new Error('unavailable');
-    }
-  } catch (_) {
-    finishSpeechToTextDraft({ focus:true });
-    toast('Voice typing is not available on this device.');
-  }
+  startNativeSpeechSegment(speechToTextDraft);
 }
 
 window.addEventListener('vaultlix:speech-to-text-capability', event => {
@@ -10523,16 +10558,27 @@ window.addEventListener('vaultlix:speech-to-text', event => {
   if (!speechToTextDraft) return;
   const detail = event.detail || {};
   if (detail.state === 'listening') {
-    if (detail.onDevice === false) toast('Voice typing uses your phone’s speech service.');
+    if (detail.onDevice === false && !speechToTextDraft.serviceNoticeShown) {
+      speechToTextDraft.serviceNoticeShown = true;
+      toast('Voice typing uses your phone’s speech service.');
+    }
     return;
   }
-  if (detail.state === 'partial' || detail.state === 'final') applySpeechDraft(detail.text);
+  if (detail.state === 'partial') {
+    clearSpeechPauseTimer(speechToTextDraft);
+    applySpeechDraft(detail.text);
+  }
   if (detail.state === 'final') {
-    finishSpeechToTextDraft({ focus:true });
-    toast('Review the text, then tap Send.');
+    speechToTextDraft.committed = joinSpeechPhrases(speechToTextDraft.committed, detail.text);
+    applySpeechDraft('');
+    continueSpeechAfterPause(speechToTextDraft);
   } else if (detail.state === 'error') {
-    finishSpeechToTextDraft({ focus:true });
-    toast(detail.error || 'Voice typing stopped. Please try again.');
+    if (speechToTextDraft.pauseDeadline > Date.now() && speechToTextDraft.committed) {
+      setTimeout(() => startNativeSpeechSegment(speechToTextDraft), 140);
+    } else {
+      finishSpeechToTextDraft({ focus:true });
+      toast(detail.error || 'Voice typing stopped. Please try again.');
+    }
   } else if (detail.state === 'cancelled') {
     finishSpeechToTextDraft({ focus:false });
   }
