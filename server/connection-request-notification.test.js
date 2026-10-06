@@ -33,7 +33,7 @@ test('sent connection requests remain visible while awaiting acceptance', () => 
   assert.match(client, /Connection request sent · awaiting acceptance/);
   assert.match(client, /if \(result\.status === 'pending'\) \{[\s\S]*pendingOutgoingConnections = pendingOutgoingConnections[\s\S]*direction:'outgoing'[\s\S]*showScreen\('s-vault-list'\)/);
   assert.match(server, /const senderMirror = \(sender\.connectionRequests \|\| \[\]\)\.find\(r => r\.id === relationship\.id\)/);
-  assert.match(server, /sender\.connectionRequests\.push\(\{[\s\S]*\.\.\.relationship,[\s\S]*direction:senderDirection/);
+  assert.match(server, /sender\.connectionRequests\.push\(\{[\s\S]*\.\.\.relationshipForSender,[\s\S]*direction:senderDirection/);
   assert.match(server, /await persistAccount\(d\.accountId\)/);
   assert.match(server, /Heal pending request mirrors left one-sided/);
   assert.match(server, /request\.senderAccountId !== d\.accountId && request\.recipientAccountId !== d\.accountId/);

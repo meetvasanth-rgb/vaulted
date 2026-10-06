@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_share_code char(6);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS inbox_key jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_profile_share_code_idx
   ON accounts(profile_share_code) WHERE profile_share_code IS NOT NULL;
 
@@ -304,6 +305,7 @@ class PostgresStore {
       bundle:row.encrypted_bundle, revision:Number(row.revision),
       sessions:row.sessions || [], connectionRequests:row.connection_requests || [],
       pushDestinations:row.push_destinations || [],
+      inboxKey:row.inbox_key || null,
       lastActiveAt:Number(row.last_active_at), numberCategory:row.number_category || 'standard',
       numberProtection:row.number_protection || 'free', premiumUntil:row.premium_until == null ? null : Number(row.premium_until),
       reclaimWarnings:row.reclaim_warnings || [],
@@ -324,8 +326,8 @@ class PostgresStore {
       connection_requests, push_destinations, last_active_at, number_category,
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
       creation_order, daily_look_generated_at, daily_look_window_started_at,
-      daily_look_generation_count, created_at, updated_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27)
+      daily_look_generation_count, created_at, updated_at, inbox_key
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, profile_share_code=EXCLUDED.profile_share_code,
       display_name=EXCLUDED.display_name,
@@ -343,6 +345,7 @@ class PostgresStore {
       daily_look_generated_at=EXCLUDED.daily_look_generated_at,
       daily_look_window_started_at=EXCLUDED.daily_look_window_started_at,
       daily_look_generation_count=EXCLUDED.daily_look_generation_count,
+      inbox_key=EXCLUDED.inbox_key,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.profileShareCode || null, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -353,6 +356,7 @@ class PostgresStore {
       account.tier || 'standard', !!account.isFounding, account.creationOrder,
       account.dailyLookGeneratedAt || null, account.dailyLookWindowStartedAt || null,
       Math.max(0, Number(account.dailyLookGenerationCount) || 0), account.createdAt, account.updatedAt,
+      account.inboxKey ? JSON.stringify(account.inboxKey) : null,
     ]);
   }
 

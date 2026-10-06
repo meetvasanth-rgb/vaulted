@@ -1491,6 +1491,25 @@ function publicAccount(account) {
     isFounding:!!account.isFounding,
   };
 }
+// ── MESSAGE REQUESTS: ACCOUNT INBOX KEY + INTRO MESSAGES ────────────────────
+// Each account publishes one public ECDH P-256 "inbox key" (the private half lives only
+// in the account's encrypted bundle on the person's own devices). Someone who wants to
+// reach a person they have no conversation with can send up to REQUEST_INTRO_MAX short
+// text messages with the connection request, encrypted to that key (ephemeral ECDH +
+// AES-GCM). The server stores and forwards ciphertext only and cannot read them.
+const REQUEST_INTRO_MAX = 3;
+function validB64Url(value, min, max) {
+  return typeof value === 'string' && value.length >= min && value.length <= max && /^[A-Za-z0-9_-]+$/.test(value);
+}
+function normalizeInboxKey(key) {
+  return key && validB64Url(key.x, 43, 43) && validB64Url(key.y, 43, 43) ? { x:key.x, y:key.y } : null;
+}
+function normalizeIntroMessage(message) {
+  const epk = normalizeInboxKey(message?.epk);
+  if (!epk || !validB64Url(message?.iv, 16, 16) || !validB64Url(message?.ct, 22, 3200)) return null;
+  return { epk, iv:message.iv, ct:message.ct };
+}
+
 function connectionPairKey(request) {
   const first = String(request?.senderAccountId || '');
   const second = String(request?.recipientAccountId || '');
@@ -4283,6 +4302,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!sender) return resErr(res, 'Your session has expired.', 401);
     if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
     if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
+    const introMessage = d.intro === undefined || d.intro === null ? null : normalizeIntroMessage(d.intro);
+    if (d.intro !== undefined && d.intro !== null && !introMessage) return resErr(res, 'Invalid message.', 400);
     if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(recipient.accountId) || await safetyStore.blocked(d.accountId, recipient.accountId)) return resErr(res, 'This connection is unavailable.', 403);
     const now = Date.now();
     // Accepted relationships are durable. Quick Connect must classify the
@@ -4334,6 +4355,17 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const relationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'pending');
     if (relationship?.status === 'pending') {
       const needsResponse = relationship.senderAccountId === recipient.accountId;
+      // More messages while the first request waits: up to REQUEST_INTRO_MAX in total, and
+      // only from the person who sent it. Nothing resets until the other person replies.
+      if (introMessage && !needsResponse) {
+        const sent = Array.isArray(relationship.intro) ? relationship.intro : [];
+        if (sent.length >= REQUEST_INTRO_MAX) return resErr(res, `You can send ${REQUEST_INTRO_MAX} messages until they reply.`, 429);
+        relationship.intro = [...sent, { ...introMessage, at:now }];
+        const mirror = (sender.connectionRequests || []).find(r => r.id === relationship.id);
+        if (mirror) mirror.introCount = relationship.intro.length;
+        await Promise.all([persistAccount(d.accountId), persistAccount(recipient.accountId)]);
+        publishInboxAccount(recipient.accountId, 'connection-request');
+      }
       // Older deployments could leave only one side of a pending request
       // after an interrupted persistence cycle. Returning "pending" without
       // repairing the caller's mirror made the request reach the recipient
@@ -4343,21 +4375,26 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const senderDirection = needsResponse ? 'incoming' : 'outgoing';
       if (!senderMirror) {
         sender.connectionRequests = compactConnectionRequests(sender.connectionRequests, now);
+        const { intro: _repairIntro, ...relationshipForSender } = relationship;
         sender.connectionRequests.push({
-          ...relationship,
+          ...relationshipForSender,
           direction:senderDirection,
+          introCount:Array.isArray(relationship.intro) ? relationship.intro.length : 0,
         });
         await persistAccount(d.accountId);
       } else if (senderMirror.direction !== senderDirection) {
         senderMirror.direction = senderDirection;
         await persistAccount(d.accountId);
       }
-      return res200(res, { ok:true, requestId:relationship.id, status:needsResponse ? 'action_required' : 'pending' });
+      return res200(res, { ok:true, requestId:relationship.id, status:needsResponse ? 'action_required' : 'pending', introCount:Array.isArray(relationship.intro) ? relationship.intro.length : 0 });
     }
     const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
+    if (introMessage) request.intro = [{ ...introMessage, at:now }];
     recipient.account.connectionRequests.push(request);
     sender.connectionRequests = compactConnectionRequests(sender.connectionRequests, now);
-    sender.connectionRequests.push({ ...request, direction:'outgoing' });
+    // The sender's copy keeps only how many messages were sent, never the ciphertext.
+    const { intro: _intro, ...requestForSender } = request;
+    sender.connectionRequests.push({ ...requestForSender, direction:'outgoing', introCount:request.intro ? request.intro.length : 0 });
     await Promise.all([persistAccount(d.accountId), persistAccount(recipient.accountId)]);
     publishInboxAccount(recipient.accountId, 'connection-request');
     const requestPushPayload = JSON.stringify({
@@ -4370,7 +4407,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     for (const destination of recipient.account.pushDestinations || []) {
       sendMemberPush(destination, requestPushPayload, { urgency:'high', TTL:3600, label:'connection request' });
     }
-    return res200(res, { ok:true, requestId:request.id, status:'pending' });
+    return res200(res, { ok:true, requestId:request.id, status:'pending', introCount:request.intro ? request.intro.length : 0 });
   }
 
   if (path === '/api/account/native-push-subscribe' && method === 'POST') {
@@ -4398,6 +4435,41 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       .slice(-10);
     await persistAccount(d.accountId);
     return res200(res, { ok:true });
+  }
+
+  // POST /api/account/inbox-key — publish (or read) this account's public inbox key.
+  // The first key wins: a different key is only accepted with replace:true, which a
+  // device sends only when it has no copy of the private half (bundle lost).
+  if (path === '/api/account/inbox-key' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    if (await rateLimited(`inbox-key:${d.accountId}`, 30, 60 * 1000)) return resErr(res, 'Too many key updates.', 429);
+    res.setHeader('Cache-Control', 'no-store');
+    if (d.publicKey === undefined) return res200(res, { ok:true, inboxKey:normalizeInboxKey(account.inboxKey) });
+    const publicKey = normalizeInboxKey(d.publicKey);
+    if (!publicKey) return resErr(res, 'Invalid inbox key.', 400);
+    const existing = normalizeInboxKey(account.inboxKey);
+    if (existing && (existing.x !== publicKey.x || existing.y !== publicKey.y) && d.replace !== true) {
+      return res200(res, { ok:true, accepted:false, inboxKey:existing });
+    }
+    account.inboxKey = publicKey;
+    await persistAccount(d.accountId);
+    return res200(res, { ok:true, accepted:true, inboxKey:publicKey });
+  }
+
+  // POST /api/connections/prepare — what a sender needs before writing to someone:
+  // that person's public inbox key (null when they have not published one yet, for
+  // example an older app version). Same refusals as sending a request.
+  if (path === '/api/connections/prepare' && method === 'POST') {
+    const sender = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!sender) return resErr(res, 'Your session has expired.', 401);
+    if (await rateLimited(`connection-prepare:${d.accountId}`, 60, 60 * 60 * 1000)) return resErr(res, 'Too many requests — try again later.', 429);
+    const recipient = accountByPrivateNumber(d.privateNumber);
+    if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
+    if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
+    if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(recipient.accountId) || await safetyStore.blocked(d.accountId, recipient.accountId)) return resErr(res, 'This person cannot be contacted.', 403);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, inboxKey:normalizeInboxKey(recipient.account.inboxKey), introMax:REQUEST_INTRO_MAX });
   }
 
   if (path === '/api/connections/list' && method === 'POST') {
@@ -4431,8 +4503,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const peer = r.senderAccountId === d.accountId ? r.recipientAccountId : r.senderAccountId;
       if (!(await safetyStore.blocked(d.accountId, peer))) visibleRequests.push(r);
     }
-    return res200(res, { ok:true, requests:visibleRequests.map(({senderAccountId, recipientAccountId, ...safe}) => ({
+    return res200(res, { ok:true, requests:visibleRequests.map(({senderAccountId, recipientAccountId, intro, ...safe}) => ({
       ...safe,
+      // Only the person a request was sent to receives the (encrypted) messages.
+      ...(safe.direction === 'incoming' && Array.isArray(intro) ? { intro } : {}),
       senderProfileImage:normalizeProfileImage(accounts.get(senderAccountId)?.profileImage) || null,
       recipientProfileImage:normalizeProfileImage(accounts.get(recipientAccountId)?.profileImage) || null,
     })) });
@@ -6920,6 +6994,7 @@ function hydrateAccounts(entries, source) {
       record.dailyLookGeneratedAt = Number(record.dailyLookGeneratedAt) || null;
       record.dailyLookWindowStartedAt = Number(record.dailyLookWindowStartedAt) || null;
       record.dailyLookGenerationCount = Math.max(0, Number(record.dailyLookGenerationCount) || 0);
+      record.inboxKey = normalizeInboxKey(record.inboxKey);
       const storedProfileShareCode = normalizeProfileShareCode(record.profileShareCode);
       record.profileShareCode = storedProfileShareCode && !profileShareCodes.has(storedProfileShareCode)
         ? storedProfileShareCode

@@ -1153,6 +1153,10 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .contact-sheet-btn.quiet{border:0;color:#8A7C83;background:none}
 .contact-sheet-rename{display:flex;flex-direction:column;gap:4px;font:600 12px 'Inter',sans-serif;color:#8A7C83}
 .contact-sheet-rename input{border:1px solid #E7DDE1;border-radius:12px;padding:11px 12px;font:500 15px 'Inter',sans-serif;color:#271D25;outline:none}
+.request-intro{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px;text-align:left}
+.request-intro-bubble{align-self:flex-start;max-width:100%;padding:9px 12px;border-radius:14px 14px 14px 4px;background:#fff;border:1px solid #E7DDE1;color:#271D25;font:500 14px/1.4 'Inter',sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}
+.request-intro-bubble.muted{color:#8A7C83;font-style:italic}
+.request-message-input{width:100%;box-sizing:border-box;border:1px solid #E7DDE1;border-radius:14px;padding:11px 12px;font:500 15px/1.4 'Inter',sans-serif;color:#271D25;resize:none;outline:none}
 /* While the Chats search box is being typed in, the floating bottom bar would ride up on top of the keyboard. */
 html.vault-search-typing .vault-list-actions{display:none!important}
 /* Android plays no in-app message chime (the system notification carries the tone), so the switch has nothing to control there. */
@@ -5957,10 +5961,13 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   }
   const active = loadActiveRoomCode();
   const groups = loadPrivateGroupSessions().filter(group => group.ownerAccountId === accountId);
-  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
+  const inbox = accountId && accountId === loadAccountState()?.accountId ? loadLocalInboxKey() : null;
+  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
 }
 function importAccountBundle(bundle, accountId) {
   if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid conversation backup');
+  // The inbox key's private half travels in the bundle; keep this device's own copy if it has one.
+  if (validInboxKeyRecord(bundle.inbox) && !loadLocalInboxKey({ accountId })) saveLocalInboxKey(bundle.inbox, { accountId });
   const merged = new Map();
   for (const code of loadRoomsIndex()) {
     const local = loadRoomSession(code);
@@ -13534,11 +13541,16 @@ async function openContactChat(number) {
   if (!state) { openAccountPanel(); return; }
   const contact = getContact(normalized);
   const label = contact ? contactDisplayName(contact) : formatPrivateNumber(normalized);
-  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized });
+  const introText = await promptRequestMessage(label);
+  if (introText === null) return;
+  const prepared = await prepareRequestIntro(normalized, introText);
+  if (prepared.error) { toast(prepared.error); return; }
+  if (prepared.unsupported) toast('They need the latest Vaultlix to read a message with a request. Sending the request only.');
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized, ...(prepared.intro ? { intro:prepared.intro } : {}) });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
     if (result.conversationAvailable !== false && await restoreConnectedConversationFromBackup(result, normalized)) return;
-    const replacement = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized, replaceExisting:true });
+    const replacement = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:normalized, replaceExisting:true, ...(prepared.intro ? { intro:prepared.intro } : {}) });
     if (replacement.error) { toast(replacement.error); return; }
     if (replacement.status === 'action_required') { await openConnectionRequest(replacement.requestId); return; }
     showScreen('s-vault-list');
@@ -13709,11 +13721,242 @@ function askCloseEraseChoice(room) {
   });
 }
 
+// ── MESSAGE REQUESTS (inbox key + intro messages) ───────────────────────
+// Someone who is not yet a contact can send a few short text messages with a connection
+// request. They are encrypted to the receiver's public inbox key (ephemeral ECDH P-256 +
+// HKDF + AES-GCM), so the server only ever stores ciphertext. The private half of the
+// inbox key stays on the person's devices: in its own localStorage key and inside the
+// encrypted account bundle, which is how a second device or a restore gets it.
+const INBOX_KEY_PREFIX = 'vaultlix_inbox_key:';
+const INTRO_MAX_CHARS = 300;
+const INTRO_MAX_MESSAGES = 3;
+const INTRO_HKDF_INFO = 'vaultlix-message-request-v1';
+let inboxKeyReadyFor = null;
+let inboxKeyEnsurePromise = null;
+const introTextCache = new Map(); // request id -> decrypted texts (null = unreadable)
+let pendingIntroNotice = null; // { requestId, name, texts } while a request is being accepted
+
+function inboxKeyStorageKey(state = loadAccountState()) {
+  return state && state.accountId ? INBOX_KEY_PREFIX + state.accountId : null;
+}
+
+function validInboxKeyRecord(record) {
+  return !!(record && record.pubJwk && /^[A-Za-z0-9_-]{43}$/.test(record.pubJwk.x || '') && /^[A-Za-z0-9_-]{43}$/.test(record.pubJwk.y || '') &&
+    record.privJwk && record.privJwk.d && record.privJwk.x === record.pubJwk.x && record.privJwk.y === record.pubJwk.y);
+}
+
+function loadLocalInboxKey(state = loadAccountState()) {
+  const key = inboxKeyStorageKey(state);
+  if (!key) return null;
+  try {
+    const record = JSON.parse(localStorage.getItem(key) || 'null');
+    return validInboxKeyRecord(record) ? record : null;
+  } catch (e) { return null; }
+}
+
+function saveLocalInboxKey(record, state = loadAccountState()) {
+  const key = inboxKeyStorageKey(state);
+  if (!key || !validInboxKeyRecord(record)) return false;
+  try { localStorage.setItem(key, JSON.stringify({ pubJwk:{ x:record.pubJwk.x, y:record.pubJwk.y }, privJwk:{ kty:'EC', crv:'P-256', x:record.privJwk.x, y:record.privJwk.y, d:record.privJwk.d } })); return true; }
+  catch (e) { return false; }
+}
+
+async function generateInboxKeyRecord() {
+  const pair = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
+  const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const priv = await crypto.subtle.exportKey('jwk', pair.privateKey);
+  return { pubJwk:{ x:pub.x, y:pub.y }, privJwk:{ kty:'EC', crv:'P-256', x:priv.x, y:priv.y, d:priv.d } };
+}
+
+async function importIntroPublicKey(key) {
+  return crypto.subtle.importKey('jwk', { kty:'EC', crv:'P-256', x:key.x, y:key.y, ext:true }, { name:'ECDH', namedCurve:'P-256' }, false, []);
+}
+
+async function deriveIntroAesKey(privateKey, publicKey) {
+  const bits = await crypto.subtle.deriveBits({ name:'ECDH', public:publicKey }, privateKey, 256);
+  const material = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'HKDF', hash:'SHA-256', salt:new Uint8Array(0), info:new TextEncoder().encode(INTRO_HKDF_INFO) },
+    material, { name:'AES-GCM', length:256 }, false, ['encrypt', 'decrypt']);
+}
+
+// -> { epk:{x,y}, iv, ct } — exactly the shape the server validates.
+async function encryptIntroMessage(recipientKey, text) {
+  const ephemeral = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
+  const ephemeralPublic = await crypto.subtle.exportKey('jwk', ephemeral.publicKey);
+  const aes = await deriveIntroAesKey(ephemeral.privateKey, await importIntroPublicKey(recipientKey));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(JSON.stringify({ v:1, t:String(text).slice(0, INTRO_MAX_CHARS), at:Date.now() }));
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name:'AES-GCM', iv }, aes, plaintext));
+  return { epk:{ x:ephemeralPublic.x, y:ephemeralPublic.y }, iv:bytesToBase64UrlCompact(iv), ct:bytesToBase64UrlCompact(ciphertext) };
+}
+
+async function decryptIntroMessage(privJwk, message) {
+  const privateKey = await crypto.subtle.importKey('jwk', { ...privJwk, ext:true }, { name:'ECDH', namedCurve:'P-256' }, false, ['deriveBits']);
+  const aes = await deriveIntroAesKey(privateKey, await importIntroPublicKey(message.epk));
+  const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:base64UrlToBytes(message.iv) }, aes, base64UrlToBytes(message.ct));
+  const parsed = JSON.parse(new TextDecoder().decode(plain));
+  return typeof parsed.t === 'string' ? parsed.t.slice(0, INTRO_MAX_CHARS) : null;
+}
+
+// Makes sure this account has an inbox key that matches what the server publishes.
+// The first device creates it and puts the private half in the encrypted bundle;
+// another device adopts it from there. A device that cannot recover the matching
+// private half replaces the published key (the bundle then carries the new one).
+function ensureInboxKey() {
+  const state = loadAccountState();
+  if (!state) return Promise.resolve(null);
+  if (inboxKeyReadyFor === state.accountId) return Promise.resolve(loadLocalInboxKey(state));
+  if (!inboxKeyEnsurePromise) {
+    inboxKeyEnsurePromise = runEnsureInboxKey(state)
+      .catch(error => { console.warn('Inbox key setup failed:', error?.message || error); return null; })
+      .finally(() => { inboxKeyEnsurePromise = null; });
+  }
+  return inboxKeyEnsurePromise;
+}
+
+async function adoptInboxKeyFromBundle(state) {
+  const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
+  if (latest.error || !latest.bundle) return false;
+  const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
+  if (!validInboxKeyRecord(bundle?.inbox)) return false;
+  return saveLocalInboxKey(bundle.inbox, state);
+}
+
+async function runEnsureInboxKey(state) {
+  const same = (record, key) => !!(record && key && record.pubJwk.x === key.x && record.pubJwk.y === key.y);
+  const published = await api('/api/account/inbox-key', { accountId:state.accountId, sessionToken:state.sessionToken });
+  if (published.error) return null;
+  let serverKey = published.inboxKey || null;
+  let local = loadLocalInboxKey(state);
+  if (same(local, serverKey)) { inboxKeyReadyFor = state.accountId; return local; }
+  if (serverKey && (!local || !same(local, serverKey))) {
+    // Someone (usually another of this person's devices) published a key: its private half
+    // travels in the encrypted bundle.
+    if (await adoptInboxKeyFromBundle(state).catch(() => false)) {
+      local = loadLocalInboxKey(state);
+      if (same(local, serverKey)) { inboxKeyReadyFor = state.accountId; return local; }
+    }
+  }
+  if (!local) { local = await generateInboxKeyRecord(); saveLocalInboxKey(local, state); }
+  const result = await api('/api/account/inbox-key', { accountId:state.accountId, sessionToken:state.sessionToken, publicKey:local.pubJwk, replace:!!serverKey });
+  if (result.error || result.accepted === false) return null;
+  inboxKeyReadyFor = state.accountId;
+  syncAnonymousAccount(false).catch(() => {}); // the bundle now carries the private half
+  return local;
+}
+
+// Reads a request's messages with this account's inbox key; unreadable ones are null.
+async function decryptRequestIntros(request) {
+  if (introTextCache.has(request.id)) return introTextCache.get(request.id);
+  const local = loadLocalInboxKey();
+  const out = [];
+  for (const message of (Array.isArray(request.intro) ? request.intro : []).slice(0, INTRO_MAX_MESSAGES)) {
+    try { out.push(local ? await decryptIntroMessage(local.privJwk, message) : null); } catch (e) { out.push(null); }
+  }
+  if (local) introTextCache.set(request.id, out);
+  return out;
+}
+
+function introBubbleHtml(text) {
+  if (!text) return '<div class="request-intro-bubble muted">Message unavailable</div>';
+  if (window.VaultlixContentSafety?.check(text).blocked) return '<div class="request-intro-bubble muted">Hidden by the safety filter</div>';
+  return `<div class="request-intro-bubble">${escapeHtml(text)}</div>`;
+}
+
+async function hydrateRequestIntros() {
+  const slots = document.querySelectorAll('[data-request-intro]');
+  for (const slot of slots) {
+    const request = pendingIncomingConnections.find(item => item.id === slot.dataset.requestIntro);
+    if (!request || !Array.isArray(request.intro) || !request.intro.length) continue;
+    const texts = await decryptRequestIntros(request);
+    if (slot.isConnected) slot.innerHTML = texts.map(introBubbleHtml).join('');
+  }
+}
+
+function requestIntroSlot(request) {
+  return Array.isArray(request.intro) && request.intro.length ? `<div class="request-intro" data-request-intro="${escapeHtml(request.id)}"></div>` : '';
+}
+
+// What the person types is checked locally before it is encrypted, then fetched key + encrypt.
+// Returns { intro } (maybe null when there is no message) or { error }.
+async function prepareRequestIntro(number, rawText) {
+  const text = String(rawText || '').trim().slice(0, INTRO_MAX_CHARS);
+  if (!text) return { intro:null };
+  if (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(text).blocked) return { error:'This text cannot be shared. Edit it and try again.' };
+  const state = loadAccountState();
+  if (!state) return { error:'Sign in to send a request.' };
+  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number });
+  if (prepared.error) return { error:prepared.error };
+  if (!prepared.inboxKey) return { intro:null, unsupported:true };
+  return { intro:await encryptIntroMessage(prepared.inboxKey, text) };
+}
+
+// Asks for the optional first message. -> string (maybe '') or null when cancelled.
+function promptRequestMessage(label) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.id = 'request-message-overlay';
+    overlay.className = 'contact-sheet-overlay';
+    overlay.innerHTML = `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Message request">
+      <div class="contact-sheet-head"><strong>Message ${escapeHtml(label)}</strong><span>Say hello with your request. It is encrypted so only ${escapeHtml(label)} can read it. They can accept or ignore it.</span></div>
+      <textarea id="request-message-input" class="request-message-input" maxlength="${INTRO_MAX_CHARS}" rows="3" placeholder="Hi, it's me…"></textarea>
+      <button type="button" class="contact-sheet-btn primary" data-choice="send">Send request</button>
+      <button type="button" class="contact-sheet-btn" data-choice="plain">Send without a message</button>
+      <button type="button" class="contact-sheet-btn quiet" data-choice="">Cancel</button>
+    </div>`;
+    const finish = value => { overlay.remove(); resolve(value); };
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) { finish(null); return; }
+      const button = event.target.closest?.('[data-choice]');
+      if (!button) return;
+      const choice = button.dataset.choice;
+      if (choice === 'send') finish(document.getElementById('request-message-input')?.value || '');
+      else if (choice === 'plain') finish('');
+      else finish(null);
+    });
+    document.body.appendChild(overlay);
+    setTimeout(() => document.getElementById('request-message-input')?.focus(), 60);
+  });
+}
+
+// The person who accepts sees what was said as notices at the start of the new chat.
+function queueIntroNotices(room, info) {
+  if (!room || !info || !Array.isArray(info.texts) || !info.texts.length) return;
+  room.pendingIntroNotices = room.pendingIntroNotices || [];
+  for (const text of info.texts.slice(0, INTRO_MAX_MESSAGES)) {
+    if (!text) continue;
+    const now = Date.now();
+    const rec = {
+      id:`contact-intro-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      ts:now, time:formatMsgTime(now), kind:'sys', contactEvent:true, deleteTimerSeconds:0,
+      content:`${info.name} said: “${text}” · ${formatMsgTime(now)}`,
+    };
+    room.messages.push(rec);
+    room.seenMsgIds?.add(rec.id);
+    room.pendingIntroNotices.push({ id:rec.id, actorName:info.name, text });
+    if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
+  }
+}
+
+async function flushIntroNotices(room) {
+  if (!room?.sharedKey || !Array.isArray(room.pendingIntroNotices) || !room.pendingIntroNotices.length) return;
+  const pending = room.pendingIntroNotices;
+  room.pendingIntroNotices = [];
+  for (const item of pending) {
+    try {
+      const encrypted = await encryptTextMsg(room, JSON.stringify({ type:'call-event', text:'First message', contactEvent:'intro', actorName:item.actorName, introText:item.text }));
+      await api('/api/send', { code:room.code, token:room.token, content:encrypted, msgId:item.id, suppressNotification:true });
+    } catch (e) { room.pendingIntroNotices.push(item); }
+  }
+}
+
 async function refreshConnectionRequests() {
   const state = loadAccountState(); const list = document.getElementById('connection-request-list');
   if (!state || !list) return;
   const result = await api('/api/connections/list', { accountId:state.accountId, sessionToken:state.sessionToken });
   if (result.error) { list.textContent = result.error; return; }
+  ensureInboxKey().catch(() => {});
   await reconcileConversationPeerIdentities(result.requests, state);
   contactsSyncFromRequests(result.requests, state);
   const incoming = result.requests.filter(r => r.direction === 'incoming' && r.status === 'pending' && !connectionRequestAlreadyHandled(r.id));
@@ -13735,10 +13978,11 @@ async function refreshConnectionRequests() {
     await openJoinFromLink(url.pathname.split('/').filter(Boolean).pop(), true);
     return;
   }
-  const incomingHtml = incoming.map(r => `<div class="account-status-card${r.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(r.id)}">${connectionRequestAvatarCard(r)}<div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div><button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
+  const incomingHtml = incoming.map(r => `<div class="account-status-card${r.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(r.id)}">${connectionRequestAvatarCard(r)}<div class="account-status-name">${escapeHtml(r.senderDisplayName)}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.senderPrivateNumber))} wants to connect</div>${requestIntroSlot(r)}<button class="account-primary" type="button" onclick="acceptConnectionRequest('${r.id}')">Accept connection</button><button class="account-secondary" type="button" onclick="rejectConnectionRequest('${r.id}')">Decline</button></div>`).join('');
   const outgoingHtml = outgoing.map(r => `<div class="account-status-card"><div class="account-status-name">${escapeHtml(r.recipientDisplayName || 'Vaultlix user')}</div><div class="account-status-sub">${escapeHtml(formatPrivateNumber(r.recipientPrivateNumber))}</div><div class="account-note">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (!incomingHtml && !outgoingHtml) { list.textContent = 'No pending connection requests.'; return; }
   list.innerHTML = `${incomingHtml}${outgoingHtml}`;
+  hydrateRequestIntros().catch(() => {});
   scrollToFocusedConnectionRequest();
 }
 function scrollToFocusedConnectionRequest() {
@@ -13772,6 +14016,12 @@ async function acceptConnectionRequest(requestId) {
   pendingConnectionPeerName = peer.displayName;
   pendingConnectionPeerPrivateNumber = peer.privateNumber;
   pendingConnectionPeerProfileImage = peer.profileImage;
+  // What they wrote with the request is shown at the start of the new chat.
+  pendingIntroNotice = null;
+  if (Array.isArray(request.intro) && request.intro.length) {
+    try { pendingIntroNotice = { requestId, name:peer.displayName || formatPrivateNumber(peer.privateNumber), texts:(await decryptRequestIntros(request)).filter(Boolean) }; }
+    catch (e) { pendingIntroNotice = null; }
+  }
   pendingIncomingConnections = pendingIncomingConnections.filter(request => request.id !== requestId);
   pendingConnectionFocusId = null;
   pendingConnectionAcceptance = requestId;
@@ -17779,7 +18029,7 @@ function renderVaultList() {
     return;
   }
   const previews = vaultPreviewsEnabled();
-  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div><div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
+  const requestHtml = pendingIncomingConnections.map(request => `<div class="vault-list-request${request.id === pendingConnectionFocusId ? ' quick-connect-focus' : ''}" data-connection-request-id="${escapeHtml(request.id)}">${connectionRequestAvatarCard(request)}<div class="vault-list-request-name">${escapeHtml(request.senderDisplayName)}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.senderPrivateNumber))}</div><div class="vault-list-request-copy">${escHtml(i18n('connection_request_text'))}</div>${requestIntroSlot(request)}<div class="vault-list-request-actions"><button class="vault-list-request-accept" type="button" onclick="acceptConnectionRequest('${request.id}')">${escHtml(i18n('accept'))}</button><button class="vault-list-request-decline" type="button" onclick="rejectConnectionRequest('${request.id}')">${escHtml(i18n('decline'))}</button></div></div>`).join('');
   const outgoingRequestHtml = pendingOutgoingConnections.map(request => `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div></div>`).join('');
   if (rooms.size === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body._vaultlixChatListHtml = null;
@@ -17867,6 +18117,7 @@ function renderVaultList() {
   const previousScrollTop = body.scrollTop;
   body._vaultlixChatListHtml = html;
   body.innerHTML = html;
+  hydrateRequestIntros().catch(() => {});
   if (!pendingConnectionFocusId && previousScrollTop > 0) {
     body.scrollTop = Math.min(previousScrollTop, Math.max(0, body.scrollHeight - body.clientHeight));
   }
@@ -20531,6 +20782,15 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       // any other outcome) still need the same role-flip for direction —
       // callEventViewerRoleFor() does just that half, independent of text.
       const viewerRole = perspective?.viewerRole || callEventViewerRoleFor(parsed.callEvent, fromMe);
+      if (parsed.contactEvent === 'intro') {
+        // Written by the person who accepted a message request. The sender already knows
+        // what they wrote, so only the accepter's own timeline shows it.
+        if (!fromMe) return null;
+        const actor = cleanContactText(parsed.actorName) || 'Your contact';
+        const said = typeof parsed.introText === 'string' ? parsed.introText.slice(0, INTRO_MAX_CHARS) : '';
+        if (!said) return null;
+        return { ...base, kind:'sys', contactEvent:true, content:`${actor} said: “${said}” · ${time}` };
+      }
       if (parsed.contactEvent === 'reopened') {
         // Written by the person whose app accepted the reopened chat: they see who
         // reopened it, the person who reopened it sees it as their own action.
@@ -21152,6 +21412,7 @@ async function doPoll(room) {
     }
 
     if (room.pendingContactNotice && room.sharedKey) flushContactReopenNotice(room).catch(() => {});
+    if (room.pendingIntroNotices?.length && room.sharedKey) flushIntroNotices(room).catch(() => {});
     const wasOnline = room.peerOnline;
     const wasEverOnline = room.everOnline;
     const previousPeerName = room.peerName;
@@ -22041,8 +22302,13 @@ async function requestPrivateVault(authenticationMode = 'create') {
     toast('Opened your existing private conversation');
     return;
   }
+  const introText = await promptRequestMessage(activePublicProfile.displayName || formatPrivateNumber(activePublicProfile.privateNumber));
+  if (introText === null) return;
+  const prepared = await prepareRequestIntro(activePublicProfile.privateNumber, introText);
+  if (prepared.error) { toast(prepared.error); return; }
+  if (prepared.unsupported) toast('They need the latest Vaultlix to read a message with a request. Sending the request only.');
   if (quickConnectHandshakePending) await triggerSecureHandshake();
-  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber });
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber, ...(prepared.intro ? { intro:prepared.intro } : {}) });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
     const peerNumber = activePublicProfile.privateNumber;
@@ -22068,6 +22334,7 @@ async function requestPrivateVault(authenticationMode = 'create') {
       sessionToken:state.sessionToken,
       privateNumber:peerNumber,
       replaceExisting:true,
+      ...(prepared.intro ? { intro:prepared.intro } : {}),
     });
     if (replacement.error) { toast(replacement.error); return; }
     if (replacement.status === 'action_required') {
@@ -22359,6 +22626,10 @@ async function handleSetup({ silent = false } = {}) {
       if (mode === 'connection' && contactReopenPending && contactReopenPending.requestId === pendingConnectionAcceptance) {
         queueContactReopenNotice(room, contactReopenPending);
         contactReopenPending = null;
+      }
+      if (mode === 'connection' && pendingIntroNotice && pendingIntroNotice.requestId === pendingConnectionAcceptance) {
+        queueIntroNotices(room, pendingIntroNotice);
+        pendingIntroNotice = null;
       }
       if (pendingConnectionAcceptance) {
         const requestId = pendingConnectionAcceptance;

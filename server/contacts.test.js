@@ -325,7 +325,7 @@ test('the Chats header opens Contacts, which has its own screen with search and 
 test('messaging a contact opens the existing chat, or reuses the normal connection request', () => {
   const fn = extractFn('openContactChat');
   assert.match(fn, /const existing = roomForPrivateNumber\(normalized\);\s*if \(existing\) \{ openConversationAfterPaint\(existing\.code\); return; \}/);
-  assert.match(fn, /api\('\/api\/connections\/request', \{ accountId:state\.accountId, sessionToken:state\.sessionToken, privateNumber:normalized \}\)/);
+  assert.match(fn, /api\('\/api\/connections\/request', \{ accountId:state\.accountId, sessionToken:state\.sessionToken, privateNumber:normalized, \.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\) \}\)/);
   assert.match(fn, /replaceExisting:true/);
   assert.match(fn, /restoreConnectedConversationFromBackup\(result, normalized\)/);
   assert.match(fn, /openConnectionRequest\(result\.requestId\)/);
