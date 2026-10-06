@@ -13914,10 +13914,10 @@ async function prepareRequestIntro(number, rawText, target = null) {
 // Looks up whether the person can receive a message with a request (they have published an
 // inbox key, i.e. have opened a recent version of the app). Asked BEFORE the dialog so
 // nobody types a message that could not be sent.
-async function fetchRequestTarget(number, shareCode = '') {
+async function fetchRequestTarget(number) {
   const state = loadAccountState();
   if (!state) return { error:'Sign in to send a request.' };
-  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number, ...(shareCode ? { shareCode } : {}) });
+  const prepared = await api('/api/connections/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:number });
   if (prepared.error) return { error:prepared.error };
   return { inboxKey:prepared.inboxKey || null };
 }
@@ -14015,10 +14015,9 @@ async function sendRequestFollowUp(requestId) {
 }
 
 // ── Who can send me requests (privacy) ──
-const REQUEST_POLICY_LABELS = { anyone:'Anyone with my number', qr:'QR code or link only', none:'No one for now' };
+const REQUEST_POLICY_LABELS = { anyone:'Anyone with my number', none:'No one for now' };
 const REQUEST_POLICY_HELP = {
-  anyone:'People who have your Vaultlix number can send you a request.',
-  qr:'Only people who scan your QR card or open your profile link can send a request.',
+  anyone:'Anyone with your Vaultlix number, QR code or link can send you a request and a short message.',
   none:'No new requests. People you already chat with can still reopen a chat.',
 };
 const REQUEST_POLICY_KEY_PREFIX = 'vaultlix_request_policy:';
@@ -22359,7 +22358,7 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
       history.replaceState(null, '', '/');
       return false;
     }
-    activePublicProfile = byShareCode ? { ...result.profile, requestShareCode:privateNumber } : result.profile;
+    activePublicProfile = result.profile;
     const signedIn = loadAccountState();
     const profileName = document.getElementById('public-profile-name');
     const profilePhoto = document.getElementById('public-profile-photo');
@@ -22443,17 +22442,14 @@ async function requestPrivateVault(authenticationMode = 'create') {
     toast('Opened your existing private conversation');
     return;
   }
-  // A person who only accepts requests from their QR code or profile link needs the code the
-  // profile was opened with.
-  const requestShareCode = activePublicProfile.requestShareCode || '';
-  const target = await fetchRequestTarget(activePublicProfile.privateNumber, requestShareCode);
+  const target = await fetchRequestTarget(activePublicProfile.privateNumber);
   if (target.error) { toast(target.error); return; }
   const introText = await promptRequestMessage(activePublicProfile.displayName || formatPrivateNumber(activePublicProfile.privateNumber), { supported:!!target.inboxKey });
   if (introText === null) return;
   const prepared = await prepareRequestIntro(activePublicProfile.privateNumber, introText, target);
   if (prepared.error) { toast(prepared.error); return; }
   if (quickConnectHandshakePending) await triggerSecureHandshake();
-  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber, ...(requestShareCode ? { shareCode:requestShareCode } : {}), ...(prepared.intro ? { intro:prepared.intro } : {}) });
+  const result = await api('/api/connections/request', { accountId:state.accountId, sessionToken:state.sessionToken, privateNumber:activePublicProfile.privateNumber, ...(prepared.intro ? { intro:prepared.intro } : {}) });
   if (result.error) { toast(result.error); return; }
   if (result.status === 'connected') {
     const peerNumber = activePublicProfile.privateNumber;

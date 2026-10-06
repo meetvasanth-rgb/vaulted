@@ -170,8 +170,10 @@ async function registerExtra(base, letter, privateNumber) {
 test('the privacy choice defaults to anyone, can be changed, and rejects anything else', { timeout:20000 }, async t => {
   const { base, bob, auth } = await startServer(t);
   assert.deepEqual((await post(base, '/api/account/request-policy', auth(bob))).data, { ok:true, policy:'anyone' });
-  assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'qr' })).data.policy, 'qr');
-  assert.equal((await post(base, '/api/account/request-policy', auth(bob))).data.policy, 'qr');
+  assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'none' })).data.policy, 'none');
+  assert.equal((await post(base, '/api/account/request-policy', auth(bob))).data.policy, 'none');
+  assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'anyone' })).data.policy, 'anyone');
+  assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'qr' })).status, 400, 'the QR-only choice no longer exists');
   assert.equal((await post(base, '/api/account/request-policy', { ...auth(bob), policy:'everyone' })).status, 400);
   assert.equal((await post(base, '/api/account/request-policy', { accountId:bob.accountId, sessionToken:'x', policy:'none' })).status, 401);
 });
@@ -198,29 +200,26 @@ test('"no one for now" refuses new requests but not people you already chat with
   assert.equal(reopened.data.status, 'pending');
 });
 
-test('"QR or link only" needs the profile code, and a number lookup does not reveal it', { timeout:20000 }, async t => {
+test('anyone with the number, QR code or link can send a request, and the profile lookup is unchanged', { timeout:20000 }, async t => {
   const { base, alice, bob, auth } = await startServer(t);
   const code = bob.profileShareCode;
-  assert.ok(code, 'the account has a profile code');
-  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'qr' });
   const lookup = await (await fetch(`${base}/api/profile/3456789012`)).json();
-  assert.equal(lookup.profile.profileShareCode, null, 'not leaked through the number lookup');
-  assert.equal(lookup.profile.address, null);
-  const byLink = await (await fetch(`${base}/api/profile-share/${code}`)).json();
-  assert.equal(byLink.profile.profileShareCode, code, 'the link itself still works');
+  assert.equal(lookup.profile.profileShareCode, code, 'the number lookup returns the profile as before');
+  const sent = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', intro:intro() });
+  assert.equal(sent.data.status, 'pending', 'no code needed: the number is enough');
+  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012' })).status, 200);
+});
 
-  const noCode = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
-  assert.equal(noCode.status, 403);
-  assert.match(noCode.data.error, /QR code or profile link/);
-  assert.equal((await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', shareCode:'ZZZZZZ' })).status, 403);
-  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012' })).status, 403);
-  assert.equal((await post(base, '/api/connections/prepare', { ...auth(alice), privateNumber:'3456789012', shareCode:code })).status, 200);
-  const withCode = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', shareCode:code });
-  assert.equal(withCode.data.status, 'pending');
-
-  await post(base, '/api/account/request-policy', { ...auth(bob), policy:'anyone' });
-  const open = await (await fetch(`${base}/api/profile/3456789012`)).json();
-  assert.equal(open.profile.profileShareCode, code, 'visible again when anyone may request');
+test('an old stored "QR only" choice is treated as "anyone" instead of locking people out', () => {
+  const server = require('node:fs').readFileSync(join(__dirname, 'index.js'), 'utf8');
+  const vm = require('node:vm');
+  const ctx = vm.createContext({});
+  vm.runInContext(server.slice(server.indexOf('const REQUEST_COOLDOWN_MS'), server.indexOf('function declinedRecently(')) + '\nfunction normalizeProfileShareCode(v){return v}', ctx);
+  assert.equal(vm.runInContext("normalizeRequestPolicy('qr')", ctx), 'anyone');
+  assert.equal(vm.runInContext("normalizeRequestPolicy('none')", ctx), 'none');
+  assert.equal(vm.runInContext("requestPolicyRefusal({ requestPolicy:'qr' })", ctx), null);
+  assert.match(vm.runInContext("requestPolicyRefusal({ requestPolicy:'none' })", ctx), /not accepting new requests/);
+  assert.doesNotMatch(server, /QR code or profile link/, 'no QR-only wording is left on the server');
 });
 
 test('after a decline the same sender is quietly held back for 15 days; others are not', { timeout:20000 }, async t => {

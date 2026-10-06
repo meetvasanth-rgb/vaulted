@@ -1513,15 +1513,13 @@ function normalizeIntroMessage(message) {
 // Who may send a NEW connection request to an account, and the quiet cooldown after one
 // is declined. Existing relationships (accepted chats being reopened) are never affected.
 const REQUEST_COOLDOWN_MS = 15 * 24 * 60 * 60 * 1000;
-const REQUEST_POLICIES = new Set(['anyone', 'qr', 'none']);
+// Anyone with the number (or QR code or link) may send a request, unless the person has
+// chosen "no one for now". An older choice that no longer exists falls back to 'anyone'.
+const REQUEST_POLICIES = new Set(['anyone', 'none']);
 function normalizeRequestPolicy(value) { return REQUEST_POLICIES.has(value) ? value : 'anyone'; }
-function requestPolicyRefusal(recipientAccount, shareCode) {
-  const policy = normalizeRequestPolicy(recipientAccount?.requestPolicy);
-  if (policy === 'none') return 'This person is not accepting new requests right now.';
-  if (policy === 'qr' && (!recipientAccount.profileShareCode || normalizeProfileShareCode(shareCode) !== recipientAccount.profileShareCode)) {
-    return 'This person only accepts requests from their QR code or profile link.';
-  }
-  return null;
+function requestPolicyRefusal(recipientAccount) {
+  return normalizeRequestPolicy(recipientAccount?.requestPolicy) === 'none'
+    ? 'This person is not accepting new requests right now.' : null;
 }
 function declinedRecently(recipientAccount, senderAccountId, now = Date.now()) {
   return (recipientAccount?.connectionRequests || []).some(request =>
@@ -4141,10 +4139,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const found = accountByPrivateNumber(decodeURIComponent(path.slice('/api/profile/'.length)));
     if (!found) return resErr(res, 'Vaultlix Private Number not found.', 404);
     res.setHeader('Cache-Control', 'no-store');
-    // Looking someone up by number must not hand out the code that unlocks "QR / link only".
-    const profile = publicAccount(found.account);
-    if (normalizeRequestPolicy(found.account.requestPolicy) === 'qr') { profile.profileShareCode = null; profile.address = null; }
-    return res200(res, { ok:true, profile });
+    return res200(res, { ok:true, profile:publicAccount(found.account) });
   }
 
   if (path.startsWith('/api/profile-share/') && method === 'GET') {
@@ -4418,7 +4413,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // A reopened chat (the pair already had an accepted relationship) is a replacement and is
     // never held back by the privacy choice or the cooldown. A genuinely new request is.
     if (!replacedRelationship) {
-      const refusal = requestPolicyRefusal(recipient.account, d.shareCode);
+      const refusal = requestPolicyRefusal(recipient.account);
       if (refusal) return resErr(res, refusal, 403);
       // After a decline the sender is told nothing: the request simply is not delivered.
       if (declinedRecently(recipient.account, d.accountId, now)) {
@@ -4522,7 +4517,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const related = (recipient.account.connectionRequests || []).some(request =>
       request.status === 'accepted' && ((request.senderAccountId === d.accountId && request.recipientAccountId === recipient.accountId) ||
         (request.recipientAccountId === d.accountId && request.senderAccountId === recipient.accountId)));
-    const refusal = related ? null : requestPolicyRefusal(recipient.account, d.shareCode);
+    const refusal = related ? null : requestPolicyRefusal(recipient.account);
     if (refusal) return resErr(res, refusal, 403);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, inboxKey:normalizeInboxKey(recipient.account.inboxKey), introMax:REQUEST_INTRO_MAX });

@@ -304,7 +304,7 @@ test('both ways of sending a request ask for the optional message first, then en
   assert.match(contact, /const target = await fetchRequestTarget\(normalized\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\(label, \{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;\s*const prepared = await prepareRequestIntro\(normalized, introText, target\);/);
   assert.match(contact, /replaceExisting:true, \.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   const profile = extractFn(client, 'requestPrivateVault');
-  assert.match(profile, /const requestShareCode = activePublicProfile\.requestShareCode \|\| '';\s*const target = await fetchRequestTarget\(activePublicProfile\.privateNumber, requestShareCode\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\([^;]*\{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;/);
+  assert.match(profile, /const target = await fetchRequestTarget\(activePublicProfile\.privateNumber\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\([^;]*\{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;/);
   assert.match(profile, /\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   assert.match(profile, /replaceExisting:true,\s*\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
 });
@@ -483,12 +483,15 @@ test('the outgoing card on the Chats list carries the count and the add button',
 test('the privacy choice is cached per account, defaults to anyone, and lists three options', () => {
   const ctx = phase3Harness();
   assert.equal(run(ctx, 'cachedRequestPolicy()'), 'anyone');
+  ctx.storage.set('vaultlix_request_policy:acc1', 'none');
+  assert.equal(run(ctx, 'cachedRequestPolicy()'), 'none');
   ctx.storage.set('vaultlix_request_policy:acc1', 'qr');
-  assert.equal(run(ctx, 'cachedRequestPolicy()'), 'qr');
+  assert.equal(run(ctx, 'cachedRequestPolicy()'), 'anyone', 'the removed QR-only choice reads as anyone');
   ctx.storage.set('vaultlix_request_policy:acc1', 'bogus');
   assert.equal(run(ctx, 'cachedRequestPolicy()'), 'anyone');
-  assert.deepEqual(plain(run(ctx, 'Object.keys(REQUEST_POLICY_LABELS)')), ['anyone', 'qr', 'none']);
+  assert.deepEqual(plain(run(ctx, 'Object.keys(REQUEST_POLICY_LABELS)')), ['anyone', 'none']);
   assert.equal(run(ctx, 'REQUEST_POLICY_LABELS.anyone'), 'Anyone with my number');
+  assert.equal(run(ctx, 'REQUEST_POLICY_LABELS.none'), 'No one for now');
 });
 
 test('the Settings row sits in Privacy & Security and the status refreshes when Settings opens', () => {
@@ -498,9 +501,9 @@ test('the Settings row sits in Privacy & Security and the status refreshes when 
   assert.match(extractFn(client, 'openRequestPolicySheet'), /api\('\/api\/account\/request-policy', \{ accountId:state\.accountId, sessionToken:state\.sessionToken, policy \}\)/);
 });
 
-test('a profile opened from a QR code or link remembers its code, and the request sends it', () => {
-  assert.match(client, /activePublicProfile = byShareCode \? \{ \.\.\.result\.profile, requestShareCode:privateNumber \} : result\.profile;/);
-  const profile = extractFn(client, 'requestPrivateVault');
-  assert.match(profile, /\.\.\.\(requestShareCode \? \{ shareCode:requestShareCode \} : \{\}\)/);
-  assert.match(extractFn(client, 'fetchRequestTarget'), /\.\.\.\(shareCode \? \{ shareCode \} : \{\}\)/);
+test('no QR-only setting or profile code is sent or kept on the client any more', () => {
+  assert.doesNotMatch(client, /requestShareCode/);
+  assert.doesNotMatch(extractFn(client, 'fetchRequestTarget'), /shareCode/);
+  assert.doesNotMatch(extractFn(client, 'requestPrivateVault'), /shareCode/);
+  assert.doesNotMatch(client, /QR code or link only/);
 });
