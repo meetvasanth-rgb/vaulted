@@ -26,18 +26,22 @@ function extractFn(name) {
 
 const escapeHtml = value => String(value || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
-function harness({ incoming = [], outgoing = [], pageActive = false, state = { accountId:'a' } } = {}) {
+function harness({ incoming = [], outgoing = [], pageActive = false, state = { accountId:'a' }, hidden = false } = {}) {
   const nodes = new Map([['requests-body', { innerHTML:'' }]]);
+  const storage = new Map();
   const context = vm.createContext({
     pendingIncomingConnections:incoming, pendingOutgoingConnections:outgoing, pendingConnectionFocusId:null,
     escapeHtml, escHtml:escapeHtml, i18n:key => ({ connection_request_text:'Wants to start a private conversation', accept:'Accept', decline:'Decline' }[key] || key),
     connectionRequestAvatarCard:() => '<span class="avatar"></span>', requestIntroSlot:request => request.intro ? `<div data-request-intro="${request.id}"></div>` : '',
     outgoingIntroHtml:() => '<div class="outgoing-meta"></div>', formatPrivateNumber:value => `fmt-${value}`,
     hydrateRequestIntros:async () => { context.hydrated = (context.hydrated || 0) + 1; }, scrollToFocusedConnectionRequest:() => { context.scrolled = true; },
-    document:{ getElementById:id => id === 's-requests' ? { classList:{ contains:name => name === 'active' && pageActive } } : nodes.get(id) || null },
+    localStorage:{ getItem:key => storage.has(key) ? storage.get(key) : null, setItem:(key, value) => storage.set(key, String(value)) }, storage,
+    updateVaultNavigationBadges:() => { context.badgesUpdated = (context.badgesUpdated || 0) + 1; },
+    document:{ hidden, getElementById:id => id === 's-requests' ? { classList:{ contains:name => name === 'active' && pageActive } } : nodes.get(id) || null },
     loadAccountState:() => state, openAccountPanel:() => { context.panel = true; }, showScreen:id => { context.screen = id; }, nodes,
   });
-  vm.runInContext(['incomingRequestCardHtml', 'outgoingRequestCardHtml', 'requestsRowHtml', 'openRequests', 'closeRequests', 'renderRequestsPageIfOpen', 'renderRequestsPage'].map(extractFn).join('\n'), context);
+  vm.runInContext("const REQUESTS_SEEN_KEY_PREFIX = 'vaultlix_requests_seen:';\n" + ['requestsSeenKey', 'readRequestsSeen', 'requestMessageCount', 'unseenIncomingRequests', 'unseenIncomingRequestCount', 'markRequestsSeen',
+    'incomingRequestCardHtml', 'outgoingRequestCardHtml', 'requestsRowHtml', 'openRequests', 'closeRequests', 'renderRequestsPageIfOpen', 'renderRequestsPage'].map(extractFn).join('\n'), context);
   return context;
 }
 
@@ -133,5 +137,67 @@ test('the page exists with a back button and a body, and a request count rides o
   assert.match(client, /<div id="s-requests" class="screen">/);
   assert.match(client, /onclick="closeRequests\(\)" aria-label="Back"/);
   assert.match(client, /<div class="contacts-body" id="requests-body"><\/div>/);
-  assert.match(extractFn('vaultNavigationCounts'), /messages \+= pendingIncomingConnections\.length;/);
+  assert.match(extractFn('vaultNavigationCounts'), /messages \+= unseenIncomingRequestCount\(\);/);
+});
+
+// Report: the count stayed at 1 after the messages had been read. "New" now means "not yet shown
+// on the Requests page"; the request itself stays on the page until it is answered.
+test('opening the Requests page marks what it shows as seen, which clears the new count', () => {
+  const ctx = harness({ incoming:[incoming('a'), incoming('b')], pageActive:true });
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 2);
+  assert.match(run(ctx, 'requestsRowHtml()'), /2 new · /);
+  run(ctx, 'renderRequestsPage()');
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 0);
+  assert.equal(ctx.badgesUpdated, 1, 'the Chats badge is refreshed');
+  const row = run(ctx, 'requestsRowHtml()');
+  assert.match(row, /2 waiting · Mrmask, Mrmask/);
+  assert.doesNotMatch(row, /vault-requests-badge/, 'no red badge once seen');
+  assert.match(row, /aria-label="Requests, 0 new"/);
+  assert.equal(ctx.nodes.get('requests-body').innerHTML.includes('data-connection-request-id="a"'), true, 'the request is still on the page');
+});
+
+test('a request that gains another message becomes new again', () => {
+  const request = { ...incoming('a'), intro:[{}] };
+  const ctx = harness({ incoming:[request], pageActive:true });
+  run(ctx, 'renderRequestsPage()');
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 0);
+  ctx.pendingIncomingConnections[0] = { ...incoming('a'), intro:[{}, {}] };
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 1, 'a second message is new');
+  run(ctx, 'renderRequestsPage()');
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 0);
+});
+
+test('a brand-new request is new, and answered requests are forgotten', () => {
+  const ctx = harness({ incoming:[incoming('a')], pageActive:true });
+  run(ctx, 'renderRequestsPage()');
+  ctx.pendingIncomingConnections.push(incoming('b'));
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 1, 'only the new one');
+  ctx.pendingIncomingConnections.splice(0, 1);
+  run(ctx, 'renderRequestsPage()');
+  assert.deepEqual(Object.keys(JSON.parse(ctx.storage.get('vaultlix_requests_seen:a'))), ['b'], 'the answered request is dropped from the list');
+});
+
+test('nothing is marked seen while the app is in the background or signed out', () => {
+  const hidden = harness({ incoming:[incoming('a')], pageActive:true, hidden:true });
+  run(hidden, 'renderRequestsPage()');
+  assert.equal(run(hidden, 'unseenIncomingRequestCount()'), 1);
+  const signedOut = harness({ incoming:[incoming('a')], state:null });
+  assert.equal(run(signedOut, 'unseenIncomingRequestCount()'), 0);
+  assert.equal(run(signedOut, 'markRequestsSeen()'), false);
+});
+
+test('seen state is per account, in its own key, and a damaged value is ignored', () => {
+  const ctx = harness({ incoming:[incoming('a')], pageActive:true });
+  run(ctx, 'renderRequestsPage()');
+  assert.deepEqual(JSON.parse(ctx.storage.get('vaultlix_requests_seen:a')), { a:0 });
+  ctx.storage.set('vaultlix_requests_seen:a', 'not json');
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 1);
+  ctx.storage.set('vaultlix_requests_seen:a', '[1,2]');
+  assert.equal(run(ctx, 'unseenIncomingRequestCount()'), 1);
+  assert.match(client, /const REQUESTS_SEEN_KEY_PREFIX = 'vaultlix_requests_seen:';/);
+  assert.doesNotMatch(extractFn('markRequestsSeen'), /persistRoom\(/);
+});
+
+test('the page marks requests seen only after it has rendered them', () => {
+  assert.match(extractFn('renderRequestsPage'), /scrollToFocusedConnectionRequest\(\);\s*\/\/ Seeing them clears[^\n]*\n\s*if \(markRequestsSeen\(\)\) updateVaultNavigationBadges\(\);/);
 });

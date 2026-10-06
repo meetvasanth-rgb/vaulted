@@ -14130,18 +14130,64 @@ function outgoingRequestCardHtml(request) {
   return `<div class="vault-list-request"><div class="vault-list-request-name">${escapeHtml(request.recipientDisplayName || 'Vaultlix user')}</div><div class="vault-list-request-number">${escapeHtml(formatPrivateNumber(request.recipientPrivateNumber))}</div><div class="vault-list-request-copy">Connection request sent · awaiting acceptance</div>${outgoingIntroHtml(request)}</div>`;
 }
 
+// A request counts as "new" until the Requests page has shown it. A request that is still
+// waiting stays on the page, but its badge clears once it has been seen; a request that gains
+// another message becomes new again. Remembered per account in its own localStorage key.
+const REQUESTS_SEEN_KEY_PREFIX = 'vaultlix_requests_seen:';
+
+function requestsSeenKey(state = loadAccountState()) {
+  return state && state.accountId ? REQUESTS_SEEN_KEY_PREFIX + state.accountId : null;
+}
+
+function readRequestsSeen() {
+  const key = requestsSeenKey();
+  if (!key) return {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || '{}');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch (e) { return {}; }
+}
+
+function requestMessageCount(request) { return Array.isArray(request?.intro) ? request.intro.length : 0; }
+
+function unseenIncomingRequests() {
+  const seen = readRequestsSeen();
+  return pendingIncomingConnections.filter(request => !(Number.isFinite(seen[request.id]) && seen[request.id] >= requestMessageCount(request)));
+}
+
+function unseenIncomingRequestCount() {
+  return loadAccountState() ? unseenIncomingRequests().length : 0;
+}
+
+// Called while the Requests page is on screen. Returns true when something changed.
+function markRequestsSeen() {
+  const key = requestsSeenKey();
+  if (!key || document.hidden) return false;
+  const before = readRequestsSeen();
+  const next = {};
+  let changed = false;
+  for (const request of pendingIncomingConnections) {
+    next[request.id] = requestMessageCount(request);
+    if (before[request.id] !== next[request.id]) changed = true;
+  }
+  if (Object.keys(before).length !== Object.keys(next).length) changed = true; // forget answered requests
+  if (changed) { try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) {} }
+  return changed;
+}
+
 function requestsRowHtml() {
   const incoming = pendingIncomingConnections.length;
   const outgoing = pendingOutgoingConnections.length;
   if (!incoming && !outgoing) return '';
+  const unseen = unseenIncomingRequests().length;
   const names = pendingIncomingConnections.slice(0, 2).map(request => escapeHtml(request.senderDisplayName || 'Vaultlix user')).join(', ');
   const sub = incoming
-    ? `${incoming} new${names ? ' · ' + names : ''}${outgoing ? ' · ' + outgoing + ' sent' : ''}`
+    ? `${unseen ? unseen + ' new' : incoming + ' waiting'}${names ? ' · ' + names : ''}${outgoing ? ' · ' + outgoing + ' sent' : ''}`
     : `${outgoing} sent · waiting for a reply`;
-  return `<button type="button" class="vault-requests-row" onclick="openRequests()" aria-label="Requests, ${incoming} new">
+  return `<button type="button" class="vault-requests-row" onclick="openRequests()" aria-label="Requests, ${unseen} new">
     <span class="vault-requests-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
     <span class="vault-requests-text"><strong>Message requests</strong><span>${sub}</span></span>
-    ${incoming ? `<span class="vault-requests-badge">${incoming > 99 ? '99+' : incoming}</span>` : ''}
+    ${unseen ? `<span class="vault-requests-badge">${unseen > 99 ? '99+' : unseen}</span>` : ''}
     <span class="vault-requests-chevron" aria-hidden="true">›</span>
   </button>`;
 }
@@ -14173,6 +14219,8 @@ function renderRequestsPage() {
   body.innerHTML = (incoming ? '<div class="contacts-section-label">Received</div>' + incoming : '') + (outgoing ? '<div class="contacts-section-label">Sent</div>' + outgoing : '');
   hydrateRequestIntros().catch(() => {});
   scrollToFocusedConnectionRequest();
+  // Seeing them clears the "new" count on the Chats row and the Chats button.
+  if (markRequestsSeen()) updateVaultNavigationBadges();
 }
 
 async function refreshConnectionRequests() {
@@ -17849,7 +17897,7 @@ function vaultNavigationCounts() {
   let messages = 0;
   for (const room of rooms.values()) if (!roomConcealed(room)) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
   for (const group of privateGroups.values()) messages += Math.max(0, Number(group.unread) || 0);
-  messages += pendingIncomingConnections.length; // new message requests count on the Chats button too
+  messages += unseenIncomingRequestCount(); // new (not yet seen) message requests count on the Chats button too
   const { seen } = missedCallSeenState();
   const calls = new Set(missedCallBadgeEntries().filter(id => !seen.has(id))).size;
   return { messages, calls };

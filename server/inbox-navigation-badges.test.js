@@ -13,7 +13,7 @@ function harness() {
   const state = { accountId:'a' };
   const context = vm.createContext({
     roomConcealed: () => false,
-    rooms:new Map(), privateGroups:new Map(), entries:[], state, pendingIncomingConnections:[],
+    rooms:new Map(), privateGroups:new Map(), entries:[], state, pendingIncomingConnections:[], unseenIncomingRequestCount:() => context.pendingIncomingConnections.length,
     loadAccountState:() => state.accountId ? state : null,
     callHistoryEntries:() => context.entries,
     localStorage:{ getItem:k => storage.get(k), setItem:(k,v) => storage.set(k,v) },
