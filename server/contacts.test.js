@@ -41,7 +41,8 @@ function harness({ account = { accountId:'acc1', privateNumber:ME }, rooms = [],
   const storage = new Map();
   const roomMap = new Map(rooms.map(room => [room.code, { messages:[], ...room }]));
   const events = { accept:[], sent:[], rendered:[] };
-  const context = vm.createContext({
+  let context;
+  context = vm.createContext({
     localStorage: { getItem: key => storage.has(key) ? storage.get(key) : null, setItem: (key, value) => storage.set(key, String(value)) },
     document: { addEventListener: () => {}, getElementById: id => id === 's-vault-list' ? { classList:{ contains:name => name === 'active' && vaultListActive } } : null },
     loadAccountState: () => account,
@@ -54,8 +55,9 @@ function harness({ account = { accountId:'acc1', privateNumber:ME }, rooms = [],
     isRoomVisible: () => true, renderMessageRecord: (room, rec) => events.rendered.push(rec.id),
     formatMsgTime: () => '10:00',
     encryptTextMsg: async (room, text) => `enc:${text}`,
-    api: async (route, body) => { events.sent.push([route, body]); return { ok:true }; },
-    renderContactsPage: () => {},
+    api: async (route, body) => { events.sent.push([route, body]); return context.apiAnswer ? context.apiAnswer(route, body) : { ok:true }; },
+    renderContactsPage: () => {}, renderVaultList: () => {}, delay: async () => {},
+    removeRoomFromState: code => roomMap.delete(code),
   });
   vm.runInContext([
     extractFn('normalizePrivateNumber'), extractFn('formatPrivateNumber'), extractFn('roomForPrivateNumber'),
@@ -197,10 +199,11 @@ test('strangers, people who removed you, existing chats and other screens never 
   await run(stranger, 'maybeAutoAcceptContactRequests()');
   assert.equal(stranger.events.accept.length, 0, 'not a contact -> a normal request');
 
-  const withChat = harness({ rooms:[{ code:'r-a', peerPrivateNumber:A }] });
+  const withChat = harness({ rooms:[{ code:'r-a', token:'tok', peerPrivateNumber:A }] });
   run(withChat, `addContact('${A}', 'Alice'); pendingIncomingConnections = ${JSON.stringify([incoming('req-2', A)])}`);
   await run(withChat, 'maybeAutoAcceptContactRequests()');
-  assert.equal(withChat.events.accept.length, 0, 'a request while a chat exists is a secure reconnection and needs consent');
+  assert.equal(withChat.events.accept.length, 0, 'a request while the chat is still alive is a secure reconnection and needs consent');
+  assert.equal(withChat.rooms.has('r-a'), true, 'a live chat is never dropped');
 
   const elsewhere = harness({ vaultListActive:false });
   run(elsewhere, `addContact('${A}', 'Alice'); pendingIncomingConnections = ${JSON.stringify([incoming('req-3', A)])}`);
@@ -343,4 +346,58 @@ test('the list is grouped (favourites first, then A-Z), searchable by name or nu
   assert.match(fn, /contact\.number\.includes\(digits\)/);
   assert.match(fn, /No contacts yet/);
   assert.match(fn, /filter\(contactIsVisible\)/);
+});
+
+// The person erased the chat to reopen it from Contacts. The other phone often still holds
+// the room (it needs two "room gone" answers before dropping one), which made the reopen
+// look like a secure reconnection and left it waiting for a manual accept.
+test('a stale local room (erased on the server) does not block the automatic accept', async () => {
+  const ctx = harness({ rooms:[{ code:'r-a', token:'tok', lastSeq:7, peerPrivateNumber:A }] });
+  ctx.apiAnswer = route => route === '/api/poll' ? { roomGone:true } : { ok:true };
+  run(ctx, `addContact('${A}', 'Alice'); pendingIncomingConnections = ${JSON.stringify([incoming('req-1', A)])}`);
+  await run(ctx, 'maybeAutoAcceptContactRequests()');
+  assert.deepEqual(plain(ctx.events.accept), ['req-1']);
+  assert.equal(ctx.rooms.has('r-a'), false, 'the stale room is dropped first');
+  assert.equal(ctx.events.sent.filter(([route]) => route === '/api/poll').length, 2, 'asked twice before trusting "gone"');
+});
+
+test('one "gone" answer is not enough, and any error counts as not gone', async () => {
+  const flaky = harness({ rooms:[{ code:'r-a', token:'tok', peerPrivateNumber:A }] });
+  let answers = [{ roomGone:true }, { ok:true }];
+  flaky.apiAnswer = () => answers.shift();
+  run(flaky, `addContact('${A}', 'Alice'); pendingIncomingConnections = ${JSON.stringify([incoming('req-1', A)])}`);
+  await run(flaky, 'maybeAutoAcceptContactRequests()');
+  assert.equal(flaky.events.accept.length, 0);
+  assert.equal(flaky.rooms.has('r-a'), true);
+
+  const failing = harness({ rooms:[{ code:'r-a', token:'tok', peerPrivateNumber:A }] });
+  failing.apiAnswer = () => { throw new Error('offline'); };
+  run(failing, `addContact('${A}', 'Alice'); pendingIncomingConnections = ${JSON.stringify([incoming('req-1', A)])}`);
+  await run(failing, 'maybeAutoAcceptContactRequests()');
+  assert.equal(failing.events.accept.length, 0);
+  assert.equal(failing.rooms.has('r-a'), true);
+});
+
+test('returning to the app refreshes the requests, which also runs the automatic accept', () => {
+  assert.match(client, /if \(loadAccountState\(\)\) refreshConnectionRequests\(\)\.catch\(\(\) => \{\}\); \/\/ also runs the contacts auto-accept/);
+  assert.match(client, /Chat request sent to \$\{label\}\. It opens by itself when their app is open\./);
+});
+
+// After accepting a reopened chat the phone showed the person twice: the new room and the
+// old, already-erased one it had not dropped yet.
+test('after accepting, an erased old room for the same person is dropped; live rooms and other people are not', async () => {
+  const ctx = harness({ rooms:[
+    { code:'old', token:'t1', peerPrivateNumber:A },
+    { code:'new', token:'t2', peerPrivateNumber:A },
+    { code:'other', token:'t3', peerPrivateNumber:B },
+    { code:'alive', token:'t4', peerPrivateNumber:A },
+  ] });
+  ctx.apiAnswer = (route, body) => route === '/api/poll' && body.code === 'old' ? { roomGone:true } : { ok:true };
+  await run(ctx, "dropStaleRoomsForPeer(rooms.get('new'))");
+  assert.deepEqual([...ctx.rooms.keys()].sort(), ['alive', 'new', 'other']);
+});
+
+test('the stale-room cleanup runs only after a successful accept, and never throws into the accept flow', () => {
+  assert.match(client, /else toast\('Private conversation created — the requester can now join'\);\s*dropStaleRoomsForPeer\(room\)\.catch\(\(\) => \{\}\);/);
+  assert.match(extractFn('dropStaleRoomsForPeer'), /if \(!\(await localRoomIsGone\(other\)\)\) continue;/);
 });

@@ -8794,6 +8794,7 @@ function resumeForegroundWork() {
     checkStaleIncomingCalls();
     refreshPushForAllRooms();
     resyncMessageToneOnResume();
+    if (loadAccountState()) refreshConnectionRequests().catch(() => {}); // also runs the contacts auto-accept
     reconnectSignalingForAllRooms();
   }, 100);
 }
@@ -13420,17 +13421,63 @@ async function maybeAutoAcceptContactRequests() {
   if (!document.getElementById('s-vault-list')?.classList.contains('active')) return;
   const state = loadAccountState();
   if (!state) return;
-  const target = pendingIncomingConnections.find(request => {
-    const peer = peerIdentityFromConnection(request, state);
-    return peer.privateNumber && isContact(peer.privateNumber) && !roomForPrivateNumber(peer.privateNumber);
-  });
-  if (!target) return;
-  const peer = peerIdentityFromConnection(target, state);
   contactAutoAcceptRunning = true;
-  contactReopenPending = { requestId:target.id, number:peer.privateNumber, name:peer.displayName || formatPrivateNumber(peer.privateNumber) };
-  try { await acceptConnectionRequest(target.id); }
-  catch (e) { console.warn('Automatic contact accept failed:', e?.message || e); }
+  try {
+    let target = null;
+    for (const request of [...pendingIncomingConnections]) {
+      const peer = peerIdentityFromConnection(request, state);
+      if (!peer.privateNumber || !isContact(peer.privateNumber)) continue;
+      const existing = roomForPrivateNumber(peer.privateNumber);
+      if (existing) {
+        // The person erased the chat to reopen it. This phone may not have noticed yet
+        // (it needs two "room gone" answers before it drops a room), and a stale room
+        // would otherwise make this look like a secure reconnection that needs consent.
+        // A room that is still alive is left alone: that request does need approval.
+        if (!(await localRoomIsGone(existing))) continue;
+        removeRoomFromState(existing.code);
+        renderVaultList();
+      }
+      target = { request, peer };
+      break;
+    }
+    if (!target || pendingConnectionAcceptance) return;
+    contactReopenPending = { requestId:target.request.id, number:target.peer.privateNumber, name:target.peer.displayName || formatPrivateNumber(target.peer.privateNumber) };
+    await acceptConnectionRequest(target.request.id);
+  } catch (e) { console.warn('Automatic contact accept failed:', e?.message || e); }
   finally { contactAutoAcceptRunning = false; contactReopenPending = null; }
+}
+
+// Accepting a reopened chat creates a brand-new conversation. If this phone still holds
+// the old, erased one for the same person (it drops a room only after two "gone"
+// answers), the chat list briefly showed the person twice. Once the new room exists,
+// drop any other room for the same person that the server confirms is gone. A room
+// that is still alive (a key-mismatch reconnection) is never touched.
+async function dropStaleRoomsForPeer(newRoom) {
+  const number = normalizePrivateNumber(newRoom?.peerPrivateNumber);
+  if (!number) return;
+  for (const other of [...rooms.values()]) {
+    if (other === newRoom || other.code === newRoom.code) continue;
+    if (normalizePrivateNumber(other.peerPrivateNumber) !== number) continue;
+    if (!(await localRoomIsGone(other))) continue;
+    if (rooms.get(other.code) !== other) continue;
+    removeRoomFromState(other.code);
+    renderVaultList();
+  }
+}
+
+// Asks the server twice (like doPoll does before dropping a room) whether a local
+// conversation still exists. Any doubt means "not gone".
+async function localRoomIsGone(room) {
+  if (!room?.code || !room.token) return false;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let data = null;
+    try {
+      data = await api('/api/poll', { code:room.code, token:room.token, lastSeq:Number(room.lastSeq) || 0, lastReceiptSeq:0, lastReactionSeq:0, lastDeletionSeq:0 });
+    } catch (e) { return false; }
+    if (!data?.roomGone) return false;
+    if (attempt === 0) await delay(1500);
+  }
+  return true;
 }
 
 // The reopened chat carries a notice for the person whose app accepted it.
@@ -13484,13 +13531,13 @@ async function openContactChat(number) {
     if (replacement.status === 'action_required') { await openConnectionRequest(replacement.requestId); return; }
     showScreen('s-vault-list');
     await refreshConnectionRequests();
-    toast(`Chat request sent to ${label} — waiting for their app to connect`);
+    toast(`Chat request sent to ${label}. It opens by itself when their app is open.`);
     return;
   }
   if (result.status === 'action_required') { await openConnectionRequest(result.requestId); toast(`${label} already sent you a request`); return; }
   showScreen('s-vault-list');
   await refreshConnectionRequests();
-  toast(`Chat request sent to ${label} — waiting for their app to connect`);
+  toast(`Chat request sent to ${label}. It opens by itself when their app is open.`);
 }
 
 function openContacts() {
@@ -22303,6 +22350,7 @@ async function handleSetup({ silent = false } = {}) {
         pendingConnectionPeerPrivateNumber = null;
         pendingConnectionPeerProfileImage = null;
         if (accepted.error) toast(accepted.error); else toast('Private conversation created — the requester can now join');
+        dropStaleRoomsForPeer(room).catch(() => {});
       }
       // Register this creator-side room while it is still on the waiting
       // screen. Previously push registration only began in

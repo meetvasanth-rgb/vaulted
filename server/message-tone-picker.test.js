@@ -341,7 +341,7 @@ test('Android plays no in-app message chime; iOS and the web keep it', () => {
 
 test('returning to the app re-registers the tone, at most every ten minutes', () => {
   assert.match(client, /const MESSAGE_TONE_RESYNC_INTERVAL_MS = 10 \* 60 \* 1000;/);
-  assert.match(client, /refreshPushForAllRooms\(\);\s*resyncMessageToneOnResume\(\);\s*reconnectSignalingForAllRooms\(\);/);
+  assert.match(client, /refreshPushForAllRooms\(\);\s*resyncMessageToneOnResume\(\);[^\n]*\n\s*(?:if \(loadAccountState\(\)\) refreshConnectionRequests\(\)[^\n]*\n\s*)?reconnectSignalingForAllRooms\(\);/);
   const harness = clientHarness();
   harness.resyncMessageToneOnResume();
   assert.equal(harness.pending().length, 1, 'the first return registers');
