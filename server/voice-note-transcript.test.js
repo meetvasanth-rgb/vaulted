@@ -12,6 +12,8 @@ const ios = fs.readFileSync(path.join(root, 'mobile/ios/App/App/SceneDelegate.sw
 test('received direct and group voice notes offer an on-demand transcript', () => {
   assert.match(client, /rec\.isMe \? '' : voiceTranscriptControlsHtml/);
   assert.match(client, /Show transcript/);
+  assert.match(client, /html\.voice-transcript-ready \.voice-transcript-action\{display:block\}/);
+  assert.match(client, /vaultlix:voice-transcript-capability/);
   assert.match(client, /requestDirectVoiceTranscript/);
   assert.match(groups, /message\.senderId === state\?\.accountId \? '' : voiceTranscriptControlsHtml/);
   assert.match(groups, /requestPrivateGroupVoiceTranscript/);
@@ -30,6 +32,7 @@ test('iOS transcribes the temporary PCM wave through the native speech recognize
   assert.match(ios, /request\.requiresOnDeviceRecognition = onDevice/);
   assert.match(ios, /action == "transcribeVoiceNote"/);
   assert.match(ios, /vaultlix:voice-transcript/);
+  assert.match(ios, /vaultlix:voice-transcript-capability/);
   assert.match(ios, /removeItem\(at: url\)/);
 });
 
@@ -38,5 +41,6 @@ test('Android injects PCM audio on supported recognizers and removes the tempora
   assert.match(android, /RecognizerIntent\.EXTRA_AUDIO_SOURCE, voiceTranscriptAudio/);
   assert.match(android, /RecognizerIntent\.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat\.ENCODING_PCM_16BIT/);
   assert.match(android, /public void transcribeVoiceNote\(/);
+  assert.match(android, /public boolean supportsVoiceNoteTranscription\(\)/);
   assert.match(android, /voiceTranscriptFile\.delete\(\)/);
 });

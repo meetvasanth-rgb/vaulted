@@ -1134,6 +1134,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if action == "ready" {
             webReady = true
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
+            emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
             if let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {
                 let environment = UserDefaults.standard.string(forKey: "vaultlix.voipEnvironment") ?? "production"

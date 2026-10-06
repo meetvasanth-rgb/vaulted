@@ -566,7 +566,8 @@ html.speech-to-text-ready .speech-to-text-btn{display:flex}
 .voice-track{flex:1;height:3px;background:#D9D2C6;border-radius:2px;cursor:pointer;position:relative}
 .voice-track-fill{position:absolute;top:0;left:0;height:100%;background:#682C43;border-radius:2px;width:0%}
 .voice-duration{font-size:11px;color:#8A7F72;font-variant-numeric:tabular-nums;flex-shrink:0}
-.voice-transcript-action{display:block;margin:7px 4px 0;padding:0;border:0;background:none;color:#682C43;font-size:12px;font-weight:650;line-height:1.4;cursor:pointer;text-align:left}
+.voice-transcript-action{display:none;margin:7px 4px 0;padding:0;border:0;background:none;color:#682C43;font-size:12px;font-weight:650;line-height:1.4;cursor:pointer;text-align:left}
+html.voice-transcript-ready .voice-transcript-action{display:block}
 .voice-transcript-action:disabled{color:#9A8C7E;cursor:default}
 .voice-transcript{display:none;margin:7px 0 0;padding:10px 12px;border-radius:12px;background:#F7F1F3;color:#3E3337;font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .voice-transcript.show{display:block}
@@ -24160,6 +24161,19 @@ function buildVoicePlayerHtml(rec) {
 // returned words live only in this in-memory map and the current DOM.
 const voiceTranscriptStates = new Map();
 const voiceTranscriptRequests = new Map();
+
+function setVoiceTranscriptAvailable(available) {
+  document.documentElement.classList.toggle('voice-transcript-ready', available === true);
+}
+
+window.addEventListener('vaultlix:voice-transcript-capability', event => {
+  setVoiceTranscriptAvailable(event.detail?.available === true);
+});
+try {
+  if (typeof window.VaultlixAndroid?.supportsVoiceNoteTranscription === 'function') {
+    setVoiceTranscriptAvailable(window.VaultlixAndroid.supportsVoiceNoteTranscription());
+  }
+} catch (_) {}
 
 function voiceTranscriptControlsHtml(key, startCall) {
   const state = voiceTranscriptStates.get(key);

@@ -805,6 +805,12 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean supportsVoiceNoteTranscription() {
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
+        }
+
+        @JavascriptInterface
         public void startSpeechToText(String localeTag) {
             runOnUiThread(() -> startNativeSpeechToText(localeTag));
         }
