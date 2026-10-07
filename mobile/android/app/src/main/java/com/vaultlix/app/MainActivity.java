@@ -773,13 +773,23 @@ public class MainActivity extends BridgeActivity {
         }
         final SpeechRecognizer attemptRecognizer = voiceTranscriptRecognizer;
         attemptRecognizer.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(Bundle params) { }
-            @Override public void onBeginningOfSpeech() { }
-            @Override public void onRmsChanged(float rmsdB) { }
-            @Override public void onBufferReceived(byte[] buffer) { }
-            @Override public void onEndOfSpeech() { }
-            @Override public void onError(int error) {
-                if (attemptRecognizer != voiceTranscriptRecognizer) return; // a superseded pass
+            private final ArrayList<String> transcriptSegments = new ArrayList<>();
+            private final AtomicBoolean completed = new AtomicBoolean(false);
+
+            private String collectedTranscript(Bundle results) {
+                String result = firstSpeechResult(results).trim();
+                if (!result.isEmpty()) return result;
+                return String.join(" ", transcriptSegments).trim();
+            }
+
+            private void finishTranscript(String text) {
+                if (!completed.compareAndSet(false, true)) return;
+                emitVoiceTranscript(requestId, "final", text, "", onDevice, 0);
+                clearVoiceTranscript();
+            }
+
+            private void failOrRetry(int error) {
+                if (!completed.compareAndSet(false, true)) return;
                 boolean languageProblem = error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                         || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE;
                 if (attempt == 0 && languageProblem && !"en-US".equalsIgnoreCase(locale)) {
@@ -797,12 +807,40 @@ public class MainActivity extends BridgeActivity {
                 emitVoiceTranscript(requestId, "error", "", voiceTranscriptErrorMessage(error), onDevice, error);
                 clearVoiceTranscript();
             }
+
+            @Override public void onReadyForSpeech(Bundle params) { }
+            @Override public void onBeginningOfSpeech() { }
+            @Override public void onRmsChanged(float rmsdB) { }
+            @Override public void onBufferReceived(byte[] buffer) { }
+            @Override public void onEndOfSpeech() { }
+            @Override public void onError(int error) {
+                if (attemptRecognizer != voiceTranscriptRecognizer) return; // a superseded pass
+                String transcript = String.join(" ", transcriptSegments).trim();
+                if (!transcript.isEmpty()) finishTranscript(transcript);
+                else failOrRetry(error);
+            }
             @Override public void onResults(Bundle results) {
                 if (attemptRecognizer != voiceTranscriptRecognizer) return;
-                emitVoiceTranscript(requestId, "final", firstSpeechResult(results), "", onDevice, 0);
-                clearVoiceTranscript();
+                String transcript = collectedTranscript(results);
+                if (!transcript.isEmpty()) finishTranscript(transcript);
+                else failOrRetry(SpeechRecognizer.ERROR_NO_MATCH);
             }
             @Override public void onPartialResults(Bundle partialResults) { }
+            @Override public void onSegmentResults(Bundle segmentResults) {
+                if (attemptRecognizer != voiceTranscriptRecognizer || completed.get()) return;
+                String segment = firstSpeechResult(segmentResults).trim();
+                if (!segment.isEmpty()
+                        && (transcriptSegments.isEmpty()
+                        || !segment.equals(transcriptSegments.get(transcriptSegments.size() - 1)))) {
+                    transcriptSegments.add(segment);
+                }
+            }
+            @Override public void onEndOfSegmentedSession() {
+                if (attemptRecognizer != voiceTranscriptRecognizer || completed.get()) return;
+                String transcript = String.join(" ", transcriptSegments).trim();
+                if (!transcript.isEmpty()) finishTranscript(transcript);
+                else failOrRetry(SpeechRecognizer.ERROR_NO_MATCH);
+            }
             @Override public void onEvent(int eventType, Bundle params) { }
         });
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -813,6 +851,7 @@ public class MainActivity extends BridgeActivity {
         intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1);
         intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT);
         intent.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, 16000);
+        intent.putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE);
         intent.putExtra(RecognizerIntent.EXTRA_ENABLE_FORMATTING, RecognizerIntent.FORMATTING_OPTIMIZE_QUALITY);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale);
         attemptRecognizer.startListening(intent);

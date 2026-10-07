@@ -61,6 +61,14 @@ test('Android retries a failed transcript pass and reports the real recognizer e
   assert.doesNotMatch(release, /voiceTranscriptFile/);
 });
 
+test('Android collects injected-audio segmented results used by Google speech services', () => {
+  assert.match(android, /EXTRA_SEGMENTED_SESSION, RecognizerIntent\.EXTRA_AUDIO_SOURCE/);
+  assert.match(android, /onSegmentResults\(Bundle segmentResults\)/);
+  assert.match(android, /onEndOfSegmentedSession\(\)/);
+  assert.match(android, /transcriptSegments\.add\(segment\)/);
+  assert.match(android, /failOrRetry\(SpeechRecognizer\.ERROR_NO_MATCH\)/);
+});
+
 test('a silent decoded voice note is reported before anything is sent to the native recognizer', () => {
   assert.match(client, /if \(peak < 0\.004\) throw new Error\('silent-audio'\)/);
   assert.match(client, /silent \? 'No speech could be recognized\.'/);
