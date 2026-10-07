@@ -351,6 +351,11 @@ public class VaultlixMessagingService extends MessagingService {
         String callId = safe(data.get("callId"));
         if (NativeCallActions.wasRecentlyDeclined(this, callId)
                 || NativeCallActions.wasRecentlyAnswered(this, callId)) return;
+        // The server deliberately retries an unanswered call notification.
+        // Once our full-screen surface is already showing this call, posting
+        // the retry would recreate a second CallStyle banner above it on
+        // ColorOS/OnePlus devices.
+        if (IncomingCallActivity.isPresentingCall(callId)) return;
         NativeWebRtcCallEngine engine = NativeWebRtcCallEngine.get(this);
         if (engine.isBusyWithAnotherRoom(code)) {
             NativeCallActions.declineWhileBusy(this, callId);

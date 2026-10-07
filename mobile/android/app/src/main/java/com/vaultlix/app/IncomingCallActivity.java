@@ -124,6 +124,16 @@ public class IncomingCallActivity extends Activity {
         if (activity != null) activity.runOnUiThread(activity::finish);
     }
 
+    /** True while the full-screen surface already owns this incoming call. */
+    public static boolean isPresentingCall(String requestedCallId) {
+        IncomingCallActivity activity = activeActivity.get();
+        String normalized = requestedCallId == null ? "" : requestedCallId.trim();
+        return activity != null
+                && !activity.isFinishing()
+                && !normalized.isEmpty()
+                && normalized.equals(activity.callId == null ? "" : activity.callId.trim());
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -151,13 +161,15 @@ public class IncomingCallActivity extends Activity {
             overridePendingTransition(0, 0);
             return;
         }
-        showIncomingCall(caller);
         // The full-screen call surface now owns presentation. Remove the
-        // duplicate heads-up notification so Android never shows two call UIs,
-        // then keep ringing from the visible activity. Pixel devices delay
-        // notification audio until after this cancellation, otherwise leaving
-        // the full-screen incoming call completely silent.
+        // duplicate heads-up notification before constructing the visible UI.
+        // ColorOS can otherwise draw its banner over the completed full-screen
+        // surface for the first part of the ring transition.
         cancelNotification();
+        showIncomingCall(caller);
+        // Keep ringing from the visible activity. Pixel devices delay
+        // notification audio until after cancellation, otherwise leaving the
+        // full-screen incoming call completely silent.
         startIncomingRingtone();
         if (intent.getBooleanExtra(EXTRA_AUTO_ANSWER, false)) answerCall();
     }

@@ -38,6 +38,8 @@ test('Android starts its native engine during ringing instead of after answer', 
   const client = read('client/index.html');
   const main = read('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java');
   assert.match(client, /prepareIncomingCall/);
+  assert.match(client, /if \(room\.nativeIncomingPrepared\) \{[\s\S]*disconnectSignaling\(room\);/);
+  assert.match(client, /room\.callState === 'incoming' && !room\.nativeIncomingPrepared/);
   assert.match(client, /answerIncomingCall/);
   assert.match(main, /prepareIncomingHandle/);
   assert.match(main, /NativeCallActivity\.class/);
@@ -58,7 +60,9 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(client, /wasNativeCall && window\.VaultlixAndroid\?\.supportsNativeWebRtc/);
   assert.match(client, /detail\.action === 'declineOrEnd'[\s\S]*room\.callState === 'active' \|\| room\.callState === 'outgoing'/);
   assert.match(incoming, /SOFT_INPUT_STATE_ALWAYS_HIDDEN/);
-  assert.match(incoming, /showIncomingCall\(caller\);[\s\S]*cancelNotification\(\);[\s\S]*startIncomingRingtone\(\)/);
+  assert.match(incoming, /cancelNotification\(\);[\s\S]*showIncomingCall\(caller\);[\s\S]*startIncomingRingtone\(\)/);
+  assert.match(incoming, /isPresentingCall\(String requestedCallId\)/);
+  assert.match(messaging, /IncomingCallActivity\.isPresentingCall\(callId\)/);
   assert.match(incoming, /RingtoneManager\.getDefaultUri\(RingtoneManager\.TYPE_RINGTONE\)/);
   assert.match(incoming, /ringtone\.setLooping\(true\)/);
   assert.match(incoming, /setVolumeControlStream\(AudioManager\.STREAM_RING\)/);

@@ -7996,6 +7996,16 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
           room.nativeIncomingPrepared = false;
         }
       }
+      if (room.nativeIncomingPrepared) {
+        // Give the native engine sole ownership of call signaling as soon as
+        // it starts. If the WebView socket remains registered, a foreground
+        // invite/offer can land there during the short native-socket startup
+        // window and never reach the prepared native peer. The caller then
+        // waits on "Connecting" while Android waits forever for that offer.
+        // The caller's existing invite retry reaches the native socket and
+        // completes the ringing-time negotiation.
+        disconnectSignaling(room);
+      }
       // A call-invite delivered over the already-open web socket (the app
       // already foregrounded, no PushKit wake) never reaches the native side
       // through the VoIP push path, so it was never registered with CallKit's
@@ -8026,7 +8036,9 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
     // incoming screen, not just the first — startCall()'s own 3s invite
     // retry loop means a lost ack just gets another chance next round,
     // without this needing a dedicated resend loop of its own.
-    if (room.callState === 'incoming') sendSignal(room, 'call-ringing', {});
+    if (room.callState === 'incoming' && !room.nativeIncomingPrepared) {
+      sendSignal(room, 'call-ringing', {});
+    }
     const pendingDetail = pendingNativeCallActions.get(room.code) || pendingNativeUnscopedAction;
     if (pendingDetail) {
       pendingNativeCallActions.delete(room.code);
