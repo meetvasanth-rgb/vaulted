@@ -102,6 +102,7 @@ final class NativeWebRtcCallEngine {
     private final SecureRandom random = new SecureRandom();
     private final ArrayDeque<JSONObject> queuedSignals = new ArrayDeque<>();
     private final List<IceCandidate> pendingIce = new ArrayList<>();
+    private final List<IceCandidate> localIce = new ArrayList<>();
     private NativeCallRoomStore.Room room;
     private WebSocket socket;
     private PeerConnection peer;
@@ -125,6 +126,11 @@ final class NativeWebRtcCallEngine {
     private boolean outgoingVideoCall;
     private boolean answered;
     private boolean offerReceived;
+    private boolean ringingAcknowledged;
+    private boolean initialOfferStarted;
+    private boolean transportReady;
+    private boolean answerCandidatesResent;
+    private JSONObject pendingOffer;
     private boolean ending;
     private int sequenceOut;
     private int sequenceIn;
@@ -263,15 +269,18 @@ final class NativeWebRtcCallEngine {
             if (room == null || outgoing) return;
             Log.i(TAG, "answer room=" + room.code);
             answered = true;
+            if (answeredAtMs == 0L) answeredAtMs = System.currentTimeMillis();
             if (audioTrack != null) audioTrack.setEnabled(true);
+            if (peer == null) fetchTurn(generation, 1);
             sendSignal("call-accept", new JSONObject());
-            notifyState("connecting");
+            resendLocalCandidatesAtAnswer();
+            if (!completeInitialConnectionIfReady()) notifyState("connecting");
             scheduleAcceptRetry(generation, 12);
             startConnectWatchdog();
         });
     }
 
-    void setMuted(boolean muted) { executor.execute(() -> { if (audioTrack != null) audioTrack.setEnabled(!muted); }); }
+    void setMuted(boolean muted) { executor.execute(() -> { if (audioTrack != null) audioTrack.setEnabled(answered && !muted); }); }
 
     void end(boolean notifyPeer) { end(notifyPeer, null); }
 
@@ -370,7 +379,7 @@ final class NativeWebRtcCallEngine {
             if ("ready".equals(type)) { signalingReady = true; flushSignals(); return; }
             if ("native-call-declined".equals(type)) { reset("declined"); return; }
             if ("native-call-busy".equals(type)) { reset("busy"); return; }
-            if ("native-call-answering".equals(type)) { notifyState("connecting"); return; }
+            if ("native-call-answering".equals(type)) { markOutgoingAnswered(); return; }
             String wireInviteId = wire.optString("inviteId");
             if ("call-hangup-ack".equals(type)) {
                 if (ending && !wireInviteId.isEmpty() && wireInviteId.equals(inviteId)) reset("ended");
@@ -394,19 +403,22 @@ final class NativeWebRtcCallEngine {
                         if (answered) sendSignal("call-accept", new JSONObject());
                     }
                     break;
-                case "call-ringing": if (outgoing) notifyState("ringing"); break;
+                case "call-ringing":
+                    if (outgoing) {
+                        ringingAcknowledged = true;
+                        notifyState("ringing");
+                        startInitialOfferIfReady();
+                    }
+                    break;
                 case "call-accept":
                     if (!outgoing) break;
-                    answered = true;
-                    if (audioTrack != null) audioTrack.setEnabled(true);
-                    notifyState("connecting");
-                    if (peer != null) createOffer();
-                    startConnectWatchdog();
+                    markOutgoingAnswered();
                     break;
                 case "offer":
-                    if (outgoing || !answered) break;
+                    if (outgoing) break;
                     offerReceived = true;
-                    processOffer(payload);
+                    if (peer == null) pendingOffer = payload;
+                    else processOffer(payload);
                     break;
                 case "answer": if (outgoing) processAnswer(payload); break;
                 case "ice-candidate": addRemoteCandidate(payload.optJSONObject("candidate")); break;
@@ -455,7 +467,14 @@ final class NativeWebRtcCallEngine {
 
     private void scheduleTurnRetry(int run, int attempt) {
         if (attempt >= 4) {
-            executor.execute(() -> { if (run == generation && room != null && peer == null) reset("turn-failed"); });
+            scheduler.schedule(() -> executor.execute(() -> {
+                if (run != generation || room == null || peer != null) return;
+                // Do not make an incoming call disappear merely because TURN
+                // was temporarily unavailable while it was ringing. Answer
+                // starts a fresh attempt; a genuinely unavailable relay then
+                // fails through the normal setup deadline.
+                fetchTurn(run, 1);
+            }), 4, TimeUnit.SECONDS);
             return;
         }
         scheduler.schedule(() -> executor.execute(() -> {
@@ -480,6 +499,10 @@ final class NativeWebRtcCallEngine {
             PeerConnection.RTCConfiguration config = new PeerConnection.RTCConfiguration(ice);
             config.iceTransportsType = PeerConnection.IceTransportsType.RELAY;
             config.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
+            // Allocate the relay candidate while the phone is ringing. The
+            // audio track stays disabled until Answer, so preparation cannot
+            // transmit microphone audio or mark the call connected early.
+            config.iceCandidatePoolSize = 1;
             peer = factory.createPeerConnection(config, new PeerObserver());
             if (peer == null) { reset("peer-failed"); return; }
             audioSource = factory.createAudioSource(new MediaConstraints());
@@ -504,11 +527,44 @@ final class NativeWebRtcCallEngine {
                 }
             }
             Log.i(TAG, "native peer ready room=" + room.code);
-            if (outgoing && answered) createOffer();
+            if (pendingOffer != null) {
+                JSONObject offer = pendingOffer;
+                pendingOffer = null;
+                processOffer(offer);
+            } else {
+                startInitialOfferIfReady();
+            }
         } catch (Exception error) { Log.w(TAG, "TURN/peer setup failed", error); }
     }
 
-    private void createOffer() { createOffer(false); }
+    /**
+     * The peer has acknowledged that it is ringing, so its native signaling
+     * socket is alive. Negotiate the relay path now instead of spending this
+     * round trip after Answer. Only the caller offers, preventing glare.
+     */
+    private void startInitialOfferIfReady() {
+        if (!outgoing || peer == null || initialOfferStarted || (!ringingAcknowledged && !answered)) return;
+        initialOfferStarted = true;
+        Log.i(TAG, "preconnect offer starting while " + (answered ? "answering" : "ringing"));
+        createOffer(false);
+    }
+
+    /**
+     * A native Answer is also acknowledged by a server-validated control
+     * frame. Use it to activate the caller's prepared media path when the
+     * encrypted call-accept is delayed; a later call-accept is idempotent.
+     */
+    private void markOutgoingAnswered() {
+        if (!outgoing) return;
+        answered = true;
+        if (answeredAtMs == 0L) answeredAtMs = System.currentTimeMillis();
+        if (audioTrack != null) audioTrack.setEnabled(true);
+        if (peer == null) fetchTurn(generation, 1);
+        resendLocalCandidatesAtAnswer();
+        if (!completeInitialConnectionIfReady()) notifyState("connecting");
+        startInitialOfferIfReady();
+        startConnectWatchdog();
+    }
 
     private void createOffer(boolean iceRestart) {
         if (peer == null) return;
@@ -544,6 +600,16 @@ final class NativeWebRtcCallEngine {
         if (peer == null) return;
         peer.setRemoteDescription(new SimpleSdpObserver() { @Override public void onSetSuccess() { flushIce(); } },
                 new SessionDescription(SessionDescription.Type.ANSWER, payload.optString("sdp")));
+    }
+
+    private boolean completeInitialConnectionIfReady() {
+        if (!answered || !transportReady || connectedAtMs > 0L) return false;
+        connectedAtMs = System.currentTimeMillis();
+        if (answeredAtMs > 0L) Log.i(TAG, "ICE ready " + (connectedAtMs - answeredAtMs) + "ms after answer");
+        currentState = "connected";
+        recoveryRun++;
+        for (Listener listener : listeners) listener.onConnected();
+        return true;
     }
 
     private void sendSdp(String type, SessionDescription sdp) {
@@ -612,10 +678,37 @@ final class NativeWebRtcCallEngine {
     private void scheduleAcceptRetry(int run, int remaining) {
         if (remaining <= 0) return;
         scheduler.schedule(() -> executor.execute(() -> {
-            if (run == generation && answered && !offerReceived && !outgoing) {
-                sendSignal("call-accept", new JSONObject()); scheduleAcceptRetry(run, remaining - 1);
+            if (run == generation && answered && connectedAtMs == 0L && !outgoing) {
+                sendSignal("call-accept", new JSONObject());
+                resendLocalCandidatesAtAnswer();
+                scheduleAcceptRetry(run, remaining - 1);
             }
         }), 1500, TimeUnit.MILLISECONDS);
+    }
+
+    private JSONObject candidatePayload(IceCandidate candidate) throws Exception {
+        return new JSONObject().put("candidate", new JSONObject()
+                .put("sdpMid", candidate.sdpMid)
+                .put("sdpMLineIndex", candidate.sdpMLineIndex)
+                .put("candidate", candidate.sdp));
+    }
+
+    private void sendLocalCandidate(IceCandidate candidate) {
+        try { sendSignal("ice-candidate", candidatePayload(candidate)); }
+        catch (Exception ignored) { }
+    }
+
+    /**
+     * Trickle ICE is intentionally not queued by the signaling server. If a
+     * peer's socket changes while the call is ringing, a relay candidate sent
+     * only once can be missed. Replay the small, bounded gathered set once at
+     * Answer, when both peers are known to be present.
+     */
+    private void resendLocalCandidatesAtAnswer() {
+        if (answerCandidatesResent || localIce.isEmpty()) return;
+        answerCandidatesResent = true;
+        Log.i(TAG, "resending " + localIce.size() + " local ICE candidates at answer");
+        for (IceCandidate candidate : localIce) sendLocalCandidate(candidate);
     }
 
     private void applyCamera(boolean on) {
@@ -709,8 +802,10 @@ final class NativeWebRtcCallEngine {
         stopWatchingNetworkChanges();
         recoveryRun++; reconnecting = false; answeredAtMs = 0L;
         room = null; signalingReady = false; outgoing = false; outgoingVideoCall = false; answered = false; offerReceived = false; ending = false;
+        ringingAcknowledged = false; initialOfferStarted = false; transportReady = false; pendingOffer = null;
+        answerCandidatesResent = false;
         inviteId = "";
-        sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
+        sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear(); localIce.clear();
         // The counter restarts every call, so the peer must see a new session
         // too or it discards the new call's messages as replays.
         sessionId = UUID.randomUUID().toString();
@@ -757,6 +852,16 @@ final class NativeWebRtcCallEngine {
         final int run = generation;
         // The deadline counts from when the path was first lost, so a flapping link cannot extend it.
         scheduleRecoveryAttempt(run, token, reconnectStartedMs, graceMs);
+    }
+
+    private void finishMediaRecovery() {
+        if (!reconnecting) return;
+        recoveryRun++;
+        reconnecting = false;
+        reconnectStartedMs = 0L;
+        transportReady = true;
+        Log.i(TAG, "media path recovered");
+        for (Listener listener : listeners) listener.onReconnecting(false);
     }
 
     private void scheduleRecoveryAttempt(int run, int token, long startedAt, long delayMs) {
@@ -819,29 +924,35 @@ final class NativeWebRtcCallEngine {
 
     private final class PeerObserver implements PeerConnection.Observer {
         @Override public void onIceCandidate(IceCandidate candidate) {
-            executor.execute(() -> { try { sendSignal("ice-candidate", new JSONObject().put("candidate", new JSONObject()
-                    .put("sdpMid", candidate.sdpMid).put("sdpMLineIndex", candidate.sdpMLineIndex).put("candidate", candidate.sdp))); } catch (Exception ignored) {} });
+            executor.execute(() -> {
+                if (localIce.size() < 32) localIce.add(candidate);
+                sendLocalCandidate(candidate);
+            });
         }
         @Override public void onIceConnectionChange(PeerConnection.IceConnectionState state) {
             Log.i(TAG, "ICE " + state + " room=" + currentRoomCode);
             if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
                 executor.execute(() -> {
-                    boolean first = connectedAtMs == 0L;
-                    if (connectedAtMs == 0L) connectedAtMs = System.currentTimeMillis();
-                    if (first && answeredAtMs > 0L) Log.i(TAG, "ICE connected " + (connectedAtMs - answeredAtMs) + "ms after answer");
-                    currentState = "connected";
-                    recoveryRun++;
-                    if (first) for (Listener listener : listeners) listener.onConnected();
-                    else if (reconnecting) {
-                        reconnecting = false;
-                        Log.i(TAG, "media path recovered");
-                        for (Listener listener : listeners) listener.onReconnecting(false);
+                    transportReady = true;
+                    if (connectedAtMs == 0L) {
+                        if (!answered) {
+                            Log.i(TAG, "media path prepared while ringing");
+                            return;
+                        }
+                        completeInitialConnectionIfReady();
+                    } else if (reconnecting) {
+                        finishMediaRecovery();
                     }
                 });
             } else if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
-                executor.execute(() -> beginMediaRecovery(ICE_RESTART_GRACE_MS));
+                executor.execute(() -> { transportReady = false; beginMediaRecovery(ICE_RESTART_GRACE_MS); });
             } else if (state == PeerConnection.IceConnectionState.FAILED) {
                 executor.execute(() -> {
+                    transportReady = false;
+                    if (!answered) {
+                        Log.i(TAG, "preconnected media path failed while ringing");
+                        return;
+                    }
                     // Before the first connection a failure ends the call as before; once the call
                     // has been up, try to heal the path instead of hanging up on a weak-signal blip.
                     if (connectedAtMs == 0L) reset("connection-failed");
@@ -850,7 +961,14 @@ final class NativeWebRtcCallEngine {
             }
         }
         @Override public void onSignalingChange(PeerConnection.SignalingState state) {}
-        @Override public void onIceConnectionReceivingChange(boolean receiving) {}
+        @Override public void onIceConnectionReceivingChange(boolean receiving) {
+            Log.i(TAG, "ICE receiving=" + receiving + " room=" + currentRoomCode);
+            executor.execute(() -> {
+                if (room == null || connectedAtMs == 0L) return;
+                if (receiving) finishMediaRecovery();
+                else { transportReady = false; beginMediaRecovery(ICE_RESTART_GRACE_MS); }
+            });
+        }
         @Override public void onIceGatheringChange(PeerConnection.IceGatheringState state) {}
         @Override public void onIceCandidatesRemoved(IceCandidate[] candidates) {}
         @Override public void onAddStream(MediaStream stream) {}

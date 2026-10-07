@@ -84,5 +84,5 @@ test('both native engines start a new signalling session for every call', () => 
   assert.match(ios, /private var sessionID = UUID\(\)\.uuidString/);
   assert.match(ios, /peerSessionID = nil\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*sessionID = UUID\(\)\.uuidString/);
   assert.match(android, /private String sessionId = UUID\.randomUUID\(\)\.toString\(\)/);
-  assert.match(android, /peerSessionId = null;[\s\S]{0,200}sessionId = UUID\.randomUUID\(\)\.toString\(\)/);
+  assert.match(android, /peerSessionId = null;[\s\S]{0,400}sessionId = UUID\.randomUUID\(\)\.toString\(\)/);
 });

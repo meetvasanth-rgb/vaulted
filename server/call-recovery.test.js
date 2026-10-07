@@ -21,9 +21,11 @@ const mainActivity = read('mobile/android/app/src/main/java/com/vaultlix/app/Mai
 const manifest = read('mobile/android/app/src/main/AndroidManifest.xml');
 const ios = read('mobile/ios/App/App/NativeWebRTCCallEngine.swift');
 const iosManager = read('mobile/ios/App/App/AppDelegate.swift');
+const server = read('server/index.js');
 
 test('Android: a dropped media path is recovered by an ICE restart, not ignored', () => {
-  assert.match(engine, /state == PeerConnection\.IceConnectionState\.DISCONNECTED\) \{\s*executor\.execute\(\(\) -> beginMediaRecovery\(ICE_RESTART_GRACE_MS\)\)/);
+  assert.match(engine, /state == PeerConnection\.IceConnectionState\.DISCONNECTED\)[\s\S]{0,160}beginMediaRecovery\(ICE_RESTART_GRACE_MS\)/);
+  assert.match(engine, /transportReady = false;/);
   assert.match(engine, /if \(connectedAtMs == 0L\) reset\("connection-failed"\);\s*else beginMediaRecovery\(0L\);/);
   assert.match(engine, /constraints\.mandatory\.add\(new MediaConstraints\.KeyValuePair\("IceRestart", "true"\)\)/);
   // Only the caller offers, so two restart offers can never cross.
@@ -31,13 +33,54 @@ test('Android: a dropped media path is recovered by an ICE restart, not ignored'
   // The deadline is anchored to the first loss, and it ends the call with its own reason.
   assert.match(engine, /scheduleRecoveryAttempt\(run, token, reconnectStartedMs, graceMs\)/);
   assert.match(engine, /reset\("connection-lost"\)/);
+  // Some OEM WebRTC builds report lost receiving before changing the ICE
+  // state. That signal must also enter recovery so a silent-looking call is
+  // not left running indefinitely.
+  assert.match(engine, /onIceConnectionReceivingChange\(boolean receiving\)[\s\S]{0,350}beginMediaRecovery\(ICE_RESTART_GRACE_MS\)/);
 });
 
 test('Android: recovery does not restart the call timer or replay "connected"', () => {
   const observer = engine.slice(engine.indexOf('public void onIceConnectionChange'), engine.indexOf('public void onSignalingChange'));
-  assert.match(observer, /boolean first = connectedAtMs == 0L;/);
-  assert.match(observer, /if \(first\) for \(Listener listener : listeners\) listener\.onConnected\(\);/);
-  assert.match(observer, /listener\.onReconnecting\(false\)/);
+  assert.match(observer, /if \(connectedAtMs == 0L\)[\s\S]{0,220}completeInitialConnectionIfReady\(\);/);
+  assert.match(observer, /finishMediaRecovery\(\)/);
+  assert.match(engine, /private void finishMediaRecovery\(\)[\s\S]{0,320}listener\.onReconnecting\(false\)/);
+});
+
+test('both native engines negotiate the encrypted relay path while ringing but gate media on Answer', () => {
+  assert.match(engine, /config\.iceCandidatePoolSize = 1/);
+  assert.match(engine, /case "call-ringing":[\s\S]{0,220}startInitialOfferIfReady\(\)/);
+  assert.match(engine, /case "offer":[\s\S]{0,100}if \(outgoing\) break;/);
+  assert.match(engine, /audioTrack\.setEnabled\(answered\)/);
+  assert.match(engine, /private boolean completeInitialConnectionIfReady\(\) \{\s*if \(!answered \|\| !transportReady/);
+  assert.match(ios, /case "call-ringing":[\s\S]{0,180}startInitialOfferIfReadyLocked\(\)/);
+  assert.match(ios, /case "offer":\s*guard !outgoing else/);
+  assert.match(ios, /audioTrack\?\.isEnabled = answered && !muted/);
+  assert.match(ios, /guard answered, transportReady, !connectedOnce/);
+});
+
+test('server-confirmed native Answer activates the prepared caller path', () => {
+  assert.match(engine, /"native-call-answering"\.equals\(type\)\) \{ markOutgoingAnswered\(\); return; \}/);
+  assert.match(engine, /case "call-accept":[\s\S]{0,100}markOutgoingAnswered\(\)/);
+  assert.match(ios, /type == "native-call-answering"[\s\S]{0,180}markOutgoingAnsweredLocked\(\)/);
+  assert.match(ios, /case "call-accept":[\s\S]{0,100}markOutgoingAnsweredLocked\(\)/);
+});
+
+test('server protects Answer from ICE bursts and acknowledges encrypted acceptance', () => {
+  assert.match(server, /criticalCallSignal = \['call-accept', 'call-decline', 'call-busy', 'call-hangup'\]\.includes\(msg2\.type\)/);
+  assert.match(server, /rateLimited\(`sig-critical:\$\{token\}`/);
+  assert.match(server, /acceptsCurrentNativeCall = msg2\.type === 'call-accept'[\s\S]{0,900}status:'active', ringingUntil:0/);
+  assert.match(server, /if \(acceptsCurrentNativeCall\) \{\s*await deliverSignalToMember\(tok, \{ type:'native-call-answering' \}, \{ allOwners:true \}\)/);
+});
+
+test('both native engines replay a bounded gathered ICE set once at Answer', () => {
+  assert.match(engine, /private final List<IceCandidate> localIce = new ArrayList<>\(\)/);
+  assert.match(engine, /if \(localIce\.size\(\) < 32\) localIce\.add\(candidate\)/);
+  assert.match(engine, /private void resendLocalCandidatesAtAnswer\(\)[\s\S]{0,450}answerCandidatesResent = true;[\s\S]{0,200}sendLocalCandidate/);
+  assert.match(engine, /sendSignal\("call-accept", new JSONObject\(\)\);\s*resendLocalCandidatesAtAnswer\(\)/);
+  assert.match(ios, /private var localCandidates: \[RTCIceCandidate\] = \[\]/);
+  assert.match(ios, /if self\.localCandidates\.count < 32 \{ self\.localCandidates\.append\(candidate\) \}/);
+  assert.match(ios, /private func resendLocalCandidatesAtAnswerLocked\(\)[\s\S]{0,400}answerCandidatesResent = true[\s\S]{0,200}localCandidates\.forEach/);
+  assert.match(ios, /sendSignalLocked\(type: "call-accept", payload: \[:\]\)\s*self\.resendLocalCandidatesAtAnswerLocked\(\)/);
 });
 
 test('Android: setup has a deadline and one mid-setup ICE restart', () => {
@@ -127,6 +170,6 @@ test('iOS: the relay candidate is pre-gathered while ringing, a failed TURN fetc
   const retry = ios.slice(ios.indexOf('private func scheduleTurnRetryLocked()'), ios.indexOf('private func scheduleAcceptRetryLocked()'));
   assert.doesNotMatch(retry, /\banswered\b/, 'the retry must not wait for the answer');
   assert.match(ios, /if self\.peer == nil \{ self\.turnAttempt = 0 \}/);
-  assert.match(ios, /timing connected \\\(Int\(Date\(\)\.timeIntervalSince\(answeredAt\) \* 1000\)\)ms after answer/);
+  assert.match(ios, /timing media ready \\\(Int\(Date\(\)\.timeIntervalSince\(answeredAt\) \* 1000\)\)ms after answer/);
   assert.match(ios, /timing gathering=/);
 });

@@ -43,6 +43,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var directVideoCall = false
     private var pendingOffer: [String: Any]?
     private var pendingCandidates: [[String: Any]] = []
+    private var localCandidates: [RTCIceCandidate] = []
     private var sequenceOut = 0
     private var sequenceIn = 0
     private var peerSessionID: String?
@@ -55,6 +56,10 @@ final class NativeWebRTCCallEngine: NSObject {
     private var turnRequestInFlight = false
     private var turnAttempt = 0
     private var offerReceived = false
+    private var ringingAcknowledged = false
+    private var initialOfferStarted = false
+    private var transportReady = false
+    private var answerCandidatesResent = false
     private var outgoing = false
     private var outgoingCaller = "Someone"
     private var inviteID: String?
@@ -153,9 +158,9 @@ final class NativeWebRTCCallEngine: NSObject {
                 }
             }
             // Prepare the relay and peer while CallKit is ringing. Media is
-            // still disabled by CallKit and no offer is sent until the
-            // encrypted call-accept arrives, but this removes TURN setup
-            // from the post-answer critical path.
+            // still disabled by CallKit. Once the callee acknowledges that it
+            // is ringing, the encrypted offer/answer and relay checks run in
+            // advance so Answer only activates the prepared media path.
             self.fetchTurnAndCreatePeerLocked()
             self.sendOutgoingInviteLocked()
             self.scheduleInviteRetryLocked()
@@ -171,6 +176,7 @@ final class NativeWebRTCCallEngine: NSObject {
             self.trace("answer accepted-state")
             self.answered = true
             self.answeredAt = Date()
+            self.audioTrack?.isEnabled = !self.muted
             if self.directVideoCall {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
@@ -178,11 +184,14 @@ final class NativeWebRTCCallEngine: NSObject {
                 }
             }
             self.sendSignalLocked(type: "call-accept", payload: [:])
+            self.resendLocalCandidatesAtAnswerLocked()
             self.scheduleAcceptRetryLocked()
             // Ringing-time attempts may have used up the retries; the answer starts a fresh set.
             if self.peer == nil { self.turnAttempt = 0 }
             self.fetchTurnAndCreatePeerLocked()
-            self.scheduleConnectionWatchdogLocked()
+            if !self.completeInitialConnectionIfReadyLocked() {
+                self.scheduleConnectionWatchdogLocked()
+            }
         }
     }
 
@@ -193,7 +202,7 @@ final class NativeWebRTCCallEngine: NSObject {
                 return
             }
             self.muted = muted
-            self.audioTrack?.isEnabled = !muted
+            self.audioTrack?.isEnabled = self.answered && !muted
             DispatchQueue.main.async { completion(true) }
         }
     }
@@ -491,6 +500,7 @@ final class NativeWebRTCCallEngine: NSObject {
         if type == "native-call-answering" {
             trace("signal type=native-call-answering")
             if outgoing, let callID {
+                markOutgoingAnsweredLocked()
                 DispatchQueue.main.async {
                     VaultlixCallManager.shared.nativeOutgoingIsAnswering(callID: callID)
                 }
@@ -535,22 +545,15 @@ final class NativeWebRTCCallEngine: NSObject {
             if answered { sendSignalLocked(type: "call-accept", payload: [:]) }
         case "call-ringing":
             guard outgoing, let callID else { return }
+            ringingAcknowledged = true
+            startInitialOfferIfReadyLocked()
             DispatchQueue.main.async { VaultlixCallManager.shared.nativeOutgoingDidRing(callID: callID) }
         case "call-accept":
             guard outgoing else { return }
-            inviteRetryGeneration += 1
-            answered = true
-            if answeredAt == nil { answeredAt = Date() }
-            scheduleConnectionWatchdogLocked()
-            if peer == nil { fetchTurnAndCreatePeerLocked() }
-            else {
-                createAndSendOfferLocked()
-                requestDirectVideoIfReadyLocked()
-            }
+            markOutgoingAnsweredLocked()
         case "offer":
-            guard answered else { return }
+            guard !outgoing else { return }
             offerReceived = true
-            acceptRetryGeneration += 1
             if peer == nil { pendingOffer = payload; fetchTurnAndCreatePeerLocked() }
             else { processOfferLocked(payload) }
         case "ice-candidate":
@@ -663,11 +666,9 @@ final class NativeWebRTCCallEngine: NSObject {
         prepareAudioTrackLocked()
         if let audioTrack { _ = pc.add(audioTrack, streamIds: ["vaultlix-native-stream"]) }
         prepareVideoTrackLocked(peer: pc)
-        if outgoing && answered {
-            createAndSendOfferLocked()
-            requestDirectVideoIfReadyLocked()
-        }
-        else if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
+        if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
+        else { startInitialOfferIfReadyLocked() }
+        requestDirectVideoIfReadyLocked()
     }
 
     /// A dedicated video call has already been selected by the caller, but
@@ -689,21 +690,77 @@ final class NativeWebRTCCallEngine: NSObject {
         }
     }
 
+    /// The callee's ringing acknowledgement proves its signaling socket is
+    /// ready. Establish the encrypted relay path during ringing while CallKit
+    /// still keeps microphone audio disabled.
+    private func startInitialOfferIfReadyLocked() {
+        guard outgoing, peer != nil, !initialOfferStarted,
+              ringingAcknowledged || answered else { return }
+        trace("preconnect offer starting while \(answered ? "answering" : "ringing")")
+        createAndSendOfferLocked()
+    }
+
+    /// Android acknowledges a native Answer through a server-validated,
+    /// call-specific control frame before its encrypted signaling socket has
+    /// necessarily delivered call-accept. Treat that acknowledgement as the
+    /// caller's answer transition too. The later encrypted call-accept is
+    /// idempotent and follows this same path.
+    private func markOutgoingAnsweredLocked() {
+        guard outgoing else { return }
+        inviteRetryGeneration += 1
+        answered = true
+        if answeredAt == nil { answeredAt = Date() }
+        audioTrack?.isEnabled = !muted
+        if peer == nil { fetchTurnAndCreatePeerLocked() }
+        else {
+            startInitialOfferIfReadyLocked()
+            requestDirectVideoIfReadyLocked()
+        }
+        resendLocalCandidatesAtAnswerLocked()
+        if !completeInitialConnectionIfReadyLocked() { scheduleConnectionWatchdogLocked() }
+    }
+
     private func createAndSendOfferLocked(iceRestart: Bool = false) {
         guard let pc = peer else { return }
+        if !iceRestart {
+            guard !initialOfferStarted else { return }
+            initialOfferStarted = true
+        }
         let constraints = RTCMediaConstraints(mandatoryConstraints: iceRestart ? ["IceRestart": "true"] : nil,
                                               optionalConstraints: nil)
         pc.offer(for: constraints) { [weak self, weak pc] offer, error in
             guard let self, let pc, let offer, error == nil else {
-                self?.trace("offer create-failed")
+                self?.queue.async {
+                    if !iceRestart { self?.initialOfferStarted = false }
+                    self?.trace("offer create-failed")
+                }
                 return
             }
             pc.setLocalDescription(offer) { error in
-                guard error == nil else { self.trace("offer local-description-failed"); return }
+                guard error == nil else {
+                    self.queue.async {
+                        if !iceRestart { self.initialOfferStarted = false }
+                        self.trace("offer local-description-failed")
+                    }
+                    return
+                }
                 self.trace("offer sending")
                 self.queue.async { self.sendSignalLocked(type: "offer", payload: ["type": "offer", "sdp": offer.sdp]) }
             }
         }
+    }
+
+    @discardableResult
+    private func completeInitialConnectionIfReadyLocked() -> Bool {
+        guard answered, transportReady, !connectedOnce, let callID else { return false }
+        connectedOnce = true
+        connectionWatchdogGeneration += 1
+        if let answeredAt {
+            trace("timing media ready \(Int(Date().timeIntervalSince(answeredAt) * 1000))ms after answer")
+        }
+        startPathMonitorLocked()
+        VaultlixCallManager.shared.nativeCallDidConnect(callID: callID)
+        return true
     }
 
     private func processAnswerLocked(_ payload: [String: Any]) {
@@ -865,7 +922,7 @@ final class NativeWebRTCCallEngine: NSObject {
         let source = factory.audioSource(with: constraints)
         audioSource = source
         audioTrack = factory.audioTrack(with: source, trackId: "vaultlix-native-audio")
-        audioTrack?.isEnabled = !muted
+        audioTrack?.isEnabled = answered && !muted
     }
 
     private func prepareVideoTrackLocked(peer: RTCPeerConnection) {
@@ -978,7 +1035,7 @@ final class NativeWebRTCCallEngine: NSObject {
                 trace("call-accept retry stopped (superseded)")
                 return
             }
-            guard remaining > 0, answered, !offerReceived, room != nil else {
+            guard remaining > 0, answered, !connectedOnce, room != nil else {
                 // Diagnostic for the "Android caller stuck on ringing after
                 // iOS answers" report — if this fires with offerReceived
                 // still false and remaining<=0, the caller's offer never
@@ -993,9 +1050,31 @@ final class NativeWebRTCCallEngine: NSObject {
             }
             trace("call-accept retry attempt remaining=\(remaining)")
             sendSignalLocked(type: "call-accept", payload: [:])
+            resendLocalCandidatesAtAnswerLocked()
             queue.asyncAfter(deadline: .now() + 1.5) { retry(remaining - 1) }
         }
         queue.asyncAfter(deadline: .now() + 1.5) { retry(12) }
+    }
+
+    private func candidatePayload(_ candidate: RTCIceCandidate) -> [String: Any] {
+        ["candidate": ["candidate": candidate.sdp,
+                       "sdpMid": candidate.sdpMid ?? NSNull(),
+                       "sdpMLineIndex": candidate.sdpMLineIndex]]
+    }
+
+    private func sendLocalCandidateLocked(_ candidate: RTCIceCandidate) {
+        sendSignalLocked(type: "ice-candidate", payload: candidatePayload(candidate))
+    }
+
+    /// Trickle ICE is not queued by the signaling server. Replay the bounded
+    /// gathered relay set once at Answer, when both peers are known to be
+    /// present, so a ringing-time socket transition cannot lose the only
+    /// usable route.
+    private func resendLocalCandidatesAtAnswerLocked() {
+        guard !answerCandidatesResent, !localCandidates.isEmpty else { return }
+        answerCandidatesResent = true
+        trace("resending \(localCandidates.count) local ICE candidates at answer")
+        localCandidates.forEach(sendLocalCandidateLocked)
     }
 
     private func sendOutgoingInviteLocked() {
@@ -1044,6 +1123,10 @@ final class NativeWebRTCCallEngine: NSObject {
         recoveryGeneration += 1
         stopPathMonitorLocked()
         connectedOnce = false
+        transportReady = false
+        answerCandidatesResent = false
+        ringingAcknowledged = false
+        initialOfferStarted = false
         reconnecting = false
         reconnectStartedAt = nil
         peerCreatedAt = nil
@@ -1087,6 +1170,7 @@ final class NativeWebRTCCallEngine: NSObject {
         callID = nil
         pendingOffer = nil
         pendingCandidates.removeAll()
+        localCandidates.removeAll()
         sequenceOut = 0
         sequenceIn = 0
         peerSessionID = nil
@@ -1123,24 +1207,24 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
         trace("ice state=\(newState.rawValue)")
         if newState == .connected || newState == .completed {
             queue.async {
-                guard self.peer === peerConnection, let callID = self.callID else { return }
-                self.connectionWatchdogGeneration += 1
+                guard self.peer === peerConnection else { return }
+                self.transportReady = true
                 if self.connectedOnce {
                     self.mediaPathRecoveredLocked()
                     return
                 }
-                self.connectedOnce = true
-                if let answeredAt = self.answeredAt {
-                    self.trace("timing connected \(Int(Date().timeIntervalSince(answeredAt) * 1000))ms after answer")
+                if !self.answered {
+                    self.trace("media path prepared while ringing")
+                    return
                 }
-                self.startPathMonitorLocked()
-                VaultlixCallManager.shared.nativeCallDidConnect(callID: callID)
+                self.completeInitialConnectionIfReadyLocked()
             }
             return
         }
         if newState == .disconnected {
             queue.async {
                 guard self.peer === peerConnection else { return }
+                self.transportReady = false
                 self.beginMediaRecoveryLocked(after: Self.iceRestartGrace)
             }
             return
@@ -1148,6 +1232,11 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
         guard newState == .failed || newState == .closed else { return }
         queue.async {
             guard self.peer === peerConnection, let callID = self.callID else { return }
+            self.transportReady = false
+            if !self.answered {
+                self.trace("preconnected media path failed while ringing")
+                return
+            }
             // Before the first connection a failure ends the call as before; once the call has been
             // up, try to heal the path instead of hanging up on a weak-signal blip.
             if newState == .failed, self.connectedOnce {
@@ -1164,8 +1253,11 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
         }
     }
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        let mid: Any = candidate.sdpMid ?? NSNull()
-        queue.async { self.sendSignalLocked(type: "ice-candidate", payload: ["candidate": ["candidate": candidate.sdp, "sdpMid": mid, "sdpMLineIndex": candidate.sdpMLineIndex]]) }
+        queue.async {
+            guard self.peer === peerConnection else { return }
+            if self.localCandidates.count < 32 { self.localCandidates.append(candidate) }
+            self.sendLocalCandidateLocked(candidate)
+        }
     }
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}

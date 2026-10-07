@@ -104,7 +104,7 @@ test('Android starts its native engine during ringing instead of after answer', 
   assert.match(nativeActivity, /getCommunicationDevice\(\)[\s\S]*renderAudioRoute\(actual\)/);
   assert.match(engine, /private volatile String currentState = "idle"/);
   assert.match(engine, /private volatile long connectedAtMs/);
-  assert.match(engine, /if \(connectedAtMs == 0L\) connectedAtMs = System\.currentTimeMillis\(\)/);
+  assert.match(engine, /private boolean completeInitialConnectionIfReady\(\)[\s\S]*connectedAtMs = System\.currentTimeMillis\(\)/);
   assert.match(engine, /connectedAtMs = 0L/);
   assert.match(engine, /currentState = state;[\s\S]*listener\.onState\(state\)/);
 });

@@ -6645,9 +6645,14 @@ wss.on('connection', (ws) => {
       // Bursty by design: ICE candidate exchange fires many messages within
       // a second or two of call setup (and again on camera-toggle
       // renegotiation), on top of the call-state messages already flowing.
-      // 60/10s comfortably covers that — the client's own call-invite retry
-      // loop alone is only 1 every 3s, sustained, not bursty.
-      if (await rateLimited(`sig:${token}`, 60, 10 * 1000)) return;
+      // Keep terminal/acceptance state on a small independent allowance so a
+      // candidate burst can never consume the one frame that says the call
+      // was answered or ended.
+      const criticalCallSignal = ['call-accept', 'call-decline', 'call-busy', 'call-hangup'].includes(msg2.type);
+      const signalLimited = criticalCallSignal
+        ? await rateLimited(`sig-critical:${token}`, 30, 10 * 1000)
+        : await rateLimited(`sig:${token}`, 60, 10 * 1000);
+      if (signalLimited) return;
 
       const room2 = await ensureConversationLoaded(roomCode);
       if (!room2 || !room2.members.has(token) ||
@@ -6670,6 +6675,28 @@ wss.on('connection', (ws) => {
       // call carries a fresh random inviteId and remains unaffected.
       if (msg2.type === 'call-invite' && isInviteTerminated(room2, msg2.inviteId)) return;
 
+      // The encrypted call-accept is authoritative too. Android also sends a
+      // best-effort HTTP acknowledgement when the user taps Answer, but that
+      // request can be lost while the dedicated call activity is starting.
+      // Promote the authenticated signaling frame to active state and send a
+      // content-free control acknowledgement to every live caller owner.
+      // The encrypted call-accept is still relayed below and remains the E2E
+      // source of media negotiation; this control only advances call state.
+      const currentCall = sharedCallState || {};
+      const acceptsCurrentNativeCall = msg2.type === 'call-accept' &&
+        Boolean(room2.nativeCallId || currentCall.callId) &&
+        (!room2.nativeInviteId || !msg2.inviteId || room2.nativeInviteId === msg2.inviteId);
+      if (acceptsCurrentNativeCall) {
+        room2.ringingUntil = 0;
+        room2.activeCall = true;
+        await realtimeCoordinator.setCallState(roomCode, {
+          ...currentCall,
+          callId:room2.nativeCallId || currentCall.callId,
+          inviteId:msg2.inviteId || room2.nativeInviteId || currentCall.inviteId || '',
+          status:'active', ringingUntil:0,
+        }).catch(() => {});
+      }
+
       // 1:1 rooms only ever have one other member — relay to them if they
       // currently have a live socket. If they don't (call app not open on
       // their end right now), the message is simply dropped; there's no
@@ -6688,6 +6715,9 @@ wss.on('connection', (ws) => {
           envelope:msg2.envelope,
         };
         const delivered = await deliverSignalToMember(tok, relayedSignal);
+        if (acceptsCurrentNativeCall) {
+          await deliverSignalToMember(tok, { type:'native-call-answering' }, { allOwners:true });
+        }
         if (delivered) {
           // No success log here on purpose — this fires on every single
           // signaling message (every ICE candidate included), which was
