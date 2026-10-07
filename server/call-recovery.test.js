@@ -162,6 +162,13 @@ test('web: reconnect events never touch the start time, and a lost call ends wit
   assert.match(client, /detail\.action === 'nativeConnectionLost' && room\.callState !== 'idle'\) \{\s*room\.callReconnecting = false;\s*endCall\(room, 'The call lost its connection\.'\);/);
 });
 
+test('iOS: late audio activation cannot regress an already-connected call to Connecting', () => {
+  const start = client.indexOf("} else if (detail.action === 'audioActivated')");
+  const branch = client.slice(start, client.indexOf("} else if (detail.action === 'audioDeactivated')", start));
+  assert.match(branch, /if \(Number\.isFinite\(room\.callStartedAt\)\) \{[\s\S]{0,300}room\.nativeAnswerPending = false;[\s\S]{0,300}return;/);
+  assert.ok(branch.indexOf('Number.isFinite(room.callStartedAt)') < branch.indexOf('room.callStartedAt = null'));
+});
+
 test('iOS: the relay candidate is pre-gathered while ringing, a failed TURN fetch is retried then, and timings are traced', () => {
   assert.match(ios, /config\.iceCandidatePoolSize = 1/);
   // Credentials and peer are prepared at ring time for both directions.

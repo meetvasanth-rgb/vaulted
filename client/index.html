@@ -6587,6 +6587,18 @@ async function handleNativeCallAction(detail) {
       refreshCallButton();
       return;
     }
+    // A preconnected relay can become ready before CallKit finishes
+    // activating AVAudioSession. In that valid order nativeConnected has
+    // already started the timer; never let the later audioActivated event
+    // erase that timestamp and put the UI back on "Connecting securely…".
+    if (Number.isFinite(room.callStartedAt)) {
+      room.nativeAnswerPending = false;
+      room.nativeCallActive = true;
+      requestNativeIOSSpeakerState(room);
+      renderCallOverlay(room);
+      refreshCallButton();
+      return;
+    }
     room.nativeAnswerPending = true;
     room.nativeCallActive = true;
     room.callState = 'active';
