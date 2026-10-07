@@ -6417,7 +6417,7 @@ acceptNativeVoipRegistration(window.__vaultlixNativeVoipRegistration);
 
 async function handleNativeCallAction(detail) {
   if (!detail || typeof detail.action !== 'string') return;
-  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeCancelled','nativeBusy','nativeFailed','microphoneDenied']);
+  const terminalNativeActions = new Set(['ended','missed','declineOrEnd','nativeDeclined','nativeCancelled','nativeBusy','nativeFailed','nativeConnectionLost','microphoneDenied']);
   const hasConnectedCallHistory = terminalNativeActions.has(detail.action) && detail.connected === true;
   const occurredAt = Number(detail.occurredAt || 0);
   const staleTerminalAction = terminalNativeActions.has(detail.action) && occurredAt > 0 && Date.now() - occurredAt > 5000;
@@ -6510,6 +6510,17 @@ async function handleNativeCallAction(detail) {
   if (detail.action === 'nativeMuted') {
     room.callMuted = detail.muted === true;
     renderCallOverlay(room);
+    return;
+  }
+  if (detail.action === 'nativeReconnecting' || detail.action === 'nativeReconnected') {
+    // The media path dropped (weak signal, network switch) and the native engine is restoring it.
+    // The duration keeps counting the call's length; only the label says the audio may be down.
+    if (activeCallRoomCode && activeCallRoomCode !== room.code) return;
+    room.callReconnecting = detail.action === 'nativeReconnecting';
+    if (room.callState === 'active') {
+      updateCallTimerDisplay(room);
+      if (!usesDedicatedAndroidCallUi) renderCallOverlay(room);
+    }
     return;
   }
   if (detail.action === 'nativeConnected') {
@@ -6614,6 +6625,9 @@ async function handleNativeCallAction(detail) {
     endCall(room, room.callPeerName ? `${room.callPeerName} is on another call.` : 'They’re on another call.', null, 'busy');
   } else if (detail.action === 'nativeFailed' && room.callState !== 'idle') {
     endCall(room, 'Could not start the call.');
+  } else if (detail.action === 'nativeConnectionLost' && room.callState !== 'idle') {
+    room.callReconnecting = false;
+    endCall(room, 'The call lost its connection.');
   } else if (detail.action === 'microphoneDenied' && room.callState !== 'idle') {
     endCall(room, 'Allow microphone access in Settings, then try the call again.');
   } else if (detail.action === 'missed') {
@@ -8645,6 +8659,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   room.callWasOutgoing = null;
   room.callPeerName = null;
   room.callStartedAt = null;
+  room.callReconnecting = false;
   room.callConnectedHapticFired = false;
   room.callRinging = false;
   room.callAnswerAcknowledged = false;
@@ -8992,7 +9007,9 @@ function updateCallTimerDisplay(room) {
   const el = document.getElementById('call-timer');
   if (!el || room.callState !== 'active' || !room.callStartedAt) return;
   const secs = Math.max(0, Math.floor((Date.now() - room.callStartedAt) / 1000));
-  el.textContent = formatCallTime(secs);
+  // While the media path is down the timer still counts the call, but says so instead of looking live.
+  el.textContent = room.callReconnecting ? `Reconnecting… ${formatCallTime(secs)}` : formatCallTime(secs);
+  el.classList.toggle('pulsing', !!room.callReconnecting);
 }
 
 // Same phone-handset glyph for every button — accept, decline, cancel, and

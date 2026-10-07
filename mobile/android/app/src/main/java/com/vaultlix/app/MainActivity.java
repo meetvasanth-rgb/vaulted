@@ -109,6 +109,7 @@ public class MainActivity extends BridgeActivity {
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
+        @Override public void onReconnecting(boolean reconnecting) { emitNativeCallAction(reconnecting ? "nativeReconnecting" : "nativeReconnected"); }
         @Override public void onEnded(String reason) {
             // NativeCallActivity owns the authoritative duration/outcome and
             // forwards exactly one history row when it closes. Mirroring the

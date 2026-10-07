@@ -1,6 +1,8 @@
 package com.vaultlix.app;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.util.Base64;
 import android.util.Log;
 
@@ -71,6 +73,8 @@ final class NativeWebRtcCallEngine {
         default void onVideoRequest() {}
         /** The peer answered a request this side made. */
         default void onVideoResponse(boolean accepted) {}
+        /** The media path dropped mid-call (true) and is being re-established, or has come back (false). */
+        default void onReconnecting(boolean reconnecting) {}
     }
 
     /** Forwards frames to whichever renderer the visible call screen has attached. */
@@ -133,6 +137,18 @@ final class NativeWebRtcCallEngine {
     private volatile String currentState = "idle";
     private volatile long connectedAtMs;
     private int generation;
+    // Media-path recovery: ICE going quiet mid-call (weak signal, Wi-Fi <-> mobile data) is
+    // healed by restarting ICE from the caller's side instead of leaving a dead call running.
+    private static final long CONNECT_DEADLINE_MS = 25_000L;
+    private static final long ICE_RESTART_GRACE_MS = 4_000L;
+    private static final long ICE_RESTART_RETRY_MS = 8_000L;
+    private static final long RECONNECT_DEADLINE_MS = 30_000L;
+    private boolean reconnecting;
+    private long answeredAtMs;
+    private long reconnectStartedMs;
+    private int recoveryRun;
+    private ConnectivityManager.NetworkCallback networkCallback;
+    private Network lastDefaultNetwork;
 
     private NativeWebRtcCallEngine(Context context) {
         this.context = context;
@@ -251,6 +267,7 @@ final class NativeWebRtcCallEngine {
             sendSignal("call-accept", new JSONObject());
             notifyState("connecting");
             scheduleAcceptRetry(generation, 12);
+            startConnectWatchdog();
         });
     }
 
@@ -311,6 +328,7 @@ final class NativeWebRtcCallEngine {
         int run = generation;
         connectSocket(run);
         fetchTurn(run, 1);
+        watchNetworkChanges();
         notifyState(isOutgoing ? "calling" : "ringing");
     }
 
@@ -328,6 +346,10 @@ final class NativeWebRtcCallEngine {
             @Override public void onMessage(WebSocket webSocket, String text) { executor.execute(() -> handleSocket(run, text)); }
             @Override public void onFailure(WebSocket webSocket, Throwable error, Response response) {
                 executor.execute(() -> { if (run == generation && room != null) reconnect(run, 1); });
+            }
+            @Override public void onClosed(WebSocket webSocket, int code, String reason) {
+                // A server-side close mid-call must not leave signalling dead: a restart offer could never arrive.
+                executor.execute(() -> { if (run == generation && socket == webSocket && room != null && !ending) reconnect(run, 1); });
             }
         });
     }
@@ -379,6 +401,7 @@ final class NativeWebRtcCallEngine {
                     if (audioTrack != null) audioTrack.setEnabled(true);
                     notifyState("connecting");
                     if (peer != null) createOffer();
+                    startConnectWatchdog();
                     break;
                 case "offer":
                     if (outgoing || !answered) break;
@@ -485,15 +508,19 @@ final class NativeWebRtcCallEngine {
         } catch (Exception error) { Log.w(TAG, "TURN/peer setup failed", error); }
     }
 
-    private void createOffer() {
+    private void createOffer() { createOffer(false); }
+
+    private void createOffer(boolean iceRestart) {
         if (peer == null) return;
+        MediaConstraints constraints = new MediaConstraints();
+        if (iceRestart) constraints.mandatory.add(new MediaConstraints.KeyValuePair("IceRestart", "true"));
         peer.createOffer(new SimpleSdpObserver() {
             @Override public void onCreateSuccess(SessionDescription sdp) {
                 peer.setLocalDescription(new SimpleSdpObserver() {
                     @Override public void onSetSuccess() { sendSdp("offer", sdp); }
                 }, sdp);
             }
-        }, new MediaConstraints());
+        }, constraints);
     }
 
     private void processOffer(JSONObject payload) {
@@ -679,6 +706,8 @@ final class NativeWebRtcCallEngine {
         if (audioTrack != null) { audioTrack.setEnabled(false); audioTrack.dispose(); audioTrack = null; }
         if (audioSource != null) { audioSource.dispose(); audioSource = null; }
         disposeVideo();
+        stopWatchingNetworkChanges();
+        recoveryRun++; reconnecting = false; answeredAtMs = 0L;
         room = null; signalingReady = false; outgoing = false; outgoingVideoCall = false; answered = false; offerReceived = false; ending = false;
         inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear();
@@ -697,6 +726,97 @@ final class NativeWebRtcCallEngine {
                 ? value : fallback;
     }
 
+    // ── Setup watchdog and mid-call recovery ──
+    // Android used to sit on "Connecting securely…" until ICE reported failure, which on a weak
+    // network can be never. End the call with a clear message instead of leaving both people waiting.
+    private void startConnectWatchdog() {
+        if (answeredAtMs == 0L) answeredAtMs = System.currentTimeMillis();
+        final int run = generation;
+        scheduler.schedule(() -> executor.execute(() -> {
+            if (run != generation || room == null || !answered || connectedAtMs > 0L) return;
+            Log.w(TAG, "connection timeout after " + CONNECT_DEADLINE_MS + "ms room=" + currentRoomCode);
+            reset("connection-timeout");
+        }), CONNECT_DEADLINE_MS, TimeUnit.MILLISECONDS);
+        // One ICE restart partway through rescues a stalled "checking" without waiting for the deadline.
+        scheduler.schedule(() -> executor.execute(() -> {
+            if (run != generation || room == null || !answered || connectedAtMs > 0L) return;
+            Log.i(TAG, "setup stalled: restarting ICE");
+            restartIce();
+        }), CONNECT_DEADLINE_MS / 2, TimeUnit.MILLISECONDS);
+    }
+
+    private void beginMediaRecovery(long graceMs) {
+        if (room == null || peer == null || connectedAtMs == 0L || ending) return;
+        if (!reconnecting) {
+            reconnecting = true;
+            reconnectStartedMs = System.currentTimeMillis();
+            Log.i(TAG, "media path lost: reconnecting room=" + currentRoomCode);
+            for (Listener listener : listeners) listener.onReconnecting(true);
+        }
+        final int token = ++recoveryRun;
+        final int run = generation;
+        // The deadline counts from when the path was first lost, so a flapping link cannot extend it.
+        scheduleRecoveryAttempt(run, token, reconnectStartedMs, graceMs);
+    }
+
+    private void scheduleRecoveryAttempt(int run, int token, long startedAt, long delayMs) {
+        scheduler.schedule(() -> executor.execute(() -> {
+            if (run != generation || token != recoveryRun || room == null || !reconnecting) return;
+            if (System.currentTimeMillis() - startedAt >= RECONNECT_DEADLINE_MS) {
+                Log.w(TAG, "media path not recovered in time: ending call");
+                reset("connection-lost");
+                return;
+            }
+            restartIce();
+            scheduleRecoveryAttempt(run, token, startedAt, ICE_RESTART_RETRY_MS);
+        }), delayMs, TimeUnit.MILLISECONDS);
+    }
+
+    // Only the caller offers, so the two sides can never offer at the same moment. The other
+    // side answers the restart offer through the normal offer path once it can hear us again.
+    private void restartIce() {
+        if (peer == null || room == null || !outgoing || !answered) return;
+        Log.i(TAG, "ICE restart offer");
+        createOffer(true);
+    }
+
+    private void watchNetworkChanges() {
+        stopWatchingNetworkChanges();
+        try {
+            ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+            if (manager == null) return;
+            final int run = generation;
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(Network network) {
+                    executor.execute(() -> {
+                        if (run != generation || room == null) return;
+                        boolean switched = lastDefaultNetwork != null && !lastDefaultNetwork.equals(network);
+                        lastDefaultNetwork = network;
+                        // A different default network (Wi-Fi <-> mobile data) kills the old relay path.
+                        if (switched && connectedAtMs > 0L) {
+                            Log.i(TAG, "default network changed: recovering media path");
+                            beginMediaRecovery(500L);
+                        }
+                    });
+                }
+            };
+            manager.registerDefaultNetworkCallback(networkCallback);
+        } catch (RuntimeException unavailable) {
+            Log.w(TAG, "network monitoring unavailable", unavailable);
+            networkCallback = null;
+        }
+    }
+
+    private void stopWatchingNetworkChanges() {
+        lastDefaultNetwork = null;
+        if (networkCallback == null) return;
+        try {
+            ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+            if (manager != null) manager.unregisterNetworkCallback(networkCallback);
+        } catch (RuntimeException ignored) { }
+        networkCallback = null;
+    }
+
     private final class PeerObserver implements PeerConnection.Observer {
         @Override public void onIceCandidate(IceCandidate candidate) {
             executor.execute(() -> { try { sendSignal("ice-candidate", new JSONObject().put("candidate", new JSONObject()
@@ -706,11 +826,28 @@ final class NativeWebRtcCallEngine {
             Log.i(TAG, "ICE " + state + " room=" + currentRoomCode);
             if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED) {
                 executor.execute(() -> {
+                    boolean first = connectedAtMs == 0L;
                     if (connectedAtMs == 0L) connectedAtMs = System.currentTimeMillis();
+                    if (first && answeredAtMs > 0L) Log.i(TAG, "ICE connected " + (connectedAtMs - answeredAtMs) + "ms after answer");
                     currentState = "connected";
-                    for (Listener listener : listeners) listener.onConnected();
+                    recoveryRun++;
+                    if (first) for (Listener listener : listeners) listener.onConnected();
+                    else if (reconnecting) {
+                        reconnecting = false;
+                        Log.i(TAG, "media path recovered");
+                        for (Listener listener : listeners) listener.onReconnecting(false);
+                    }
                 });
-            } else if (state == PeerConnection.IceConnectionState.FAILED) executor.execute(() -> reset("connection-failed"));
+            } else if (state == PeerConnection.IceConnectionState.DISCONNECTED) {
+                executor.execute(() -> beginMediaRecovery(ICE_RESTART_GRACE_MS));
+            } else if (state == PeerConnection.IceConnectionState.FAILED) {
+                executor.execute(() -> {
+                    // Before the first connection a failure ends the call as before; once the call
+                    // has been up, try to heal the path instead of hanging up on a weak-signal blip.
+                    if (connectedAtMs == 0L) reset("connection-failed");
+                    else beginMediaRecovery(0L);
+                });
+            }
         }
         @Override public void onSignalingChange(PeerConnection.SignalingState state) {}
         @Override public void onIceConnectionReceivingChange(boolean receiving) {}

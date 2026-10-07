@@ -36,4 +36,7 @@
   <string name="native_not_now">Не сейчас</string>
   <string name="native_video_declined">%1$s остаётся на аудио.</string>
   <string name="native_video_waiting">Ожидание…</string>
+    <string name="native_reconnecting">Повторное подключение…</string>
+    <string name="native_call_connect_failed">Не удалось соединить звонок. Попробуйте ещё раз.</string>
+    <string name="native_call_connection_lost">Соединение звонка потеряно.</string>
 </resources>

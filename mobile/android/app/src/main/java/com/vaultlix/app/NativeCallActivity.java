@@ -631,7 +631,17 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             handler.postDelayed(videoRequestTimeout, 20_000);
         }
     }); }
+    // The media path dropped mid-call: say so, and dim the timer, which keeps counting the call's length.
+    @Override public void onReconnecting(boolean reconnecting) { runOnUiThread(() -> {
+        if (connectedAt == 0 || status == null || timer == null) return;
+        status.setText(reconnecting ? R.string.native_reconnecting : R.string.native_end_to_end_encrypted_call);
+        timer.setAlpha(reconnecting ? .45f : 1f);
+    }); }
     @Override public void onEnded(String reason) { runOnUiThread(() -> {
+        if ("connection-timeout".equals(reason) || "connection-failed".equals(reason) || "connection-lost".equals(reason)) {
+            Toast.makeText(this, connectedAt == 0 ? R.string.native_call_connect_failed : R.string.native_call_connection_lost,
+                    Toast.LENGTH_LONG).show();
+        }
         if (connectedAt == 0) {
             if ("declined".equals(reason)) pendingHistory = outgoing ? "Call declined" : "Declined call";
             else if ("cancelled".equals(reason)) pendingHistory = outgoing ? "Cancelled call" : "Caller cancelled";

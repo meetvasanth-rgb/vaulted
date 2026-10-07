@@ -42,4 +42,7 @@
   <string name="native_not_now">Not now</string>
   <string name="native_video_declined">%1$s stayed on audio.</string>
   <string name="native_video_waiting">Waiting…</string>
+    <string name="native_reconnecting">Reconnecting…</string>
+    <string name="native_call_connect_failed">Couldn’t connect the call. Please try again.</string>
+    <string name="native_call_connection_lost">The call lost its connection.</string>
 </resources>

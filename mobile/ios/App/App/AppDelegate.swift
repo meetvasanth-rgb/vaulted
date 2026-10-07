@@ -381,7 +381,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // the same call; the encrypted call-history message remains canonical.
         let terminalActions: Set<String> = [
             "ended", "missed", "declineOrEnd", "nativeDeclined", "nativeCancelled", "nativeBusy", "nativeFailed",
-            "microphoneDenied",
+            "nativeConnectionLost", "microphoneDenied",
         ]
         if terminalActions.contains(action) {
             pendingActions.removeAll { ($0["callId"] as? String) == callID.uuidString }
@@ -963,6 +963,17 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             payload["connectedAt"] = Date().timeIntervalSince1970 * 1000
             self.calls[callID] = payload
             self.postAction("nativeConnected", callID: callID, payload: payload)
+        }
+    }
+
+    /// The media path dropped mid-call (or came back). Presentation only: CallKit keeps the call
+    /// open while the engine restarts ICE, and the web page shows "Reconnecting…" in the meantime.
+    func nativeCallMediaDidChange(callID: UUID, reconnecting: Bool) {
+        DispatchQueue.main.async {
+            guard let payload = self.calls[callID],
+                  self.nativeMediaCalls.contains(callID),
+                  self.connectedCalls.contains(callID) else { return }
+            self.postAction(reconnecting ? "nativeReconnecting" : "nativeReconnected", callID: callID, payload: payload)
         }
     }
 

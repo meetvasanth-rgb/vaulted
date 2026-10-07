@@ -36,4 +36,7 @@
   <string name="native_not_now">अभी नहीं</string>
   <string name="native_video_declined">%1$s ऑडियो पर ही रहे।</string>
   <string name="native_video_waiting">प्रतीक्षा…</string>
+    <string name="native_reconnecting">फिर से जोड़ा जा रहा है…</string>
+    <string name="native_call_connect_failed">कॉल कनेक्ट नहीं हो सका। कृपया फिर कोशिश करें।</string>
+    <string name="native_call_connection_lost">कॉल का कनेक्शन टूट गया।</string>
 </resources>

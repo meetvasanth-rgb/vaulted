@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import CryptoKit
+import Network
 import OSLog
 import WebRTC
 
@@ -61,6 +62,17 @@ final class NativeWebRTCCallEngine: NSObject {
     private var acceptRetryGeneration = 0
     private var hangupRetryGeneration = 0
     private var connectionWatchdogGeneration = 0
+    // Media-path recovery: ICE going quiet mid-call (weak signal, Wi-Fi <-> mobile data) is healed
+    // by restarting ICE from the caller's side instead of leaving a dead call running.
+    private static let iceRestartGrace: TimeInterval = 4
+    private static let iceRestartRetry: TimeInterval = 8
+    private static let reconnectDeadline: TimeInterval = 30
+    private var connectedOnce = false
+    private var reconnecting = false
+    private var reconnectStartedAt: Date?
+    private var recoveryGeneration = 0
+    private var pathMonitor: NWPathMonitor?
+    private var lastPathSignature: String?
     private var ending = false
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
 
@@ -664,9 +676,11 @@ final class NativeWebRTCCallEngine: NSObject {
         }
     }
 
-    private func createAndSendOfferLocked() {
+    private func createAndSendOfferLocked(iceRestart: Bool = false) {
         guard let pc = peer else { return }
-        pc.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self, weak pc] offer, error in
+        let constraints = RTCMediaConstraints(mandatoryConstraints: iceRestart ? ["IceRestart": "true"] : nil,
+                                              optionalConstraints: nil)
+        pc.offer(for: constraints) { [weak self, weak pc] offer, error in
             guard let self, let pc, let offer, error == nil else {
                 self?.trace("offer create-failed")
                 return
@@ -738,6 +752,12 @@ final class NativeWebRTCCallEngine: NSObject {
     private func scheduleConnectionWatchdogLocked() {
         connectionWatchdogGeneration += 1
         let generation = connectionWatchdogGeneration
+        // One ICE restart partway through rescues a stalled "checking" well before the deadline.
+        queue.asyncAfter(deadline: .now() + 10) {
+            guard generation == self.connectionWatchdogGeneration, self.answered, !self.connectedOnce else { return }
+            self.trace("setup stalled: restarting ICE")
+            self.restartIceLocked()
+        }
         queue.asyncAfter(deadline: .now() + 20) {
             guard generation == self.connectionWatchdogGeneration,
                   self.answered,
@@ -749,6 +769,79 @@ final class NativeWebRTCCallEngine: NSObject {
                 VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: "nativeFailed")
             }
         }
+    }
+
+    // MARK: - Mid-call recovery
+
+    /// Only the caller offers, so the two sides can never offer at the same moment. The other
+    /// side answers the restart offer through the normal offer path once it can hear us again.
+    private func restartIceLocked() {
+        guard peer != nil, outgoing, answered else { return }
+        trace("ice restart offer")
+        createAndSendOfferLocked(iceRestart: true)
+    }
+
+    private func beginMediaRecoveryLocked(after grace: TimeInterval) {
+        guard connectedOnce, peer != nil, let callID, !ending else { return }
+        if !reconnecting {
+            reconnecting = true
+            reconnectStartedAt = Date()
+            trace("media path lost: reconnecting")
+            DispatchQueue.main.async { VaultlixCallManager.shared.nativeCallMediaDidChange(callID: callID, reconnecting: true) }
+        }
+        recoveryGeneration += 1
+        scheduleRecoveryAttemptLocked(generation: recoveryGeneration, delay: grace)
+    }
+
+    private func scheduleRecoveryAttemptLocked(generation: Int, delay: TimeInterval) {
+        queue.asyncAfter(deadline: .now() + delay) {
+            guard generation == self.recoveryGeneration, self.reconnecting, let callID = self.callID else { return }
+            // The deadline counts from when the path was first lost, so a flapping link cannot extend it.
+            if let started = self.reconnectStartedAt, Date().timeIntervalSince(started) >= Self.reconnectDeadline {
+                self.trace("media path not recovered in time: ending call")
+                DispatchQueue.main.async {
+                    VaultlixCallManager.shared.nativeCallDidEnd(callID: callID, action: "nativeConnectionLost")
+                }
+                return
+            }
+            self.restartIceLocked()
+            self.scheduleRecoveryAttemptLocked(generation: generation, delay: Self.iceRestartRetry)
+        }
+    }
+
+    private func mediaPathRecoveredLocked() {
+        guard reconnecting, let callID else { return }
+        reconnecting = false
+        reconnectStartedAt = nil
+        recoveryGeneration += 1
+        trace("media path recovered")
+        DispatchQueue.main.async { VaultlixCallManager.shared.nativeCallMediaDidChange(callID: callID, reconnecting: false) }
+    }
+
+    /// A different primary network (Wi-Fi <-> mobile data) kills the old relay path, so recover at once
+    /// instead of waiting for ICE to notice.
+    private func startPathMonitorLocked() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            self?.queue.async {
+                guard let self else { return }
+                let signature = path.status == .satisfied ? (path.availableInterfaces.first?.name ?? "unknown") : "offline"
+                let previous = self.lastPathSignature
+                self.lastPathSignature = signature
+                guard let previous, previous != signature, signature != "offline" else { return }
+                self.trace("default network changed: recovering media path")
+                self.beginMediaRecoveryLocked(after: 0.5)
+            }
+        }
+        pathMonitor = monitor
+        monitor.start(queue: DispatchQueue(label: "com.vaultlix.native-call.path"))
+    }
+
+    private func stopPathMonitorLocked() {
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        lastPathSignature = nil
     }
 
     private func prepareAudioTrackLocked() {
@@ -934,6 +1027,11 @@ final class NativeWebRTCCallEngine: NSObject {
         inviteRetryGeneration += 1
         hangupRetryGeneration += 1
         connectionWatchdogGeneration += 1
+        recoveryGeneration += 1
+        stopPathMonitorLocked()
+        connectedOnce = false
+        reconnecting = false
+        reconnectStartedAt = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
@@ -1011,13 +1109,32 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
             queue.async {
                 guard self.peer === peerConnection, let callID = self.callID else { return }
                 self.connectionWatchdogGeneration += 1
+                if self.connectedOnce {
+                    self.mediaPathRecoveredLocked()
+                    return
+                }
+                self.connectedOnce = true
+                self.startPathMonitorLocked()
                 VaultlixCallManager.shared.nativeCallDidConnect(callID: callID)
+            }
+            return
+        }
+        if newState == .disconnected {
+            queue.async {
+                guard self.peer === peerConnection else { return }
+                self.beginMediaRecoveryLocked(after: Self.iceRestartGrace)
             }
             return
         }
         guard newState == .failed || newState == .closed else { return }
         queue.async {
             guard self.peer === peerConnection, let callID = self.callID else { return }
+            // Before the first connection a failure ends the call as before; once the call has been
+            // up, try to heal the path instead of hanging up on a weak-signal blip.
+            if newState == .failed, self.connectedOnce {
+                self.beginMediaRecoveryLocked(after: 0)
+                return
+            }
             VaultlixCallManager.shared.endCall(callID: callID)
         }
     }

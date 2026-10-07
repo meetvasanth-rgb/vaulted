@@ -36,4 +36,7 @@
   <string name="native_not_now">暂不</string>
   <string name="native_video_declined">%1$s选择继续语音通话。</string>
   <string name="native_video_waiting">等待中…</string>
+    <string name="native_reconnecting">正在重新连接…</string>
+    <string name="native_call_connect_failed">无法接通通话，请重试。</string>
+    <string name="native_call_connection_lost">通话连接已中断。</string>
 </resources>
