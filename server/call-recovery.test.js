@@ -118,3 +118,15 @@ test('web: reconnect events never touch the start time, and a lost call ends wit
   assert.doesNotMatch(branch, /callStartedAt\s*=/);
   assert.match(client, /detail\.action === 'nativeConnectionLost' && room\.callState !== 'idle'\) \{\s*room\.callReconnecting = false;\s*endCall\(room, 'The call lost its connection\.'\);/);
 });
+
+test('iOS: the relay candidate is pre-gathered while ringing, a failed TURN fetch is retried then, and timings are traced', () => {
+  assert.match(ios, /config\.iceCandidatePoolSize = 1/);
+  // Credentials and peer are prepared at ring time for both directions.
+  assert.match(ios, /PushKit wakes us before the user answers[\s\S]{0,200}self\.fetchTurnAndCreatePeerLocked\(\)/);
+  assert.match(ios, /Prepare the relay and peer while CallKit is ringing[\s\S]{0,300}self\.fetchTurnAndCreatePeerLocked\(\)/);
+  const retry = ios.slice(ios.indexOf('private func scheduleTurnRetryLocked()'), ios.indexOf('private func scheduleAcceptRetryLocked()'));
+  assert.doesNotMatch(retry, /\banswered\b/, 'the retry must not wait for the answer');
+  assert.match(ios, /if self\.peer == nil \{ self\.turnAttempt = 0 \}/);
+  assert.match(ios, /timing connected \\\(Int\(Date\(\)\.timeIntervalSince\(answeredAt\) \* 1000\)\)ms after answer/);
+  assert.match(ios, /timing gathering=/);
+});

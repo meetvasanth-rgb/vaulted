@@ -73,6 +73,9 @@ final class NativeWebRTCCallEngine: NSObject {
     private var recoveryGeneration = 0
     private var pathMonitor: NWPathMonitor?
     private var lastPathSignature: String?
+    // Timing for diagnosing slow connects (see the "timing" trace lines).
+    private var peerCreatedAt: Date?
+    private var answeredAt: Date?
     private var ending = false
     private let logger = Logger(subsystem: "com.vaultlix.app", category: "NativeCall")
 
@@ -167,6 +170,7 @@ final class NativeWebRTCCallEngine: NSObject {
             }
             self.trace("answer accepted-state")
             self.answered = true
+            self.answeredAt = Date()
             if self.directVideoCall {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
@@ -175,6 +179,8 @@ final class NativeWebRTCCallEngine: NSObject {
             }
             self.sendSignalLocked(type: "call-accept", payload: [:])
             self.scheduleAcceptRetryLocked()
+            // Ringing-time attempts may have used up the retries; the answer starts a fresh set.
+            if self.peer == nil { self.turnAttempt = 0 }
             self.fetchTurnAndCreatePeerLocked()
             self.scheduleConnectionWatchdogLocked()
         }
@@ -534,6 +540,7 @@ final class NativeWebRTCCallEngine: NSObject {
             guard outgoing else { return }
             inviteRetryGeneration += 1
             answered = true
+            if answeredAt == nil { answeredAt = Date() }
             scheduleConnectionWatchdogLocked()
             if peer == nil { fetchTurnAndCreatePeerLocked() }
             else {
@@ -635,6 +642,12 @@ final class NativeWebRTCCallEngine: NSObject {
         let config = RTCConfiguration()
         config.iceTransportPolicy = .relay
         config.sdpSemantics = .unifiedPlan
+        // Start allocating the relay candidate now, while the phone is still ringing, instead of
+        // after the offer/answer exist. By the time the call is answered the candidate is already
+        // gathered, so connection checks can begin as soon as the descriptions are exchanged.
+        // (Everything is bundled onto one transport, so one pooled candidate is enough.)
+        config.iceCandidatePoolSize = 1
+        peerCreatedAt = Date()
         config.iceServers = servers.compactMap { entry in
             let urls = (entry["urls"] as? [String]) ?? (entry["urls"] as? String).map { [$0] } ?? []
             guard !urls.isEmpty else { return nil }
@@ -945,13 +958,14 @@ final class NativeWebRTCCallEngine: NSObject {
     }
 
     private func scheduleTurnRetryLocked() {
-        guard answered, peer == nil, room != nil, turnAttempt < 4 else { return }
+        // Also while still ringing: a failed fetch is retried then, so the relay is ready by the answer.
+        guard peer == nil, room != nil, turnAttempt < 4 else { return }
         let generation = reconnectGeneration
         let delay = min(4.0, pow(2.0, Double(max(0, turnAttempt - 1))))
         trace("turn retry-scheduled attempt=\(turnAttempt)")
         queue.asyncAfter(deadline: .now() + delay) {
             guard generation == self.reconnectGeneration,
-                  self.answered, self.peer == nil, self.room != nil else { return }
+                  self.peer == nil, self.room != nil else { return }
             self.fetchTurnAndCreatePeerLocked()
         }
     }
@@ -1032,6 +1046,8 @@ final class NativeWebRTCCallEngine: NSObject {
         connectedOnce = false
         reconnecting = false
         reconnectStartedAt = nil
+        peerCreatedAt = nil
+        answeredAt = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         signalingReady = false
@@ -1114,6 +1130,9 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
                     return
                 }
                 self.connectedOnce = true
+                if let answeredAt = self.answeredAt {
+                    self.trace("timing connected \(Int(Date().timeIntervalSince(answeredAt) * 1000))ms after answer")
+                }
                 self.startPathMonitorLocked()
                 VaultlixCallManager.shared.nativeCallDidConnect(callID: callID)
             }
@@ -1138,7 +1157,12 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
             VaultlixCallManager.shared.endCall(callID: callID)
         }
     }
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {}
+    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
+        queue.async {
+            guard self.peer === peerConnection, let created = self.peerCreatedAt else { return }
+            self.trace("timing gathering=\(newState.rawValue) \(Int(Date().timeIntervalSince(created) * 1000))ms after peer creation")
+        }
+    }
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         let mid: Any = candidate.sdpMid ?? NSNull()
         queue.async { self.sendSignalLocked(type: "ice-candidate", payload: ["candidate": ["candidate": candidate.sdp, "sdpMid": mid, "sdpMLineIndex": candidate.sdpMLineIndex]]) }
