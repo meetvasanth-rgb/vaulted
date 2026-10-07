@@ -33,6 +33,15 @@ test('native iOS camera capture is permission-aware, compatible and idempotent',
   assert.doesNotMatch(engine, /supportedFormats\(for: device\)\.max/);
 });
 
+test('incoming iOS video intent survives the CallKit answer race', () => {
+  const engine = fs.readFileSync('mobile/ios/App/App/NativeWebRTCCallEngine.swift', 'utf8');
+  assert.match(engine, /private var incomingVideoRequestPending = false/);
+  assert.match(engine, /case "call-video-request":\s*incomingVideoRequestPending = true\s*presentIncomingVideoRequestIfReadyLocked\(\)/);
+  assert.match(engine, /if self\.directVideoCall && !self\.outgoing \{\s*self\.incomingVideoRequestPending = true\s*\}/);
+  assert.match(engine, /private func presentIncomingVideoRequestIfReadyLocked\(\)[\s\S]*guard incomingVideoRequestPending, !outgoing, answered, peer != nil/);
+  assert.match(engine, /requestDirectVideoIfReadyLocked\(\)\s*presentIncomingVideoRequestIfReadyLocked\(\)/);
+});
+
 test('privacy-preserving incoming iOS calls can resolve native media controls', () => {
   const manager = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
   assert.match(manager, /private func nativeMediaCall\(matching roomCode: String\)/);

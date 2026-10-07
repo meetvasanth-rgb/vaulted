@@ -39,6 +39,11 @@ final class NativeWebRTCCallEngine: NSObject {
     private var videoConsent = false
     private var remoteVideoOn = false
     private var videoRequestPending = false
+    // A direct-video request can arrive through encrypted signaling just
+    // before CallKit's answer callback marks this engine answered. Keep it
+    // until both the answer and peer are ready instead of silently dropping
+    // the request and leaving the receiver on "Video paused".
+    private var incomingVideoRequestPending = false
     private var outgoingVideoCall = false
     private var directVideoCall = false
     private var pendingOffer: [String: Any]?
@@ -177,6 +182,10 @@ final class NativeWebRTCCallEngine: NSObject {
             self.answered = true
             self.answeredAt = Date()
             self.audioTrack?.isEnabled = !self.muted
+            if self.directVideoCall && !self.outgoing {
+                self.incomingVideoRequestPending = true
+            }
+            self.presentIncomingVideoRequestIfReadyLocked()
             if self.directVideoCall {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
@@ -564,11 +573,8 @@ final class NativeWebRTCCallEngine: NSObject {
             guard outgoing else { return }
             processAnswerLocked(payload)
         case "call-video-request":
-            guard peer != nil, answered else { return }
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
-                                                userInfo: ["request": true])
-            }
+            incomingVideoRequestPending = true
+            presentIncomingVideoRequestIfReadyLocked()
         case "call-video-response":
             let accepted = payload["accepted"] as? Bool ?? false
             videoRequestPending = false
@@ -669,6 +675,21 @@ final class NativeWebRTCCallEngine: NSObject {
         if let offer = pendingOffer { pendingOffer = nil; processOfferLocked(offer) }
         else { startInitialOfferIfReadyLocked() }
         requestDirectVideoIfReadyLocked()
+        presentIncomingVideoRequestIfReadyLocked()
+    }
+
+    /// Incoming video intent is known before a CallKit answer for direct
+    /// video calls. Encrypted signaling can also deliver the explicit request
+    /// during that small transition. Present consent only after the accepted
+    /// call has a peer, while retaining the intent until then.
+    private func presentIncomingVideoRequestIfReadyLocked() {
+        guard incomingVideoRequestPending, !outgoing, answered, peer != nil else { return }
+        incomingVideoRequestPending = false
+        trace("incoming-video presenting-consent")
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .vaultlixVideoState, object: nil,
+                                            userInfo: ["request": true])
+        }
     }
 
     /// A dedicated video call has already been selected by the caller, but
@@ -1160,6 +1181,7 @@ final class NativeWebRTCCallEngine: NSObject {
         videoConsent = false
         remoteVideoOn = false
         videoRequestPending = false
+        incomingVideoRequestPending = false
         outgoingVideoCall = false
         directVideoCall = false
         DispatchQueue.main.async {
