@@ -68,6 +68,18 @@ test('server-confirmed native Answer activates the prepared caller path', () => 
   assert.match(engine, /case "call-accept":[\s\S]{0,100}markOutgoingAnswered\(\)/);
   assert.match(ios, /type == "native-call-answering"[\s\S]{0,180}markOutgoingAnsweredLocked\(\)/);
   assert.match(ios, /case "call-accept":[\s\S]{0,100}markOutgoingAnsweredLocked\(\)/);
+  assert.match(engine, /private void markOutgoingAnswered\(\)[\s\S]{0,140}if \(answered\)/);
+  assert.match(ios, /private func markOutgoingAnsweredLocked\(\)[\s\S]{0,140}guard !answered/);
+});
+
+test('both native engines serialize offers and ignore duplicate answers', () => {
+  assert.match(engine, /if \(peer == null \|\| offerCreationInFlight\) return/);
+  assert.match(engine, /iceRestart && peer\.signalingState\(\) != PeerConnection\.SignalingState\.STABLE/);
+  assert.match(engine, /peer\.signalingState\(\) != PeerConnection\.SignalingState\.HAVE_LOCAL_OFFER/);
+  assert.match(engine, /if \(connectWatchdogStarted\) return/);
+  assert.match(ios, /guard !offerCreationInFlight else \{ return \}/);
+  assert.match(ios, /iceRestart, pc\.signalingState != \.stable/);
+  assert.match(ios, /guard pc\.signalingState == \.haveLocalOffer/);
 });
 
 test('server protects Answer from ICE bursts and acknowledges encrypted acceptance', () => {
@@ -99,8 +111,16 @@ test('Android: setup has a deadline and one mid-setup ICE restart', () => {
 test('Android: a default-network change triggers recovery and monitoring is released with the call', () => {
   assert.match(engine, /registerDefaultNetworkCallback\(networkCallback\)/);
   assert.match(engine, /switched && connectedAtMs > 0L/);
+  const networkSwitch = engine.slice(engine.indexOf('if (switched && connectedAtMs > 0L)'), engine.indexOf('}', engine.indexOf('if (switched && connectedAtMs > 0L)')));
+  assert.match(networkSwitch, /reconnectSignalingForNetworkChange\(\)/);
+  assert.doesNotMatch(networkSwitch, /beginMediaRecovery/);
+  assert.match(engine, /private void reconnectSignalingForNetworkChange\(\)[\s\S]{0,400}connectSocket\(generation\)/);
+  assert.match(engine, /private void handleSocketEnded\(int run, WebSocket endedSocket\)[\s\S]{0,350}socket = null[\s\S]{0,160}reconnect\(run, 1\)/);
   assert.match(engine, /stopWatchingNetworkChanges\(\);\s*recoveryRun\+\+;/);
   assert.match(manifest, /android\.permission\.ACCESS_NETWORK_STATE/);
+  assert.match(engine, /private void restartIce\(\)[\s\S]{0,600}peer\.restartIce\(\);[\s\S]{0,160}createOffer\(true\)/);
+  assert.match(engine, /ICE_RESTART_RETRY_MS = 12_000L/);
+  assert.match(engine, /iceConnectionState\(\) == PeerConnection\.IceConnectionState\.CHECKING/);
 });
 
 test('Android: the call screen says Reconnecting and a lost or failed call explains itself', () => {
@@ -116,25 +136,46 @@ test('Android: the call screen says Reconnecting and a lost or failed call expla
   }
 });
 
+test('Android: background and route polling do not reselect the active communication device', () => {
+  const main = read('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java');
+  const callScreen = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
+  assert.match(main, /if \(!NativeCallActivity\.isRunning\(\)\) enforceAudioRouteAfterWebRtcConnects\(\)/);
+  assert.match(callScreen, /selected != null && selected\.getId\(\) == device\.getId\(\)[\s\S]{0,120}setCommunicationDevice\(device\)/);
+});
+
 test('iOS: a dropped media path is recovered by an ICE restart from the caller', () => {
-  assert.match(ios, /if newState == \.disconnected \{[\s\S]{0,200}beginMediaRecoveryLocked\(after: Self\.iceRestartGrace\)/);
-  assert.match(ios, /if newState == \.failed, self\.connectedOnce \{\s*self\.beginMediaRecoveryLocked\(after: 0\)/);
+  const disconnected = ios.slice(ios.indexOf('if newState == .disconnected'), ios.indexOf('if newState == .disconnected') + 900);
+  assert.match(disconnected, /reconnectSignalingForNetworkChangeLocked\(\)[\s\S]{0,200}beginMediaRecoveryLocked\(after: Self\.iceRestartGrace\)/);
+  assert.match(ios, /if newState == \.failed, self\.connectedOnce \{[\s\S]{0,180}beginMediaRecoveryLocked\(after: 0\)/);
   assert.match(ios, /mandatoryConstraints: iceRestart \? \["IceRestart": "true"\] : nil/);
-  assert.match(ios, /guard peer != nil, outgoing, answered else \{ return \}/);
+  assert.match(ios, /guard let peer, outgoing, answered else \{ return \}/);
   assert.match(ios, /nativeCallDidEnd\(callID: callID, action: "nativeConnectionLost"\)/);
   // A restored path must not re-announce "connected" (that would reset the web timer).
   assert.match(ios, /if self\.connectedOnce \{\s*self\.mediaPathRecoveredLocked\(\)\s*return\s*\}/);
   assert.match(ios, /continualGatheringPolicy = \.gatherContinually/);
   assert.match(ios, /case "call-restart-request":[\s\S]{0,500}beginMediaRecoveryLocked\(after: 0\)/);
   assert.match(ios, /private func requestOrRestartIceLocked\(\)[\s\S]{0,300}sendSignalLocked\(type: "call-restart-request"/);
+  assert.match(ios, /private func restartIceLocked\(\)[\s\S]{0,600}peer\.restartIce\(\)[\s\S]{0,200}createAndSendOfferLocked\(iceRestart: true\)/);
+  assert.match(ios, /iceRestartRetry: TimeInterval = 12/);
+  assert.match(ios, /iceConnectionState == \.checking/);
   assert.match(ios, /iceRestartGrace: TimeInterval = 1\.5/);
 });
 
-test('iOS: a network switch triggers recovery, setup restarts ICE once, and everything is released on reset', () => {
+test('iOS: a network switch refreshes signaling without falsely marking healthy media as reconnecting', () => {
   assert.match(ios, /NWPathMonitor\(\)/);
-  assert.match(ios, /beginMediaRecoveryLocked\(after: 0\.5\)/);
   assert.match(ios, /path\.usesInterfaceType\(\.wifi\)/);
   assert.match(ios, /path\.usesInterfaceType\(\.cellular\)/);
+  const networkSwitch = ios.slice(ios.indexOf('guard let previous, previous != signature'), ios.indexOf('guard let previous, previous != signature') + 1_000);
+  assert.match(networkSwitch, /reconnectSignalingForNetworkChangeLocked\(\)/);
+  assert.match(networkSwitch, /network changed: awaiting ICE state/);
+  assert.doesNotMatch(networkSwitch, /beginMediaRecoveryLocked\(after: 0\)/);
+  assert.match(ios, /private func reconnectSignalingForNetworkChangeLocked\(\)[\s\S]{0,500}connectSignalingLocked\(\)/);
+  assert.match(ios, /URLSessionConfiguration\.ephemeral[\s\S]{0,220}allowsCellularAccess = true/);
+  assert.match(ios, /signalingAttemptGeneration[\s\S]{0,900}signal readiness timeout/);
+  assert.match(ios, /oldSession\?\.invalidateAndCancel\(\)/);
+  assert.match(ios, /extension NativeWebRTCCallEngine: URLSessionWebSocketDelegate[\s\S]{0,500}didOpenWithProtocol[\s\S]{0,500}type": "auth"/);
+  const connectSignal = ios.slice(ios.indexOf('private func connectSignalingLocked()'), ios.indexOf('private func receiveLocked'));
+  assert.doesNotMatch(connectSignal, /sendRawLocked\(\["type": "auth"/);
   assert.match(ios, /setup stalled: restarting ICE/);
   const reset = ios.slice(ios.indexOf('private func resetLocked()'));
   assert.match(reset.slice(0, 700), /recoveryGeneration \+= 1[\s\S]{0,120}stopPathMonitorLocked\(\)\s*connectedOnce = false/);
@@ -183,6 +224,27 @@ test('iOS: late audio activation cannot regress an already-connected call to Con
   const branch = client.slice(start, client.indexOf("} else if (detail.action === 'audioDeactivated')", start));
   assert.match(branch, /if \(Number\.isFinite\(room\.callStartedAt\)\) \{[\s\S]{0,300}room\.nativeAnswerPending = false;[\s\S]{0,300}return;/);
   assert.ok(branch.indexOf('Number.isFinite(room.callStartedAt)') < branch.indexOf('room.callStartedAt = null'));
+});
+
+test('iOS: opening the app switcher does not deactivate a live call audio session', () => {
+  const scene = read('mobile/ios/App/App/SceneDelegate.swift');
+  assert.match(scene, /let ownedAudioSession = speechRecognitionTask != nil/);
+  assert.match(scene, /if ownedAudioSession \{\s*try\? AVAudioSession\.sharedInstance\(\)\.setActive\(false/);
+  assert.match(scene, /refreshActiveNativeCallAudio\(reason: "scene-resign-active"\)/);
+  assert.match(scene, /refreshActiveNativeCallAudio\(reason: "scene-active"\)/);
+});
+
+test('both native engines recover when inbound audio packets stall while ICE still looks connected', () => {
+  assert.match(ios, /audioFlowStallThreshold: TimeInterval = 4/);
+  assert.match(ios, /statistic\.type == "inbound-rtp"/);
+  assert.match(ios, /statistic\.values\["bytesReceived"\]/);
+  assert.match(ios, /audio flow stalled: starting recovery[\s\S]{0,100}beginMediaRecoveryLocked\(after: 0\)/);
+  assert.match(engine, /AUDIO_FLOW_STALL_MS = 4_000L/);
+  assert.match(engine, /"inbound-rtp"\.equals\(stat\.getType\(\)\)/);
+  assert.match(engine, /members\.get\("bytesReceived"\)/);
+  assert.match(engine, /audio flow stalled: starting recovery[\s\S]{0,150}beginMediaRecovery\(0L\)/);
+  assert.match(ios, /audio flow recovered[\s\S]{0,100}mediaPathRecoveredLocked\(\)/);
+  assert.match(engine, /audio flow recovered[\s\S]{0,100}finishMediaRecovery\(\)/);
 });
 
 test('iOS: the relay candidate is pre-gathered while ringing, a failed TURN fetch is retried then, and timings are traced', () => {

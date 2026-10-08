@@ -434,11 +434,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func finishSpeechToText(cancelTask: Bool) {
+        // AVAudioSession is shared by dictation and the native call engine.
+        // Do not deactivate it when this is only a lifecycle cleanup and
+        // speech recognition never acquired the microphone. Doing so while a
+        // CallKit call is live leaves its timer running with silent media.
+        let ownedAudioSession = speechRecognitionTask != nil
+            || speechRecognitionRequest != nil
+            || speechAudioEngine.isRunning
+            || speechTapInstalled
         stopSpeechToText()
         if cancelTask { speechRecognitionTask?.cancel() }
         speechRecognitionTask = nil
         speechRecognitionRequest = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if ownedAudioSession {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     private func cancelSpeechToText(notifyPage: Bool) {
@@ -1634,11 +1644,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     func sceneWillResignActive(_ scene: UIScene) {
         showAppSwitcherPrivacyCover()
         cancelSpeechToText(notifyPage: false)
+        VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-resign-active")
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         hideAppSwitcherPrivacyCover()
         VaultlixCallManager.shared.enforceCallKeyboardGuard()
+        VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-active")
         presentNativeVideoConsentPrompt()
         if webReady,
            let token = VaultlixCallManager.shared.voIPToken

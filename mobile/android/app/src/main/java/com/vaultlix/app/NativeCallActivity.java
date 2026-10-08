@@ -112,12 +112,11 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private final Runnable audioRoutePoll = new Runnable() {
         @Override public void run() {
             if (finishingCall) return;
-            // Until the user explicitly chooses a route, follow the call
-            // default: Bluetooth when a call-capable headset is connected,
-            // otherwise the receiver. This also catches a headset that
-            // becomes visible just after Android finishes call setup.
-            if (requestedRoute == null) applyAudioRoute(null);
-            else renderAudioRoute(currentRouteName());
+            // Observe the system route so the button stays accurate. Do not
+            // reapply MODE_IN_COMMUNICATION or a device every two seconds:
+            // Samsung can tear down WebRTC's active AudioTrack when an app
+            // repeatedly claims the route, even if the selection is unchanged.
+            renderAudioRoute(currentRouteName());
             handler.postDelayed(this, 2_000);
         }
     };
@@ -786,7 +785,9 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     @SuppressWarnings("deprecation")
     private boolean applyAudioRoute(String route) {
         if (audioManager == null) return false;
-        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        if (audioManager.getMode() != AudioManager.MODE_IN_COMMUNICATION) {
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        }
         boolean applied = false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo selected = audioManager.getCommunicationDevice();
@@ -805,7 +806,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
                         : "bluetooth".equals(route) ? isBluetoothCallDevice(device)
                         : device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE;
                 if (wanted) {
-                    applied = audioManager.setCommunicationDevice(device);
+                    // Android may restart the voice capture/playout graph when
+                    // setCommunicationDevice is called, even for the device
+                    // already in use. The bounded retries and route poll must
+                    // therefore be harmless once the requested route is set.
+                    applied = selected != null && selected.getId() == device.getId()
+                            || audioManager.setCommunicationDevice(device);
                     break;
                 }
             }

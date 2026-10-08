@@ -491,6 +491,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             return
         }
         if !alreadyFulfilled { action.fulfill() }
+        scheduleNativeAudioBinding(callID: action.callUUID, reason: "answer")
     }
 
     /// The actual answer work, independent of any `CXAnswerCallAction` —
@@ -584,6 +585,50 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         ringbackCallID = action.callUUID
         NativeWebRTCCallEngine.shared.startOutgoing(callID: action.callUUID)
         action.fulfill()
+        scheduleNativeAudioBinding(callID: action.callUUID, reason: "start")
+    }
+
+    /// CallKit can keep one AVAudioSession active across adjacent calls and
+    /// therefore omit a second `didActivate` callback. Bind every new native
+    /// media engine to the session after its CallKit action is fulfilled.
+    private func scheduleNativeAudioBinding(callID: UUID, reason: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self,
+                  self.calls[callID] != nil,
+                  self.nativeMediaCalls.contains(callID) else { return }
+            self.bindNativeAudioToActiveSession(callID: callID, reason: reason)
+        }
+    }
+
+    private func bindNativeAudioToActiveSession(callID: UUID, reason: String) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            if !callKitAudioSessionActive {
+                try session.setActive(true)
+                callKitAudioSessionActive = true
+            }
+            print("VXCALL manager audio bind reason=\(reason) callID=\(callID)")
+            NativeWebRTCCallEngine.shared.callKitDidActivate(session)
+        } catch {
+            print("VXCALL manager audio bind failed reason=\(reason) error=\(error.localizedDescription)")
+        }
+    }
+
+    /// Moving from Vaultlix's call view to CallKit or Settings backgrounds the
+    /// scene. Some iOS releases interrupt the app audio unit without issuing
+    /// another provider callback. Re-bind the existing engine after the scene
+    /// transition; the peer connection and call timer remain unchanged.
+    func refreshActiveNativeCallAudio(reason: String) {
+        guard let callID = nativeMediaCalls.first,
+              calls[callID] != nil,
+              answeredCalls.contains(callID) || connectedCalls.contains(callID) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self,
+                  self.nativeMediaCalls.contains(callID),
+                  self.calls[callID] != nil else { return }
+            self.bindNativeAudioToActiveSession(callID: callID, reason: reason)
+        }
     }
 
     /// Incoming PushKit payloads intentionally omit the private conversation
@@ -1356,11 +1401,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func applicationWillResignActive(_ application: UIApplication) {
         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
         // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
+        VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "app-resign-active")
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
         // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
         // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
+        VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "app-background")
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
@@ -1369,6 +1416,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "app-active")
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

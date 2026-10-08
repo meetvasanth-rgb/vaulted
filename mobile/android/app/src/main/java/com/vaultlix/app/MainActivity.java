@@ -338,6 +338,7 @@ public class MainActivity extends BridgeActivity {
                         return;
                     }
                 }
+                if (current != null && current.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) return;
                 for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
                     if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
                         audioManager.setCommunicationDevice(device);
@@ -1437,7 +1438,10 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void connectedHaptic() {
             runOnUiThread(() -> {
-                enforceAudioRouteAfterWebRtcConnects();
+                // The dedicated call screen owns the communication device.
+                // Reapplying it here from the covered MainActivity can tear
+                // down Samsung's live WebRTC audio stream a second later.
+                if (!NativeCallActivity.isRunning()) enforceAudioRouteAfterWebRtcConnects();
                 getWindow().getDecorView().performHapticFeedback(HapticFeedbackConstants.CONFIRM);
             });
         }

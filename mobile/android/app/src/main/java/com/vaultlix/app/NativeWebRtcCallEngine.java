@@ -23,6 +23,8 @@ import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpReceiver;
+import org.webrtc.RTCStats;
+import org.webrtc.RTCStatsReport;
 import org.webrtc.SdpObserver;
 import org.webrtc.RtpTransceiver;
 import org.webrtc.SessionDescription;
@@ -40,6 +42,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -128,6 +131,8 @@ final class NativeWebRtcCallEngine {
     private boolean offerReceived;
     private boolean ringingAcknowledged;
     private boolean initialOfferStarted;
+    private boolean offerCreationInFlight;
+    private boolean connectWatchdogStarted;
     private boolean transportReady;
     private boolean answerCandidatesResent;
     private JSONObject pendingOffer;
@@ -147,9 +152,13 @@ final class NativeWebRtcCallEngine {
     // healed by restarting ICE from the caller's side instead of leaving a dead call running.
     private static final long CONNECT_DEADLINE_MS = 25_000L;
     private static final long ICE_RESTART_GRACE_MS = 1_500L;
-    private static final long ICE_RESTART_RETRY_MS = 5_000L;
+    // Give a mobile radio and TURN relay time to select the replacement pair;
+    // restarting every five seconds can continuously reset a valid check.
+    private static final long ICE_RESTART_RETRY_MS = 12_000L;
     private static final long RECONNECT_DEADLINE_MS = 30_000L;
     private static final long RECONNECT_UI_DELAY_MS = 900L;
+    private static final long AUDIO_FLOW_POLL_MS = 1_000L;
+    private static final long AUDIO_FLOW_STALL_MS = 4_000L;
     private boolean reconnecting;
     private boolean reconnectingVisible;
     private long answeredAtMs;
@@ -158,12 +167,60 @@ final class NativeWebRtcCallEngine {
     private int reconnectPresentationRun;
     private ConnectivityManager.NetworkCallback networkCallback;
     private Network lastDefaultNetwork;
+    private int audioFlowRun;
+    private long lastInboundAudioBytes = -1L;
+    private long lastInboundAudioProgressMs;
 
     private NativeWebRtcCallEngine(Context context) {
         this.context = context;
         roomStore = new NativeCallRoomStore(context);
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).createInitializationOptions());
-        JavaAudioDeviceModule adm = JavaAudioDeviceModule.builder(context).createAudioDeviceModule();
+        JavaAudioDeviceModule adm = JavaAudioDeviceModule.builder(context)
+                .setAudioTrackErrorCallback(new JavaAudioDeviceModule.AudioTrackErrorCallback() {
+                    @Override public void onWebRtcAudioTrackInitError(String error) {
+                        handleAudioDeviceError("playout init", error);
+                    }
+                    @Override public void onWebRtcAudioTrackStartError(
+                            JavaAudioDeviceModule.AudioTrackStartErrorCode code, String error) {
+                        handleAudioDeviceError("playout start " + code, error);
+                    }
+                    @Override public void onWebRtcAudioTrackError(String error) {
+                        handleAudioDeviceError("playout", error);
+                    }
+                })
+                .setAudioRecordErrorCallback(new JavaAudioDeviceModule.AudioRecordErrorCallback() {
+                    @Override public void onWebRtcAudioRecordInitError(String error) {
+                        handleAudioDeviceError("record init", error);
+                    }
+                    @Override public void onWebRtcAudioRecordStartError(
+                            JavaAudioDeviceModule.AudioRecordStartErrorCode code, String error) {
+                        handleAudioDeviceError("record start " + code, error);
+                    }
+                    @Override public void onWebRtcAudioRecordError(String error) {
+                        handleAudioDeviceError("record", error);
+                    }
+                })
+                .setAudioTrackStateCallback(new JavaAudioDeviceModule.AudioTrackStateCallback() {
+                    @Override public void onWebRtcAudioTrackStart() {
+                        Log.i(TAG, "audio playout started room=" + currentRoomCode);
+                    }
+                    @Override public void onWebRtcAudioTrackStop() {
+                        Log.w(TAG, "audio playout stopped room=" + currentRoomCode);
+                    }
+                })
+                .setAudioRecordStateCallback(new JavaAudioDeviceModule.AudioRecordStateCallback() {
+                    @Override public void onWebRtcAudioRecordStart() {
+                        Log.i(TAG, "audio recording started room=" + currentRoomCode);
+                    }
+                    @Override public void onWebRtcAudioRecordStop() {
+                        Log.w(TAG, "audio recording stopped room=" + currentRoomCode);
+                    }
+                })
+                // Samsung's fast callback stream can terminate when the
+                // communication device changes. The standard voice stream
+                // adds a small buffer but survives receiver/speaker changes.
+                .setUseLowLatency(false)
+                .createAudioDeviceModule();
         EglBase egl = null;
         try { egl = EglBase.create(); } catch (RuntimeException unavailable) { Log.w(TAG, "video unavailable: no GL context", unavailable); }
         eglBase = egl;
@@ -345,6 +402,7 @@ final class NativeWebRtcCallEngine {
     }
 
     private void connectSocket(int run) {
+        if (run != generation || room == null || socket != null) return;
         Request request = new Request.Builder().url("wss://vaultlix.com/ws/signal").build();
         socket = http.newWebSocket(request, new WebSocketListener() {
             @Override public void onOpen(WebSocket webSocket, Response response) {
@@ -357,21 +415,38 @@ final class NativeWebRtcCallEngine {
             }
             @Override public void onMessage(WebSocket webSocket, String text) { executor.execute(() -> handleSocket(run, text)); }
             @Override public void onFailure(WebSocket webSocket, Throwable error, Response response) {
-                executor.execute(() -> { if (run == generation && room != null) reconnect(run, 1); });
+                executor.execute(() -> handleSocketEnded(run, webSocket));
             }
             @Override public void onClosed(WebSocket webSocket, int code, String reason) {
                 // A server-side close mid-call must not leave signalling dead: a restart offer could never arrive.
-                executor.execute(() -> { if (run == generation && socket == webSocket && room != null && !ending) reconnect(run, 1); });
+                executor.execute(() -> handleSocketEnded(run, webSocket));
             }
         });
+    }
+
+    private void handleSocketEnded(int run, WebSocket endedSocket) {
+        if (run != generation || socket != endedSocket || room == null || ending) return;
+        socket = null;
+        signalingReady = false;
+        reconnect(run, 1);
     }
 
     private void reconnect(int run, int attempt) {
         if (run != generation || room == null || attempt > 6) return;
         signalingReady = false;
         scheduler.schedule(() -> executor.execute(() -> {
-            if (run == generation && room != null) connectSocket(run);
+            if (run == generation && room != null && socket == null) connectSocket(run);
         }), Math.min(4000, 250L << Math.min(attempt, 4)), TimeUnit.MILLISECONDS);
+    }
+
+    private void reconnectSignalingForNetworkChange() {
+        if (room == null || ending) return;
+        WebSocket oldSocket = socket;
+        socket = null;
+        signalingReady = false;
+        if (oldSocket != null) oldSocket.cancel();
+        Log.i(TAG, "network changed: reconnecting signaling");
+        connectSocket(generation);
     }
 
     private void handleSocket(int run, String text) {
@@ -551,6 +626,10 @@ final class NativeWebRtcCallEngine {
         } catch (Exception error) { Log.w(TAG, "TURN/peer setup failed", error); }
     }
 
+    private void handleAudioDeviceError(String stage, String error) {
+        Log.e(TAG, "audio " + stage + " error: " + error);
+    }
+
     /**
      * The peer has acknowledged that it is ringing, so its native signaling
      * socket is alive. Negotiate the relay path now instead of spending this
@@ -570,6 +649,10 @@ final class NativeWebRtcCallEngine {
      */
     private void markOutgoingAnswered() {
         if (!outgoing) return;
+        if (answered) {
+            completeInitialConnectionIfReady();
+            return;
+        }
         answered = true;
         if (answeredAtMs == 0L) answeredAtMs = System.currentTimeMillis();
         if (audioTrack != null) audioTrack.setEnabled(true);
@@ -581,14 +664,34 @@ final class NativeWebRtcCallEngine {
     }
 
     private void createOffer(boolean iceRestart) {
-        if (peer == null) return;
+        if (peer == null || offerCreationInFlight) return;
+        if (iceRestart && peer.signalingState() != PeerConnection.SignalingState.STABLE) {
+            SessionDescription local = peer.getLocalDescription();
+            if (local != null && local.type == SessionDescription.Type.OFFER) {
+                Log.i(TAG, "ICE restart offer still pending; resending it");
+                sendSdp("offer", local);
+            }
+            return;
+        }
+        offerCreationInFlight = true;
         MediaConstraints constraints = new MediaConstraints();
         if (iceRestart) constraints.mandatory.add(new MediaConstraints.KeyValuePair("IceRestart", "true"));
         peer.createOffer(new SimpleSdpObserver() {
             @Override public void onCreateSuccess(SessionDescription sdp) {
                 peer.setLocalDescription(new SimpleSdpObserver() {
-                    @Override public void onSetSuccess() { sendSdp("offer", sdp); }
+                    @Override public void onSetSuccess() {
+                        offerCreationInFlight = false;
+                        sendSdp("offer", sdp);
+                    }
+                    @Override public void onSetFailure(String error) {
+                        offerCreationInFlight = false;
+                        super.onSetFailure(error);
+                    }
                 }, sdp);
+            }
+            @Override public void onCreateFailure(String error) {
+                offerCreationInFlight = false;
+                super.onCreateFailure(error);
             }
         }, constraints);
     }
@@ -612,6 +715,10 @@ final class NativeWebRtcCallEngine {
 
     private void processAnswer(JSONObject payload) {
         if (peer == null) return;
+        if (peer.signalingState() != PeerConnection.SignalingState.HAVE_LOCAL_OFFER) {
+            Log.i(TAG, "ignoring duplicate or stale answer in " + peer.signalingState());
+            return;
+        }
         peer.setRemoteDescription(new SimpleSdpObserver() { @Override public void onSetSuccess() { flushIce(); } },
                 new SessionDescription(SessionDescription.Type.ANSWER, payload.optString("sdp")));
     }
@@ -622,6 +729,7 @@ final class NativeWebRtcCallEngine {
         if (answeredAtMs > 0L) Log.i(TAG, "ICE ready " + (connectedAtMs - answeredAtMs) + "ms after answer");
         currentState = "connected";
         recoveryRun++;
+        startAudioFlowWatchdog();
         for (Listener listener : listeners) listener.onConnected();
         return true;
     }
@@ -815,8 +923,10 @@ final class NativeWebRtcCallEngine {
         disposeVideo();
         stopWatchingNetworkChanges();
         recoveryRun++; reconnectPresentationRun++; reconnecting = false; reconnectingVisible = false; answeredAtMs = 0L;
+        audioFlowRun++; lastInboundAudioBytes = -1L; lastInboundAudioProgressMs = 0L;
         room = null; signalingReady = false; outgoing = false; outgoingVideoCall = false; answered = false; offerReceived = false; ending = false;
         ringingAcknowledged = false; initialOfferStarted = false; transportReady = false; pendingOffer = null;
+        offerCreationInFlight = false; connectWatchdogStarted = false;
         answerCandidatesResent = false;
         inviteId = "";
         sequenceOut = 0; sequenceIn = 0; peerSessionId = null; queuedSignals.clear(); pendingIce.clear(); localIce.clear();
@@ -839,6 +949,8 @@ final class NativeWebRtcCallEngine {
     // Android used to sit on "Connecting securely…" until ICE reported failure, which on a weak
     // network can be never. End the call with a clear message instead of leaving both people waiting.
     private void startConnectWatchdog() {
+        if (connectWatchdogStarted) return;
+        connectWatchdogStarted = true;
         if (answeredAtMs == 0L) answeredAtMs = System.currentTimeMillis();
         final int run = generation;
         scheduler.schedule(() -> executor.execute(() -> {
@@ -883,11 +995,66 @@ final class NativeWebRtcCallEngine {
         reconnectPresentationRun++;
         reconnecting = false;
         reconnectStartedMs = 0L;
+        lastInboundAudioProgressMs = System.currentTimeMillis();
         transportReady = true;
         Log.i(TAG, "media path recovered");
         if (reconnectingVisible) {
             reconnectingVisible = false;
             for (Listener listener : listeners) listener.onReconnecting(false);
+        }
+    }
+
+    /** Detect a real media stall even when ICE still reports CONNECTED. */
+    private void startAudioFlowWatchdog() {
+        final int token = ++audioFlowRun;
+        lastInboundAudioBytes = -1L;
+        lastInboundAudioProgressMs = System.currentTimeMillis();
+        scheduleAudioFlowPoll(generation, token);
+    }
+
+    private void scheduleAudioFlowPoll(int run, int token) {
+        scheduler.schedule(() -> executor.execute(() -> {
+            if (run != generation || token != audioFlowRun || peer == null || connectedAtMs == 0L || ending) return;
+            final PeerConnection currentPeer = peer;
+            currentPeer.getStats(report -> executor.execute(() -> {
+                if (run != generation || token != audioFlowRun || peer != currentPeer || connectedAtMs == 0L || ending) return;
+                observeInboundAudioBytes(report);
+                scheduleAudioFlowPoll(run, token);
+            }));
+        }), AUDIO_FLOW_POLL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void observeInboundAudioBytes(RTCStatsReport report) {
+        long bytes = 0L;
+        boolean foundAudio = false;
+        for (RTCStats stat : report.getStatsMap().values()) {
+            if (!"inbound-rtp".equals(stat.getType())) continue;
+            Map<String, Object> members = stat.getMembers();
+            Object kind = members.containsKey("kind") ? members.get("kind") : members.get("mediaType");
+            Object received = members.get("bytesReceived");
+            if (!"audio".equals(kind) || !(received instanceof Number)) continue;
+            foundAudio = true;
+            bytes += ((Number) received).longValue();
+        }
+        if (!foundAudio) return;
+        long now = System.currentTimeMillis();
+        if (lastInboundAudioBytes < 0L) {
+            lastInboundAudioBytes = bytes;
+            lastInboundAudioProgressMs = now;
+            return;
+        }
+        if (bytes != lastInboundAudioBytes) {
+            lastInboundAudioBytes = bytes;
+            lastInboundAudioProgressMs = now;
+            if (reconnecting) {
+                Log.i(TAG, "audio flow recovered");
+                finishMediaRecovery();
+            }
+            return;
+        }
+        if (!reconnecting && now - lastInboundAudioProgressMs >= AUDIO_FLOW_STALL_MS) {
+            Log.w(TAG, "audio flow stalled: starting recovery room=" + currentRoomCode);
+            beginMediaRecovery(0L);
         }
     }
 
@@ -899,7 +1066,11 @@ final class NativeWebRtcCallEngine {
                 reset("connection-lost");
                 return;
             }
-            requestOrRestartIce();
+            if (peer != null && peer.iceConnectionState() == PeerConnection.IceConnectionState.CHECKING) {
+                Log.i(TAG, "ICE restart still checking; waiting");
+            } else {
+                requestOrRestartIce();
+            }
             scheduleRecoveryAttempt(run, token, startedAt, ICE_RESTART_RETRY_MS);
         }), delayMs, TimeUnit.MILLISECONDS);
     }
@@ -909,6 +1080,10 @@ final class NativeWebRtcCallEngine {
     private void restartIce() {
         if (peer == null || room == null || !outgoing || !answered) return;
         Log.i(TAG, "ICE restart offer");
+        // Rotate ICE credentials before offering. Recent libwebrtc releases
+        // may ignore the legacy IceRestart constraint by itself, leaving the
+        // call connected to a dead candidate pair after a network handoff.
+        peer.restartIce();
         createOffer(true);
     }
 
@@ -935,8 +1110,8 @@ final class NativeWebRtcCallEngine {
                         lastDefaultNetwork = network;
                         // A different default network (Wi-Fi <-> mobile data) kills the old relay path.
                         if (switched && connectedAtMs > 0L) {
-                            Log.i(TAG, "default network changed: recovering media path");
-                            beginMediaRecovery(500L);
+                            Log.i(TAG, "default network changed: refreshing signaling");
+                            reconnectSignalingForNetworkChange();
                         }
                     });
                 }

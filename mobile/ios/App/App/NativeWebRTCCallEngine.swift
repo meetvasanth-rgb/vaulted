@@ -23,6 +23,8 @@ final class NativeWebRTCCallEngine: NSObject {
     private var room: NativeCallRoom?
     private var callID: UUID?
     private var socket: URLSessionWebSocketTask?
+    private var signalingSession: URLSession?
+    private var signalingAttemptGeneration = 0
     private var peer: RTCPeerConnection?
     private var audioSource: RTCAudioSource?
     private var muted = false
@@ -63,6 +65,7 @@ final class NativeWebRTCCallEngine: NSObject {
     private var offerReceived = false
     private var ringingAcknowledged = false
     private var initialOfferStarted = false
+    private var offerCreationInFlight = false
     private var transportReady = false
     private var answerCandidatesResent = false
     private var outgoing = false
@@ -75,9 +78,14 @@ final class NativeWebRTCCallEngine: NSObject {
     // Media-path recovery: ICE going quiet mid-call (weak signal, Wi-Fi <-> mobile data) is healed
     // by restarting ICE from the caller's side instead of leaving a dead call running.
     private static let iceRestartGrace: TimeInterval = 1.5
-    private static let iceRestartRetry: TimeInterval = 5
+    // A relay-backed ICE restart can take several seconds while a mobile
+    // radio and TURN allocation settle. Restarting every five seconds resets
+    // the check before it can select the new pair.
+    private static let iceRestartRetry: TimeInterval = 12
     private static let reconnectDeadline: TimeInterval = 30
     private static let reconnectUIDelay: TimeInterval = 0.9
+    private static let audioFlowPollInterval: TimeInterval = 1
+    private static let audioFlowStallThreshold: TimeInterval = 4
     private var connectedOnce = false
     private var reconnecting = false
     private var reconnectingVisible = false
@@ -86,6 +94,9 @@ final class NativeWebRTCCallEngine: NSObject {
     private var reconnectPresentationGeneration = 0
     private var pathMonitor: NWPathMonitor?
     private var lastPathSignature: String?
+    private var audioFlowGeneration = 0
+    private var lastInboundAudioBytes: UInt64?
+    private var lastInboundAudioProgressAt: Date?
     // Timing for diagnosing slow connects (see the "timing" trace lines).
     private var peerCreatedAt: Date?
     private var answeredAt: Date?
@@ -449,11 +460,34 @@ final class NativeWebRTCCallEngine: NSObject {
         }
         trace("signal connecting")
         signalingReady = false
-        let task = URLSession(configuration: .default).webSocketTask(with: url)
+        signalingAttemptGeneration += 1
+        let attemptGeneration = signalingAttemptGeneration
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.waitsForConnectivity = true
+        configuration.allowsCellularAccess = true
+        configuration.timeoutIntervalForRequest = 8
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        let task = session.webSocketTask(with: url)
+        signalingSession = session
         socket = task
         task.resume()
-        sendRawLocked(["type": "auth", "code": room.code, "token": room.token, "nativeCall": true])
         receiveLocked(task)
+        // A WebSocket can remain apparently open after its Wi-Fi route has
+        // disappeared. If the new connection never authenticates, replace it
+        // instead of leaving recovery messages queued behind a stale socket.
+        queue.asyncAfter(deadline: .now() + 3) {
+            guard attemptGeneration == self.signalingAttemptGeneration,
+                  self.socket === task,
+                  !self.signalingReady,
+                  self.room != nil,
+                  self.callID != nil else { return }
+            self.trace("signal readiness timeout")
+            self.socket = nil
+            self.signalingSession = nil
+            task.cancel(with: .goingAway, reason: nil)
+            session.invalidateAndCancel()
+            self.scheduleSignalReconnectLocked()
+        }
     }
 
     private func receiveLocked(_ task: URLSessionWebSocketTask) {
@@ -470,6 +504,9 @@ final class NativeWebRTCCallEngine: NSObject {
                 } else {
                     self.trace("signal receive-failed")
                     self.socket = nil
+                    let failedSession = self.signalingSession
+                    self.signalingSession = nil
+                    failedSession?.invalidateAndCancel()
                     self.signalingReady = false
                     self.scheduleSignalReconnectLocked()
                 }
@@ -739,6 +776,10 @@ final class NativeWebRTCCallEngine: NSObject {
     /// idempotent and follows this same path.
     private func markOutgoingAnsweredLocked() {
         guard outgoing else { return }
+        guard !answered else {
+            _ = completeInitialConnectionIfReadyLocked()
+            return
+        }
         inviteRetryGeneration += 1
         answered = true
         if answeredAt == nil { answeredAt = Date() }
@@ -754,15 +795,25 @@ final class NativeWebRTCCallEngine: NSObject {
 
     private func createAndSendOfferLocked(iceRestart: Bool = false) {
         guard let pc = peer else { return }
+        guard !offerCreationInFlight else { return }
+        if iceRestart, pc.signalingState != .stable {
+            if let local = pc.localDescription, local.type == .offer {
+                trace("ice restart offer still pending; resending it")
+                sendSignalLocked(type: "offer", payload: ["type": "offer", "sdp": local.sdp])
+            }
+            return
+        }
         if !iceRestart {
             guard !initialOfferStarted else { return }
             initialOfferStarted = true
         }
+        offerCreationInFlight = true
         let constraints = RTCMediaConstraints(mandatoryConstraints: iceRestart ? ["IceRestart": "true"] : nil,
                                               optionalConstraints: nil)
         pc.offer(for: constraints) { [weak self, weak pc] offer, error in
             guard let self, let pc, let offer, error == nil else {
                 self?.queue.async {
+                    self?.offerCreationInFlight = false
                     if !iceRestart { self?.initialOfferStarted = false }
                     self?.trace("offer create-failed")
                 }
@@ -771,13 +822,17 @@ final class NativeWebRTCCallEngine: NSObject {
             pc.setLocalDescription(offer) { error in
                 guard error == nil else {
                     self.queue.async {
+                        self.offerCreationInFlight = false
                         if !iceRestart { self.initialOfferStarted = false }
                         self.trace("offer local-description-failed")
                     }
                     return
                 }
                 self.trace("offer sending")
-                self.queue.async { self.sendSignalLocked(type: "offer", payload: ["type": "offer", "sdp": offer.sdp]) }
+                self.queue.async {
+                    self.offerCreationInFlight = false
+                    self.sendSignalLocked(type: "offer", payload: ["type": "offer", "sdp": offer.sdp])
+                }
             }
         }
     }
@@ -791,6 +846,7 @@ final class NativeWebRTCCallEngine: NSObject {
             trace("timing media ready \(Int(Date().timeIntervalSince(answeredAt) * 1000))ms after answer")
         }
         startPathMonitorLocked()
+        startAudioFlowWatchdogLocked()
         VaultlixCallManager.shared.nativeCallDidConnect(callID: callID)
         return true
     }
@@ -798,6 +854,10 @@ final class NativeWebRTCCallEngine: NSObject {
     private func processAnswerLocked(_ payload: [String: Any]) {
         guard let pc = peer, let sdp = payload["sdp"] as? String else {
             trace("answer missing-state")
+            return
+        }
+        guard pc.signalingState == .haveLocalOffer else {
+            trace("ignoring duplicate or stale answer state=\(pc.signalingState.rawValue)")
             return
         }
         pc.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp)) { [weak self, weak pc] error in
@@ -878,8 +938,13 @@ final class NativeWebRTCCallEngine: NSObject {
     /// Only the caller offers, so the two sides can never offer at the same moment. The other
     /// side answers the restart offer through the normal offer path once it can hear us again.
     private func restartIceLocked() {
-        guard peer != nil, outgoing, answered else { return }
+        guard let peer, outgoing, answered else { return }
         trace("ice restart offer")
+        // Modern libwebrtc requires the explicit restart call to rotate ICE
+        // credentials. The legacy offer constraint alone can produce another
+        // ordinary offer, which the peer answers while media stays pinned to
+        // the dead network route.
+        peer.restartIce()
         createAndSendOfferLocked(iceRestart: true)
     }
 
@@ -917,7 +982,11 @@ final class NativeWebRTCCallEngine: NSObject {
                 }
                 return
             }
-            self.requestOrRestartIceLocked()
+            if self.peer?.iceConnectionState == .checking {
+                self.trace("ICE restart still checking; waiting")
+            } else {
+                self.requestOrRestartIceLocked()
+            }
             self.scheduleRecoveryAttemptLocked(generation: generation, delay: Self.iceRestartRetry)
         }
     }
@@ -935,6 +1004,7 @@ final class NativeWebRTCCallEngine: NSObject {
         guard reconnecting, let callID else { return }
         reconnecting = false
         reconnectStartedAt = nil
+        lastInboundAudioProgressAt = Date()
         recoveryGeneration += 1
         reconnectPresentationGeneration += 1
         trace("media path recovered")
@@ -961,8 +1031,15 @@ final class NativeWebRTCCallEngine: NSObject {
                 let previous = self.lastPathSignature
                 self.lastPathSignature = signature
                 guard let previous, previous != signature, signature != "offline" else { return }
-                self.trace("default network changed: recovering media path")
-                self.beginMediaRecoveryLocked(after: 0.5)
+                self.trace("default network changed: refreshing signaling")
+                self.reconnectSignalingForNetworkChangeLocked()
+                // A route change is not itself a media failure. Modern WebRTC
+                // can keep the selected pair alive while moving between Wi-Fi
+                // and cellular. Marking recovery here showed a stale
+                // "Reconnecting…" banner even while packets and audio were
+                // flowing. The ICE delegate below starts bounded recovery if
+                // the transport actually becomes disconnected or failed.
+                self.trace("network changed: awaiting ICE state")
             }
         }
         pathMonitor = monitor
@@ -973,6 +1050,70 @@ final class NativeWebRTCCallEngine: NSObject {
         pathMonitor?.cancel()
         pathMonitor = nil
         lastPathSignature = nil
+    }
+
+    /// ICE can remain `connected` while a weak mobile route has stopped
+    /// delivering RTP. Watch encrypted inbound audio bytes rather than sound
+    /// level, so ordinary silence does not look like a broken call.
+    private func startAudioFlowWatchdogLocked() {
+        audioFlowGeneration += 1
+        let generation = audioFlowGeneration
+        lastInboundAudioBytes = nil
+        lastInboundAudioProgressAt = Date()
+        scheduleAudioFlowPollLocked(generation: generation)
+    }
+
+    private func scheduleAudioFlowPollLocked(generation: Int) {
+        queue.asyncAfter(deadline: .now() + Self.audioFlowPollInterval) {
+            guard generation == self.audioFlowGeneration,
+                  self.connectedOnce,
+                  self.answered,
+                  !self.ending,
+                  let peer = self.peer else { return }
+            peer.statistics { [weak self, weak peer] report in
+                guard let self, let peer else { return }
+                self.queue.async {
+                    guard generation == self.audioFlowGeneration,
+                          self.peer === peer,
+                          self.connectedOnce,
+                          !self.ending else { return }
+                    var inboundBytes: UInt64 = 0
+                    var foundAudio = false
+                    for statistic in report.statistics.values where statistic.type == "inbound-rtp" {
+                        let kind = (statistic.values["kind"] as? String)
+                            ?? (statistic.values["mediaType"] as? String)
+                        guard kind == "audio",
+                              let bytes = statistic.values["bytesReceived"] as? NSNumber else { continue }
+                        foundAudio = true
+                        inboundBytes &+= bytes.uint64Value
+                    }
+                    if foundAudio { self.observeInboundAudioBytesLocked(inboundBytes) }
+                    self.scheduleAudioFlowPollLocked(generation: generation)
+                }
+            }
+        }
+    }
+
+    private func observeInboundAudioBytesLocked(_ bytes: UInt64) {
+        let now = Date()
+        guard let previous = lastInboundAudioBytes else {
+            lastInboundAudioBytes = bytes
+            lastInboundAudioProgressAt = now
+            return
+        }
+        if bytes != previous {
+            lastInboundAudioBytes = bytes
+            lastInboundAudioProgressAt = now
+            if reconnecting {
+                trace("audio flow recovered")
+                mediaPathRecoveredLocked()
+            }
+            return
+        }
+        guard !reconnecting,
+              now.timeIntervalSince(lastInboundAudioProgressAt ?? now) >= Self.audioFlowStallThreshold else { return }
+        trace("audio flow stalled: starting recovery")
+        beginMediaRecoveryLocked(after: 0)
     }
 
     private func prepareAudioTrackLocked() {
@@ -1073,6 +1214,20 @@ final class NativeWebRTCCallEngine: NSObject {
                   self.room != nil, self.callID != nil, self.socket == nil else { return }
             self.connectSignalingLocked()
         }
+    }
+
+    private func reconnectSignalingForNetworkChangeLocked() {
+        guard room != nil, callID != nil, !ending else { return }
+        let oldSocket = socket
+        let oldSession = signalingSession
+        socket = nil
+        signalingSession = nil
+        signalingReady = false
+        reconnectAttempt = 0
+        oldSocket?.cancel(with: .goingAway, reason: nil)
+        oldSession?.invalidateAndCancel()
+        trace("network changed: reconnecting signaling")
+        connectSignalingLocked()
     }
 
     private func scheduleTurnRetryLocked() {
@@ -1183,6 +1338,7 @@ final class NativeWebRTCCallEngine: NSObject {
         connectionWatchdogGeneration += 1
         recoveryGeneration += 1
         reconnectPresentationGeneration += 1
+        audioFlowGeneration += 1
         stopPathMonitorLocked()
         connectedOnce = false
         transportReady = false
@@ -1192,10 +1348,15 @@ final class NativeWebRTCCallEngine: NSObject {
         reconnecting = false
         reconnectingVisible = false
         reconnectStartedAt = nil
+        lastInboundAudioBytes = nil
+        lastInboundAudioProgressAt = nil
         peerCreatedAt = nil
         answeredAt = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
+        signalingSession?.invalidateAndCancel()
+        signalingSession = nil
+        signalingAttemptGeneration += 1
         signalingReady = false
         // Detach before close. libwebrtc can synchronously emit `.closed`
         // from close(); while `self.peer` still pointed at this object, the
@@ -1242,6 +1403,7 @@ final class NativeWebRTCCallEngine: NSObject {
         // session too or it discards the new call's messages as replays.
         sessionID = UUID().uuidString
         answered = false
+        offerCreationInFlight = false
         queuedSignals.removeAll()
         reconnectAttempt = 0
         turnRequestInFlight = false
@@ -1256,6 +1418,20 @@ final class NativeWebRTCCallEngine: NSObject {
     private func normalizedOutcome(_ value: String?, fallback: String) -> String {
         guard let value, ["cancelled", "unanswered", "declined", "ended"].contains(value) else { return fallback }
         return value
+    }
+}
+
+extension NativeWebRTCCallEngine: URLSessionWebSocketDelegate {
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                    didOpenWithProtocol protocol: String?) {
+        queue.async {
+            guard self.signalingSession === session,
+                  self.socket === webSocketTask,
+                  let room = self.room else { return }
+            self.trace("signal transport open; authenticating")
+            self.sendRawLocked(["type": "auth", "code": room.code,
+                                "token": room.token, "nativeCall": true])
+        }
     }
 }
 
@@ -1289,6 +1465,11 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
             queue.async {
                 guard self.peer === peerConnection else { return }
                 self.transportReady = false
+                // Keep a signaling socket that already reopened on the new
+                // route. Replacing that healthy cellular socket here can lose
+                // the restart request during the handoff. Only rebuild when
+                // signaling did not become ready on the new route.
+                if !self.signalingReady { self.reconnectSignalingForNetworkChangeLocked() }
                 self.beginMediaRecoveryLocked(after: Self.iceRestartGrace)
             }
             return
@@ -1304,6 +1485,7 @@ extension NativeWebRTCCallEngine: RTCPeerConnectionDelegate {
             // Before the first connection a failure ends the call as before; once the call has been
             // up, try to heal the path instead of hanging up on a weak-signal blip.
             if newState == .failed, self.connectedOnce {
+                if !self.signalingReady { self.reconnectSignalingForNetworkChangeLocked() }
                 self.beginMediaRecoveryLocked(after: 0)
                 return
             }
