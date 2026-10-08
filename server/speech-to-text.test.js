@@ -44,6 +44,13 @@ test('keyboard and speech drafts grow both composers up to their scroll cap', ()
   assert.match(groups, /function updatePrivateGroupComposer\(\) \{[\s\S]*resizeChatComposer\(input\)/);
 });
 
+test('native composer sizing is scoped to the real platform marker', () => {
+  assert.doesNotMatch(client, /@supports \(-webkit-touch-callout:none\)/);
+  assert.match(client, /html\.vaultlix-native-ios #s-chat #msg-input\{font-size:17px!important\}/);
+  assert.match(client, /html\.vaultlix-native-android #s-chat #msg-input:placeholder-shown\{[\s\S]{0,120}white-space:nowrap/);
+  assert.match(client, /html\.vaultlix-native-android #s-chat \.mic-btn,[\s\S]{0,180}flex:0 0 38px!important/);
+});
+
 test('Android streams partial speech results through the existing trusted bridge', () => {
   assert.match(android, /SpeechRecognizer\.isRecognitionAvailable/);
   assert.match(android, /createOnDeviceSpeechRecognizer/);

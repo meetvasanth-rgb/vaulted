@@ -2730,26 +2730,25 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-chat .chat-call-btn,#s-chat .conversation-menu-btn{width:37px;height:38px}
   #s-chat .e2e-bar{font-size:10px!important}
 }
-/* WKWebView-only legibility pass. Android's sizing is already balanced; iOS
-   needs a compact encryption chip and a larger reading scale. Keep this after
-   the shared mobile rules so their !important declarations cannot win. */
-@supports (-webkit-touch-callout:none){
-  @media(max-width:430px){
-    #s-chat .chat-tools{grid-template-columns:max-content minmax(0,1fr)!important}
-    #s-chat .e2e-bar{width:auto!important;min-width:0!important;justify-self:start!important;justify-content:flex-start!important;padding:8px 10px!important;font-size:13px!important;line-height:1.2!important}
-    #s-chat .e2e-bar span{font-size:13px!important}
-    #s-chat .timer-bar-label::before,#s-chat #timer-bar-select{font-size:13px!important}
-    #s-chat .sys-msg{font-size:14px!important;line-height:1.45!important}
-    #s-chat .msg .bubble{font-size:18.5px!important;line-height:1.55!important}
+/* WKWebView-only legibility pass. Use the native wrapper's explicit platform
+   class rather than a WebKit feature query: current OnePlus WebViews also
+   expose -webkit-touch-callout, which incorrectly gave Android the larger
+   iPhone type scale and made the composer placeholder wrap. */
+@media(max-width:430px){
+    html.vaultlix-native-ios #s-chat .chat-tools{grid-template-columns:max-content minmax(0,1fr)!important}
+    html.vaultlix-native-ios #s-chat .e2e-bar{width:auto!important;min-width:0!important;justify-self:start!important;justify-content:flex-start!important;padding:8px 10px!important;font-size:13px!important;line-height:1.2!important}
+    html.vaultlix-native-ios #s-chat .e2e-bar span{font-size:13px!important}
+    html.vaultlix-native-ios #s-chat .timer-bar-label::before,html.vaultlix-native-ios #s-chat #timer-bar-select{font-size:13px!important}
+    html.vaultlix-native-ios #s-chat .sys-msg{font-size:14px!important;line-height:1.45!important}
+    html.vaultlix-native-ios #s-chat .msg .bubble{font-size:18.5px!important;line-height:1.55!important}
     /* Group chat had no equivalent to this pass at all — its message text
        stayed at the 14px base while direct chat got bumped above, so group
        conversations read noticeably smaller on the exact same device. */
-    .group-message-text{font-size:18.5px!important;line-height:1.55!important}
-    #s-chat .msg-name{font-size:13px!important}
-    #s-chat .msg-time{font-size:12px!important}
-    #s-chat .daily-nudge{font-size:14px!important;line-height:1.4!important}
-    #s-chat #msg-input{font-size:17px!important}
-  }
+    html.vaultlix-native-ios .group-message-text{font-size:18.5px!important;line-height:1.55!important}
+    html.vaultlix-native-ios #s-chat .msg-name{font-size:13px!important}
+    html.vaultlix-native-ios #s-chat .msg-time{font-size:12px!important}
+    html.vaultlix-native-ios #s-chat .daily-nudge{font-size:14px!important;line-height:1.4!important}
+    html.vaultlix-native-ios #s-chat #msg-input{font-size:17px!important}
 }
 /* Android 15+ draws target-SDK 35+ apps edge-to-edge. Some OEM WebViews,
    notably ColorOS, still report env(safe-area-inset-*) as zero. The native
@@ -2761,6 +2760,33 @@ html.vaultlix-native-android #s-chat .chat-hdr{
 }
 html.vaultlix-native-android #s-chat .chat-ftr{
   padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+}
+/* Keep the Android composer balanced under OEM font metrics and display
+   scaling. The visible badges are compact, while their transparent pseudo
+   hit areas retain a comfortable touch target. */
+html.vaultlix-native-android #s-chat #msg-input:placeholder-shown{
+  white-space:nowrap;
+  overflow-x:hidden;
+}
+html.vaultlix-native-android #s-chat .mic-btn,
+html.vaultlix-native-android #s-chat .speech-to-text-btn{
+  position:relative;
+  flex:0 0 38px!important;
+  width:38px!important;
+  height:38px!important;
+  margin-bottom:3px;
+  border-radius:12px!important;
+}
+html.vaultlix-native-android #s-chat .mic-btn::after,
+html.vaultlix-native-android #s-chat .speech-to-text-btn::after{
+  content:'';
+  position:absolute;
+  inset:-4px;
+}
+html.vaultlix-native-android #s-chat .mic-btn svg,
+html.vaultlix-native-android #s-chat .speech-to-text-btn svg{
+  width:18px!important;
+  height:18px!important;
 }
 html.vaultlix-native-android #s-landing{
   padding-top:calc(22px + var(--android-safe-area-top,0px))!important;
@@ -4108,7 +4134,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="app-lock-overlay" id="locker-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-setup-title">
   <form class="app-lock-sheet locker-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)">
     <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Private on this device</div><h2 class="app-lock-title" id="locker-setup-title">Create your Locker</h2></div></div>
-    <div class="app-lock-copy" id="locker-setup-copy">Choose a password for your Locker, separate from your Vaultlix account password and App Lock passcode. It guards notes and photos stored only on this device. Vaultlix cannot recover it — losing it permanently loses everything in your Locker.</div>
+    <div class="app-lock-copy" id="locker-setup-copy">Choose a password for your Locker, separate from your Hidden Chats password, Vaultlix account password, and App Lock passcode. It guards notes and photos stored only on this device. Vaultlix cannot recover it — losing it permanently loses everything in your Locker.</div>
     <label class="app-lock-field"><span>Locker password</span><input id="locker-setup-password" type="password" autocomplete="new-password" minlength="8" required/></label>
     <label class="app-lock-field"><span>Confirm password</span><input id="locker-setup-confirm" type="password" autocomplete="new-password" minlength="8" required/></label>
     <div class="app-lock-error" id="locker-setup-error" aria-live="polite"></div>
@@ -4119,7 +4145,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="app-lock-overlay" id="locker-unlock-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-unlock-title">
   <form class="app-lock-sheet locker-sheet" id="locker-unlock-form" onsubmit="submitLockerUnlock(event)">
     <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Encrypted locally</div><h2 class="app-lock-title" id="locker-unlock-title">Unlock Locker</h2></div></div>
-    <div class="app-lock-copy">Your notes and photos stay encrypted until you enter the separate Locker password.</div>
+    <div class="app-lock-copy">Enter the separate password created for Locker. Your Hidden Chats password and App Lock passcode will not unlock it.</div>
     <label class="app-lock-field"><span>Locker password</span><input id="locker-unlock-password" type="password" autocomplete="current-password" required/></label>
     <div class="app-lock-error" id="locker-unlock-error" aria-live="polite"></div>
     <div class="app-lock-actions"><button type="button" onclick="closeLockerUnlockScreen()">Cancel</button><button class="primary" type="submit">Unlock</button></div>
@@ -15803,7 +15829,7 @@ async function unlockLocker(password) {
   const { verifier, wrapKeyBytes } = await deriveLockerMaterial(password, base64UrlToBytes(config.salt), config.iterations || LOCKER_PBKDF2_ITERATIONS);
   if (!equalBytes(verifier, base64UrlToBytes(config.verifier))) {
     recordLockerFailure();
-    throw new Error('Incorrect Locker password.');
+    throw new Error('Incorrect Locker password. Hidden Chats uses a different password.');
   }
   localStorage.removeItem(LOCKER_FAILURE_KEY);
   lockerSessionKey = await crypto.subtle.importKey('raw', wrapKeyBytes, { name:'AES-GCM' }, false, ['encrypt', 'decrypt']);
