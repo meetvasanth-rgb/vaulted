@@ -37,13 +37,18 @@ test('Android: a dropped media path is recovered by an ICE restart, not ignored'
   // state. That signal must also enter recovery so a silent-looking call is
   // not left running indefinitely.
   assert.match(engine, /onIceConnectionReceivingChange\(boolean receiving\)[\s\S]{0,350}beginMediaRecovery\(ICE_RESTART_GRACE_MS\)/);
+  assert.match(engine, /ContinualGatheringPolicy\.GATHER_CONTINUALLY/);
+  assert.match(engine, /case "call-restart-request":[\s\S]{0,500}beginMediaRecovery\(0L\)/);
+  assert.match(engine, /private void requestOrRestartIce\(\)[\s\S]{0,260}sendSignal\("call-restart-request"/);
+  assert.match(engine, /ICE_RESTART_GRACE_MS = 1_500L/);
 });
 
 test('Android: recovery does not restart the call timer or replay "connected"', () => {
   const observer = engine.slice(engine.indexOf('public void onIceConnectionChange'), engine.indexOf('public void onSignalingChange'));
   assert.match(observer, /if \(connectedAtMs == 0L\)[\s\S]{0,220}completeInitialConnectionIfReady\(\);/);
   assert.match(observer, /finishMediaRecovery\(\)/);
-  assert.match(engine, /private void finishMediaRecovery\(\)[\s\S]{0,320}listener\.onReconnecting\(false\)/);
+  assert.match(engine, /private void finishMediaRecovery\(\)[\s\S]{0,500}listener\.onReconnecting\(false\)/);
+  assert.match(engine, /RECONNECT_UI_DELAY_MS = 900L/);
 });
 
 test('both native engines negotiate the encrypted relay path while ringing but gate media on Answer', () => {
@@ -119,14 +124,25 @@ test('iOS: a dropped media path is recovered by an ICE restart from the caller',
   assert.match(ios, /nativeCallDidEnd\(callID: callID, action: "nativeConnectionLost"\)/);
   // A restored path must not re-announce "connected" (that would reset the web timer).
   assert.match(ios, /if self\.connectedOnce \{\s*self\.mediaPathRecoveredLocked\(\)\s*return\s*\}/);
+  assert.match(ios, /continualGatheringPolicy = \.gatherContinually/);
+  assert.match(ios, /case "call-restart-request":[\s\S]{0,500}beginMediaRecoveryLocked\(after: 0\)/);
+  assert.match(ios, /private func requestOrRestartIceLocked\(\)[\s\S]{0,300}sendSignalLocked\(type: "call-restart-request"/);
+  assert.match(ios, /iceRestartGrace: TimeInterval = 1\.5/);
 });
 
 test('iOS: a network switch triggers recovery, setup restarts ICE once, and everything is released on reset', () => {
   assert.match(ios, /NWPathMonitor\(\)/);
   assert.match(ios, /beginMediaRecoveryLocked\(after: 0\.5\)/);
+  assert.match(ios, /path\.usesInterfaceType\(\.wifi\)/);
+  assert.match(ios, /path\.usesInterfaceType\(\.cellular\)/);
   assert.match(ios, /setup stalled: restarting ICE/);
   const reset = ios.slice(ios.indexOf('private func resetLocked()'));
-  assert.match(reset.slice(0, 600), /recoveryGeneration \+= 1\s*stopPathMonitorLocked\(\)\s*connectedOnce = false/);
+  assert.match(reset.slice(0, 700), /recoveryGeneration \+= 1[\s\S]{0,120}stopPathMonitorLocked\(\)\s*connectedOnce = false/);
+  assert.match(ios, /reconnectUIDelay: TimeInterval = 0\.9/);
+});
+
+test('the encrypted signaling relay permits a callee to request caller-side ICE recovery', () => {
+  assert.match(server, /SIGNAL_TYPE_ALLOWLIST[\s\S]{0,300}'call-restart-request'/);
 });
 
 test('iOS: the manager relays reconnecting/reconnected and treats connection loss as terminal', () => {

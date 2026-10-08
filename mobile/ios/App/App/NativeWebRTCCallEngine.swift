@@ -74,13 +74,16 @@ final class NativeWebRTCCallEngine: NSObject {
     private var connectionWatchdogGeneration = 0
     // Media-path recovery: ICE going quiet mid-call (weak signal, Wi-Fi <-> mobile data) is healed
     // by restarting ICE from the caller's side instead of leaving a dead call running.
-    private static let iceRestartGrace: TimeInterval = 4
-    private static let iceRestartRetry: TimeInterval = 8
+    private static let iceRestartGrace: TimeInterval = 1.5
+    private static let iceRestartRetry: TimeInterval = 5
     private static let reconnectDeadline: TimeInterval = 30
+    private static let reconnectUIDelay: TimeInterval = 0.9
     private var connectedOnce = false
     private var reconnecting = false
+    private var reconnectingVisible = false
     private var reconnectStartedAt: Date?
     private var recoveryGeneration = 0
+    private var reconnectPresentationGeneration = 0
     private var pathMonitor: NWPathMonitor?
     private var lastPathSignature: String?
     // Timing for diagnosing slow connects (see the "timing" trace lines).
@@ -569,6 +572,11 @@ final class NativeWebRTCCallEngine: NSObject {
             guard let candidate = payload["candidate"] as? [String: Any] else { return }
             if peer?.remoteDescription == nil { pendingCandidates.append(candidate) }
             else { addCandidateLocked(candidate) }
+        case "call-restart-request":
+            // The original caller remains the only offerer. The answering
+            // phone can still trigger an immediate restart when it is the
+            // device whose network changed.
+            if outgoing, answered, connectedOnce { beginMediaRecoveryLocked(after: 0) }
         case "answer":
             guard outgoing else { return }
             processAnswerLocked(payload)
@@ -651,6 +659,9 @@ final class NativeWebRTCCallEngine: NSObject {
         let config = RTCConfiguration()
         config.iceTransportPolicy = .relay
         config.sdpSemantics = .unifiedPlan
+        // Continue gathering relay candidates when Wi-Fi/cellular interfaces
+        // change so the existing peer can migrate rather than going silent.
+        config.continualGatheringPolicy = .gatherContinually
         // Start allocating the relay candidate now, while the phone is still ringing, instead of
         // after the offer/answer exist. By the time the call is answered the candidate is already
         // gathered, so connection checks can begin as soon as the descriptions are exchanged.
@@ -878,7 +889,18 @@ final class NativeWebRTCCallEngine: NSObject {
             reconnecting = true
             reconnectStartedAt = Date()
             trace("media path lost: reconnecting")
-            DispatchQueue.main.async { VaultlixCallManager.shared.nativeCallMediaDidChange(callID: callID, reconnecting: true) }
+            reconnectPresentationGeneration += 1
+            let presentationGeneration = reconnectPresentationGeneration
+            // A radio handoff can pause packets for only a fraction of a
+            // second. Start recovery now, but keep the connected UI stable
+            // unless the interruption is long enough to matter to the user.
+            queue.asyncAfter(deadline: .now() + Self.reconnectUIDelay) {
+                guard presentationGeneration == self.reconnectPresentationGeneration,
+                      self.reconnecting,
+                      self.callID == callID else { return }
+                self.reconnectingVisible = true
+                DispatchQueue.main.async { VaultlixCallManager.shared.nativeCallMediaDidChange(callID: callID, reconnecting: true) }
+            }
         }
         recoveryGeneration += 1
         scheduleRecoveryAttemptLocked(generation: recoveryGeneration, delay: grace)
@@ -895,8 +917,17 @@ final class NativeWebRTCCallEngine: NSObject {
                 }
                 return
             }
-            self.restartIceLocked()
+            self.requestOrRestartIceLocked()
             self.scheduleRecoveryAttemptLocked(generation: generation, delay: Self.iceRestartRetry)
+        }
+    }
+
+    private func requestOrRestartIceLocked() {
+        if outgoing {
+            restartIceLocked()
+        } else {
+            trace("requesting caller ICE restart")
+            sendSignalLocked(type: "call-restart-request", payload: [:])
         }
     }
 
@@ -905,8 +936,12 @@ final class NativeWebRTCCallEngine: NSObject {
         reconnecting = false
         reconnectStartedAt = nil
         recoveryGeneration += 1
+        reconnectPresentationGeneration += 1
         trace("media path recovered")
-        DispatchQueue.main.async { VaultlixCallManager.shared.nativeCallMediaDidChange(callID: callID, reconnecting: false) }
+        if reconnectingVisible {
+            reconnectingVisible = false
+            DispatchQueue.main.async { VaultlixCallManager.shared.nativeCallMediaDidChange(callID: callID, reconnecting: false) }
+        }
     }
 
     /// A different primary network (Wi-Fi <-> mobile data) kills the old relay path, so recover at once
@@ -917,7 +952,12 @@ final class NativeWebRTCCallEngine: NSObject {
         monitor.pathUpdateHandler = { [weak self] path in
             self?.queue.async {
                 guard let self else { return }
-                let signature = path.status == .satisfied ? (path.availableInterfaces.first?.name ?? "unknown") : "offline"
+                let signature: String
+                if path.status != .satisfied { signature = "offline" }
+                else if path.usesInterfaceType(.wifi) { signature = "wifi" }
+                else if path.usesInterfaceType(.cellular) { signature = "cellular" }
+                else if path.usesInterfaceType(.wiredEthernet) { signature = "wired" }
+                else { signature = "other" }
                 let previous = self.lastPathSignature
                 self.lastPathSignature = signature
                 guard let previous, previous != signature, signature != "offline" else { return }
@@ -1142,6 +1182,7 @@ final class NativeWebRTCCallEngine: NSObject {
         hangupRetryGeneration += 1
         connectionWatchdogGeneration += 1
         recoveryGeneration += 1
+        reconnectPresentationGeneration += 1
         stopPathMonitorLocked()
         connectedOnce = false
         transportReady = false
@@ -1149,6 +1190,7 @@ final class NativeWebRTCCallEngine: NSObject {
         ringingAcknowledged = false
         initialOfferStarted = false
         reconnecting = false
+        reconnectingVisible = false
         reconnectStartedAt = nil
         peerCreatedAt = nil
         answeredAt = nil

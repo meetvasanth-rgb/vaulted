@@ -146,13 +146,16 @@ final class NativeWebRtcCallEngine {
     // Media-path recovery: ICE going quiet mid-call (weak signal, Wi-Fi <-> mobile data) is
     // healed by restarting ICE from the caller's side instead of leaving a dead call running.
     private static final long CONNECT_DEADLINE_MS = 25_000L;
-    private static final long ICE_RESTART_GRACE_MS = 4_000L;
-    private static final long ICE_RESTART_RETRY_MS = 8_000L;
+    private static final long ICE_RESTART_GRACE_MS = 1_500L;
+    private static final long ICE_RESTART_RETRY_MS = 5_000L;
     private static final long RECONNECT_DEADLINE_MS = 30_000L;
+    private static final long RECONNECT_UI_DELAY_MS = 900L;
     private boolean reconnecting;
+    private boolean reconnectingVisible;
     private long answeredAtMs;
     private long reconnectStartedMs;
     private int recoveryRun;
+    private int reconnectPresentationRun;
     private ConnectivityManager.NetworkCallback networkCallback;
     private Network lastDefaultNetwork;
 
@@ -422,6 +425,13 @@ final class NativeWebRtcCallEngine {
                     break;
                 case "answer": if (outgoing) processAnswer(payload); break;
                 case "ice-candidate": addRemoteCandidate(payload.optJSONObject("candidate")); break;
+                case "call-restart-request":
+                    // Only the original caller creates offers, which avoids
+                    // glare. If the answering phone is the one that moved to
+                    // a new network, let it ask the caller to restart ICE
+                    // instead of waiting in silence for the caller to notice.
+                    if (outgoing && answered && connectedAtMs > 0L) beginMediaRecovery(0L);
+                    break;
                 case "call-hangup":
                     reset(normalizeOutcome(payload.optString("reason"), "ended"));
                     break;
@@ -499,6 +509,10 @@ final class NativeWebRtcCallEngine {
             PeerConnection.RTCConfiguration config = new PeerConnection.RTCConfiguration(ice);
             config.iceTransportsType = PeerConnection.IceTransportsType.RELAY;
             config.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
+            // Keep gathering relay candidates as interfaces change. This
+            // gives libwebrtc a usable candidate on the new mobile/Wi-Fi path
+            // without rebuilding the entire call.
+            config.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;
             // Allocate the relay candidate while the phone is ringing. The
             // audio track stays disabled until Answer, so preparation cannot
             // transmit microphone audio or mark the call connected early.
@@ -800,7 +814,7 @@ final class NativeWebRtcCallEngine {
         if (audioSource != null) { audioSource.dispose(); audioSource = null; }
         disposeVideo();
         stopWatchingNetworkChanges();
-        recoveryRun++; reconnecting = false; answeredAtMs = 0L;
+        recoveryRun++; reconnectPresentationRun++; reconnecting = false; reconnectingVisible = false; answeredAtMs = 0L;
         room = null; signalingReady = false; outgoing = false; outgoingVideoCall = false; answered = false; offerReceived = false; ending = false;
         ringingAcknowledged = false; initialOfferStarted = false; transportReady = false; pendingOffer = null;
         answerCandidatesResent = false;
@@ -846,7 +860,16 @@ final class NativeWebRtcCallEngine {
             reconnecting = true;
             reconnectStartedMs = System.currentTimeMillis();
             Log.i(TAG, "media path lost: reconnecting room=" + currentRoomCode);
-            for (Listener listener : listeners) listener.onReconnecting(true);
+            final int presentationToken = ++reconnectPresentationRun;
+            final int presentationGeneration = generation;
+            // Mobile radios briefly pause packets while roaming between cells.
+            // Recover immediately, but do not flash the reconnecting UI unless
+            // the interruption lasts long enough for the user to notice.
+            scheduler.schedule(() -> executor.execute(() -> {
+                if (presentationGeneration != generation || presentationToken != reconnectPresentationRun || !reconnecting) return;
+                reconnectingVisible = true;
+                for (Listener listener : listeners) listener.onReconnecting(true);
+            }), RECONNECT_UI_DELAY_MS, TimeUnit.MILLISECONDS);
         }
         final int token = ++recoveryRun;
         final int run = generation;
@@ -857,11 +880,15 @@ final class NativeWebRtcCallEngine {
     private void finishMediaRecovery() {
         if (!reconnecting) return;
         recoveryRun++;
+        reconnectPresentationRun++;
         reconnecting = false;
         reconnectStartedMs = 0L;
         transportReady = true;
         Log.i(TAG, "media path recovered");
-        for (Listener listener : listeners) listener.onReconnecting(false);
+        if (reconnectingVisible) {
+            reconnectingVisible = false;
+            for (Listener listener : listeners) listener.onReconnecting(false);
+        }
     }
 
     private void scheduleRecoveryAttempt(int run, int token, long startedAt, long delayMs) {
@@ -872,7 +899,7 @@ final class NativeWebRtcCallEngine {
                 reset("connection-lost");
                 return;
             }
-            restartIce();
+            requestOrRestartIce();
             scheduleRecoveryAttempt(run, token, startedAt, ICE_RESTART_RETRY_MS);
         }), delayMs, TimeUnit.MILLISECONDS);
     }
@@ -883,6 +910,15 @@ final class NativeWebRtcCallEngine {
         if (peer == null || room == null || !outgoing || !answered) return;
         Log.i(TAG, "ICE restart offer");
         createOffer(true);
+    }
+
+    private void requestOrRestartIce() {
+        if (outgoing) {
+            restartIce();
+            return;
+        }
+        Log.i(TAG, "requesting caller ICE restart");
+        sendSignal("call-restart-request", new JSONObject());
     }
 
     private void watchNetworkChanges() {

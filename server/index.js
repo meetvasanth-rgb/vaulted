@@ -6261,7 +6261,7 @@ function replaceInboxSubscriptions(ws, subscriptions) {
 // (checked against that source directly, not from memory) — anything else
 // is silently dropped rather than relayed.
 const SIGNAL_TYPE_ALLOWLIST = new Set([
-  'call-invite', 'call-ringing', 'call-accept', 'call-decline', 'call-busy',
+  'call-invite', 'call-ringing', 'call-accept', 'call-decline', 'call-busy', 'call-restart-request',
   'call-hangup', 'offer', 'answer', 'ice-candidate', 'call-reaction', 'call-video-state', 'call-video-request', 'call-video-response',
 ]);
 const CALL_TERMINAL_TTL_MS = 2 * 60 * 1000;
