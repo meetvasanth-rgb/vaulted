@@ -31,7 +31,9 @@ assert.notEqual(start, -1, 'merge computation block missing');
 const mergeLogic = client.slice(start, end);
 
 function computeMerge(current, ownedSession, lastReadSeq) {
-  const sandbox = vm.createContext({ Number, Math, current, ownedSession, lastReadSeq, result: {} });
+  const freshDeviceRestore = !current;
+  const bundle = { savedAt: 500 };
+  const sandbox = vm.createContext({ Number, Math, current, ownedSession, lastReadSeq, freshDeviceRestore, bundle, result: {} });
   vm.runInContext(`${mergeLogic}\nresult = { lastSeq, unread, unreadSystemCount };`, sandbox);
   return sandbox.result;
 }
@@ -68,9 +70,9 @@ test('when a genuine gap exists (lastReadSeq behind lastSeq), the SMALLER of the
   assert.equal(unread, 3);
 });
 
-test('a brand-new room (no current local copy) takes the incoming session\'s own counts as-is, still subject to the same zero-when-caught-up invariant', () => {
+test('a brand-new device establishes a clean unread baseline instead of trusting another device\'s stale counters', () => {
   const freshNoGap = computeMerge(undefined, { lastSeq: 20, unread: 5, unreadSystemCount: 1 }, 20);
   assert.equal(freshNoGap.unread, 0, 'lastReadSeq already equals lastSeq, so even a fresh incoming count gets zeroed');
   const freshWithGap = computeMerge(undefined, { lastSeq: 20, unread: 5, unreadSystemCount: 1 }, 10);
-  assert.equal(freshWithGap.unread, 5, 'a genuine gap with no local copy to compare against trusts the incoming count');
+  assert.equal(freshWithGap.unread, 0, 'the server migration cutoff will re-add only messages newer than the encrypted snapshot');
 });

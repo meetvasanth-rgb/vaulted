@@ -14,6 +14,7 @@ function harness() {
     loadAccountState: () => state.accountId ? state : null,
     callHistoryEntries: () => context.entries,
     localStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v) },
+    scheduleAccountSync: () => {},
     currentVaultListMode: 'calls', tabFocused: true, quickLockActive: false, activePrivateGroupId: null,
     escHtml: s => String(s),
     roomDisplayLabel: room => room.name || room.code,

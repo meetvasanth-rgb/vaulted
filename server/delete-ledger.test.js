@@ -64,7 +64,7 @@ test('merging tolerates missing, null and junk entries', () => {
 test('account sync merges the two copies\' ledgers instead of picking one', () => {
   assert.match(client, /const deleteLedger = pruneDeleteLedger\(mergeDeleteLedgers\(current\?\.deleteLedger, ownedSession\.deleteLedger\)\);/);
   assert.match(client, /const callHistoryClearedAt = Math\.max\(Number\(current\?\.callHistoryClearedAt\) \|\| 0, Number\(ownedSession\.callHistoryClearedAt\) \|\| 0\);/);
-  assert.match(client, /merged\.set\(session\.code, \{ \.\.\.selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion, lastSeq, unread, unreadSystemCount \}\);/);
+  assert.match(client, /merged\.set\(session\.code, \{ \.\.\.selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt, lastSeq, unread, unreadSystemCount \}\);/);
 });
 
 test('saving the ledger merges with what is already stored, so nothing recorded elsewhere is lost', () => {

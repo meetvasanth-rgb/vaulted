@@ -126,9 +126,10 @@ test('contact identity is visually stable and long names remain bounded', () => 
   assert.match(client, /maxlength="32"/);
 });
 
-test('every restored inbox conversation retains a visible activity date', () => {
-  assert.match(client, /inboxActivityAt: new Date\(inboxActivityAt \|\| lastMessageAt \|\| connectedSince \|\| Date\.now\(\)\)/);
-  assert.match(client, /inboxActivityAt:session\.inboxActivityAt \|\| session\.savedAt/);
+test('restored inbox conversations retain their real activity time instead of the restore time', () => {
+  assert.match(client, /inboxActivityAt: new Date\(inboxActivityAt \?\? lastMessageAt \?\? connectedSince \?\? Date\.now\(\)\)/);
+  assert.match(client, /inboxActivityAt:session\.inboxActivityAt \|\| session\.lastMessageAt \|\| session\.connectedSince \|\| 0/);
+  assert.doesNotMatch(client, /inboxActivityAt:session\.inboxActivityAt \|\| session\.savedAt/);
   assert.match(client, /const fallbackTime = new Date\(room\.inboxActivityAt \|\| 0\)/);
   assert.match(client, /Math\.max\(messageTime, serverTime, connectedTime, fallbackTime, 0\)/);
 });

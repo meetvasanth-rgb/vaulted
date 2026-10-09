@@ -6066,7 +6066,7 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   const active = loadActiveRoomCode();
   const groups = loadPrivateGroupSessions().filter(group => group.ownerAccountId === accountId);
   const inbox = accountId && accountId === loadAccountState()?.accountId ? loadLocalInboxKey() : null;
-  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
+  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), missedCalls:missedCallSeenBundleSnapshot(accountId), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
 }
 function importAccountBundle(bundle, accountId) {
   if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid conversation backup');
@@ -6077,6 +6077,11 @@ function importAccountBundle(bundle, accountId) {
     const local = loadRoomSession(code);
     if (local && (!local.ownerAccountId || local.ownerAccountId === accountId)) merged.set(code, local);
   }
+  // A clean install has no device-local call acknowledgement ledger. Carry
+  // it in the encrypted account bundle; for older bundles, the snapshot time
+  // is the safe baseline so historic missed calls do not all become "new"
+  // simply because this phone was reinstalled.
+  importMissedCallSeenBundle(bundle.missedCalls, accountId, bundle.savedAt);
   let added = 0;
   for (const session of bundle.sessions) {
     if (!session || typeof session.code !== 'string' || !session.token || !session.pubJwk || !session.privJwk) continue;
@@ -6088,7 +6093,8 @@ function importAccountBundle(bundle, accountId) {
     const deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(current?.deleteLedger, ownedSession.deleteLedger));
     const callHistoryClearedAt = Math.max(Number(current?.callHistoryClearedAt) || 0, Number(ownedSession.callHistoryClearedAt) || 0);
     const lastReadSeq = Math.max(Number(current?.lastReadSeq) || 0, Number(ownedSession.lastReadSeq) || 0);
-    const unreadStateVersion = Math.max(Number(current?.unreadStateVersion) || 0, Number(ownedSession.unreadStateVersion) || 0);
+    const freshDeviceRestore = !current;
+    const unreadStateVersion = freshDeviceRestore ? 1 : Math.max(Number(current?.unreadStateVersion) || 0, Number(ownedSession.unreadStateVersion) || 0);
     // lastSeq/unread/unreadSystemCount were NOT field-merged — they only
     // ever came from whichever whole session "won" above by savedAt. That
     // let an older device's stale unread counter resurrect itself even
@@ -6109,11 +6115,14 @@ function importAccountBundle(bundle, accountId) {
     // mode being guarded against here, not under-counting.
     const lastSeq = Math.max(Number(current?.lastSeq) || 0, Number(ownedSession.lastSeq) || 0);
     const bothUnreadKnown = current !== undefined;
-    const unread = lastReadSeq >= lastSeq ? 0
+    const unread = freshDeviceRestore ? 0 : lastReadSeq >= lastSeq ? 0
       : (bothUnreadKnown ? Math.min(Number(current?.unread) || 0, Number(ownedSession.unread) || 0) : (Number(ownedSession.unread) || 0));
-    const unreadSystemCount = lastReadSeq >= lastSeq ? 0
+    const unreadSystemCount = freshDeviceRestore ? 0 : lastReadSeq >= lastSeq ? 0
       : (bothUnreadKnown ? Math.min(Number(current?.unreadSystemCount) || 0, Number(ownedSession.unreadSystemCount) || 0) : (Number(ownedSession.unreadSystemCount) || 0));
-    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion, lastSeq, unread, unreadSystemCount });
+    const unreadMigrationCutoffAt = freshDeviceRestore
+      ? Math.max(0, Number(bundle.savedAt) || Number(ownedSession.savedAt) || 0)
+      : Math.max(0, Number(current?.unreadMigrationCutoffAt) || Number(ownedSession.unreadMigrationCutoffAt) || 0);
+    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt, lastSeq, unread, unreadSystemCount });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
@@ -6170,7 +6179,7 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // A local, non-content fallback for conversations that predate the
     // server's lastMessageAt/connectedSince metadata. This prevents a valid
     // restored conversation from being the only inbox row with no date.
-    inboxActivityAt: new Date(inboxActivityAt || lastMessageAt || connectedSince || Date.now()).getTime() || Date.now(),
+    inboxActivityAt: new Date(inboxActivityAt ?? lastMessageAt ?? connectedSince ?? Date.now()).getTime() || 0,
     // How many distinct times this device has reopened THIS ordinary room
     // (never bumped once persistent is true — the suggestion only makes
     // sense before that). lastReconnectCountedAt throttles it so a burst of
@@ -6793,6 +6802,7 @@ async function persistRoom(room) {
       unreadSystemCount:Math.max(0, Number(room.unreadSystemCount) || 0),
       lastReadSeq:Math.max(0, Number(room.lastReadSeq) || 0),
       unreadStateVersion:Math.max(0, Number(room.unreadStateVersion) || 0),
+      unreadMigrationCutoffAt:Math.max(0, Number(room.unreadMigrationCutoffAt) || 0),
       // This is a full overwrite of the stored blob, so the in-memory
       // ledger has to be carried along explicitly — otherwise a persistRoom()
       // call after persistDeleteLedger() had already written entries (e.g.
@@ -6832,7 +6842,8 @@ function persistRoomSeq(room) {
     existing.unreadSystemCount = Math.max(0, Number(room.unreadSystemCount) || 0);
     existing.lastReadSeq = Math.max(0, Number(room.lastReadSeq) || 0);
     existing.unreadStateVersion = Math.max(0, Number(room.unreadStateVersion) || 0);
-    existing.inboxActivityAt = vaultLastActivity(room) || existing.inboxActivityAt || Date.now();
+    existing.unreadMigrationCutoffAt = Math.max(0, Number(room.unreadMigrationCutoffAt) || 0);
+    existing.inboxActivityAt = vaultLastActivity(room) || existing.inboxActivityAt || existing.lastMessageAt || existing.connectedSince || 0;
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
     scheduleAccountSync();
@@ -18004,24 +18015,65 @@ async function blockCurrentStatusAuthor(){
 // Read acknowledgements are account-scoped and separate from encryption/key storage.
 let vaultMissedCallsSeenAccount = null;
 let vaultMissedCallsSeen = new Set();
+let vaultMissedCallsSeenBefore = 0;
+function missedCallSeenStorageKey(accountId) { return 'vaultlix_calls_seen:' + accountId; }
+function readMissedCallSeenRecord(accountId) {
+  const empty = { seen:new Set(), seenBefore:0 };
+  if (!accountId) return empty;
+  try {
+    const saved = JSON.parse(localStorage.getItem(missedCallSeenStorageKey(accountId)) || 'null');
+    // Compatibility with the original string-array format.
+    if (Array.isArray(saved)) return { seen:new Set(saved.filter(id => typeof id === 'string')), seenBefore:0 };
+    if (!saved || typeof saved !== 'object') return empty;
+    const ids = Array.isArray(saved.ids) ? saved.ids.filter(id => typeof id === 'string') : [];
+    return { seen:new Set(ids), seenBefore:Math.max(0, Number(saved.seenBefore) || 0) };
+  } catch (_) { return empty; }
+}
+function writeMissedCallSeenRecord(accountId, seen, seenBefore) {
+  if (!accountId) return;
+  try {
+    localStorage.setItem(missedCallSeenStorageKey(accountId), JSON.stringify({
+      v:2, ids:[...seen].slice(-1000), seenBefore:Math.max(0, Number(seenBefore) || 0),
+    }));
+  } catch (_) {}
+}
+function missedCallSeenBundleSnapshot(accountId) {
+  const state = readMissedCallSeenRecord(accountId);
+  return { v:1, ids:[...state.seen].slice(-1000), seenBefore:state.seenBefore };
+}
+function importMissedCallSeenBundle(incoming, accountId, legacySnapshotAt = 0) {
+  if (!accountId) return;
+  const local = readMissedCallSeenRecord(accountId);
+  const incomingIds = Array.isArray(incoming?.ids) ? incoming.ids.filter(id => typeof id === 'string') : [];
+  const seen = new Set([...local.seen, ...incomingIds]);
+  // A pre-feature bundle has no ledger at all. Its encrypted snapshot still
+  // tells us exactly when its historical state was current.
+  const legacyBaseline = incoming && typeof incoming === 'object' ? 0 : Math.max(0, Number(legacySnapshotAt) || 0);
+  const seenBefore = Math.max(local.seenBefore, Number(incoming?.seenBefore) || 0, legacyBaseline);
+  writeMissedCallSeenRecord(accountId, seen, seenBefore);
+  if (vaultMissedCallsSeenAccount === accountId) vaultMissedCallsSeenAccount = null;
+}
 function missedCallSeenState() {
   const accountId = loadAccountState()?.accountId || null;
   if (vaultMissedCallsSeenAccount !== accountId) {
     vaultMissedCallsSeenAccount = accountId;
     vaultMissedCallsSeen = new Set();
+    vaultMissedCallsSeenBefore = 0;
     if (accountId) {
-      try {
-        const saved = JSON.parse(localStorage.getItem('vaultlix_calls_seen:' + accountId) || '[]');
-        if (Array.isArray(saved)) vaultMissedCallsSeen = new Set(saved.filter(id => typeof id === 'string'));
-      } catch (_) {}
+      const saved = readMissedCallSeenRecord(accountId);
+      vaultMissedCallsSeen = saved.seen;
+      vaultMissedCallsSeenBefore = saved.seenBefore;
     }
   }
-  return { accountId, seen:vaultMissedCallsSeen };
+  return { accountId, seen:vaultMissedCallsSeen, seenBefore:vaultMissedCallsSeenBefore };
 }
 function missedCallBadgeEntries() {
   return callHistoryEntries(true).filter(({ rec, text }) =>
     /^Missed(?: encrypted)? call\b/i.test(text) && rec.callEventViewerRole !== 'initiator'
-  ).map(({ room, rec, occurredAt }) => `${room.code}:${rec.id || occurredAt}`);
+  ).map(({ room, rec, occurredAt }) => ({ id:`${room.code}:${rec.id || occurredAt}`, occurredAt }));
+}
+function missedCallEntrySeen(entry, state = missedCallSeenState()) {
+  return state.seen.has(entry.id) || (!!entry.occurredAt && entry.occurredAt <= state.seenBefore);
 }
 function vaultNavigationCounts() {
   if (!loadAccountState()) return { messages:0, calls:0 };
@@ -18029,23 +18081,26 @@ function vaultNavigationCounts() {
   for (const room of rooms.values()) if (!roomConcealed(room)) messages += Math.max(0, (Number(room.unread) || 0) - (Number(room.unreadSystemCount) || 0));
   for (const group of privateGroups.values()) messages += Math.max(0, Number(group.unread) || 0);
   messages += unseenIncomingRequestCount(); // new (not yet seen) message requests count on the Chats button too
-  const { seen } = missedCallSeenState();
-  const calls = new Set(missedCallBadgeEntries().filter(id => !seen.has(id))).size;
+  const state = missedCallSeenState();
+  const calls = new Set(missedCallBadgeEntries().filter(entry => !missedCallEntrySeen(entry, state)).map(entry => entry.id)).size;
   return { messages, calls };
 }
 function markVaultMissedCallsViewed() {
   if (currentVaultListMode !== 'calls' || document.hidden || !tabFocused || quickLockActive || activePrivateGroupId ||
       document.getElementById('settings-panel')?.classList.contains('open') ||
       !document.getElementById('s-vault-list')?.classList.contains('active')) return;
-  const { accountId, seen } = missedCallSeenState();
+  const state = missedCallSeenState();
+  const { accountId, seen } = state;
   if (!accountId) return;
   let changed = false;
-  for (const id of missedCallBadgeEntries()) {
-    if (!seen.has(id)) { seen.add(id); changed = true; }
+  for (const entry of missedCallBadgeEntries()) {
+    if (!missedCallEntrySeen(entry, state)) {
+      seen.add(entry.id);
+      vaultMissedCallsSeenBefore = Math.max(vaultMissedCallsSeenBefore, Number(entry.occurredAt) || 0);
+      changed = true;
+    }
   }
-  if (changed) {
-    try { localStorage.setItem('vaultlix_calls_seen:' + accountId, JSON.stringify([...seen])); } catch (_) {}
-  }
+  if (changed) { writeMissedCallSeenRecord(accountId, seen, vaultMissedCallsSeenBefore); scheduleAccountSync(); }
 }
 function updateVaultNavigationBadges() {
   const counts = vaultNavigationCounts();
@@ -18279,14 +18334,14 @@ function renderCallHistoryList(body) {
   // simply went unanswered reads "No answer" from its own perspective, so
   // it never qualifies here even though the peer's mirrored copy of that
   // same call does say "Missed" from their side.
-  const { seen } = missedCallSeenState();
+  const seenState = missedCallSeenState();
   // data-msg-id/data-room on each row let the long-press delete handler
   // below look the record back up without a second data structure — the
   // same {room, rec} pairs callHistoryEntries() already produced.
   const clearAllHtml = '<div class="vault-call-clear-row"><button type="button" class="vault-call-clear-btn" id="vault-clear-all-calls">Clear all calls</button></div>';
   body.innerHTML = clearAllHtml + entries.map(({ room, rec, text, occurredAt }) => {
     const isMissed = /^Missed/i.test(text);
-    const isUnseenMissed = isMissed && rec.callEventViewerRole !== 'initiator' && !seen.has(`${room.code}:${rec.id || occurredAt}`);
+    const isUnseenMissed = isMissed && rec.callEventViewerRole !== 'initiator' && !missedCallEntrySeen({ id:`${room.code}:${rec.id || occurredAt}`, occurredAt }, seenState);
     const direction = callRecDirection(rec);
     const directionIcon = callDirectionIconHtml(direction, isMissed);
     return `<div class="vault-list-row vault-call-row${isUnseenMissed ? ' missed-unseen' : ''}" data-room="${escHtml(room.code)}" data-msg-id="${escHtml(rec.id || '')}">
@@ -24401,7 +24456,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const sessionUnreadStale = sessionLastReadSeq >= sessionLastSeq && ((Number(session.unread) || 0) > 0 || (Number(session.unreadSystemCount) || 0) > 0);
       const healedUnread = sessionUnreadStale ? 0 : session.unread;
       const healedUnreadSystemCount = sessionUnreadStale ? 0 : session.unreadSystemCount;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.savedAt, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.savedAt });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.lastMessageAt || session.connectedSince || 0, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.unreadMigrationCutoffAt || session.savedAt });
       if (sessionUnreadStale) persistHealedUnread(session.code);
       room.nickname = session.nickname || null;
       room.restorePending = true;

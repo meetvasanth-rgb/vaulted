@@ -17,6 +17,7 @@ function harness() {
     loadAccountState:() => state.accountId ? state : null,
     callHistoryEntries:() => context.entries,
     localStorage:{ getItem:k => storage.get(k), setItem:(k,v) => storage.set(k,v) },
+    scheduleAccountSync:() => {},
     currentVaultListMode:'chats', tabFocused:true, quickLockActive:false, activePrivateGroupId:null,
     document:{ hidden:false, getElementById:id => id === 's-vault-list' ? {classList:{contains:() => true}} : nodes.get(id) },
   });
@@ -41,7 +42,7 @@ test('viewing calls acknowledges only missed incoming calls and leaves unread me
   c.currentVaultListMode='calls'; c.document.hidden=true; c.markVaultMissedCallsViewed(); assert.equal(storage.size,0);
   c.document.hidden=false; c.markVaultMissedCallsViewed();
   assert.equal(c.vaultNavigationCounts().calls,0); assert.equal(c.vaultNavigationCounts().messages,3);
-  c.entries.push(missed('4')); assert.equal(c.vaultNavigationCounts().calls,1);
+  c.entries.push({...missed('4'), occurredAt:Date.now() + 1000}); assert.equal(c.vaultNavigationCounts().calls,1);
 });
 test('seen calls survive reload and never leak between accounts; zero hides badges and large counts cap visually', () => {
   const {context:c,state,nodes} = harness();
@@ -54,6 +55,17 @@ test('seen calls survive reload and never leak between accounts; zero hides badg
   state.accountId=null;c.updateVaultNavigationBadges();
   assert.equal(nodes.get('vault-nav-chats-badge').hidden,true);
   assert.equal(nodes.get('vault-nav-calls-badge').hidden,true);
+});
+test('a clean reinstall treats calls in an older encrypted backup as history while preserving later missed calls', () => {
+  const {context:c,state} = harness();
+  c.importMissedCallSeenBundle(undefined, 'a', 1000);
+  c.entries=[{...missed('old'), occurredAt:999}, {...missed('new'), occurredAt:1001}];
+  assert.equal(c.vaultNavigationCounts().calls,1);
+  assert.equal(c.missedCallSeenBundleSnapshot('a').seenBefore,1000);
+  state.accountId='b';
+  c.importMissedCallSeenBundle({ids:['r:known'],seenBefore:500}, 'b', 2000);
+  c.entries=[{...missed('known'), occurredAt:900}, {...missed('later'), occurredAt:501}];
+  assert.equal(c.vaultNavigationCounts().calls,1, 'an explicit modern ledger wins over the legacy snapshot fallback');
 });
 
 // New message requests are reachable from one row at the top of Chats and also count on the

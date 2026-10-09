@@ -183,7 +183,7 @@ test('the private half is stored per account and a damaged record is ignored', a
 
 test('the bundle carries the inbox key and a restored bundle only fills a missing local key', () => {
   assert.match(client, /const inbox = accountId && accountId === loadAccountState\(\)\?\.accountId \? loadLocalInboxKey\(\) : null;/);
-  assert.match(client, /groups, \.\.\.\(inbox \? \{ inbox \} : \{\}\), achievements:/);
+  assert.match(client, /groups, \.\.\.\(inbox \? \{ inbox \} : \{\}\), missedCalls:missedCallSeenBundleSnapshot\(accountId\), achievements:/);
   assert.match(client, /if \(validInboxKeyRecord\(bundle\.inbox\) && !loadLocalInboxKey\(\{ accountId \}\)\) saveLocalInboxKey\(bundle\.inbox, \{ accountId \}\);/);
 });
 

@@ -27,7 +27,10 @@ test('direct-chat unread state survives restart and clears only when viewed', ()
   assert.match(client, /lastReadSeq:Math\.max\(0, Number\(room\.lastReadSeq\) \|\| 0\)/);
   assert.match(client, /lastReadSeq:session\.lastReadSeq === undefined \? session\.lastSeq : session\.lastReadSeq/);
   assert.match(client, /unreadStateVersion:session\.unreadStateVersion \|\| 0/);
-  assert.match(client, /unreadMigrationCutoffAt:session\.savedAt/);
+  assert.match(client, /unreadMigrationCutoffAt:session\.unreadMigrationCutoffAt \|\| session\.savedAt/);
+  assert.match(client, /const freshDeviceRestore = !current/);
+  assert.match(client, /freshDeviceRestore \? 0 : lastReadSeq >= lastSeq \? 0/);
+  assert.match(client, /Number\(bundle\.savedAt\)/);
 });
 
 test('successful full restore rebuilds unread counts from server read receipts', () => {
