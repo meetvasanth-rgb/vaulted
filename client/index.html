@@ -6356,7 +6356,6 @@ let nativeVoipRegistration = null;
 const pendingNativeCallActions = new Map();
 let pendingNativeUnscopedAction = null;
 const pendingNativeMissedCallActions = new Map();
-const pendingNativeCallEnds = new Map();
 
 function replayPendingNativeMissedCalls(room) {
   // Native terminal events may arrive during the first room-hydration pass,
@@ -6371,18 +6370,6 @@ function replayPendingNativeMissedCalls(room) {
     if (!matchesCode && !matchesHandle) continue;
     pendingNativeMissedCallActions.delete(key);
     queueMicrotask(() => handleNativeCallAction(detail));
-  }
-}
-
-function replayPendingNativeCallEnds(room) {
-  // A restored room enters the inbox before its E2E key has been derived.
-  // Keep the native result queued until the second addRoomToState() call,
-  // when persisting the encrypted history record can actually succeed.
-  if (!room?.sharedKey) return;
-  for (const [key, pending] of pendingNativeCallEnds) {
-    if (String(pending.roomCode || '').toLowerCase() !== String(room.code || '').toLowerCase()) continue;
-    pendingNativeCallEnds.delete(key);
-    queueMicrotask(() => window.vaultlixNativeCallEnded(pending.roomCode, pending.historyText));
   }
 }
 
@@ -6404,7 +6391,6 @@ function addRoomToState(room) {
   subscribeInboxRooms();
   registerNativeVoipForRoom(room);
   replayPendingNativeMissedCalls(room);
-  replayPendingNativeCallEnds(room);
 }
 
 function acceptNativeVoipRegistration(detail) {
@@ -8683,7 +8669,7 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   const callEvent = outcome && callRole ? callOutcomeEvent(outcome, callRole, wasVideoCall) : null;
   const callEventConnected = connectedCallEvent(callRole, wasVideoCall);
   const wasNativeCall = room.nativeCallActive;
-  const callHistoryEventId = room.callInviteId ? `call-event-${room.callInviteId}` : null;
+  const callHistoryEventId = options.historyEventId || (room.callInviteId ? `call-event-${room.callInviteId}` : null);
   room.lastCallHistoryEventId = callHistoryEventId;
   clearAndroidCallNotifications();
   try {
@@ -8770,6 +8756,10 @@ async function endCall(room, toastMsg, sysMsgText, toastVariant, options = {}) {
   // the second call interface for a moment as the native activity closes.
   if (wasNativeCall && window.VaultlixAndroid?.supportsNativeWebRtc?.()) {
     hideCallOverlay();
+    // The dedicated native call surface supplies the authoritative duration.
+    // The underlying WebView used to return here without writing that result,
+    // which made completed Android calls disappear from both chat and Calls.
+    if (sysMsgText) addCallSysMsg(room, sysMsgText, callHistoryEventId, callEvent || callEventConnected);
     if (toastMsg) toast(toastMsg, toastVariant);
     notifyLockedCallEnded();
     return;
@@ -8811,26 +8801,23 @@ function notifyLockedCallEnded(historyText = '') {
 // Reset that underlying copy of the call state and remove its stale incoming
 // overlay. The normal endCall path is intentionally reused so timers, media,
 // and activeCallRoomCode are cleaned consistently.
-window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
+window.vaultlixNativeCallEnded = function(roomCode, historyText = '', nativeHistoryId = '') {
   const normalizedRoomCode = String(roomCode || '').toLowerCase();
   const room = normalizedRoomCode
     ? (rooms.get(roomCode) || Array.from(rooms.values()).find(candidate => String(candidate.code || '').toLowerCase() === normalizedRoomCode))
     : (activeCallRoomCode && rooms.get(activeCallRoomCode));
   const historyRole = callRoleFromHistoryText(historyText);
   historyText = uncancelledCallText(historyText, historyRole ? historyRole === 'initiator' : room?.callWasOutgoing === true);
-  if (!room && normalizedRoomCode && historyText) {
-    pendingNativeCallEnds.set(normalizedRoomCode, { roomCode, historyText });
-    while (pendingNativeCallEnds.size > 32) {
-      pendingNativeCallEnds.delete(pendingNativeCallEnds.keys().next().value);
-    }
-    return;
-  }
+  // Android keeps the event in a persistent native queue until this returns
+  // true. Do not acknowledge while the room or its encryption key is still
+  // being restored: a WebView reload must not be able to erase call history.
+  if ((!room || !room.sharedKey) && historyText) return false;
   if (room && room.callState !== 'idle') {
     // The dedicated Android call WebView owns the authoritative duration.
     // Prevent this hidden copy from manufacturing a second duration, then
     // add the result supplied by the native host during normal cleanup.
     if (historyText) room.callStartedAt = null;
-    endCall(room, null, historyText || null);
+    endCall(room, null, historyText || null, null, { historyEventId:nativeHistoryId || null });
   } else if (room && historyText) {
     // This device's own callState already reset to 'idle' by the time the
     // dedicated Android call activity reports back — the endCall() branch
@@ -8850,7 +8837,7 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
     const nativeCallEvent = nativeOutcome
       ? callOutcomeEvent(nativeOutcome, nativeCallRole, nativeWasVideo)
       : connectedCallEvent(nativeCallRole, nativeWasVideo);
-    addCallSysMsg(room, historyText, room.lastCallHistoryEventId || null, nativeCallEvent);
+    addCallSysMsg(room, historyText, nativeHistoryId || room.lastCallHistoryEventId || null, nativeCallEvent);
     room.lastCallHistoryEventId = null;
     room.callWasOutgoing = null;
   } else {
@@ -8858,6 +8845,7 @@ window.vaultlixNativeCallEnded = function(roomCode, historyText = '') {
     activeCallRoomCode = null;
     refreshCallButton();
   }
+  return true;
 };
 
 // The Screen Orientation lock API only actually works when the app is

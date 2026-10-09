@@ -9,6 +9,7 @@ const android = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 
 const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
 const androidMessaging = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
 const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
+const androidActions = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActions.java'), 'utf8');
 const androidEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeWebRtcCallEngine.java'), 'utf8');
 const iosEngine = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'NativeWebRTCCallEngine.swift'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
@@ -57,8 +58,8 @@ test('Android call-end push preserves missed-call history until the encrypted in
   assert.match(androidMessaging, /if \(missedCall\) showMissedCall\(data\)/);
   assert.match(androidMessaging, /showMissedCall\(Map<String, String> data\)[\s\S]*CATEGORY_CALL/);
   assert.match(androidMessaging, /engine\.shouldHandleRemoteEnd[\s\S]*engine\.end\(false, callOutcome\)/);
-  assert.match(androidMain, /pendingEnd\[1\] != null && !pendingEnd\[1\]\.isEmpty\(\)[\s\S]*postDelayed[\s\S]*5_000/);
-  assert.match(androidMain, /clearUnderlyingCallState\(pendingEnd\[0\], pendingEnd\[1\]\)/);
+  assert.match(androidMain, /peekPendingWebViewCallEnd[\s\S]*vaultlixNativeCallEnded[\s\S]*"true"\.equals\(result\)[\s\S]*acknowledgePendingWebViewCallEnd/);
+  assert.match(androidMain, /schedulePendingNativeCallHistory\(2_000\)/);
   assert.match(server, /const wasStillRinging = Boolean\(room2\.ringingUntil\)/);
   assert.match(server, /isCallEnd: true,[\s\S]*missedCall: isMissedCall,[\s\S]*caller:/);
 });
@@ -67,9 +68,10 @@ test('Android completed calls survive activity and encrypted-room restoration ra
   assert.match(android, /notifyDedicatedCallEnded\(this, roomCode, history\)/);
   assert.match(androidMain, /notifyDedicatedCallEnded\(Context context, String roomCode, String historyText\)/);
   assert.match(androidMain, /Context persistenceContext = activity != null \? activity : context;[\s\S]*markPendingWebViewCallEnd\(persistenceContext, roomCode, historyText\)[\s\S]*if \(activity == null/);
-  assert.match(client, /const pendingNativeCallEnds = new Map\(\)/);
-  assert.match(client, /function replayPendingNativeCallEnds\(room\)[\s\S]*if \(!room\?\.sharedKey\) return;[\s\S]*vaultlixNativeCallEnded/);
-  assert.match(client, /window\.vaultlixNativeCallEnded = function\(roomCode, historyText = ''\)[\s\S]*const room = normalizedRoomCode[\s\S]*: \(activeCallRoomCode && rooms\.get\(activeCallRoomCode\)\);[\s\S]*pendingNativeCallEnds\.set/);
+  assert.match(androidActions, /PENDING_WEBVIEW_CALL_ENDS[\s\S]*MAX_PENDING_WEBVIEW_CALL_ENDS = 64/);
+  assert.match(androidActions, /peekPendingWebViewCallEnd[\s\S]*acknowledgePendingWebViewCallEnd/);
+  assert.match(client, /window\.vaultlixNativeCallEnded = function\(roomCode, historyText = '', nativeHistoryId = ''\)[\s\S]*if \(\(!room \|\| !room\.sharedKey\) && historyText\) return false/);
+  assert.match(client, /wasNativeCall && window\.VaultlixAndroid[\s\S]*if \(sysMsgText\) addCallSysMsg\(room, sysMsgText, callHistoryEventId, callEvent \|\| callEventConnected\)/);
   assert.match(client, /function addCallSysMsg[\s\S]*room\.inboxActivityAt = Math\.max[\s\S]*persistRoomSeq\(room\)/);
 });
 

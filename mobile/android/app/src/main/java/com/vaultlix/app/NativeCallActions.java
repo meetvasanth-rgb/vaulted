@@ -3,12 +3,17 @@ package com.vaultlix.app;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.UUID;
 
 /** Sends native call actions that can occur before the WebView is available. */
 final class NativeCallActions {
@@ -23,6 +28,8 @@ final class NativeCallActions {
     private static final String PENDING_WEBVIEW_CALL_END = "pending_webview_call_end";
     private static final String PENDING_WEBVIEW_CALL_ROOM = "pending_webview_call_room";
     private static final String PENDING_WEBVIEW_CALL_HISTORY = "pending_webview_call_history";
+    private static final String PENDING_WEBVIEW_CALL_ENDS = "pending_webview_call_ends_v2";
+    private static final int MAX_PENDING_WEBVIEW_CALL_ENDS = 64;
     private static final long DECLINE_TOMBSTONE_MS = 2 * 60 * 1000L;
     private static final long ANSWER_TOMBSTONE_MS = 2 * 60 * 1000L;
 
@@ -154,26 +161,94 @@ final class NativeCallActions {
         markPendingWebViewCallEnd(context, "", "");
     }
 
-    static void markPendingWebViewCallEnd(Context context, String roomCode, String historyText) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(PENDING_WEBVIEW_CALL_END, true)
-                .putString(PENDING_WEBVIEW_CALL_ROOM, normalize(roomCode))
-                .putString(PENDING_WEBVIEW_CALL_HISTORY, historyText == null ? "" : historyText)
-                .apply();
+    static synchronized String markPendingWebViewCallEnd(Context context, String roomCode, String historyText) {
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        JSONArray pending = pendingWebViewCallEnds(preferences);
+        String id = "android-call-history-" + UUID.randomUUID();
+        JSONObject entry = new JSONObject();
+        try {
+            entry.put("id", id);
+            entry.put("roomCode", normalize(roomCode));
+            entry.put("historyText", historyText == null ? "" : historyText);
+            entry.put("createdAt", System.currentTimeMillis());
+            pending.put(entry);
+            while (pending.length() > MAX_PENDING_WEBVIEW_CALL_ENDS) pending.remove(0);
+            preferences.edit().putString(PENDING_WEBVIEW_CALL_ENDS, pending.toString()).apply();
+        } catch (JSONException ignored) {
+            return "";
+        }
+        return id;
     }
 
-    static String[] consumePendingWebViewCallEnd(Context context) {
+    static synchronized String[] peekPendingWebViewCallEnd(Context context) {
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!preferences.getBoolean(PENDING_WEBVIEW_CALL_END, false)) return null;
-        String roomCode = preferences.getString(PENDING_WEBVIEW_CALL_ROOM, "");
-        String historyText = preferences.getString(PENDING_WEBVIEW_CALL_HISTORY, "");
-        preferences.edit()
-                .remove(PENDING_WEBVIEW_CALL_END)
-                .remove(PENDING_WEBVIEW_CALL_ROOM)
-                .remove(PENDING_WEBVIEW_CALL_HISTORY)
-                .apply();
-        return new String[] { roomCode, historyText };
+        JSONArray pending = pendingWebViewCallEnds(preferences);
+        if (pending.length() == 0) return null;
+        JSONObject entry = pending.optJSONObject(0);
+        if (entry == null) return null;
+        return new String[] {
+                entry.optString("id", ""),
+                entry.optString("roomCode", ""),
+                entry.optString("historyText", "")
+        };
+    }
+
+    static synchronized void acknowledgePendingWebViewCallEnd(Context context, String id) {
+        String normalizedId = normalize(id);
+        if (normalizedId.isEmpty()) return;
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        JSONArray pending = pendingWebViewCallEnds(preferences);
+        JSONArray retained = new JSONArray();
+        for (int index = 0; index < pending.length(); index++) {
+            JSONObject entry = pending.optJSONObject(index);
+            if (entry != null && !normalizedId.equals(entry.optString("id", ""))) retained.put(entry);
+        }
+        preferences.edit().putString(PENDING_WEBVIEW_CALL_ENDS, retained.toString()).apply();
+    }
+
+    static synchronized void deferPendingWebViewCallEnd(Context context, String id) {
+        String normalizedId = normalize(id);
+        if (normalizedId.isEmpty()) return;
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        JSONArray pending = pendingWebViewCallEnds(preferences);
+        JSONArray reordered = new JSONArray();
+        JSONObject deferred = null;
+        for (int index = 0; index < pending.length(); index++) {
+            JSONObject entry = pending.optJSONObject(index);
+            if (entry == null) continue;
+            if (normalizedId.equals(entry.optString("id", ""))) deferred = entry;
+            else reordered.put(entry);
+        }
+        if (deferred != null) reordered.put(deferred);
+        preferences.edit().putString(PENDING_WEBVIEW_CALL_ENDS, reordered.toString()).apply();
+    }
+
+    private static JSONArray pendingWebViewCallEnds(SharedPreferences preferences) {
+        JSONArray pending;
+        try {
+            pending = new JSONArray(preferences.getString(PENDING_WEBVIEW_CALL_ENDS, "[]"));
+        } catch (JSONException invalidQueue) {
+            pending = new JSONArray();
+        }
+        // Preserve an end event written by the previous single-slot implementation
+        // when the app upgrades before MainActivity had a chance to consume it.
+        if (preferences.getBoolean(PENDING_WEBVIEW_CALL_END, false)) {
+            JSONObject legacy = new JSONObject();
+            try {
+                legacy.put("id", "android-call-history-legacy-" + UUID.randomUUID());
+                legacy.put("roomCode", preferences.getString(PENDING_WEBVIEW_CALL_ROOM, ""));
+                legacy.put("historyText", preferences.getString(PENDING_WEBVIEW_CALL_HISTORY, ""));
+                legacy.put("createdAt", System.currentTimeMillis());
+                pending.put(legacy);
+            } catch (JSONException ignored) { }
+            preferences.edit()
+                    .remove(PENDING_WEBVIEW_CALL_END)
+                    .remove(PENDING_WEBVIEW_CALL_ROOM)
+                    .remove(PENDING_WEBVIEW_CALL_HISTORY)
+                    .putString(PENDING_WEBVIEW_CALL_ENDS, pending.toString())
+                    .apply();
+        }
+        return pending;
     }
 
     private static String normalize(String callId) {

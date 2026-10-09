@@ -458,14 +458,14 @@ test('regression check: a room that has already transitioned to callState "activ
 // reports.
 
 test('the vaultlixNativeCallEnded idle-fallback branch builds a real callEvent from callWasOutgoing/video-intent instead of passing null', () => {
-  const start = client.indexOf('window.vaultlixNativeCallEnded = function(roomCode, historyText = \'\') {');
+  const start = client.indexOf('window.vaultlixNativeCallEnded = function(roomCode, historyText = \'\', nativeHistoryId = \'\') {');
   assert.notEqual(start, -1);
   const end = client.indexOf('\n};', start);
   const fn = client.slice(start, end);
   assert.match(fn, /const nativeCallRole = historyRole \|\| \(room\.callWasOutgoing === true \? 'initiator' : 'receiver'\);/);
   assert.match(fn, /const nativeWasVideo = !!\(room\.pendingVideoStart \|\| room\.incomingVideoCall \|\| room\.callHadVideo \|\| room\.callVideoOn \|\| room\.remoteVideoActive\);/);
   assert.match(fn, /const nativeCallEvent = nativeOutcome\s*\n\s*\? callOutcomeEvent\(nativeOutcome, nativeCallRole, nativeWasVideo\)\s*\n\s*: connectedCallEvent\(nativeCallRole, nativeWasVideo\);/);
-  assert.match(fn, /addCallSysMsg\(room, historyText, room\.lastCallHistoryEventId \|\| null, nativeCallEvent\);/);
+  assert.match(fn, /addCallSysMsg\(room, historyText, nativeHistoryId \|\| room\.lastCallHistoryEventId \|\| null, nativeCallEvent\);/);
   // Must also clean up after itself — this path bypasses endCall's own
   // reset entirely, so nothing else clears callWasOutgoing for it.
   assert.match(fn, /room\.callWasOutgoing = null;/);

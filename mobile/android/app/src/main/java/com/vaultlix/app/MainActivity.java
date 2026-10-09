@@ -124,6 +124,10 @@ public class MainActivity extends BridgeActivity {
         }
     };
     private final Handler audioRouteHandler = new Handler(Looper.getMainLooper());
+    private final Handler nativeCallHistoryHandler = new Handler(Looper.getMainLooper());
+    private boolean nativeCallHistoryDeliveryInFlight;
+    private int nativeCallHistoryDeliveryAttempt;
+    private final Runnable deliverPendingNativeCallHistory = this::deliverPendingNativeCallHistory;
     private final Runnable enforceConnectedAudioRoute = () -> {
         if (!isFinishing() && !isDestroyed()) applyPreferredCallAudioRoute();
     };
@@ -156,6 +160,9 @@ public class MainActivity extends BridgeActivity {
     public void onPause() {
         showAppSwitcherPrivacyCover();
         super.onPause();
+        nativeCallHistoryHandler.removeCallbacks(deliverPendingNativeCallHistory);
+        nativeCallHistoryDeliveryAttempt++;
+        nativeCallHistoryDeliveryInFlight = false;
         cancelNativeSpeechToText(false);
         appInForeground = false;
     }
@@ -165,6 +172,7 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         hideAppSwitcherPrivacyCover();
         appInForeground = true;
+        schedulePendingNativeCallHistory(500);
         // Share/open targets have finished reading their granted content URI
         // by the time Vaultlix resumes. Remove the decrypted staging copies;
         // a recipient app's explicit saved copy is outside our sandbox and
@@ -276,6 +284,7 @@ public class MainActivity extends BridgeActivity {
             speechRecognizer = null;
         }
         audioRouteHandler.removeCallbacks(enforceConnectedAudioRoute);
+        nativeCallHistoryHandler.removeCallbacks(deliverPendingNativeCallHistory);
         mediaCacheCleanupExecutor.shutdownNow();
         mediaCompressionExecutor.shutdownNow();
         restoreAudioRoute();
@@ -565,20 +574,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        String[] pendingEnd = hasFocus ? NativeCallActions.consumePendingWebViewCallEnd(this) : null;
-        if (pendingEnd != null) {
-            if (pendingEnd[1] != null && !pendingEnd[1].isEmpty()) {
-                // Window focus arrives before the remote page has necessarily
-                // restored its encrypted rooms. A single delayed delivery
-                // avoids losing the history row without replaying it twice.
-                new Handler(Looper.getMainLooper()).postDelayed(
-                        () -> clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]),
-                        5_000
-                );
-            } else {
-                clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);
-            }
-        }
+        if (hasFocus) schedulePendingNativeCallHistory(500);
+        else nativeCallHistoryHandler.removeCallbacks(deliverPendingNativeCallHistory);
     }
 
     private void openVaultlixInvite(Intent intent) {
@@ -1645,17 +1642,48 @@ public class MainActivity extends BridgeActivity {
         // persist a one-shot marker and consume it only after window focus is
         // genuinely restored.
         if (!activity.hasWindowFocus()) return;
-        String[] pendingEnd = NativeCallActions.consumePendingWebViewCallEnd(activity);
-        if (pendingEnd != null) activity.clearUnderlyingCallState(pendingEnd[0], pendingEnd[1]);
+        activity.schedulePendingNativeCallHistory(100);
     }
 
-    private void clearUnderlyingCallState(String roomCode, String historyText) {
-        String encodedCode = JSONObject.quote(roomCode == null ? "" : roomCode);
-        String encodedHistory = JSONObject.quote(historyText == null ? "" : historyText);
-        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(
-                "window.vaultlixNativeCallEnded&&window.vaultlixNativeCallEnded(" + encodedCode + "," + encodedHistory + ");",
-                null
-        ));
+    private void schedulePendingNativeCallHistory(long delayMs) {
+        nativeCallHistoryHandler.removeCallbacks(deliverPendingNativeCallHistory);
+        nativeCallHistoryHandler.postDelayed(deliverPendingNativeCallHistory, Math.max(0L, delayMs));
+    }
+
+    private void deliverPendingNativeCallHistory() {
+        if (nativeCallHistoryDeliveryInFlight || !hasWindowFocus() || isFinishing() || isDestroyed()) return;
+        String[] pendingEnd = NativeCallActions.peekPendingWebViewCallEnd(this);
+        if (pendingEnd == null) return;
+        String encodedId = JSONObject.quote(pendingEnd[0]);
+        String encodedCode = JSONObject.quote(pendingEnd[1]);
+        String encodedHistory = JSONObject.quote(pendingEnd[2]);
+        nativeCallHistoryDeliveryInFlight = true;
+        int deliveryAttempt = ++nativeCallHistoryDeliveryAttempt;
+        nativeCallHistoryHandler.postDelayed(() -> {
+            if (deliveryAttempt != nativeCallHistoryDeliveryAttempt || !nativeCallHistoryDeliveryInFlight) return;
+            nativeCallHistoryDeliveryInFlight = false;
+            NativeCallActions.deferPendingWebViewCallEnd(this, pendingEnd[0]);
+            schedulePendingNativeCallHistory(2_000);
+        }, 5_000);
+        getBridge().getWebView().evaluateJavascript(
+                "Boolean(window.vaultlixNativeCallEnded&&window.vaultlixNativeCallEnded("
+                        + encodedCode + "," + encodedHistory + "," + encodedId + "));",
+                result -> {
+                    if (deliveryAttempt != nativeCallHistoryDeliveryAttempt) return;
+                    nativeCallHistoryDeliveryInFlight = false;
+                    nativeCallHistoryDeliveryAttempt++;
+                    if ("true".equals(result)) {
+                        NativeCallActions.acknowledgePendingWebViewCallEnd(this, pendingEnd[0]);
+                        schedulePendingNativeCallHistory(100);
+                    } else {
+                        // The page or the encrypted room is not ready yet. The
+                        // queue remains on disk and will be retried while the
+                        // app is focused and again on the next resume.
+                        NativeCallActions.deferPendingWebViewCallEnd(this, pendingEnd[0]);
+                        schedulePendingNativeCallHistory(2_000);
+                    }
+                }
+        );
     }
 
     private void emitNativeCallAction(String action) {
