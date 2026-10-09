@@ -371,20 +371,28 @@ async function restorePrivateGroupKeysFromBackup() {
   const state = loadAccountState();
   if (!state?.masterKey) return false;
   try {
-    const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
-    if (latest.error || !latest.bundle) return false;
-    const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
+    const [latest, history] = await Promise.all([
+      api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken }),
+      api('/api/account/recovery-candidates', { accountId:state.accountId, sessionToken:state.sessionToken }),
+    ]);
+    const bundles = [];
+    for (const encryptedBundle of [latest?.bundle, ...((history?.candidates || []).map(item => item.bundle))].filter(Boolean)) {
+      try { bundles.push(await aesDecryptJson(base64UrlToBytes(state.masterKey), encryptedBundle)); } catch (_) {}
+    }
+    if (!bundles.length) return false;
     let restored = false;
-    for (const backedUp of bundle?.groups || []) {
-      const group = privateGroups.get(backedUp?.id);
-      if (!group || backedUp.ownerAccountId !== state.accountId || !hasPrivateGroupKeys(backedUp)) continue;
-      const merged = { ...backedUp.keys, ...(group.keys || {}) };
-      if (Object.keys(merged).length <= Object.keys(group.keys || {}).length) continue;
-      group.keys = merged; restored = true;
-      // Anything read while the key was missing was marked unavailable; read it again.
-      group.messages = []; group.messageCursor = 0; group.historyHydrated = false;
-      if (group.encryptedName && merged[group.keyVersion]) {
-        try { group.name = await decryptPrivateGroupValue(merged[group.keyVersion], group.encryptedName); } catch (_) {}
+    for (const bundle of bundles) {
+      for (const backedUp of bundle?.groups || []) {
+        const group = privateGroups.get(backedUp?.id);
+        if (!group || backedUp.ownerAccountId !== state.accountId || !hasPrivateGroupKeys(backedUp)) continue;
+        const merged = { ...backedUp.keys, ...(group.keys || {}) };
+        if (Object.keys(merged).length <= Object.keys(group.keys || {}).length) continue;
+        group.keys = merged; restored = true;
+        // Anything read while the key was missing was marked unavailable; read it again.
+        group.messages = []; group.messageCursor = 0; group.historyHydrated = false;
+        if (group.encryptedName && merged[group.keyVersion]) {
+          try { group.name = await decryptPrivateGroupValue(merged[group.keyVersion], group.encryptedName); } catch (_) {}
+        }
       }
     }
     return restored;

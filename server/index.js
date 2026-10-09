@@ -4048,6 +4048,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       res.setHeader('Cache-Control', 'no-store');
       return resErr(res, 'Conversation index changed on another device. Sign in again to merge it safely.', 409);
     }
+    if (!postgresEnabled && account.bundle !== d.bundle) {
+      account.bundleHistory = [
+        { bundle:account.bundle, revision:account.revision, createdAt:account.updatedAt || Date.now() },
+        ...(Array.isArray(account.bundleHistory) ? account.bundleHistory : []),
+      ].filter((item, index, all) => item?.bundle && all.findIndex(other => other.bundle === item.bundle) === index).slice(0, 4);
+    }
     account.bundle = d.bundle;
     account.revision++;
     account.updatedAt = Date.now();
@@ -4062,6 +4068,20 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, bundle: account.bundle, revision: account.revision, retention:accountRetention(account), ...publicAccount(account) });
+  }
+
+  if (path === '/api/account/recovery-candidates' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const stored = postgresEnabled
+      ? await postgresStore.loadAccountBundleHistory(d.accountId, 4)
+      : (Array.isArray(account.bundleHistory) ? account.bundleHistory.slice(0, 4) : []);
+    const candidates = stored.filter(item => Number.isInteger(Number(item?.revision))
+      && validEncryptedField(item?.bundle, ACCOUNT_BUNDLE_MAX_BYTES))
+      .map(item => ({ revision:Number(item.revision), bundle:item.bundle, createdAt:Number(item.createdAt) || 0 }));
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, candidates });
   }
 
   // One authenticated foreground/reconnect catch-up replaces one request per

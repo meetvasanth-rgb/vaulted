@@ -47,6 +47,19 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at bigint NOT NULL
 );
 
+-- Keep a short encrypted revision trail. The server still cannot read these
+-- bundles; authenticated clients use an older opaque copy only when its room
+-- key proves itself against an existing AES-GCM authentication tag.
+CREATE TABLE IF NOT EXISTS account_bundle_history (
+  account_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  revision bigint NOT NULL,
+  encrypted_bundle text NOT NULL,
+  created_at bigint NOT NULL,
+  PRIMARY KEY (account_id, revision)
+);
+CREATE INDEX IF NOT EXISTS account_bundle_history_recent_idx
+  ON account_bundle_history(account_id, created_at DESC);
+
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_share_code char(6);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS inbox_key jsonb;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS request_policy varchar(8) NOT NULL DEFAULT 'anyone';
@@ -321,6 +334,12 @@ class PostgresStore {
 
   async saveAccount(accountId, account, queryClient = this.pool) {
     if (!this.enabled) return;
+    await queryClient.query(`INSERT INTO account_bundle_history (
+      account_id, revision, encrypted_bundle, created_at
+    ) SELECT account_id, revision, encrypted_bundle, updated_at
+      FROM accounts
+      WHERE account_id=$1 AND encrypted_bundle <> $2
+      ON CONFLICT (account_id, revision) DO NOTHING`, [accountId, account.bundle]);
     await queryClient.query(`INSERT INTO accounts (
       account_id, private_number, profile_share_code, display_name, profile_image, auth_verifier, recovery_verifier,
       password_wrap, recovery_wrap, encrypted_bundle, revision, sessions,
@@ -360,6 +379,24 @@ class PostgresStore {
       account.inboxKey ? JSON.stringify(account.inboxKey) : null,
       account.requestPolicy || 'anyone',
     ]);
+    await queryClient.query(`DELETE FROM account_bundle_history
+      WHERE account_id=$1 AND revision NOT IN (
+        SELECT revision FROM account_bundle_history
+        WHERE account_id=$1 ORDER BY created_at DESC, revision DESC LIMIT 4
+      )`, [accountId]);
+  }
+
+  async loadAccountBundleHistory(accountId, limit = 4) {
+    if (!this.enabled) return [];
+    const safeLimit = Math.max(1, Math.min(4, Number(limit) || 4));
+    const { rows } = await this.pool.query(`SELECT revision, encrypted_bundle, created_at
+      FROM account_bundle_history WHERE account_id=$1
+      ORDER BY created_at DESC, revision DESC LIMIT $2`, [accountId, safeLimit]);
+    return rows.map(row => ({
+      revision:Number(row.revision),
+      bundle:row.encrypted_bundle,
+      createdAt:Number(row.created_at),
+    }));
   }
 
   async claimDailyLook(accountId, now, dayStartedAt, staleClaimBefore, dailyLimit) {

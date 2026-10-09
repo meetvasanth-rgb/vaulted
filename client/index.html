@@ -21540,23 +21540,31 @@ async function repairRoomKeyFromAccountBackup(room, messages) {
   const state = loadAccountState();
   if (!state?.masterKey || room.ownerAccountId !== state.accountId) return false;
   try {
-    const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
-    if (latest.error || !latest.bundle) return false;
-    const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
-    const candidate = (bundle.sessions || []).find(session => session?.code === room.code && validStoredRoomKeyPair(session));
     const localPrivate = room.myKeyPair ? await crypto.subtle.exportKey('jwk', room.myKeyPair.privateKey) : null;
-    if (!candidate || candidate.privJwk.d === localPrivate?.d) return false;
-    const peerPubKey = room.lastKnownPeerPubKey || candidate.lastKnownPeerPubKey;
-    const derived = await deriveCandidateRoomKey(candidate, peerPubKey);
-    if (!derived) return false;
-    await decryptMsgWithSharedKey(derived.sharedKey, sample.content);
-    room.myKeyPair = derived.pair;
-    room.sharedKey = derived.sharedKey;
-    room.lastKnownPeerPubKey = peerPubKey;
-    await persistRoom(room);
-    await provisionAndroidCallRoom(room);
-    if (room.code === activeRoomCode) updateE2EBar(room);
-    return true;
+    const [latest, history] = await Promise.all([
+      api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken }),
+      api('/api/account/recovery-candidates', { accountId:state.accountId, sessionToken:state.sessionToken }),
+    ]);
+    const encryptedBundles = [latest?.bundle, ...((history?.candidates || []).map(item => item.bundle))].filter(Boolean);
+    for (const encryptedBundle of encryptedBundles) {
+      let bundle;
+      try { bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), encryptedBundle); } catch (_) { continue; }
+      const candidate = (bundle.sessions || []).find(session => session?.code === room.code && validStoredRoomKeyPair(session));
+      if (!candidate || candidate.privJwk.d === localPrivate?.d) continue;
+      const peerPubKey = room.lastKnownPeerPubKey || candidate.lastKnownPeerPubKey;
+      const derived = await deriveCandidateRoomKey(candidate, peerPubKey);
+      if (!derived) continue;
+      try { await decryptMsgWithSharedKey(derived.sharedKey, sample.content); } catch (_) { continue; }
+      room.myKeyPair = derived.pair;
+      room.sharedKey = derived.sharedKey;
+      room.lastKnownPeerPubKey = peerPubKey;
+      await persistRoom(room);
+      await provisionAndroidCallRoom(room);
+      if (room.code === activeRoomCode) updateE2EBar(room);
+      scheduleAccountSync();
+      return true;
+    }
+    return false;
   } catch (_) { return false; }
 }
 

@@ -102,11 +102,14 @@ test('account persistence uses parameterized upserts', async () => {
     passwordWrap:'pw', recoveryWrap:'rw', bundle:'cipher', revision:1,
     sessions:[], connectionRequests:[], createdAt:1, updatedAt:1,
   });
-  assert.equal(calls.length, 2);
-  assert.match(calls[1][0], /ON CONFLICT \(account_id\) DO UPDATE/);
-  assert.match(calls[1][0], /profile_share_code=EXCLUDED\.profile_share_code/);
-  assert.equal(calls[1][1].length, 29); // includes inbox_key and request_policy
-  assert.equal(calls[1][1][0], 'a'.repeat(64));
+  assert.equal(calls.length, 4);
+  assert.match(calls[1][0], /INSERT INTO account_bundle_history/);
+  assert.deepEqual(calls[1][1], ['a'.repeat(64), 'cipher']);
+  assert.match(calls[2][0], /ON CONFLICT \(account_id\) DO UPDATE/);
+  assert.match(calls[2][0], /profile_share_code=EXCLUDED\.profile_share_code/);
+  assert.equal(calls[2][1].length, 29); // includes inbox_key and request_policy
+  assert.equal(calls[2][1][0], 'a'.repeat(64));
+  assert.match(calls[3][0], /DELETE FROM account_bundle_history/);
 });
 
 test('Daily Look claim uses the current midnight-reset window in PostgreSQL', async () => {
