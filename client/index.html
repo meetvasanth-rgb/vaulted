@@ -4366,6 +4366,11 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     </div>
 
     <div id="settings-profile-controls" style="padding:0 20px 24px">
+      <div id="account-session-reconnect" hidden>
+        <div class="account-copy"><strong>Reconnect your account</strong><br/>Your conversations remain on this device, but encrypted backup and account sync are paused until you sign in again.</div>
+        <button class="account-primary" type="button" onclick="showAccountReauthentication()">Sign in again</button>
+        <div class="settings-divider" style="margin:20px 0"></div>
+      </div>
       <div class="profile-photo-editor">
         <div class="profile-photo-preview" id="account-profile-photo-preview" aria-label="Profile image preview">V</div>
         <div class="profile-photo-copy">
@@ -12222,14 +12227,20 @@ function loadSettingsState() {
 
 function updateAccountSettingsStatus() {
   const state = loadAccountState();
+  const reconnect = !!state && accountReauthenticationActive;
   const accountRow = document.getElementById('settings-account-row');
   const status = document.getElementById('account-settings-status');
   const sub = document.getElementById('account-settings-sub');
   const landingButton = document.getElementById('landing-account-btn');
   const landingLabel = document.getElementById('landing-account-label');
   const footerAccountLabel = document.getElementById('landing-footer-account-label');
-  if (status) { status.textContent = state ? 'Protected' : 'Set up'; status.className = state ? 'settings-status settings-status-on' : 'settings-status settings-status-action'; }
-  if (sub) sub.textContent = state ? `${formatPrivateNumber(state.privateNumber)} · encrypted conversation sync` : 'Create your Vaultlix private number';
+  if (status) {
+    status.textContent = reconnect ? 'Reconnect' : (state ? 'Protected' : 'Set up');
+    status.className = reconnect || !state ? 'settings-status settings-status-action' : 'settings-status settings-status-on';
+  }
+  if (sub) sub.textContent = reconnect
+    ? `${formatPrivateNumber(state.privateNumber)} · encrypted backup paused`
+    : (state ? `${formatPrivateNumber(state.privateNumber)} · encrypted conversation sync` : 'Create your Vaultlix private number');
   if (accountRow) {
     accountRow.style.cursor = state ? 'default' : 'pointer';
     accountRow.onclick = state ? null : openAccountPanel;
@@ -12357,7 +12368,10 @@ async function refreshOwnProfileFromServer() {
   const state = loadAccountState();
   if (!state?.accountId || !state?.sessionToken) return false;
   const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
-  if (latest?.error) return false;
+  if (latest?.error) {
+    if (latest.status === 401) requestAccountReauthentication();
+    return false;
+  }
   const profileImage = safeProfileImageUri(latest.profileImage);
   const displayName = typeof latest.displayName === 'string' && latest.displayName.trim()
     ? latest.displayName.trim().slice(0, 40) : state.displayName;
@@ -12375,6 +12389,8 @@ async function refreshOwnProfileFromServer() {
 function populateAccountProfileSettings(state = loadAccountState()) {
   const controls = document.getElementById('settings-profile-controls');
   if (controls) controls.style.display = state ? '' : 'none';
+  const reconnect = document.getElementById('account-session-reconnect');
+  if (reconnect) reconnect.hidden = !state || !accountReauthenticationActive;
   if (!state) return;
   const displayName = document.getElementById('account-profile-display-name');
   if (displayName) displayName.value = state.displayName;
@@ -15089,10 +15105,13 @@ function requestAccountReauthentication() {
   if (accountReplacementActive) return;
   const state = loadAccountState();
   if (!state) return;
-  if (accountReauthenticationActive) return;
-  accountReauthenticationActive = true;
-  clearTimeout(accountSyncTimer);
-  disconnectInbox();
+  if (!accountReauthenticationActive) {
+    accountReauthenticationActive = true;
+    clearTimeout(accountSyncTimer);
+    disconnectInbox();
+  }
+  updateAccountSettingsStatus();
+  populateAccountProfileSettings(state);
   // An expired or temporarily rejected account session is not proof that
   // this installation was replaced. Preserve all local E2EE credentials and
   // keep the inbox available. Account controls will offer reconnection when
@@ -21522,6 +21541,14 @@ async function deriveCandidateRoomKey(session, peerPubKeyB64) {
   return { pair:holder.myKeyPair, sharedKey };
 }
 
+function requireAccountReauthenticationForRecovery(...responses) {
+  if (!responses.some(response => response?.status === 401)) return false;
+  requestAccountReauthentication();
+  showAccountReauthentication();
+  toast('Sign in again to restore encrypted conversations');
+  return true;
+}
+
 // A working older device can repair the encrypted account backup after a
 // different device restored a regenerated room key. Before rendering a page
 // of ciphertext as permanently blocked, test a different backed-up keypair
@@ -21545,6 +21572,7 @@ async function repairRoomKeyFromAccountBackup(room, messages) {
       api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken }),
       api('/api/account/recovery-candidates', { accountId:state.accountId, sessionToken:state.sessionToken }),
     ]);
+    if (requireAccountReauthenticationForRecovery(latest, history)) return false;
     const encryptedBundles = [latest?.bundle, ...((history?.candidates || []).map(item => item.bundle))].filter(Boolean);
     for (const encryptedBundle of encryptedBundles) {
       let bundle;

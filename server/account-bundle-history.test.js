@@ -24,6 +24,8 @@ test('only the authenticated account can fetch recovery candidates', () => {
 
 test('room recovery proves a historical key against ciphertext before adopting it', () => {
   assert.match(client, /api\('\/api\/account\/recovery-candidates'/);
+  assert.match(client, /requireAccountReauthenticationForRecovery\(latest, history\)/);
+  assert.match(client, /Sign in again to restore encrypted conversations/);
   assert.match(client, /for \(const encryptedBundle of encryptedBundles\)/);
   assert.match(client, /await decryptMsgWithSharedKey\(derived\.sharedKey, sample\.content\)/);
   assert.match(client, /room\.myKeyPair = derived\.pair/);
@@ -31,6 +33,7 @@ test('room recovery proves a historical key against ciphertext before adopting i
 
 test('private groups inspect current and historical encrypted bundles', () => {
   assert.match(groups, /api\('\/api\/account\/recovery-candidates'/);
+  assert.match(groups, /requireAccountReauthenticationForRecovery\(latest, history\)/);
   assert.match(groups, /for \(const bundle of bundles\)/);
   assert.match(groups, /const merged = \{ \.\.\.backedUp\.keys, \.\.\.\(group\.keys \|\| \{\}\) \}/);
 });

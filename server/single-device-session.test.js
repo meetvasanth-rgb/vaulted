@@ -176,6 +176,9 @@ test('ordinary authentication and restoration failures preserve local conversati
   assert.match(client, /if \(state && accountReauthenticationActive\) \{[\s\S]*showAccountReauthentication\(\)/);
   assert.match(client, /function requestAccountReauthentication\(\) \{[\s\S]*disconnectInbox\(\);[\s\S]*\n\}/);
   assert.match(client, /function showAccountReauthentication\(\)/);
+  assert.match(client, /id="account-session-reconnect" hidden/);
+  assert.match(client, /encrypted backup and account sync are paused until you sign in again/);
+  assert.match(client, /latest\.status === 401\) requestAccountReauthentication\(\)/);
   assert.doesNotMatch(client, /toast\('Session expired · conversations preserved'\)/);
   assert.match(client, /if \(result\.error\) \{[\s\S]*room\.restoreUnavailable = true;[\s\S]*addRoomToState\(room\);[\s\S]*restoredAny = true;[\s\S]*continue;/);
   assert.match(client, /Connection unavailable · tap to retry/);

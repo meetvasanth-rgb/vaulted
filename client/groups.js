@@ -375,6 +375,7 @@ async function restorePrivateGroupKeysFromBackup() {
       api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken }),
       api('/api/account/recovery-candidates', { accountId:state.accountId, sessionToken:state.sessionToken }),
     ]);
+    if (requireAccountReauthenticationForRecovery(latest, history)) return false;
     const bundles = [];
     for (const encryptedBundle of [latest?.bundle, ...((history?.candidates || []).map(item => item.bundle))].filter(Boolean)) {
       try { bundles.push(await aesDecryptJson(base64UrlToBytes(state.masterKey), encryptedBundle)); } catch (_) {}
