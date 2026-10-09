@@ -114,7 +114,7 @@ test('messages are saved as they arrive, are restored, and our own sends are kep
 test('opening a conversation paints from the device first and only then asks the server', () => {
   const restore = client.slice(client.indexOf('async function restoreRoomHistory(room) {'));
   assert.ok(restore.indexOf('await restoreLocalHistory(room)') < restore.indexOf("api('/api/poll'"), 'local before network');
-  assert.match(restore, /if \(data\.error\) throw new Error\(data\.error\);\s*\n\s*const nowTs = Date\.now\(\);\s*\n\s*historyStorePut/);
+  assert.match(restore, /if \(data\.error\) throw new Error\(data\.error\);\s*\n\s*const nowTs = Date\.now\(\);\s*\n\s*await repairRoomKeyFromAccountBackup\(room, data\.messages\);\s*\n\s*historyStorePut/);
   // the local pass cannot wait behind attachment downloads: restoring never downloads them
   assert.match(client, /await applyRestoredHistory\(room, stored, Date\.now\(\)\);/);
   assert.doesNotMatch(client, /restoreBatch\(attachmentMessages\)/);

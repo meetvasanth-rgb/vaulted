@@ -2901,8 +2901,21 @@ const BODY_LIMIT_PROFILE = 384 * 1024;
 const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_STATUS = 8 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
-function bodyLimitFor(pathname) {
-  if (pathname === '/api/account/register' || pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') return 1100 * 1024;
+const ACCOUNT_BUNDLE_MAX_BYTES = 8 * 1024 * 1024;
+const BODY_LIMIT_ACCOUNT_SYNC_AUTHENTICATED = ACCOUNT_BUNDLE_MAX_BYTES + 256 * 1024;
+function bodyLimitFor(pathname, req) {
+  if (pathname === '/api/account/sync') {
+    const accountId = String(req?.headers?.['x-vaultlix-account'] || '');
+    const sessionToken = String(req?.headers?.['x-vaultlix-session'] || '');
+    // Only a session that is already valid may raise the buffering ceiling.
+    // Random internet traffic and expired credentials keep the original
+    // 1.1 MB cap, preserving the endpoint's pre-auth memory bound.
+    if (validAccountId(accountId) && authenticateAccountSession(accountId, sessionToken)) {
+      return BODY_LIMIT_ACCOUNT_SYNC_AUTHENTICATED;
+    }
+    return 1100 * 1024;
+  }
+  if (pathname === '/api/account/register' || pathname === '/api/account/recovery-code') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
@@ -3004,7 +3017,7 @@ const srv = http.createServer((req, res) => {
   // reallocation, and `.length` on the result is UTF-16 code units, not the
   // byte count actually received — chunk.length on the raw Buffer is what
   // the cap below actually measures).
-  const bodyLimit = bodyLimitFor(u.pathname);
+  const bodyLimit = bodyLimitFor(u.pathname, req);
   const chunks = [];
   let received = 0;
   let bodyTooLarge = false;
@@ -4030,7 +4043,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    if (!validEncryptedField(d.bundle, 1024 * 1024)) return resErr(res, 'Encrypted conversation index is invalid or too large.', 400);
+    if (!validEncryptedField(d.bundle, ACCOUNT_BUNDLE_MAX_BYTES)) return resErr(res, 'Encrypted conversation index is invalid or too large.', 400);
     if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
       res.setHeader('Cache-Control', 'no-store');
       return resErr(res, 'Conversation index changed on another device. Sign in again to merge it safely.', 409);

@@ -31,7 +31,7 @@ test('service worker caches only static app-shell routes for offline navigation'
 });
 
 test('Android refreshes the number-card generator while retaining an offline copy', () => {
-  assert.match(worker, /vaultlix-app-shell-v185/);
+  assert.match(worker, /vaultlix-app-shell-v186/);
   assert.match(worker, /url\.pathname === '\/number-card\.js'[\s\S]{0,500}await fetch\(request\)[\s\S]{0,500}cache\.match\(request, \{ ignoreSearch:true \}\)/);
 });
 

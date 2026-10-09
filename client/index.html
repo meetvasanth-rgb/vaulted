@@ -6068,6 +6068,10 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   const inbox = accountId && accountId === loadAccountState()?.accountId ? loadLocalInboxKey() : null;
   return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), missedCalls:missedCallSeenBundleSnapshot(accountId), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
 }
+function validStoredRoomKeyPair(session) {
+  return !!(session?.token && session.pubJwk?.x && session.pubJwk?.y && session.privJwk?.d
+    && session.privJwk.x === session.pubJwk.x && session.privJwk.y === session.pubJwk.y);
+}
 function importAccountBundle(bundle, accountId) {
   if (!bundle || bundle.v !== 1 || !Array.isArray(bundle.sessions)) throw new Error('Invalid conversation backup');
   // The inbox key's private half travels in the bundle; keep this device's own copy if it has one.
@@ -6089,6 +6093,13 @@ function importAccountBundle(bundle, accountId) {
     const current = merged.get(session.code);
     if (!current) added++;
     const selected = !current || (ownedSession.savedAt || 0) > (current.savedAt || 0) ? ownedSession : current;
+    // savedAt may choose metadata, never cryptographic identity. A different
+    // device can hold a newer but damaged or regenerated room keypair; using
+    // that timestamp to overwrite a working key on this device makes all
+    // existing ciphertext fail authentication. Keep this device's complete
+    // keypair and membership token whenever it has them. A fresh device with
+    // no local room still adopts the encrypted backup normally.
+    const cryptoSource = validStoredRoomKeyPair(current) ? current : ownedSession;
     // Whichever copy wins, a message deleted on either one stays deleted.
     const deleteLedger = pruneDeleteLedger(mergeDeleteLedgers(current?.deleteLedger, ownedSession.deleteLedger));
     const callHistoryClearedAt = Math.max(Number(current?.callHistoryClearedAt) || 0, Number(ownedSession.callHistoryClearedAt) || 0);
@@ -6122,7 +6133,14 @@ function importAccountBundle(bundle, accountId) {
     const unreadMigrationCutoffAt = freshDeviceRestore
       ? Math.max(0, Number(bundle.savedAt) || Number(ownedSession.savedAt) || 0)
       : Math.max(0, Number(current?.unreadMigrationCutoffAt) || Number(ownedSession.unreadMigrationCutoffAt) || 0);
-    merged.set(session.code, { ...selected, ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt, lastSeq, unread, unreadSystemCount });
+    merged.set(session.code, {
+      ...selected,
+      token:cryptoSource.token, pubJwk:cryptoSource.pubJwk, privJwk:cryptoSource.privJwk,
+      lastKnownPeerPubKey:cryptoSource.lastKnownPeerPubKey || selected.lastKnownPeerPubKey || null,
+      nativeRoomHandle:current?.nativeRoomHandle || selected.nativeRoomHandle,
+      ownerAccountId:accountId, deleteLedger, callHistoryClearedAt, lastReadSeq,
+      unreadStateVersion, unreadMigrationCutoffAt, lastSeq, unread, unreadSystemCount,
+    });
   }
   const sessions = Array.from(merged.values()).sort((a,b) => (a.savedAt||0)-(b.savedAt||0));
   for (const session of sessions) localStorage.setItem(roomStorageKey(session.code), JSON.stringify(session));
@@ -7642,24 +7660,27 @@ async function encryptTextMsg(room, text) {
 // "v2:" falls through to the same E2E_DOWNGRADE path a genuinely corrupt
 // message would — the correct, safe "not choke" behavior for it, not a
 // silent misinterpretation.
-async function decryptMsg(room, data) {
+async function decryptMsgWithSharedKey(sharedKey, data) {
   if (!data) return '';
-  if (!room.sharedKey) throw new Error('E2E_NOT_READY');
+  if (!sharedKey) throw new Error('E2E_NOT_READY');
   try {
     if (data.startsWith('v2:')) {
       const raw = Uint8Array.from(atob(data.slice(3)), c => c.charCodeAt(0));
-      const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12), additionalData: V2_AAD }, room.sharedKey, raw.slice(12));
+      const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12), additionalData: V2_AAD }, sharedKey, raw.slice(12));
       return new TextDecoder().decode(unpadPlaintext(new Uint8Array(dec)));
     }
     if (data.startsWith('v:')) {
       const raw = Uint8Array.from(atob(data.slice(2)), c => c.charCodeAt(0));
-      const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, room.sharedKey, raw.slice(12));
+      const dec = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, sharedKey, raw.slice(12));
       return new TextDecoder().decode(dec);
     }
     throw new Error('E2E_DOWNGRADE');
   } catch(e) {
     throw new Error('E2E_DOWNGRADE');
   }
+}
+async function decryptMsg(room, data) {
+  return decryptMsgWithSharedKey(room?.sharedKey, data);
 }
 
 // ── CALL SIGNALING ───────────────────────────────────────────────────────
@@ -10338,8 +10359,17 @@ function showRenameRoomPanel() {
 
 // ── API HELPER ──────────────────────────────────────────────────────────
 async function api(path, data = null) {
+  const headers = { 'Content-Type':'application/json' };
+  // Account bundles can grow as conversations and encrypted device ledgers
+  // accumulate. Supplying the existing account session in headers lets the
+  // server authenticate this one large endpoint before buffering its body;
+  // unauthenticated callers retain the small public request ceiling.
+  if (path === '/api/account/sync' && data?.accountId && data?.sessionToken) {
+    headers['X-Vaultlix-Account'] = data.accountId;
+    headers['X-Vaultlix-Session'] = data.sessionToken;
+  }
   const opts = data
-    ? { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data) }
+    ? { method:'POST', headers, body: JSON.stringify(data) }
     : { method:'GET' };
   const res = await fetch(path, opts);
   // CDN/proxy errors can occasionally arrive as HTML instead of JSON. Treat
@@ -14890,6 +14920,7 @@ async function recoverAnonymousAccount(event) {
 }
 async function syncAnonymousAccount(showFeedback) {
   const state = loadAccountState(); if (!state) return false;
+  lastAccountSyncFailure = null;
   if ((state.v || 1) < 2) {
     claimLocalVaultsForAccount(state.accountId);
     state.v = 2;
@@ -14902,7 +14933,7 @@ async function syncAnonymousAccount(showFeedback) {
     const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle });
     if (result.error && result.status === 409) {
       const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
-      if (latest.error) { if (status) status.textContent = latest.error; return false; }
+      if (latest.error) { lastAccountSyncFailure = latest; if (status) status.textContent = latest.error; return false; }
       const added = importAccountBundle(await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle), state.accountId);
       state.revision = latest.revision;
       state.profileImage = safeProfileImageUri(latest.profileImage);
@@ -14911,7 +14942,7 @@ async function syncAnonymousAccount(showFeedback) {
       saveAccountState(state);
       const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
-      if (retry.error) { if (status) status.textContent = retry.error; return false; }
+      if (retry.error) { lastAccountSyncFailure = retry; if (status) status.textContent = retry.error; return false; }
       state.revision = retry.revision;
       state.profileImage = safeProfileImageUri(retry.profileImage);
       state.tier = retry.tier || state.tier || 'standard';
@@ -14921,7 +14952,7 @@ async function syncAnonymousAccount(showFeedback) {
       if (showFeedback) toast(added ? 'Conversations merged — reopen Vaultlix to view them' : 'Conversations synced securely');
       return true;
     }
-    if (result.error) { if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return false; }
+    if (result.error) { lastAccountSyncFailure = result; if (status) status.textContent = result.error; if (showFeedback) toast(result.error); return false; }
     state.revision = result.revision;
     state.profileImage = safeProfileImageUri(result.profileImage);
     state.tier = result.tier || state.tier || 'standard';
@@ -14931,12 +14962,15 @@ async function syncAnonymousAccount(showFeedback) {
     if (showFeedback) toast('Conversations synced securely');
     return true;
   } catch (e) {
+    lastAccountSyncFailure = { status:0, error:e?.message || 'Network error' };
     console.error('E2E: encrypted account sync failed', e);
     if (status) status.textContent = 'Sync paused — will retry';
     if (showFeedback) toast('Could not sync right now');
     return false;
   }
 }
+
+let lastAccountSyncFailure = null;
 
 function accountBundleKeyMap(bundle, accountId) {
   const map = new Map();
@@ -14983,7 +15017,13 @@ async function prepareAndConfirmAccountBackup(state) {
     return { ok:false, reason:'local-keys' };
   }
 
-  if (!await syncAnonymousAccount(false)) return { ok:false, reason:'sync' };
+  if (!await syncAnonymousAccount(false)) {
+    if (lastAccountSyncFailure?.status === 401) return { ok:false, reason:'session' };
+    if (lastAccountSyncFailure?.status === 413 || /too large/i.test(lastAccountSyncFailure?.error || '')) {
+      return { ok:false, reason:'size' };
+    }
+    return { ok:false, reason:'sync' };
+  }
 
   // Do not trust a merely successful upload response before destructive
   // sign-out. Fetch and decrypt the server copy, then compare the room
@@ -15004,6 +15044,8 @@ async function prepareAndConfirmAccountBackup(state) {
 }
 function accountBackupFailureMessage(reason) {
   if (reason === 'local-keys') return 'Sign out paused — a conversation is still securing its backup. Nothing was removed. Reopen Vaultlix and try again.';
+  if (reason === 'session') return 'Sign out paused — your account session needs to be reconnected. Nothing was removed. Sign in again, then retry.';
+  if (reason === 'size') return 'Sign out paused — the encrypted backup is larger than this Vaultlix version supports. Nothing was removed.';
   if (reason === 'sync') return 'Sign out paused — the encrypted backup could not be updated. Nothing was removed. Check your connection and try again.';
   if (reason === 'fetch' || reason === 'verify') return 'Sign out paused — the encrypted backup could not be verified. Nothing was removed. Please try again.';
   return 'Sign out paused — your encrypted conversations could not be backed up. Nothing was removed.';
@@ -15112,6 +15154,7 @@ async function signOutAnonymousAccount() {
   }
   if (!backupResult?.ok) {
     toast(accountBackupFailureMessage(backupResult?.reason));
+    if (backupResult?.reason === 'session') setTimeout(showAccountReauthentication, 600);
     return;
   }
   clearTimeout(accountSyncTimer);
@@ -21465,6 +21508,58 @@ async function restoreLocalHistory(room) {
   return stored;
 }
 
+async function deriveCandidateRoomKey(session, peerPubKeyB64) {
+  if (!validStoredRoomKeyPair(session) || !peerPubKeyB64) return null;
+  const holder = {};
+  if (!await importKeyPairFromStorage(holder, session)) return null;
+  const peerBytes = Uint8Array.from(atob(peerPubKeyB64), character => character.charCodeAt(0));
+  const peerKey = await crypto.subtle.importKey('raw', peerBytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
+  const sharedKey = await crypto.subtle.deriveKey(
+    { name:'ECDH', public:peerKey }, holder.myKeyPair.privateKey,
+    { name:'AES-GCM', length:256 },
+    !!window.webkit?.messageHandlers?.vaultlixCall || !!window.VaultlixAndroid?.supportsNativeWebRtc?.(),
+    ['encrypt','decrypt']);
+  return { pair:holder.myKeyPair, sharedKey };
+}
+
+// A working older device can repair the encrypted account backup after a
+// different device restored a regenerated room key. Before rendering a page
+// of ciphertext as permanently blocked, test a different backed-up keypair
+// against a real AES-GCM message. The authentication tag is the proof: adopt
+// the candidate only when it actually decrypts existing history.
+async function repairRoomKeyFromAccountBackup(room, messages) {
+  if (!room || room.accountKeyRepairTried) return false;
+  room.accountKeyRepairTried = true;
+  const sample = (messages || []).find(message => message?.type === 'message'
+    && typeof message.content === 'string' && /^(?:v2:|v:)/.test(message.content));
+  if (!sample || !room.sharedKey) return false;
+  try {
+    await decryptMsgWithSharedKey(room.sharedKey, sample.content);
+    return false; // the current key is healthy; no replacement is allowed
+  } catch (_) {}
+  const state = loadAccountState();
+  if (!state?.masterKey || room.ownerAccountId !== state.accountId) return false;
+  try {
+    const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
+    if (latest.error || !latest.bundle) return false;
+    const bundle = await aesDecryptJson(base64UrlToBytes(state.masterKey), latest.bundle);
+    const candidate = (bundle.sessions || []).find(session => session?.code === room.code && validStoredRoomKeyPair(session));
+    const localPrivate = room.myKeyPair ? await crypto.subtle.exportKey('jwk', room.myKeyPair.privateKey) : null;
+    if (!candidate || candidate.privJwk.d === localPrivate?.d) return false;
+    const peerPubKey = room.lastKnownPeerPubKey || candidate.lastKnownPeerPubKey;
+    const derived = await deriveCandidateRoomKey(candidate, peerPubKey);
+    if (!derived) return false;
+    await decryptMsgWithSharedKey(derived.sharedKey, sample.content);
+    room.myKeyPair = derived.pair;
+    room.sharedKey = derived.sharedKey;
+    room.lastKnownPeerPubKey = peerPubKey;
+    await persistRoom(room);
+    await provisionAndroidCallRoom(room);
+    if (room.code === activeRoomCode) updateE2EBar(room);
+    return true;
+  } catch (_) { return false; }
+}
+
 // "Load earlier messages": first from this device's saved history, then, once
 // that has nothing older, from the server (which keeps the full encrypted
 // history and serves it in pages). Each page is saved on the device as well.
@@ -21528,6 +21623,7 @@ async function restoreRoomHistory(room) {
     if (!data || data.roomGone) return;
     if (data.error) throw new Error(data.error);
     const nowTs = Date.now();
+    await repairRoomKeyFromAccountBackup(room, data.messages);
     historyStorePut(room.code, data.messages);
     reconcileLocalHistory(room, localMessages, data);
 
