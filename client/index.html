@@ -13127,6 +13127,12 @@ async function decryptSavedRecoveryCode(state = loadAccountState()) {
   recoveryCodeToBytes(recoveryCode);
   return recoveryCode;
 }
+async function recoverySecretForWrap(state, recoveryCodeWrap) {
+  if (!state?.masterKey || !recoveryCodeWrap) throw new Error('Recovery code is unavailable on this device');
+  const saved = await aesDecryptJson(base64UrlToBytes(state.masterKey), recoveryCodeWrap);
+  const recoveryCode = typeof saved?.recoveryCode === 'string' ? saved.recoveryCode.trim() : '';
+  return { recoveryCode, recoverySecret:(await recoveryMaterial(recoveryCode)).authSecret };
+}
 async function createReplacementRecoveryCode(state = loadAccountState()) {
   if (!state?.accountId || !state?.sessionToken || !state?.masterKey) throw new Error('Account is unavailable');
   const recoveryBytes = crypto.getRandomValues(new Uint8Array(32));
@@ -13134,6 +13140,11 @@ async function createReplacementRecoveryCode(state = loadAccountState()) {
   const recovery = await recoveryMaterialFromBytes(recoveryBytes);
   const masterKey = base64UrlToBytes(state.masterKey);
   const recoveryCodeWrap = await aesEncryptJson(masterKey, { recoveryCode });
+  // Journal the replacement before the request. If the server commits it but
+  // the response is lost, the next reveal can validate and recover this copy
+  // instead of continuing to display the now-invalid previous code.
+  state.pendingRecoveryCodeWrap = recoveryCodeWrap;
+  saveAccountState(state);
   const encryptedBundle = await aesEncryptJson(masterKey, accountBundleSnapshot(state.accountId, false, recoveryCodeWrap));
   const result = await api('/api/account/recovery-code', {
     accountId:state.accountId,
@@ -13145,6 +13156,7 @@ async function createReplacementRecoveryCode(state = loadAccountState()) {
   });
   if (result.error) throw new Error(result.error);
   state.recoveryCodeWrap = recoveryCodeWrap;
+  delete state.pendingRecoveryCodeWrap;
   state.revision = result.revision;
   state.recoveryBackupConfirmedAt = 0;
   state.recoveryReminderDueAt = Date.now() + RECOVERY_REPEAT_REMINDER_MS;
@@ -13213,9 +13225,23 @@ async function revealSavedRecoveryCode() {
     if (!(await authorizeRecoveryCodeAccess())) return false;
     const state = loadAccountState();
     if (!normalizePrivateNumber(state?.privateNumber)) throw new Error('Private Number is unavailable');
-    activeRecoveryBackupCode = state.recoveryCodeWrap
-      ? await decryptSavedRecoveryCode(state)
-      : await createReplacementRecoveryCode(state);
+    activeRecoveryBackupCode = '';
+    const candidates = [state.pendingRecoveryCodeWrap, state.recoveryCodeWrap]
+      .filter((wrap, index, all) => typeof wrap === 'string' && all.indexOf(wrap) === index);
+    for (const recoveryCodeWrap of candidates) {
+      const candidate = await recoverySecretForWrap(state, recoveryCodeWrap);
+      const checked = await api('/api/account/recovery-code/check', {
+        accountId:state.accountId, sessionToken:state.sessionToken, recoverySecret:candidate.recoverySecret,
+      });
+      if (checked.error) throw new Error(checked.error);
+      if (!checked.matches) continue;
+      activeRecoveryBackupCode = candidate.recoveryCode;
+      state.recoveryCodeWrap = recoveryCodeWrap;
+      delete state.pendingRecoveryCodeWrap;
+      saveAccountState(state);
+      break;
+    }
+    if (!activeRecoveryBackupCode) activeRecoveryBackupCode = await createReplacementRecoveryCode(state);
     document.getElementById('recovery-backup-number').textContent = formatPrivateNumber(state.privateNumber);
     document.getElementById('recovery-backup-code').textContent = activeRecoveryBackupCode;
     renderQrCanvas(document.getElementById('recovery-backup-qr'), recoveryDeepLink(state.privateNumber, activeRecoveryBackupCode));
@@ -14945,8 +14971,17 @@ async function syncAnonymousAccount(showFeedback) {
   const status = document.getElementById('account-sync-status');
   if (status) status.textContent = 'Encrypting conversation index…';
   try {
+    const recoveryProof = state.recoveryCodeWrap
+      ? await recoverySecretForWrap(state, state.recoveryCodeWrap)
+      : null;
     const bundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
-    const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle });
+    const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle, ...(recoveryProof ? { recoverySecret:recoveryProof.recoverySecret } : {}) });
+    if (result.recoveryCodeMismatch) {
+      lastAccountSyncFailure = result;
+      if (status) status.textContent = 'Open Recovery code in Settings to refresh your encrypted backup.';
+      if (showFeedback) toast('Open Recovery code in Settings before syncing');
+      return false;
+    }
     if (result.error && result.status === 409) {
       const latest = await api('/api/account/fetch', { accountId:state.accountId, sessionToken:state.sessionToken });
       if (latest.error) { lastAccountSyncFailure = latest; if (status) status.textContent = latest.error; return false; }
@@ -14957,7 +14992,7 @@ async function syncAnonymousAccount(showFeedback) {
       state.isFounding = !!latest.isFounding;
       saveAccountState(state);
       const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
-      const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle });
+      const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle, ...(recoveryProof ? { recoverySecret:recoveryProof.recoverySecret } : {}) });
       if (retry.error) { lastAccountSyncFailure = retry; if (status) status.textContent = retry.error; return false; }
       state.revision = retry.revision;
       state.profileImage = safeProfileImageUri(retry.profileImage);

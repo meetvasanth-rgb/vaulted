@@ -45,6 +45,22 @@ test('recovery code follows an authorized account to future password sign-ins', 
   assert.doesNotMatch(client, /Recovery code unavailable on this phone/);
 });
 
+test('displayed recovery codes are verified and interrupted rotations are recoverable', () => {
+  assert.match(client, /state\.pendingRecoveryCodeWrap = recoveryCodeWrap;[\s\S]*api\('\/api\/account\/recovery-code'/);
+  assert.match(client, /\[state\.pendingRecoveryCodeWrap, state\.recoveryCodeWrap\]/);
+  assert.match(client, /api\('\/api\/account\/recovery-code\/check'/);
+  assert.match(client, /if \(!checked\.matches\) continue;/);
+  assert.match(server, /path === '\/api\/account\/recovery-code\/check'/);
+  assert.match(server, /verifyAccountSecret\(d\.recoverySecret, account\.recoveryVerifier\)/);
+});
+
+test('new clients cannot sync a bundle carrying a stale recovery code', () => {
+  assert.match(client, /api\('\/api\/account\/sync',[^\n]*recoverySecret:recoveryProof\.recoverySecret/);
+  assert.match(client, /if \(result\.recoveryCodeMismatch\)/);
+  assert.match(server, /if \(d\.recoverySecret !== undefined\)/);
+  assert.match(server, /recoveryCodeMismatch:true/);
+});
+
 test('native wrappers authenticate before sensitive recovery details are revealed', () => {
   assert.match(client, /await requestNativeSensitiveAuthentication\(\)/);
   assert.match(client, /event\.detail\?\.pending === true/);

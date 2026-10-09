@@ -2683,9 +2683,9 @@ function res200(res, data) {
   res.writeHead(200, { 'Content-Type':'application/json', 'Cache-Control': res.getHeader('Cache-Control') || 'no-cache' });
   res.end(JSON.stringify(data));
 }
-function resErr(res, msg, status=400) {
+function resErr(res, msg, status=400, details={}) {
   res.writeHead(status, { 'Content-Type':'application/json' });
-  res.end(JSON.stringify({ error: msg }));
+  res.end(JSON.stringify({ error: msg, ...details }));
 }
 // No body, no Content-Type — used where the response itself must not leak
 // which of several outcomes actually happened (see /api/leave).
@@ -3535,6 +3535,24 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok:true, revision:account.revision, ...publicAccount(account) });
   }
 
+  // A device must never present a recovery code merely because it can
+  // decrypt a local copy. A lost response during code rotation can leave the
+  // device holding the previous code while the server has already committed
+  // the replacement. Let an authenticated device confirm which local copy is
+  // authoritative before it displays or backs up that code.
+  if (path === '/api/account/recovery-code/check' && method === 'POST') {
+    if (await rateLimited(`account-recovery-code-check:${d.accountId || ip}`, 12, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many recovery-code checks — try again later.', 429);
+    }
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!validAccountSecret(d.recoverySecret)) return resErr(res, 'Invalid recovery-code check.', 400);
+    const matches = await verifyAccountSecret(d.recoverySecret, account.recoveryVerifier);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, matches });
+  }
+
   if (path === '/api/account/recover' && method === 'POST') {
     if (await rateLimited(`account-recover:${ip}`, 6, 60 * 60 * 1000)) return resErr(res, 'Too many recovery attempts — try again later.', 429);
     const found = accountByPrivateNumber(d.privateNumber);
@@ -4044,6 +4062,17 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     if (!validEncryptedField(d.bundle, ACCOUNT_BUNDLE_MAX_BYTES)) return resErr(res, 'Encrypted conversation index is invalid or too large.', 400);
+    // New clients prove that the recovery code embedded in their opaque
+    // bundle is still the server-authoritative code. This prevents a stale
+    // locally displayed code from overwriting the valid encrypted backup.
+    // The field remains optional while older installed clients age out.
+    if (d.recoverySecret !== undefined) {
+      if (!validAccountSecret(d.recoverySecret) ||
+          !await verifyAccountSecret(d.recoverySecret, account.recoveryVerifier)) {
+        res.setHeader('Cache-Control', 'no-store');
+        return resErr(res, 'Your saved recovery code needs to be refreshed before syncing.', 409, { recoveryCodeMismatch:true });
+      }
+    }
     if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
       res.setHeader('Cache-Control', 'no-store');
       return resErr(res, 'Conversation index changed on another device. Sign in again to merge it safely.', 409);
