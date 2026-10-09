@@ -101,14 +101,24 @@ test('messages sent while history restores retain timestamps for chronological m
 test('sign-out never erases conversation keys before a verified encrypted backup', () => {
   assert.match(client, /if \(room\.everOnline && \(!keys\.pubJwk \|\| !keys\.privJwk\)\) return false/);
   assert.match(client, /async function prepareAndConfirmAccountBackup\(state\)/);
-  assert.match(client, /if \(!await syncAnonymousAccount\(false\)\) return false/);
+  assert.match(client, /if \(!await syncAnonymousAccount\(false\)\) return \{ ok:false, reason:'sync' \}/);
   assert.match(client, /const fetched = await api\('\/api\/account\/fetch'/);
-  assert.match(client, /for \(const \[code, key\] of expectedKeys\) if \(remoteKeys\.get\(code\) !== key\) return false/);
-  assert.match(client, /if \(!backupConfirmed\) \{[\s\S]*Nothing was removed\.[\s\S]*return;/);
+  assert.match(client, /for \(const \[code, key\] of expectedKeys\) if \(remoteKeys\.get\(code\) !== key\) return \{ ok:false, reason:'verify' \}/);
+  assert.match(client, /if \(!backupResult\?\.ok\) \{[\s\S]*accountBackupFailureMessage\(backupResult\?\.reason\)[\s\S]*return;/);
 
   const signOutAt = client.indexOf('async function signOutAnonymousAccount()');
   const confirmAt = client.indexOf('prepareAndConfirmAccountBackup(state)', signOutAt);
   const removeAt = client.indexOf("localStorage.removeItem(ACCOUNT_STATE_KEY)", signOutAt);
   assert.ok(signOutAt > -1 && confirmAt > signOutAt && removeAt > confirmAt,
     'destructive local sign-out must follow remote backup confirmation');
+});
+
+test('sign-out cleans expired room sessions before taking its verification snapshot', () => {
+  const start = client.indexOf('async function prepareAndConfirmAccountBackup(state)');
+  const end = client.indexOf('let accountReplacementActive', start);
+  const section = client.slice(start, end);
+  const cleanupAt = section.indexOf('const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)');
+  const snapshotAt = section.indexOf('const expected = accountBundleSnapshot(state.accountId)');
+  assert.ok(cleanupAt > -1 && snapshotAt > cleanupAt,
+    'expired sessions must be removed before the backup snapshot is captured');
 });

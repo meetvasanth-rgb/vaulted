@@ -14969,13 +14969,21 @@ async function prepareAndConfirmAccountBackup(state) {
   }
   clearTimeout(accountSyncTimer);
 
+  // Resolve the canonical room list before taking the backup snapshot.
+  // loadRoomSession() removes expired non-persistent sessions. Previously
+  // the snapshot was taken first and this cleanup happened while building
+  // ownedCodes below, so an expired room existed in `expected` but not in
+  // `ownedCodes`. The safety check then rejected every sign-out even though
+  // the encrypted data itself was valid.
+  const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)?.ownerAccountId === state.accountId);
   const expected = accountBundleSnapshot(state.accountId);
   const expectedKeys = accountBundleKeyMap(expected, state.accountId);
   const expectedGroupKeys = accountBundleGroupKeyMap(expected, state.accountId);
-  const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)?.ownerAccountId === state.accountId);
-  if (expectedKeys.size !== ownedCodes.length || ownedCodes.some(code => !expectedKeys.has(code))) return false;
+  if (expectedKeys.size !== ownedCodes.length || ownedCodes.some(code => !expectedKeys.has(code))) {
+    return { ok:false, reason:'local-keys' };
+  }
 
-  if (!await syncAnonymousAccount(false)) return false;
+  if (!await syncAnonymousAccount(false)) return { ok:false, reason:'sync' };
 
   // Do not trust a merely successful upload response before destructive
   // sign-out. Fetch and decrypt the server copy, then compare the room
@@ -14985,14 +14993,20 @@ async function prepareAndConfirmAccountBackup(state) {
     accountId:latestState.accountId,
     sessionToken:latestState.sessionToken,
   });
-  if (fetched.error) return false;
+  if (fetched.error) return { ok:false, reason:'fetch' };
   const remote = await aesDecryptJson(base64UrlToBytes(latestState.masterKey), fetched.bundle);
   const remoteKeys = accountBundleKeyMap(remote, latestState.accountId);
   const remoteGroupKeys = accountBundleGroupKeyMap(remote, latestState.accountId);
-  if (remoteKeys.size < expectedKeys.size) return false;
-  for (const [code, key] of expectedKeys) if (remoteKeys.get(code) !== key) return false;
-  for (const [id, key] of expectedGroupKeys) if (remoteGroupKeys.get(id) !== key) return false;
-  return true;
+  if (remoteKeys.size < expectedKeys.size) return { ok:false, reason:'verify' };
+  for (const [code, key] of expectedKeys) if (remoteKeys.get(code) !== key) return { ok:false, reason:'verify' };
+  for (const [id, key] of expectedGroupKeys) if (remoteGroupKeys.get(id) !== key) return { ok:false, reason:'verify' };
+  return { ok:true };
+}
+function accountBackupFailureMessage(reason) {
+  if (reason === 'local-keys') return 'Sign out paused — a conversation is still securing its backup. Nothing was removed. Reopen Vaultlix and try again.';
+  if (reason === 'sync') return 'Sign out paused — the encrypted backup could not be updated. Nothing was removed. Check your connection and try again.';
+  if (reason === 'fetch' || reason === 'verify') return 'Sign out paused — the encrypted backup could not be verified. Nothing was removed. Please try again.';
+  return 'Sign out paused — your encrypted conversations could not be backed up. Nothing was removed.';
 }
 let accountReplacementActive = false;
 let accountReauthenticationActive = false;
@@ -15092,12 +15106,12 @@ function clearReplacedAccountLocally(accountId, reload = true) {
 async function signOutAnonymousAccount() {
   const state = loadAccountState(); if (!state) return;
   if (!confirm('Sign out on this device? Conversations belonging to this identity will be removed from this device and restored after you sign in again.')) return;
-  let backupConfirmed = false;
-  try { backupConfirmed = await prepareAndConfirmAccountBackup(state); } catch (e) {
+  let backupResult = { ok:false, reason:'unexpected' };
+  try { backupResult = await prepareAndConfirmAccountBackup(state); } catch (e) {
     console.error('E2E: sign-out backup confirmation failed', e);
   }
-  if (!backupConfirmed) {
-    toast('Sign out paused — your encrypted conversations could not be backed up. Nothing was removed.');
+  if (!backupResult?.ok) {
+    toast(accountBackupFailureMessage(backupResult?.reason));
     return;
   }
   clearTimeout(accountSyncTimer);
