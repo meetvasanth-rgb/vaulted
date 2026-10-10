@@ -57,7 +57,8 @@ test('displayed recovery codes are verified and interrupted rotations are recove
 test('new clients cannot sync a bundle carrying a stale recovery code', () => {
   assert.match(client, /api\('\/api\/account\/sync',[^\n]*recoverySecret:recoveryProof\.recoverySecret/);
   assert.match(client, /if \(result\.recoveryCodeMismatch\)/);
-  assert.match(server, /if \(d\.recoverySecret !== undefined\)/);
+  assert.doesNotMatch(server, /if \(d\.recoverySecret !== undefined\)/);
+  assert.match(server, /if \(!validAccountSecret\(d\.recoverySecret\)/);
   assert.match(server, /recoveryCodeMismatch:true/);
 });
 

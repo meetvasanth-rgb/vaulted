@@ -4062,16 +4062,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     if (!validEncryptedField(d.bundle, ACCOUNT_BUNDLE_MAX_BYTES)) return resErr(res, 'Encrypted conversation index is invalid or too large.', 400);
-    // New clients prove that the recovery code embedded in their opaque
-    // bundle is still the server-authoritative code. This prevents a stale
-    // locally displayed code from overwriting the valid encrypted backup.
-    // The field remains optional while older installed clients age out.
-    if (d.recoverySecret !== undefined) {
-      if (!validAccountSecret(d.recoverySecret) ||
-          !await verifyAccountSecret(d.recoverySecret, account.recoveryVerifier)) {
-        res.setHeader('Cache-Control', 'no-store');
-        return resErr(res, 'Your saved recovery code needs to be refreshed before syncing.', 409, { recoveryCodeMismatch:true });
-      }
+    // Prove that the recovery code embedded in the opaque bundle is still
+    // the server-authoritative code. Refuse missing proofs too: an older
+    // cached client must pause its backup and refresh rather than overwrite
+    // the valid bundle with a locally displayed but unusable code.
+    if (!validAccountSecret(d.recoverySecret) ||
+        !await verifyAccountSecret(d.recoverySecret, account.recoveryVerifier)) {
+      res.setHeader('Cache-Control', 'no-store');
+      return resErr(res, 'Your saved recovery code needs to be refreshed before syncing.', 409, { recoveryCodeMismatch:true });
     }
     if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
       res.setHeader('Cache-Control', 'no-store');
