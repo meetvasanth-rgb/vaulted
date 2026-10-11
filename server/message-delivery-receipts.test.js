@@ -79,7 +79,7 @@ test('groupId is never forwarded for a non-group push, even if a caller accident
 });
 
 test('the message push payload sent server-side is the only one carrying msgId', () => {
-  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: mb\.hidePreview \? 'New message' : `New message from \$\{m\.name\}`, tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId \}\);/);
+  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: mb\.hidePreview \|\| !senderLabel \? 'New message' : `New message from \$\{senderLabel\}`, tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId \}\);/);
 });
 
 test('Android builds the notification itself and reports delivery for a data-only message, using the room token from NativeCallRoomStore (not the WebView)', () => {

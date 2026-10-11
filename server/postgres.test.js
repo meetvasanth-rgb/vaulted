@@ -32,9 +32,10 @@ test('conversation writes hash bearer tokens and deletion is transactional', asy
   const pool = { query:client.query, connect:async () => client };
   const store = new PostgresStore('', { pool });
   await store.createConversation({ id:'room-1', persistent:true, createdAt:1 });
-  await store.upsertConversationMember('room-1', 1, 'bearer-secret', { name:'cipher-name', lastSeen:1 });
+  await store.upsertConversationMember('room-1', 1, 'bearer-secret', { name:'plaintext-name', lastSeen:1 });
   assert.equal(calls[1][1][2], require('crypto').createHash('sha256').update('bearer-secret').digest('hex'));
   assert.notEqual(calls[1][1][2], 'bearer-secret');
+  assert.equal(calls[1][1][3], null, 'plaintext conversation names must never be written');
   await store.deleteConversationMember('room-1', 1);
   assert.match(calls[2][0], /DELETE FROM conversation_members/);
   await store.appendEncryptedMessage('room-1', 'bearer-secret', { id:'message-1', seq:1, content:'ciphertext', ts:2 });
@@ -50,6 +51,36 @@ test('conversation writes hash bearer tokens and deletion is transactional', asy
   assert.match(calls.at(-3)[0], /INSERT INTO deletion_tombstones/);
   assert.equal(calls.at(-2)[0], 'COMMIT');
   assert.equal(calls.at(-1)[0], 'RELEASE');
+});
+
+test('conversation member names are persisted as opaque E2E envelopes while legacy rows remain readable', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => {
+    calls.push(args);
+    if (/SELECT \* FROM conversations/.test(args[0])) return { rows:[{
+      persistent:true, is_named:false, created_at:1, last_activity:1, updated_at:1,
+      connected_since:null, total_message_count:0, last_message_at:0, delete_timer:0,
+      delete_timer_set_at:1, cleared_at:0, password_hash:null,
+      next_message_sequence:1, next_reaction_sequence:1, next_deletion_sequence:1, state_version:1,
+    }] };
+    if (/SELECT \* FROM conversation_members/.test(args[0])) return { rows:[
+      { member_slot:1, token_hash:'a'.repeat(64), encrypted_name:'Legacy name', public_key:null, push_state:{}, last_seen:1 },
+      { member_slot:2, token_hash:'b'.repeat(64), encrypted_name:'v:opaque-ciphertext', public_key:null, push_state:{}, last_seen:1 },
+    ] };
+    return { rows:[] };
+  } };
+  const store = new PostgresStore('', { pool });
+  await store.upsertConversationMember('room-1', 2, 'new-token', {
+    name:'Must not be stored', nameCiphertext:'v:opaque-ciphertext', lastSeen:2,
+  });
+  assert.equal(calls[0][1][3], 'v:opaque-ciphertext');
+  assert.match(calls[0][0], /COALESCE\(conversation_members\.encrypted_name, EXCLUDED\.encrypted_name\)/);
+
+  const room = await store.loadConversation('room-1');
+  assert.equal(room.members[0][1].name, 'Legacy name');
+  assert.equal(room.members[0][1].nameCiphertext, null);
+  assert.equal(room.members[1][1].name, null);
+  assert.equal(room.members[1][1].nameCiphertext, 'v:opaque-ciphertext');
 });
 
 test('conversation mutations reuse the advisory-lock transaction client', async () => {

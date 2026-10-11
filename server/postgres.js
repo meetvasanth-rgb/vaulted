@@ -4,10 +4,12 @@ const { Pool } = require('pg');
 const crypto = require('crypto');
 
 // PostgreSQL contains ciphertext, hashes, delivery state, deletion
-// tombstones, and the intentionally public identity fields (display name and
-// optional profile image). Message plaintext and conversation keys never
-// enter this process, so moving persistence out of one Node heap does not
-// weaken E2E.
+// tombstones, and the intentionally public account identity fields (display
+// name and optional profile image). Conversation-member names are different:
+// they link a public identity to a private conversation, so new rows store an
+// E2E envelope produced by the member's client. Message plaintext,
+// conversation-member plaintext and conversation keys never enter this
+// persistence layer.
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS vaultlix_schema (
   version integer PRIMARY KEY,
@@ -630,8 +632,15 @@ class PostgresStore {
       stateVersion:Number(row.state_version || 1),
       members:memberResult.rows.map(member => {
         const push = member.push_state || {};
+        // Historical rows contain the old plaintext value. Leave those rows
+        // untouched and keep reading them for compatibility. Every new client
+        // writes a normal Vaultlix E2E envelope (v:...), which is opaque to
+        // this process and is returned to the peer for local decryption.
+        const storedName = member.encrypted_name || null;
+        const nameCiphertext = typeof storedName === 'string' && storedName.startsWith('v:') ? storedName : null;
         return [member.token_hash, {
-          slot:Number(member.member_slot), name:member.encrypted_name || null,
+          slot:Number(member.member_slot), name:nameCiphertext ? null : storedName,
+          nameCiphertext,
           pubKey:member.public_key || null, lastSeen:Number(member.last_seen || 0),
           pushSub:push.pushSub || null, fcmToken:push.fcmToken || null,
           apnsToken:push.apnsToken || null, apnsEnvironment:push.apnsEnvironment || null,
@@ -719,15 +728,19 @@ class PostgresStore {
   async upsertConversationMember(conversationId, slot, token, member, client = this.pool) {
     if (!this.enabled) return;
     const memberTokenHash = tokenHash(token);
+    const nameCiphertext = typeof member.nameCiphertext === 'string' &&
+      member.nameCiphertext.startsWith('v:') && member.nameCiphertext.length <= 1024
+      ? member.nameCiphertext : null;
     await client.query(`INSERT INTO conversation_members (
       conversation_id, member_slot, token_hash, encrypted_name, public_key,
       push_state, last_seen
     ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
     ON CONFLICT (conversation_id, member_slot) DO UPDATE SET
-      token_hash=EXCLUDED.token_hash, encrypted_name=EXCLUDED.encrypted_name,
+      token_hash=EXCLUDED.token_hash,
+      encrypted_name=COALESCE(conversation_members.encrypted_name, EXCLUDED.encrypted_name),
       public_key=EXCLUDED.public_key, push_state=EXCLUDED.push_state,
       last_seen=EXCLUDED.last_seen`, [
-      conversationId, slot, memberTokenHash, member.name || null, member.pubKey || null,
+      conversationId, slot, memberTokenHash, nameCiphertext, member.pubKey || null,
       JSON.stringify({
         pushSub:member.pushSub || null, apnsToken:member.apnsToken || null,
         apnsEnvironment:member.apnsEnvironment || null, fcmToken:member.fcmToken || null,

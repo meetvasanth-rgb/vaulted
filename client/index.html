@@ -7451,6 +7451,10 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
       }
     }
     await provisionAndroidCallRoom(room);
+    // The key exists only now, after both public keys have been exchanged.
+    // Publish the account name asynchronously so call/message setup is never
+    // held up by this privacy metadata write.
+    publishEncryptedMemberName(room).catch(() => {});
     // Only pulse the bar if it's actually showing this room right now —
     // deriveSharedKey also runs for background rooms (page-load restore,
     // background rekey on a non-active tab), and pulsing the one shared
@@ -7686,6 +7690,41 @@ async function decryptMsgWithSharedKey(sharedKey, data) {
 }
 async function decryptMsg(room, data) {
   return decryptMsgWithSharedKey(room?.sharedKey, data);
+}
+
+// A display name is public account metadata, but persisting it beside a
+// conversation exposes the account-to-conversation link. Once the ECDH
+// handshake has produced this room's AES key, store only an opaque E2E
+// envelope in conversation_members.encrypted_name. The server can relay it
+// but cannot recover the name.
+async function publishEncryptedMemberName(room) {
+  if (!room?.sharedKey || !room.code || !room.token || !room.myName) return false;
+  const normalizedName = String(room.myName).trim().replace(/\s+/g, ' ').slice(0, 32);
+  if (!normalizedName || room.publishedEncryptedName === normalizedName) return true;
+  const ciphertext = await encryptMsg(room, JSON.stringify({ type:'member-name', name:normalizedName }));
+  const result = await api('/api/member-name', { code:room.code, token:room.token, ciphertext });
+  if (result.error) return false;
+  room.publishedEncryptedName = normalizedName;
+  return true;
+}
+
+async function applyEncryptedPeerName(room, ciphertext) {
+  if (!room?.sharedKey || typeof ciphertext !== 'string' || !ciphertext.startsWith('v:')) return false;
+  try {
+    const payload = JSON.parse(await decryptMsg(room, ciphertext));
+    const name = payload?.type === 'member-name' && typeof payload.name === 'string'
+      ? payload.name.trim().replace(/\s+/g, ' ').slice(0, 32) : '';
+    if (!name || /[<>\u0000-\u001f]/.test(name)) return false;
+    if (room.peerName !== name) {
+      room.peerName = name;
+      await persistRoom(room);
+      renderVaultList();
+      if (room.code === activeRoomCode) updateHeaderRoomLabel(room);
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 // ── CALL SIGNALING ───────────────────────────────────────────────────────
@@ -13056,6 +13095,11 @@ async function updateAccountUsername(event) {
     state.displayName = result.displayName;
     state.profileImage = safeProfileImageUri(result.profileImage);
     saveAccountState(state);
+    for (const room of rooms.values()) {
+      room.myName = state.displayName;
+      room.publishedEncryptedName = null;
+      if (room.sharedKey) publishEncryptedMemberName(room).catch(() => {});
+    }
     document.getElementById('account-signed-name').textContent = `${state.displayName} · ${formatPrivateNumber(state.privateNumber)}`;
     const profileName = document.getElementById('account-profile-name');
     if (profileName) profileName.textContent = state.displayName;
@@ -22052,6 +22096,7 @@ async function doPoll(room) {
       }
     }
 
+    if (data.peerNameCiphertext && room.sharedKey) await applyEncryptedPeerName(room, data.peerNameCiphertext);
     if (room.pendingContactNotice && room.sharedKey) flushContactReopenNotice(room).catch(() => {});
     if (room.pendingIntroNotices?.length && room.sharedKey) flushIntroNotices(room).catch(() => {});
     const wasOnline = room.peerOnline;
@@ -23172,12 +23217,14 @@ function startWaitingForPeer(room, { silent = false } = {}) {
     // within the last few seconds), so a peer who joined and then went to another screen can
     // read offline here for a long while. A peer's name and public key only exist once they
     // have actually joined, which is what this waiting screen is waiting for.
-    const peerJoined = !!d.peerOnline || !!(d.peerName && d.peerPubKey);
+    const peerJoined = !!d.peerOnline || !!d.peerPubKey;
     if (peerJoined) {
       clearInterval(room.waitInterval); room.waitInterval = null;
       pendingRoomCode = null;
-      room.peerOnline = true; room.everOnline = true; room.peerName = d.peerName;
+      room.peerOnline = true; room.everOnline = true;
+      if (d.peerName) room.peerName = d.peerName; // legacy plaintext row
       if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
+      if (d.peerNameCiphertext) await applyEncryptedPeerName(room, d.peerNameCiphertext);
       if (d.deleteTimer !== undefined) room.deleteTimerSeconds = d.deleteTimer;
       // This is the transition from invitation to established
       // conversation. Save it immediately so a later peer departure cannot
@@ -23369,6 +23416,7 @@ async function handleSetup({ silent = false } = {}) {
         if (room.keyVerificationFailed) { await blockRoomForKeyMismatch(room, true); resetSetupBtn(); return; }
         room.lastKnownPeerPubKey = result.peerPubKey;
       }
+      if (result.peerNameCiphertext) await applyEncryptedPeerName(room, result.peerNameCiphertext);
       room.peerOnline = true; room.everOnline = true;
       // The earlier save happened before everOnline became true. Persist
       // the completed handshake state before this room can be restored.
@@ -24863,6 +24911,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         // a server key learned during this launch for the next offline one.
         await persistRoom(room);
       }
+      if (result.peerNameCiphertext && room.sharedKey) await applyEncryptedPeerName(room, result.peerNameCiphertext);
       if (result.deleteTimer !== undefined) room.deleteTimerSeconds = result.deleteTimer;
       const canRestoreHistory = !!room.sharedKey;
       if (!canRestoreHistory) {

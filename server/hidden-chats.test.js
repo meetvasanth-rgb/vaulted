@@ -329,11 +329,11 @@ test('the conversation menu offers Hide chat / Unhide chat and Settings manages 
 
 test('server: a hidden chat\'s pushes stop naming the other person', () => {
   assert.match(server, /if \(path==='\/api\/notification-privacy' && method==='POST'\) \{[\s\S]{0,200}!room\.members\.has\(d\.token\)\) return resErr\(res,'Not in conversation\.',403\)/);
-  assert.match(server, /body: mb\.hidePreview \? 'New message' : `New message from \$\{m\.name\}`/);
+  assert.match(server, /body: mb\.hidePreview \|\| !senderLabel \? 'New message' : `New message from \$\{senderLabel\}`/);
   assert.match(server, /Incoming video call' : 'Incoming call'/);
   assert.match(server, /body: caller && caller\.name && !peerMember\.hidePreview \? `Missed call from/);
   assert.equal((server.match(/caller: peerMember\.hidePreview \? ''/g) || []).length, 2, 'missed-call data carries no caller name');
-  assert.match(server, /'\/api\/notification-privacy',\s*\]\);/);
+  assert.match(server, /'\/api\/notification-privacy', '\/api\/member-name',\s*\]\);/);
   assert.match(postgres, /hidePreview:member\.hidePreview === true \|\| undefined/);
   assert.match(postgres, /\.\.\.\(push\.hidePreview \? \{ hidePreview:true \} : \{\}\)/);
 });

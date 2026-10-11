@@ -3078,7 +3078,7 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
     '/api/delete-message', '/api/view-once-opened', '/api/set-timer',
     '/api/clear-chat', '/api/mark-delivered', '/api/read', '/api/leave',
     '/api/close', '/api/make-persistent', '/api/revoke-link', '/api/poll',
-    '/api/notification-privacy',
+    '/api/notification-privacy', '/api/member-name',
   ]);
   if (!mutationPaths.has(path)) {
     await ensureConversationLoaded(roomCode);
@@ -4854,10 +4854,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       // nothing to show in its header until its first regular poll came
       // back, which meant the raw room code sat there visibly if that poll
       // was even slightly delayed.
-      let peerPubKey = null, peerName = null;
-      for (const [t,mb] of room.members) if (!sameConversationToken(t, d.token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
+      let peerPubKey = null, peerName = null, peerNameCiphertext = null;
+      for (const [t,mb] of room.members) if (!sameConversationToken(t, d.token)) {
+        peerPubKey = mb.pubKey; peerName = mb.name; peerNameCiphertext = mb.nameCiphertext || null;
+      }
       const unreadBaselineSeq = unreadBaselineSeqForCutoff(room, d.unreadCutoffAt);
-      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0, unreadBaselineSeq });
+      return res200(res, { code: roomCode, token: d.token, name: m.name, isReconnect: true, peerPubKey, peerName, peerNameCiphertext, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0, unreadBaselineSeq });
     }
 
     // Everything past this point is either a fresh join or a probe for a
@@ -4973,11 +4975,35 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // if a client ever IS legitimately forced through this fresh-join path
     // (room password changed, genuinely new participant, etc.) its header
     // can resolve immediately instead of waiting on the first live poll.
-    let peerPubKey = null, peerName = null;
-    for (const [t,mb] of room.members) if (!sameConversationToken(t, token)) { peerPubKey = mb.pubKey; peerName = mb.name; }
+    let peerPubKey = null, peerName = null, peerNameCiphertext = null;
+    for (const [t,mb] of room.members) if (!sameConversationToken(t, token)) {
+      peerPubKey = mb.pubKey; peerName = mb.name; peerNameCiphertext = mb.nameCiphertext || null;
+    }
     console.log(`Member joined conversation ${logCode(roomCode)}`);
     const unreadBaselineSeq = unreadBaselineSeqForCutoff(room, d.unreadCutoffAt);
-    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0, unreadBaselineSeq });
+    return res200(res, { code: roomCode, token, name, peerPubKey, peerName, peerNameCiphertext, deleteTimer: room.deleteTimer, persistent: !!room.persistent, connectedSince: room.connectedSince || null, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0, unreadBaselineSeq });
+  }
+
+  // Store a member's display name as an opaque E2E envelope only after both
+  // devices have derived the conversation key. PostgreSQL never receives the
+  // plaintext for new rows. Existing plaintext rows remain readable for
+  // compatibility and are deliberately not migrated or rewritten here.
+  if (path==='/api/member-name' && method==='POST') {
+    const roomCode = String(d.code || '').toLowerCase().trim();
+    const room = await ensureConversationLoaded(roomCode);
+    if (!room || !room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    const ciphertext = typeof d.ciphertext === 'string' ? d.ciphertext : '';
+    if (!ciphertext.startsWith('v:') || ciphertext.length > 1024) return resErr(res,'Invalid encrypted name.',400);
+    if (await rateLimited(`member-name:${String(d.token).slice(0,96)}`, 12, 60 * 1000)) {
+      return resErr(res,'Too many name updates.',429);
+    }
+    const member = room.members.get(d.token);
+    member.nameCiphertext = ciphertext;
+    if (postgresEnabled) {
+      await postgresStore.upsertConversationMember(roomCode, member.slot, d.token, member, room.dbClient || postgresStore.pool);
+    }
+    publishInboxRoom(roomCode, 'profile', { excludeToken:d.token });
+    return res200(res, { ok:true });
   }
 
   // POST /api/attachment/prepare — authorize an opaque, client-encrypted
@@ -5178,7 +5204,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // handler itself, the moment the notification is shown, rather
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
-        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview ? 'New message' : `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
+        const senderLabel = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : null;
+        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview || !senderLabel ? 'New message' : `New message from ${senderLabel}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
@@ -5541,11 +5568,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     m.lastSeen = Date.now();
 
     // Peer info
-    let peerName=null, peerOnline=false, peerPubKey=null;
+    let peerName=null, peerNameCiphertext=null, peerOnline=false, peerPubKey=null;
     const now = Date.now();
     for (const [t,mb] of room.members) {
       if (!sameConversationToken(t, token)) {
         peerName=mb.name;
+        peerNameCiphertext=mb.nameCiphertext || null;
         const sharedPresence = await realtimeCoordinator.isPresentByRoute(roomCode, conversationTokenRoute(t));
         peerOnline=sharedPresence === null ? (now-mb.lastSeen)<8000 : sharedPresence;
         peerPubKey=mb.pubKey;
@@ -5628,7 +5656,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       from:messageFromToken(msg, token) ? token : msg.from,
       reactions:reactionsForViewer(msg.reactions, token),
     }));
-    return res200(res, { messages, peerName, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
+    return res200(res, { messages, peerName, peerNameCiphertext, peerOnline, peerPubKey, readReceipts, reactionUpdates, deletions, deleteTimer: room.deleteTimer, clearedAt: room.clearedAt || 0, totalMessageCount: room.totalMessageCount || 0, lastMessageAt: room.lastMessageAt || 0 });
   }
 
   // POST /api/history — one page of older messages than `beforeSeq`, for a
