@@ -4306,7 +4306,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       </div>
       <div class="settings-row-text">
         <div class="settings-row-title">Hidden chats password</div>
-        <div class="settings-row-sub">Set or change the password used to reveal hidden conversations</div>
+        <div class="settings-row-sub">Enter this password in Chats search to reveal hidden conversations</div>
       </div>
       <div class="settings-status settings-status-action" id="hidden-chats-settings-status">Set up</div>
     </div>
@@ -11289,7 +11289,7 @@ function hideChat(code) {
     if (document.getElementById('s-chat')?.classList.contains('active')) openVaultInbox();
   }
   refreshHiddenChatsViews();
-  toast('Chat hidden. Enter your private password in Chats search and press Enter to reveal it.');
+  openHiddenChatsDialog('hidden');
   return true;
 }
 
@@ -11340,10 +11340,11 @@ function openHiddenChatsSettings() {
 const HIDDEN_CHATS_DIALOG_MODES = {
   setup:  { title:'Hide chats', fields:['new', 'confirm'], submit:'Save password', primary:true,
     copy:'Choose a numeric password (4 to 12 digits). To reveal hidden chats later, type it into the normal Chats search and press Enter. Notifications for hidden chats will not show the sender’s name. Vaultlix cannot recover this password.' },
+  hidden: { title:'Chat hidden', fields:[], copy:'To reveal hidden chats, open Chats, type your hidden-chats password in the normal Search chats box, then press Enter or Search.' },
   unlock: { title:'Hidden chats', fields:['current'], submit:'Unlock', primary:true, copy:'Enter your hidden-chats password.' },
   change: { title:'Change password', fields:['current', 'new', 'confirm'], submit:'Change password', primary:true, copy:'Enter your current password, then choose a new numeric password (4 to 12 digits).' },
   remove: { title:'Remove password', fields:['current'], submit:'Remove & unhide all', danger:true, copy:'This unhides every hidden chat and deletes the password.' },
-  manage: { title:'Hidden chats', fields:[], copy:'Choose how long hidden conversations remain visible after unlocking. Unhide a chat from that conversation’s menu.' },
+  manage: { title:'Hidden chats', fields:[], copy:'To reveal hidden chats, enter your password in the normal Chats search. Choose how long they remain visible after unlocking. Unhide a chat from that conversation’s menu.' },
 };
 
 function renderHiddenChatsDialog() {
@@ -11394,6 +11395,8 @@ function renderHiddenChatsDialog() {
     add('Change password', 'hidden-chats-change', () => openHiddenChatsDialog('change'));
     add('Remove password', 'hidden-chats-remove', () => openHiddenChatsDialog('remove'));
     add('Done', 'hidden-chats-done', () => closeHiddenChatsDialog());
+  } else if (dialog.mode === 'hidden') {
+    add('Got it', 'primary', () => closeHiddenChatsDialog());
   } else {
     add('Cancel', '', () => closeHiddenChatsDialog());
     const submit = add(config.submit, config.danger ? 'danger' : 'primary', null, 'submit');

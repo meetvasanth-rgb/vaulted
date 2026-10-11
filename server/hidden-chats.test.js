@@ -37,7 +37,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 function harness() {
   const storage = new Map();
-  const calls = { refresh: 0, api: [], toasts: [], inbox: 0, saved: [], timers:new Map(), clearedTimers:[] };
+  const calls = { refresh: 0, api: [], toasts: [], dialogs: [], inbox: 0, saved: [], timers:new Map(), clearedTimers:[] };
   let nextTimerId = 0;
   const rooms = new Map([
     ['room-a', { code:'room-a', token:'tok-a', peerPrivateNumber:'2345678901' }],
@@ -83,7 +83,8 @@ function harness() {
     ${extractFn('hideChat')}
     ${extractFn('unhideChat')}
     ${extractFn('lockHiddenChats')}
-    function closeHiddenChatsDialog() {}`, context);
+    function closeHiddenChatsDialog() {}
+    function openHiddenChatsDialog(mode) { refreshHiddenChatsViewsCalls.dialogs.push(mode); }`, context);
   return { context, storage, calls };
 }
 
@@ -135,7 +136,7 @@ test('hiding stores only this chat, re-locks, tells the server, and leaves the o
   assert.equal(calls.inbox, 1, 'the open chat is left for the inbox');
   assert.deepEqual(plain(calls.saved), [''], 'the remembered active chat is cleared');
   assert.equal(vm.runInContext('activeRoomCode', context), 'room-b', 'focus moves to a visible chat');
-  assert.ok(calls.toasts.some(text => /Chat hidden/.test(text)));
+  assert.deepEqual(calls.dialogs, ['hidden'], 'a persistent explanation shows how to reveal the chat');
 });
 
 test('a chat cannot be hidden until password setup has visibly completed', async () => {
@@ -328,6 +329,10 @@ test('the conversation menu offers Hide chat / Unhide chat and Settings manages 
   assert.match(client, /hideLabel\.textContent = isChatHidden\(activeRoomCode\) \? 'Unhide chat' : 'Hide chat'/);
   assert.match(client, /id="settings-hidden-chats-row" onclick="openHiddenChatsSettings\(\)"/);
   assert.match(client, /id="hidden-chats-overlay"/);
+  assert.match(client, /hidden: \{ title:'Chat hidden'[\s\S]{0,220}normal Search chats box/);
+  assert.match(client, /openHiddenChatsDialog\('hidden'\)/);
+  assert.match(client, /Enter this password in Chats search to reveal hidden conversations/);
+  assert.match(client, /manage: \{ title:'Hidden chats'[\s\S]{0,220}normal Chats search/);
 });
 
 test('server: a hidden chat\'s pushes stop naming the other person', () => {
