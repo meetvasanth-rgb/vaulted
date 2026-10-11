@@ -29,6 +29,8 @@ test('PDF cards support long-press selection, with reply and forward on the bar'
 
 test('own text messages can be edited for thirty minutes through the encrypted stream', () => {
   assert.match(client, /const MESSAGE_EDIT_WINDOW_MS = 30 \* 60 \* 1000/);
+  const eligibility = client.slice(client.indexOf('function messageCanEdit('), client.indexOf('\n}', client.indexOf('function messageCanEdit(')) + 2);
+  assert.doesNotMatch(eligibility, /readAt|deleteAt/, 'reading a message or starting its disappearing timer must not remove Edit');
   assert.match(client, /canEdit: !!one && messageCanEdit\(rec, one\.entry\.isMe\)/);
   assert.match(client, /api\('\/api\/edit-message', \{ code:room\.code, token:room\.token, msgId:target\.id, editId, content \}\)/);
   assert.match(client, /JSON\.stringify\(\{ type:'message-edit', text \}\)/);

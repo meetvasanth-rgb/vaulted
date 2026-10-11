@@ -19775,7 +19775,7 @@ function messageForwardable(rec) {
 }
 const MESSAGE_EDIT_WINDOW_MS = 30 * 60 * 1000;
 function messageCanEdit(rec, mine = rec?.isMe) {
-  return !!mine && rec?.kind === 'text' && Number(rec.ts) > 0 && Date.now() - Number(rec.ts) <= MESSAGE_EDIT_WINDOW_MS && !rec.deleteAt;
+  return !!mine && rec?.kind === 'text' && Number(rec.ts) > 0 && Date.now() - Number(rec.ts) <= MESSAGE_EDIT_WINDOW_MS;
 }
 
 function saveMessageRecord(rec) {
