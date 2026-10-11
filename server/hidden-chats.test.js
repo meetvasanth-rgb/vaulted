@@ -445,8 +445,8 @@ test('changing the password replaces the old one and keeps the hidden list', asy
 });
 
 test('the password fields use the numeric keypad and strip anything that is not a digit', () => {
-  assert.match(client, /id="hidden-chats-new" type="password" inputmode="numeric" pattern="\[0-9\]\*" maxlength="12"/);
-  assert.match(client, /id="hidden-chats-confirm" type="password" inputmode="numeric" pattern="\[0-9\]\*" maxlength="12"/);
+  assert.match(client, /id="hidden-chats-new" type="text" inputmode="numeric" pattern="\[0-9\]\*" maxlength="12"/);
+  assert.match(client, /id="hidden-chats-confirm" type="text" inputmode="numeric" pattern="\[0-9\]\*" maxlength="12"/);
   assert.match(client, /input\.setAttribute\('inputmode', digitsOnly \? 'numeric' : 'text'\)/);
   assert.match(client, /const digitsOnly = field !== 'current' \|\| hiddenChatsPasswordIsNumeric\(\);/);
   const start = client.indexOf("document.addEventListener('input', event => {\n  const input = event.target;\n  if (input?.dataset?.digitsOnly === '1')");
@@ -464,6 +464,14 @@ test('the password fields use the numeric keypad and strip anything that is not 
   const other = { dataset:{}, value:'ab c' };
   handler({ target:other });
   assert.equal(other.value, 'ab c', 'other inputs are untouched');
+});
+
+test('Android password managers do not treat the local hidden-chat passcode as an account credential', () => {
+  for (const id of ['hidden-chats-current', 'hidden-chats-new', 'hidden-chats-confirm']) {
+    assert.match(client, new RegExp(`class="hidden-chats-secret-input" id="${id}" type="text"[^>]*autocomplete="off"`));
+  }
+  assert.match(client, /\.hidden-chats-secret-input\{-webkit-text-security:disc\}/);
+  assert.doesNotMatch(client, /id="hidden-chats-(?:current|new|confirm)"[^>]*autocomplete="new-password"/);
 });
 
 test('setup and change reject non-numeric passwords with a clear message, and the inbox bar offers Manage', () => {
