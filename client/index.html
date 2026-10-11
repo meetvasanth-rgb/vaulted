@@ -10369,7 +10369,7 @@ async function api(path, data = null) {
   // accumulate. Supplying the existing account session in headers lets the
   // server authenticate this one large endpoint before buffering its body;
   // unauthenticated callers retain the small public request ceiling.
-  if (path === '/api/account/sync' && data?.accountId && data?.sessionToken) {
+  if ((path === '/api/account/sync' || path === '/api/account/recovery-code') && data?.accountId && data?.sessionToken) {
     headers['X-Vaultlix-Account'] = data.accountId;
     headers['X-Vaultlix-Session'] = data.sessionToken;
   }

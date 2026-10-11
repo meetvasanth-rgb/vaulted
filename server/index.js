@@ -2902,20 +2902,20 @@ const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_STATUS = 8 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 const ACCOUNT_BUNDLE_MAX_BYTES = 8 * 1024 * 1024;
-const BODY_LIMIT_ACCOUNT_SYNC_AUTHENTICATED = ACCOUNT_BUNDLE_MAX_BYTES + 256 * 1024;
+const BODY_LIMIT_ACCOUNT_BUNDLE_AUTHENTICATED = ACCOUNT_BUNDLE_MAX_BYTES + 256 * 1024;
 function bodyLimitFor(pathname, req) {
-  if (pathname === '/api/account/sync') {
+  if (pathname === '/api/account/sync' || pathname === '/api/account/recovery-code') {
     const accountId = String(req?.headers?.['x-vaultlix-account'] || '');
     const sessionToken = String(req?.headers?.['x-vaultlix-session'] || '');
     // Only a session that is already valid may raise the buffering ceiling.
     // Random internet traffic and expired credentials keep the original
     // 1.1 MB cap, preserving the endpoint's pre-auth memory bound.
     if (validAccountId(accountId) && authenticateAccountSession(accountId, sessionToken)) {
-      return BODY_LIMIT_ACCOUNT_SYNC_AUTHENTICATED;
+      return BODY_LIMIT_ACCOUNT_BUNDLE_AUTHENTICATED;
     }
     return 1100 * 1024;
   }
-  if (pathname === '/api/account/register' || pathname === '/api/account/recovery-code') return 1100 * 1024;
+  if (pathname === '/api/account/register') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
@@ -3518,7 +3518,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     if (!validAccountSecret(d.recoverySecret) || !validEncryptedField(d.recoveryWrap, 4096) ||
-        !validEncryptedField(d.bundle, 1024 * 1024)) {
+        !validEncryptedField(d.bundle, ACCOUNT_BUNDLE_MAX_BYTES)) {
       return resErr(res, 'Invalid recovery-code update.', 400);
     }
     if (!Number.isInteger(d.revision) || d.revision !== account.revision) {
@@ -7127,7 +7127,7 @@ function hydrateAccounts(entries, source) {
       const record = entry[1];
       if (!record || record.version !== 2 || !normalizePrivateNumber(record.privateNumber) || !normalizeDisplayName(record.displayName) || !record.authVerifier || !record.recoveryVerifier ||
           !validEncryptedField(record.passwordWrap, 4096) || !validEncryptedField(record.recoveryWrap, 4096) ||
-          !validEncryptedField(record.bundle, 1024 * 1024)) continue;
+          !validEncryptedField(record.bundle, ACCOUNT_BUNDLE_MAX_BYTES)) continue;
       record.sessions = (record.sessions || [])
         .filter(s => s && s.expiresAt > Date.now() && /^[a-f0-9]{64}$/.test(s.tokenHash || ''))
         .map(session => ({ ...session, deviceHash:/^[a-f0-9]{64}$/.test(session.deviceHash || '') ? session.deviceHash : null }))
