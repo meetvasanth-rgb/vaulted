@@ -6073,6 +6073,88 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   const inbox = accountId && accountId === loadAccountState()?.accountId ? loadLocalInboxKey() : null;
   return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), missedCalls:missedCallSeenBundleSnapshot(accountId), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
 }
+
+// The server accepts an encrypted account envelope up to 8MB. Start making
+// the upload copy lean well before that point so normal encryption/JSON
+// overhead can never turn a successful local snapshot into a rejected sync.
+// This does not alter localStorage: cached presentation data remains on this
+// device, while every credential needed to recover a conversation is retained.
+const ACCOUNT_BUNDLE_COMPACT_AT_CHARS = Math.floor(6.5 * 1024 * 1024);
+const ACCOUNT_BUNDLE_MAX_CHARS = 8 * 1024 * 1024;
+
+function compactAchievementBackup(achievements, aggressive, now = Date.now()) {
+  if (!achievements?.rooms || typeof achievements.rooms !== 'object') return achievements;
+  const currentDay = achievementDayNumber(now);
+  const idCaps = aggressive
+    ? { countedTextIds:0, countedVoiceIds:0, countedMediaIds:0 }
+    : { countedTextIds:160, countedVoiceIds:50, countedMediaIds:50 };
+  const rooms = {};
+  for (const [code, value] of Object.entries(achievements.rooms)) {
+    if (!value || typeof value !== 'object') continue;
+    const activeDays = {};
+    for (const [day, activity] of Object.entries(value.activeDays || {})) {
+      if (Number(day) >= currentDay - 370) activeDays[day] = activity;
+    }
+    const compacted = { ...value, activeDays };
+    for (const [field, cap] of Object.entries(idCaps)) {
+      const ids = Array.isArray(value[field]) ? value[field] : [];
+      compacted[field] = cap ? ids.slice(-cap) : [];
+    }
+    rooms[code] = compacted;
+  }
+  return { ...achievements, rooms };
+}
+
+function accountBundleWithoutMedia(snapshot) {
+  const sessions = (snapshot.sessions || []).map(session => {
+    const mediaFree = { ...session };
+    delete mediaFree.peerProfileImage;
+    return mediaFree;
+  });
+  const groups = (snapshot.groups || []).map(group => ({
+    ...group,
+    members:(group.members || []).map(member => {
+      const mediaFree = { ...member };
+      delete mediaFree.profileImage;
+      return mediaFree;
+    }),
+  }));
+  return { ...snapshot, sessions, groups };
+}
+
+function compactAccountBundleSnapshot(snapshot, aggressive = false, now = Date.now()) {
+  // Photos, videos, voice notes, documents and message history do not belong
+  // in an account bundle. Direct-chat and group-member profile photos are the
+  // only refreshable media caches that can reach this snapshot today.
+  const mediaFree = accountBundleWithoutMedia(snapshot);
+  const missedCalls = snapshot.missedCalls && typeof snapshot.missedCalls === 'object'
+    ? (aggressive
+      ? { ...snapshot.missedCalls, ids:[], seenBefore:Math.max(Number(snapshot.missedCalls.seenBefore) || 0, now) }
+      : { ...snapshot.missedCalls, ids:(Array.isArray(snapshot.missedCalls.ids) ? snapshot.missedCalls.ids : []).slice(-250) })
+    : snapshot.missedCalls;
+  return {
+    ...mediaFree,
+    ...(missedCalls ? { missedCalls } : {}),
+    achievements:compactAchievementBackup(snapshot.achievements, aggressive, now),
+  };
+}
+
+async function encryptAccountBundleForUpload(keyBytes, snapshot) {
+  // Media caches are excluded on every upload, even for a small account.
+  const mediaFree = accountBundleWithoutMedia(snapshot);
+  let bundle = await aesEncryptJson(keyBytes, mediaFree);
+  if (bundle.length < ACCOUNT_BUNDLE_COMPACT_AT_CHARS) return bundle;
+
+  bundle = await aesEncryptJson(keyBytes, compactAccountBundleSnapshot(mediaFree));
+  if (bundle.length <= ACCOUNT_BUNDLE_MAX_CHARS) return bundle;
+
+  bundle = await aesEncryptJson(keyBytes, compactAccountBundleSnapshot(mediaFree, true));
+  if (bundle.length <= ACCOUNT_BUNDLE_MAX_CHARS) return bundle;
+
+  const error = new Error('Encrypted conversation index is too large after safe cleanup.');
+  error.accountBundleTooLarge = true;
+  throw error;
+}
 function validStoredRoomKeyPair(session) {
   return !!(session?.token && session.pubJwk?.x && session.pubJwk?.y && session.privJwk?.d
     && session.privJwk.x === session.pubJwk.x && session.privJwk.y === session.pubJwk.y);
@@ -13189,7 +13271,7 @@ async function createReplacementRecoveryCode(state = loadAccountState()) {
   // instead of continuing to display the now-invalid previous code.
   state.pendingRecoveryCodeWrap = recoveryCodeWrap;
   saveAccountState(state);
-  const encryptedBundle = await aesEncryptJson(masterKey, accountBundleSnapshot(state.accountId, false, recoveryCodeWrap));
+  const encryptedBundle = await encryptAccountBundleForUpload(masterKey, accountBundleSnapshot(state.accountId, false, recoveryCodeWrap));
   const result = await api('/api/account/recovery-code', {
     accountId:state.accountId,
     sessionToken:state.sessionToken,
@@ -14872,7 +14954,7 @@ async function createAnonymousAccount(event) {
           recoverySecret: recovery.authSecret,
           passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:masterKeyEncoded }),
           recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:masterKeyEncoded }),
-          bundle: await aesEncryptJson(masterKey, accountBundleSnapshot(accountId, true, recoveryCodeWrap)),
+          bundle: await encryptAccountBundleForUpload(masterKey, accountBundleSnapshot(accountId, true, recoveryCodeWrap)),
         };
         break;
       } catch (error) {
@@ -15018,7 +15100,7 @@ async function syncAnonymousAccount(showFeedback) {
     const recoveryProof = state.recoveryCodeWrap
       ? await recoverySecretForWrap(state, state.recoveryCodeWrap)
       : null;
-    const bundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
+    const bundle = await encryptAccountBundleForUpload(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
     const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle, ...(recoveryProof ? { recoverySecret:recoveryProof.recoverySecret } : {}) });
     if (result.recoveryCodeMismatch) {
       lastAccountSyncFailure = result;
@@ -15035,7 +15117,7 @@ async function syncAnonymousAccount(showFeedback) {
       state.tier = latest.tier || state.tier || 'standard';
       state.isFounding = !!latest.isFounding;
       saveAccountState(state);
-      const mergedBundle = await aesEncryptJson(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
+      const mergedBundle = await encryptAccountBundleForUpload(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle, ...(recoveryProof ? { recoverySecret:recoveryProof.recoverySecret } : {}) });
       if (retry.error) { lastAccountSyncFailure = retry; if (status) status.textContent = retry.error; return false; }
       state.revision = retry.revision;
@@ -15057,7 +15139,7 @@ async function syncAnonymousAccount(showFeedback) {
     if (showFeedback) toast('Conversations synced securely');
     return true;
   } catch (e) {
-    lastAccountSyncFailure = { status:0, error:e?.message || 'Network error' };
+    lastAccountSyncFailure = { status:e?.accountBundleTooLarge ? 413 : 0, error:e?.message || 'Network error' };
     console.error('E2E: encrypted account sync failed', e);
     if (status) status.textContent = 'Sync paused — will retry';
     if (showFeedback) toast('Could not sync right now');
