@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
+const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
 
 test('inbox bottom bar exposes compact icon-only add, chats and calls actions', () => {
   const bar = client.match(/<div class="vault-list-actions">[\s\S]*?<\/div>\s*<\/div>\s*<!-- CLOSED -->/)?.[0] || '';
@@ -19,6 +20,14 @@ test('native Android bottom navigation stays above Samsung system controls', () 
   assert.match(client, /const bottom=Math\.max\(24,reportedBottom\)/);
   assert.match(client, /function scheduleAndroidSystemInsetSync\(\)[\s\S]*\[120,400,1000\]\.forEach/);
   assert.match(client, /window\.addEventListener\('load',scheduleAndroidSystemInsetSync/);
+});
+
+test('Vivo three-button navigation cannot cover a focused direct or group composer', () => {
+  assert.match(androidMain, /WindowInsets\.Type\.tappableElement\(\)/);
+  assert.match(androidMain, /public double keyboardInsetCssPx\(\)[\s\S]*WindowInsets\.Type\.ime\(\)/);
+  assert.match(client, /root\.classList\.toggle\('android-keyboard-visible',keyboardBottom>0\)/);
+  assert.match(client, /vaultlix-native-android:not\(\.android-keyboard-visible\) #s-chat\.composer-focused[\s\S]*android-safe-area-bottom/);
+  assert.match(client, /vaultlix-native-android:not\(\.android-keyboard-visible\) \.group-chat\.composer-focused[\s\S]*android-safe-area-bottom/);
 });
 
 test('calls view is derived only from decrypted encrypted-conversation call records', () => {

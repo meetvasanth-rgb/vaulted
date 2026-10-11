@@ -2762,6 +2762,20 @@ html.vaultlix-native-android #s-chat .chat-hdr{
 html.vaultlix-native-android #s-chat .chat-ftr{
   padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
 }
+html.vaultlix-native-android .group-chat-footer{
+  padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+}
+/* Pressing Android's keyboard Back button can leave the textarea focused.
+   On Vivo that stale focus used to activate the generic rule below and strip
+   away the navigation inset, placing the three system buttons over the
+   composer. Only remove the inset while Android confirms the IME is visible. */
+html.vaultlix-native-android:not(.android-keyboard-visible) #s-chat.composer-focused .chat-ftr,
+html.vaultlix-native-android:not(.android-keyboard-visible) #s-chat.composer-focused #chat-ftr{
+  padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+}
+html.vaultlix-native-android:not(.android-keyboard-visible) .group-chat.composer-focused .group-chat-footer{
+  padding-bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
+}
 /* Keep the Android composer balanced under OEM font metrics and display
    scaling. The visible badges are compact, while their transparent pseudo
    hit areas retain a comfortable touch target. */
@@ -5088,12 +5102,15 @@ function syncAndroidSystemInsets(){
   const top=Math.max(0,Number(bridge.statusBarInsetCssPx())||0);
   const reportedBottom=typeof bridge.navigationBarInsetCssPx==='function'
     ?Math.max(0,Number(bridge.navigationBarInsetCssPx())||0):0;
+  const keyboardBottom=typeof bridge.keyboardInsetCssPx==='function'
+    ?Math.max(0,Number(bridge.keyboardInsetCssPx())||0):0;
   // Some Samsung WebViews return zero while the first frame is being laid
   // out even though the three-button navigation bar is visible. Keep a small
   // native-only floor so Vaultlix controls never share that system area.
   const bottom=Math.max(24,reportedBottom);
   root.style.setProperty('--android-safe-area-top',`${top}px`);
   root.style.setProperty('--android-safe-area-bottom',`${bottom}px`);
+  root.classList.toggle('android-keyboard-visible',keyboardBottom>0);
 }
 function scheduleAndroidSystemInsetSync(){
   syncAndroidSystemInsets();

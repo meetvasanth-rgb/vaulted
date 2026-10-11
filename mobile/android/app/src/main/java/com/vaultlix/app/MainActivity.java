@@ -1173,10 +1173,25 @@ public class MainActivity extends BridgeActivity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 int visibleInset = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
                 int stableInset = insets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()).bottom;
-                insetPx = Math.max(visibleInset, stableInset);
+                // A few OEM WebViews (notably Vivo/Funtouch OS) report a zero
+                // navigationBars inset while their transparent three-button
+                // control strip is still tappable over the app. Android's
+                // tappable-element inset describes that occupied strip more
+                // reliably, while remaining small/zero for gesture navigation.
+                int tappableInset = insets.getInsets(WindowInsets.Type.tappableElement()).bottom;
+                insetPx = Math.max(Math.max(visibleInset, stableInset), tappableInset);
             } else {
                 insetPx = insets.getStableInsetBottom();
             }
+            return insetPx / getResources().getDisplayMetrics().density;
+        }
+
+        @JavascriptInterface
+        public double keyboardInsetCssPx() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0;
+            WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+            if (insets == null) return 0;
+            int insetPx = insets.getInsets(WindowInsets.Type.ime()).bottom;
             return insetPx / getResources().getDisplayMetrics().density;
         }
 
