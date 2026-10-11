@@ -251,7 +251,10 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             return
         }
 
-        let caller = (data["caller"] as? String)?.prefix(80) ?? "Someone"
+        let hidePreview = data["hidePreview"] as? Bool ?? false
+        let suppliedCaller = ((data["caller"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let caller = hidePreview ? "Private call" : String((suppliedCaller.isEmpty ? "Someone" : suppliedCaller).prefix(80))
         let hasVideo = data["hasVideo"] as? Bool ?? false
         let callLabel = hasVideo ? "VIDEO CALL · \(caller)" : String(caller)
         let update = CXCallUpdate()
@@ -791,6 +794,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             "roomHandle": roomHandle,
             "code": roomCode,
             "caller": String(caller.prefix(80)),
+            "hidePreview": caller == "Private call",
             "hasVideo": hasVideo,
         ]
         calls[callID] = payload
@@ -959,7 +963,8 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
 
     func updateCallerName(_ name: String) {
         guard let callID = calls.keys.first else { return }
-        let cleanName = String(name.prefix(80))
+        let hidePreview = calls[callID]?["hidePreview"] as? Bool ?? false
+        let cleanName = hidePreview ? "Private call" : String(name.prefix(80))
         guard !cleanName.isEmpty else { return }
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: cleanName)

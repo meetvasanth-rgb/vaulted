@@ -15,6 +15,9 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 const groups = fs.readFileSync(path.join(__dirname, '..', 'client', 'groups.js'), 'utf8');
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const postgres = fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8');
+const androidMain = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
+const androidPush = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
+const iosCallManager = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'AppDelegate.swift'), 'utf8');
 
 function extractFn(name) {
   let start = client.indexOf(`async function ${name}(`);
@@ -332,10 +335,27 @@ test('server: a hidden chat\'s pushes stop naming the other person', () => {
   assert.match(server, /body: mb\.hidePreview \|\| !senderLabel \? 'New message' : `New message from \$\{senderLabel\}`/);
   assert.match(server, /Incoming video call' : 'Incoming call'/);
   assert.match(server, /body: caller && caller\.name && !peerMember\.hidePreview \? `Missed call from/);
-  assert.equal((server.match(/caller: peerMember\.hidePreview \? ''/g) || []).length, 2, 'missed-call data carries no caller name');
+  assert.equal((server.match(/caller: peerMember\.hidePreview \? ''/g) || []).length, 4, 'incoming and missed-call data carry no caller name');
+  assert.equal((server.match(/hidePreview: peerMember\.hidePreview === true/g) || []).length, 2, 'incoming native call payloads explicitly carry the privacy state');
   assert.match(server, /'\/api\/notification-privacy', '\/api\/member-name',\s*\]\);/);
   assert.match(postgres, /hidePreview:member\.hidePreview === true \|\| undefined/);
   assert.match(postgres, /\.\.\.\(push\.hidePreview \? \{ hidePreview:true \} : \{\}\)/);
+});
+
+test('hidden incoming calls conceal identity across web, Android and iOS call surfaces', () => {
+  assert.match(client, /room\.callPeerName = isChatHidden\(room\.code\)[\s\S]{0,120}\? 'Private call'/);
+  assert.match(client, /const concealIncomingIdentity = room\.callWasOutgoing !== true && isChatHidden\(room\.code\)/);
+  assert.match(client, /const peerImage = concealIncomingIdentity \? null : displayProfileImageUri\(room\.peerProfileImage\)/);
+
+  assert.match(server, /hidePreview: parsed\.hidePreview \? 'true' : 'false'/);
+  assert.match(server, /hidePreview: !!parsed\.hidePreview/);
+  assert.match(androidPush, /boolean hidePreview = "true"\.equalsIgnoreCase\(data\.get\("hidePreview"\)\)/);
+  assert.match(androidPush, /String avatarPath = hidePreview \|\| savedRoom == null \? null : savedRoom\.avatarPath/);
+  assert.match(androidMain, /boolean hideIdentity = "Private call"\.equals/);
+  assert.match(androidMain, /if \(!hideIdentity\) call\.putExtra\(NativeCallActivity\.EXTRA_CALLER_AVATAR_PATH/);
+
+  assert.match(iosCallManager, /let caller = hidePreview \? "Private call"/);
+  assert.match(iosCallManager, /let hidePreview = calls\[callID\]\?\["hidePreview"\] as\? Bool \?\? false/);
 });
 
 // Real server: the notification-privacy route accepts only a member's own token.

@@ -363,15 +363,17 @@ public class VaultlixMessagingService extends MessagingService {
         }
         String caller = safe(data.get("caller"));
         String body = safe(data.get("body"));
+        boolean hidePreview = "true".equalsIgnoreCase(data.get("hidePreview"));
         boolean isVideoCall = "true".equalsIgnoreCase(data.get("hasVideo"))
                 || body.toLowerCase(java.util.Locale.ROOT).contains("video call");
-        if (caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
+        if (!hidePreview && caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
             caller = body.substring(0, body.length() - " is calling".length()).trim();
         }
-        if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
+        if (hidePreview) caller = getString(R.string.native_private_call);
+        else if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
         if (body.isEmpty()) body = getString(R.string.tap_to_answer);
         NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
-        String avatarPath = savedRoom == null ? null : savedRoom.avatarPath;
+        String avatarPath = hidePreview || savedRoom == null ? null : savedRoom.avatarPath;
         Bitmap callerAvatar = avatarPath == null ? null : BitmapFactory.decodeFile(avatarPath);
         // Keep one native media owner from ringing through hang-up. Handing a
         // foreground answer to WebView WebRTC while Android still owns the

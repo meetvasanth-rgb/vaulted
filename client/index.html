@@ -8162,7 +8162,11 @@ async function handleSignalMessage(room, type, payload, inviteId, hasVideo = fal
       room.callState = 'incoming';
       room.callWasOutgoing = false;
       room.incomingVideoCall = hasVideo === true;
-      room.callPeerName = (payload && payload.from) || room.peerName || 'them';
+      // Keep hidden callers private on the web overlay and on both native
+      // incoming-call surfaces, even while Hidden Chats is unlocked.
+      room.callPeerName = isChatHidden(room.code)
+        ? 'Private call'
+        : ((payload && payload.from) || room.peerName || 'them');
       try {
         window.webkit?.messageHandlers?.vaultlixCall?.postMessage({
           action: 'updateCaller', caller: room.callPeerName,
@@ -9354,9 +9358,13 @@ function renderCallOverlay(room) {
       overlay.appendChild(callSurface);
     }
   }
-  const name = escHtml(room.callPeerName || room.peerName || 'them');
-  const peerImage = displayProfileImageUri(room.peerProfileImage);
-  const peerInitial = escHtml((room.callPeerName || room.peerName || 'V').trim().charAt(0).toUpperCase() || 'V');
+  const concealIncomingIdentity = room.callWasOutgoing !== true && isChatHidden(room.code);
+  const displayedPeerName = concealIncomingIdentity
+    ? 'Private call'
+    : (room.callPeerName || room.peerName || 'them');
+  const name = escHtml(displayedPeerName);
+  const peerImage = concealIncomingIdentity ? null : displayProfileImageUri(room.peerProfileImage);
+  const peerInitial = escHtml(displayedPeerName.trim().charAt(0).toUpperCase() || 'V');
   const incomingAvatar = `<div class="call-peer-avatar-stage">
           <div class="ring-wave"></div><div class="ring-wave"></div><div class="ring-wave"></div>
           <div class="call-peer-avatar-photo">${peerImage ? `<img src="${escHtml(peerImage)}" alt=""/>` : peerInitial}</div>
