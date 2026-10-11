@@ -53,7 +53,7 @@ test('Share externally is not in the ⋮ More menu any more', () => {
   const menu = extract(client, 'toggleMessageMoreMenu');
   assert.doesNotMatch(menu, /canShare|data-more="share"/);
   assert.match(menu, /Share externally lives inside the Forward sheet/, 'a pointer to where it moved');
-  assert.match(client, /show\('more', !!\(state\.canCopy \|\| state\.canSave\)\);/);
+  assert.match(client, /show\('more', !!\(state\.canCopy \|\| state\.canSave \|\| state\.canEdit\)\);/);
   assert.doesNotMatch(client, /'share'\) controller\.share\(\)/);
   // Nothing calls a `.share()` selection-controller method any more — Share moved
   // into showForwardAttachmentPicker, driven directly off the record.

@@ -26,3 +26,11 @@ test('PDF cards support long-press selection, with reply and forward on the bar'
   assert.match(client, /startReply\(one\.entry\.rec, one\.id, one\.entry\.replyText\)/);
   assert.match(client, /showForwardAttachmentPicker\(items\.map\(item => item\.entry\.rec\.kind === 'text' \? \{ kind: 'text', text: item\.entry\.replyText \} : item\.entry\.rec\)\)/);
 });
+
+test('own text messages can be edited for thirty minutes through the encrypted stream', () => {
+  assert.match(client, /const MESSAGE_EDIT_WINDOW_MS = 30 \* 60 \* 1000/);
+  assert.match(client, /canEdit: !!one && messageCanEdit\(rec, one\.entry\.isMe\)/);
+  assert.match(client, /api\('\/api\/edit-message', \{ code:room\.code, token:room\.token, msgId:target\.id, editId, content \}\)/);
+  assert.match(client, /JSON\.stringify\(\{ type:'message-edit', text \}\)/);
+  assert.match(client, /rec\.editedAt \? '<span class="msg-edited">Edited<\/span>'/);
+});

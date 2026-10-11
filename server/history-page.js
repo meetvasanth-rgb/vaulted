@@ -18,7 +18,8 @@ function buildHistoryPage({ room, token, rows, limit, sameToken, reactionsForVie
     messages.push({
       seq:durable.seq,
       id:durable.id,
-      type:'message',
+      type:durable.type === 'edit' ? 'edit' : 'message',
+      editOf:durable.editOf || null,
       from,
       name:room.members.get(durable.senderTokenHash)?.name || null,
       content:durable.content,

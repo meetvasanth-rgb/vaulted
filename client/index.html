@@ -845,6 +845,7 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 
 /* ── READ RECEIPTS + DISAPPEARING MESSAGES ──────────────────────── */
 .msg-meta { display:flex; align-items:center; gap:5px; }
+.msg-edited{font-size:inherit;color:inherit;opacity:.82}
 .msg-receipt { font-size:11px; color:#B0A898; font-weight:400; }
 .msg-receipt.delivered { color:#7A6E65; font-weight:500; }
 .msg-receipt.read { color:#682C43; font-weight:600; font-size:12px; }
@@ -5389,12 +5390,14 @@ function historyDb() {
 // The envelope worth keeping for a server message, or null if this message must
 // never be kept on the device.
 function historyEnvelope(msg) {
-  if (!msg || msg.type !== 'message' || msg.deleted || typeof msg.id !== 'string' || !msg.id) return null;
+  if (!msg || !['message','edit'].includes(msg.type) || msg.deleted || typeof msg.id !== 'string' || !msg.id) return null;
   if (typeof msg.content !== 'string' || !msg.content || msg.content.length > HISTORY_MAX_ENVELOPE_CHARS) return null;
-  if (msg.viewOnce || msg.expiresAt || Number(msg.deleteTimerSeconds) > 0) return null;
+  if (msg.type === 'message' && (msg.viewOnce || msg.expiresAt || Number(msg.deleteTimerSeconds) > 0)) return null;
+  if (msg.type === 'edit' && (typeof msg.editOf !== 'string' || !msg.editOf)) return null;
   const seq = Number(msg.seq);
   if (!Number.isFinite(seq) || seq <= 0) return null;
-  return { id:msg.id, seq, type:'message', from:msg.from, name:msg.name || null, content:msg.content,
+  return { id:msg.id, seq, type:msg.type, editOf:msg.type === 'edit' ? msg.editOf : undefined,
+    from:msg.from, name:msg.name || null, content:msg.content,
     ts:Number(msg.ts) || 0, deliveredAt:msg.deliveredAt || null, readAt:msg.readAt || null, deleteTimerSeconds:0 };
 }
 
@@ -5825,6 +5828,7 @@ let tabFocused = true;
 let lastInteractionTime = Date.now();
 let activeActionMsgId = null;      // message currently showing its Reply/React row
 let replyTo = null;                // encrypted message or status snapshot attached to the next text
+let editingMessage = null;         // one own text message currently loaded into the composer for editing
 let pendingRoomCode = null;        // room code currently on s-waiting (not yet confirmed)
 // VLX-01: the #k=... commitment captured from the invite link's URL
 // fragment at page-load time (see parseKeyCommitmentFromHash), carried from
@@ -7627,8 +7631,10 @@ async function flushPendingDecrypt(room) {
   room.pendingDecrypt = [];
   let unreadChanged = false;
   for (const item of queued) {
-    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts, item.from, item.deleteTimerSeconds || 0, item.readAt);
+    const rec = await processIncomingContent(room, item.content, item.name, item.time, item.msgId, item.ts, item.from, item.deleteTimerSeconds || 0, item.readAt, null, item.editOf || null);
     if (!rec || rec.pending) continue; // still not ready (shouldn't happen), or genuinely empty
+    rec.isMe = item.from === room.token;
+    if (rec.kind === 'edit') { applyDirectMessageEdit(room, rec); continue; }
     const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
     room.messages.push(rec);
     if (isRoomVisible(room)) {
@@ -19588,6 +19594,7 @@ const SELECTION_ICONS = {
   more: '<circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   save: '<path d="M12 3v12"/><polyline points="7 11 12 16 17 11"/><line x1="5" y1="20" x2="19" y2="20"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
   // The OS share sheet, not Forward: this hands a decrypted copy to another app
   // (WhatsApp, Mail, …), outside Vaultlix's encryption from that point on.
   share: '<path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>',
@@ -19639,6 +19646,7 @@ function ensureMessageSelectionUi() {
     closeMessageMoreMenu();
     if (item.dataset.more === 'copy') controller.copy();
     else if (item.dataset.more === 'save') controller.save();
+    else if (item.dataset.more === 'edit') controller.edit();
   });
   react.addEventListener('click', event => {
     const button = event.target.closest('[data-emoji]');
@@ -19668,6 +19676,7 @@ function toggleMessageMoreMenu() {
   if (!ui.menu.hidden) { closeMessageMoreMenu(); return; }
   const state = controller.state();
   const items = [];
+  if (state.canEdit) items.push(`<button type="button" role="menuitem" data-more="edit">${selectionIconSvg('edit')}<span>Edit</span></button>`);
   if (state.canCopy) items.push(`<button type="button" role="menuitem" data-more="copy">${selectionIconSvg('copy')}<span>Copy</span></button>`);
   if (state.canSave) items.push(`<button type="button" role="menuitem" data-more="save">${selectionIconSvg('save')}<span>Save</span></button>`);
   // Share externally lives inside the Forward sheet (see showForwardAttachmentPicker),
@@ -19731,7 +19740,7 @@ function refreshMessageSelection() {
   const show = (name, on) => { const button = ui.bar.querySelector(`[data-sel="${name}"]`); if (button) button.hidden = !on; };
   show('reply', !!state.canReply);
   show('forward', !!state.canForward);
-  show('more', !!(state.canCopy || state.canSave));
+  show('more', !!(state.canCopy || state.canSave || state.canEdit));
   show('delete', state.count > 0);
   ui.bar.hidden = false;
   closeMessageMoreMenu();
@@ -19763,6 +19772,10 @@ function messageReplyable(rec) {
 }
 function messageForwardable(rec) {
   return !!rec && ['file', 'album', 'text'].includes(rec.kind) && !rec.viewOnce;
+}
+const MESSAGE_EDIT_WINDOW_MS = 30 * 60 * 1000;
+function messageCanEdit(rec, mine = rec?.isMe) {
+  return !!mine && rec?.kind === 'text' && Number(rec.ts) > 0 && Date.now() - Number(rec.ts) <= MESSAGE_EDIT_WINDOW_MS && !rec.deleteAt;
 }
 
 function saveMessageRecord(rec) {
@@ -19817,6 +19830,7 @@ function directSelectionController() {
         canForward: (items.length > 0 && items.every(item => messageForwardable(item.entry.rec))) || (!!one && rec?.kind === 'voice'),
         canCopy: items.length > 0 && items.every(item => item.entry.rec?.kind === 'text' && String(item.entry.replyText || '').trim()),
         canSave: !!one && ['file', 'album', 'voice'].includes(rec?.kind),
+        canEdit: !!one && messageCanEdit(rec, one.entry.isMe),
         anchor: row ? (row.querySelector('.bubble, .msg-media-wrap') || row) : null,
         mine: !!rec?.isMe,
         currentReaction: rec?.reactionMine || null,
@@ -19842,6 +19856,7 @@ function directSelectionController() {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (error) { toast('Could not copy'); }
     },
     save() { const one = chosen()[0]; exitSelectMode(); if (one) saveMessageRecord(one.entry.rec); },
+    edit() { const one = chosen()[0]; exitSelectMode(); if (one) startDirectMessageEdit(one.entry.rec); },
     react(emoji) {
       const one = chosen()[0]; if (!one) return;
       exitSelectMode();
@@ -20634,6 +20649,39 @@ function needsAttachmentReveal(rec) {
   if (rec.kind === 'file' && !isPhoto && !isScreenedVideoPreview && !isScreenedPdfPreview) return false;
   return !((isPhoto || isAlbum || isScreenedVideoPreview || isScreenedPdfPreview || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
 }
+
+function applyDirectMessageEdit(room, edit) {
+  if (!room || edit?.kind !== 'edit' || !edit.editOf) return false;
+  if (!room.messageEdits) room.messageEdits = new Map();
+  const remembered = room.messageEdits.get(edit.editOf);
+  if (remembered && remembered !== edit && Number(remembered.editedAt) >= Number(edit.editedAt)) return false;
+  room.messageEdits.set(edit.editOf, edit);
+  const target = room.messages.find(message => message.id === edit.editOf);
+  if (!target || target.kind !== 'text' || target.isMe !== edit.isMe || Number(edit.editedAt) <= Number(target.editedAt || 0)) return false;
+  target.content = edit.content;
+  target.jumbo = isSingleEmoji(edit.content);
+  target.editedAt = Number(edit.editedAt) || Date.now();
+  const registry = messageActionRegistry.get(target.id);
+  if (registry) { registry.rec = target; registry.replyText = target.content; }
+  if (isRoomVisible(room)) {
+    const row = document.querySelector(`#chat-body .msg[data-msg-id="${CSS.escape(target.id)}"]`);
+    const bubble = row?.querySelector('.bubble');
+    if (bubble) {
+      bubble.innerHTML = linkifyHtml(target.content);
+      bubble.classList.toggle('emoji-jumbo', target.jumbo);
+    }
+    const meta = row?.querySelector('.msg-meta');
+    if (meta && !meta.querySelector('.msg-edited')) meta.insertAdjacentHTML('afterbegin', '<span class="msg-edited">Edited</span>');
+  }
+  secureNativeStoreMessage(room, target);
+  return true;
+}
+
+function applyPendingDirectMessageEdit(room, message) {
+  const edit = room?.messageEdits?.get(message?.id);
+  return edit ? applyDirectMessageEdit(room, edit) : false;
+}
+
 function renderMessageRecord(room, rec, animate) {
   if (rec.replyData?.msgId && room.deleteLedger.get(rec.replyData.msgId) <= Date.now()) {
     redactDeletedReply(rec.replyData);
@@ -20822,6 +20870,7 @@ function renderMessageRecord(room, rec, animate) {
     <div class="msg-name">${escHtml(rec.name)}</div>
     ${contentHtml}
     <div class="msg-meta">
+      ${rec.editedAt ? '<span class="msg-edited">Edited</span>' : ''}
       <span class="msg-time" title="${escHtml(formatFullDateTime(rec.ts))}">${escHtml(messageTimeLabel(rec))}</span>
       ${receiptHtml}
     </div>
@@ -21408,7 +21457,7 @@ async function retryUnavailableAttachment(room, msgId, element) {
   toast(restored?.unavailableReason === 'gone' ? 'This attachment is no longer available.' : 'Attachment is still unavailable. Please try again.');
 }
 
-async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null, progressCallback = null) {
+async function processIncomingContent(room, content, name, time, msgId, timestamp = 0, fromToken = null, deleteTimerSeconds = 0, readAt = null, progressCallback = null, editOf = null) {
   if (!content) return null;
   const base = { deleteTimerSeconds, readAt, id: msgId, isMe: false, name, time, ts:Number(timestamp) || 0, receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null };
   const encryptedAttachmentRef = typeof content === 'string' && content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX) ? content : null;
@@ -21423,6 +21472,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     decrypted = await decryptMsg(room, content);
   } catch (e) {
     if (e.message === 'E2E_NOT_READY') return { pending: true };
+    if (editOf) return null; // a damaged edit control is ignored, never drawn as a chat message
     // E2E_DOWNGRADE — an active downgrade attempt or corruption, not a
     // transient state. Permanently blocked: the record deliberately carries
     // no `content` field at all, so there's nothing for any later code path
@@ -21434,6 +21484,11 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
 
   try {
     const parsed = JSON.parse(decrypted);
+    if (parsed.type === 'message-edit' && typeof parsed.text === 'string' && editOf) {
+      const text = parsed.text.trim();
+      if (!text) return null;
+      return { ...base, kind:'edit', editOf, content:text, editedAt:Number(timestamp) || Date.now() };
+    }
     if (parsed.type === 'timer-event' && Number.isInteger(parsed.seconds) && parsed.seconds >= 0) {
       return { ...base, ...timerNoticeRecord(msgId, Number(timestamp) || Date.now(), parsed.seconds) };
     }
@@ -21527,6 +21582,7 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
     }
   } catch (e) {}
 
+  if (editOf) return null;
   return { ...base, kind: 'text', content: decrypted, replyData: null, jumbo: isSingleEmoji(decrypted) };
 }
 
@@ -21579,12 +21635,12 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
         const index = nextIndex++;
         const msg = batch[index];
         let rec = null;
-        if (msg.type === 'message') {
-          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
+        if (msg.type === 'message' || msg.type === 'edit') {
+          rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt, null, msg.editOf || null);
           if (rec && rec.pending) {
             // Do not strand this envelope behind seenMsgIds. The ordinary
             // pending queue replays it as soon as the verified key exists.
-            room.pendingDecrypt.push({ msgId:msg.id, content:msg.content, name:msg.name, time:formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt });
+            room.pendingDecrypt.push({ msgId:msg.id, content:msg.content, name:msg.name, time:formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt, editOf:msg.editOf || null });
             room.pendingHistoryRestore = true;
             rec = null;
           } else if (rec) {
@@ -21601,6 +21657,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
       const msg = batch[index];
       const rec = processed[index];
       if (!rec) continue;
+      if (rec.kind === 'edit') { applyDirectMessageEdit(room, rec); continue; }
       const ledgerDeleteAt = room.deleteLedger.get(msg.id);
       if (ledgerDeleteAt && ledgerDeleteAt <= nowTs) {
         historyStoreDelete(room.code, msg.id); // gone by the delete ledger: gone from the local copy too
@@ -21620,6 +21677,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
         room.messages[existingIndex] = rec;
       } else if (existingIndex >= 0) continue;
       if (existingIndex < 0) room.messages.push(rec);
+      applyPendingDirectMessageEdit(room, rec);
       if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
         rec.deleteAt = ledgerDeleteAt;
         rec.timerStarted = true;
@@ -22301,8 +22359,8 @@ async function doPoll(room) {
         room.seenMsgIds.add(msg.id);
         if (room.seenMsgIds.size > 500) { const first = room.seenMsgIds.values().next().value; room.seenMsgIds.delete(first); }
 
-        if (msg.type === 'message') {
-          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt);
+        if (msg.type === 'message' || msg.type === 'edit') {
+          const rec = await processIncomingContent(room, msg.content, msg.name, formatMsgTime(msg.ts), msg.id, msg.ts, msg.from, msg.deleteTimerSeconds || 0, msg.readAt, null, msg.editOf || null);
           if (rec && rec.pending) {
             // No shared key yet to decrypt this with (the rederive block
             // above either hasn't run for this peer yet or just failed) —
@@ -22310,7 +22368,9 @@ async function doPoll(room) {
             // redeliver it. Hold onto the raw envelope and replay it via
             // flushPendingDecrypt() the moment deriveSharedKey succeeds,
             // instead of silently dropping it.
-            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt });
+            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt, editOf:msg.editOf || null });
+          } else if (rec?.kind === 'edit') {
+            applyDirectMessageEdit(room, rec);
           } else if (rec) {
             const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
             room.messages.push(rec);
@@ -22375,6 +22435,7 @@ async function sendMsg() {
   const input = document.getElementById('msg-input');
   const content = input.value.trim();
   if (!content || !room) return;
+  if (editingMessage) return submitDirectMessageEdit(room, content);
   if (!window.VaultlixContentSafety) { toast('Safety checks could not load. Reconnect and reopen Vaultlix before sending.'); return; }
   if (VaultlixContentSafety.check(content).blocked || (replyTo && !replyTo.isImage && VaultlixContentSafety.check(replyTo.text).blocked)) {
     toast('Message not sent: abusive, threatening or exploitative language was detected on this device. Edit the message to continue.'); return;
@@ -27087,6 +27148,7 @@ function makeTinyThumbnail(base64, mime, maxDim = 64, quality = 0.55) {
 // in-thread quote on both ends can show real pixels without the payload
 // carrying the whole original photo.
 function startReply(rec, msgId, replyText) {
+  cancelReply();
   const isImageReply = !!(rec && rec.kind === 'file' && rec.isImage);
   const isVideoReply = !!(rec && rec.kind === 'file' && String(rec.mime || '').startsWith('video/'));
   // Replying to an album shows the first photo as the representative
@@ -27133,11 +27195,73 @@ function startReply(rec, msgId, replyText) {
   document.getElementById('msg-input').focus();
 }
 
+function startDirectMessageEdit(rec) {
+  if (!messageCanEdit(rec)) { toast('Messages can only be edited within 30 minutes'); return; }
+  cancelReply();
+  const room = getActiveRoom();
+  if (!room || !room.messages.includes(rec)) return;
+  editingMessage = { roomCode:room.code, msgId:rec.id, sentAt:Number(rec.ts) || 0 };
+  const input = document.getElementById('msg-input');
+  input.value = rec.content;
+  resizeChatComposer(input); updateComposerButtons();
+  const thumb = document.getElementById('reply-thumb');
+  if (thumb) { thumb.removeAttribute('src'); thumb.style.display = 'none'; }
+  document.getElementById('reply-name').textContent = 'Edit message';
+  document.getElementById('reply-text').textContent = rec.content;
+  document.getElementById('reply-preview').classList.add('show');
+  input.focus({ preventScroll:true });
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+async function submitDirectMessageEdit(room, text) {
+  const input = document.getElementById('msg-input');
+  const edit = editingMessage;
+  if (!edit || edit.roomCode !== room?.code) { cancelReply(); return false; }
+  const target = room.messages.find(message => message.id === edit.msgId);
+  if (!target || !messageCanEdit(target)) { toast('Messages can only be edited within 30 minutes'); cancelReply(); return false; }
+  if (!window.VaultlixContentSafety || VaultlixContentSafety.check(text).blocked) {
+    toast('This text cannot be shared. Edit it and try again.'); return false;
+  }
+  if (text === target.content) { cancelReply(); return true; }
+  const editId = newMsgId();
+  let content;
+  try { content = await encryptTextMsg(room, JSON.stringify({ type:'message-edit', text })); }
+  catch (_) { toast("Couldn't encrypt — message not edited"); return false; }
+  input.disabled = true;
+  try {
+    const result = await api('/api/edit-message', { code:room.code, token:room.token, msgId:target.id, editId, content });
+    if (result.error) throw new Error(result.error);
+    const editedAt = Number(result.editedAt) || Date.now();
+    applyDirectMessageEdit(room, { kind:'edit', editOf:target.id, content:text, editedAt, isMe:true });
+    const envelope = { id:editId, seq:Number(result.seq), type:'edit', editOf:target.id, from:room.token,
+      name:room.myName || null, content, ts:editedAt, deleteTimerSeconds:0 };
+    await historyStorePut(room.code, [envelope]);
+    room.seenMsgIds.add(editId);
+    room.lastSeq = Math.max(Number(room.lastSeq) || 0, Number(result.seq) || 0);
+    persistRoomSeq(room);
+    cancelReply();
+    toast('Message edited');
+    return true;
+  } catch (error) {
+    toast(error.message || 'Message could not be edited');
+    return false;
+  } finally {
+    input.disabled = false;
+    input.focus({ preventScroll:true });
+  }
+}
+
 function cancelReply() {
+  const wasEditing = !!editingMessage;
+  editingMessage = null;
   replyTo = null;
   document.getElementById('reply-preview').classList.remove('show');
   const thumbEl = document.getElementById('reply-thumb');
   if (thumbEl) { thumbEl.removeAttribute('src'); thumbEl.style.display = 'none'; }
+  if (wasEditing) {
+    const input = document.getElementById('msg-input');
+    if (input) { input.value = ''; resizeChatComposer(input); updateComposerButtons(); }
+  }
 }
 
 </script>

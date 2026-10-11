@@ -27,7 +27,7 @@ test('a page is returned oldest first, shaped like poll messages', () => {
   assert.equal(hasMore, false);
   assert.deepEqual(messages.map(message => message.seq), [4, 5, 6]);
   assert.deepEqual(Object.keys(messages[0]).sort(),
-    ['content', 'deleteTimerSeconds', 'deliveredAt', 'expiresAt', 'from', 'id', 'name', 'reactions', 'readAt', 'seq', 'ts', 'type', 'viewOnce']);
+    ['content', 'deleteTimerSeconds', 'deliveredAt', 'editOf', 'expiresAt', 'from', 'id', 'name', 'reactions', 'readAt', 'seq', 'ts', 'type', 'viewOnce']);
   assert.equal(messages[0].type, 'message');
   assert.equal(messages[0].name, 'Sam');
 });

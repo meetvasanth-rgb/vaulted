@@ -155,6 +155,13 @@ test('reactions and deletes are sent as control messages and deletes for everyon
   assert.match(groups, /\$\{allMine \? '<button type="button" class="everyone"/);
 });
 
+test('group text edits are encrypted controls and retain an Edited label', () => {
+  assert.match(groups, /type:'group-edit', text/);
+  assert.match(groups, /api\('\/api\/groups\/edit-message'/);
+  assert.match(groups, /message\.control\?\.type !== 'edit'/);
+  assert.match(groups, /message\.editedAt \? '<span class="msg-edited">Edited<\/span> · '/);
+});
+
 test('"delete for me" is remembered with the saved group, without ever dropping what was stored', () => {
   assert.match(client, /hiddenIds:Array\.isArray\(group\.hiddenIds\) \? group\.hiddenIds\.slice\(-PRIVATE_GROUP_HIDDEN_MAX\) : \(stored\.get\(group\.id\)\?\.hiddenIds \|\| \[\]\)/);
 });

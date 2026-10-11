@@ -114,3 +114,25 @@ test('deleting the newest message never lets a later one reuse its time', async 
   assert.equal(stored.lastMessageAt, 5001);
   assert.deepEqual(stored.messages.map(message => [message.id, message.createdAt]), [['m1', 100], ['m3', 5001]]);
 });
+
+test('group edits are sender-only, idempotent, and stop after thirty minutes', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vaultlix-group-edit-'));
+  const store = new GroupStore(directory);
+  await store.initialize();
+  const ownerId = 'a'.repeat(64), memberId = 'b'.repeat(64);
+  const group = await store.create(ownerId, 'g1:name', [
+    { accountId:ownerId, role:'owner', active:true, keyVersion:1 },
+    { accountId:memberId, role:'member', active:true, keyVersion:1 },
+  ], 'binding');
+  await store.send(group.id, ownerId, { id:'original_message_0001', ciphertext:'g1:old' }, 1_000);
+  const accepted = await store.editMessage(group.id, ownerId, 'original_message_0001',
+    { id:'edit_message_00000001', ciphertext:'g1:new' }, 1_000 + 30 * 60 * 1000);
+  assert.equal(accepted.reason, 'ok');
+  assert.equal(accepted.group.messages.at(-1).editOf, 'original_message_0001');
+  assert.equal((await store.editMessage(group.id, ownerId, 'original_message_0001',
+    { id:'edit_message_00000001', ciphertext:'g1:new' }, 9_000_000)).reason, 'duplicate');
+  assert.equal((await store.editMessage(group.id, memberId, 'original_message_0001',
+    { id:'edit_message_00000002', ciphertext:'g1:bad' }, 2_000)).reason, 'forbidden');
+  assert.equal((await store.editMessage(group.id, ownerId, 'original_message_0001',
+    { id:'edit_message_00000003', ciphertext:'g1:late' }, 1_000 + 30 * 60 * 1000 + 1)).reason, 'expired');
+});

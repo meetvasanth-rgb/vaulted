@@ -117,6 +117,7 @@ test('durable ciphertext history can rebuild a stale in-memory conversation cach
   assert.deepEqual(messages, [{
     id:'message-1', senderTokenHash:'a'.repeat(64), seq:7,
     content:'ciphertext', ts:1234, expiresAt:null, viewOnce:false, deleteTimerSeconds:0,
+    type:'message', editOf:null,
   }]);
   assert.match(calls[0][0], /ORDER BY sequence DESC[\s\S]*LIMIT \$3/);
   assert.match(calls[0][0], /ORDER BY sequence ASC/);

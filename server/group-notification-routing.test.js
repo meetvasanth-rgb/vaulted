@@ -86,7 +86,7 @@ test('mergePrivateGroupMessages returns the actual fresh records (not just a cou
 
 test('pollPrivateGroup increments group.unread from poll catch-up (not just the live socket), excluding the open group and this account\'s own messages', () => {
   assert.match(groups,
-    /const newUnread = fresh\.filter\(message => message\.senderId !== state\.accountId && Number\(message\.createdAt\) > lastReadAt\)\.length;[\s\S]{0,220}group\.unread = \(group\.unread \|\| 0\) \+ newUnread;[\s\S]{0,100}savePrivateGroupSessions\(\)/);
+    /const newUnread = fresh\.filter\(message => !message\.control && message\.senderId !== state\.accountId && Number\(message\.createdAt\) > lastReadAt\)\.length;[\s\S]{0,220}group\.unread = \(group\.unread \|\| 0\) \+ newUnread;[\s\S]{0,100}savePrivateGroupSessions\(\)/);
 });
 
 test('the live group invalidation never increments unread before the deduplicated message fetch', () => {

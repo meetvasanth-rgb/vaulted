@@ -556,6 +556,7 @@ function closePrivateGroup() {
 // as ordinary messages. They are applied here and never drawn as bubbles.
 const GROUP_REACTIONS = ['👍','❤️','😂','😮','😢','🙏'];
 let groupReplyTo = null;
+let groupEditingMessage = null;
 let groupSelectMode = false;
 const groupSelectedIds = new Set();
 
@@ -620,6 +621,18 @@ function derivePrivateGroupView(messages, hiddenIds = []) {
     }
   }
   return { visible:messages.filter(message => !message.control && !deleted.has(message.id)), reactions };
+}
+
+function applyPrivateGroupEdits(group) {
+  const byId = new Map((group.messages || []).filter(message => !message.control).map(message => [message.id, message]));
+  for (const message of group.messages || []) {
+    if (message.control?.type !== 'edit') continue;
+    const target = byId.get(message.control.target);
+    if (!target || target.senderId !== message.senderId || groupMessageKind(target) !== 'text') continue;
+    if (Number(message.createdAt) <= Number(target.editedAt || 0)) continue;
+    target.text = message.control.text;
+    target.editedAt = Number(message.createdAt) || Date.now();
+  }
 }
 
 function groupReactionChipsHtml(reactionMap, myId) {
@@ -688,7 +701,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
     const mine = message.senderId === state?.accountId;
     const quote = message.reply
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
-    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div></div>`;
+    return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${message.editedAt ? '<span class="msg-edited">Edited</span> · ' : ''}${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div></div>`;
 }
 
 function requestPrivateGroupVoiceTranscript(messageId) {
@@ -817,6 +830,7 @@ function forwardPrivateGroupMessages(messageIds) {
 
 // ---- reply ------------------------------------------------------------------
 function startPrivateGroupReply(messageId) {
+  cancelPrivateGroupReply();
   closeAllMsgActions();
   const group = privateGroups.get(activePrivateGroupId); const message = privateGroupMessageById(messageId);
   if (!group || !message) return;
@@ -830,8 +844,75 @@ function startPrivateGroupReply(messageId) {
 }
 
 function cancelPrivateGroupReply() {
+  const wasEditing = !!groupEditingMessage;
+  groupEditingMessage = null;
   groupReplyTo = null;
   document.getElementById('group-reply-preview')?.classList.remove('show');
+  if (wasEditing) {
+    const input = document.getElementById('group-message-input');
+    if (input) { input.value = ''; updatePrivateGroupComposer(); }
+  }
+}
+
+function startPrivateGroupMessageEdit(messageId) {
+  const group = privateGroups.get(activePrivateGroupId);
+  const state = loadAccountState();
+  const message = privateGroupMessageById(messageId);
+  if (!group || !state || !message || message.senderId !== state.accountId || groupMessageKind(message) !== 'text' ||
+      !(Number(message.createdAt) > 0) || Date.now() - Number(message.createdAt) > MESSAGE_EDIT_WINDOW_MS) {
+    toast('Messages can only be edited within 30 minutes'); return;
+  }
+  cancelPrivateGroupReply();
+  groupEditingMessage = { groupId:group.id, messageId:message.id, sentAt:Number(message.createdAt) };
+  const input = document.getElementById('group-message-input');
+  input.value = message.text;
+  updatePrivateGroupComposer();
+  const bar = document.getElementById('group-reply-preview');
+  bar.querySelector('.group-reply-name').textContent = 'Edit message';
+  bar.querySelector('.group-reply-snippet').textContent = message.text;
+  bar.classList.add('show');
+  input.focus({ preventScroll:true });
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+async function submitPrivateGroupMessageEdit(state, group, text) {
+  const input = document.getElementById('group-message-input');
+  const editing = groupEditingMessage;
+  const target = group?.messages?.find(message => message.id === editing?.messageId);
+  if (!editing || editing.groupId !== group?.id || !target || target.senderId !== state.accountId ||
+      groupMessageKind(target) !== 'text' || Date.now() - Number(target.createdAt) > MESSAGE_EDIT_WINDOW_MS) {
+    toast('Messages can only be edited within 30 minutes'); cancelPrivateGroupReply(); return false;
+  }
+  if (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(text).blocked) {
+    toast('This text cannot be shared. Edit it and try again.'); return false;
+  }
+  if (text === target.text) { cancelPrivateGroupReply(); return true; }
+  const key = group.keys?.[group.keyVersion];
+  if (!key) { toast('Group encryption key is not ready'); return false; }
+  const editId = newMsgId();
+  input.dataset.sending = '1';
+  try {
+    const ciphertext = await encryptPrivateGroupValue(key, { type:'group-edit', text });
+    const result = await api('/api/groups/edit-message', { accountId:state.accountId, sessionToken:state.sessionToken,
+      groupId:group.id, messageId:target.id, editId, ciphertext });
+    if (result.error) throw new Error(result.error);
+    const control = { id:editId, senderId:state.accountId, ciphertext, kind:'edit', editOf:target.id,
+      control:{ type:'edit', target:target.id, text }, createdAt:Number(result.createdAt) || Date.now(), keyVersion:Number(result.keyVersion) || group.keyVersion };
+    group.messages = [...(group.messages || []), control];
+    applyPrivateGroupEdits(group);
+    group.messageCursor = Math.max(Number(group.messageCursor) || 0, control.createdAt);
+    await privateGroupHistoryPut(group.id, [control]);
+    cancelPrivateGroupReply();
+    renderPrivateGroupMessages(group); renderVaultList();
+    toast('Message edited');
+    return true;
+  } catch (error) {
+    toast(error.message || 'Message could not be edited');
+    return false;
+  } finally {
+    delete input.dataset.sending;
+    input.focus({ preventScroll:true });
+  }
 }
 
 // ---- reactions and deletes (control messages) --------------------------------
@@ -986,6 +1067,7 @@ function groupSelectionController() {
           || (!!id && usableRow(id) && kind === 'voice'),
         canCopy: ids.length > 0 && ids.every(item => usableRow(item) && groupMessageKind(messageOf(item)) === 'text' && privateGroupTextById(item)),
         canSave: !!id && usableRow(id) && ['image', 'file', 'voice'].includes(kind),
+        canEdit: !!id && mine && kind === 'text' && Number(message.createdAt) > 0 && Date.now() - Number(message.createdAt) <= MESSAGE_EDIT_WINDOW_MS,
         anchor: id ? rowOf(id)?.querySelector('.group-message') || null : null,
         mine,
         currentReaction: id ? reactions.get(id)?.get(state?.accountId) || null : null,
@@ -1003,6 +1085,7 @@ function groupSelectionController() {
       try { await navigator.clipboard.writeText(text); toast('Copied'); } catch (_) { toast('Could not copy'); }
     },
     save() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) savePrivateGroupAttachment(id); },
+    edit() { const id = chosen()[0]; exitPrivateGroupSelectMode(); if (id) startPrivateGroupMessageEdit(id); },
     react(emoji) { const id = chosen()[0]; if (!id) return; exitPrivateGroupSelectMode(); sendPrivateGroupReaction(id, emoji); },
   };
 }
@@ -1196,6 +1279,11 @@ async function decodePrivateGroupEnvelope(group, message) {
   if (metadata?.type === 'group-text' && typeof metadata.text === 'string') {
     return { decoded:{ ...message, text:metadata.text, reply:sanitizeGroupReply(metadata.reply) } };
   }
+  if (metadata?.type === 'group-edit' && typeof metadata.text === 'string' && message.kind === 'edit' && message.editOf) {
+    const text = metadata.text.trim();
+    if (!text) throw new Error('Invalid group edit');
+    return { decoded:{ ...message, control:{ type:'edit', target:message.editOf, text } } };
+  }
   if (metadata?.type === 'group-reaction' && typeof metadata.target === 'string' && metadata.target.length <= 96) {
     const emoji = GROUP_REACTIONS.includes(metadata.emoji) ? metadata.emoji : '';
     return { decoded:{ ...message, control:{ type:'reaction', target:metadata.target, emoji } } };
@@ -1249,7 +1337,10 @@ async function decodePrivateGroupBatch(group, state, messages) {
     try {
       const result = await decodePrivateGroupEnvelope(group, message);
       if (result.pending) pending.push(result.pending); else decoded.push(result.decoded);
-    } catch (_) { decoded.push({ ...message, text:'Encrypted message unavailable on this device.', unavailable:true }); }
+    } catch (_) {
+      if (message.kind === 'edit') decoded.push({ ...message, control:{ type:'invalid' } });
+      else decoded.push({ ...message, text:'Encrypted message unavailable on this device.', unavailable:true });
+    }
   }
   const stubs = [...(group.messages || []), ...decoded, ...pending.map(item => ({ id:item.message.id, senderId:item.message.senderId }))];
   const deleted = privateGroupDeletedIds(stubs, group.hiddenIds || []);
@@ -1417,7 +1508,8 @@ function privateGroupHistoryEnvelope(message) {
   if (typeof message.ciphertext !== 'string' || !message.ciphertext || message.ciphertext.length > PRIVATE_GROUP_HISTORY_MAX_CHARS) return null;
   const createdAt = Number(message.createdAt);
   if (!Number.isFinite(createdAt) || createdAt <= 0) return null;
-  return { id:message.id, senderId:message.senderId, ciphertext:message.ciphertext, keyVersion:Number(message.keyVersion) || 1, createdAt };
+  return { id:message.id, senderId:message.senderId, ciphertext:message.ciphertext, keyVersion:Number(message.keyVersion) || 1,
+    createdAt, kind:message.kind === 'edit' ? 'edit' : undefined, editOf:message.kind === 'edit' ? message.editOf : undefined };
 }
 
 function privateGroupHistoryPut(groupId, messages) {
@@ -1440,6 +1532,7 @@ function mergePrivateGroupMessages(group, incoming) {
   const known = new Set((group.messages || []).map(item => item.id));
   const fresh = incoming.filter(item => !known.has(item.id));
   group.messages = [...(group.messages || []), ...fresh].sort((a, b) => a.createdAt - b.createdAt).slice(-(group.messageWindow || 200));
+  if (typeof applyPrivateGroupEdits === 'function') applyPrivateGroupEdits(group);
   return fresh;
 }
 
@@ -1512,7 +1605,7 @@ async function pollPrivateGroup(render = false, groupId = activePrivateGroupId) 
   // notification announces) — the badge just never appeared.
   if (changed && group.id !== activePrivateGroupId) {
     const lastReadAt = Number(group.lastReadAt) || 0;
-    const newUnread = fresh.filter(message => message.senderId !== state.accountId && Number(message.createdAt) > lastReadAt).length;
+    const newUnread = fresh.filter(message => !message.control && message.senderId !== state.accountId && Number(message.createdAt) > lastReadAt).length;
     if (newUnread > 0) {
       group.unread = (group.unread || 0) + newUnread;
       savePrivateGroupSessions();
@@ -1569,6 +1662,7 @@ async function sendPrivateGroupMessage() {
   const state = loadAccountState(); const group = privateGroups.get(activePrivateGroupId);
   const input = document.getElementById('group-message-input'); const text = String(input?.value || '').trim();
   if (!state || !group || !text) return;
+  if (groupEditingMessage) return submitPrivateGroupMessageEdit(state, group, text);
   if (input.dataset.sending === '1') return;
   if (!window.VaultlixContentSafety) { toast('Safety checks could not load. Reopen Vaultlix before sending.'); return; }
   if (window.VaultlixContentSafety.check(text).blocked) { toast('This text cannot be shared. Edit it and try again.'); return; }

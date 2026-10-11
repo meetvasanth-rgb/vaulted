@@ -517,6 +517,7 @@ console.log(`Byte budgets: global=${GLOBAL_BYTE_BUDGET} bytes (${(GLOBAL_BYTE_BU
 // hard, finite ceiling — at even a generous 10KB/room empty-state estimate,
 // 2000 rooms is ~20MB, nowhere near the byte budgets above.
 const MAX_CONCURRENT_ROOMS = 2000;
+const MESSAGE_EDIT_WINDOW_MS = 30 * 60 * 1000;
 
 // Sum of every room's byteSize — the actual global memory bound tracked in
 // real time, maintained everywhere room.byteSize is (pushRoomMsg,
@@ -612,7 +613,8 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
     restoredMessages.push({
       seq:durable.seq,
       id:durable.id,
-      type:'message',
+      type:durable.type === 'edit' ? 'edit' : 'message',
+      editOf:durable.editOf || null,
       from,
       name:room.members.get(from)?.name || existing?.name || null,
       content:durable.content,
@@ -642,7 +644,7 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
   // PostgreSQL is authoritative after a restart. Without restoring this
   // watermark, /api/poll returned 0 and every hydrated inbox row fell back
   // to the same local session-save time instead of its actual last message.
-  const durableLastMessageAt = restoredMessages.reduce((latest, message) => {
+  const durableLastMessageAt = restoredMessages.filter(message => message.type === 'message').reduce((latest, message) => {
     const timestamp = new Date(message.ts || 0).getTime() || 0;
     return Math.max(latest, timestamp);
   }, 0);
@@ -668,7 +670,7 @@ async function loadConversationFromPostgres(roomCode, client = null) {
     const member = room.members.get(message.senderTokenHash);
     const sentAt = new Date(message.ts);
     return {
-      seq:message.seq, id:message.id, type:'message', from:message.senderTokenHash,
+      seq:message.seq, id:message.id, type:message.type === 'edit' ? 'edit' : 'message', editOf:message.editOf || null, from:message.senderTokenHash,
       name:member?.name || null, content:message.content, viewOnce:message.viewOnce,
       time:`${sentAt.getHours().toString().padStart(2,'0')}:${sentAt.getMinutes().toString().padStart(2,'0')}`,
       ts:message.ts, expiresAt:message.expiresAt,
@@ -3073,7 +3075,7 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
   }
   d.code = roomCode;
   const mutationPaths = new Set([
-    '/api/join', '/api/send', '/api/push-subscribe', '/api/push-unsubscribe',
+    '/api/join', '/api/send', '/api/edit-message', '/api/push-subscribe', '/api/push-unsubscribe',
     '/api/native-push-subscribe', '/api/voip-subscribe', '/api/react',
     '/api/delete-message', '/api/view-once-opened', '/api/set-timer',
     '/api/clear-chat', '/api/mark-delivered', '/api/read', '/api/leave',
@@ -3844,6 +3846,31 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group message');
     }
     return res200(res, { ok:true, createdAt:group.updatedAt, keyVersion:group.keyVersion });
+  }
+
+  if (path === '/api/groups/edit-message' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to edit a group message.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{16,96}$/.test(value);
+    if (!validId(d.messageId) || !validId(d.editId) || !validEncryptedField(d.ciphertext, 131072)) {
+      return resErr(res, 'Invalid encrypted group message edit.', 400);
+    }
+    if (await rateLimited(`group-edit-message:${d.accountId}`, 30, 10 * 1000)) return resErr(res, 'Editing too fast — slow down a moment.', 429);
+    const result = await groupStore.editMessage(d.groupId, d.accountId, d.messageId,
+      { id:d.editId, ciphertext:d.ciphertext });
+    if (!result.group) {
+      if (result.reason === 'expired') return resErr(res, 'Messages can only be edited within 30 minutes.', 409);
+      if (result.reason === 'forbidden') return resErr(res, 'Only your own messages can be edited.', 403);
+      if (result.reason === 'conflict') return resErr(res, 'Message edit conflicts with an existing message.', 409);
+      return resErr(res, result.reason === 'membership' ? 'This group needs a new encryption key before messages can continue.' : 'Message is no longer available to edit.', result.reason === 'membership' ? 409 : 404);
+    }
+    const edit = result.group.messages.find(message => message.id === d.editId);
+    for (const member of result.group.members) if (member.active && member.accountId !== d.accountId) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:result.group.id, kind:'edit' });
+    }
+    return res200(res, { ok:true, createdAt:edit?.createdAt || result.group.updatedAt,
+      keyVersion:result.group.keyVersion, duplicate:result.reason === 'duplicate' });
   }
 
   // "Delete for everyone": the app first tells members (an encrypted message in
@@ -5093,6 +5120,50 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   }
 
   // POST /api/send
+  if (path==='/api/edit-message' && method==='POST') {
+    const room = await ensureConversationLoaded(d.code);
+    if (!room) return resErr(res,'Conversation not found.',404);
+    if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
+    if (await rateLimited(`edit-message:${d.token}`, 30, 10 * 1000)) return resErr(res,'Editing too fast — slow down a moment.',429);
+    const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{16,96}$/.test(value);
+    if (!validId(d.msgId) || !validId(d.editId) || !validEncryptedField(d.content, 131072)) {
+      return resErr(res,'Invalid encrypted message edit.',400);
+    }
+    const inMemoryEdit = room.msgs.find(message => message.id === d.editId);
+    const durableEdit = !inMemoryEdit && postgresEnabled
+      ? await postgresStore.encryptedMessageMetadata(d.code, d.editId, room.dbClient || postgresStore.pool) : null;
+    const existingEdit = inMemoryEdit || durableEdit;
+    if (existingEdit) {
+      if (existingEdit.type === 'edit' && existingEdit.editOf === d.msgId && sameConversationToken(existingEdit.from || existingEdit.senderTokenHash, d.token)) {
+        return res200(res,{ ok:true, id:d.editId, seq:existingEdit.seq, editedAt:existingEdit.ts, duplicate:true });
+      }
+      return resErr(res,'Message edit conflicts with an existing message.',409);
+    }
+    const inMemoryOriginal = room.msgs.find(message => message.id === d.msgId);
+    const durableOriginal = !inMemoryOriginal && postgresEnabled
+      ? await postgresStore.encryptedMessageMetadata(d.code, d.msgId, room.dbClient || postgresStore.pool) : null;
+    const original = inMemoryOriginal || durableOriginal;
+    if (!original || original.type !== 'message') return resErr(res,'Message is no longer available to edit.',404);
+    if (!sameConversationToken(original.from || original.senderTokenHash, d.token)) return resErr(res,'Only your own messages can be edited.',403);
+    const editedAt = Date.now();
+    if (!(Number(original.ts) > 0) || editedAt - Number(original.ts) > MESSAGE_EDIT_WINDOW_MS) {
+      return resErr(res,'Messages can only be edited within 30 minutes.',409);
+    }
+    let seq = room.seq + 1;
+    const member = room.members.get(d.token);
+    const edit = { seq, id:d.editId, type:'edit', editOf:d.msgId, from:d.token, name:member?.name || null,
+      content:d.content, time:new Date(editedAt).toTimeString().slice(0,5), ts:editedAt,
+      deliveredAt:null, readAt:null, reactions:{}, reactionSeq:0 };
+    if (postgresEnabled) {
+      seq = await postgresStore.appendEncryptedMessage(d.code, d.token, edit, room.dbClient || null);
+      edit.seq = seq;
+    }
+    room.seq = seq;
+    pushRoomMsg(room, edit);
+    publishInboxRoom(d.code, 'edit', { excludeToken:d.token });
+    return res200(res,{ ok:true, id:d.editId, seq, editedAt });
+  }
+
   if (path==='/api/send' && method==='POST') {
     const room = await ensureConversationLoaded(d.code);
     if (!room) return resErr(res,'Conversation not found.',404);

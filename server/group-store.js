@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const MAX_GROUP_MESSAGES = 1000;
+const MESSAGE_EDIT_WINDOW_MS = 30 * 60 * 1000;
 // Everyone but the owner; the create endpoint accepts 1 to 49 invited members.
 const MAX_GROUP_MEMBERS = 49;
 const SCHEMA = `CREATE TABLE IF NOT EXISTS private_groups (
@@ -138,6 +139,38 @@ class GroupStore {
       group.updatedAt = createdAt;
       return group;
     });
+  }
+
+  async editMessage(id, accountId, targetId, message, now = Date.now()) {
+    let reason = 'not-found';
+    const group = await this.mutate(id, current => {
+      if (current.requiresRekey || !current.members.some(member => member.accountId === accountId && member.active)) {
+        reason = 'membership'; return null;
+      }
+      const duplicate = current.messages.find(candidate => candidate.id === message.id);
+      if (duplicate) {
+        if (duplicate.senderId === accountId && duplicate.kind === 'edit' && duplicate.editOf === targetId) reason = 'duplicate';
+        else reason = 'conflict';
+        return reason === 'duplicate' ? current : null;
+      }
+      const original = current.messages.find(candidate => candidate.id === targetId);
+      if (!original) { reason = 'not-found'; return null; }
+      if (original.senderId !== accountId || original.kind === 'edit') { reason = 'forbidden'; return null; }
+      if (!(Number(original.createdAt) > 0) || now - Number(original.createdAt) > MESSAGE_EDIT_WINDOW_MS) {
+        reason = 'expired'; return null;
+      }
+      const last = Math.max(Number(current.lastMessageAt) || 0,
+        current.messages.length ? Number(current.messages[current.messages.length - 1].createdAt) || 0 : 0);
+      const createdAt = Math.max(now, last + 1);
+      current.messages.push({ ...message, kind:'edit', editOf:targetId, senderId:accountId,
+        keyVersion:current.keyVersion, createdAt });
+      current.lastMessageAt = createdAt;
+      if (current.messages.length > MAX_GROUP_MESSAGES) current.messages.splice(0, current.messages.length - MAX_GROUP_MESSAGES);
+      current.updatedAt = createdAt;
+      reason = 'ok';
+      return current;
+    });
+    return { group, reason };
   }
 
   // "Delete for everyone": removes the sender's own messages from what the

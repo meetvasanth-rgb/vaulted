@@ -121,6 +121,8 @@ CREATE TABLE IF NOT EXISTS encrypted_messages (
   created_at bigint NOT NULL,
   expires_at bigint,
   view_once boolean NOT NULL DEFAULT false,
+  message_type varchar(16) NOT NULL DEFAULT 'message',
+  edit_of text,
   PRIMARY KEY (conversation_id, message_id),
   UNIQUE (conversation_id, sequence)
 );
@@ -244,6 +246,8 @@ ALTER TABLE conversations ADD COLUMN IF NOT EXISTS password_hash text;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS state_version bigint NOT NULL DEFAULT 1;
 ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS attachment_id uuid;
 ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS delete_timer_seconds integer;
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS message_type varchar(16) NOT NULL DEFAULT 'message';
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS edit_of text;
 UPDATE encrypted_messages m SET delete_timer_seconds = CASE
   WHEN m.created_at >= c.delete_timer_set_at THEN c.delete_timer ELSE 0 END
 FROM conversations c WHERE c.conversation_id=m.conversation_id AND m.delete_timer_seconds IS NULL;
@@ -908,9 +912,10 @@ class PostgresStore {
     return this.withOptionalTransaction(transactionClient, async client => {
       const allocated = await client.query(`UPDATE conversations SET
         next_message_sequence=next_message_sequence+1,
-        updated_at=GREATEST(updated_at,$2), last_message_at=GREATEST(last_message_at,$2)
+        updated_at=GREATEST(updated_at,$2),
+        last_message_at=CASE WHEN $3 THEN GREATEST(last_message_at,$2) ELSE last_message_at END
         WHERE conversation_id=$1 AND status='active'
-        RETURNING next_message_sequence-1 AS sequence`, [conversationId, message.ts]);
+        RETURNING next_message_sequence-1 AS sequence`, [conversationId, message.ts, message.type !== 'edit']);
       // Test doubles and rolling-schema migrations may not return the new
       // allocation row yet; retain the supplied sequence only for that
       // compatibility case. Production PostgreSQL always returns it.
@@ -927,11 +932,13 @@ class PostgresStore {
       }
       await client.query(`INSERT INTO encrypted_messages (
         conversation_id, message_id, sender_token_hash, sequence, ciphertext,
-        created_at, expires_at, view_once, attachment_id, delete_timer_seconds
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        created_at, expires_at, view_once, attachment_id, delete_timer_seconds,
+        message_type, edit_of
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       ON CONFLICT (conversation_id, message_id) DO NOTHING`, [
         conversationId, message.id, senderTokenHash, sequence, message.content,
         message.ts, message.expiresAt || null, !!message.viewOnce, message.attachmentId || null, message.deleteTimerSeconds || 0,
+        message.type === 'edit' ? 'edit' : 'message', message.editOf || null,
       ]);
       return sequence;
     });
@@ -942,7 +949,7 @@ class PostgresStore {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
     const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
-        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds
+        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds, message_type, edit_of
       FROM encrypted_messages
       WHERE conversation_id=$1 AND (expires_at IS NULL OR expires_at > $2)
       ORDER BY sequence DESC
@@ -961,7 +968,7 @@ class PostgresStore {
     if (!Number.isSafeInteger(before) || before < 1) return [];
     const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
-        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds
+        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds, message_type, edit_of
       FROM encrypted_messages
       WHERE conversation_id=$1 AND sequence < $2 AND (expires_at IS NULL OR expires_at > $3)
         AND view_once IS NOT TRUE AND COALESCE(delete_timer_seconds, 0) = 0
@@ -998,6 +1005,8 @@ class PostgresStore {
       expiresAt:row.expires_at == null ? null : Number(row.expires_at),
       viewOnce:!!row.view_once,
       deleteTimerSeconds:Number(row.delete_timer_seconds || 0),
+      type:row.message_type === 'edit' ? 'edit' : 'message',
+      editOf:row.edit_of || null,
       };
       if (row.attachment_id) value.attachmentId = row.attachment_id;
       if (receipt) {
@@ -1011,6 +1020,15 @@ class PostgresStore {
       }
       return value;
     });
+  }
+
+  async encryptedMessageMetadata(conversationId, messageId, client = this.pool) {
+    if (!this.enabled) return null;
+    const { rows } = await client.query(`SELECT message_id,sender_token_hash,sequence,created_at,message_type,edit_of
+      FROM encrypted_messages WHERE conversation_id=$1 AND message_id=$2`, [conversationId, messageId]);
+    if (!rows.length) return null;
+    return { id:rows[0].message_id, senderTokenHash:rows[0].sender_token_hash, seq:Number(rows[0].sequence),
+      ts:Number(rows[0].created_at), type:rows[0].message_type === 'edit' ? 'edit' : 'message', editOf:rows[0].edit_of || null };
   }
 
   async markMessagesDelivered(conversationId, messageIds, at, transactionClient = null) {
