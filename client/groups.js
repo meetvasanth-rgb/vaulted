@@ -693,10 +693,8 @@ function privateGroupRowHtml(group, message, reactions, state) {
     } else if (message.gif?.type === 'group-gif' && safeKlipyMediaUrl(message.gif.url)) {
       content = `<div class="group-message-attachment"><img src="${escHtml(message.gif.url)}" alt="${escHtml(message.gif.title || 'GIF')}" loading="lazy"></div>`;
     } else {
-      const unsafe = message.senderId !== state?.accountId && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(message.text).blocked);
-      const visibleText = unsafe ? 'Potentially harmful message hidden. Use the member menu to remove this person.' : message.text;
-      content = `<div class="group-message-text">${linkifyHtml(visibleText)}</div>`;
-      usable = !unsafe && !message.unavailable && typeof message.text === 'string' && !!message.text.trim();
+      content = `<div class="group-message-text">${linkifyHtml(message.text)}</div>`;
+      usable = !message.unavailable && typeof message.text === 'string' && !!message.text.trim();
     }
     const mine = message.senderId === state?.accountId;
     const quote = message.reply
@@ -882,9 +880,6 @@ async function submitPrivateGroupMessageEdit(state, group, text) {
   if (!editing || editing.groupId !== group?.id || !target || target.senderId !== state.accountId ||
       groupMessageKind(target) !== 'text' || Date.now() - Number(target.createdAt) > MESSAGE_EDIT_WINDOW_MS) {
     toast('Messages can only be edited within 30 minutes'); cancelPrivateGroupReply(); return false;
-  }
-  if (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(text).blocked) {
-    toast('This text cannot be shared. Edit it and try again.'); return false;
   }
   if (text === target.text) { cancelPrivateGroupReply(); return true; }
   const key = group.keys?.[group.keyVersion];
@@ -1664,8 +1659,6 @@ async function sendPrivateGroupMessage() {
   if (!state || !group || !text) return;
   if (groupEditingMessage) return submitPrivateGroupMessageEdit(state, group, text);
   if (input.dataset.sending === '1') return;
-  if (!window.VaultlixContentSafety) { toast('Safety checks could not load. Reopen Vaultlix before sending.'); return; }
-  if (window.VaultlixContentSafety.check(text).blocked) { toast('This text cannot be shared. Edit it and try again.'); return; }
   const key = group.keys?.[group.keyVersion]; if (!key) { toast('Group encryption key is not ready'); return; }
   // Disabling a focused textarea dismisses the software keyboard. Keep it
   // active and use an in-flight marker to prevent duplicate sends instead.

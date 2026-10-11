@@ -89,7 +89,7 @@ test('no regex lookbehind (unsupported by iOS 15 web views, it would break the w
 test('1:1 text, 1:1 captions, group text and group captions all go through the link renderer', () => {
   assert.match(client, /class="bubble\$\{rec\.jumbo \? ' emoji-jumbo' : ''\}" oncontextmenu="return false">\$\{linkifyHtml\(rec\.content\)\}<\/div>/);
   assert.equal((client.match(/<div class="msg-caption-text">\$\{linkifyHtml\(rec\.caption\)\}<\/div>/g) || []).length, 2);
-  assert.match(groups, /<div class="group-message-text">\$\{linkifyHtml\(visibleText\)\}<\/div>/);
+  assert.match(groups, /<div class="group-message-text">\$\{linkifyHtml\(message\.text\)\}<\/div>/);
   assert.match(groups, /<div class="group-message-text">\$\{linkifyHtml\(message\.attachment\.caption\)\}<\/div>/);
   assert.doesNotMatch(client, /oncontextmenu="return false">\$\{escHtml\(rec\.content\)\}<\/div>/);
 });

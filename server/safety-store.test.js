@@ -5,11 +5,6 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {SafetyStore,SLA}=require('./safety-store');
-const {check}=require('../client/content-safety');
-test('local checks normalize abuse without matching harmless substrings',()=>{
-  for(const text of ['I WILL KILL YOU','I will ki\u200bll you','Ｉ ｗｉｌｌ ｋｉｌｌ ｙｏｕ','je vais te tuer','child pornography','f@ggot','connard','scheiße']) assert.equal(check(text).blocked,true,text);
-  for(const text of ['Hello there','User b','Scunthorpe','The killer whale is beautiful','I will call you']) assert.equal(check(text).blocked,false,text);
-});
 test('safety lookups coalesce signaling bursts, invalidate after moderation, and retry database errors',async()=>{
   let suspended=false,revoked=false,queries=0,fail=false;
   const pool={async query(sql){
@@ -76,19 +71,22 @@ test('report workflow persists, enforces stale-update protection and never resur
   assert.equal((await store.list()).some(r=>r.id==='legacy'),false);
   assert.equal(fs.statSync(path.join(dir,'safety-workflow.json')).mode & 0o777,0o600);
 });
-test('hidden incoming content and inbox previews do not render unscreened text or attachments',()=>{
+test('message text is not screened while incoming attachments retain reveal controls',()=>{
   const vm=require('node:vm');
   const html=fs.readFileSync(path.join(__dirname,'../client/index.html'),'utf8');
+  const groups=fs.readFileSync(path.join(__dirname,'../client/groups.js'),'utf8');
+  const server=fs.readFileSync(path.join(__dirname,'index.js'),'utf8');
+  assert.doesNotMatch(html,/VaultlixContentSafety|content-safety\.js|safety-words\.js/);
+  assert.doesNotMatch(groups,/VaultlixContentSafety/);
+  assert.doesNotMatch(server,/contentSafety\.check|client\/content-safety/);
   const nodes=[];
   function node(tag){const n={tag,children:[],dataset:{},events:{},append(...items){this.children.push(...items);},addEventListener(event,callback){this.events[event]=callback;}};nodes.push(n);return n;}
   const body={insertBefore(n){this.last=n;}}, typing={};
-  const context={localImageSafetyEnabled:()=>false,localRecordChecks:new WeakMap(),renderLocalImageSafetyGate:()=>false,document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{VaultlixContentSafety:{check}},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
+  const context={localImageSafetyEnabled:()=>false,localRecordChecks:new WeakMap(),renderLocalImageSafetyGate:()=>false,document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
   vm.createContext(context);
   for(const name of ['needsAttachmentReveal','renderMessageRecord','vaultInboxPreview']){const start=html.indexOf('function '+name+'('),end=html.indexOf('\nfunction ',start+1);vm.runInContext(html.slice(start,end),context);}
   const malicious={kind:'text',isMe:false,content:'I will kill you',id:'text'};
-  context.renderMessageRecord({},malicious,false);
-  assert.equal(body.last.children[0].children[0].textContent,'Potentially harmful message hidden by on-device safety checks.');
-  assert.equal(context.vaultInboxPreview({messages:[malicious]},true).text,'Potentially harmful message hidden');
+  assert.equal(context.vaultInboxPreview({messages:[malicious]},true).text,'I will kill you');
   // 'file' and 'voice' with nothing else set are no longer gated here — a
   // bare file has no preview to scan and a voice note has no image content
   // at all, so both are now shown outright (needsAttachmentReveal is tested
@@ -99,11 +97,6 @@ test('hidden incoming content and inbox previews do not render unscreened text o
     context.renderMessageRecord({},{kind,isMe:false,id:kind},false);
     assert.match(body.last.children[0].children[0].textContent,/Attachment hidden/);
   }
-  context.localImageSafetyEnabled=()=>true;
-  const approvedPhoto={kind:'file',isImage:true,base64:'photo',isMe:false,id:'approved',fileName:'I will kill you'};
-  context.localRecordChecks.set(approvedPhoto,'allowed');
-  context.renderMessageRecord({},approvedPhoto,false);
-  assert.equal(body.last.children[0].children[0].textContent,'Potentially harmful message hidden by on-device safety checks.');
   assert.equal(nodes.some(n=>['img','audio','video','iframe'].includes(n.tag)),false);
 });
 test('legacy cleanup requires a verified durable copy and preserves sources on failure',async t=>{

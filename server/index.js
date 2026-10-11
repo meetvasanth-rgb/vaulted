@@ -14,7 +14,6 @@ const { PostgresStore } = require('./postgres');
 const { SafetyStore } = require('./safety-store');
 const { guardedSocketTask } = require('./socket-task');
 const { buildHistoryPage } = require('./history-page');
-const contentSafety = require('../client/content-safety');
 let safetyStore;
 const { StatusStore } = require('./status-store');
 let statusStore;
@@ -25,7 +24,6 @@ const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator')
 const { EncryptedObjectStorage } = require('./object-storage');
 const { HeadBucketCommand } = require('@aws-sdk/client-s3');
 const { createHealthMonitor } = require('./system-health');
-const { DAILY_LOOK_WATERMARK_VERSION, watermarkDailyLookOutput } = require('./daily-look-watermark');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
@@ -1341,7 +1339,7 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
     : enhancerLook
       ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
       : style.prompt;
-  form.append('prompt', `${directedPrompt}\n\nComposition requirement: keep the lower-right edge visually calm and free of the subject's face, hands and important details so a small Vaultlix signature can be added there later. Do not generate any text, logo or watermark yourself.`);
+  form.append('prompt', `${directedPrompt}\n\nDo not generate any text, logo or watermark.`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', style.size || '1024x1024');
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
@@ -1353,8 +1351,7 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const result = await response.json();
   const base64 = result.data?.[0]?.b64_json;
   if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
-  const branded = await watermarkDailyLookOutput(Buffer.from(base64, 'base64'));
-  return `data:image/jpeg;base64,${branded.toString('base64')}`;
+  return `data:image/jpeg;base64,${base64}`;
 }
 
 async function claimDailyLook(accountId, account, now) {
@@ -3370,7 +3367,6 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   if (path === '/api/account/register' && method === 'POST') {
     const privateNumber = normalizePrivateNumber(d.privateNumber);
     const displayName = normalizeDisplayName(d.displayName);
-    if (contentSafety.check(displayName).blocked) return resErr(res, 'Choose a username without abusive or threatening language.', 400);
     if (!displayName || displayName.length > 32) {
       return resErr(res, 'Username must be between 2 and 32 characters.', 400);
     }
@@ -3598,7 +3594,6 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
     const displayName = normalizeDisplayName(d.displayName);
-    if (contentSafety.check(displayName).blocked) return resErr(res, 'Choose a username without abusive or threatening language.', 400);
     if (!displayName || displayName.length > 32) return resErr(res, 'Enter a username between 2 and 32 characters.', 400);
     let profileImage = normalizeProfileImage(account.profileImage) || null;
     if (d.profileImageAction === 'replace') {
@@ -4066,7 +4061,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       }
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, {
-        ok:true, generatedImage, generatedAt:completedAt, watermarkVersion:DAILY_LOOK_WATERMARK_VERSION,
+        ok:true, generatedImage, generatedAt:completedAt,
         nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
           ? completedDay.nextAt : 0,
         limit:DAILY_LOOK_DAILY_LIMIT,

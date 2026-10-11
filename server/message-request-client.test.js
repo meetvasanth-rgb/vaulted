@@ -37,7 +37,7 @@ function serverValidators() {
   return context;
 }
 
-function harness({ state = { accountId:'acc1', sessionToken:'tok', masterKey:'MK' }, answers = {}, safetyBlocks = false } = {}) {
+function harness({ state = { accountId:'acc1', sessionToken:'tok', masterKey:'MK' }, answers = {} } = {}) {
   const storage = new Map();
   const calls = [];
   const slots = [];
@@ -52,7 +52,7 @@ function harness({ state = { accountId:'acc1', sessionToken:'tok', masterKey:'MK
     syncAnonymousAccount:async () => { calls.push(['sync']); },
     pendingIncomingConnections:[],
     document:{ querySelectorAll:selector => selector === '[data-request-intro]' ? slots : [] },
-    window:{ VaultlixContentSafety:{ check:text => ({ blocked:safetyBlocks && /bad/.test(text) }) } },
+    window:{},
     formatMsgTime:() => '10:00', isRoomVisible:() => true, renderMessageRecord:() => {},
     encryptTextMsg:async (room, text) => `enc:${text}`,
     setTimeout, clearTimeout,
@@ -187,11 +187,11 @@ test('the bundle carries the inbox key and a restored bundle only fills a missin
   assert.match(client, /if \(validInboxKeyRecord\(bundle\.inbox\) && !loadLocalInboxKey\(\{ accountId \}\)\) saveLocalInboxKey\(bundle\.inbox, \{ accountId \}\);/);
 });
 
-test('sending: no text means no message, blocked text is refused, an unsupported recipient falls back', async () => {
-  const ctx = harness({ safetyBlocks:true, answers:{ '/api/connections/prepare': () => ({ ok:true, inboxKey:null, introMax:3 }) } });
+test('sending: no text means no message and an unsupported recipient falls back without screening text', async () => {
+  const ctx = harness({ answers:{ '/api/connections/prepare': () => ({ ok:true, inboxKey:null, introMax:3 }) } });
   assert.deepEqual(plain(await run(ctx, "prepareRequestIntro('2345678901', '   ')")), { intro:null });
   assert.equal(ctx.calls.length, 0, 'no network call for an empty message');
-  assert.match((await run(ctx, "prepareRequestIntro('2345678901', 'bad words')")).error, /cannot be shared/);
+  assert.deepEqual(plain(await run(ctx, "prepareRequestIntro('2345678901', 'bad words')")), { intro:null, unsupported:true });
   assert.deepEqual(plain(await run(ctx, "prepareRequestIntro('2345678901', 'hello')")), { intro:null, unsupported:true });
   const refused = harness({ answers:{ '/api/connections/prepare': () => ({ error:'This person cannot be contacted.' }) } });
   assert.equal((await run(refused, "prepareRequestIntro('2345678901', 'hello')")).error, 'This person cannot be contacted.');
@@ -211,7 +211,7 @@ test('sending: the message is encrypted to the recipient\'s published key', asyn
   assert.doesNotMatch(JSON.stringify(ctx.calls), /hello there/, 'plaintext never leaves the device');
 });
 
-test('a request card shows the decrypted messages, and unreadable or filtered ones safely', async () => {
+test('a request card shows all decrypted messages and marks unreadable ones safely', async () => {
   const origin = harness();
   const record = plain(await run(origin, 'generateInboxKeyRecord()'));
   const sender = harness();
@@ -221,7 +221,7 @@ test('a request card shows the decrypted messages, and unreadable or filtered on
   const other = plain(await run(origin, 'generateInboxKeyRecord()'));
   sender.recipient = other.pubJwk;
   const foreign = plain(await run(sender, "encryptIntroMessage(recipient, 'meant for someone else')"));
-  const ctx = harness({ safetyBlocks:true });
+  const ctx = harness();
   ctx.storage.set('vaultlix_inbox_key:acc1', JSON.stringify(record));
   const slot = { dataset:{ requestIntro:'r1' }, isConnected:true, innerHTML:'' };
   ctx.slots.push(slot);
@@ -229,7 +229,7 @@ test('a request card shows the decrypted messages, and unreadable or filtered on
   await run(ctx, 'hydrateRequestIntros()');
   assert.match(slot.innerHTML, /Hello &lt;b&gt;there&lt;\/b&gt;/, 'text is escaped');
   assert.doesNotMatch(slot.innerHTML, /<b>/);
-  assert.match(slot.innerHTML, /Hidden by the safety filter/);
+  assert.match(slot.innerHTML, /bad words here/);
   assert.match(slot.innerHTML, /Message unavailable/);
   assert.equal(run(ctx, 'introTextCache.size'), 2, 'both decryptable messages are cached; the foreign one is retried');
 });

@@ -21,13 +21,13 @@ Unresolved reports remain until handled. Resolved/dismissed reports are pruned 9
 
 ## Filtering and limits
 
-Text checks run locally before encryption and on incoming messages and inbox previews. The self-hosted dictionary is pinned to @2toad/profanity 3.3.0 (MIT), covering 12 languages, plus explicit threat/exploitation patterns and basic Unicode/leet normalization. The original dictionary tarball SHA-1 is b634a677cc60b5aea5501afb5954328f5e5678cb. Attribution is in client/vendor/safety-words.LICENSE.txt. Single-letter entries and short Latin abbreviations are excluded to reduce false positives.
+Automatic message-text classification is disabled. Text is not blocked before encryption and decrypted text is not hidden by a dictionary or moderation model. Users can still block participants and submit reports with selected recent messages for human review.
 
-Incoming media/attachments require an explicit reveal. This is an exposure control, not an image/audio classifier. No private text or attachment is sent to an external moderation provider. Existing Daily Look and GIF service safety controls still apply. The filter can miss context, novel evasion and unsupported languages, and can have false positives. Profile photos and arbitrary media are not comprehensively classified. Report handling and user blocking remain essential. Do not claim guaranteed Apple approval or comprehensive automated moderation.
+Incoming media/attachments require an explicit reveal. This is an exposure control, not an image/audio classifier. No private text or attachment is sent to an external moderation provider. Existing Daily Look, photo and GIF service safety controls still apply. Profile photos and arbitrary media are not comprehensively classified. Report handling and user blocking remain essential. Do not claim guaranteed Apple approval or comprehensive automated moderation.
 
 ## Verification
 
-The 391-test suite passes, including account/membership authorization, explicit excerpt consent, unauthorized admin access, stale review rejection, bidirectional blocks, suspension of existing sessions, group access and chat tokens, signaling-socket closure, status removal, appeal restoration, deadlines, legacy retention, and hidden-message/attachment rendering. Safety enforcement release `5aba168` was verified ACTIVE in Railway; its deploy log showed PostgreSQL, Redis and object storage initialized and the web service started. Local tests do not exercise real production reports or native devices.
+The automated suite covers account/membership authorization, explicit excerpt consent, unauthorized admin access, stale review rejection, bidirectional blocks, suspension of existing sessions, group access and chat tokens, signaling-socket closure, status removal, appeal restoration, deadlines, legacy retention, and attachment reveal controls. Local tests do not exercise real production reports or native devices.
 
 ## iOS build 57: local image checks
 

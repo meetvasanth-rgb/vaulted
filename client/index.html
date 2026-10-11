@@ -3921,7 +3921,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 
     <div class="legal-section">
       <h3>Content safety and reports</h3>
-      <p>Safety checks run on your device before sending text and when displaying incoming content; ordinary message plaintext is not sent to a moderation service. These checks detect some abusive, threatening and exploitative language, but are not comprehensive and do not classify the contents of every image, recording or document. On supported iOS and Android builds, a bundled model checks photos and profile images for possible nudity on your device before sharing or display. Photos and classification results are not sent to a screening provider. Flagged images are withheld; failed checks can be retried. These checks can make mistakes and do not cover video, audio, documents or every form of harmful content. Incoming attachments also require an explicit reveal. Use Report and Block for content the checks miss, or contact legal@vaultlix.com if a photo is incorrectly blocked.</p>
+      <p>Vaultlix does not automatically classify or block message text. Use Report and Block to stop unwanted contact and send selected evidence to our reviewer. On supported iOS and Android builds, a bundled model checks photos and profile images for possible nudity on your device before sharing or display. Photos and classification results are not sent to a screening provider. Flagged images are withheld; failed checks can be retried. These checks can make mistakes and do not cover video, audio, documents or every form of harmful content. Incoming attachments also require an explicit reveal. Contact legal@vaultlix.com if a photo is incorrectly blocked.</p>
       <p>When you submit a report, we receive its category, your written details, the reporting and reported account identifiers, and the conversation reference. Up to five recent text messages are shared with our reviewer only if you explicitly select the message-sharing option. Reports are reviewed by the operator within 24 hours. Unresolved reports remain available until handled; resolved reports and review notes are removed 90 days after their last review update. Account-level block records remain while needed to enforce your block. A reviewer may close a reported conversation and suspend an account from new connections; restrictions can be reviewed on appeal. Contact privacy@vaultlix.com for follow-up or an appeal.</p>
       <p>Profile photos and display names are linked to your Vaultlix account and shown to people who know your exact private number or connect with you. Daily Look requests are authenticated to that account to enforce usage limits. Photos, report details and voluntarily shared report messages are therefore linked to account identity; end-to-end encryption of ordinary messages does not make these account features anonymous.</p>
       </div>
@@ -4940,8 +4940,6 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
      commitment) never leaves the device to render this; no external QR service
      is called. Exposes a single global `qrcode(typeNumber, errorCorrectionLevel)`
      factory; renderQrCanvas() below (in the app's own script) draws it. -->
-<script src="/vendor/safety-words.js"></script>
-<script src="/content-safety.js"></script>
 <script src="/media-safety-v3.js"></script>
 <!-- jsQR 1.4.0 (MIT) decodes camera frames locally. QR images never leave
      this device and no external scanning service is contacted. -->
@@ -12648,66 +12646,6 @@ let dailyLookGeneratedImage = null;
 let dailyLookStyleId = null;
 let dailyLookDestination = null;
 const DAILY_LOOK_RESULT_DB = 'vaultlix-daily-look';
-const DAILY_LOOK_WATERMARK_VERSION = 1;
-
-// Apply the brand after generation instead of asking the image model to draw
-// text (which is less predictable). The small translucent signature sits in
-// the lower safe margin and becomes part of the actual JPEG, so previews,
-// downloads and profile use all show the exact same result.
-function watermarkDailyLookImage(dataUri) {
-  return new Promise((resolve, reject) => {
-    if (!/^data:image\/(?:jpeg|png|webp);base64,/.test(dataUri || '')) {
-      reject(new Error('Could not finish the Vaultlix signature'));
-      return;
-    }
-    const image = new Image();
-    image.onload = () => {
-      const width = image.naturalWidth || image.width;
-      const height = image.naturalHeight || image.height;
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d');
-      if (!context || !width || !height) { reject(new Error('Could not finish the Vaultlix signature')); return; }
-      context.drawImage(image, 0, 0, width, height);
-
-      const unit = Math.min(width, height);
-      const fontSize = Math.max(18, Math.round(unit * .027));
-      const padX = Math.round(fontSize * .62);
-      const padY = Math.round(fontSize * .42);
-      const margin = Math.round(unit * .022);
-      const radius = Math.round(fontSize * .55);
-      context.font = `700 ${fontSize}px Manrope, Arial, sans-serif`;
-      context.textBaseline = 'middle';
-      const label = 'Vaultlix';
-      const labelWidth = Math.ceil(context.measureText(label).width);
-      const badgeWidth = labelWidth + padX * 2;
-      const badgeHeight = fontSize + padY * 2;
-      const x = width - badgeWidth - margin;
-      const y = height - badgeHeight - margin;
-
-      context.beginPath();
-      context.moveTo(x + radius, y);
-      context.lineTo(x + badgeWidth - radius, y);
-      context.quadraticCurveTo(x + badgeWidth, y, x + badgeWidth, y + radius);
-      context.lineTo(x + badgeWidth, y + badgeHeight - radius);
-      context.quadraticCurveTo(x + badgeWidth, y + badgeHeight, x + badgeWidth - radius, y + badgeHeight);
-      context.lineTo(x + radius, y + badgeHeight);
-      context.quadraticCurveTo(x, y + badgeHeight, x, y + badgeHeight - radius);
-      context.lineTo(x, y + radius);
-      context.quadraticCurveTo(x, y, x + radius, y);
-      context.closePath();
-      context.fillStyle = 'rgba(37,20,29,.58)';
-      context.fill();
-      context.fillStyle = 'rgba(255,255,255,.94)';
-      context.fillText(label, x + padX, y + badgeHeight / 2 + 1);
-      try { resolve(canvas.toDataURL('image/jpeg', .94)); }
-      catch (error) { reject(new Error('Could not finish the Vaultlix signature')); }
-    };
-    image.onerror = () => reject(new Error('Could not finish the Vaultlix signature'));
-    image.src = dataUri;
-  });
-}
 
 function dailyLookResultStore(mode, value) {
   return new Promise((resolve, reject) => {
@@ -12729,8 +12667,8 @@ function dailyLookResultStore(mode, value) {
   });
 }
 
-function saveDailyLookResult(accountId, image, styleName, generatedAt, watermarkVersion = DAILY_LOOK_WATERMARK_VERSION) {
-  return dailyLookResultStore('write', { accountId, image, styleName, generatedAt, watermarkVersion });
+function saveDailyLookResult(accountId, image, styleName, generatedAt) {
+  return dailyLookResultStore('write', { accountId, image, styleName, generatedAt });
 }
 
 function loadDailyLookResult(accountId) {
@@ -12810,13 +12748,7 @@ async function openDailyLook(options = {}) {
   if (status) status.textContent = 'Checking today’s creation…';
   const savedLookPromise = loadDailyLookResult(state.accountId).catch(() => null);
   const result = await api('/api/account/daily-look/status', { accountId:state.accountId, sessionToken:state.sessionToken });
-  let savedLook = await savedLookPromise;
-  if (savedLook?.image && Number(savedLook.watermarkVersion) < DAILY_LOOK_WATERMARK_VERSION) {
-    try {
-      savedLook = { ...savedLook, image:await watermarkDailyLookImage(savedLook.image), watermarkVersion:DAILY_LOOK_WATERMARK_VERSION };
-      await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt, savedLook.watermarkVersion);
-    } catch (error) { /* Keep an older locally saved result available if migration fails. */ }
-  }
+  const savedLook = await savedLookPromise;
   if (result.error) {
     if (savedLook?.image) showDailyLookResult(savedLook, 'Your last Daily Look is saved on this device and ready to download.');
     else if (status) status.textContent = result.error;
@@ -12902,24 +12834,8 @@ async function generateDailyLook() {
     return;
   }
   dailyLookSourceImage = null;
-  let finalImage = result.generatedImage;
-  let watermarkVersion = Number(result.watermarkVersion) || 0;
-  // Compatibility fallback during a rolling deployment: if an older server
-  // answers without the server-side brand marker, this newer client still
-  // finishes the image locally. Current servers always return version 1.
-  if (watermarkVersion < DAILY_LOOK_WATERMARK_VERSION) {
-    if (status) status.textContent = 'Adding the Vaultlix signature…';
-    try {
-      finalImage = await watermarkDailyLookImage(result.generatedImage);
-      watermarkVersion = DAILY_LOOK_WATERMARK_VERSION;
-    } catch (error) {
-      if (status) status.textContent = error?.message || 'Could not finish this Daily Look.';
-      if (button) { button.disabled = false; button.textContent = 'Try again'; }
-      return;
-    }
-  }
-  const savedLook = { accountId:state.accountId, image:finalImage, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now(), watermarkVersion };
-  await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt, savedLook.watermarkVersion).catch(() => null);
+  const savedLook = { accountId:state.accountId, image:result.generatedImage, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now() };
+  await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt).catch(() => null);
   showDailyLookResult(savedLook, `${savedLook.styleName} is ready. ${result.remaining} creation${result.remaining === 1 ? '' : 's'} remaining today.`);
 }
 
@@ -14234,7 +14150,6 @@ async function decryptRequestIntros(request) {
 
 function introBubbleHtml(text) {
   if (!text) return '<div class="request-intro-bubble muted">Message unavailable</div>';
-  if (window.VaultlixContentSafety?.check(text).blocked) return '<div class="request-intro-bubble muted">Hidden by the safety filter</div>';
   return `<div class="request-intro-bubble">${escapeHtml(text)}</div>`;
 }
 
@@ -14252,12 +14167,11 @@ function requestIntroSlot(request) {
   return Array.isArray(request.intro) && request.intro.length ? `<div class="request-intro" data-request-intro="${escapeHtml(request.id)}"></div>` : '';
 }
 
-// What the person types is checked locally before it is encrypted, then fetched key + encrypt.
+// What the person types is encrypted for the recipient before it leaves this device.
 // Returns { intro } (maybe null when there is no message) or { error }.
 async function prepareRequestIntro(number, rawText, target = null) {
   const text = String(rawText || '').trim().slice(0, INTRO_MAX_CHARS);
   if (!text) return { intro:null };
-  if (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(text).blocked) return { error:'This text cannot be shared. Edit it and try again.' };
   const prepared = target || await fetchRequestTarget(number);
   if (prepared.error) return { error:prepared.error };
   if (!prepared.inboxKey) return { intro:null, unsupported:true };
@@ -17587,7 +17501,6 @@ function vaultInboxPreview(room, allowContent) {
     return { text: room.peerOnline ? i18n('online_encrypted_conversation') : i18n('encrypted_conversation'), alert: false };
   }
   if (!last) return { text: room.everOnline ? i18n('encrypted_conversation') : i18n('waiting_for_other_person'), alert: false };
-  if (!last.isMe && last.kind === 'text' && (!window.VaultlixContentSafety || window.VaultlixContentSafety.check(last.content).blocked)) return {text:'Potentially harmful message hidden',alert:false};
   if (last.kind === 'text') return { text: `${last.isMe ? i18n('you_prefix') : ''}${String(last.content || '').slice(0, 72)}`, alert: false };
   if (last.kind === 'image') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('photo')}`, alert: false };
   if (last.kind === 'voice') return { text: `${last.isMe ? i18n('you_prefix') : ''}${i18n('voice_message')}`, alert: false };
@@ -17840,7 +17753,6 @@ function openDailyLookForStatus() {
 function openStatusAudience() {
   const text = String(document.getElementById('status-compose-text')?.value || '').trim();
   if (!text && !statusComposerImage && !statusComposerVideo) { toast('Add text, an image or a video first.'); return; }
-  if (text && window.VaultlixContentSafety?.check(text).blocked) { toast('This text cannot be shared. Edit it and try again.'); return; }
   document.getElementById('status-compose-content').hidden = true;
   document.getElementById('status-compose-audience').hidden = false;
 }
@@ -17897,7 +17809,6 @@ async function publishStatus() {
   const state = loadAccountState(); if (!state) return;
   const text = String(document.getElementById('status-compose-text')?.value || '').trim();
   if (!text && !statusComposerImage && !statusComposerVideo) { toast('Add text, an image or a video first.'); return; }
-  if (text && window.VaultlixContentSafety?.check(text).blocked) { toast('This text cannot be shared. Edit it and try again.'); return; }
   const selected = [...document.querySelectorAll('[data-status-room]:checked')].map(input => rooms.get(input.dataset.statusRoom)).filter(room => room?.sharedKey);
   if (!selected.length) { toast('Choose at least one friend.'); return; }
   const button=document.getElementById('status-publish'); button.disabled=true; button.textContent='Encrypting…';
@@ -20080,12 +19991,8 @@ function showForwardAttachmentPicker(recOrRecs, options = {}) {
 }
 
 // Sends already-decrypted text into another conversation, encrypted with that
-// conversation's own key. Same safety check as typing it there.
+// conversation's own key.
 async function sendForwardedText(room, text) {
-  if (!window.VaultlixContentSafety || VaultlixContentSafety.check(text).blocked) {
-    toast('Message not forwarded: it could not pass the on-device safety check.');
-    return false;
-  }
   let encrypted;
   try { encrypted = await encryptTextMsg(room, text); }
   catch (e) { toast("Couldn't encrypt — message not sent"); return false; }
@@ -20757,13 +20664,11 @@ function renderMessageRecord(room, rec, animate) {
   div.dataset.msgId = rec.id;
   if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
   if (renderLocalImageSafetyGate(room, rec, div, body, typing)) return div;
-  const safetyText = [rec.content,rec.replyData?.text,rec.name,rec.fileName,rec.title].filter(v=>typeof v==='string').join(' ');
-  const screened = window.VaultlixContentSafety?.check(safetyText);
   const hiddenMedia = needsAttachmentReveal(rec);
-  if (!rec.isMe && !safetyRevealedRecords.has(rec) && (hiddenMedia || screened?.blocked || (!window.VaultlixContentSafety && rec.kind === 'text'))) {
+  if (!rec.isMe && !safetyRevealedRecords.has(rec) && hiddenMedia) {
     const notice=document.createElement('div'); notice.className='msg-blocked';
     const label=document.createElement('span');
-    label.textContent=hiddenMedia?'Attachment hidden. Open only if you trust this sender.':'Potentially harmful message hidden by on-device safety checks.';
+    label.textContent='Attachment hidden. Open only if you trust this sender.';
     const show=document.createElement('button'); show.type='button'; show.textContent='Show';
     show.addEventListener('click',()=>{ safetyRevealedRecords.add(rec); div.remove(); renderChatBody(room); });
     const report=document.createElement('button'); report.type='button'; report.textContent='Report / Block';
@@ -22453,11 +22358,6 @@ async function sendMsg() {
   const content = input.value.trim();
   if (!content || !room) return;
   if (editingMessage) return submitDirectMessageEdit(room, content);
-  if (!window.VaultlixContentSafety) { toast('Safety checks could not load. Reconnect and reopen Vaultlix before sending.'); return; }
-  if (VaultlixContentSafety.check(content).blocked || (replyTo && !replyTo.isImage && VaultlixContentSafety.check(replyTo.text).blocked)) {
-    toast('Message not sent: abusive, threatening or exploitative language was detected on this device. Edit the message to continue.'); return;
-  }
-
   // The tiny re-compressed thumbnail (see makeTinyThumbnail/startReply)
   // finishes in the background; await it here so it's actually ready by
   // the time the reply goes out, in case send happens right after tapping
@@ -27236,9 +27136,6 @@ async function submitDirectMessageEdit(room, text) {
   if (!edit || edit.roomCode !== room?.code) { cancelReply(); return false; }
   const target = room.messages.find(message => message.id === edit.msgId);
   if (!target || !messageCanEdit(target)) { toast('Messages can only be edited within 30 minutes'); cancelReply(); return false; }
-  if (!window.VaultlixContentSafety || VaultlixContentSafety.check(text).blocked) {
-    toast('This text cannot be shared. Edit it and try again.'); return false;
-  }
   if (text === target.content) { cancelReply(); return true; }
   const editId = newMsgId();
   let content;
