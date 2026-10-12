@@ -12,6 +12,7 @@ const generator = fs.readFileSync(path.join(root, 'scripts', 'generate-ios-app-s
 const png = fs.readFileSync(path.join(root, 'client', 'media', 'vaultlix-ios-app-store-card.png'));
 const appStoreBadge = fs.readFileSync(path.join(root, 'client', 'media', 'download-on-the-app-store.svg'), 'utf8');
 const playStoreBadge = fs.readFileSync(path.join(root, 'client', 'media', 'get-it-on-google-play.png'));
+const appPreview = fs.readFileSync(path.join(root, 'client', 'media', 'vaultlix-app-preview.png'));
 const server = fs.readFileSync(path.join(root, 'server', 'index.js'), 'utf8');
 
 const APP_STORE_URL = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
@@ -38,10 +39,13 @@ test('Get the app link provides a Vaultlix preview image to messaging apps', () 
   assert.match(getApp, /<link rel="canonical" href="https:\/\/vaultlix\.com\/app">/);
   assert.match(getApp, /<meta property="og:title" content="Vaultlix — Your mobile number stays yours">/);
   assert.match(getApp, /<meta property="og:url" content="https:\/\/vaultlix\.com\/app">/);
-  assert.match(getApp, /<meta property="og:image" content="https:\/\/vaultlix\.com\/icons\/icon-512\.png\?v=20261012">/);
-  assert.match(getApp, /<meta property="og:image:width" content="512">/);
-  assert.match(getApp, /<meta property="og:image:height" content="512">/);
+  assert.match(getApp, /<meta property="og:image" content="https:\/\/vaultlix\.com\/media\/vaultlix-app-preview\.png\?v=20261012b">/);
+  assert.match(getApp, /<meta property="og:image:width" content="1200">/);
+  assert.match(getApp, /<meta property="og:image:height" content="630">/);
   assert.match(getApp, /<meta property="og:image:alt" content="Vaultlix logo">/);
+  assert.equal(appPreview.subarray(1, 4).toString(), 'PNG');
+  assert.equal(appPreview.readUInt32BE(16), 1200);
+  assert.equal(appPreview.readUInt32BE(20), 630);
 });
 
 test('website uses official black store badge artwork at matching visual sizes', () => {
