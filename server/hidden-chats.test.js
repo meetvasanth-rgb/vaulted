@@ -470,7 +470,7 @@ test('Android password managers do not treat the local hidden-chat passcode as a
   for (const id of ['hidden-chats-current', 'hidden-chats-new', 'hidden-chats-confirm']) {
     assert.match(client, new RegExp(`class="hidden-chats-secret-input" id="${id}" type="text"[^>]*autocomplete="off"`));
   }
-  assert.match(client, /\.hidden-chats-secret-input\{-webkit-text-security:disc\}/);
+  assert.match(client, /\.hidden-chats-secret-input,\.local-secret-input\{-webkit-text-security:disc\}/);
   assert.doesNotMatch(client, /id="hidden-chats-(?:current|new|confirm)"[^>]*autocomplete="new-password"/);
 });
 

@@ -56,7 +56,7 @@ test('an answered iOS CallKit call temporarily presents above App Lock', () => {
 
 test('App Lock passcode fields request the native numeric keypad', () => {
   for (const id of ['app-lock-passcode', 'app-lock-current', 'app-lock-new', 'app-lock-confirm']) {
-    assert.match(client, new RegExp(`id="${id}"[^>]*type="password"[^>]*inputmode="numeric"[^>]*pattern="\\[0-9\\]\\*"`));
+    assert.match(client, new RegExp(`id="${id}"[^>]*type="text"[^>]*inputmode="numeric"[^>]*pattern="\\[0-9\\]\\*"`));
   }
   assert.match(client, /if \(!\/\^\\d\{6,\}\$\/\.test\(next\)\) \{ error\.textContent = 'Use at least 6 digits\.'/);
   assert.doesNotMatch(client, /id="account-login-password"[^>]*inputmode="numeric"/);

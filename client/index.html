@@ -1122,7 +1122,7 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .app-lock-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.app-lock-actions button{border:1px solid #D8CDD0;border-radius:999px;background:#fff;color:#5A4B50;padding:10px 16px;cursor:pointer}.app-lock-actions .primary{background:#682C43;border-color:#682C43;color:#fff}.app-lock-actions .danger{color:#9B2945;border-color:#D8A2AE}
 .vault-list-settings[hidden]{display:none!important}
 .hidden-chats-sheet{font-family:'Inter',sans-serif}.hidden-chats-sheet .locker-brand{margin-bottom:17px}.hidden-chats-sheet .app-lock-copy{margin-bottom:18px}.hidden-chats-sheet .app-lock-actions{align-items:stretch}.hidden-chats-sheet .app-lock-actions button{min-width:0;min-height:46px;border-radius:14px;font:750 13px/1.25 'Manrope',sans-serif}
-.hidden-chats-secret-input{-webkit-text-security:disc}
+.hidden-chats-secret-input,.local-secret-input{-webkit-text-security:disc}
 .hidden-chats-timeout{margin:0 0 18px}.hidden-chats-section-label{display:block;margin:0 0 8px;color:#57464E;font:750 11px/1.2 'Inter',sans-serif}.hidden-chats-timeout-copy{margin:8px 1px 0;color:#8D7982;font:500 11px/1.45 'Inter',sans-serif}.hidden-chats-timeout-options{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.hidden-chats-timeout-options button{height:40px;border:1px solid #E0D3D8;border-radius:12px;background:#fff;color:#715C65;font:750 12px 'Manrope',sans-serif}.hidden-chats-timeout-options button.active{border-color:#682C43;background:#682C43;color:#fff;box-shadow:0 7px 16px rgba(104,44,67,.17)}
 #hidden-chats-actions{display:grid;grid-template-columns:minmax(0,1fr);gap:9px;margin-top:4px}#hidden-chats-actions button{width:100%;white-space:normal}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-done{background:#682C43;border-color:#682C43;color:#fff}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-change{background:#fff;color:#682C43}.hidden-chats-sheet.manage-mode #hidden-chats-actions .hidden-chats-remove{background:#FFF5F6;border-color:#EDCDD4;color:#9B2945}
 .hidden-chats-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;padding:11px 13px;border:1px solid #E8D2DA;border-radius:14px;background:#FAF1F4;color:#682C43;font:750 12px/1.35 'Manrope',sans-serif}.hidden-chats-bar button.quiet{height:34px;border:1px solid #D8BFC8;border-radius:11px;background:#fff;color:#682C43;padding:0 13px;font:750 11px 'Manrope',sans-serif}
@@ -3545,7 +3545,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     </div>
     <div id="password-field" class="field" style="display:none">
       <label>Password <span style="color:var(--hint);font-weight:400">(optional)</span></label>
-      <input type="password" id="password-input" placeholder="Leave blank if no password" autocomplete="off"/>
+      <input class="local-secret-input" type="text" id="password-input" placeholder="Leave blank if no password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false"/>
     </div>
     <div class="err-msg" id="err-msg"></div>
     <button class="btn-gold" id="setup-btn" onclick="handleSetup()">Continue</button>
@@ -4125,8 +4125,8 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   </div>
   <div class="pc-word">Vaultlix</div>
   <div class="pc-lock-copy">Enter your independent Vaultlix passcode. The phone's passcode cannot unlock Vaultlix.</div>
-  <form class="app-lock-form" id="app-lock-form" onsubmit="unlockAppLock(event)">
-    <input class="app-lock-input" id="app-lock-passcode" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode" oninput="scheduleAppLockAutoUnlock()"/>
+  <form class="app-lock-form" id="app-lock-form" onsubmit="unlockAppLock(event)" autocomplete="off">
+    <input class="app-lock-input local-secret-input" id="app-lock-passcode" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" minlength="6" aria-label="Vaultlix passcode" placeholder="Vaultlix passcode" oninput="scheduleAppLockAutoUnlock()"/>
     <div class="app-lock-error" id="app-lock-error" aria-live="polite"></div>
     <button class="pc-unlock" id="app-lock-unlock" type="submit">Unlock Vaultlix</button>
     <button class="app-lock-forgot" type="button" onclick="forgetAppLock()">Forgot passcode? Erase Vaultlix from this device</button>
@@ -4134,12 +4134,12 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="app-lock-overlay" id="app-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="app-lock-title">
-  <form class="app-lock-sheet" id="app-lock-setup-form" onsubmit="saveAppLock(event)">
+  <form class="app-lock-sheet" id="app-lock-setup-form" onsubmit="saveAppLock(event)" autocomplete="off">
     <h2 class="app-lock-title" id="app-lock-title">Vaultlix App Lock</h2>
     <div class="app-lock-copy" id="app-lock-setup-copy">Create a passcode that is different from your phone passcode. Vaultlix will require it every time the app is reopened. App Lock protects the screen; it does not separately encrypt browser storage.</div>
-    <label class="app-lock-field" id="app-lock-current-wrap" style="display:none"><span>Current Vaultlix passcode</span><input id="app-lock-current" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" minlength="6"/></label>
-    <label class="app-lock-field"><span id="app-lock-new-label">New Vaultlix passcode</span><input id="app-lock-new" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" minlength="6" required/></label>
-    <label class="app-lock-field"><span>Confirm passcode</span><input id="app-lock-confirm" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" minlength="6" required/></label>
+    <label class="app-lock-field" id="app-lock-current-wrap" style="display:none"><span>Current Vaultlix passcode</span><input class="local-secret-input" id="app-lock-current" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" minlength="6"/></label>
+    <label class="app-lock-field"><span id="app-lock-new-label">New Vaultlix passcode</span><input class="local-secret-input" id="app-lock-new" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" minlength="6" required/></label>
+    <label class="app-lock-field"><span>Confirm passcode</span><input class="local-secret-input" id="app-lock-confirm" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" minlength="6" required/></label>
     <div class="app-lock-error" id="app-lock-setup-error" aria-live="polite"></div>
     <div class="app-lock-copy"><strong>Important:</strong> Vaultlix cannot recover this passcode. Resetting it erases local conversation credentials; conversations stored only on this device may be permanently lost.</div>
     <div class="app-lock-actions"><button class="danger" id="app-lock-disable" type="button" onclick="disableAppLock()" style="display:none">Disable App Lock</button><button type="button" onclick="closeAppLockSettings()">Cancel</button><button class="primary" type="submit">Save</button></div>
@@ -4175,21 +4175,21 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="app-lock-overlay" id="locker-setup-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-setup-title">
-  <form class="app-lock-sheet locker-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)">
+  <form class="app-lock-sheet locker-sheet" id="locker-setup-form" onsubmit="saveLockerSetup(event)" autocomplete="off">
     <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Private on this device</div><h2 class="app-lock-title" id="locker-setup-title">Create your Locker</h2></div></div>
     <div class="app-lock-copy" id="locker-setup-copy">Choose a password for your Locker, separate from your Hidden Chats password, Vaultlix account password, and App Lock passcode. It guards notes and photos stored only on this device. Vaultlix cannot recover it — losing it permanently loses everything in your Locker.</div>
-    <label class="app-lock-field"><span>Locker password</span><input id="locker-setup-password" type="password" autocomplete="new-password" minlength="8" required/></label>
-    <label class="app-lock-field"><span>Confirm password</span><input id="locker-setup-confirm" type="password" autocomplete="new-password" minlength="8" required/></label>
+    <label class="app-lock-field"><span>Locker password</span><input class="local-secret-input" id="locker-setup-password" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" minlength="8" required/></label>
+    <label class="app-lock-field"><span>Confirm password</span><input class="local-secret-input" id="locker-setup-confirm" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" minlength="8" required/></label>
     <div class="app-lock-error" id="locker-setup-error" aria-live="polite"></div>
     <div class="app-lock-actions"><button type="button" onclick="closeLockerSetup()">Cancel</button><button class="primary" type="submit">Create Locker</button></div>
   </form>
 </div>
 
 <div class="app-lock-overlay" id="locker-unlock-overlay" role="dialog" aria-modal="true" aria-labelledby="locker-unlock-title">
-  <form class="app-lock-sheet locker-sheet" id="locker-unlock-form" onsubmit="submitLockerUnlock(event)">
+  <form class="app-lock-sheet locker-sheet" id="locker-unlock-form" onsubmit="submitLockerUnlock(event)" autocomplete="off">
     <div class="locker-brand"><span class="locker-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><div><div class="locker-kicker">Encrypted locally</div><h2 class="app-lock-title" id="locker-unlock-title">Unlock Locker</h2></div></div>
     <div class="app-lock-copy">Enter the separate password created for Locker. Your Hidden Chats password and App Lock passcode will not unlock it.</div>
-    <label class="app-lock-field"><span>Locker password</span><input id="locker-unlock-password" type="password" autocomplete="current-password" required/></label>
+    <label class="app-lock-field"><span>Locker password</span><input class="local-secret-input" id="locker-unlock-password" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" oncopy="return false" oncut="return false" required/></label>
     <div class="app-lock-error" id="locker-unlock-error" aria-live="polite"></div>
     <div class="app-lock-actions"><button type="button" onclick="closeLockerUnlockScreen()">Cancel</button><button class="primary" type="submit">Unlock</button></div>
   </form>
