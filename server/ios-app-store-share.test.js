@@ -34,6 +34,16 @@ test('Get the app QR routes each phone to its correct store', () => {
   assert.match(server, /url === '\/app'/);
 });
 
+test('Get the app link provides a Vaultlix preview image to messaging apps', () => {
+  assert.match(getApp, /<link rel="canonical" href="https:\/\/vaultlix\.com\/app">/);
+  assert.match(getApp, /<meta property="og:title" content="Vaultlix — Your mobile number stays yours">/);
+  assert.match(getApp, /<meta property="og:url" content="https:\/\/vaultlix\.com\/app">/);
+  assert.match(getApp, /<meta property="og:image" content="https:\/\/vaultlix\.com\/icons\/icon-512\.png\?v=20261012">/);
+  assert.match(getApp, /<meta property="og:image:width" content="512">/);
+  assert.match(getApp, /<meta property="og:image:height" content="512">/);
+  assert.match(getApp, /<meta property="og:image:alt" content="Vaultlix logo">/);
+});
+
 test('website uses official black store badge artwork at matching visual sizes', () => {
   assert.match(appStoreBadge, /Download_on_the_App_Store_Badge/);
   assert.equal(playStoreBadge.subarray(1, 4).toString(), 'PNG');
