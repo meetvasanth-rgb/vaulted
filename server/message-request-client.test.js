@@ -497,6 +497,8 @@ test('the privacy choice is cached per account, defaults to anyone, and lists th
 test('the Settings row sits in Privacy & Security and the status refreshes when Settings opens', () => {
   assert.match(client, /id="settings-request-policy-row" onclick="openRequestPolicySheet\(\)"/);
   assert.match(client, /privacy:\['settings-app-lock-row','settings-request-policy-row','settings-hidden-chats-row','settings-locker-row'\]/);
+  assert.match(client, /#settings-request-policy-row\{\s*display:grid;\s*grid-template-columns:36px minmax\(0,1fr\)/);
+  assert.match(client, /#settings-request-policy-row \.settings-status\{[\s\S]*?grid-column:2;[\s\S]*?white-space:normal;/);
   assert.match(extractFn(client, 'loadSettingsState'), /refreshRequestPolicyStatus\(\)\.catch\(\(\) => \{\}\);/);
   assert.match(extractFn(client, 'openRequestPolicySheet'), /api\('\/api\/account\/request-policy', \{ accountId:state\.accountId, sessionToken:state\.sessionToken, policy \}\)/);
 });
