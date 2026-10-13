@@ -40,3 +40,9 @@ test('the current accepted-account profile outranks an older per-room encrypted 
   assert.match(client, /peer\.displayName && \(room\.peerName !== peer\.displayName \|\| !room\.peerNameFromAccountProfile\)/);
   assert.match(client, /room\.peerNameFromAccountProfile = true/);
 });
+
+test('profile renames repair every local conversation linked to the same Vaultlix number', () => {
+  assert.match(client, /const relatedRooms = new Set\(\)/);
+  assert.match(client, /normalizePrivateNumber\(candidate\.peerPrivateNumber\) === peer\.privateNumber/);
+  assert.match(client, /for \(const room of relatedRooms\)/);
+});

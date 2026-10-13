@@ -13478,31 +13478,42 @@ async function reconcileConversationPeerIdentities(requests, state) {
       codes.add(code);
       acceptedCodesByPeer.set(peer.privateNumber, codes);
     }
-    const room = code ? rooms.get(code) : null;
-    if (!room) continue;
-    const current = normalizePrivateNumber(room.peerPrivateNumber);
-    const selfNumber = normalizePrivateNumber(state.privateNumber);
-    let changed = false;
-    if (!current || current === selfNumber) {
-      room.peerPrivateNumber = peer.privateNumber;
-      changed = true;
+    // A reopened account conversation can have a newer room code while an
+    // older accepted request still points at the original invitation. Match
+    // by the peer's stable Vaultlix number as well, so every local duplicate
+    // receives the current account name once instead of retaining an old
+    // device label indefinitely.
+    const relatedRooms = new Set();
+    const invitationRoom = code ? rooms.get(code) : null;
+    if (invitationRoom) relatedRooms.add(invitationRoom);
+    for (const candidate of rooms.values()) {
+      if (normalizePrivateNumber(candidate.peerPrivateNumber) === peer.privateNumber) relatedRooms.add(candidate);
     }
-    // Accepted account-to-account connections are established rooms even
-    // when the peer currently has no device membership. This also migrates
-    // room snapshots saved before peerName/everOnline were persisted.
-    if (peer.displayName && (room.peerName !== peer.displayName || !room.peerNameFromAccountProfile)) {
-      room.peerName = peer.displayName;
-      room.peerNameFromAccountProfile = true;
-      changed = true;
+    for (const room of relatedRooms) {
+      const current = normalizePrivateNumber(room.peerPrivateNumber);
+      const selfNumber = normalizePrivateNumber(state.privateNumber);
+      let changed = false;
+      if (!current || current === selfNumber) {
+        room.peerPrivateNumber = peer.privateNumber;
+        changed = true;
+      }
+      // Accepted account-to-account connections are established rooms even
+      // when the peer currently has no device membership. This also migrates
+      // room snapshots saved before peerName/everOnline were persisted.
+      if (peer.displayName && (room.peerName !== peer.displayName || !room.peerNameFromAccountProfile)) {
+        room.peerName = peer.displayName;
+        room.peerNameFromAccountProfile = true;
+        changed = true;
+      }
+      if (room.peerProfileImage !== peer.profileImage) {
+        room.peerProfileImage = peer.profileImage;
+        changed = true;
+        if (room.code === activeRoomCode) renderChatPeerAvatar(room);
+      }
+      if (!room.everOnline) { room.everOnline = true; changed = true; }
+      if (changed) await persistRoom(room);
+      if (changed) provisionNativeCallRoom(room).catch(() => {});
     }
-    if (room.peerProfileImage !== peer.profileImage) {
-      room.peerProfileImage = peer.profileImage;
-      changed = true;
-      if (room.code === activeRoomCode) renderChatPeerAvatar(room);
-    }
-    if (!room.everOnline) { room.everOnline = true; changed = true; }
-    if (changed) await persistRoom(room);
-    if (changed) provisionNativeCallRoom(room).catch(() => {});
   }
   // Repair installations affected by the old acceptance race. A room is
   // eligible only when it belongs to this account, never connected, carries
