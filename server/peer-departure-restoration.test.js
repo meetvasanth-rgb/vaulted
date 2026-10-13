@@ -10,7 +10,7 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 test('an established conversation keeps the peer identity after their device is erased', () => {
   assert.match(client, /peerName: room\.peerName \|\| null/);
   assert.match(client, /everOnline: !!room\.everOnline/);
-  assert.match(client, /makeRoom\(\{ code: session\.code[\s\S]*peerName:session\.peerName, peerNameEncrypted:session\.peerNameEncrypted, everOnline:session\.everOnline/);
+  assert.match(client, /makeRoom\(\{ code: session\.code[\s\S]*peerName:session\.peerName, peerNameEncrypted:session\.peerNameEncrypted, peerNameFromAccountProfile:session\.peerNameFromAccountProfile, everOnline:session\.everOnline/);
 });
 
 test('a completed handshake is persisted before the conversation can be restored', () => {
@@ -23,8 +23,9 @@ test('an established restored conversation cannot reopen the legacy share-room s
   assert.match(client, /everOnline: !!everOnline/);
 });
 
-test('older snapshots are repaired from the accepted connection identity without downgrading an encrypted name', () => {
-  assert.match(client, /if \(!room\.peerNameEncrypted && peer\.displayName && room\.peerName !== peer\.displayName\) \{ room\.peerName = peer\.displayName; changed = true; \}/);
+test('older snapshots are repaired from the accepted connection identity', () => {
+  assert.match(client, /peer\.displayName && \(room\.peerName !== peer\.displayName \|\| !room\.peerNameFromAccountProfile\)/);
+  assert.match(client, /room\.peerName = peer\.displayName;\s*room\.peerNameFromAccountProfile = true;/);
   assert.match(client, /if \(!room\.everOnline\) \{ room\.everOnline = true; changed = true; \}/);
   assert.match(client, /if \(changed\) await persistRoom\(room\)/);
 });

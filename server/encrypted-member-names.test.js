@@ -32,3 +32,11 @@ test('an encrypted current peer name cannot be replaced by stale plaintext metad
   assert.match(client, /setStatus\(data\.peerOnline, room\.peerName\)/);
   assert.doesNotMatch(client, /if \(data\.peerName\) room\.peerName = data\.peerName/);
 });
+
+test('the current accepted-account profile outranks an older per-room encrypted name', () => {
+  assert.match(client, /peerNameFromAccountProfile: peerNameFromAccountProfile === true/);
+  assert.match(client, /peerNameFromAccountProfile: room\.peerNameFromAccountProfile === true/);
+  assert.match(client, /if \(room\.peerNameFromAccountProfile\) return true/);
+  assert.match(client, /peer\.displayName && \(room\.peerName !== peer\.displayName \|\| !room\.peerNameFromAccountProfile\)/);
+  assert.match(client, /room\.peerNameFromAccountProfile = true/);
+});
