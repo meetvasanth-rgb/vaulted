@@ -13433,6 +13433,7 @@ let pendingOutgoingConnections = [];
 // conversation for the same person. Remembered for ten minutes, or until the accept fails.
 const handledConnectionRequests = new Map();
 const HANDLED_CONNECTION_REQUEST_MS = 10 * 60 * 1000;
+let reconciledPeerProfileAccountId = null;
 function connectionRequestAlreadyHandled(requestId) {
   const at = handledConnectionRequests.get(requestId);
   if (!at) return false;
@@ -13513,6 +13514,30 @@ async function reconcileConversationPeerIdentities(requests, state) {
       if (!room.everOnline) { room.everOnline = true; changed = true; }
       if (changed) await persistRoom(room);
       if (changed) provisionNativeCallRoom(room).catch(() => {});
+    }
+  }
+  // Some early account conversations survived locally without their durable
+  // accepted-request mirror. Their stable peer Private Number is still part
+  // of the encrypted account snapshot, so resolve all such room names in one
+  // authenticated request once per launch and persist the current username.
+  const profileNumbers = [...new Set([...rooms.values()]
+    .map(room => normalizePrivateNumber(room.peerPrivateNumber))
+    .filter(number => number && number !== normalizePrivateNumber(state.privateNumber)))];
+  if (profileNumbers.length && reconciledPeerProfileAccountId !== state.accountId) {
+    const resolved = await api('/api/connections/profiles', {
+      accountId:state.accountId, sessionToken:state.sessionToken, privateNumbers:profileNumbers,
+    });
+    if (!resolved?.error && Array.isArray(resolved.profiles)) {
+      const profiles = new Map(resolved.profiles.map(profile => [normalizePrivateNumber(profile.privateNumber), profile]));
+      for (const room of rooms.values()) {
+        const profile = profiles.get(normalizePrivateNumber(room.peerPrivateNumber));
+        if (!profile?.displayName || (room.peerName === profile.displayName && room.peerNameFromAccountProfile)) continue;
+        room.peerName = profile.displayName;
+        room.peerNameFromAccountProfile = true;
+        await persistRoom(room);
+        if (room.code === activeRoomCode) updateHeaderRoomLabel(room);
+      }
+      reconciledPeerProfileAccountId = state.accountId;
     }
   }
   // Repair installations affected by the old acceptance race. A room is

@@ -4668,6 +4668,21 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     })) });
   }
 
+  if (path === '/api/connections/profiles' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    if (await rateLimited(`connection-profiles:${d.accountId}`, 30, 60 * 1000)) return resErr(res, 'Too many profile refreshes.', 429);
+    const requested = Array.isArray(d.privateNumbers) ? d.privateNumbers : [];
+    if (requested.length > 100) return resErr(res, 'Too many profiles requested.', 400);
+    const privateNumbers = [...new Set(requested.map(normalizePrivateNumber).filter(Boolean))];
+    const profiles = privateNumbers.map(privateNumber => {
+      const found = accountByPrivateNumber(privateNumber);
+      return found ? { privateNumber, displayName:found.account.displayName } : null;
+    }).filter(Boolean);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, profiles });
+  }
+
   if (path === '/api/connections/respond' && method === 'POST') {
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your session has expired.', 401);

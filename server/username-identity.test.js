@@ -59,6 +59,16 @@ test('connection inbox refresh heals legacy username snapshots once', () => {
   assert.match(server, /refreshedRequestIdentity[\s\S]*await persistAccount\(d\.accountId\)/);
 });
 
+test('legacy rooms resolve current peer names by stable Private Number once per launch', () => {
+  assert.match(server, /path === '\/api\/connections\/profiles'/);
+  assert.match(server, /authenticateAccountSession\(d\.accountId, d\.sessionToken\)/);
+  assert.match(server, /requested\.length > 100/);
+  assert.match(server, /accountByPrivateNumber\(privateNumber\)/);
+  assert.match(client, /reconciledPeerProfileAccountId !== state\.accountId/);
+  assert.match(client, /api\('\/api\/connections\/profiles'/);
+  assert.match(client, /room\.peerName = profile\.displayName[\s\S]*await persistRoom\(room\)/);
+});
+
 test('accepted connections retain the peer Private Number for relationship matching', () => {
   assert.match(client, /function peerIdentityFromConnection\(request, state = loadAccountState\(\)\)/);
   assert.match(client, /senderNumber !== selfNumber/);
