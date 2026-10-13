@@ -278,7 +278,7 @@ public class VaultlixMessagingService extends MessagingService {
     // tick staying on "sent" until the recipient opens the app. The room
     // token comes from NativeCallRoomStore, not the WebView's own storage:
     // that store is populated for every room the moment its E2E key is
-    // derived (see provisionAndroidCallRoom in client/index.html), not only
+    // derived (see provisionNativeCallRoom in client/index.html), not only
     // rooms that have been called through, and — unlike IndexedDB inside the
     // WebView — it's readable from here even when the WebView isn't loaded
     // at all. Best-effort and silent on any failure: the page's own poll
@@ -366,13 +366,20 @@ public class VaultlixMessagingService extends MessagingService {
         boolean hidePreview = "true".equalsIgnoreCase(data.get("hidePreview"));
         boolean isVideoCall = "true".equalsIgnoreCase(data.get("hasVideo"))
                 || body.toLowerCase(java.util.Locale.ROOT).contains("video call");
+        NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
         if (!hidePreview && caller.isEmpty() && body.toLowerCase().endsWith(" is calling")) {
             caller = body.substring(0, body.length() - " is calling".length()).trim();
+        }
+        // Conversation names are encrypted on the server, so a background
+        // push can only carry a generic label. Resolve the display name from
+        // this device's encrypted native-room record instead.
+        if (!hidePreview && savedRoom != null && !savedRoom.peerName.isEmpty()
+                && (caller.isEmpty() || "Vaultlix caller".equalsIgnoreCase(caller))) {
+            caller = savedRoom.peerName;
         }
         if (hidePreview) caller = getString(R.string.native_private_call);
         else if (caller.isEmpty()) caller = getString(R.string.vaultlix_caller);
         if (body.isEmpty()) body = getString(R.string.tap_to_answer);
-        NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
         String avatarPath = hidePreview || savedRoom == null ? null : savedRoom.avatarPath;
         Bitmap callerAvatar = avatarPath == null ? null : BitmapFactory.decodeFile(avatarPath);
         // Keep one native media owner from ringing through hang-up. Handing a

@@ -29,13 +29,15 @@ final class NativeCallRoomStore {
         final String token;
         final byte[] aesKey;
         final String avatarPath;
+        final String peerName;
 
-        Room(String handle, String code, String token, byte[] aesKey, String avatarPath) {
+        Room(String handle, String code, String token, byte[] aesKey, String avatarPath, String peerName) {
             this.handle = handle;
             this.code = code;
             this.token = token;
             this.aesKey = aesKey;
             this.avatarPath = avatarPath;
+            this.peerName = peerName;
         }
     }
 
@@ -51,17 +53,24 @@ final class NativeCallRoomStore {
     }
 
     boolean save(String handle, String code, String token, String keyBase64) {
-        return save(handle, code, token, keyBase64, null);
+        return save(handle, code, token, keyBase64, null, null);
     }
 
     boolean save(String handle, String code, String token, String keyBase64, String profileImage) {
+        return save(handle, code, token, keyBase64, profileImage, null);
+    }
+
+    boolean save(String handle, String code, String token, String keyBase64, String profileImage, String peerName) {
         try {
             if (!handle.matches("^[A-Za-z0-9_-]{16,64}$") || code.length() > 128 || token.length() > 256) return false;
             byte[] key = Base64.decode(keyBase64, Base64.DEFAULT);
             if (key.length != 32) return false;
+            String cleanPeerName = peerName == null ? "" : peerName.trim();
+            if (cleanPeerName.length() > 80) cleanPeerName = cleanPeerName.substring(0, 80);
             JSONObject clear = new JSONObject()
                     .put("handle", handle).put("code", code).put("token", token)
-                    .put("key", Base64.encodeToString(key, Base64.NO_WRAP));
+                    .put("key", Base64.encodeToString(key, Base64.NO_WRAP))
+                    .put("peerName", cleanPeerName);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, storageKey());
             byte[] ciphertext = cipher.doFinal(clear.toString().getBytes(StandardCharsets.UTF_8));
@@ -89,7 +98,7 @@ final class NativeCallRoomStore {
             if (key.length != 32) return null;
             File avatar = avatarFile(handle);
             return new Room(clear.getString("handle"), clear.getString("code"), clear.getString("token"), key,
-                    avatar.isFile() ? avatar.getAbsolutePath() : null);
+                    avatar.isFile() ? avatar.getAbsolutePath() : null, clear.optString("peerName", ""));
         } catch (Exception ignored) { return null; }
     }
 

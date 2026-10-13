@@ -254,7 +254,15 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         let hidePreview = data["hidePreview"] as? Bool ?? false
         let suppliedCaller = ((data["caller"] as? String) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let caller = hidePreview ? "Private call" : String((suppliedCaller.isEmpty ? "Someone" : suppliedCaller).prefix(80))
+        let storedPeerName: String = {
+            guard let roomHandle = data["roomHandle"] as? String else { return "" }
+            return NativeCallRoomStore.shared.room(handle: roomHandle)?.peerName?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }()
+        let resolvedCaller = (suppliedCaller.isEmpty || suppliedCaller.caseInsensitiveCompare("Vaultlix caller") == .orderedSame)
+            ? (storedPeerName.isEmpty ? "Someone" : storedPeerName)
+            : suppliedCaller
+        let caller = hidePreview ? "Private call" : String(resolvedCaller.prefix(80))
         let hasVideo = data["hasVideo"] as? Bool ?? false
         let callLabel = hasVideo ? "VIDEO CALL · \(caller)" : String(caller)
         let update = CXCallUpdate()

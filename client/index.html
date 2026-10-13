@@ -7565,21 +7565,7 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
       // an extractable in-memory key that is immediately moved to Keychain.
       !!window.webkit?.messageHandlers?.vaultlixCall || !!window.VaultlixAndroid?.supportsNativeWebRtc?.(), ['encrypt','decrypt']
     );
-    if (window.webkit?.messageHandlers?.vaultlixCall) {
-      try {
-        const rawNativeKey = await crypto.subtle.exportKey('raw', room.sharedKey);
-        window.webkit.messageHandlers.vaultlixCall.postMessage({
-          action: 'provisionRoom',
-          roomHandle: room.nativeRoomHandle,
-          code: room.code,
-          token: room.token,
-          key: bytesToBase64(new Uint8Array(rawNativeKey)),
-        });
-      } catch (e) {
-        console.error('Native call room provisioning failed');
-      }
-    }
-    await provisionAndroidCallRoom(room);
+    await provisionNativeCallRoom(room);
     // The key exists only now, after both public keys have been exchanged.
     // Publish the account name asynchronously so call/message setup is never
     // held up by this privacy metadata write.
@@ -7597,12 +7583,25 @@ async function deriveSharedKey(room, peerPubKeyB64, { isFirstJoin = false } = {}
   }
 }
 
-async function provisionAndroidCallRoom(room) {
-  if (!room?.sharedKey || !window.VaultlixAndroid?.supportsNativeWebRtc?.()) return false;
+async function provisionNativeCallRoom(room) {
+  if (!room?.sharedKey) return false;
   try {
     const rawNativeKey = await crypto.subtle.exportKey('raw', room.sharedKey);
     const nativeKey = bytesToBase64(new Uint8Array(rawNativeKey));
     const peerImage = safeProfileImageUri(room.peerProfileImage) || '';
+    const peerName = String(room.peerName || '').trim().slice(0, 80);
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({
+        action: 'provisionRoom', roomHandle: room.nativeRoomHandle,
+        code: room.code, token: room.token, key: nativeKey, peerName,
+      });
+    }
+    if (!window.VaultlixAndroid?.supportsNativeWebRtc?.()) return true;
+    if (typeof window.VaultlixAndroid.provisionCallRoomWithIdentity === 'function') {
+      return !!window.VaultlixAndroid.provisionCallRoomWithIdentity(
+        room.nativeRoomHandle, room.code, room.token, nativeKey, peerImage, peerName
+      );
+    }
     if (typeof window.VaultlixAndroid.provisionCallRoomWithAvatar === 'function') {
       return !!window.VaultlixAndroid.provisionCallRoomWithAvatar(
         room.nativeRoomHandle, room.code, room.token, nativeKey, peerImage
@@ -7614,7 +7613,7 @@ async function provisionAndroidCallRoom(room) {
       room.nativeRoomHandle, room.code, room.token, nativeKey
     );
   } catch (e) {
-    console.error('Android native call room provisioning failed');
+    console.error('Native call room provisioning failed');
     return false;
   }
 }
@@ -7849,6 +7848,7 @@ async function applyEncryptedPeerName(room, ciphertext) {
     if (room.peerName !== name) {
       room.peerName = name;
       await persistRoom(room);
+      await provisionNativeCallRoom(room);
       renderVaultList();
       if (room.code === activeRoomCode) updateHeaderRoomLabel(room);
     }
@@ -13553,10 +13553,10 @@ async function reconcileConversationPeerIdentities(requests, state) {
       room.peerProfileImage = peer.profileImage;
       changed = true;
       if (room.code === activeRoomCode) renderChatPeerAvatar(room);
-      provisionAndroidCallRoom(room).catch(() => {});
     }
     if (!room.everOnline) { room.everOnline = true; changed = true; }
     if (changed) await persistRoom(room);
+    if (changed) provisionNativeCallRoom(room).catch(() => {});
   }
   // Repair installations affected by the old acceptance race. A room is
   // eligible only when it belongs to this account, never connected, carries
@@ -21767,7 +21767,7 @@ async function repairRoomKeyFromAccountBackup(room, messages) {
       room.sharedKey = derived.sharedKey;
       room.lastKnownPeerPubKey = peerPubKey;
       await persistRoom(room);
-      await provisionAndroidCallRoom(room);
+      await provisionNativeCallRoom(room);
       if (room.code === activeRoomCode) updateE2EBar(room);
       scheduleAccountSync();
       return true;

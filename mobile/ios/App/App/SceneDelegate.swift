@@ -1516,8 +1516,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
            code.count <= 128,
            token.count <= 256,
            let key = Data(base64Encoded: keyString), key.count == 32 {
+            let peerName = (body["peerName"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             let saved = NativeCallRoomStore.shared.save(
-                NativeCallRoom(handle: handle, code: code, token: token, aesKey: key)
+                NativeCallRoom(
+                    handle: handle, code: code, token: token, aesKey: key,
+                    peerName: peerName.map { String($0.prefix(80)) }
+                )
             )
             print("VXCALL scene provision saved=\(saved)")
             return

@@ -1545,6 +1545,11 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean provisionCallRoomWithIdentity(String handle, String code, String token, String keyBase64, String profileImage, String peerName) {
+            return nativeCallRoomStore.save(handle, code, token, keyBase64, profileImage, peerName);
+        }
+
+        @JavascriptInterface
         public void removeCallRoom(String handle, String code) {
             nativeCallRoomStore.remove(handle == null ? "" : handle, code == null ? "" : code);
         }

@@ -6,6 +6,7 @@ struct NativeCallRoom: Codable {
     let code: String
     let token: String
     let aesKey: Data
+    let peerName: String?
 }
 
 /// Stores only the minimum material required to answer while WKWebView is

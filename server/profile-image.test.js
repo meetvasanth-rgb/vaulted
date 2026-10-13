@@ -13,6 +13,8 @@ const androidStore = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'andro
 const androidIncoming = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'IncomingCallActivity.java'), 'utf8');
 const androidPush = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
 const androidActiveCall = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'NativeCallActivity.java'), 'utf8');
+const iosCallManager = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'AppDelegate.swift'), 'utf8');
+const iosCallStore = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'NativeCallRoomStore.swift'), 'utf8');
 
 test('profile images are authenticated, bounded and persisted', () => {
   assert.match(server, /function normalizeProfileImage\(value\)/);
@@ -70,6 +72,20 @@ test('incoming calls show the peer profile photo with an initial fallback', () =
   assert.match(androidActiveCall, /identity\.addView\(portrait/);
   assert.match(androidPush, /callerBuilder\.setIcon\(IconCompat\.createWithBitmap\(callerAvatar\)\)/);
   assert.match(androidPush, /notification\.setLargeIcon\(callerAvatar\)/);
+});
+
+test('incoming calls resolve encrypted peer names from device-bound room storage', () => {
+  assert.match(client, /async function provisionNativeCallRoom\(room\)/);
+  assert.match(client, /peerName: room\.peerName/);
+  assert.match(client, /provisionCallRoomWithIdentity/);
+  assert.match(client, /applyEncryptedPeerName[\s\S]*await provisionNativeCallRoom\(room\)/);
+  assert.match(androidMain, /public boolean provisionCallRoomWithIdentity/);
+  assert.match(androidStore, /final String peerName/);
+  assert.match(androidPush, /savedRoom != null && !savedRoom\.peerName\.isEmpty\(\)/);
+  assert.match(androidPush, /!hidePreview[\s\S]*caller = savedRoom\.peerName/);
+  assert.match(iosCallStore, /let peerName: String\?/);
+  assert.match(iosCallManager, /let storedPeerName:[\s\S]*NativeCallRoomStore\.shared\.room\(handle: roomHandle\)\?\.peerName/);
+  assert.match(iosCallManager, /let caller = hidePreview \? "Private call"/);
 });
 
 test('privacy copy discloses optional profile image storage and visibility', () => {
