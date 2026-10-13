@@ -22133,7 +22133,7 @@ async function doPoll(room) {
     const wasEverOnline = room.everOnline;
     const previousPeerName = room.peerName;
     room.peerOnline = data.peerOnline;
-    if (!room.peerNameEncrypted && !data.peerNameCiphertext && data.peerName) room.peerName = data.peerName;
+    if (!room.peerNameFromAccountProfile && !room.peerNameEncrypted && !data.peerNameCiphertext && data.peerName) room.peerName = data.peerName;
     if (data.peerOnline) room.everOnline = true;
     if ((room.peerName && room.peerName !== previousPeerName) || room.everOnline !== wasEverOnline) {
       await persistRoom(room);
@@ -23245,7 +23245,7 @@ function startWaitingForPeer(room, { silent = false } = {}) {
       clearInterval(room.waitInterval); room.waitInterval = null;
       pendingRoomCode = null;
       room.peerOnline = true; room.everOnline = true;
-      if (!room.peerNameEncrypted && !d.peerNameCiphertext && d.peerName) room.peerName = d.peerName; // legacy plaintext row
+      if (!room.peerNameFromAccountProfile && !room.peerNameEncrypted && !d.peerNameCiphertext && d.peerName) room.peerName = d.peerName; // legacy plaintext row
       if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
       if (d.peerNameCiphertext) await applyEncryptedPeerName(room, d.peerNameCiphertext);
       if (d.deleteTimer !== undefined) room.deleteTimerSeconds = d.deleteTimer;
@@ -23332,7 +23332,10 @@ async function handleSetup({ silent = false } = {}) {
 
       room.code = result.code;
       room.token = result.token;
-      if (mode === 'connection' && pendingConnectionPeerName) room.peerName = pendingConnectionPeerName;
+      if (mode === 'connection' && pendingConnectionPeerName) {
+        room.peerName = pendingConnectionPeerName;
+        room.peerNameFromAccountProfile = true;
+      }
       if (mode === 'connection' && pendingConnectionPeerPrivateNumber) room.peerPrivateNumber = pendingConnectionPeerPrivateNumber;
       if (mode === 'connection') room.peerProfileImage = safeProfileImageUri(pendingConnectionPeerProfileImage);
       room.deleteTimerSeconds = result.deleteTimer ?? timerVal;
@@ -23412,7 +23415,10 @@ async function handleSetup({ silent = false } = {}) {
       room.code = result.code;
       room.token = result.token;
       if (!result.peerNameCiphertext) {
-        if (pendingJoinPeerName) room.peerName = pendingJoinPeerName;
+        if (pendingJoinPeerName) {
+          room.peerName = pendingJoinPeerName;
+          room.peerNameFromAccountProfile = true;
+        }
         else if (result.peerName) room.peerName = result.peerName;
       }
       if (pendingJoinPeerPrivateNumber) room.peerPrivateNumber = pendingJoinPeerPrivateNumber;
@@ -24876,7 +24882,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       // Legacy rows can retain the name used when the conversation was
       // created. Use that compatibility value only until this room has an
       // encrypted peer-name envelope; the envelope is the current truth.
-      if (!room.peerNameEncrypted && !result.peerNameCiphertext && result.peerName) room.peerName = result.peerName;
+      if (!room.peerNameFromAccountProfile && !room.peerNameEncrypted && !result.peerNameCiphertext && result.peerName) room.peerName = result.peerName;
       // Server's own record is authoritative here too — persistent won't
       // ever actually change post-creation, but connectedSince/
       // totalMessageCount are exactly the kind of thing that moves between
