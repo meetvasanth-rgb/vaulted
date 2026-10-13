@@ -4630,9 +4630,26 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         recoveredRequest = true;
       }
     }
+    // Connection requests are durable relationship records, but older rows
+    // may still contain the username captured when the request was created.
+    // Heal this account's copy from the linked accounts on inbox refresh so
+    // a rename replaces the legacy name once and remains correct thereafter.
+    let refreshedRequestIdentity = false;
+    for (const request of account.connectionRequests || []) {
+      const currentSenderName = accounts.get(request.senderAccountId)?.displayName;
+      const currentRecipientName = accounts.get(request.recipientAccountId)?.displayName;
+      if (currentSenderName && request.senderDisplayName !== currentSenderName) {
+        request.senderDisplayName = currentSenderName;
+        refreshedRequestIdentity = true;
+      }
+      if (currentRecipientName && request.recipientDisplayName !== currentRecipientName) {
+        request.recipientDisplayName = currentRecipientName;
+        refreshedRequestIdentity = true;
+      }
+    }
     const previousRequestCount = (account.connectionRequests || []).length;
     account.connectionRequests = compactConnectionRequests(account.connectionRequests, now);
-    if (recoveredRequest || account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
+    if (recoveredRequest || refreshedRequestIdentity || account.connectionRequests.length !== previousRequestCount) await persistAccount(d.accountId);
     const visibleRequests = [];
     for (const r of account.connectionRequests) {
       const peer = r.senderAccountId === d.accountId ? r.recipientAccountId : r.senderAccountId;

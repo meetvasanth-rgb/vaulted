@@ -49,6 +49,14 @@ test('username changes propagate to accepted peers and live conversations', () =
   assert.match(client, /room\.peerName !== previousPeerName[\s\S]*await persistRoom\(room\)/);
 });
 
+test('connection inbox refresh heals legacy username snapshots once', () => {
+  assert.match(server, /currentSenderName = accounts\.get\(request\.senderAccountId\)\?\.displayName/);
+  assert.match(server, /request\.senderDisplayName = currentSenderName/);
+  assert.match(server, /currentRecipientName = accounts\.get\(request\.recipientAccountId\)\?\.displayName/);
+  assert.match(server, /request\.recipientDisplayName = currentRecipientName/);
+  assert.match(server, /refreshedRequestIdentity[\s\S]*await persistAccount\(d\.accountId\)/);
+});
+
 test('accepted connections retain the peer Private Number for relationship matching', () => {
   assert.match(client, /function peerIdentityFromConnection\(request, state = loadAccountState\(\)\)/);
   assert.match(client, /senderNumber !== selfNumber/);
