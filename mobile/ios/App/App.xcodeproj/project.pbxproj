@@ -55,9 +55,6 @@
 		BA7255A4A3A0D1FE970B1E4D /* VaultlixClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */; };
 		C0B21D2DC7951604455920AD /* VaultlixNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10CA11030C1000100000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = C10CA11130C1000100000001 /* Localizable.strings */; };
-		D57000000000000000000001 /* LocalImageSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57000000000000000000002 /* LocalImageSafety.swift */; };
-		D57000000000000000000003 /* NSFW.mlmodel in Sources */ = {isa = PBXBuildFile; fileRef = D57000000000000000000004 /* NSFW.mlmodel */; };
-		D57000000000000000000005 /* NSFW-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D57000000000000000000006 /* NSFW-LICENSE.txt */; };
 		E8D5083D1575680D76A3D6C1 /* InviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E33355AA68B410D9BD4DD0D /* InviteView.swift */; };
 		EE9973E4CAF21CF135D4A099 /* InviteModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B84A13BEABD782A61081E2C /* InviteModel.swift */; };
 		F86AD57BFBBC0FB06E997F14 /* VaultlixClip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = 90E1FC57F3C0F3056483E6BE /* VaultlixClip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -173,9 +170,6 @@
 		C10CA11630C1000100000001 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C10CA11730C1000100000001 /* hy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = hy; path = hy.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D0B7C3DEC7E134CCD89A90AA /* InviteLink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InviteLink.swift; sourceTree = "<group>"; };
-		D57000000000000000000002 /* LocalImageSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalImageSafety.swift; sourceTree = "<group>"; };
-		D57000000000000000000004 /* NSFW.mlmodel */ = {isa = PBXFileReference; lastKnownFileType = file.mlmodel; path = Models/NSFW.mlmodel; sourceTree = "<group>"; };
-		D57000000000000000000006 /* NSFW-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Models/NSFW-LICENSE.txt"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -274,9 +268,6 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
-				D57000000000000000000002 /* LocalImageSafety.swift */,
-				D57000000000000000000004 /* NSFW.mlmodel */,
-				D57000000000000000000006 /* NSFW-LICENSE.txt */,
 				A11CE00630A1000100000001 /* SecureMessageStore.swift */,
 				A11CE00430A1000100000001 /* NativeCallRoomStore.swift */,
 				A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */,
@@ -437,7 +428,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D57000000000000000000005 /* NSFW-LICENSE.txt in Resources */,
 				B00D000130B0000100000001 /* vault_note.caf in Resources */,
 				B00D000230B0000100000001 /* vault_soft.caf in Resources */,
 				B00D000330B0000100000001 /* vault_call_vaultlix.caf in Resources */,
@@ -494,8 +484,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D57000000000000000000003 /* NSFW.mlmodel in Sources */,
-				D57000000000000000000001 /* LocalImageSafety.swift in Sources */,
 				A11CE00530A1000100000001 /* SecureMessageStore.swift in Sources */,
 				A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */,
 				A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */,

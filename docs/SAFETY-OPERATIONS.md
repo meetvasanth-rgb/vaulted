@@ -21,22 +21,10 @@ Unresolved reports remain until handled. Resolved/dismissed reports are pruned 9
 
 ## Filtering and limits
 
-Automatic message-text classification is disabled. Text is not blocked before encryption and decrypted text is not hidden by a dictionary or moderation model. Users can still block participants and submit reports with selected recent messages for human review.
+Automatic classification of private message text and media is disabled. Text, photos, albums, profile images, statuses and media previews are not blocked by a nudity or abuse model before encryption or after decryption. Users can block participants and submit reports with selected recent text messages for human review.
 
-Incoming media/attachments require an explicit reveal. This is an exposure control, not an image/audio classifier. No private text or attachment is sent to an external moderation provider. Existing Daily Look, photo and GIF service safety controls still apply. Profile photos and arbitrary media are not comprehensively classified. Report handling and user blocking remain essential. Do not claim guaranteed Apple approval or comprehensive automated moderation.
+No private message or attachment is sent to an external moderation provider. Today’s Look remains separate: when a user explicitly invokes it, the selected source image is sent to the image-generation provider and rejected if that provider’s moderation endpoint flags it. File type, size and decoding validation also remain in place. Report handling and user blocking remain essential. Do not describe Vaultlix as comprehensively classifying harmful content.
 
 ## Verification
 
-The automated suite covers account/membership authorization, explicit excerpt consent, unauthorized admin access, stale review rejection, bidirectional blocks, suspension of existing sessions, group access and chat tokens, signaling-socket closure, status removal, appeal restoration, deadlines, legacy retention, and attachment reveal controls. Local tests do not exercise real production reports or native devices.
-
-## iOS build 57: local image checks
-
-Build 57 bundles LOVOO NSFWDetector at commit 8ecbc9674686f4359f1b562dd27fc737ab794221 (BSD 3-Clause). The model checks photos before sharing, albums, profile-photo updates, received photo records including encrypted offline history, and displayed profile photos. Reply and PDF thumbnails are also checked, but checking a thumbnail does not classify the entire document. Supported animations are checked frame by frame up to 120 frames. A flagged photo cannot be revealed through the normal Show action; failed checks offer Retry. Profiles stay as initials until accepted. Calls can show initials until the next avatar render.
-
-Inference runs on the device before ordinary chat encryption or after recipient decryption. Media and classification results are never sent to a moderation provider. There is no cloud fallback. The unfinished universal OpenAI-screening draft was removed. Daily Look's existing, separately consented AI service is unchanged.
-
-The policy blocks NSFW scores >= 0.85 (raised from an initial 0.70 after a confirmed real-device false positive on an ordinary food photo). This is a reasoned threshold, not an accuracy claim. Videos, voice, full documents and remote GIF URLs are outside this classifier's scope and retain existing exposure/report/block controls. Web, Android and older iOS builds retain their previous controls. Sender-side filtering is not a server-enforced publication guarantee: modified clients can bypass it, which is why the supported iOS recipient also checks images locally. Report response and appeals remain necessary. Do not describe this as complete Guideline 1.2 coverage or guaranteed approval.
-
-## Android build 69: local image checks
-
-Android uses the same sharing/display gates with a separate bundled Yahoo-derived TFLite model (BSD-3-Clause; pinned source and hash in the model README). Inference runs off the UI thread without provider uploads. Static images are supported. Animated GIF/WebP and APNG are withheld; the classifier does not approve an animation from one frame. The threshold was raised to 0.85 (from an initial 0.70) after a confirmed real-device false positive on an ordinary food photo; it remains model-specific and not an accuracy or cross-platform-equivalence claim. APK/AAB device testing is still needed for false positives and speed. Reporting, blocking and the human response process remain essential.
+The automated suite covers account/membership authorization, explicit excerpt consent, unauthorized admin access, stale review rejection, bidirectional blocks, suspension of existing sessions, group access and chat tokens, signaling-socket closure, status removal, appeal restoration, deadlines, legacy retention, direct media rendering and retention of Today’s Look moderation. Local tests do not exercise real production reports or native devices.

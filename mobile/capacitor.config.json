@@ -11,10 +11,10 @@
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#1A1916",
-    "appendUserAgent": "VaultlixImageSafety/1"
+    "appendUserAgent": "VaultlixNative/1"
   },
   "ios": {
-    "appendUserAgent": "VaultlixImageSafety/1"
+    "appendUserAgent": "VaultlixNative/1"
   },
   "plugins": {
     "Keyboard": {

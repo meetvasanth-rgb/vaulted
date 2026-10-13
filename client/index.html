@@ -938,7 +938,6 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 .msg-pdf-icon{width:34px;height:34px;border-radius:8px;background:#762B47;color:#fff;display:grid;place-items:center;flex:none;font:800 9px/1 Inter,sans-serif;letter-spacing:.04em}
 .msg-pdf-copy{min-width:0;display:flex;flex-direction:column;gap:4px}.msg-pdf-name{font:600 12px/1.25 Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.msg-pdf-meta{font:500 10px/1.2 Inter,sans-serif;color:#8A7F84}
 .msg-media-blocked { display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.04); border:0.5px solid #E0D9D0; border-radius:6px; padding:8px 12px; margin-top:4px; color:#8A7F72; font-size:12px; }
-.msg-image-check-placeholder { min-width:160px; min-height:120px; display:flex; align-items:center; justify-content:center; border-radius:12px; background:var(--bg-secondary, #f5f3f4); color:#777; font-size:12px; padding:12px; }
 .msg-blocked { display:flex; align-items:center; gap:8px; background:#FDF0EE; border:0.5px solid #F1C4BC; border-radius:6px; padding:8px 12px; margin-top:4px; color:#C87588; font-size:12px; }
 .file-progress { font-size:10px; color:#9A8C7E; margin-top:4px; }
 .msg-viewonce { display:flex; align-items:center; gap:8px; background:#1A1916; border-radius:10px; padding:12px 14px; margin-top:4px; cursor:pointer; width:180px; }
@@ -3949,7 +3948,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 
     <div class="legal-section">
       <h3>Content safety and reports</h3>
-      <p>Vaultlix does not automatically classify or block message text. Use Report and Block to stop unwanted contact and send selected evidence to our reviewer. On supported iOS and Android builds, a bundled model checks photos and profile images for possible nudity on your device before sharing or display. Photos and classification results are not sent to a screening provider. Flagged images are withheld; failed checks can be retried. These checks can make mistakes and do not cover video, audio, documents or every form of harmful content. Incoming attachments also require an explicit reveal. Contact legal@vaultlix.com if a photo is incorrectly blocked.</p>
+      <p>Vaultlix does not automatically classify or block private message text, photos or videos. Use Report and Block to stop unwanted contact and send selected evidence to our reviewer. Images submitted to Today’s Look are processed and moderated by the image-generation provider only when you choose to use that feature.</p>
       <p>When you submit a report, we receive its category, your written details, the reporting and reported account identifiers, and the conversation reference. Up to five recent text messages are shared with our reviewer only if you explicitly select the message-sharing option. Reports are reviewed by the operator within 24 hours. Unresolved reports remain available until handled; resolved reports and review notes are removed 90 days after their last review update. Account-level block records remain while needed to enforce your block. A reviewer may close a reported conversation and suspend an account from new connections; restrictions can be reviewed on appeal. Contact privacy@vaultlix.com for follow-up or an appeal.</p>
       <p>Profile photos and display names are linked to your Vaultlix account and shown to people who know your exact private number or connect with you. Daily Look requests are authenticated to that account to enforce usage limits. Photos, report details and voluntarily shared report messages are therefore linked to account identity; end-to-end encryption of ordinary messages does not make these account features anonymous.</p>
       </div>
@@ -4968,7 +4967,6 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
      commitment) never leaves the device to render this; no external QR service
      is called. Exposes a single global `qrcode(typeNumber, errorCorrectionLevel)`
      factory; renderQrCanvas() below (in the app's own script) draws it. -->
-<script src="/media-safety-v3.js"></script>
 <!-- jsQR 1.4.0 (MIT) decodes camera frames locally. QR images never leave
      this device and no external scanning service is contacted. -->
 <script src="/vendor/jsQR.js"></script>
@@ -12435,88 +12433,8 @@ function updateAccountSettingsStatus() {
   }
   if (state) scheduleNumberCardPrewarm(state);
 }
-function localImageSafetyEnabled() {
-  return /VaultlixImageSafety\/1/.test(navigator.userAgent) || window.__vaultlixLocalImageSafety === true;
-}
-async function checkLocalImages(images, onProgress, options) {
-  if (!localImageSafetyEnabled()) return 'unsupported';
-  if (!window.VaultlixMediaSafety?.enabled) return 'unavailable';
-  for (const [index, image] of images.entries()) {
-    onProgress?.(`Checking photo ${index + 1} of ${images.length}…`);
-    const status = await window.VaultlixMediaSafety.check(image, options);
-    if (status !== 'allowed') return status;
-  }
-  return 'allowed';
-}
-async function allowLocalImageSend(images, onProgress, options) {
-  if (!localImageSafetyEnabled() || !images.length) return true;
-  const status = await checkLocalImages(images, onProgress, options);
-  if (status === 'allowed') return true;
-  toast(status === 'blocked' ? 'This photo may contain nudity and cannot be shared. If this seems wrong, contact support.' : (window.VaultlixMediaSafety?.failureMessage?.() || 'The on-device checker is not ready. Close and reopen Vaultlix, then try again.'));
-  return false;
-}
-const localProfileChecks = new Map();
 function displayProfileImageUri(value) {
-  const image = safeProfileImageUri(value);
-  if (!image || !localImageSafetyEnabled()) return image;
-  const existing = localProfileChecks.get(image);
-  if (existing) return existing === 'allowed' ? image : null;
-  // This bounded, in-memory cache is cleared when the page closes.
-  if (localProfileChecks.size >= 128) localProfileChecks.delete(localProfileChecks.keys().next().value);
-  localProfileChecks.set(image, 'pending');
-  checkLocalImages([image]).then(status => {
-    localProfileChecks.set(image, status);
-    renderAccountProfilePhoto();
-    renderVaultList();
-    refreshConnectionRequestAvatars();
-    const room = rooms.get(activeRoomCode);
-    if (room) renderChatPeerAvatar(room);
-  });
-  return null;
-}
-const localRecordChecks = new WeakMap();
-function recordImagesForLocalCheck(rec) {
-  const images = [];
-  if (rec.kind === 'file' && (rec.isImage || String(rec.mime || '').startsWith('image/'))) images.push(rec.base64);
-  if (rec.kind === 'album') for (const item of rec.images || []) images.push(item.base64);
-  if (rec.pdfPreview) images.push(rec.pdfPreview);
-  if (rec.videoThumb) images.push(rec.videoThumb);
-  if (rec.replyData?.thumb) images.push(rec.replyData.thumb);
-  return images;
-}
-function renderLocalImageSafetyGate(room, rec, div, body, typing) {
-  if (!localImageSafetyEnabled()) return false;
-  const images = recordImagesForLocalCheck(rec);
-  if (!images.length) return false;
-  let status = localRecordChecks.get(rec);
-  if (status === 'allowed') return false;
-  if (!status) {
-    status = 'pending'; localRecordChecks.set(rec, status);
-    const delayedNotice = setTimeout(() => {
-      if (localRecordChecks.get(rec) === 'pending') {
-        localRecordChecks.set(rec, 'checking');
-        if (room.code === activeRoomCode && room.messages.includes(rec)) renderChatBody(room);
-      }
-    }, 400);
-    checkLocalImages(images, undefined, { persist: !rec.viewOnce && !(rec.images || []).some(image => image.viewOnce) }).then(result => {
-      clearTimeout(delayedNotice);
-      localRecordChecks.set(rec, result);
-      if (room.code === activeRoomCode && room.messages.includes(rec)) renderChatBody(room);
-    });
-  }
-  const notice = document.createElement('div'); notice.className = status === 'pending' || status === 'checking' ? 'msg-image-check-placeholder' : 'msg-blocked';
-  const label = document.createElement('span');
-  label.textContent = status === 'pending' ? '' : status === 'checking' ? 'Checking photo on this device…' : status === 'blocked' ? 'Photo hidden: possible nudity detected on this device.' : 'Photo unavailable: the on-device check could not finish.';
-  notice.append(label);
-  if (status === 'unavailable') {
-    const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry';
-    retry.onclick = () => { localRecordChecks.delete(rec); renderChatBody(room); }; notice.append(retry);
-  }
-  if (!rec.isMe && status !== 'pending' && status !== 'checking') {
-    const report = document.createElement('button'); report.type = 'button'; report.textContent = 'Report / Block';
-    report.onclick = openReportPanel; notice.append(report);
-  }
-  div.append(notice); body.insertBefore(div, typing); return true;
+  return safeProfileImageUri(value);
 }
 
 function safeProfileImageUri(value) {
@@ -12641,7 +12559,6 @@ async function prepareDailyLookImage(file) {
 async function saveProfileImageUpdate(profileImageAction, profileImage = null) {
   const state = loadAccountState();
   if (!state) return false;
-  if (profileImageAction === 'replace' && !await allowLocalImageSend([profileImage])) return false;
   const result = await api('/api/account/profile', {
     accountId:state.accountId,
     sessionToken:state.sessionToken,
@@ -12923,7 +12840,6 @@ async function useDailyLookInStatus() {
   try {
     if (status) status.textContent = 'Preparing your look for status…';
     const image = await dailyLookProfileImage();
-    if (!await allowLocalImageSend([image], message => { if (status) status.textContent = message; })) return;
     clearStatusMedia();
     statusComposerImage = image;
     const preview = document.getElementById('status-image-preview');
@@ -15292,7 +15208,6 @@ function clearReplacedAccountLocally(accountId, reload = true) {
       idbRemoveSession(code).catch(() => {});
     }
   }
-  window.VaultlixMediaSafety?.clear?.();
   privateGroups.clear();
   localStorage.removeItem(PRIVATE_GROUPS_KEY);
   localStorage.removeItem(ACCOUNT_STATE_KEY);
@@ -15321,7 +15236,6 @@ async function signOutAnonymousAccount() {
   }));
   try { await api('/api/account/logout', { accountId:state.accountId, sessionToken:state.sessionToken }); } catch(e) {}
   disconnectInbox();
-  window.VaultlixMediaSafety?.clear?.();
   privateGroups.clear();
   localStorage.removeItem(PRIVATE_GROUPS_KEY);
   localStorage.removeItem(ACCOUNT_STATE_KEY);
@@ -17643,10 +17557,6 @@ async function refreshStatusFeed({ quiet = false } = {}) {
           // of downloading and decrypting the same video again every time.
           payload = previous.payload;
         }
-        if (payload.type === 'image' && localImageSafetyEnabled()) {
-          const verdict = await checkLocalImages([payload.image], null, { quick:true });
-          if (verdict !== 'allowed') payload = { type:'text', text:verdict === 'blocked' ? 'Status photo hidden by on-device safety.' : 'Status photo unavailable because the on-device check could not finish.' };
-        }
         decrypted.push({ ...item, payload, roomCode:room.code });
       } catch (_) {}
     }
@@ -17837,7 +17747,6 @@ async function prepareStatusMedia(event) {
       return;
     }
     const image = await compressProfileImage(file, true);
-    if (!await allowLocalImageSend([image], message => { const button=document.getElementById('status-publish'); if(button) button.textContent=message; })) return;
     clearStatusMedia();
     statusComposerImage = image;
     const preview = document.getElementById('status-image-preview'); preview.src=image; preview.hidden=false;
@@ -20580,39 +20489,6 @@ function scheduleDeferredKlipyGifs(body) {
     images.forEach(img => observer.observe(img));
   }));
 }
-const safetyRevealedRecords = new WeakSet();
-function needsAttachmentReveal(rec) {
-  // A reply's own thumbnail only needs gating when it's a status-reply
-  // preview (a locally-generated snapshot of someone else's status, not
-  // yet scanned at the message level — see isScreenedStatusPreview below).
-  // Replying to an ordinary image/video message just quotes content that's
-  // already inside this room and was already screened as that original
-  // message; the reply itself carries no new attachment to hide.
-  const isStatusReplyPreview = rec.replyData?.type === 'status' && !!rec.replyData?.isImage;
-  const isAttachment = ['file','album','voice','gif','image'].includes(rec.kind) || isStatusReplyPreview;
-  if (!isAttachment) return false;
-  // A GIF record is created only after safeKlipyMediaUrl has accepted its
-  // HTTPS delivery host. Treating it like an arbitrary peer-uploaded file
-  // made every received KLIPY result show the attachment-hidden warning.
-  // A voice note carries no image content at all — nothing for the
-  // on-device scanner to check, and nothing this gate protects against —
-  // so it behaves like a photo that has nothing to hide behind: shown
-  // outright, same as a GIF.
-  if (rec.kind === 'gif' || rec.kind === 'voice') return false;
-  // Files/documents now behave like photos: auto-revealed once whatever
-  // preview they carry (a PDF's rendered first page, a video's thumbnail)
-  // clears the same on-device scan a photo goes through. A file with no
-  // preview at all — nothing rendered, nothing to scan — has nothing to
-  // gate either, and is shown outright too.
-  const isPhoto = rec.kind === 'file' && rec.isImage && !!rec.base64;
-  const isAlbum = rec.kind === 'album' && rec.images?.length > 0 && rec.images.every(image => !!image.base64);
-  const isScreenedVideoPreview = rec.kind === 'file' && String(rec.mime || '').startsWith('video/') && !!rec.videoThumb;
-  const isScreenedPdfPreview = rec.kind === 'file' && !!rec.pdfPreview;
-  const isScreenedStatusPreview = rec.replyData?.type === 'status' && !!rec.replyData.thumb;
-  if (rec.kind === 'file' && !isPhoto && !isScreenedVideoPreview && !isScreenedPdfPreview) return false;
-  return !((isPhoto || isAlbum || isScreenedVideoPreview || isScreenedPdfPreview || isScreenedStatusPreview) && localImageSafetyEnabled() && localRecordChecks.get(rec) === 'allowed');
-}
-
 function applyDirectMessageEdit(room, edit) {
   if (!room || edit?.kind !== 'edit' || !edit.editOf) return false;
   if (!room.messageEdits) room.messageEdits = new Map();
@@ -20702,19 +20578,6 @@ function renderMessageRecord(room, rec, animate) {
   div.className = `msg ${rec.isMe ? 'me' : 'them'}${animate ? ' msg-enter' : ''}`;
   div.dataset.msgId = rec.id;
   if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
-  if (renderLocalImageSafetyGate(room, rec, div, body, typing)) return div;
-  const hiddenMedia = needsAttachmentReveal(rec);
-  if (!rec.isMe && !safetyRevealedRecords.has(rec) && hiddenMedia) {
-    const notice=document.createElement('div'); notice.className='msg-blocked';
-    const label=document.createElement('span');
-    label.textContent='Attachment hidden. Open only if you trust this sender.';
-    const show=document.createElement('button'); show.type='button'; show.textContent='Show';
-    show.addEventListener('click',()=>{ safetyRevealedRecords.add(rec); div.remove(); renderChatBody(room); });
-    const report=document.createElement('button'); report.type='button'; report.textContent='Report / Block';
-    report.addEventListener('click',openReportPanel);
-    notice.append(label,show,report); div.append(notice); body.insertBefore(div,typing); return div;
-  }
-
 
   const receiptHtml = rec.isMe
     ? `<span class="msg-receipt${rec.receiptState === 'delivered' ? ' delivered' : ''}${rec.receiptState === 'read' ? ' read' : ''}" id="receipt-${rec.id}">${rec.receiptState ? '✓✓' : '✓'}</span>`
@@ -22452,10 +22315,6 @@ async function sendMsg() {
     receiptState: null, timerStarted: false,
     reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
-  // This thumbnail was derived locally from the status that was already
-  // displayed on this device. The receiving device still performs its own
-  // independent on-device check before rendering the encrypted preview.
-  if (replySnapshot?.type === 'status' && replySnapshot.thumb) localRecordChecks.set(rec, 'allowed');
   room.messages.push(rec);
   renderMessageRecord(room, rec, true);
   if (rec.jumbo) triggerEmojiEffect(rec.content);
@@ -23011,8 +22870,7 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
     profileName.textContent = signedIn
       ? result.profile.displayName
       : `${result.profile.displayName} invited you to extend a private line`;
-    let publicImage = safeProfileImageUri(result.profile.profileImage);
-    if (publicImage && localImageSafetyEnabled() && await checkLocalImages([publicImage]) !== 'allowed') publicImage = null;
+    const publicImage = safeProfileImageUri(result.profile.profileImage);
     if (profilePhoto) {
       if (publicImage) profilePhoto.src = publicImage; else profilePhoto.removeAttribute('src');
       profilePhoto.alt = publicImage ? `${result.profile.displayName} profile image` : '';
@@ -25483,7 +25341,6 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const mime = mimeOverride || file.type;
-  if (!await allowLocalImageSend([...(isImage || String(mime).startsWith('image/') ? [base64] : []), ...(pdfPreview ? [pdfPreview] : [])], onProgress, { persist: !viewOnce })) return false;
   const sizeBytes = Math.ceil(base64.length * 3 / 4);
   const msgId = newMsgId();
 
@@ -25509,7 +25366,6 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, caption:safeCaption, viewed: false, pending:true,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
-  if (rec.videoThumb) localRecordChecks.set(rec, 'allowed');
   room.messages.push(rec); room.lastMessageAt = sentAt;
   if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
   const discardPending = () => {
@@ -25566,7 +25422,6 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // sendFileMessage as its own normal message; grouping only makes sense
 // once there's more than one.
 async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '') {
-  if (!await allowLocalImageSend(items.map(item => item.base64), onProgress, { persist: !viewOnce })) return false;
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');

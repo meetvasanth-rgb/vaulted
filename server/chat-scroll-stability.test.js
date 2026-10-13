@@ -1,10 +1,9 @@
 'use strict';
 
-// Redrawing the chat (a photo finishing its on-device safety check, a history
-// restore completing, a retry) rebuilds every message. It must never throw a
-// reader who scrolled up down to the newest message. Regression: attachments
-// load as they scroll into view, so each photo's post-check redraw fired
-// mid-scroll and jumped the list to the bottom.
+// Redrawing the chat (a history restore completing, a retry) rebuilds every
+// message. It must never throw a reader who scrolled up down to the newest
+// message. Regression: attachments load as they scroll into view, so each
+// completed load can redraw the list while the reader is mid-scroll.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -97,10 +96,4 @@ test('a redraw keeps the reader\'s place unless they are at the bottom or it is 
   assert.match(render, /if \(!keepPlace && !keptReaderPlace\) requestAnimationFrame/);
   // and an explicit "keep this distance" (load earlier) still takes precedence
   assert.match(render, /keepDistanceFromBottom === null && body\.dataset\.renderedRoom/);
-});
-
-test('the photo safety check still redraws the chat when it finishes (which is now safe)', () => {
-  const gate = client.slice(client.indexOf('function renderLocalImageSafetyGate('), client.indexOf('function safeProfileImageUri('));
-  assert.match(gate, /renderChatBody\(room\);/);
-  assert.match(client, /const CHAT_NEAR_BOTTOM_PX = 96;/);
 });

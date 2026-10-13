@@ -2831,8 +2831,6 @@ function serveStatic(req, res) {
   // Extension-less route for the install page — without this, a request for
   // "/install" (no ".html") misses the readFile below, falls through to the
   // SPA catch-all, and silently serves the main app instead of install.html.
-  // A new pathname bypasses older service workers' cache-first safety module.
-  if (url === '/media-safety-v2.js' || url === '/media-safety-v3.js') url = '/media-safety.js';
   if (url === '/install') url = '/install.html';
   if (url === '/admin') url = '/admin.html';
   if (url === '/app' || url === '/app/' || url === '/get-app' || url === '/get-app/') url = '/get-app.html';

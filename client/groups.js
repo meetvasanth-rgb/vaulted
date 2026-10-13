@@ -251,7 +251,6 @@ async function handlePrivateGroupFileSelect(event) {
       if (file.size > MAX_PRIVATE_GROUP_FILE_BYTES) { toast(`“${file.name}” is too large — maximum 25MB`); continue; }
       try {
         const compressed = await compressImageFile(file);
-        if (!await allowLocalImageSend([compressed.base64], null, { persist:true })) continue;
         imageItems.push({ file, base64: compressed.base64, mime: compressed.mime, imagePreview: null });
       } catch (error) { toast(error.message || `“${file.name}” could not be prepared`); }
       continue;
@@ -660,12 +659,10 @@ function privateGroupRowHtml(group, message, reactions, state) {
       // Same photo markup and in-app viewer as direct conversations: tapping
       // opens viewImage(), and saving is an explicit action inside it.
       const safeSrc = safeImageDataUri(message.attachment.mime, message.attachment.data);
-      content = message.imageSafety && message.imageSafety !== 'allowed'
-        ? '<div class="group-attachment-status">Photo hidden because the on-device safety check could not approve it.</div>'
-        : (safeSrc
-          ? `<div class="msg-media-wrap"><img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/></div>`
-          : MEDIA_BLOCKED_HTML);
-      usable = !!safeSrc && !(message.imageSafety && message.imageSafety !== 'allowed');
+      content = safeSrc
+        ? `<div class="msg-media-wrap"><img class="msg-image" src="${safeSrc}" alt="${escHtml(message.attachment.name || 'Group photo')}" onclick="openPrivateGroupImage('${escHtml(message.id)}')" oncontextmenu="return false" draggable="false"/></div>`
+        : MEDIA_BLOCKED_HTML;
+      usable = !!safeSrc;
       if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
       if (message.attachment.caption && usable) content += `<div class="group-message-text">${linkifyHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-voice') {
@@ -1308,15 +1305,7 @@ async function decodePrivateGroupAttachment(group, state, message, attachmentId,
       ? payload.videoThumb : null;
   }
   payload.caption = typeof payload.caption === 'string' ? payload.caption.slice(0, 2000) : '';
-  const decoded = { ...message, attachmentId, attachment:payload };
-  if (payload.type === 'group-image' && message.senderId !== state.accountId && localImageSafetyEnabled()) {
-    decoded.imageSafety = await checkLocalImages([payload.data], undefined, { persist:true });
-  }
-  if (payload.videoThumb && message.senderId !== state.accountId && localImageSafetyEnabled()) {
-    decoded.videoSafety = await checkLocalImages([payload.videoThumb], undefined, { persist:true });
-    if (decoded.videoSafety !== 'allowed') payload.videoThumb = null;
-  }
-  return decoded;
+  return { ...message, attachmentId, attachment:payload };
 }
 
 async function decodePrivateGroupMessage(group, state, message) {

@@ -2,14 +2,13 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v193';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v194';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
   '/number-card.js',
   '/content-safety.js',
   '/groups.js',
-  '/media-safety-v3.js',
   '/vendor/safety-words.js',
   '/vendor/jsQR.js',
   '/manifest.json',
@@ -69,7 +68,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       const cache = await caches.open(APP_SHELL_CACHE);
       const nativeAndroid = /Android/i.test(self.navigator.userAgent || '')
-        && /VaultlixImageSafety/i.test(self.navigator.userAgent || '');
+        && /(?:VaultlixNative|VaultlixImageSafety)/i.test(self.navigator.userAgent || '');
       const cachedShell = isAppShellNavigation(url.pathname)
         ? ((await cache.match('/index.html')) || (await cache.match('/')))
         : null;

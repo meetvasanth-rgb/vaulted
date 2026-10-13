@@ -183,7 +183,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             windowScene.requestGeometryUpdate(.Mac(systemFrame: frame)) { _ in }
         }
         bridgeController.webView?.configuration.userContentController.addUserScript(WKUserScript(
-            source: "window.__vaultlixLocalImageSafety = true; window.__vaultlixNativeVideo = true; window.__vaultlixChunkedMediaCompression = true; window.__vaultlixIOSAppOnMac = \(runsOnMac ? "true" : "false");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__vaultlixNativeVideo = true; window.__vaultlixChunkedMediaCompression = true; window.__vaultlixIOSAppOnMac = \(runsOnMac ? "true" : "false");", injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixVoIPToken, object: nil, queue: .main
@@ -1131,16 +1131,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             return
         }
 #endif
-        if action == "screenImage" {
-            guard message.frameInfo.isMainFrame,
-                  message.frameInfo.securityOrigin.host == "vaultlix.com",
-                  let requestId = body["requestId"] as? String, requestId.count <= 80,
-                  let base64 = body["base64"] as? String else { return }
-            LocalImageSafety.shared.check(base64: base64) { [weak self] status in
-                self?.emit(name: "vaultlix:image-safety-result", detail: ["requestId": requestId, "status": status])
-            }
-            return
-        }
         if action == "ready" {
             webReady = true
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])

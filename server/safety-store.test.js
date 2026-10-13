@@ -71,33 +71,17 @@ test('report workflow persists, enforces stale-update protection and never resur
   assert.equal((await store.list()).some(r=>r.id==='legacy'),false);
   assert.equal(fs.statSync(path.join(dir,'safety-workflow.json')).mode & 0o777,0o600);
 });
-test('message text is not screened while incoming attachments retain reveal controls',()=>{
-  const vm=require('node:vm');
+test('private messages and attachments are not automatically classified',()=>{
   const html=fs.readFileSync(path.join(__dirname,'../client/index.html'),'utf8');
   const groups=fs.readFileSync(path.join(__dirname,'../client/groups.js'),'utf8');
   const server=fs.readFileSync(path.join(__dirname,'index.js'),'utf8');
   assert.doesNotMatch(html,/VaultlixContentSafety|content-safety\.js|safety-words\.js/);
   assert.doesNotMatch(groups,/VaultlixContentSafety/);
   assert.doesNotMatch(server,/contentSafety\.check|client\/content-safety/);
-  const nodes=[];
-  function node(tag){const n={tag,children:[],dataset:{},events:{},append(...items){this.children.push(...items);},addEventListener(event,callback){this.events[event]=callback;}};nodes.push(n);return n;}
-  const body={insertBefore(n){this.last=n;}}, typing={};
-  const context={localImageSafetyEnabled:()=>false,localRecordChecks:new WeakMap(),renderLocalImageSafetyGate:()=>false,document:{getElementById:id=>id==='chat-body'?body:typing,createElement:node},window:{},safetyRevealedRecords:new WeakSet(),openReportPanel(){},renderChatBody(){},secureNativeStoreMessage(){},uniqueVisibleConversationRecords:r=>r,i18n:key=>key};
-  vm.createContext(context);
-  for(const name of ['needsAttachmentReveal','renderMessageRecord','vaultInboxPreview']){const start=html.indexOf('function '+name+'('),end=html.indexOf('\nfunction ',start+1);vm.runInContext(html.slice(start,end),context);}
-  const malicious={kind:'text',isMe:false,content:'I will kill you',id:'text'};
-  assert.equal(context.vaultInboxPreview({messages:[malicious]},true).text,'I will kill you');
-  // 'file' and 'voice' with nothing else set are no longer gated here — a
-  // bare file has no preview to scan and a voice note has no image content
-  // at all, so both are now shown outright (needsAttachmentReveal is tested
-  // directly, including these two cases, in media-safety.test.js). 'album'
-  // (no images array) and the synthetic 'image' kind are unchanged: neither
-  // matches any of the scan-eligible shapes, so they still hit this gate.
-  for(const kind of ['album','image']){
-    context.renderMessageRecord({},{kind,isMe:false,id:kind},false);
-    assert.match(body.last.children[0].children[0].textContent,/Attachment hidden/);
-  }
-  assert.equal(nodes.some(n=>['img','audio','video','iframe'].includes(n.tag)),false);
+  assert.doesNotMatch(html,/localImageSafety|VaultlixMediaSafety|possible nudity|Attachment hidden/);
+  assert.doesNotMatch(groups,/localImageSafety|checkLocalImages|imageSafety|videoSafety/);
+  assert.match(html,/report_and_block/);
+  assert.match(server,/moderateDailyLookImage/);
 });
 test('legacy cleanup requires a verified durable copy and preserves sources on failure',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'vaultlix-migration-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
