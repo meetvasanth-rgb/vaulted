@@ -64,6 +64,14 @@ test('Android call-end push preserves missed-call history until the encrypted in
   assert.match(server, /isCallEnd: true,[\s\S]*missedCall: isMissedCall,[\s\S]*caller:/);
 });
 
+test('Android missed-call alerts remain visible without playing a message tone', () => {
+  assert.match(androidMessaging, /MISSED_CALL_CHANNEL_ID = "vaultlix_missed_calls_silent_v1"/);
+  assert.match(androidMessaging, /ensureMissedCallChannel[\s\S]*channel\.setSound\(null, null\)/);
+  assert.match(androidMessaging, /new NotificationCompat\.Builder\(this, MISSED_CALL_CHANNEL_ID\)[\s\S]*\.setSilent\(true\)[\s\S]*\.setSound\(null\)/);
+  assert.match(androidMessaging, /data\.get\("missedCall"\)[\s\S]*showMissedCall\(data\)[\s\S]*return;/);
+  assert.match(server, /!parsed\.isCall && !parsed\.isCallEnd && !parsed\.missedCall && !parsed\.msgId/);
+});
+
 test('Android completed calls survive activity and encrypted-room restoration races', () => {
   assert.match(android, /notifyDedicatedCallEnded\(this, roomCode, history\)/);
   assert.match(androidMain, /notifyDedicatedCallEnded\(Context context, String roomCode, String historyText\)/);

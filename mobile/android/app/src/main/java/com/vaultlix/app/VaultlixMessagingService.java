@@ -33,6 +33,7 @@ import java.util.Map;
 public class VaultlixMessagingService extends MessagingService {
     public static final String CALL_CHANNEL_PREFIX = "vaultlix_calls_";
     private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_universal_v2";
+    private static final String MISSED_CALL_CHANNEL_ID = "vaultlix_missed_calls_silent_v1";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
     @Override
@@ -80,6 +81,14 @@ public class VaultlixMessagingService extends MessagingService {
             showIncomingCall(data);
             return;
         }
+        // The server also sends a durable missed-call alert after the
+        // short-lived call-end command. Keep both paths on the same silent
+        // notification id/channel so OnePlus/ColorOS cannot play the legacy
+        // Vaultlix chime after the ringtone has stopped.
+        if ("true".equalsIgnoreCase(data.get("missedCall"))) {
+            showMissedCall(data);
+            return;
+        }
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) ensureMessageChannel(manager);
         // A regular chat message (server/index.js sends it data-only,
@@ -122,6 +131,19 @@ public class VaultlixMessagingService extends MessagingService {
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build());
+        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(channel);
+    }
+
+    private void ensureMissedCallChannel(NotificationManager manager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationChannel channel = new NotificationChannel(
+                MISSED_CALL_CHANNEL_ID,
+                "Missed calls",
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.enableVibration(true);
+        channel.setSound(null, null);
         channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
     }
@@ -314,7 +336,7 @@ public class VaultlixMessagingService extends MessagingService {
     private void showMissedCall(Map<String, String> data) {
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
-        ensureMessageChannel(manager);
+        ensureMissedCallChannel(manager);
 
         String code = safe(data.get("code"));
         String callId = safe(data.get("callId"));
@@ -333,13 +355,15 @@ public class VaultlixMessagingService extends MessagingService {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        manager.notify(notificationId, new NotificationCompat.Builder(this, MESSAGE_CHANNEL_ID)
+        manager.notify(notificationId, new NotificationCompat.Builder(this, MISSED_CALL_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_vaultlix)
                 .setColor(Color.rgb(104, 44, 67))
                 .setContentTitle("Vaultlix")
                 .setContentText(caller.isEmpty() ? "Missed call" : "Missed call from " + caller)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setSilent(true)
+                .setSound(null)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)

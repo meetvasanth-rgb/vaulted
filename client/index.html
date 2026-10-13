@@ -914,7 +914,7 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 .msg-video-card img{display:block;width:100%;height:100%;object-fit:cover}.msg-video-card::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,#0009)}
 .msg-video-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border:0;padding:0;border-radius:50%;display:grid;place-items:center;background:#682C43E8;color:#fff;cursor:pointer;box-shadow:0 4px 18px #0006}
 .msg-video-play svg{width:22px;height:22px;fill:#fff;stroke:none;margin-left:3px}.msg-video-name{position:absolute;z-index:2;left:10px;right:10px;bottom:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:600 11px/1.2 Inter,sans-serif}
-.msg-upload-pending{position:relative}.msg-upload-animation{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:12px;background:linear-gradient(145deg,#35101FDE,#171216E8);color:#fff;font:700 11px/1.2 Inter,sans-serif;letter-spacing:.02em;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.msg-upload-pending{position:relative;overflow:hidden;border-radius:12px}.msg-upload-animation{position:absolute;left:8px;right:8px;bottom:8px;z-index:4;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;min-height:32px;padding:6px 10px;border:1px solid #ffffff2e;border-radius:999px;background:#171216c7;color:#fff;font:700 10px/1.2 Inter,sans-serif;letter-spacing:.02em;box-shadow:0 3px 12px #0005;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none}.msg-upload-animation .vault-upload-orbit{width:18px;height:18px;flex:none}.msg-upload-animation .vault-upload-orbit:before{content:'';position:absolute;inset:0;border:1.5px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:photo-send-spin .8s linear infinite}.msg-upload-animation .vault-upload-orbit svg{width:10px;height:10px;animation:none}.msg-upload-animation .vault-upload-orbit i{display:none}
 .vault-upload-orbit{position:relative;width:48px;height:48px;display:grid;place-items:center}.vault-upload-orbit svg{width:21px;height:21px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;animation:vault-upload-lock 1.4s ease-in-out infinite}
 .vault-upload-orbit i{position:absolute;width:7px;height:7px;border-radius:50%;background:#C87588;box-shadow:0 0 12px #C87588}.vault-upload-orbit i:nth-child(1){animation:vault-upload-dot-a 1.7s linear infinite}.vault-upload-orbit i:nth-child(2){animation:vault-upload-dot-b 1.7s linear infinite}.vault-upload-orbit i:nth-child(3){animation:vault-upload-dot-c 1.7s linear infinite}
 @keyframes vault-upload-dot-a{from{transform:rotate(0) translateX(22px) rotate(0)}to{transform:rotate(360deg) translateX(22px) rotate(-360deg)}}@keyframes vault-upload-dot-b{from{transform:rotate(120deg) translateX(22px) rotate(-120deg)}to{transform:rotate(480deg) translateX(22px) rotate(-480deg)}}@keyframes vault-upload-dot-c{from{transform:rotate(240deg) translateX(22px) rotate(-240deg)}to{transform:rotate(600deg) translateX(22px) rotate(-600deg)}}@keyframes vault-upload-lock{50%{transform:scale(1.12);stroke:#F2CCD8}}
@@ -2838,6 +2838,7 @@ html.vaultlix-native-android .emergency-sheet{
 #photo-send-progress{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(340px,calc(100% - 32px));z-index:998;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .photo-send-status{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:16px;background:#1A1916;color:#fff;font-size:14px;box-shadow:0 4px 20px #0003;pointer-events:auto}
 .photo-send-status>span:nth-of-type(2){flex:1;min-width:0}
+.photo-send-thumb{width:52px;height:52px;flex:none;border-radius:11px;object-fit:cover;background:#332a2e;border:1px solid #ffffff24}
 .photo-send-spinner{width:18px;height:18px;flex-shrink:0;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:photo-send-spin .8s linear infinite}
 .photo-send-cancel{flex:none;border:1px solid #ffffff3d;border-radius:11px;padding:6px 12px;background:#ffffff14;color:#fff;font:700 12px 'Manrope',sans-serif;cursor:pointer}
 .photo-send-cancel:active{background:#ffffff24}
@@ -25265,7 +25266,8 @@ async function handleFileSelect(event) {
   // batch is enough rather than needing to swap it in and out per file.
   let currentVideoController = null;
   const progress = valid.length ? beginPhotoSendProgress(valid.length, photoCount ? `Encrypting ${photoCount === 1 ? 'image' : photoCount + ' images'}…` : (videoCount ? `Encrypting ${videoCount === 1 ? 'video' : videoCount + ' videos'}…` : 'Encrypting attachment…'),
-    videoCount ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null) : null;
+    videoCount ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null,
+    valid.find(file => /^(?:image|video)\//.test(String(file.type || ''))) || null) : null;
   let photoIndex = 0;
   let videoIndex = 0;
   try {
@@ -25285,6 +25287,7 @@ async function handleFileSelect(event) {
         else progress?.update('Encrypting attachment…');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
+        if (videoThumb) progress?.setPreview(safeImageDataUri('image/jpeg', videoThumb));
         currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
         const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
         currentVideoController = null;
@@ -26054,7 +26057,7 @@ function seekVoice(e, msgId) {
 // only the recipient's side is gated.
 // items: array of { file, base64, mime } — one photo or several from a
 // multi-select all share the single choice made here.
-function beginPhotoSendProgress(count, initialMessage = '', onCancel = null) {
+function beginPhotoSendProgress(count, initialMessage = '', onCancel = null, previewFile = null) {
   let host = document.getElementById('photo-send-progress');
   if (!host) {
     host = document.createElement('div'); host.id = 'photo-send-progress';
@@ -26062,6 +26065,16 @@ function beginPhotoSendProgress(count, initialMessage = '', onCancel = null) {
   }
   const notice = document.createElement('div'); notice.className = 'photo-send-status';
   notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
+  let previewObjectUrl = null;
+  const thumb = document.createElement('img'); thumb.className = 'photo-send-thumb'; thumb.alt = '';
+  const setPreview = (src) => {
+    if (!src) return;
+    thumb.src = src;
+    if (!thumb.isConnected) notice.prepend(thumb);
+  };
+  if (previewFile && String(previewFile.type || '').startsWith('image/')) {
+    try { previewObjectUrl = URL.createObjectURL(previewFile); setPreview(previewObjectUrl); } catch (_) { /* preview is optional */ }
+  }
   const spinner = document.createElement('span'); spinner.className = 'photo-send-spinner'; spinner.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span'); label.textContent = initialMessage || `Encrypting ${count === 1 ? 'image' : count + ' images'}…`;
   notice.append(spinner, label);
@@ -26077,7 +26090,12 @@ function beginPhotoSendProgress(count, initialMessage = '', onCancel = null) {
   host.appendChild(notice);
   return {
     update(message) { label.textContent = message; },
-    close() { notice.remove(); if (!host.children.length) host.remove(); },
+    setPreview(src) { setPreview(src); },
+    close() {
+      notice.remove();
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+      if (!host.children.length) host.remove();
+    },
   };
 }
 // options.groupMode: private groups have no view-once concept (see

@@ -983,7 +983,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
     // reliable. Everything else routed through this function (connection
     // requests, session-replaced notices — anything with no msgId or groupId)
     // keeps the existing system-rendered path unchanged.
-    if (!parsed.isCall && !parsed.isCallEnd && !parsed.msgId && !parsed.groupId) {
+    if (!parsed.isCall && !parsed.isCallEnd && !parsed.missedCall && !parsed.msgId && !parsed.groupId) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',

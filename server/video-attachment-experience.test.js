@@ -11,6 +11,12 @@ const iosScene = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'Ap
 test('direct and group attachment sends remain visible with encrypted upload animation', () => {
   assert.match(client, /function attachmentUploadAnimationHtml/);
   assert.match(client, /class="vault-upload-orbit"/);
+  assert.match(client, /\.msg-upload-animation\{position:absolute;left:8px;right:8px;bottom:8px/);
+  assert.doesNotMatch(client, /\.msg-upload-animation\{position:absolute;inset:0/);
+  assert.match(client, /className = 'photo-send-thumb'/);
+  assert.match(client, /setPreview\(src\) \{ setPreview\(src\); \}/);
+  assert.match(client, /if \(videoThumb\) progress\?\.setPreview/);
+  assert.match(groups, /if \(videoThumb\) progress\.setPreview/);
   assert.match(client, /pending:true[\s\S]{0,700}room\.messages\.push\(rec\)[\s\S]{0,900}await encryptMsg/);
   assert.match(groups, /pending:true[\s\S]{0,300}group\.messages = [\s\S]{0,500}await encryptPrivateGroupValue/);
   assert.match(client, /Encrypting image/);

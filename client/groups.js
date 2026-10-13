@@ -258,7 +258,8 @@ async function handlePrivateGroupFileSelect(event) {
     let attachmentName = file.name;
     let currentVideoController = null;
     const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : 'Encrypting attachment…',
-      isVideo ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null);
+      isVideo ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null,
+      /^(?:image|video)\//.test(String(file.type || '')) ? file : null);
     try {
       if (file.size > (isVideo ? MAX_VIDEO_SOURCE_BYTES : MAX_PRIVATE_GROUP_FILE_BYTES)) {
         toast(isVideo ? `“${file.name}” is too large — maximum 100MB` : `“${file.name}” is too large — maximum 25MB`);
@@ -267,6 +268,8 @@ async function handlePrivateGroupFileSelect(event) {
       let base64, mime = file.type || 'application/octet-stream';
       progress.update(isVideo ? 'Optimising video…' : 'Encrypting attachment…');
       await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
+      if (videoThumb) progress.setPreview(safeImageDataUri('image/jpeg', videoThumb));
       currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
       const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
       currentVideoController = null;
@@ -279,7 +282,6 @@ async function handlePrivateGroupFileSelect(event) {
       }
       base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
       if (compressedVideo) { attachmentName = compressedVideo.name; mime = compressedVideo.mime; }
-      const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
       // Same first-page thumbnail and page count as direct conversations; both
       // ride inside the encrypted payload, never as plaintext.
       const pdfPreview = isPdfAttachment(mime, attachmentName) ? await createPdfFirstPagePreview(base64) : null;
