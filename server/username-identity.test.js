@@ -50,9 +50,11 @@ test('username changes propagate to accepted peers and live conversations', () =
 });
 
 test('connection inbox refresh heals legacy username snapshots once', () => {
-  assert.match(server, /currentSenderName = accounts\.get\(request\.senderAccountId\)\?\.displayName/);
+  assert.match(server, /accounts\.get\(request\.senderAccountId\) \|\| accountByPrivateNumber\(request\.senderPrivateNumber\)\?\.account/);
+  assert.match(server, /accounts\.get\(request\.recipientAccountId\) \|\| accountByPrivateNumber\(request\.recipientPrivateNumber\)\?\.account/);
+  assert.match(server, /currentSenderName = senderAccount\?\.displayName/);
   assert.match(server, /request\.senderDisplayName = currentSenderName/);
-  assert.match(server, /currentRecipientName = accounts\.get\(request\.recipientAccountId\)\?\.displayName/);
+  assert.match(server, /currentRecipientName = recipientAccount\?\.displayName/);
   assert.match(server, /request\.recipientDisplayName = currentRecipientName/);
   assert.match(server, /refreshedRequestIdentity[\s\S]*await persistAccount\(d\.accountId\)/);
 });

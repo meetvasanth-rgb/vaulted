@@ -4636,8 +4636,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // a rename replaces the legacy name once and remains correct thereafter.
     let refreshedRequestIdentity = false;
     for (const request of account.connectionRequests || []) {
-      const currentSenderName = accounts.get(request.senderAccountId)?.displayName;
-      const currentRecipientName = accounts.get(request.recipientAccountId)?.displayName;
+      // Very early relationship rows did not retain account IDs. Their
+      // private numbers are stable, so use those as the migration fallback.
+      const senderAccount = accounts.get(request.senderAccountId) || accountByPrivateNumber(request.senderPrivateNumber)?.account;
+      const recipientAccount = accounts.get(request.recipientAccountId) || accountByPrivateNumber(request.recipientPrivateNumber)?.account;
+      const currentSenderName = senderAccount?.displayName;
+      const currentRecipientName = recipientAccount?.displayName;
       if (currentSenderName && request.senderDisplayName !== currentSenderName) {
         request.senderDisplayName = currentSenderName;
         refreshedRequestIdentity = true;
