@@ -6296,7 +6296,7 @@ function scheduleAccountSync() {
   accountSyncTimer = setTimeout(() => syncAnonymousAccount(false), 1200);
 }
 
-function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, unread, unreadSystemCount, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt }) {
+function makeRoom({ code, token, myName, peerName, peerNameEncrypted, everOnline, peerProfileImage, peerPrivateNumber, lastKnownPeerPubKey, reconnectRequired, deleteTimerSeconds, persistent, connectedSince, totalMessageCount, lastMessageAt, inboxActivityAt, reconnectCount, lastReconnectCountedAt, dismissedPersistentSuggestion, codeLabelLen, expectedCreatorKeyCommitment, nativeRoomHandle, ownerAccountId, callHistoryClearedAt, unread, unreadSystemCount, lastReadSeq, unreadStateVersion, unreadMigrationCutoffAt }) {
   return {
     code, token, myName,
     // Omitted means this room is being created now and belongs to the
@@ -6349,6 +6349,12 @@ function makeRoom({ code, token, myName, peerName, everOnline, peerProfileImage,
     // display name when both exist; see roomDisplayLabel().
     nickname: null,
     peerName: typeof peerName === 'string' && peerName.trim() ? peerName.trim().slice(0, 32) : null,
+    // Once a peer name has been recovered from the room's E2E envelope, an
+    // older plaintext compatibility value must never replace it. Some
+    // migrated conversation rows still contain the name the peer used when
+    // the room was first created, while encrypted_name carries the current
+    // profile name.
+    peerNameEncrypted: peerNameEncrypted === true,
     peerProfileImage: safeProfileImageUri(peerProfileImage),
     // Learned only from an accepted account-to-account connection and
     // included in the client-encrypted account bundle with this room.
@@ -6932,6 +6938,7 @@ async function persistRoom(room) {
       // established conversation looked like a never-used invitation:
       // the inbox fell back to its room code and reopened the share screen.
       peerName: room.peerName || null,
+      peerNameEncrypted: room.peerNameEncrypted === true,
       peerProfileImage: room.peerProfileImage || null,
       everOnline: !!room.everOnline,
       reconnectRequired: !!room.reconnectRequired,
@@ -7844,9 +7851,16 @@ async function applyEncryptedPeerName(room, ciphertext) {
     const name = payload?.type === 'member-name' && typeof payload.name === 'string'
       ? payload.name.trim().replace(/\s+/g, ' ').slice(0, 32) : '';
     if (!name || /[<>\u0000-\u001f]/.test(name)) return false;
-    if (room.peerName !== name) {
+    const nameChanged = room.peerName !== name;
+    const sourceChanged = room.peerNameEncrypted !== true;
+    room.peerNameEncrypted = true;
+    if (nameChanged) {
       room.peerName = name;
+    }
+    if (nameChanged || sourceChanged) {
       await persistRoom(room);
+    }
+    if (nameChanged) {
       await provisionNativeCallRoom(room);
       renderVaultList();
       if (room.code === activeRoomCode) updateHeaderRoomLabel(room);
@@ -13465,7 +13479,7 @@ async function reconcileConversationPeerIdentities(requests, state) {
     // Accepted account-to-account connections are established rooms even
     // when the peer currently has no device membership. This also migrates
     // room snapshots saved before peerName/everOnline were persisted.
-    if (peer.displayName && room.peerName !== peer.displayName) { room.peerName = peer.displayName; changed = true; }
+    if (!room.peerNameEncrypted && peer.displayName && room.peerName !== peer.displayName) { room.peerName = peer.displayName; changed = true; }
     if (room.peerProfileImage !== peer.profileImage) {
       room.peerProfileImage = peer.profileImage;
       changed = true;
@@ -22068,14 +22082,14 @@ async function doPoll(room) {
     const wasEverOnline = room.everOnline;
     const previousPeerName = room.peerName;
     room.peerOnline = data.peerOnline;
-    if (data.peerName) room.peerName = data.peerName;
+    if (!room.peerNameEncrypted && !data.peerNameCiphertext && data.peerName) room.peerName = data.peerName;
     if (data.peerOnline) room.everOnline = true;
     if ((room.peerName && room.peerName !== previousPeerName) || room.everOnline !== wasEverOnline) {
       await persistRoom(room);
       renderVaultList();
     }
     if (room.code === activeRoomCode) {
-      setStatus(data.peerOnline, data.peerName);
+      setStatus(data.peerOnline, room.peerName);
       updateHeaderRoomLabel(room); // picks up the peer's name the moment it's first known, unless a nickname overrides it
       // Gate the composer on "has the peer ever been confirmed present in
       // this room" rather than their live 8s heartbeat — otherwise a brief
@@ -23180,7 +23194,7 @@ function startWaitingForPeer(room, { silent = false } = {}) {
       clearInterval(room.waitInterval); room.waitInterval = null;
       pendingRoomCode = null;
       room.peerOnline = true; room.everOnline = true;
-      if (d.peerName) room.peerName = d.peerName; // legacy plaintext row
+      if (!room.peerNameEncrypted && !d.peerNameCiphertext && d.peerName) room.peerName = d.peerName; // legacy plaintext row
       if (d.peerPubKey) { await deriveSharedKey(room, d.peerPubKey); room.lastKnownPeerPubKey = d.peerPubKey; }
       if (d.peerNameCiphertext) await applyEncryptedPeerName(room, d.peerNameCiphertext);
       if (d.deleteTimer !== undefined) room.deleteTimerSeconds = d.deleteTimer;
@@ -23346,8 +23360,10 @@ async function handleSetup({ silent = false } = {}) {
 
       room.code = result.code;
       room.token = result.token;
-      if (pendingJoinPeerName) room.peerName = pendingJoinPeerName;
-      else if (result.peerName) room.peerName = result.peerName;
+      if (!result.peerNameCiphertext) {
+        if (pendingJoinPeerName) room.peerName = pendingJoinPeerName;
+        else if (result.peerName) room.peerName = result.peerName;
+      }
       if (pendingJoinPeerPrivateNumber) room.peerPrivateNumber = pendingJoinPeerPrivateNumber;
       room.peerProfileImage = safeProfileImageUri(pendingJoinPeerProfileImage);
       pendingJoinPeerName = null;
@@ -24643,7 +24659,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const sessionUnreadStale = sessionLastReadSeq >= sessionLastSeq && ((Number(session.unread) || 0) > 0 || (Number(session.unreadSystemCount) || 0) > 0);
       const healedUnread = sessionUnreadStale ? 0 : session.unread;
       const healedUnreadSystemCount = sessionUnreadStale ? 0 : session.unreadSystemCount;
-      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.lastMessageAt || session.connectedSince || 0, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.unreadMigrationCutoffAt || session.savedAt });
+      const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, peerNameEncrypted:session.peerNameEncrypted, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.lastMessageAt || session.connectedSince || 0, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.unreadMigrationCutoffAt || session.savedAt });
       if (sessionUnreadStale) persistHealedUnread(session.code);
       room.nickname = session.nickname || null;
       room.restorePending = true;
@@ -24806,10 +24822,10 @@ window.addEventListener('DOMContentLoaded', async () => {
       // work. Capturing and persisting it here closes that off — same idea
       // as the join/create flows elsewhere already do for a first-time join.
       if (result.token && result.token !== room.token) { room.token = result.token; await persistRoom(room); }
-      // peerName may already be known from a previous session, but the
-      // server's own record is the current truth — overwrite rather than
-      // only filling in when missing, in case the peer changed it since.
-      if (result.peerName) room.peerName = result.peerName;
+      // Legacy rows can retain the name used when the conversation was
+      // created. Use that compatibility value only until this room has an
+      // encrypted peer-name envelope; the envelope is the current truth.
+      if (!room.peerNameEncrypted && !result.peerNameCiphertext && result.peerName) room.peerName = result.peerName;
       // Server's own record is authoritative here too — persistent won't
       // ever actually change post-creation, but connectedSince/
       // totalMessageCount are exactly the kind of thing that moves between

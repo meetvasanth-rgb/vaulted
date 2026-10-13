@@ -22,3 +22,13 @@ test('server accepts only authenticated E2E name envelopes and relays them opaqu
   assert.match(server, /peerNameCiphertext/);
   assert.match(server, /'\/api\/notification-privacy', '\/api\/member-name'/);
 });
+
+test('an encrypted current peer name cannot be replaced by stale plaintext metadata', () => {
+  assert.match(client, /peerNameEncrypted: peerNameEncrypted === true/);
+  assert.match(client, /peerNameEncrypted: room\.peerNameEncrypted === true/);
+  assert.match(client, /room\.peerNameEncrypted = true/);
+  assert.match(client, /!room\.peerNameEncrypted && !data\.peerNameCiphertext && data\.peerName/);
+  assert.match(client, /!room\.peerNameEncrypted && !result\.peerNameCiphertext && result\.peerName/);
+  assert.match(client, /setStatus\(data\.peerOnline, room\.peerName\)/);
+  assert.doesNotMatch(client, /if \(data\.peerName\) room\.peerName = data\.peerName/);
+});
