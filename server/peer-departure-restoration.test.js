@@ -14,7 +14,7 @@ test('an established conversation keeps the peer identity after their device is 
 });
 
 test('a completed handshake is persisted before the conversation can be restored', () => {
-  assert.match(client, /room\.peerOnline = true; room\.everOnline = true;[\s\S]*if \(!room\.peerNameEncrypted && !d\.peerNameCiphertext && d\.peerName\) room\.peerName = d\.peerName;[\s\S]*await persistRoom\(room\);[\s\S]*setActiveRoom\(room\.code\)/);
+  assert.match(client, /room\.peerOnline = true; room\.everOnline = true;[\s\S]*if \(!room\.peerNameFromAccountProfile && !room\.peerNameEncrypted && !d\.peerNameCiphertext && d\.peerName\) room\.peerName = d\.peerName;[\s\S]*await persistRoom\(room\);[\s\S]*setActiveRoom\(room\.code\)/);
   assert.match(client, /room\.peerOnline = true; room\.everOnline = true;[\s\S]*await persistRoom\(room\);[\s\S]*setActiveRoom\(room\.code\)/);
 });
 

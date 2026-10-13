@@ -13535,6 +13535,11 @@ async function reconcileConversationPeerIdentities(requests, state) {
         room.peerName = profile.displayName;
         room.peerNameFromAccountProfile = true;
         await persistRoom(room);
+        // Keep the native incoming-call identity in sync with the visible
+        // conversation label. Legacy rooms reach this profile lookup path
+        // without an accepted-request snapshot, so failing to reprovision
+        // here left Android and CallKit showing the pre-rename device name.
+        await provisionNativeCallRoom(room);
         if (room.code === activeRoomCode) updateHeaderRoomLabel(room);
       }
       reconciledPeerProfileAccountId = state.accountId;

@@ -341,6 +341,14 @@ public class VaultlixMessagingService extends MessagingService {
         String code = safe(data.get("code"));
         String callId = safe(data.get("callId"));
         String caller = safe(data.get("caller"));
+        boolean hidePreview = "true".equalsIgnoreCase(data.get("hidePreview"));
+        NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
+        // Push payloads can retain the name captured when the conversation
+        // was first established. The encrypted room record is refreshed when
+        // the peer renames their account, so it is the authoritative label on
+        // this device for both incoming and missed-call surfaces.
+        if (hidePreview) caller = "";
+        else if (savedRoom != null && !savedRoom.peerName.isEmpty()) caller = savedRoom.peerName;
         Uri conversationUri = Uri.parse("https://vaultlix.com/").buildUpon()
                 .appendQueryParameter("room", code)
                 .build();
@@ -397,8 +405,7 @@ public class VaultlixMessagingService extends MessagingService {
         // Conversation names are encrypted on the server, so a background
         // push can only carry a generic label. Resolve the display name from
         // this device's encrypted native-room record instead.
-        if (!hidePreview && savedRoom != null && !savedRoom.peerName.isEmpty()
-                && (caller.isEmpty() || "Vaultlix caller".equalsIgnoreCase(caller))) {
+        if (!hidePreview && savedRoom != null && !savedRoom.peerName.isEmpty()) {
             caller = savedRoom.peerName;
         }
         if (hidePreview) caller = getString(R.string.native_private_call);

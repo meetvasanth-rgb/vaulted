@@ -82,9 +82,11 @@ test('incoming calls resolve encrypted peer names from device-bound room storage
   assert.match(androidMain, /public boolean provisionCallRoomWithIdentity/);
   assert.match(androidStore, /final String peerName/);
   assert.match(androidPush, /savedRoom != null && !savedRoom\.peerName\.isEmpty\(\)/);
-  assert.match(androidPush, /!hidePreview[\s\S]*caller = savedRoom\.peerName/);
+  assert.match(androidPush, /if \(!hidePreview && savedRoom != null && !savedRoom\.peerName\.isEmpty\(\)\) \{\s*caller = savedRoom\.peerName/);
+  assert.doesNotMatch(androidPush, /caller\.isEmpty\(\) \|\| "Vaultlix caller"\.equalsIgnoreCase\(caller\)/);
   assert.match(iosCallStore, /let peerName: String\?/);
   assert.match(iosCallManager, /let storedPeerName:[\s\S]*NativeCallRoomStore\.shared\.room\(handle: roomHandle\)\?\.peerName/);
+  assert.match(iosCallManager, /let resolvedCaller = !storedPeerName\.isEmpty\s*\? storedPeerName/);
   assert.match(iosCallManager, /let caller = hidePreview \? "Private call"/);
 });
 

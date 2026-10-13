@@ -66,7 +66,7 @@ test('legacy rooms resolve current peer names by stable Private Number once per 
   assert.match(server, /accountByPrivateNumber\(privateNumber\)/);
   assert.match(client, /reconciledPeerProfileAccountId !== state\.accountId/);
   assert.match(client, /api\('\/api\/connections\/profiles'/);
-  assert.match(client, /room\.peerName = profile\.displayName[\s\S]*await persistRoom\(room\)/);
+  assert.match(client, /room\.peerName = profile\.displayName[\s\S]*await persistRoom\(room\)[\s\S]*await provisionNativeCallRoom\(room\)/);
   assert.match(client, /!room\.peerNameFromAccountProfile && !room\.peerNameEncrypted && !data\.peerNameCiphertext/);
   assert.match(client, /!room\.peerNameFromAccountProfile && !room\.peerNameEncrypted && !result\.peerNameCiphertext/);
 });

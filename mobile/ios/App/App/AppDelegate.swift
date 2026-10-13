@@ -259,9 +259,14 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             return NativeCallRoomStore.shared.room(handle: roomHandle)?.peerName?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         }()
-        let resolvedCaller = (suppliedCaller.isEmpty || suppliedCaller.caseInsensitiveCompare("Vaultlix caller") == .orderedSame)
-            ? (storedPeerName.isEmpty ? "Someone" : storedPeerName)
-            : suppliedCaller
+        // The push may still carry the name recorded when this room was
+        // created. The device-bound encrypted room is refreshed after an
+        // account rename, so prefer it whenever it is available.
+        let resolvedCaller = !storedPeerName.isEmpty
+            ? storedPeerName
+            : ((suppliedCaller.isEmpty || suppliedCaller.caseInsensitiveCompare("Vaultlix caller") == .orderedSame)
+                ? "Someone"
+                : suppliedCaller)
         let caller = hidePreview ? "Private call" : String(resolvedCaller.prefix(80))
         let hasVideo = data["hasVideo"] as? Bool ?? false
         let callLabel = hasVideo ? "VIDEO CALL · \(caller)" : String(caller)
