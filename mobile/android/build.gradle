@@ -21,6 +21,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Sherpa ONNX publishes its pinned Android AAR through JitPack.
+        maven { url 'https://jitpack.io' }
     }
 }
 

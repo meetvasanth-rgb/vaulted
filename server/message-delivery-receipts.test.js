@@ -78,8 +78,8 @@ test('groupId is never forwarded for a non-group push, even if a caller accident
   assert.equal(message.data.groupId, '');
 });
 
-test('the message push payload sent server-side is the only one carrying msgId', () => {
-  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: mb\.hidePreview \|\| !senderLabel \? 'New message' : `New message from \$\{senderLabel\}`, tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId \}\);/);
+test('the message push carries its id and explicit hidden-preview state', () => {
+  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: mb\.hidePreview \|\| !senderLabel \? 'New message' : `New message from \$\{senderLabel\}`, tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId, hidePreview:mb\.hidePreview === true \}\);/);
 });
 
 test('Android builds the notification itself and reports delivery for a data-only message, using the room token from NativeCallRoomStore (not the WebView)', () => {
@@ -90,6 +90,8 @@ test('Android builds the notification itself and reports delivery for a data-onl
   assert.match(android, /NativeCallRoomStore\.Room room = new NativeCallRoomStore\(this\)\.byCode\(code\);/);
   assert.match(android, /new URL\("https:\/\/vaultlix\.com\/api\/mark-delivered"\)/);
   assert.match(android, /new JSONObject\(\)\.put\("code", code\)\.put\("token", room\.token\)\.put\("msgId", msgId\)/);
+  assert.match(android, /NativeCallRoomStore\.Room savedRoom = new NativeCallRoomStore\(this\)\.byCode\(code\);/);
+  assert.match(android, /if \(hidePreview\) \{[\s\S]{0,120}body = "New message";[\s\S]{0,180}body = "New message from " \+ savedRoom\.peerName;/);
   // Best-effort: never lets a network failure here throw out of
   // onMessageReceived or block the notification from showing.
   assert.match(android, /reportMessageDelivered\(safe\(data\.get\("code"\)\), msgId\);\s*\n\s*return;/);

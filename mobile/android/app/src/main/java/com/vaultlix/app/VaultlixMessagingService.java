@@ -228,6 +228,18 @@ public class VaultlixMessagingService extends MessagingService {
         String code = safe(data.get("code"));
         String title = safe(data.get("title"));
         String body = safe(data.get("body"));
+        boolean hidePreview = "true".equalsIgnoreCase(data.get("hidePreview"));
+        NativeCallRoomStore.Room savedRoom = new NativeCallRoomStore(this).byCode(code);
+        // Message pushes can carry the sender label captured when the room was
+        // first created. The encrypted native room record is refreshed after
+        // an account rename and is already the authority used by incoming
+        // calls, so use the same current label on the lock screen. Never let
+        // this override the generic wording chosen for a hidden conversation.
+        if (hidePreview) {
+            body = "New message";
+        } else if (savedRoom != null && !savedRoom.peerName.isEmpty()) {
+            body = "New message from " + savedRoom.peerName;
+        }
         Uri conversationUri = Uri.parse("https://vaultlix.com/").buildUpon()
                 .appendQueryParameter("room", code)
                 .build();

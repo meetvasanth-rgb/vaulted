@@ -5309,7 +5309,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
         const senderLabel = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : null;
-        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview || !senderLabel ? 'New message' : `New message from ${senderLabel}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview || !senderLabel ? 'New message' : `New message from ${senderLabel}`, tag: `${d.code}-${msgId}`, code: d.code, msgId, hidePreview:mb.hidePreview === true });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a

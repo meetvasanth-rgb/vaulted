@@ -4516,6 +4516,12 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         </select>
       </label>
       <div class="settings-row-sub" style="padding:0 20px 22px" data-i18n="transcript_language_note">Used when you tap Show transcript. Choose the language spoken in the voice note.</div>
+      <div class="settings-section-label" data-i18n="offline_transcript_model">Offline multilingual model</div>
+      <div class="account-field" style="margin:8px 20px 22px">
+        <span data-i18n="offline_transcript_privacy">Supports languages unavailable through Apple or Google. The approximately 100 MB model stays on this device, and voice notes are never uploaded for transcription.</span>
+        <div id="offline-transcript-model-status" class="settings-row-sub" style="padding:10px 0 12px" data-i18n="offline_transcript_not_downloaded">Not downloaded</div>
+        <button id="offline-transcript-model-button" class="account-secondary" type="button" onclick="downloadOfflineTranscriptModel()" data-i18n="download_model">Download model</button>
+      </div>
     </div>
 
     <div class="settings-divider"></div>
@@ -5016,7 +5022,7 @@ const LEAVE_VAULT_CONFIRMATIONS = {
 const VAULTLIX_TRANSLATIONS = {
   en: {
     settings:'Settings', profile:'Profile', privacy_security:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help',
-    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.', transcript_language:'Voice transcript language', transcript_language_note:'Used when you tap Show transcript. Choose the language spoken in the voice note.',
+    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.', transcript_language:'Voice transcript language', transcript_language_note:'Used when you tap Show transcript. Choose the language spoken in the voice note.', offline_transcript_model:'Offline multilingual model', offline_transcript_privacy:'Supports languages unavailable through Apple or Google. The approximately 100 MB model stays on this device, and voice notes are never uploaded for transcription.', offline_transcript_not_downloaded:'Not downloaded', offline_transcript_ready:'Ready on this device', offline_transcript_unavailable:'Available in the iOS and Android apps', download_model:'Download model', retry_download:'Retry download',
     system_default:'System default', new_connection:'Add your friend', sign_in:'Sign in', create_account:'Create account', recover_account:'Recover account',
     private_number:'Vaultlix private number', display_name:'Display name', password:'Password', continue:'Continue', cancel:'Cancel', save:'Save', close:'Close',
     search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
@@ -5136,6 +5142,7 @@ function applyAppLanguage() {
   if (select) select.value = localStorage.getItem(VAULTLIX_LANGUAGE_KEY) || 'system';
   const transcriptSelect = document.getElementById('transcript-language-select');
   if (transcriptSelect) transcriptSelect.value = localStorage.getItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY) || 'system';
+  if (typeof renderOfflineTranscriptModelStatus === 'function') renderOfflineTranscriptModelStatus({ state:offlineTranscriptModelState });
   document.dispatchEvent(new CustomEvent('vaultlixlanguagechange', { detail:{ language:lang } }));
 }
 function setAppLanguage(value) {
@@ -5156,6 +5163,63 @@ function setTranscriptLanguage(value) {
   const allowed = select ? Array.from(select.options, option => option.value) : ['system'];
   localStorage.setItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY, allowed.includes(value) ? value : 'system');
 }
+let offlineTranscriptModelState = 'unavailable';
+function renderOfflineTranscriptModelStatus(detail = {}) {
+  offlineTranscriptModelState = String(detail.state || offlineTranscriptModelState || 'unavailable');
+  const status = document.getElementById('offline-transcript-model-status');
+  const button = document.getElementById('offline-transcript-model-button');
+  if (!status || !button) return;
+  const progress = Math.max(0, Math.min(100, Number(detail.progress) || 0));
+  if (offlineTranscriptModelState === 'ready') {
+    status.textContent = i18n('offline_transcript_ready');
+    button.style.display = 'none';
+  } else if (offlineTranscriptModelState === 'downloading') {
+    status.textContent = `Downloading… ${progress}%`;
+    button.style.display = '';
+    button.disabled = true;
+    button.textContent = 'Downloading…';
+  } else if (offlineTranscriptModelState === 'error') {
+    status.textContent = String(detail.error || 'Model download failed.');
+    button.style.display = '';
+    button.disabled = false;
+    button.textContent = i18n('retry_download');
+  } else if (offlineTranscriptModelState === 'not_downloaded') {
+    status.textContent = i18n('offline_transcript_not_downloaded');
+    button.style.display = '';
+    button.disabled = false;
+    button.textContent = i18n('download_model');
+  } else {
+    status.textContent = i18n('offline_transcript_unavailable');
+    button.style.display = 'none';
+  }
+}
+function refreshOfflineTranscriptModelStatus() {
+  try {
+    if (typeof window.VaultlixAndroid?.offlineTranscriptModelStatus === 'function') {
+      renderOfflineTranscriptModelStatus({ state:window.VaultlixAndroid.offlineTranscriptModelStatus() });
+      return;
+    }
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'offlineTranscriptModelStatus' });
+      return;
+    }
+  } catch (_) {}
+  renderOfflineTranscriptModelStatus({ state:'unavailable' });
+}
+function downloadOfflineTranscriptModel() {
+  try {
+    if (typeof window.VaultlixAndroid?.downloadOfflineTranscriptModel === 'function') {
+      renderOfflineTranscriptModelStatus({ state:'downloading', progress:0 });
+      window.VaultlixAndroid.downloadOfflineTranscriptModel();
+      return;
+    }
+    if (window.webkit?.messageHandlers?.vaultlixCall) {
+      renderOfflineTranscriptModelStatus({ state:'downloading', progress:0 });
+      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'downloadOfflineTranscriptModel' });
+    }
+  } catch (_) { renderOfflineTranscriptModelStatus({ state:'error', error:'Model download could not start.' }); }
+}
+window.addEventListener('vaultlix:offline-transcript-model', event => renderOfflineTranscriptModelStatus(event.detail || {}));
 document.addEventListener('DOMContentLoaded', applyAppLanguage, { once:true });
 function syncAndroidSystemInsets(){
   const bridge=window.VaultlixAndroid;
@@ -11939,7 +12003,7 @@ function openSettingsCategory(category) {
   const languageSection = document.getElementById('settings-language-section');
   languageSection.classList.toggle('active', category === 'language');
   languageSection.style.display = category === 'language' ? '' : 'none';
-  if (category === 'language') applyAppLanguage();
+  if (category === 'language') { applyAppLanguage(); refreshOfflineTranscriptModelStatus(); }
   document.getElementById('settings-about-section').style.display = category === 'help' ? '' : 'none';
   document.getElementById('persistent-suggestion-section').style.display = 'none';
   document.getElementById('anon-link-section').style.display = 'none';
