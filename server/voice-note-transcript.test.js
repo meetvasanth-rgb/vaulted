@@ -41,6 +41,14 @@ test('voice-note transcript language can be selected independently and is rememb
   assert.match(client, /locale \}\);/);
 });
 
+test('Tamil transcripts can be displayed locally in familiar English letters', () => {
+  assert.match(client, /id="transcript-script-select"/);
+  assert.match(client, /VAULTLIX_TRANSCRIPT_SCRIPT_KEY = 'vaultlix_transcript_script_v1'/);
+  assert.match(client, /function tamilToEnglishLetters\(value\)/);
+  assert.match(client, /function formatVoiceTranscript\(text\)/);
+  assert.match(client, /formatVoiceTranscript\(String\(detail\.text/);
+});
+
 test('iOS transcribes the temporary PCM wave through the native speech recognizer', () => {
   assert.match(ios, /SFSpeechURLRecognitionRequest\(url: url\)/);
   assert.match(ios, /request\.requiresOnDeviceRecognition = onDevice/);
@@ -99,7 +107,7 @@ test('a silent decoded voice note is reported before anything is sent to the nat
 test('the optional multilingual model is downloaded explicitly and its status is shown in language settings', () => {
   assert.match(client, /id="offline-transcript-model-status"/);
   assert.match(client, /id="offline-transcript-model-button"/);
-  assert.match(client, /approximately 100 MB/i);
+  assert.match(client, /approximately 160 MB/i);
   assert.match(client, /never uploaded/i);
   assert.match(client, /action:'downloadOfflineTranscriptModel'/);
   assert.match(client, /vaultlix:offline-transcript-model/);
@@ -107,9 +115,10 @@ test('the optional multilingual model is downloaded explicitly and its status is
 
 test('Android verifies and runs the pinned on-device multilingual model', () => {
   assert.match(androidGradle, /com\.github\.k2-fsa\.sherpa-onnx:sherpa-onnx:v1\.13\.8/);
-  assert.match(androidOffline, /tiny-encoder\.int8\.onnx/);
-  assert.match(androidOffline, /tiny-decoder\.int8\.onnx/);
-  assert.match(androidOffline, /tiny-tokens\.txt/);
+  assert.match(androidOffline, /base-encoder\.int8\.onnx/);
+  assert.match(androidOffline, /base-decoder\.int8\.onnx/);
+  assert.match(androidOffline, /base-tokens\.txt/);
+  assert.match(androidOffline, /new OfflineRecognizer\(null, config\)/);
   assert.match(androidOffline, /MessageDigest\.getInstance\("SHA-256"\)/);
   assert.match(androidOffline, /OfflineRecognizer/);
   assert.match(android, /runOfflineVoiceTranscript/);

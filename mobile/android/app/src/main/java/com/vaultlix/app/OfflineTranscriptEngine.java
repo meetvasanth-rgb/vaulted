@@ -30,12 +30,13 @@ final class OfflineTranscriptEngine {
     interface StatusListener { void onStatus(String state, int progress, String error); }
     interface TranscriptListener { void onComplete(String text, String error); }
 
-    private static final String MODEL_VERSION = "whisper-tiny-int8-v1";
-    private static final String BASE_URL = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/";
+    private static final String MODEL_VERSION = "whisper-base-int8-v1";
+    private static final String PREVIOUS_MODEL_VERSION = "whisper-tiny-int8-v1";
+    private static final String BASE_URL = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base/resolve/main/";
     private static final ModelFile[] MODEL_FILES = new ModelFile[] {
-            new ModelFile("tiny-encoder.int8.onnx", 12_937_772L, "d24fb083ae3b1041fc24e97971d60e280c9342201fbb67b0ab428a8b4a51a434"),
-            new ModelFile("tiny-decoder.int8.onnx", 89_855_401L, "d2fece8dd42771f1df975c6c0445770d0c292bf7547c2cae04a6c0cc57540925"),
-            new ModelFile("tiny-tokens.txt", 816_730L, "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126")
+            new ModelFile("base-encoder.int8.onnx", 29_120_534L, "0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11"),
+            new ModelFile("base-decoder.int8.onnx", 130_672_026L, "9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d"),
+            new ModelFile("base-tokens.txt", 816_730L, "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126")
     };
 
     private final Context context;
@@ -105,6 +106,7 @@ final class OfflineTranscriptEngine {
                     if (!partial.renameTo(destination)) throw new IOException("Could not install model");
                     completed += model.bytes;
                 }
+                deleteRecursively(new File(context.getFilesDir(), "offline-transcript/" + PREVIOUS_MODEL_VERSION));
                 listener.onStatus("ready", 100, "");
             } catch (Exception error) {
                 listener.onStatus("error", 0, "Model download failed. Check your connection and try again.");
@@ -121,14 +123,14 @@ final class OfflineTranscriptEngine {
             OfflineStream stream = null;
             try {
                 OfflineWhisperModelConfig whisper = new OfflineWhisperModelConfig();
-                whisper.setEncoder(new File(modelDir, "tiny-encoder.int8.onnx").getAbsolutePath());
-                whisper.setDecoder(new File(modelDir, "tiny-decoder.int8.onnx").getAbsolutePath());
+                whisper.setEncoder(new File(modelDir, "base-encoder.int8.onnx").getAbsolutePath());
+                whisper.setDecoder(new File(modelDir, "base-decoder.int8.onnx").getAbsolutePath());
                 whisper.setLanguage(languageCode(localeTag));
                 whisper.setTask("transcribe");
 
                 OfflineModelConfig model = new OfflineModelConfig();
                 model.setWhisper(whisper);
-                model.setTokens(new File(modelDir, "tiny-tokens.txt").getAbsolutePath());
+                model.setTokens(new File(modelDir, "base-tokens.txt").getAbsolutePath());
                 model.setNumThreads(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() - 1)));
                 model.setProvider("cpu");
 
@@ -139,7 +141,12 @@ final class OfflineTranscriptEngine {
                 OfflineRecognizerConfig config = new OfflineRecognizerConfig();
                 config.setFeatConfig(features);
                 config.setModelConfig(model);
-                recognizer = new OfflineRecognizer(context.getAssets(), config);
+                // These models are downloaded into app-private storage and every
+                // configured path is absolute. Passing an AssetManager makes
+                // sherpa-onnx interpret them as packaged assets; its native layer
+                // then terminates the process when it cannot resolve the token
+                // file. A null AssetManager explicitly selects filesystem mode.
+                recognizer = new OfflineRecognizer(null, config);
                 stream = recognizer.createStream();
                 stream.acceptWaveform(readPcm16(pcmFile), 16_000);
                 recognizer.decode(stream);
@@ -193,6 +200,16 @@ final class OfflineTranscriptEngine {
         StringBuilder result = new StringBuilder();
         for (byte value : digest.digest()) result.append(String.format(Locale.ROOT, "%02x", value));
         return result.toString();
+    }
+
+    private static void deleteRecursively(File file) {
+        if (file == null || !file.exists()) return;
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) deleteRecursively(child);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
     }
 
     private static final class ModelFile {

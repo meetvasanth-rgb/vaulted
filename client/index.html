@@ -4516,9 +4516,17 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         </select>
       </label>
       <div class="settings-row-sub" style="padding:0 20px 22px" data-i18n="transcript_language_note">Used when you tap Show transcript. Choose the language spoken in the voice note.</div>
+      <div class="settings-section-label">Tamil transcript display</div>
+      <label class="account-field" style="margin:8px 20px 12px"><span>Show Tamil as</span>
+        <select id="transcript-script-select" onchange="setTranscriptScript(this.value)" style="width:100%;margin-top:8px;padding:14px;border:1px solid #dfd1d6;border-radius:14px;background:#fff;font:inherit;color:#271d25">
+          <option value="native">Tamil script — என்ன தம்பி</option>
+          <option value="latin">English letters — enna thambi</option>
+        </select>
+      </label>
+      <div class="settings-row-sub" style="padding:0 20px 22px">English letters keep the spoken Tamil wording; they do not translate its meaning.</div>
       <div class="settings-section-label" data-i18n="offline_transcript_model">Offline multilingual model</div>
       <div class="account-field" style="margin:8px 20px 22px">
-        <span data-i18n="offline_transcript_privacy">Supports languages unavailable through Apple or Google. The approximately 100 MB model stays on this device, and voice notes are never uploaded for transcription.</span>
+        <span data-i18n="offline_transcript_privacy">Supports languages unavailable through Apple or Google. The approximately 160 MB model stays on this device, and voice notes are never uploaded for transcription.</span>
         <div id="offline-transcript-model-status" class="settings-row-sub" style="padding:10px 0 12px" data-i18n="offline_transcript_not_downloaded">Not downloaded</div>
         <button id="offline-transcript-model-button" class="account-secondary" type="button" onclick="downloadOfflineTranscriptModel()" data-i18n="download_model">Download model</button>
       </div>
@@ -5010,6 +5018,7 @@ var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),
 // ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
 const VAULTLIX_LANGUAGE_KEY = 'vaultlix_language_v1';
 const VAULTLIX_TRANSCRIPT_LANGUAGE_KEY = 'vaultlix_transcript_language_v1';
+const VAULTLIX_TRANSCRIPT_SCRIPT_KEY = 'vaultlix_transcript_script_v1';
 const VAULTLIX_LANGUAGES = ['en', 'zh', 'ru', 'hi', 'ar', 'hy'];
 const LEAVE_VAULT_CONFIRMATIONS = {
   en:'Leave this conversation? It will be removed from this device. You will need a new connection request to chat again.',
@@ -5022,7 +5031,7 @@ const LEAVE_VAULT_CONFIRMATIONS = {
 const VAULTLIX_TRANSLATIONS = {
   en: {
     settings:'Settings', profile:'Profile', privacy_security:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help',
-    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.', transcript_language:'Voice transcript language', transcript_language_note:'Used when you tap Show transcript. Choose the language spoken in the voice note.', offline_transcript_model:'Offline multilingual model', offline_transcript_privacy:'Supports languages unavailable through Apple or Google. The approximately 100 MB model stays on this device, and voice notes are never uploaded for transcription.', offline_transcript_not_downloaded:'Not downloaded', offline_transcript_ready:'Ready on this device', offline_transcript_unavailable:'Available in the iOS and Android apps', download_model:'Download model', retry_download:'Retry download',
+    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.', transcript_language:'Voice transcript language', transcript_language_note:'Used when you tap Show transcript. Choose the language spoken in the voice note.', offline_transcript_model:'Offline multilingual model', offline_transcript_privacy:'Supports languages unavailable through Apple or Google. The approximately 160 MB model stays on this device, and voice notes are never uploaded for transcription.', offline_transcript_not_downloaded:'Not downloaded', offline_transcript_ready:'Ready on this device', offline_transcript_unavailable:'Available in the iOS and Android apps', download_model:'Download model', retry_download:'Retry download',
     system_default:'System default', new_connection:'Add your friend', sign_in:'Sign in', create_account:'Create account', recover_account:'Recover account',
     private_number:'Vaultlix private number', display_name:'Display name', password:'Password', continue:'Continue', cancel:'Cancel', save:'Save', close:'Close',
     search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
@@ -5142,6 +5151,8 @@ function applyAppLanguage() {
   if (select) select.value = localStorage.getItem(VAULTLIX_LANGUAGE_KEY) || 'system';
   const transcriptSelect = document.getElementById('transcript-language-select');
   if (transcriptSelect) transcriptSelect.value = localStorage.getItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY) || 'system';
+  const transcriptScriptSelect = document.getElementById('transcript-script-select');
+  if (transcriptScriptSelect) transcriptScriptSelect.value = localStorage.getItem(VAULTLIX_TRANSCRIPT_SCRIPT_KEY) || 'native';
   if (typeof renderOfflineTranscriptModelStatus === 'function') renderOfflineTranscriptModelStatus({ state:offlineTranscriptModelState });
   document.dispatchEvent(new CustomEvent('vaultlixlanguagechange', { detail:{ language:lang } }));
 }
@@ -5162,6 +5173,48 @@ function setTranscriptLanguage(value) {
   const select = document.getElementById('transcript-language-select');
   const allowed = select ? Array.from(select.options, option => option.value) : ['system'];
   localStorage.setItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY, allowed.includes(value) ? value : 'system');
+}
+function setTranscriptScript(value) {
+  localStorage.setItem(VAULTLIX_TRANSCRIPT_SCRIPT_KEY, value === 'latin' ? 'latin' : 'native');
+}
+function tamilToEnglishLetters(value) {
+  const vowels = { 'அ':'a','ஆ':'aa','இ':'i','ஈ':'ee','உ':'u','ஊ':'oo','எ':'e','ஏ':'ae','ஐ':'ai','ஒ':'o','ஓ':'oo','ஔ':'au' };
+  const consonants = {
+    'க':'k','ங':'ng','ச':'ch','ஞ':'nj','ட':'d','ண':'n','த':'th','ந':'n','ப':'p','ம':'m',
+    'ய':'y','ர':'r','ல':'l','வ':'v','ழ':'zh','ள':'l','ற':'r','ன':'n','ஜ':'j','ஷ':'sh','ஸ':'s','ஹ':'h'
+  };
+  const signs = { 'ா':'aa','ி':'i','ீ':'ee','ு':'u','ூ':'oo','ெ':'e','ே':'ae','ை':'ai','ொ':'o','ோ':'oo','ௌ':'au','்':'' };
+  const characters = Array.from(String(value || ''));
+  let result = '';
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    if (Object.prototype.hasOwnProperty.call(vowels, character)) {
+      result += vowels[character];
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(consonants, character)) {
+      const next = characters[index + 1];
+      if (Object.prototype.hasOwnProperty.call(signs, next)) {
+        result += consonants[character] + signs[next];
+        index += 1;
+      } else {
+        result += consonants[character] + 'a';
+      }
+      continue;
+    }
+    result += character === 'ஃ' ? 'h' : character;
+  }
+  return result
+    .replace(/mp/g, 'mb')
+    .replace(/ngk/g, 'ng')
+    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+function formatVoiceTranscript(text) {
+  const latin = (localStorage.getItem(VAULTLIX_TRANSCRIPT_SCRIPT_KEY) || 'native') === 'latin';
+  const tamil = currentTranscriptLocale().toLowerCase().split(/[-_]/)[0] === 'ta';
+  return latin && tamil ? tamilToEnglishLetters(text) : text;
 }
 let offlineTranscriptModelState = 'unavailable';
 function renderOfflineTranscriptModelStatus(detail = {}) {
@@ -26146,7 +26199,7 @@ window.addEventListener('vaultlix:voice-transcript', event => {
   if (!key) return;
   if (detail.state === 'final') {
     voiceTranscriptRequests.delete(requestId);
-    const text = String(detail.text || '').trim();
+    const text = formatVoiceTranscript(String(detail.text || '').trim());
     voiceTranscriptStates.set(key, text
       ? { status:'final', text, error:'', hidden:false }
       : { status:'error', text:'', error:'No speech could be recognized.', hidden:false });

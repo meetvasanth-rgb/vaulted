@@ -14,18 +14,18 @@ final class OfflineTranscriptEngine {
         let sha256: String
     }
 
-    private let baseURL = URL(string: "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main/")!
+    private let baseURL = URL(string: "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base/resolve/main/")!
     private let files = [
-        ModelFile(name: "tiny-encoder.int8.onnx", bytes: 12_937_772, sha256: "d24fb083ae3b1041fc24e97971d60e280c9342201fbb67b0ab428a8b4a51a434"),
-        ModelFile(name: "tiny-decoder.int8.onnx", bytes: 89_855_401, sha256: "d2fece8dd42771f1df975c6c0445770d0c292bf7547c2cae04a6c0cc57540925"),
-        ModelFile(name: "tiny-tokens.txt", bytes: 816_730, sha256: "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"),
+        ModelFile(name: "base-encoder.int8.onnx", bytes: 29_120_534, sha256: "0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11"),
+        ModelFile(name: "base-decoder.int8.onnx", bytes: 130_672_026, sha256: "9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d"),
+        ModelFile(name: "base-tokens.txt", bytes: 816_730, sha256: "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"),
     ]
     private let queue = DispatchQueue(label: "com.vaultlix.offline-transcript", qos: .userInitiated)
     private var downloading = false
 
     private lazy var modelDirectory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("OfflineTranscript/whisper-tiny-int8-v1", isDirectory: true)
+        return base.appendingPathComponent("OfflineTranscript/whisper-base-int8-v1", isDirectory: true)
     }()
 
     var isReady: Bool {
@@ -81,6 +81,8 @@ final class OfflineTranscriptEngine {
                     try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: destination.path)
                     self.report(status, "downloading", ((index + 1) * 100) / self.files.count, "")
                 }
+                let oldModel = self.modelDirectory.deletingLastPathComponent().appendingPathComponent("whisper-tiny-int8-v1", isDirectory: true)
+                try? FileManager.default.removeItem(at: oldModel)
                 self.report(status, "ready", 100, "")
             } catch {
                 self.report(status, "error", 0, "Model download failed. Check your connection and try again.")
@@ -100,13 +102,13 @@ final class OfflineTranscriptEngine {
                 return
             }
             let whisper = sherpaOnnxOfflineWhisperModelConfig(
-                encoder: self.modelDirectory.appendingPathComponent("tiny-encoder.int8.onnx").path,
-                decoder: self.modelDirectory.appendingPathComponent("tiny-decoder.int8.onnx").path,
+                encoder: self.modelDirectory.appendingPathComponent("base-encoder.int8.onnx").path,
+                decoder: self.modelDirectory.appendingPathComponent("base-decoder.int8.onnx").path,
                 language: self.languageCode(localeIdentifier),
                 task: "transcribe"
             )
             let model = sherpaOnnxOfflineModelConfig(
-                tokens: self.modelDirectory.appendingPathComponent("tiny-tokens.txt").path,
+                tokens: self.modelDirectory.appendingPathComponent("base-tokens.txt").path,
                 whisper: whisper,
                 numThreads: max(2, min(4, ProcessInfo.processInfo.processorCount - 1))
             )
