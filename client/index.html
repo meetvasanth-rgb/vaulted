@@ -12524,6 +12524,41 @@ function chooseProfileImage() {
   if (input) { input.value = ''; input.click(); }
 }
 
+// A status photo keeps its whole frame and its own proportions (a profile picture is a centre-cropped
+// square, which is why status photos used to arrive cropped). Every friend gets their own encrypted
+// copy in one request, so the result stays under the same size ceiling the square one used: the
+// largest size and quality that fits is chosen.
+const STATUS_IMAGE_MAX_DATA_URL = 341 * 1024;
+const STATUS_IMAGE_LONG_SIDES = [1280, 1080, 900, 720, 600];
+const STATUS_IMAGE_QUALITIES = [.82, .74, .66, .58, .5];
+
+async function compressStatusImage(file) {
+  const imageName = String(file?.name || '');
+  const supportedPhoto = !!file && (/^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|heic|heif)$/i.test(imageName));
+  if (!supportedPhoto) throw new Error('Choose a photo from this device');
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('Could not read this image')); image.src = sourceUrl; });
+    const sourceWidth = image.naturalWidth, sourceHeight = image.naturalHeight;
+    if (!sourceWidth || !sourceHeight) throw new Error('Could not read this image');
+    for (const longSide of STATUS_IMAGE_LONG_SIDES) {
+      const scale = Math.min(1, longSide / Math.max(sourceWidth, sourceHeight));
+      const width = Math.max(1, Math.round(sourceWidth * scale)), height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const context = canvas.getContext('2d', { alpha:false });
+      context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      for (const quality of STATUS_IMAGE_QUALITIES) {
+        const result = canvas.toDataURL('image/jpeg', quality);
+        if (result.length <= STATUS_IMAGE_MAX_DATA_URL) return result;
+      }
+    }
+    throw new Error('This image could not be reduced enough');
+  } finally { URL.revokeObjectURL(sourceUrl); }
+}
+
 async function compressProfileImage(file) {
   const allowLargeSource = arguments[1] === true;
   const imageName = String(file?.name || '');
@@ -17811,7 +17846,7 @@ async function prepareStatusMedia(event) {
       preview.src = statusComposerVideoPreviewUrl; preview.hidden = false;
       return;
     }
-    const image = await compressProfileImage(file, true);
+    const image = await compressStatusImage(file);
     clearStatusMedia();
     statusComposerImage = image;
     const preview = document.getElementById('status-image-preview'); preview.src=image; preview.hidden=false;
