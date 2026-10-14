@@ -17,6 +17,8 @@ const root = path.join(__dirname, '..');
 const PICKER_TONE_IDS = ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet'];
 const TONES = ['chime', 'note', 'soft', 'glass', 'pulse', ...PICKER_TONE_IDS.map(id => `tone_${id}`)];
 const TARGET_LUFS = -12;
+// The Android chime and Glow were lowered to -14 LUFS on request. iOS and the web keep -12.
+const ANDROID_QUIETER = new Map([['chime', -14], ['tone_glow', -14]]);
 const TOLERANCE = 0.6;
 const CEILING_DBFS = -1;
 
@@ -112,7 +114,8 @@ test('every message tone is levelled to -12 LUFS', () => {
   for (const tone of TONES) {
     const pcm = wavPcm(fs.readFileSync(androidPath(tone)));
     const loudness = integratedLufs(samples(pcm), pcm.rate);
-    assert.ok(Math.abs(loudness - TARGET_LUFS) <= TOLERANCE, `${tone} measures ${loudness.toFixed(2)} LUFS, expected ${TARGET_LUFS} ±${TOLERANCE}`);
+    const target = ANDROID_QUIETER.get(tone) ?? TARGET_LUFS;
+    assert.ok(Math.abs(loudness - target) <= TOLERANCE, `${tone} measures ${loudness.toFixed(2)} LUFS, expected ${target} ±${TOLERANCE}`);
   }
 });
 
@@ -125,8 +128,9 @@ test('no tone clips or comes close: sample peaks stay below -1 dBFS', () => {
   }
 });
 
-test('the iOS and Android copies of each tone carry exactly the same audio', () => {
+test('the iOS and Android copies of each tone carry exactly the same audio, except the two lowered on Android', () => {
   for (const tone of TONES) {
+    if (ANDROID_QUIETER.has(tone)) continue;
     const android = wavPcm(fs.readFileSync(androidPath(tone)));
     const ios = cafPcm(fs.readFileSync(iosPath(tone)));
     assert.equal(ios.rate, android.rate, `${tone} sample rate`);
@@ -138,4 +142,27 @@ test('the web chime ships next to the native ones and is cached by the service w
   const mp3 = path.join(root, 'client', 'vault_chime.mp3');
   assert.ok(fs.statSync(mp3).size > 10000);
   assert.match(fs.readFileSync(path.join(root, 'client', 'sw.js'), 'utf8'), /'\/vault_chime\.mp3'/);
+});
+
+test('the lowered Android chime and Glow sit exactly 2 dB below the iOS copies, so only the level differs', () => {
+  for (const tone of ANDROID_QUIETER.keys()) {
+    // Both files hold little-endian 16-bit samples (the parity test above compares them byte for byte).
+    const pcm16 = buffer => Float64Array.from({ length:buffer.length >> 1 }, (_, i) => buffer.readInt16LE(i * 2) / 32768);
+    const android = pcm16(wavPcm(fs.readFileSync(androidPath(tone))).data);
+    const ios = pcm16(cafPcm(fs.readFileSync(iosPath(tone))).data);
+    assert.equal(android.length, ios.length, `${tone} length`);
+    let ratioSum = 0, count = 0;
+    for (let i = 0; i < ios.length; i++) if (Math.abs(ios[i]) > 0.1) { ratioSum += android[i] / ios[i]; count++; }
+    assert.ok(Math.abs(20 * Math.log10(ratioSum / count) + 2) < 0.1, `${tone} is not 2 dB below iOS`);
+  }
+});
+
+test('the quieter chime and Glow use new notification channels; the legacy chime channel stays for server pushes', () => {
+  const messaging = fs.readFileSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
+  assert.match(messaging, /CHIME_CHANNEL_ID = "vaultlix_messages_universal_v3"/);
+  assert.match(messaging, /MESSAGE_CHANNEL_ID = "vaultlix_messages_universal_v2"/);
+  assert.match(messaging, /return TONE_CHANNEL_PREFIX \+ tone \+ \("glow"\.equals\(tone\) \? "_v2" : ""\);/);
+  assert.match(messaging, /deleteNotificationChannel\(TONE_CHANNEL_PREFIX \+ tone\)/);
+  // server/index.js still names v2 for system-rendered pushes, so older and newer apps both have it.
+  assert.match(fs.readFileSync(path.join(root, 'server', 'index.js'), 'utf8'), /channelId: 'vaultlix_messages_universal_v2'/);
 });

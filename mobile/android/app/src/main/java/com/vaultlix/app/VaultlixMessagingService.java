@@ -32,7 +32,12 @@ import java.util.Map;
 
 public class VaultlixMessagingService extends MessagingService {
     public static final String CALL_CHANNEL_PREFIX = "vaultlix_calls_";
+    // v2 is still named by server/index.js for the system-rendered pushes (connection requests,
+    // session notices), so it stays. Chat messages in the Chime tone use v3, which carries the
+    // chime levelled to -14 LUFS: a channel's sound is fixed when the channel is created, so a
+    // quieter chime needs a new channel id for installs that already have v2.
     private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_universal_v2";
+    private static final String CHIME_CHANNEL_ID = "vaultlix_messages_universal_v3";
     private static final String MISSED_CALL_CHANNEL_ID = "vaultlix_missed_calls_silent_v1";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
@@ -120,9 +125,14 @@ public class VaultlixMessagingService extends MessagingService {
 
     private void ensureMessageChannel(NotificationManager manager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        createChimeChannel(manager, MESSAGE_CHANNEL_ID, "Requests and alerts");
+        createChimeChannel(manager, CHIME_CHANNEL_ID, "Messages · Chime");
+    }
+
+    private void createChimeChannel(NotificationManager manager, String id, String name) {
         NotificationChannel channel = new NotificationChannel(
-                MESSAGE_CHANNEL_ID,
-                "Messages and missed calls",
+                id,
+                name,
                 NotificationManager.IMPORTANCE_HIGH
         );
         channel.enableVibration(true);
@@ -181,14 +191,20 @@ public class VaultlixMessagingService extends MessagingService {
     // An Android notification channel fixes its sound when it is created, so each
     // tone gets its own channel and a message uses the channel of the tone the
     // person chose. The original chime keeps its existing channel untouched.
+    // Glow was re-levelled to -14 LUFS, which needs a new channel id for the same reason as the chime.
+    private static String toneChannelId(String tone) {
+        return TONE_CHANNEL_PREFIX + tone + ("glow".equals(tone) ? "_v2" : "");
+    }
+
     private String ensureMessageChannel(NotificationManager manager, String requestedTone) {
         String tone = normalizeTone(requestedTone);
         if ("chime".equals(tone)) {
             ensureMessageChannel(manager);
-            return MESSAGE_CHANNEL_ID;
+            return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ? MESSAGE_CHANNEL_ID : CHIME_CHANNEL_ID;
         }
-        String channelId = TONE_CHANNEL_PREFIX + tone;
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return MESSAGE_CHANNEL_ID;
+        String channelId = toneChannelId(tone);
+        if ("glow".equals(tone)) manager.deleteNotificationChannel(TONE_CHANNEL_PREFIX + tone); // the old -12 LUFS channel
         if (manager.getNotificationChannel(channelId) != null) return channelId;
         NotificationChannel channel = new NotificationChannel(
                 channelId,

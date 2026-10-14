@@ -118,7 +118,8 @@ test('every tone ships as a web mp3, an iOS caf registered in the Xcode project,
 
 test('Android uses one notification channel per tone and keeps the original channel for the default', () => {
   assert.match(android, /TONE_CHANNEL_PREFIX = "vaultlix_messages_tone_"/);
-  assert.match(android, /if \("chime"\.equals\(tone\)\) \{\s*ensureMessageChannel\(manager\);\s*return MESSAGE_CHANNEL_ID;/);
+  // The chime has its own channel (v3, -14 LUFS); v2 stays for the server's system-rendered pushes.
+  assert.match(android, /if \("chime"\.equals\(tone\)\) \{\s*ensureMessageChannel\(manager\);\s*return Build\.VERSION\.SDK_INT < Build\.VERSION_CODES\.O \? MESSAGE_CHANNEL_ID : CHIME_CHANNEL_ID;/);
   assert.match(android, /getIdentifier\("vault_tone_" \+ tone, "raw", getPackageName\(\)\)/);
   assert.equal((android.match(/String channelId = ensureMessageChannel\(manager, chosenTone\(data\)\);/g) || []).length, 2, '1:1 and group message notifications');
   assert.equal((android.match(/new NotificationCompat\.Builder\(this, channelId\)/g) || []).length, 2);
