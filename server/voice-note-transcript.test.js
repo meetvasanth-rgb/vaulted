@@ -27,6 +27,16 @@ test('voice-note audio is decoded locally and transcript text is inserted safely
   assert.doesNotMatch(workflow, /api\(|\/api\//);
 });
 
+test('voice-note transcript language can be selected independently and is remembered locally', () => {
+  assert.match(client, /id="transcript-language-select"/);
+  assert.match(client, /VAULTLIX_TRANSCRIPT_LANGUAGE_KEY = 'vaultlix_transcript_language_v1'/);
+  assert.match(client, /function currentTranscriptLocale\(\)/);
+  assert.match(client, /localStorage\.setItem\(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY/);
+  assert.match(client, /const locale = currentTranscriptLocale\(\)/);
+  assert.match(client, /transcribeVoiceNote\(requestId, pcmBase64, locale\)/);
+  assert.match(client, /locale \}\);/);
+});
+
 test('iOS transcribes the temporary PCM wave through the native speech recognizer', () => {
   assert.match(ios, /SFSpeechURLRecognitionRequest\(url: url\)/);
   assert.match(ios, /request\.requiresOnDeviceRecognition = onDevice/);
