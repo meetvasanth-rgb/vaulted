@@ -4495,41 +4495,6 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
         </select>
       </label>
       <div class="settings-row-sub" style="padding:0 20px 22px" data-i18n="language_note">The change applies immediately. Arabic uses a right-to-left layout.</div>
-      <div class="settings-section-label" data-i18n="transcript_language">Voice transcript language</div>
-      <label class="account-field" style="margin:8px 20px 12px"><span data-i18n="transcript_language">Voice transcript language</span>
-        <select id="transcript-language-select" onchange="setTranscriptLanguage(this.value)" style="width:100%;margin-top:8px;padding:14px;border:1px solid #dfd1d6;border-radius:14px;background:#fff;font:inherit;color:#271d25">
-          <option value="system" data-i18n="system_default">System default</option>
-          <option value="en-US">English</option>
-          <option value="ta-IN">தமிழ்</option>
-          <option value="hi-IN">हिन्दी</option>
-          <option value="ml-IN">മലയാളം</option>
-          <option value="te-IN">తెలుగు</option>
-          <option value="kn-IN">ಕನ್ನಡ</option>
-          <option value="bn-IN">বাংলা</option>
-          <option value="mr-IN">मराठी</option>
-          <option value="gu-IN">ગુજરાતી</option>
-          <option value="pa-IN">ਪੰਜਾਬੀ</option>
-          <option value="zh-CN">简体中文</option>
-          <option value="ru-RU">Русский</option>
-          <option value="ar-SA">العربية</option>
-          <option value="hy-AM">Հայերեն</option>
-        </select>
-      </label>
-      <div class="settings-row-sub" style="padding:0 20px 22px" data-i18n="transcript_language_note">Used when you tap Show transcript. Choose the language spoken in the voice note.</div>
-      <div class="settings-section-label">Tamil transcript display</div>
-      <label class="account-field" style="margin:8px 20px 12px"><span>Show Tamil as</span>
-        <select id="transcript-script-select" onchange="setTranscriptScript(this.value)" style="width:100%;margin-top:8px;padding:14px;border:1px solid #dfd1d6;border-radius:14px;background:#fff;font:inherit;color:#271d25">
-          <option value="native">Tamil script — என்ன தம்பி</option>
-          <option value="latin">English letters — enna thambi</option>
-        </select>
-      </label>
-      <div class="settings-row-sub" style="padding:0 20px 22px">English letters keep the spoken Tamil wording; they do not translate its meaning.</div>
-      <div class="settings-section-label" data-i18n="offline_transcript_model">Offline multilingual model</div>
-      <div class="account-field" style="margin:8px 20px 22px">
-        <span data-i18n="offline_transcript_privacy">Supports languages unavailable through Apple or Google. The approximately 160 MB model stays on this device, and voice notes are never uploaded for transcription.</span>
-        <div id="offline-transcript-model-status" class="settings-row-sub" style="padding:10px 0 12px" data-i18n="offline_transcript_not_downloaded">Not downloaded</div>
-        <button id="offline-transcript-model-button" class="account-secondary" type="button" onclick="downloadOfflineTranscriptModel()" data-i18n="download_model">Download model</button>
-      </div>
     </div>
 
     <div class="settings-divider"></div>
@@ -5017,8 +4982,6 @@ var qrcode=(()=>{var or=(L,T)=>()=>{try{return T||L((T={exports:{}}).exports,T),
 <script>
 // ── HTTP POLLING MESSENGER — MULTI-ROOM (Phase 1) ──────────────────────
 const VAULTLIX_LANGUAGE_KEY = 'vaultlix_language_v1';
-const VAULTLIX_TRANSCRIPT_LANGUAGE_KEY = 'vaultlix_transcript_language_v1';
-const VAULTLIX_TRANSCRIPT_SCRIPT_KEY = 'vaultlix_transcript_script_v1';
 const VAULTLIX_LANGUAGES = ['en', 'zh', 'ru', 'hi', 'ar', 'hy'];
 const LEAVE_VAULT_CONFIRMATIONS = {
   en:'Leave this conversation? It will be removed from this device. You will need a new connection request to chat again.',
@@ -5031,7 +4994,7 @@ const LEAVE_VAULT_CONFIRMATIONS = {
 const VAULTLIX_TRANSLATIONS = {
   en: {
     settings:'Settings', profile:'Profile', privacy_security:'Privacy & Security', notifications:'Notifications', chats:'Chats', calls:'Calls', help:'Help',
-    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.', transcript_language:'Voice transcript language', transcript_language_note:'Used when you tap Show transcript. Choose the language spoken in the voice note.', offline_transcript_model:'Offline multilingual model', offline_transcript_privacy:'Supports languages unavailable through Apple or Google. The approximately 160 MB model stays on this device, and voice notes are never uploaded for transcription.', offline_transcript_not_downloaded:'Not downloaded', offline_transcript_ready:'Ready on this device', offline_transcript_unavailable:'Available in the iOS and Android apps', download_model:'Download model', retry_download:'Retry download',
+    language:'Language', language_subtitle:'Use your device language or choose another', app_language:'App language', language_note:'The change applies immediately. Arabic uses a right-to-left layout.',
     system_default:'System default', new_connection:'Add your friend', sign_in:'Sign in', create_account:'Create account', recover_account:'Recover account',
     private_number:'Vaultlix private number', display_name:'Display name', password:'Password', continue:'Continue', cancel:'Cancel', save:'Save', close:'Close',
     search:'Search', home:'Home', encrypted_conversation:'Encrypted conversation', no_conversations:'No conversations yet',
@@ -5067,11 +5030,6 @@ Object.assign(VAULTLIX_TRANSLATIONS.ru, { new_connection:'Продлить ва�
 Object.assign(VAULTLIX_TRANSLATIONS.hi, { new_connection:'अपनी निजी लाइन बढ़ाएँ', new_private_connection:'अपनी निजी लाइन बढ़ाएँ' });
 Object.assign(VAULTLIX_TRANSLATIONS.ar, { new_connection:'وسّع خطك الخاص', new_private_connection:'وسّع خطك الخاص' });
 Object.assign(VAULTLIX_TRANSLATIONS.hy, { new_connection:'Ընդլայնեք ձեր գիծը', new_private_connection:'Ընդլայնեք ձեր գիծը' });
-Object.assign(VAULTLIX_TRANSLATIONS.zh, { transcript_language:'语音转文字语言', transcript_language_note:'点击“显示转写”时使用。请选择语音消息中所说的语言。' });
-Object.assign(VAULTLIX_TRANSLATIONS.ru, { transcript_language:'Язык расшифровки голосовых сообщений', transcript_language_note:'Используется при нажатии «Показать расшифровку». Выберите язык голосового сообщения.' });
-Object.assign(VAULTLIX_TRANSLATIONS.hi, { transcript_language:'वॉइस ट्रांसक्रिप्ट की भाषा', transcript_language_note:'“ट्रांसक्रिप्ट दिखाएँ” दबाने पर इसका उपयोग होता है। वॉइस मैसेज में बोली गई भाषा चुनें।' });
-Object.assign(VAULTLIX_TRANSLATIONS.ar, { transcript_language:'لغة نسخ الرسائل الصوتية', transcript_language_note:'تُستخدم عند الضغط على «عرض النص». اختر اللغة المنطوقة في الرسالة الصوتية.' });
-Object.assign(VAULTLIX_TRANSLATIONS.hy, { transcript_language:'Ձայնային գրառման լեզու', transcript_language_note:'Օգտագործվում է «Ցուցադրել գրառումը» սեղմելիս։ Ընտրեք ձայնային հաղորդագրության լեզուն։' });
 const VAULTLIX_CONVERSATION_TRANSLATIONS = {
   en: {
     conversation_actions:'Conversation actions', open_conversation_menu:'Open conversation menu', achievements:'Achievements', quick_lock:'Quick Lock', leave_conversation:'Leave conversation', delete_conversation:'Delete conversation', close_achievements:'Close achievements', private_connection:'Private connection',
@@ -5149,11 +5107,6 @@ function applyAppLanguage() {
   document.querySelectorAll('[data-i18n-aria-label]').forEach(el => { el.setAttribute('aria-label', i18n(el.dataset.i18nAriaLabel)); });
   const select = document.getElementById('app-language-select');
   if (select) select.value = localStorage.getItem(VAULTLIX_LANGUAGE_KEY) || 'system';
-  const transcriptSelect = document.getElementById('transcript-language-select');
-  if (transcriptSelect) transcriptSelect.value = localStorage.getItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY) || 'system';
-  const transcriptScriptSelect = document.getElementById('transcript-script-select');
-  if (transcriptScriptSelect) transcriptScriptSelect.value = localStorage.getItem(VAULTLIX_TRANSCRIPT_SCRIPT_KEY) || 'native';
-  if (typeof renderOfflineTranscriptModelStatus === 'function') renderOfflineTranscriptModelStatus({ state:offlineTranscriptModelState });
   document.dispatchEvent(new CustomEvent('vaultlixlanguagechange', { detail:{ language:lang } }));
 }
 function setAppLanguage(value) {
@@ -5165,114 +5118,6 @@ function setAppLanguage(value) {
     else showSettingsMenu();
   }
 }
-function currentTranscriptLocale() {
-  const stored = localStorage.getItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY) || 'system';
-  return stored === 'system' ? String(navigator.languages?.[0] || navigator.language || '') : stored;
-}
-function setTranscriptLanguage(value) {
-  const select = document.getElementById('transcript-language-select');
-  const allowed = select ? Array.from(select.options, option => option.value) : ['system'];
-  localStorage.setItem(VAULTLIX_TRANSCRIPT_LANGUAGE_KEY, allowed.includes(value) ? value : 'system');
-}
-function setTranscriptScript(value) {
-  localStorage.setItem(VAULTLIX_TRANSCRIPT_SCRIPT_KEY, value === 'latin' ? 'latin' : 'native');
-}
-function tamilToEnglishLetters(value) {
-  const vowels = { 'அ':'a','ஆ':'aa','இ':'i','ஈ':'ee','உ':'u','ஊ':'oo','எ':'e','ஏ':'ae','ஐ':'ai','ஒ':'o','ஓ':'oo','ஔ':'au' };
-  const consonants = {
-    'க':'k','ங':'ng','ச':'ch','ஞ':'nj','ட':'d','ண':'n','த':'th','ந':'n','ப':'p','ம':'m',
-    'ய':'y','ர':'r','ல':'l','வ':'v','ழ':'zh','ள':'l','ற':'r','ன':'n','ஜ':'j','ஷ':'sh','ஸ':'s','ஹ':'h'
-  };
-  const signs = { 'ா':'aa','ி':'i','ீ':'ee','ு':'u','ூ':'oo','ெ':'e','ே':'ae','ை':'ai','ொ':'o','ோ':'oo','ௌ':'au','்':'' };
-  const characters = Array.from(String(value || ''));
-  let result = '';
-  for (let index = 0; index < characters.length; index += 1) {
-    const character = characters[index];
-    if (Object.prototype.hasOwnProperty.call(vowels, character)) {
-      result += vowels[character];
-      continue;
-    }
-    if (Object.prototype.hasOwnProperty.call(consonants, character)) {
-      const next = characters[index + 1];
-      if (Object.prototype.hasOwnProperty.call(signs, next)) {
-        result += consonants[character] + signs[next];
-        index += 1;
-      } else {
-        result += consonants[character] + 'a';
-      }
-      continue;
-    }
-    result += character === 'ஃ' ? 'h' : character;
-  }
-  return result
-    .replace(/mp/g, 'mb')
-    .replace(/ngk/g, 'ng')
-    .replace(/\s+([,.!?])/g, '$1')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-function formatVoiceTranscript(text) {
-  const latin = (localStorage.getItem(VAULTLIX_TRANSCRIPT_SCRIPT_KEY) || 'native') === 'latin';
-  const tamil = currentTranscriptLocale().toLowerCase().split(/[-_]/)[0] === 'ta';
-  return latin && tamil ? tamilToEnglishLetters(text) : text;
-}
-let offlineTranscriptModelState = 'unavailable';
-function renderOfflineTranscriptModelStatus(detail = {}) {
-  offlineTranscriptModelState = String(detail.state || offlineTranscriptModelState || 'unavailable');
-  const status = document.getElementById('offline-transcript-model-status');
-  const button = document.getElementById('offline-transcript-model-button');
-  if (!status || !button) return;
-  const progress = Math.max(0, Math.min(100, Number(detail.progress) || 0));
-  if (offlineTranscriptModelState === 'ready') {
-    status.textContent = i18n('offline_transcript_ready');
-    button.style.display = 'none';
-  } else if (offlineTranscriptModelState === 'downloading') {
-    status.textContent = `Downloading… ${progress}%`;
-    button.style.display = '';
-    button.disabled = true;
-    button.textContent = 'Downloading…';
-  } else if (offlineTranscriptModelState === 'error') {
-    status.textContent = String(detail.error || 'Model download failed.');
-    button.style.display = '';
-    button.disabled = false;
-    button.textContent = i18n('retry_download');
-  } else if (offlineTranscriptModelState === 'not_downloaded') {
-    status.textContent = i18n('offline_transcript_not_downloaded');
-    button.style.display = '';
-    button.disabled = false;
-    button.textContent = i18n('download_model');
-  } else {
-    status.textContent = i18n('offline_transcript_unavailable');
-    button.style.display = 'none';
-  }
-}
-function refreshOfflineTranscriptModelStatus() {
-  try {
-    if (typeof window.VaultlixAndroid?.offlineTranscriptModelStatus === 'function') {
-      renderOfflineTranscriptModelStatus({ state:window.VaultlixAndroid.offlineTranscriptModelStatus() });
-      return;
-    }
-    if (window.webkit?.messageHandlers?.vaultlixCall) {
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'offlineTranscriptModelStatus' });
-      return;
-    }
-  } catch (_) {}
-  renderOfflineTranscriptModelStatus({ state:'unavailable' });
-}
-function downloadOfflineTranscriptModel() {
-  try {
-    if (typeof window.VaultlixAndroid?.downloadOfflineTranscriptModel === 'function') {
-      renderOfflineTranscriptModelStatus({ state:'downloading', progress:0 });
-      window.VaultlixAndroid.downloadOfflineTranscriptModel();
-      return;
-    }
-    if (window.webkit?.messageHandlers?.vaultlixCall) {
-      renderOfflineTranscriptModelStatus({ state:'downloading', progress:0 });
-      window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'downloadOfflineTranscriptModel' });
-    }
-  } catch (_) { renderOfflineTranscriptModelStatus({ state:'error', error:'Model download could not start.' }); }
-}
-window.addEventListener('vaultlix:offline-transcript-model', event => renderOfflineTranscriptModelStatus(event.detail || {}));
 document.addEventListener('DOMContentLoaded', applyAppLanguage, { once:true });
 function syncAndroidSystemInsets(){
   const bridge=window.VaultlixAndroid;
@@ -12056,7 +11901,7 @@ function openSettingsCategory(category) {
   const languageSection = document.getElementById('settings-language-section');
   languageSection.classList.toggle('active', category === 'language');
   languageSection.style.display = category === 'language' ? '' : 'none';
-  if (category === 'language') { applyAppLanguage(); refreshOfflineTranscriptModelStatus(); }
+  if (category === 'language') applyAppLanguage();
   document.getElementById('settings-about-section').style.display = category === 'help' ? '' : 'none';
   document.getElementById('persistent-suggestion-section').style.display = 'none';
   document.getElementById('anon-link-section').style.display = 'none';
@@ -26176,7 +26021,7 @@ async function requestVoiceTranscript(key, mime, base64) {
   try {
     const pcmBase64 = await voiceNotePcmBase64(mime, base64);
     voiceTranscriptRequests.set(requestId, key);
-    const locale = currentTranscriptLocale();
+    const locale = 'en-US';
     if (typeof window.VaultlixAndroid?.transcribeVoiceNote === 'function') {
       window.VaultlixAndroid.transcribeVoiceNote(requestId, pcmBase64, locale);
     } else if (window.webkit?.messageHandlers?.vaultlixCall) {
@@ -26199,7 +26044,7 @@ window.addEventListener('vaultlix:voice-transcript', event => {
   if (!key) return;
   if (detail.state === 'final') {
     voiceTranscriptRequests.delete(requestId);
-    const text = formatVoiceTranscript(String(detail.text || '').trim());
+    const text = String(detail.text || '').trim();
     voiceTranscriptStates.set(key, text
       ? { status:'final', text, error:'', hidden:false }
       : { status:'error', text:'', error:'No speech could be recognized.', hidden:false });

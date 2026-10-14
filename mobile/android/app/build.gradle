@@ -67,7 +67,6 @@ dependencies {
     implementation(group: 'androidx.sqlite', name: 'sqlite', version: '2.7.0')
     implementation 'io.github.webrtc-sdk:android:144.7559.09'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8'
     implementation 'androidx.media3:media3-transformer:1.11.1'
     implementation 'androidx.media3:media3-effect:1.11.1'
     // Carries a friend's invitation through the Play Store install (see InstallInvite).

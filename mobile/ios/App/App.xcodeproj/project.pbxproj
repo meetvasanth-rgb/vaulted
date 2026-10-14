@@ -24,7 +24,6 @@
 		8F0CE198FD51B4B613135FAB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10019F507318EA1E751F1F57 /* Assets.xcassets */; };
 		93ED2C8F42740F6DE1FA10A1 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92201E11778C80098DC96006 /* NotificationService.swift */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
-		A0F1000130F1000100000001 /* OfflineTranscriptEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F1000230F1000100000001 /* OfflineTranscriptEngine.swift */; };
 		A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */; };
 		A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00430A1000100000001 /* NativeCallRoomStore.swift */; };
 		A11CE00530A1000100000001 /* SecureMessageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE00630A1000100000001 /* SecureMessageStore.swift */; };
@@ -136,7 +135,6 @@
 		90E1FC57F3C0F3056483E6BE /* VaultlixClip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VaultlixClip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		92201E11778C80098DC96006 /* NotificationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-		A0F1000230F1000100000001 /* OfflineTranscriptEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTranscriptEngine.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWebRTCCallEngine.swift; sourceTree = "<group>"; };
 		A11CE00430A1000100000001 /* NativeCallRoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallRoomStore.swift; sourceTree = "<group>"; };
@@ -273,7 +271,6 @@
 				A11CE00630A1000100000001 /* SecureMessageStore.swift */,
 				A11CE00430A1000100000001 /* NativeCallRoomStore.swift */,
 				A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */,
-				A0F1000230F1000100000001 /* OfflineTranscriptEngine.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -350,7 +347,6 @@
 				39F86CDD3F4E6998FE6FD378 /* Embed App Clips */,
 				1BDBBA9303CC12A1306C6AD5 /* Embed Foundation Extensions */,
 				51EC3918C46468D9A579E020 /* Embed Foundation Extensions */,
-				A0F2000130F2000100000001 /* Normalize ONNX Runtime minimum OS */,
 			);
 			buildRules = (
 			);
@@ -427,28 +423,6 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		A0F2000130F2000100000001 /* Normalize ONNX Runtime minimum OS */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Normalize ONNX Runtime minimum OS";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "FRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework\"\nINFO_PATH=\"${FRAMEWORK_PATH}/Info.plist\"\nif [ -f \"${INFO_PATH}\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :MinimumOSVersion ${IPHONEOS_DEPLOYMENT_TARGET}\" \"${INFO_PATH}\"\n  if [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${FRAMEWORK_PATH}\"\n  fi\nfi\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXResourcesBuildPhase section */
 		504EC3021FED79650016851F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
@@ -513,7 +487,6 @@
 				A11CE00530A1000100000001 /* SecureMessageStore.swift in Sources */,
 				A11CE00330A1000100000001 /* NativeCallRoomStore.swift in Sources */,
 				A11CE00130A1000100000001 /* NativeWebRTCCallEngine.swift in Sources */,
-				A0F1000130F1000100000001 /* OfflineTranscriptEngine.swift in Sources */,
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				169D7930ACD8EE5B02D14DA2 /* InviteLink.swift in Sources */,

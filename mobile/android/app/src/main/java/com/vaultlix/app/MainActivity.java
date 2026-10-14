@@ -68,7 +68,6 @@ import java.util.Locale;
 public class MainActivity extends BridgeActivity {
     private static final int SAVE_MEDIA_REQUEST = 4107;
     private static final int SPEECH_TO_TEXT_PERMISSION_REQUEST = 74;
-    private static final int VOICE_TRANSCRIPT_PERMISSION_REQUEST = 75;
     // A share to WhatsApp (and most other apps) often uses Android's Direct
     // Share: control returns to Vaultlix (onResume) almost immediately, while
     // the receiving app reads the granted file asynchronously in the
@@ -87,14 +86,11 @@ public class MainActivity extends BridgeActivity {
     private SecureMessageStore secureMessageStore;
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
-    private OfflineTranscriptEngine offlineTranscriptEngine;
     private SpeechRecognizer speechRecognizer;
     private SpeechRecognizer voiceTranscriptRecognizer;
     private ParcelFileDescriptor voiceTranscriptAudio;
     private File voiceTranscriptFile;
     private String pendingSpeechLocale;
-    private String pendingVoiceTranscriptRequestId;
-    private String pendingVoiceTranscriptLocale;
     private volatile Uri preparedNumberCardUri;
     private volatile String preparedNumberCardLink;
     private volatile File pendingSaveMediaFile;
@@ -143,7 +139,6 @@ public class MainActivity extends BridgeActivity {
         secureMessageStore = new SecureMessageStore(this);
         nativeCallRoomStore = new NativeCallRoomStore(this);
         nativeCallEngine = NativeWebRtcCallEngine.get(this);
-        offlineTranscriptEngine = new OfflineTranscriptEngine(this);
         nativeCallEngine.addListener(nativeCallListener);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
         // A friend's invitation that came through the Play Store install.
@@ -380,30 +375,6 @@ public class MainActivity extends BridgeActivity {
             } else {
                 pendingSpeechLocale = null;
                 emitSpeechToText("error", "", "Microphone permission is required for voice typing.", false);
-            }
-            return;
-        }
-        if (requestCode == VOICE_TRANSCRIPT_PERMISSION_REQUEST) {
-            String requestId = pendingVoiceTranscriptRequestId;
-            String locale = pendingVoiceTranscriptLocale;
-            File pcmFile = voiceTranscriptFile;
-            pendingVoiceTranscriptRequestId = null;
-            pendingVoiceTranscriptLocale = null;
-            // beginVoiceTranscript clears any previous transcript first. Detach this
-            // pending file so that cleanup does not delete the file we are resuming.
-            voiceTranscriptFile = null;
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                    && requestId != null && pcmFile != null && pcmFile.exists()) {
-                beginVoiceTranscript(requestId, pcmFile, locale);
-            } else {
-                if (pcmFile != null) { //noinspection ResultOfMethodCallIgnored
-                    pcmFile.delete();
-                }
-                if (requestId != null) {
-                    emitVoiceTranscript(requestId, "error", "",
-                            "Allow microphone access to create voice-note transcripts.", false,
-                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS);
-                }
             }
             return;
         }
@@ -748,39 +719,6 @@ public class MainActivity extends BridgeActivity {
                 "window.dispatchEvent(new CustomEvent('vaultlix:voice-transcript',{detail:" + detail + "}));", null);
     }
 
-    private void emitOfflineTranscriptModel(String state, int progress, String error) {
-        if (isFinishing() || isDestroyed() || getBridge() == null || getBridge().getWebView() == null) return;
-        String detail = "{state:" + JSONObject.quote(state)
-                + ",progress:" + Math.max(0, Math.min(100, progress))
-                + ",error:" + JSONObject.quote(error == null ? "" : error) + "}";
-        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(
-                "window.dispatchEvent(new CustomEvent('vaultlix:offline-transcript-model',{detail:" + detail + "}));", null));
-    }
-
-    private void runOfflineVoiceTranscript(String requestId, String locale, boolean systemOnDevice) {
-        File pcmFile = voiceTranscriptFile;
-        releaseVoiceTranscriptRecognizer();
-        voiceTranscriptFile = null;
-        if (pcmFile == null || offlineTranscriptEngine == null || !offlineTranscriptEngine.isReady()) {
-            if (pcmFile != null) { //noinspection ResultOfMethodCallIgnored
-                pcmFile.delete();
-            }
-            emitVoiceTranscript(requestId, "error", "",
-                    "This language needs the offline multilingual model. Download it in Settings → Language.",
-                    systemOnDevice, 0);
-            return;
-        }
-        offlineTranscriptEngine.transcribe(pcmFile, locale, (text, error) -> runOnUiThread(() -> {
-            //noinspection ResultOfMethodCallIgnored
-            pcmFile.delete();
-            if (error == null || error.isEmpty()) {
-                emitVoiceTranscript(requestId, "final", text, "", true, 0);
-            } else {
-                emitVoiceTranscript(requestId, "error", "", error, true, 0);
-            }
-        }));
-    }
-
     private void releaseVoiceTranscriptRecognizer() {
         if (voiceTranscriptRecognizer != null) {
             SpeechRecognizer old = voiceTranscriptRecognizer;
@@ -800,24 +738,13 @@ public class MainActivity extends BridgeActivity {
             voiceTranscriptFile.delete();
             voiceTranscriptFile = null;
         }
-        pendingVoiceTranscriptRequestId = null;
-        pendingVoiceTranscriptLocale = null;
     }
 
     private void beginVoiceTranscript(String requestId, File pcmFile, String localeTag) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !SpeechRecognizer.isRecognitionAvailable(this)) {
-            clearVoiceTranscript();
-            voiceTranscriptFile = pcmFile;
-            runOfflineVoiceTranscript(requestId, localeTag, true);
-            return;
-        }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            clearVoiceTranscript();
-            voiceTranscriptFile = pcmFile;
-            pendingVoiceTranscriptRequestId = requestId;
-            pendingVoiceTranscriptLocale = localeTag;
-            requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO },
-                    VOICE_TRANSCRIPT_PERMISSION_REQUEST);
+            //noinspection ResultOfMethodCallIgnored
+            pcmFile.delete();
+            emitVoiceTranscript(requestId, "error", "", "Transcription is not available on this device.", false, 0);
             return;
         }
         clearVoiceTranscript();
@@ -864,12 +791,8 @@ public class MainActivity extends BridgeActivity {
                 if (!completed.compareAndSet(false, true)) return;
                 boolean languageProblem = error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
                         || error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE;
-                // Never feed Tamil (or any other unsupported language) to an English
-                // recognizer: it can return plausible but incorrect text. The verified
-                // multilingual model either handles it locally or tells the person
-                // exactly where to download the optional model.
-                if (languageProblem) {
-                    runOfflineVoiceTranscript(requestId, locale, onDevice);
+                if (attempt == 0 && languageProblem && !"en-US".equalsIgnoreCase(locale)) {
+                    runVoiceTranscriptAttempt(requestId, "en-US", onDevice, 1);
                     return;
                 }
                 // Some vendor on-device recognizers advertise support but ignore EXTRA_AUDIO_SOURCE,
@@ -878,10 +801,6 @@ public class MainActivity extends BridgeActivity {
                 // SPEECH_TIMEOUT. Only report "no speech" after the supplied audio has failed there too.
                 if (onDevice && attempt < 2) {
                     runVoiceTranscriptAttempt(requestId, locale, false, attempt + 2);
-                    return;
-                }
-                if (offlineTranscriptEngine != null && offlineTranscriptEngine.isReady()) {
-                    runOfflineVoiceTranscript(requestId, locale, onDevice);
                     return;
                 }
                 emitVoiceTranscript(requestId, "error", "", voiceTranscriptErrorMessage(error), onDevice, error);
@@ -952,8 +871,6 @@ public class MainActivity extends BridgeActivity {
                 return "Transcript needs the speech language pack. Check your connection and try again.";
             case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
                 return "The speech recognizer is busy. Try again in a moment.";
-            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
-                return "Allow microphone access to create voice-note transcripts.";
             default:
                 return "Transcript failed (code " + error + ").";
         }
@@ -978,25 +895,8 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean supportsVoiceNoteTranscription() {
-            return offlineTranscriptEngine != null
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                    && SpeechRecognizer.isRecognitionAvailable(MainActivity.this));
-        }
-
-        @JavascriptInterface
-        public String offlineTranscriptModelStatus() {
-            return offlineTranscriptEngine == null ? "unavailable" : offlineTranscriptEngine.state();
-        }
-
-        @JavascriptInterface
-        public void downloadOfflineTranscriptModel() {
-            runOnUiThread(() -> {
-                if (offlineTranscriptEngine == null) {
-                    emitOfflineTranscriptModel("error", 0, "Offline transcription is unavailable on this device.");
-                    return;
-                }
-                offlineTranscriptEngine.download(MainActivity.this::emitOfflineTranscriptModel);
-            });
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && SpeechRecognizer.isRecognitionAvailable(MainActivity.this);
         }
 
         @JavascriptInterface

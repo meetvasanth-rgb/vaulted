@@ -477,32 +477,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         ])
     }
 
-    private func emitOfflineTranscriptModel(state: String, progress: Int = 0, error: String = "") {
-        emit(name: "vaultlix:offline-transcript-model", detail: [
-            "state": state, "progress": progress, "error": error
-        ])
-    }
-
-    private func runOfflineVoiceTranscript(requestId: String, pcm: Data, localeIdentifier: String) {
-        guard OfflineTranscriptEngine.shared.isReady else {
-            emitVoiceTranscript(
-                requestId: requestId,
-                state: "error",
-                error: "This language needs the offline multilingual model. Download it in Settings → Language.",
-                onDevice: true
-            )
-            return
-        }
-        OfflineTranscriptEngine.shared.transcribe(pcm: pcm, localeIdentifier: localeIdentifier) { [weak self] text, error in
-            guard let self else { return }
-            if error.isEmpty {
-                self.emitVoiceTranscript(requestId: requestId, state: "final", text: text, onDevice: true)
-            } else {
-                self.emitVoiceTranscript(requestId: requestId, state: "error", error: error, onDevice: true)
-            }
-        }
-    }
-
     private func finishVoiceTranscript(requestId: String) {
         voiceTranscriptTasks[requestId] = nil
         if let url = voiceTranscriptFiles.removeValue(forKey: requestId) { try? FileManager.default.removeItem(at: url) }
@@ -513,20 +487,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
               pcmBase64.count <= 20_000_000,
               sampleRate == 16000,
               let pcm = Data(base64Encoded: pcmBase64), !pcm.isEmpty else { return }
-        let locale = localeIdentifier.isEmpty ? Locale.current : Locale(identifier: localeIdentifier)
-        guard let recognizer = SFSpeechRecognizer(locale: locale) else {
-            runOfflineVoiceTranscript(requestId: requestId, pcm: pcm, localeIdentifier: localeIdentifier)
-            return
-        }
-        guard recognizer.isAvailable else {
-            runOfflineVoiceTranscript(requestId: requestId, pcm: pcm, localeIdentifier: localeIdentifier)
-            return
-        }
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard status == .authorized else {
                     self.emitVoiceTranscript(requestId: requestId, state: "error", error: "Speech recognition permission is required.", onDevice: false)
+                    return
+                }
+                let locale = localeIdentifier.isEmpty ? Locale.current : Locale(identifier: localeIdentifier)
+                guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+                    self.emitVoiceTranscript(requestId: requestId, state: "error", error: "Transcription is not available for this language.", onDevice: false)
                     return
                 }
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent("vaultlix-transcript-\(UUID().uuidString).wav")
@@ -548,12 +518,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                             self.emitVoiceTranscript(requestId: requestId, state: "final", text: result.bestTranscription.formattedString, onDevice: onDevice)
                             self.finishVoiceTranscript(requestId: requestId)
                         } else if recognitionError != nil {
+                            self.emitVoiceTranscript(requestId: requestId, state: "error", error: "No speech could be recognized.", onDevice: onDevice)
                             self.finishVoiceTranscript(requestId: requestId)
-                            if OfflineTranscriptEngine.shared.isReady {
-                                self.runOfflineVoiceTranscript(requestId: requestId, pcm: pcm, localeIdentifier: localeIdentifier)
-                            } else {
-                                self.emitVoiceTranscript(requestId: requestId, state: "error", error: "No speech could be recognized.", onDevice: onDevice)
-                            }
                         }
                     }
                 }
@@ -1169,7 +1135,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             webReady = true
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
-            emitOfflineTranscriptModel(state: OfflineTranscriptEngine.shared.state)
             if let token = VaultlixCallManager.shared.voIPToken
                 ?? UserDefaults.standard.string(forKey: "vaultlix.voipToken") {
                 let environment = UserDefaults.standard.string(forKey: "vaultlix.voipEnvironment") ?? "production"
@@ -1204,20 +1169,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 sampleRate: (body["sampleRate"] as? NSNumber)?.intValue ?? 16000,
                 localeIdentifier: (body["locale"] as? String) ?? ""
             )
-            return
-        }
-        if action == "offlineTranscriptModelStatus" {
-            guard message.frameInfo.isMainFrame,
-                  message.frameInfo.securityOrigin.host == "vaultlix.com" else { return }
-            emitOfflineTranscriptModel(state: OfflineTranscriptEngine.shared.state)
-            return
-        }
-        if action == "downloadOfflineTranscriptModel" {
-            guard message.frameInfo.isMainFrame,
-                  message.frameInfo.securityOrigin.host == "vaultlix.com" else { return }
-            OfflineTranscriptEngine.shared.download { [weak self] state, progress, error in
-                self?.emitOfflineTranscriptModel(state: state, progress: progress, error: error)
-            }
             return
         }
         if action == "clearInstallInvite" {
