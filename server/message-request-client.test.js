@@ -299,14 +299,35 @@ test('accepting captures the messages and the new chat queues them; polling flus
   assert.match(client, /if \(room\.pendingIntroNotices\?\.length && room\.sharedKey\) flushIntroNotices\(room\)\.catch\(\(\) => \{\}\);/);
 });
 
+test('a connection request pre-key reuses the sender inbox keypair', async () => {
+  const ctx = harness({ answers:{ '/api/account/inbox-key': body => body.publicKey ? { ok:true, accepted:true, inboxKey:body.publicKey } : { ok:true, inboxKey:null } } });
+  const record = await run(ctx, 'ensureInboxKey()');
+  ctx.expected = plain(record.pubJwk);
+  ctx.room = {};
+  assert.equal(await run(ctx, 'useInboxKeyForAcceptedConversation(room, expected)'), true);
+  const publicBytes = new Uint8Array(await webcrypto.subtle.exportKey('raw', ctx.room.myKeyPair.publicKey));
+  assert.equal(Buffer.from(publicBytes).toString('base64'), await run(ctx, 'rawConversationPreKey(expected)'));
+  assert.deepEqual(plain(await run(ctx, 'connectionPreKeyOffer()')), { conversationPreKeyVersion:1 });
+});
+
+test('accepted requests prepare both sides for an immediate encrypted conversation', () => {
+  const accept = extractFn(client, 'acceptConnectionRequest');
+  const refresh = extractFn(client, 'refreshConnectionRequests');
+  const setup = extractFn(client, 'handleSetup');
+  assert.match(accept, /pendingConnectionPeerPreKey = request\.conversationPreKeyVersion === 1 \? request\.senderConversationPreKey \|\| null : null/);
+  assert.match(refresh, /pendingJoinConversationPreKey = accepted\.conversationPreKeyVersion === 1 \? accepted\.senderConversationPreKey \|\| null : null/);
+  assert.match(setup, /await deriveSharedKey\(room, peerPubKey\)[\s\S]*room\.everOnline = true/);
+  assert.match(setup, /await useInboxKeyForAcceptedConversation\(room, acceptedPreKey\)[\s\S]*const pubKey = await getOrGenerateKeyPair\(room\)/);
+});
+
 test('both ways of sending a request ask for the optional message first, then encrypt it', () => {
   const contact = extractFn(client, 'openContactChat');
   assert.match(contact, /const target = await fetchRequestTarget\(normalized\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\(label, \{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;\s*const prepared = await prepareRequestIntro\(normalized, introText, target\);/);
-  assert.match(contact, /replaceExisting:true, \.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
+  assert.match(contact, /replaceExisting:true, \.\.\.preKeyOffer, \.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
   const profile = extractFn(client, 'requestPrivateVault');
   assert.match(profile, /const target = await fetchRequestTarget\(activePublicProfile\.privateNumber\);\s*if \(target\.error\) \{ toast\(target\.error\); return; \}\s*const introText = await promptRequestMessage\([^;]*\{ supported:!!target\.inboxKey \}\);\s*if \(introText === null\) return;/);
   assert.match(profile, /\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
-  assert.match(profile, /replaceExisting:true,\s*\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
+  assert.match(profile, /replaceExisting:true,\s*\.\.\.preKeyOffer,\s*\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
 });
 
 test('the dialog is optional: send, send without a message, or cancel', () => {

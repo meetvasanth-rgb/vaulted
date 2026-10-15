@@ -6,6 +6,7 @@ const { createSeo } = require('./seo');
 const seo = createSeo({ clientDir: path.join(__dirname, '../client') });
 const crypto = require('crypto');
 const { promisify } = require('util');
+const sharp = require('sharp');
 const webpush = require('web-push');
 const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
@@ -175,7 +176,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'blue-hour-garba', direction:'Blue-hour Garba courtyard portrait',
     pose:'Joyful three-quarter full-body Garba step with the torso turned about 25 degrees, one decorated dandiya stick raised comfortably above the shoulder, the other crossing lower in rhythm, the face clearly visible and both feet grounded in a believable dance movement.',
     camera:'Eye-level camera, 70mm short-telephoto perspective, photographed by another person from about 4 metres away.',
-    framing:'Square full-body environmental portrait with the complete head, both hands, both dandiya sticks and both feet inside the frame; preserve breathing room for the courtyard.',
+    framing:'Source-aspect full-body environmental portrait with the complete head, both hands, both dandiya sticks and both feet inside the frame; preserve breathing room for the courtyard.',
     styling:'Premium mirror-work or embroidered Navratri clothing in deep wine, saffron and teal, adapted respectfully to the subject\'s existing presentation, with restrained traditional accessories and practical dance footwear.',
     setting:'Elegant Gujarati courtyard at blue hour with marigold accents, warm string lights, a few diyas placed safely at the edges and distant Garba dancers rendered only as soft background context.',
     lighting:'Soft neutral key on the face matching the courtyard illumination, cool blue-hour ambient fill and warm practical lights behind; preserve accurate skin colour and believable highlights on mirror-work.',
@@ -184,7 +185,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'dandiya-night', direction:'Dandiya night action portrait',
     pose:'Energetic mid-step pose with shoulders open, one foot advancing naturally and two dandiya sticks meeting diagonally beside rather than across the face; keep the expression confident and spontaneous.',
     camera:'Camera slightly below eye level, 50mm normal-lens perspective, photographed from about 3.5 metres away without wide-angle distortion.',
-    framing:'Square thigh-to-head action portrait with the complete head, elbows, hands and both sticks visible and enough space around the gesture to avoid edge collisions.',
+    framing:'Source-aspect thigh-to-head action portrait with the complete head, elbows, hands and both sticks visible and enough space around the gesture to avoid edge collisions.',
     styling:'Authentic kediyu, kurta, chaniya choli or coordinated festive separates with mirror-work and woven detail, selected to suit the subject without forcing gendered presentation.',
     setting:'Open-air dandiya venue with an orderly canopy of warm bulbs, tasteful textile banners and a softly blurred dance floor; no concert stage or nightclub styling.',
     lighting:'Clean neutral facial light with restrained amber and burgundy rim light from visible festival fixtures; freeze the face and hands while allowing slight natural fabric motion.',
@@ -193,7 +194,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'royal-haveli', direction:'Royal haveli festive portrait',
     pose:'Elegant upright three-quarter stance in a carved doorway, torso angled gently, one hand resting naturally near the waist and the other lightly touching the doorway, with calm direct eye contact.',
     camera:'Eye-level camera, 85mm portrait-lens perspective, photographed from approximately 3 metres away.',
-    framing:'Square three-quarter portrait from complete head to below the hands, keeping the doorway geometry balanced and the head naturally proportional.',
+    framing:'Source-aspect three-quarter portrait from complete head to below the hands, keeping the doorway geometry balanced and the head naturally proportional.',
     styling:'Refined bandhani, silk, brocade or embroidered festive clothing with restrained jewellery or accessories appropriate to the subject and no bridal styling.',
     setting:'Tastefully decorated heritage haveli entrance with carved stone, small marigold details and distant warm lamps; retain architectural realism and avoid palace fantasy.',
     lighting:'Large soft daylight key from the courtyard, warm lamp separation from inside the doorway and subtle neutral fill; preserve fabric texture and natural skin.',
@@ -202,7 +203,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'aarti-glow', direction:'Aarti glow portrait',
     pose:'Composed standing three-quarter pose holding a modest brass diya plate securely at mid-torso with both hands, shoulders relaxed, eyes directed toward the warm light and a peaceful natural expression.',
     camera:'Natural eye-level camera, 85mm portrait perspective, photographed from roughly 2.6 metres away.',
-    framing:'Square waist-up portrait showing the complete head, shoulders, forearms, hands and diya plate with safe negative space around the flame.',
+    framing:'Source-aspect waist-up portrait showing the complete head, shoulders, forearms, hands and diya plate with safe negative space around the flame.',
     styling:'Understated traditional festive clothing in rich natural textiles with minimal accessories, adapted respectfully to the subject and kept distinct from wedding attire.',
     setting:'Quiet decorated courtyard corner with rangoli, marigold strands and softly glowing lamps; no visible deity, ritual spectacle or invented sacred symbols.',
     lighting:'The diya provides a believable warm lower fill while a soft neutral key keeps the face accurate and detailed; background lamps share the same warm colour and shadow direction.',
@@ -211,7 +212,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'garba-circle', direction:'Garba circle environmental portrait',
     pose:'Natural full-body dance step inside a Garba circle with one arm extended rhythmically, the other bent near the torso, the face turned clearly toward camera and clothing moving believably around the legs.',
     camera:'Eye-level documentary camera, 50mm normal-lens perspective, photographed from about 4.5 metres away at the edge of the circle.',
-    framing:'Square full-body environmental portrait with complete head, hands and feet, the main subject unmistakable and surrounding dancers kept secondary without being cropped into stray limbs.',
+    framing:'Source-aspect full-body environmental portrait with complete head, hands and feet, the main subject unmistakable and surrounding dancers kept secondary without being cropped into stray limbs.',
     styling:'Colourful coordinated Navratri clothing with authentic regional textile detail and practical movement, preserving existing hair, religious marks and cultural cues.',
     setting:'Community Garba circle in a clean open courtyard with patterned ground decoration, warm lights and a small number of coherent background participants.',
     lighting:'Broad overhead festival illumination balanced by a soft frontal fill; maintain one consistent exposure and colour temperature across the subject, dancers and courtyard.',
@@ -220,7 +221,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'festive-close-up', direction:'Festive mirror-work close-up',
     pose:'Relaxed shoulder-up portrait with the shoulders turned slightly, face returning to camera, a warm restrained smile and hands outside the frame unless already naturally near the face.',
     camera:'Camera just above eye level, 105mm portrait-lens perspective, photographed by another person from about 2.2 metres away.',
-    framing:'Square head-and-shoulders portrait with the complete hair silhouette, both shoulders and generous breathing room; the face occupies no more than half the frame height.',
+    framing:'Source-aspect head-and-shoulders portrait with the complete hair silhouette, both shoulders and generous breathing room; the face occupies no more than half the frame height.',
     styling:'Sophisticated Navratri textile at the neckline with fine mirror-work, restrained accessories and grooming that preserves the subject\'s exact hairstyle and presentation.',
     setting:'Softly recognisable festive courtyard with warm bulbs, marigold colour and textile detail rendered as controlled natural bokeh.',
     lighting:'Broad soft beauty key matching the visible courtyard lights, subtle eye light and gentle warm separation; retain pores, facial fullness and accurate skin tone.',
@@ -229,7 +230,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'golu-evening', direction:'South Indian Golu evening portrait',
     pose:'Poised three-quarter seated or standing pose beside the display, hands composed naturally at waist level or resting in the lap, shoulders relaxed and face turned toward camera with a welcoming expression.',
     camera:'Eye-level camera, 70mm short-telephoto perspective, photographed from approximately 3 metres away.',
-    framing:'Square three-quarter environmental portrait with the complete head and hands visible and enough background to identify the stepped Golu display without crowding the subject.',
+    framing:'Source-aspect three-quarter environmental portrait with the complete head and hands visible and enough background to identify the stepped Golu display without crowding the subject.',
     styling:'Elegant silk sari, veshti-kurta, salwar or other South Indian festive clothing appropriate to the subject, with restrained jewellery and existing cultural markers preserved.',
     setting:'Warm home Golu arrangement with orderly doll steps, kolam detail, brass lamps and flowers; keep display figures small, coherent and respectfully presented.',
     lighting:'Soft warm practical lamps supported by neutral window or bounced fill, with believable light falloff across the subject and display and no orange skin cast.',
@@ -238,7 +239,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'pandal-celebration', direction:'Eastern Indian festive pandal portrait',
     pose:'Confident three-quarter standing pose with shoulders gently angled, one hand relaxed at the side and the other holding a small flower or resting naturally near the waist, with direct friendly eye contact.',
     camera:'Eye-level camera, 85mm portrait perspective, photographed from roughly 3 metres away.',
-    framing:'Square knee-to-head portrait with the complete head and hands visible and architectural festival detail forming a balanced background.',
+    framing:'Source-aspect knee-to-head portrait with the complete head and hands visible and architectural festival detail forming a balanced background.',
     styling:'Refined Bengali or Eastern Indian festive clothing adapted to the subject, with authentic textile detail and restrained accessories; never style the person as a deity.',
     setting:'Tastefully crafted festive pandal entrance with fabric, cane and warm light patterns; keep sacred imagery outside the frame and avoid visual clutter.',
     lighting:'Soft frontal-neutral key integrated with warm pandal practicals and a delicate edge light; preserve accurate complexion and consistent shadows.',
@@ -247,7 +248,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'friends-at-navratri', direction:'Friends at Navratri group portrait',
     pose:'Balanced celebratory group pose preserving every visible person, with shoulders naturally staggered, dandiya sticks held safely away from faces and each person looking engaged rather than arranged in a rigid line.',
     camera:'Eye-level camera, 50mm normal-lens perspective, photographed from a distance that includes the full group without stretching people at the edges.',
-    framing:'Square knee-to-head or full-body group portrait chosen from the number of people, with every complete head, visible hand and relationship retained and no person added, merged or omitted.',
+    framing:'Source-aspect knee-to-head or full-body group portrait chosen from the number of people, with every complete head, visible hand and relationship retained and no person added, merged or omitted.',
     styling:'Coordinated but non-identical Navratri clothing using complementary festive colours, preserving each person\'s identity, age, presentation, hairstyle and cultural markers.',
     setting:'Welcoming community Navratri venue with textile canopies, warm lights and open space behind the group; background people remain minimal and coherent.',
     lighting:'Large soft frontal source with warm practical separation, even exposure across all faces and no coloured light that changes individual skin tones.',
@@ -256,7 +257,7 @@ const NAVRATRI_LOOKS = Object.freeze([
     id:'contemporary-navratri', direction:'Contemporary Navratri editorial portrait',
     pose:'Confident relaxed standing pose with torso angled about 20 degrees, one hand holding a single dandiya stick vertically beside the body and the other resting naturally, with direct eye contact.',
     camera:'Eye-level camera, 70mm portrait perspective, photographed by another person from approximately 3 metres away.',
-    framing:'Square three-quarter portrait with complete head, shoulders, hands and stick visible, clean negative space and natural head-to-body proportions.',
+    framing:'Source-aspect three-quarter portrait with complete head, shoulders, hands and stick visible, clean negative space and natural head-to-body proportions.',
     styling:'Modern festive separates grounded in authentic woven, bandhani or mirror-work detail, using elegant saturated colour without turning the subject into a fashion mannequin.',
     setting:'Clean contemporary terrace prepared for Navratri with restrained textile panels, potted greenery and warm suspended lights at dusk.',
     lighting:'Polished editorial soft key consistent with the dusk sky, gentle neutral fill and warm practical rim light; crisp natural face and finely resolved textile detail.',
@@ -314,7 +315,7 @@ Rebuild the setting to match the selected shot brief while keeping every object 
 
 The uploaded photograph is an identity reference only; discard its camera distance, crop, arm position and selfie perspective. Use the exact camera height, focal-length perspective, distance and framing prescribed by the selected shot brief. The final photograph must visibly have been taken by another person using a professional portrait camera. Never create a selfie, phone-camera perspective, outstretched camera arm, wide-angle facial distortion or an oversized foreground head.
 
-Compose the square, profile-ready portrait using the exact crop in the selected brief. Always show the complete head and both shoulders, maintain natural proportions between the head, neck, shoulders, torso and hands, and keep every prescribed hand gesture inside the frame. Preserve enough sharply coherent setting to make the selected direction unmistakable, with realistic depth and perspective. Do not crop through the chin or forehead, enlarge the face to fill the frame, make the body unnaturally small beneath the head or revert every direction to the same close-up portrait.
+Compose the portrait in the source photograph's original aspect ratio using the crop in the selected brief as a subject-framing guide. Always show the complete head and both shoulders, maintain natural proportions between the head, neck, shoulders, torso and hands, and keep every prescribed hand gesture inside the frame. Preserve enough sharply coherent setting to make the selected direction unmistakable, with realistic depth and perspective. Do not crop through the chin or forehead, enlarge the face to fill the frame, make the body unnaturally small beneath the head or revert every direction to the same close-up portrait.
 
 Lighting integration is critical. Follow the exact light sources named in the selected brief. The face and background must share the same light direction, colour temperature, exposure, shadow softness, contrast and atmospheric depth. Recreate matching highlights on hair, skin, clothing, jewellery and nearby surfaces. Do not use an independent portrait key light that contradicts the specified courtyard, dusk, festival lights, lamps or soft fill. Avoid cut-out edges, halos, pasted-on faces, orange skin, muddy shadows, harsh hotspots, blown highlights, grey skin or unexplained mixed lighting.
 
@@ -1272,6 +1273,33 @@ function parseDailyLookImage(value) {
   return { bytes, mime:`image/${match[1]}`, extension:match[1] === 'jpeg' ? 'jpg' : match[1] };
 }
 
+function validDailyLookDimensions(width, height) {
+  return Number.isInteger(width) && Number.isInteger(height) &&
+    width > 0 && height > 0 && width <= 12000 && height <= 12000 &&
+    width * height <= 60 * 1000 * 1000;
+}
+
+async function dailyLookSourceDimensions(image, requestedWidth, requestedHeight) {
+  const metadata = await sharp(image.bytes, { limitInputPixels:60 * 1000 * 1000 }).metadata();
+  const encodedWidth = Number(metadata.width) || 0;
+  const encodedHeight = Number(metadata.height) || 0;
+  if (!validDailyLookDimensions(encodedWidth, encodedHeight)) throw new Error('image-dimensions');
+  const width = Number(requestedWidth);
+  const height = Number(requestedHeight);
+  if (!validDailyLookDimensions(width, height)) return { width:encodedWidth, height:encodedHeight };
+  const encodedRatio = encodedWidth / encodedHeight;
+  const requestedRatio = width / height;
+  if (Math.abs(encodedRatio - requestedRatio) / encodedRatio > 0.025) throw new Error('image-aspect');
+  return { width, height };
+}
+
+function dailyLookProviderSize(width, height) {
+  const ratio = width / height;
+  if (ratio > 1.12) return '1536x1024';
+  if (ratio < 1 / 1.12) return '1024x1536';
+  return '1024x1024';
+}
+
 async function openAiJson(url, options, timeoutMs = 90000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -1329,7 +1357,7 @@ function enhancerLookBrief(look) {
   ].join('\n');
 }
 
-async function createDailyLook(image, style, apiKey, variantIndex = 0) {
+async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
   const look = style.id === 'navratri-special'
@@ -1343,9 +1371,12 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
     : enhancerLook
       ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
       : style.prompt;
-  form.append('prompt', `${directedPrompt}\n\nDo not generate any text, logo or watermark.`);
+  const sourceWidth = dimensions?.width || 1024;
+  const sourceHeight = dimensions?.height || 1024;
+  const orientation = sourceWidth > sourceHeight ? 'landscape' : sourceHeight > sourceWidth ? 'portrait' : 'square';
+  form.append('prompt', `${directedPrompt}\n\nPreserve the source image's ${orientation} canvas, full composition and ${sourceWidth}:${sourceHeight} aspect ratio. Keep all important people, hands, feet and scene details safely inside that frame. Do not convert the composition into a square or crop it to a profile portrait. Do not generate any text, logo or watermark.`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
-  form.append('size', style.size || '1024x1024');
+  form.append('size', dailyLookProviderSize(sourceWidth, sourceHeight));
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
   form.append('output_format', 'jpeg');
   const response = await openAiJson('https://api.openai.com/v1/images/edits', {
@@ -1355,7 +1386,11 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0) {
   const result = await response.json();
   const base64 = result.data?.[0]?.b64_json;
   if (typeof base64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('image-empty');
-  return `data:image/jpeg;base64,${base64}`;
+  const output = await sharp(Buffer.from(base64, 'base64'), { limitInputPixels:60 * 1000 * 1000 })
+    .resize(sourceWidth, sourceHeight, { fit:'cover', position:'centre' })
+    .jpeg({ quality:90, chromaSubsampling:'4:4:4' })
+    .toBuffer();
+  return `data:image/jpeg;base64,${output.toString('base64')}`;
 }
 
 async function claimDailyLook(accountId, account, now) {
@@ -4044,8 +4079,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         await releaseDailyLookClaim(d.accountId);
         return resErr(res, 'This photo cannot be used for Daily Look. Choose another.', 400);
       }
+      const dimensions = await dailyLookSourceDimensions(image, Number(d.sourceWidth), Number(d.sourceHeight));
       const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
-      const generatedImage = await createDailyLook(image, style, apiKey, variantIndex);
+      const generatedImage = await createDailyLook(image, style, apiKey, variantIndex, dimensions);
       const enhancerLook = style.id === 'surprise-enhancer'
         ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
         : null;
@@ -4064,6 +4100,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, {
         ok:true, generatedImage, generatedAt:completedAt,
+        width:dimensions.width, height:dimensions.height,
         nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
           ? completedDay.nextAt : 0,
         limit:DAILY_LOOK_DAILY_LIMIT,
@@ -4407,6 +4444,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!recipient) return resErr(res, 'Vaultlix Private Number not found.', 404);
     if (recipient.accountId === d.accountId) return resErr(res, 'You cannot request yourself.', 400);
     const introMessage = d.intro === undefined || d.intro === null ? null : normalizeIntroMessage(d.intro);
+    const senderConversationPreKey = d.conversationPreKeyVersion === 1 ? normalizeInboxKey(sender.inboxKey) : null;
     if (d.intro !== undefined && d.intro !== null && !introMessage) return resErr(res, 'Invalid message.', 400);
     if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(recipient.accountId) || await safetyStore.blocked(d.accountId, recipient.accountId)) return resErr(res, 'This connection is unavailable.', 403);
     const now = Date.now();
@@ -4461,6 +4499,22 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const relationship = recipient.account.connectionRequests.find(r => samePair(r) && r.status === 'pending');
     if (relationship?.status === 'pending') {
       const needsResponse = relationship.senderAccountId === recipient.accountId;
+      let conversationPreKeyUpgraded = false;
+      // A current sender can upgrade its still-pending request with an
+      // account-backed ECDH pre-key. This lets the recipient finish the E2E
+      // handshake immediately on Accept, even while the sender is offline.
+      // Older clients omit the version and keep the established join-time
+      // handshake, so mixed app versions never derive different keys.
+      if (!needsResponse && senderConversationPreKey && !relationship.senderConversationPreKey) {
+        relationship.conversationPreKeyVersion = 1;
+        relationship.senderConversationPreKey = senderConversationPreKey;
+        const mirror = (sender.connectionRequests || []).find(r => r.id === relationship.id);
+        if (mirror) {
+          mirror.conversationPreKeyVersion = 1;
+          mirror.senderConversationPreKey = senderConversationPreKey;
+        }
+        conversationPreKeyUpgraded = true;
+      }
       // More messages while the first request waits: up to REQUEST_INTRO_MAX in total, and
       // only from the person who sent it. Nothing resets until the other person replies.
       if (introMessage && !needsResponse) {
@@ -4492,6 +4546,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         senderMirror.direction = senderDirection;
         await persistAccount(d.accountId);
       }
+      if (conversationPreKeyUpgraded) await Promise.all([persistAccount(d.accountId), persistAccount(recipient.accountId)]);
       return res200(res, { ok:true, requestId:relationship.id, status:needsResponse ? 'action_required' : 'pending', introCount:Array.isArray(relationship.intro) ? relationship.intro.length : 0 });
     }
     // A reopened chat (the pair already had an accepted relationship) is a replacement and is
@@ -4505,6 +4560,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       }
     }
     const request = { id:uid(), senderAccountId:d.accountId, senderPrivateNumber:sender.privateNumber, senderDisplayName:sender.displayName, recipientAccountId:recipient.accountId, recipientPrivateNumber:recipient.account.privateNumber, recipientDisplayName:recipient.account.displayName, direction:'incoming', status:'pending', createdAt:now, expiresAt:now + CONNECTION_REQUEST_TTL_MS };
+    if (senderConversationPreKey) {
+      request.conversationPreKeyVersion = 1;
+      request.senderConversationPreKey = senderConversationPreKey;
+    }
     if (introMessage) request.intro = [{ ...introMessage, at:now }];
     recipient.account.connectionRequests.push(request);
     sender.connectionRequests = compactConnectionRequests(sender.connectionRequests, now);

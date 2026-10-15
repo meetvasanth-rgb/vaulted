@@ -38,12 +38,18 @@ test('Daily Look allows five successful creations and resets at midnight IST acr
   assert.match(client, /up to \$\{result\.limit \|\| 5\} creations daily/);
 });
 
-test('Daily Look sends only an explicitly selected, reduced image and never stores the original', () => {
+test('Daily Look sends only an explicitly selected, reduced image, preserves its original dimensions, and never stores the source', () => {
   assert.match(client, /id="daily-look-consent" type="checkbox"/);
-  assert.match(client, /dailyLookSourceImage = await prepareDailyLookImage\(file\)/);
+  assert.match(client, /const prepared = await prepareDailyLookImage\(file\)/);
   assert.match(client, /1600 \/ longestEdge/);
   assert.match(client, /result\.length <= 1200 \* 1024/);
+  assert.match(client, /width:image\.naturalWidth, height:image\.naturalHeight/);
+  assert.match(client, /sourceWidth:dailyLookSourceDimensions\?\.width, sourceHeight:dailyLookSourceDimensions\?\.height/);
   assert.match(server, /bytes\.length > 900 \* 1024/);
+  assert.match(server, /dailyLookSourceDimensions\(image, Number\(d\.sourceWidth\), Number\(d\.sourceHeight\)\)/);
+  assert.match(server, /dailyLookProviderSize\(sourceWidth, sourceHeight\)/);
+  assert.match(server, /resize\(sourceWidth, sourceHeight, \{ fit:'cover', position:'centre' \}\)/);
+  assert.match(client, /--daily-look-aspect/);
   assert.match(client, /I agree to send this selected photo to OpenAI/);
   assert.match(server, /parseDailyLookImage\(d\.image\)/);
   assert.doesNotMatch(postgres, /daily_look_(?:source|input|original|image)\b/);
@@ -92,11 +98,10 @@ test('Navratri Special creates a high-quality identity-preserving festive portra
   assert.match(server, /Do not use an independent portrait key light/);
   assert.match(server, /Do not depict any person as a deity/);
   assert.match(server, /Do not age the person/);
-  assert.match(server, /size:'1024x1024'/);
-  assert.match(server, /form\.append\('size', style\.size \|\| '1024x1024'\)/);
+  assert.match(server, /dailyLookProviderSize\(sourceWidth, sourceHeight\)/);
   assert.match(server, /quality:'high'/);
   assert.match(server, /style\.quality \|\| process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
-  assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:1/);
+  assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:var\(--daily-look-aspect,1\)/);
 });
 
 test('Surprise Enhancer rotates source-aware transformations without repeating today', () => {
@@ -186,7 +191,7 @@ test('the latest generated Daily Look remains downloadable after profile use and
 
 test('finished Daily Look images are returned and saved without a Vaultlix watermark', () => {
   assert.match(server, /Do not generate any text, logo or watermark/);
-  assert.match(server, /return `data:image\/jpeg;base64,\$\{base64\}`/);
+  assert.match(server, /return `data:image\/jpeg;base64,\$\{output\.toString\('base64'\)\}`/);
   assert.doesNotMatch(server, /watermarkDailyLookOutput|DAILY_LOOK_WATERMARK_VERSION|watermarkVersion:/);
   assert.doesNotMatch(client, /watermarkDailyLookImage|DAILY_LOOK_WATERMARK_VERSION|Adding the Vaultlix signature/);
   assert.match(client, /image:result\.generatedImage/);

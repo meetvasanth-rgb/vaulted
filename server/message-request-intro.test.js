@@ -108,6 +108,27 @@ test('a request carries an encrypted message to the recipient only; the sender k
   assert.equal(aliceList[0].introCount, 1);
 });
 
+test('a versioned request carries the sender public pre-key and can upgrade an older pending request', { timeout:20000 }, async t => {
+  const { base, alice, bob, auth } = await startServer(t);
+  await post(base, '/api/account/inbox-key', { ...auth(alice), publicKey:key('P') });
+
+  const legacy = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012' });
+  assert.equal(legacy.data.status, 'pending');
+  let bobRequest = (await post(base, '/api/connections/list', auth(bob))).data.requests[0];
+  assert.equal(bobRequest.conversationPreKeyVersion, undefined);
+
+  const upgraded = await post(base, '/api/connections/request', {
+    ...auth(alice), privateNumber:'3456789012', conversationPreKeyVersion:1,
+  });
+  assert.equal(upgraded.data.requestId, legacy.data.requestId);
+  bobRequest = (await post(base, '/api/connections/list', auth(bob))).data.requests[0];
+  const aliceRequest = (await post(base, '/api/connections/list', auth(alice))).data.requests[0];
+  assert.equal(bobRequest.conversationPreKeyVersion, 1);
+  assert.deepEqual(bobRequest.senderConversationPreKey, key('P'));
+  assert.equal(aliceRequest.conversationPreKeyVersion, 1);
+  assert.deepEqual(aliceRequest.senderConversationPreKey, key('P'));
+});
+
 test('up to three messages while the request waits, then the sender must wait for a reply', { timeout:20000 }, async t => {
   const { base, alice, auth } = await startServer(t);
   const first = await post(base, '/api/connections/request', { ...auth(alice), privateNumber:'3456789012', intro:intro() });
