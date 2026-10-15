@@ -864,7 +864,12 @@ function sendApnsNotification(member, payload, ttlSeconds) {
       // is shown, even on a locked device; without it, iOS runs zero app
       // code on receipt and there is no way to report delivery from here.
       // Omitted for calls/connection-requests/etc., which don't need it.
-      ...(parsed.msgId ? { 'mutable-content': 1 } : {}),
+      // content-available gives the main app a second, presentation-independent
+      // chance to report delivery when the user has disabled banners, Lock
+      // Screen and Notification Centre. The service extension remains the
+      // primary locked-device path; /api/mark-delivered is idempotent when
+      // both callbacks run.
+      ...(parsed.msgId ? { 'mutable-content': 1, 'content-available': 1 } : {}),
     },
     // No message text, encrypted payload, room credential, or member token is
     // included. `code` only lets an authenticated local session select the

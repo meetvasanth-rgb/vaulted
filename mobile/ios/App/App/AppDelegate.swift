@@ -1405,6 +1405,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didReceiveRemoteNotification userInfo: [AnyHashable: Any],
                      fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        if let code = userInfo["code"] as? String,
+           let msgId = userInfo["msgId"] as? String,
+           !code.isEmpty, !msgId.isEmpty {
+            reportMessageDelivered(code: code, msgId: msgId) { reported in
+                completionHandler(reported ? .newData : .noData)
+            }
+            return
+        }
         let action = userInfo["action"] as? String
         if (action == "end" || action == "endCall"),
            let rawCallID = userInfo["callId"] as? String,
@@ -1414,6 +1422,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
         completionHandler(.noData)
+    }
+
+    // Alert presentation is a user preference and must not decide whether a
+    // sender sees the delivered tick. Message pushes also carry
+    // content-available:1, so iOS can invoke this path when banners, Lock
+    // Screen and Notification Centre are disabled. The notification service
+    // extension performs the same idempotent request when it is available.
+    private func reportMessageDelivered(code: String, msgId: String, completion: @escaping (Bool) -> Void) {
+        guard let room = NativeCallRoomStore.shared.room(code: code),
+              let url = URL(string: "https://vaultlix.com/api/mark-delivered") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 8
+        guard let body = try? JSONSerialization.data(withJSONObject: [
+            "code": code, "token": room.token, "msgId": msgId,
+        ]) else {
+            completion(false)
+            return
+        }
+        request.httpBody = body
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            completion(error == nil && status >= 200 && status < 300)
+        }.resume()
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

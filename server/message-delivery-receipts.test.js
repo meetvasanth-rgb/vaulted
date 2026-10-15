@@ -146,6 +146,7 @@ async function buildApnsRequestBody(parsed) {
 test('a regular chat message push sets mutable-content:1 so iOS actually invokes VaultlixNotificationService', async () => {
   const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New message from Alex', code: 'room1', msgId: 'msg123' });
   assert.equal(body.aps['mutable-content'], 1);
+  assert.equal(body.aps['content-available'], 1);
   assert.equal(body.code, 'room1');
   assert.equal(body.msgId, 'msg123');
 });
@@ -153,6 +154,7 @@ test('a regular chat message push sets mutable-content:1 so iOS actually invokes
 test('a call push does not set mutable-content (unchanged behavior — calls have their own handling)', async () => {
   const body = await buildApnsRequestBody({ isCall: true, code: 'room1', caller: 'Alex' });
   assert.equal(body.aps['mutable-content'], undefined);
+  assert.equal(body.aps['content-available'], undefined);
 });
 
 test('a push with no msgId (e.g. a connection request) does not set mutable-content', async () => {
@@ -217,4 +219,14 @@ test('the extension itself calls mark-delivered with the code-derived room token
   // notification undelivered.
   assert.match(nse, /guard let room = NativeCallRoomStore\.shared\.room\(code: code\),\s*\n\s*let url = URL\(string: "https:\/\/vaultlix\.com\/api\/mark-delivered"\) else \{\s*\n\s*completion\(\)/);
   assert.match(nse, /override func serviceExtensionTimeWillExpire\(\)/);
+});
+
+test('the iOS app reports delivery from a content-available push even when alert surfaces are disabled', () => {
+  const appDelegate = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'AppDelegate.swift'), 'utf8');
+  assert.match(appDelegate, /didReceiveRemoteNotification userInfo:[\s\S]*userInfo\["code"\][\s\S]*userInfo\["msgId"\][\s\S]*reportMessageDelivered\(code: code, msgId: msgId\)/);
+  assert.match(appDelegate, /private func reportMessageDelivered\(code: String, msgId: String/);
+  assert.match(appDelegate, /NativeCallRoomStore\.shared\.room\(code: code\)/);
+  assert.match(appDelegate, /URL\(string: "https:\/\/vaultlix\.com\/api\/mark-delivered"\)/);
+  assert.match(appDelegate, /"code": code, "token": room\.token, "msgId": msgId/);
+  assert.match(appDelegate, /completionHandler\(reported \? \.newData : \.noData\)/);
 });
