@@ -19,7 +19,21 @@ test('status composer accepts images and videos and enforces a twenty second vid
   assert.doesNotMatch(client.slice(client.indexOf('async function prepareStatusMedia'), client.indexOf('async function publishStatus')), /12 \* 1024 \* 1024/);
 });
 
+test('status audience is a full-screen, readable contact picker with circular selections', () => {
+  assert.match(client, /status-composer\.audience-open\{padding:0;background:#fff;place-items:stretch\}/);
+  assert.match(client, /status-audience label\{gap:13px;padding:13px 10px;font:650 17px/);
+  assert.match(client, /status-audience input\[type="checkbox"\]\{[^}]*border-radius:50%/);
+  assert.match(client, /input\[type="checkbox"\]:checked\{background:#682C43/);
+  assert.match(client, /classList\.add\('audience-open'\)/);
+  assert.match(client, /classList\.remove\('audience-open'\)/);
+});
+
 test('status videos are encrypted locally and stored once outside recipient envelopes', () => {
+  assert.match(client, /createVideoAttachmentThumbnail\(file, 720\)/);
+  assert.match(client, /button\.textContent='Optimising video…';[\s\S]*compressVideoFile\(statusComposerVideo\.file\)/);
+  assert.match(client, /new Blob\(chunks, \{ type:optimised\.mime \|\| statusComposerVideo\.mime \}\)/);
+  assert.match(client, /crypto\.subtle\.encrypt\([\s\S]*uploadVideo\.arrayBuffer\(\)/);
+  assert.match(client, /thumbnail:statusComposerVideo\.thumbnail \|\| null/);
   assert.match(client, /crypto\.subtle\.encrypt\([\s\S]*status\/media\/prepare[\s\S]*body:ciphertext/);
   assert.match(client, /videoEnvelope = \{ mediaId, key:/);
   assert.match(server, /statusMediaObjectKey/);
@@ -35,6 +49,8 @@ test('authorized viewers download and decrypt status videos locally', () => {
   assert.match(client, /controller\.abort\(\), 30000/);
   assert.match(client, /function retryStatusVideo\(\)/);
   assert.match(client, /<video class="status-video-player" src=/);
+  assert.match(client, /status-video-loading-preview/);
+  assert.match(client, /safeMessageImagePreview\(item\.payload\.thumbnail\)/);
 });
 
 test('decrypted status videos survive feed refresh and upcoming videos preload in memory', () => {
