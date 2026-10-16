@@ -55,7 +55,7 @@ function harness() {
   });
   vm.runInContext(['formatVoiceTime'].map(extractFn).join('\n') + `
 const VOICE_WAVE_BARS = 36; const VOICE_HUD_BARS = 11; const VOICE_RING_CIRCUMFERENCE = 276.46; let voiceMeter = null; let voiceLevels = []; let voiceDraft = null;
-` + ['voiceRingOffset', 'waveBars', 'voiceLevelFromSamples', 'hideVoiceReviewBar', 'setVoiceDraftPlayIcon', 'paintVoiceDraftProgress', 'showVoiceReviewBar', 'voiceDraftAudio', 'toggleVoiceDraftPlayback', 'seekVoiceDraft', 'discardVoiceDraft', 'sendVoiceDraft', 'stopVoiceRecording'].map(extractFn).join('\n'), context);
+` + ['voiceRingOffset', 'waveBars', 'voiceLevelFromSamples', 'hideVoiceReviewBar', 'setVoiceDraftPlayIcon', 'paintVoiceDraftProgress', 'showVoiceReviewBar', 'voiceDraftAudio', 'prepareVoiceNotePlayback', 'toggleVoiceDraftPlayback', 'seekVoiceDraft', 'discardVoiceDraft', 'sendVoiceDraft', 'stopVoiceRecording'].map(extractFn).join('\n'), context);
   return context;
 }
 

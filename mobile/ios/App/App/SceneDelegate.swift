@@ -1158,6 +1158,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             cancelSpeechToText(notifyPage: true)
             return
         }
+        if action == "prepareVoiceNotePlayback" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com" else { return }
+            VaultlixCallManager.shared.prepareVoiceNotePlayback()
+            return
+        }
         if action == "transcribeVoiceNote" {
             guard message.frameInfo.isMainFrame,
                   message.frameInfo.securityOrigin.host == "vaultlix.com",

@@ -647,6 +647,25 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
     }
 
+    /// WKWebView voice notes otherwise inherit the last `.playAndRecord`
+    /// receiver route used by a call or recording session. Use the media
+    /// playback category when no call is active so speech is sent through the
+    /// loudspeaker (or the user's connected media output) at media volume.
+    func prepareVoiceNotePlayback() {
+        guard calls.isEmpty else { return }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                options: [.allowAirPlay, .allowBluetoothA2DP]
+            )
+            try session.setActive(true)
+        } catch {
+            print("VXVOICE playback audio route failed: \(error.localizedDescription)")
+        }
+    }
+
     /// Incoming PushKit payloads intentionally omit the private conversation
     /// code and carry only an opaque, device-local room handle. The WebView
     /// still addresses controls with its local code, so exact code lookup is

@@ -673,7 +673,7 @@ function privateGroupRowHtml(group, message, reactions, state) {
         `group:${group.id}:${message.id}`,
         `requestPrivateGroupVoiceTranscript('${escHtml(message.id)}')`
       );
-      content = `<div class="voice-note-shell"><audio class="group-message-attachment" controls preload="metadata" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>${transcript}</div>`;
+      content = `<div class="voice-note-shell"><audio class="group-message-attachment" controls preload="metadata" onplay="prepareVoiceNotePlayback()" src="data:${mime};base64,${escHtml(message.attachment.data)}"></audio>${transcript}</div>`;
     } else if (message.attachment?.type === 'group-file') {
       // Same cards as direct conversations: a first-page preview card for
       // PDFs, the plain file card (.msg-file) for everything else.

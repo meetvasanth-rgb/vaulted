@@ -10930,6 +10930,14 @@ function applySpeechDraft(transcript) {
   input.dispatchEvent(new Event('input', { bubbles:true }));
 }
 
+function commitCurrentSpeechSegment(draft = speechToTextDraft, finalText = '') {
+  if (!draft || speechToTextDraft !== draft) return;
+  const segment = String(finalText || draft.partial || '').trim();
+  if (segment) draft.committed = joinSpeechPhrases(draft.committed, segment);
+  draft.partial = '';
+  applySpeechDraft('');
+}
+
 function clearSpeechPauseTimer(draft = speechToTextDraft) {
   if (draft?.pauseTimer) clearTimeout(draft.pauseTimer);
   if (draft) { draft.pauseTimer = null; draft.pauseDeadline = 0; }
@@ -11003,7 +11011,7 @@ function toggleSpeechToText(inputId) {
     toast('Finish or cancel the voice note first.');
     return;
   }
-  speechToTextDraft = { inputId, prefix:input.value, committed:'', locale:navigator.language || '', pauseTimer:null, pauseDeadline:0, serviceNoticeShown:false };
+  speechToTextDraft = { inputId, prefix:input.value, committed:'', partial:'', locale:navigator.language || '', pauseTimer:null, pauseDeadline:0, serviceNoticeShown:false };
   setSpeechToTextListening(inputId, true);
   input.blur();
   startNativeSpeechSegment(speechToTextDraft);
@@ -11024,15 +11032,19 @@ window.addEventListener('vaultlix:speech-to-text', event => {
   }
   if (detail.state === 'partial') {
     clearSpeechPauseTimer(speechToTextDraft);
-    applySpeechDraft(detail.text);
+    speechToTextDraft.partial = String(detail.text || '');
+    applySpeechDraft(speechToTextDraft.partial);
   }
   if (detail.state === 'final') {
-    speechToTextDraft.committed = joinSpeechPhrases(speechToTextDraft.committed, detail.text);
-    applySpeechDraft('');
+    commitCurrentSpeechSegment(speechToTextDraft, detail.text);
     continueSpeechAfterPause(speechToTextDraft);
   } else if (detail.state === 'error') {
-    if (speechToTextDraft.pauseDeadline > Date.now() && speechToTextDraft.committed) {
-      setTimeout(() => startNativeSpeechSegment(speechToTextDraft), 140);
+    // iOS can finish a recognition segment after a short silence without
+    // promoting its last partial result to `final`. Keep those visible words
+    // before restarting, otherwise the first words of the draft disappear.
+    if (speechToTextDraft.partial) commitCurrentSpeechSegment(speechToTextDraft);
+    if (speechToTextDraft.committed) {
+      continueSpeechAfterPause(speechToTextDraft);
     } else {
       finishSpeechToTextDraft({ focus:true });
       toast(detail.error || 'Voice typing stopped. Please try again.');
@@ -25930,7 +25942,7 @@ function voiceDraftAudio() {
 function toggleVoiceDraftPlayback() {
   const audio = voiceDraftAudio();
   if (!audio) return;
-  if (audio.paused) { audio.play().then(() => setVoiceDraftPlayIcon(true)).catch(() => toast('Could not play this voice note.')); }
+  if (audio.paused) { prepareVoiceNotePlayback(); audio.play().then(() => setVoiceDraftPlayIcon(true)).catch(() => toast('Could not play this voice note.')); }
   else { audio.pause(); setVoiceDraftPlayIcon(false); }
 }
 
@@ -26258,6 +26270,12 @@ window.addEventListener('vaultlix:voice-transcript', event => {
 const voiceAudioEls = new Map(); // msgId -> HTMLAudioElement
 let currentlyPlayingVoiceId = null;
 
+function prepareVoiceNotePlayback() {
+  try {
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'prepareVoiceNotePlayback' });
+  } catch (_) {}
+}
+
 function getOrCreateVoiceAudio(rec) {
   let audio = voiceAudioEls.get(rec.id);
   if (audio) return audio;
@@ -26284,6 +26302,7 @@ function toggleVoicePlayback(msgId) {
   const audio = getOrCreateVoiceAudio(rec);
   if (!audio) { toast('Could not play voice note'); return; }
   if (audio.paused) {
+    prepareVoiceNotePlayback();
     // Only one voice note plays at a time.
     if (currentlyPlayingVoiceId && currentlyPlayingVoiceId !== msgId) {
       const prev = voiceAudioEls.get(currentlyPlayingVoiceId);

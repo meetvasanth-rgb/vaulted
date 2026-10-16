@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..');
 const client = fs.readFileSync(path.join(root, 'client/index.html'), 'utf8');
 const android = fs.readFileSync(path.join(root, 'mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java'), 'utf8');
 const ios = fs.readFileSync(path.join(root, 'mobile/ios/App/App/SceneDelegate.swift'), 'utf8');
+const iosAppDelegate = fs.readFileSync(path.join(root, 'mobile/ios/App/App/AppDelegate.swift'), 'utf8');
 const info = fs.readFileSync(path.join(root, 'mobile/ios/App/App/Info.plist'), 'utf8');
 
 test('direct and group composers expose a distinct native voice-to-text action', () => {
@@ -30,9 +31,20 @@ test('recognized speech becomes an editable draft and is never auto-sent', () =>
 test('dictation keeps listening across a ten-second thinking pause', () => {
   assert.match(client, /const SPEECH_PAUSE_GRACE_MS = 10000/);
   assert.match(client, /function continueSpeechAfterPause\(draft = speechToTextDraft\)/);
-  assert.match(client, /speechToTextDraft\.committed = joinSpeechPhrases/);
+  assert.match(client, /draft\.committed = joinSpeechPhrases/);
   assert.match(client, /startNativeSpeechSegment\(draft\)/);
-  assert.match(client, /pauseDeadline > Date\.now\(\)/);
+  assert.match(client, /Date\.now\(\) < draft\.pauseDeadline/);
+  assert.match(client, /function commitCurrentSpeechSegment/);
+  assert.match(client, /speechToTextDraft\.partial = String\(detail\.text/);
+  assert.match(client, /if \(speechToTextDraft\.partial\) commitCurrentSpeechSegment/);
+});
+
+test('iOS voice-note playback explicitly uses the media speaker route', () => {
+  assert.match(client, /action:'prepareVoiceNotePlayback'/);
+  assert.match(ios, /action == "prepareVoiceNotePlayback"/);
+  assert.match(iosAppDelegate, /func prepareVoiceNotePlayback\(\)/);
+  assert.match(iosAppDelegate, /guard calls\.isEmpty else \{ return \}/);
+  assert.match(iosAppDelegate, /\.playback,[\s\S]{0,100}mode: \.spokenAudio/);
 });
 
 test('keyboard and speech drafts grow both composers up to their scroll cap', () => {
