@@ -87,3 +87,11 @@ test('iOS requests speech permission and returns partial on-device-capable resul
   assert.match(ios, /action == "startSpeechToText"/);
   assert.match(info, /<key>NSSpeechRecognitionUsageDescription<\/key>/);
 });
+
+test('iOS ignores callbacks from the previous recognition segment', () => {
+  assert.match(ios, /private var speechRecognitionGeneration: UInt64 = 0/);
+  assert.match(ios, /speechRecognitionGeneration &\+= 1/);
+  assert.match(ios, /guard generation == self\.speechRecognitionGeneration else \{ return \}/);
+  assert.match(ios, /beginSpeechToText\(localeIdentifier: localeIdentifier, generation: generation\)/);
+  assert.match(ios, /private func beginSpeechToText\(localeIdentifier: String, generation: UInt64\)/);
+});

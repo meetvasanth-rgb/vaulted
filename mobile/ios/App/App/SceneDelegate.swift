@@ -41,6 +41,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var speechRecognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var speechRecognitionTask: SFSpeechRecognitionTask?
     private var speechTapInstalled = false
+    private var speechRecognitionGeneration: UInt64 = 0
     private var voiceTranscriptTasks: [String: SFSpeechRecognitionTask] = [:]
     private var voiceTranscriptFiles: [String: URL] = [:]
     private let nativeRemoteVideoView = RTCMTLVideoView(frame: .zero)
@@ -349,9 +350,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func startSpeechToText(localeIdentifier: String) {
+        speechRecognitionGeneration &+= 1
+        let generation = speechRecognitionGeneration
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard generation == self.speechRecognitionGeneration else { return }
                 guard status == .authorized else {
                     self.emitSpeechToText(
                         state: "error",
@@ -362,6 +366,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 }
                 self.requestSpeechMicrophonePermission { [weak self] allowed in
                     guard let self else { return }
+                    guard generation == self.speechRecognitionGeneration else { return }
                     guard allowed else {
                         self.emitSpeechToText(
                             state: "error",
@@ -370,14 +375,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                         )
                         return
                     }
-                    self.beginSpeechToText(localeIdentifier: localeIdentifier)
+                    self.beginSpeechToText(localeIdentifier: localeIdentifier, generation: generation)
                 }
             }
         }
     }
 
-    private func beginSpeechToText(localeIdentifier: String) {
-        cancelSpeechToText(notifyPage: false)
+    private func beginSpeechToText(localeIdentifier: String, generation: UInt64) {
+        guard generation == speechRecognitionGeneration else { return }
+        // Tear down the completed segment without invalidating the generation
+        // reserved for its replacement. Late callbacks from the old task are
+        // rejected by the generation guard in the recognition closure.
+        finishSpeechToText(cancelTask: true)
         let locale = localeIdentifier.isEmpty ? Locale.current : Locale(identifier: localeIdentifier)
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
             emitSpeechToText(state: "error", error: "Voice typing is not available for this language.", onDevice: false)
@@ -412,6 +421,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         speechRecognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, recognitionError in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard generation == self.speechRecognitionGeneration else { return }
                 if let result {
                     let transcript = result.bestTranscription.formattedString
                     self.emitSpeechToText(state: result.isFinal ? "final" : "partial", text: transcript, onDevice: onDevice)
@@ -452,6 +462,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func cancelSpeechToText(notifyPage: Bool) {
+        // Invalidate the active task before cancelling it. SFSpeechRecognizer
+        // may still invoke its closure after cancel(), and that stale callback
+        // must never stop or overwrite a newer segment.
+        speechRecognitionGeneration &+= 1
         let wasActive = speechRecognitionTask != nil || speechAudioEngine.isRunning
         finishSpeechToText(cancelTask: true)
         if notifyPage && wasActive {
