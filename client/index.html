@@ -18154,6 +18154,10 @@ async function requestStatusViewerVideoPlayback(video, allowMutedFallback = fals
   if (video.dataset.playAttempt === '1') return false;
   video.dataset.playAttempt = '1';
   try {
+    // Dictation and calls can leave iOS on a recording/receiver audio route.
+    // Restore ordinary media playback before asking WKWebView to start the
+    // status; older app builds safely ignore this bridge action.
+    prepareVoiceNotePlayback();
     video.muted = false;
     await video.play();
     return true;

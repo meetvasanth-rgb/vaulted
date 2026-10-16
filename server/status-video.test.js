@@ -79,6 +79,7 @@ test('status video never exposes native playback chrome and keeps status navigat
   assert.match(client, /className = 'status-video-manual-play'/);
   assert.match(client, /function ensureStatusViewerVideoPlayback\(video\)[\s\S]*video\.paused[\s\S]*revealStatusViewerVideo\(video, true\)/);
   assert.match(client, /function requestStatusViewerVideoPlayback\(video, allowMutedFallback = false\)[\s\S]*video\.muted = true;[\s\S]*showStatusViewerSoundButton\(video\)/);
+  assert.match(client, /function requestStatusViewerVideoPlayback\(video, allowMutedFallback = false\)[\s\S]*prepareVoiceNotePlayback\(\);[\s\S]*await video\.play\(\)/);
   assert.match(client, /statusViewerItems\.slice\(statusViewerIndex \+ 1, statusViewerIndex \+ 3\)[\s\S]*hydrateStatusVideo\(candidate\)/);
   assert.match(client, /ontimeupdate="finishStatusViewerVideo\(this\)" onended="finishStatusViewerVideo\(this\)"/);
   assert.match(client, /function finishStatusViewerVideo\(video\)[\s\S]*statusViewerStep\(1\)/);
