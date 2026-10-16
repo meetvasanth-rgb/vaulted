@@ -224,7 +224,8 @@ test('voice recording requests speech processing and sends the encoded duration'
   assert.match(extractFn('startVoiceRecording'), /echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1/);
   const send = extractFn('sendVoiceMessage');
   assert.match(send, /decodeAudioData\(await blob\.arrayBuffer\(\)\)/);
-  assert.match(send, /durationSeconds = Math\.max\(1, Math\.round\(decoded\.duration\)\)/);
+  assert.match(send, /allowedDrift = Math\.max\(2, durationSeconds \* 0\.25\)/);
+  assert.match(send, /Math\.abs\(encodedSeconds - durationSeconds\) <= allowedDrift/);
 });
 
 test('unusually quiet received voice notes get bounded playback gain', () => {
@@ -234,4 +235,11 @@ test('unusually quiet received voice notes get bounded playback gain', () => {
   assert.match(prepare, /rms < 0\.075/);
   assert.match(prepare, /Math\.min\(6/);
   assert.match(extractFn('toggleVoicePlayback'), /await prepareQuietVoicePlayback\(audio, rec\)/);
+});
+
+test('a malformed media tail cannot play beyond the duration the sender recorded', () => {
+  const progress = extractFn('updateVoiceProgress');
+  assert.match(progress, /audio\.currentTime >= declaredSeconds \+ 0\.2/);
+  assert.match(progress, /finishVoicePlayback\(rec, audio\)/);
+  assert.match(extractFn('seekVoice'), /ratio \* playableSeconds/);
 });
