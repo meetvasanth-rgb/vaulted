@@ -11066,8 +11066,13 @@ window.addEventListener('vaultlix:speech-to-text', event => {
   }
   if (detail.state === 'partial') {
     clearSpeechPauseTimer(speechToTextDraft);
-    preserveResetSpeechPartial(speechToTextDraft, detail.text);
-    speechToTextDraft.partial = String(detail.text || '');
+    const nextPartial = String(detail.text || '');
+    // iOS can publish an empty interim result while its recognizer rolls over
+    // after silence. It is not a deletion request: keep the visible phrase so
+    // the next non-empty partial can be recognised as a new segment.
+    if (!nextPartial.trim()) return;
+    preserveResetSpeechPartial(speechToTextDraft, nextPartial);
+    speechToTextDraft.partial = nextPartial;
     applySpeechDraft(speechToTextDraft.partial);
   }
   if (detail.state === 'final') {

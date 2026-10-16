@@ -35,14 +35,15 @@ test('dictation keeps listening across a ten-second thinking pause', () => {
   assert.match(client, /startNativeSpeechSegment\(draft\)/);
   assert.match(client, /Date\.now\(\) < draft\.pauseDeadline/);
   assert.match(client, /function commitCurrentSpeechSegment/);
-  assert.match(client, /speechToTextDraft\.partial = String\(detail\.text/);
+  assert.match(client, /speechToTextDraft\.partial = nextPartial/);
   assert.match(client, /if \(speechToTextDraft\.partial\) commitCurrentSpeechSegment/);
   assert.match(client, /function checkpointSpeechDraft/);
   assert.match(client, /draft\.prefix = input\.value/);
   assert.match(client, /clearSpeechPauseTimer\(draft\);\s*checkpointSpeechDraft\(draft\);/);
   assert.match(client, /function preserveResetSpeechPartial/);
   assert.match(client, /now - \(draft\.lastPartialAt \|\| 0\) >= 1200/);
-  assert.match(client, /preserveResetSpeechPartial\(speechToTextDraft, detail\.text\)/);
+  assert.match(client, /preserveResetSpeechPartial\(speechToTextDraft, nextPartial\)/);
+  assert.match(client, /if \(!nextPartial\.trim\(\)\) return/);
 });
 
 test('iOS voice-note playback explicitly uses the media speaker route', () => {
