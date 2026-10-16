@@ -36,6 +36,8 @@ function extract(name, keyword = 'function') {
 test('the website tells iOS which App Clip belongs to Vaultlix', () => {
   assert.deepEqual(aasa.appclips, { apps:['3KLX2S84MV.com.vaultlix.app.Clip'] });
   assert.ok(aasa.applinks.details.length > 0, 'the full app\'s universal links are untouched');
+  assert.match(client, /apple-itunes-app[^>]+app-id=6798266989[^>]+app-clip-bundle-id=com\.vaultlix\.app\.Clip[^>]+app-clip-display=card/);
+  assert.match(client, /https:\/\/appclip\.apple\.com\/id\?p=com\.vaultlix\.app\.Clip/);
 });
 
 test('the App Clip target is embedded in the app and shares the invitation code and app group', () => {
@@ -89,6 +91,8 @@ test('the full app hands the saved invitation to the page, validated, and lets i
   const shared = read('mobile/ios/App/Shared/SharedInvite.swift');
   assert.match(shared, /guard InviteLink\.isValidShareCode\(code\)/, 'only a well-formed code is ever stored (so it is safe in a script)');
   assert.match(shared, /maxAge: TimeInterval = 7 \* 24 \* 60 \* 60/);
+  assert.match(scene, /translatedAppClipInviteURL\(incoming\)/);
+  assert.match(scene, /https:\/\/vaultlix\.com\/p-\\\(code\)\?ref=qr/);
 });
 
 function runIos({ code = 'ABC234', done = null, lookup = async () => true } = {}) {

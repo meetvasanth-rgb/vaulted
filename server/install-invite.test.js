@@ -1,8 +1,8 @@
 'use strict';
 
 // A friend's invitation survives the install: the Play link carries the public
-// profile code (Android), iPhone users type the code shown to them, and the new
-// person always sees who invited them before anything is sent.
+// profile code (Android), while the iPhone App Clip carries it through Apple's
+// install sheet. The new person always sees who invited them before anything is sent.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -29,16 +29,17 @@ function extract(name, keyword = 'function') {
 }
 
 const PLAY = 'https://play.google.com/store/apps/details?id=com.vaultlix.app';
-const APPLE = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
+const APP_CLIP = 'https://appclip.apple.com/id?p=com.vaultlix.app.Clip';
 
-test('the store link for a friend\'s page: Play carries the code, the App Store cannot', () => {
-  const context = vm.createContext({ VAULTLIX_GOOGLE_PLAY_LINK:PLAY, VAULTLIX_IOS_APP_STORE_LINK:APPLE, navigator:{}, encodeURIComponent });
-  vm.runInContext(extract('inviteStoreTarget'), context);
+test('the install link carries a friend through Play or the iPhone App Clip', () => {
+  const context = vm.createContext({ VAULTLIX_GOOGLE_PLAY_LINK:PLAY, VAULTLIX_IOS_APP_CLIP_LINK:APP_CLIP, navigator:{}, encodeURIComponent,
+    normalizeProfileShareCode:value => (/^[A-HJ-NP-Z2-9]{6}$/.test(String(value).toUpperCase()) ? String(value).toUpperCase() : '') });
+  vm.runInContext(`${extract('iosAppClipInviteURL')}\n${extract('inviteStoreTarget')}`, context);
   const target = (ua, platform = 'Linux', touch = 0) => JSON.parse(JSON.stringify(vm.runInContext(
     `inviteStoreTarget('ABC234', ${JSON.stringify(ua)}, ${JSON.stringify(platform)}, ${touch})`, context)));
   assert.deepEqual(target('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/126'), { platform:'android', href:`${PLAY}&referrer=vaultlix_invite%3DABC234` });
-  assert.deepEqual(target('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari/604.1'), { platform:'ios', href:APPLE });
-  assert.deepEqual(target('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari', 'MacIntel', 5), { platform:'ios', href:APPLE }, 'iPadOS presents as a Mac');
+  assert.deepEqual(target('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari/604.1'), { platform:'ios', href:`${APP_CLIP}&invite=ABC234` });
+  assert.deepEqual(target('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari', 'MacIntel', 5), { platform:'ios', href:`${APP_CLIP}&invite=ABC234` }, 'iPadOS presents as a Mac');
   assert.equal(target('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome', 'MacIntel', 0), null, 'a desktop gets no store button');
   assert.equal(vm.runInContext("inviteStoreTarget('', 'Android')", context), null);
 });

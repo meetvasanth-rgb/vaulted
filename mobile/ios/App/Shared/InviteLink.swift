@@ -23,8 +23,17 @@ enum InviteLink {
     }
 
     static func target(from url: URL?) -> Target? {
-        guard let url, url.scheme?.lowercased() == "https",
-              let host = url.host?.lowercased(), host == "vaultlix.com" || host == "www.vaultlix.com" else { return nil }
+        guard let url, url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return nil }
+        // Apple's default App Clip link carries the public invitation code as
+        // a launch parameter. Accept only this exact Clip bundle identifier.
+        if host == "appclip.apple.com", url.path == "/id",
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           components.queryItems?.first(where: { $0.name == "p" })?.value == "com.vaultlix.app.Clip",
+           let code = components.queryItems?.first(where: { $0.name == "invite" })?.value?.uppercased(),
+           isValidShareCode(code) {
+            return .shareCode(code)
+        }
+        guard host == "vaultlix.com" || host == "www.vaultlix.com" else { return nil }
         let path = url.path
         // /p-ABC234 and /p/ABC234, with an optional trailing slash.
         for prefix in ["/p-", "/p/"] where path.hasPrefix(prefix) {

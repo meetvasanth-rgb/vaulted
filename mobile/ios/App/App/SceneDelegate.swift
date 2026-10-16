@@ -1563,11 +1563,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         SceneDelegateProxy.shared.scene(scene, continue: userActivity)
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb,
-           let url = userActivity.webpageURL,
-           isVaultlixLink(url) {
+           let incoming = userActivity.webpageURL,
+           let url = translatedAppClipInviteURL(incoming) ?? (isVaultlixLink(incoming) ? incoming : nil) {
             pendingUniversalLink = url
             flushPendingUniversalLink()
         }
+    }
+
+    private func translatedAppClipInviteURL(_ url: URL) -> URL? {
+        guard case .shareCode(let code) = InviteLink.target(from: url) else { return nil }
+        return URL(string: "https://vaultlix.com/p-\(code)?ref=qr")
     }
 
     private func isVaultlixLink(_ url: URL) -> Bool {

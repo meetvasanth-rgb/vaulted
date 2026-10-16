@@ -12,6 +12,9 @@
      That's the black bar that showed up above the keyboard when typing. -->
 <meta name="color-scheme" content="light"/>
 <meta name="apple-mobile-web-app-title" content="Vaultlix"/>
+<!-- Lets Safari and Messages present Vaultlix's App Clip instead of losing a
+     friend's invitation on the way through the App Store. -->
+<meta name="apple-itunes-app" content="app-id=6798266989, app-clip-bundle-id=com.vaultlix.app.Clip, app-clip-display=card"/>
 <meta name="theme-color" content="#682C43"/>
 <link rel="manifest" href="/manifest.json"/>
 <link rel="apple-touch-icon" href="/icons/icon-1024.png?v=20260806"/>
@@ -16849,6 +16852,7 @@ function isNativeIosApp() { return nativePlatform() === 'ios'; }
 
 const VAULTLIX_PUBLIC_APP_LINK = 'https://vaultlix.com/app';
 const VAULTLIX_IOS_APP_STORE_LINK = 'https://apps.apple.com/in/app/vaultlix/id6798266989';
+const VAULTLIX_IOS_APP_CLIP_LINK = 'https://appclip.apple.com/id?p=com.vaultlix.app.Clip';
 const VAULTLIX_GOOGLE_PLAY_LINK = 'https://play.google.com/store/apps/details?id=com.vaultlix.app';
 const VAULTLIX_IOS_APP_STORE_CARD = '/media/vaultlix-ios-app-store-card.png';
 let shareVaultlixReturnFocus = null;
@@ -22690,17 +22694,19 @@ function attemptMobileAppHandoff(target) {
     // package-targeted intent also covers links typed into Chrome and devices
     // whose domain preference was reset. Its fallback returns to this page
     // once and does not repeat the handoff when the app is not installed.
-    const intent = `intent://vaultlix.com/${path}#Intent;scheme=https;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(fallbackUrl.href)};end`;
+    const store = inviteStoreTarget(code);
+    const browserFallback = store?.href || VAULTLIX_GOOGLE_PLAY_LINK;
+    const intent = `intent://vaultlix.com/${path}#Intent;scheme=https;package=com.vaultlix.app;S.browser_fallback_url=${encodeURIComponent(browserFallback)};end`;
     setTimeout(() => { location.href = intent; }, 160);
     return;
   }
-  // Safari does not invoke Universal Links for an address typed into its own
-  // bar. Try the installed app's scheme after the invitation is visible; if
-  // Vaultlix is absent, the web page remains available with its install link.
-  const privateNumber = normalizePrivateNumber(activePublicProfile?.privateNumber || target);
-  if (!privateNumber) return;
+  // Apple's App Clip link performs the installed-app check for us: the full
+  // app replaces its Clip after installation, while a device without Vaultlix
+  // receives the small invitation Clip and its install sheet.
+  const inviteCode = normalizeProfileShareCode(activePublicProfile?.profileShareCode || target);
+  if (!inviteCode) return;
   history.replaceState(null,'',`${fallbackUrl.pathname}${fallbackUrl.search}${fallbackUrl.hash}`);
-  setTimeout(() => { location.href = `vaultlix://connect/${encodeURIComponent(privateNumber)}`; }, 240);
+  setTimeout(() => { location.href = iosAppClipInviteURL(inviteCode); }, 160);
 }
 function parseRecoveryLink(rawURL = location.href) {
   try {
@@ -22918,17 +22924,21 @@ let publicProfileLookup = null;
 // ── INVITATIONS THAT SURVIVE THE INSTALL ─────────────────────────────────
 // Someone without the app who opens a friend's link is offered the store.
 // On Android the Play link carries the friend's public profile code
-// (referrer=vaultlix_invite=CODE), which the app reads on first launch. iPhone
-// gives an app nothing through an ordinary install, so the code is shown to be
-// typed into "Have an invite code?" afterwards. Either way the new person sees
-// who invited them and chooses whether to connect; nothing is sent for them.
+// (referrer=vaultlix_invite=CODE), which the app reads on first launch. On
+// iPhone the App Clip saves the same code in the full app's shared container.
+// Either way the new person sees who invited them and chooses whether to
+// connect; nothing is sent for them.
+function iosAppClipInviteURL(code) {
+  const normalized = normalizeProfileShareCode(code);
+  return normalized ? `${VAULTLIX_IOS_APP_CLIP_LINK}&invite=${encodeURIComponent(normalized)}` : VAULTLIX_IOS_APP_CLIP_LINK;
+}
 function inviteStoreTarget(code, ua = navigator.userAgent || '', platform = navigator.platform, touchPoints = navigator.maxTouchPoints) {
   if (!code) return null;
   if (/android/i.test(ua)) {
     return { platform:'android', href:`${VAULTLIX_GOOGLE_PLAY_LINK}&referrer=${encodeURIComponent(`vaultlix_invite=${code}`)}` };
   }
   if (/iphone|ipad|ipod/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1)) {
-    return { platform:'ios', href:VAULTLIX_IOS_APP_STORE_LINK };
+    return { platform:'ios', href:iosAppClipInviteURL(code) };
   }
   return null;
 }
@@ -22941,9 +22951,10 @@ function showInviteGetApp(profile) {
   box.hidden = !target;
   if (!target) return;
   document.getElementById('public-profile-get-app-link').href = target.href;
+  document.getElementById('public-profile-get-app-link').textContent = 'Continue in Vaultlix';
   document.getElementById('public-profile-get-app-copy').textContent = target.platform === 'android'
     ? 'Installing from here brings this invitation straight into the app.'
-    : `After installing, tap “Have an invite code?” and enter ${code}.`;
+    : 'Vaultlix will open if installed. Otherwise, the App Clip keeps this invitation while you install.';
 }
 
 // The six-character code out of what someone typed or pasted: the code itself,
@@ -23095,8 +23106,11 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
     const openApp = document.getElementById('public-profile-open-app');
     if (openApp) {
       openApp.href = `vaultlix://connect/${encodeURIComponent(result.profile.privateNumber)}`;
-      openApp.hidden = isNativeApp();
-      openApp.style.display = isNativeApp() ? 'none' : 'block';
+      // The single Continue button below already opens the installed app or
+      // its store/App Clip fallback. Showing both choices caused the confusing
+      // list captured in the QR test.
+      openApp.hidden = true;
+      openApp.style.display = 'none';
     }
     showInviteGetApp(result.profile);
     const button = document.getElementById('public-profile-request');
