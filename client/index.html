@@ -10930,6 +10930,27 @@ function applySpeechDraft(transcript) {
   input.dispatchEvent(new Event('input', { bubbles:true }));
 }
 
+function speechPartialContinues(previous, next) {
+  const left = String(previous || '').trim().toLocaleLowerCase();
+  const right = String(next || '').trim().toLocaleLowerCase();
+  if (!left || !right) return true;
+  return right.startsWith(left) || left.startsWith(right) || right.includes(left);
+}
+
+function preserveResetSpeechPartial(draft, nextPartial, now = Date.now()) {
+  if (!draft || speechToTextDraft !== draft) return;
+  const previous = String(draft.partial || '').trim();
+  const next = String(nextPartial || '').trim();
+  // SFSpeechRecognizer sometimes keeps the same task alive across silence but
+  // starts its next partial result from an empty transcription. That is a new
+  // spoken phrase, not a correction to the words already shown in the field.
+  if (previous && next && now - (draft.lastPartialAt || 0) >= 1200
+      && !speechPartialContinues(previous, next)) {
+    commitCurrentSpeechSegment(draft);
+  }
+  draft.lastPartialAt = now;
+}
+
 function commitCurrentSpeechSegment(draft = speechToTextDraft, finalText = '') {
   if (!draft || speechToTextDraft !== draft) return;
   const segment = String(finalText || draft.partial || '').trim();
@@ -11024,7 +11045,7 @@ function toggleSpeechToText(inputId) {
     toast('Finish or cancel the voice note first.');
     return;
   }
-  speechToTextDraft = { inputId, prefix:input.value, committed:'', partial:'', locale:navigator.language || '', pauseTimer:null, pauseDeadline:0, serviceNoticeShown:false };
+  speechToTextDraft = { inputId, prefix:input.value, committed:'', partial:'', lastPartialAt:0, locale:navigator.language || '', pauseTimer:null, pauseDeadline:0, serviceNoticeShown:false };
   setSpeechToTextListening(inputId, true);
   input.blur();
   startNativeSpeechSegment(speechToTextDraft);
@@ -11045,6 +11066,7 @@ window.addEventListener('vaultlix:speech-to-text', event => {
   }
   if (detail.state === 'partial') {
     clearSpeechPauseTimer(speechToTextDraft);
+    preserveResetSpeechPartial(speechToTextDraft, detail.text);
     speechToTextDraft.partial = String(detail.text || '');
     applySpeechDraft(speechToTextDraft.partial);
   }

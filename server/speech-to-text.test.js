@@ -40,6 +40,9 @@ test('dictation keeps listening across a ten-second thinking pause', () => {
   assert.match(client, /function checkpointSpeechDraft/);
   assert.match(client, /draft\.prefix = input\.value/);
   assert.match(client, /clearSpeechPauseTimer\(draft\);\s*checkpointSpeechDraft\(draft\);/);
+  assert.match(client, /function preserveResetSpeechPartial/);
+  assert.match(client, /now - \(draft\.lastPartialAt \|\| 0\) >= 1200/);
+  assert.match(client, /preserveResetSpeechPartial\(speechToTextDraft, detail\.text\)/);
 });
 
 test('iOS voice-note playback explicitly uses the media speaker route', () => {
