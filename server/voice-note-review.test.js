@@ -219,3 +219,19 @@ test('the review bar has delete, play, waveform, length and send', () => {
   const bar = client.slice(client.indexOf('<div class="voice-review-bar" id="voice-review-bar">'), client.indexOf('<!-- VAULT INBOX'));
   for (const hook of ['discardVoiceDraft()', 'toggleVoiceDraftPlayback()', 'seekVoiceDraft(event)', 'id="voice-review-time"', 'sendVoiceDraft()']) assert.ok(bar.includes(hook), hook);
 });
+
+test('voice recording requests speech processing and sends the encoded duration', () => {
+  assert.match(extractFn('startVoiceRecording'), /echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1/);
+  const send = extractFn('sendVoiceMessage');
+  assert.match(send, /decodeAudioData\(await blob\.arrayBuffer\(\)\)/);
+  assert.match(send, /durationSeconds = Math\.max\(1, Math\.round\(decoded\.duration\)\)/);
+});
+
+test('unusually quiet received voice notes get bounded playback gain', () => {
+  const prepare = extractFn('prepareQuietVoicePlayback');
+  assert.match(prepare, /createMediaElementSource\(audio\)/);
+  assert.match(prepare, /createDynamicsCompressor\(\)/);
+  assert.match(prepare, /rms < 0\.075/);
+  assert.match(prepare, /Math\.min\(6/);
+  assert.match(extractFn('toggleVoicePlayback'), /await prepareQuietVoicePlayback\(audio, rec\)/);
+});
