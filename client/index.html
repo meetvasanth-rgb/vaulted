@@ -22758,13 +22758,23 @@ async function restoreQuickConnectInvitationAfterReload() {
   if (!target || loadAccountState()) return false;
   return openPublicProfile(target);
 }
-async function resumeQuickConnectAfterAuthentication() {
-  const target = loadQuickConnectTarget();
-  if (!target || !loadAccountState()) return false;
-  await openPublicProfile(target);
-  if (!activePublicProfile) return false;
-  await requestPrivateVault();
-  return true;
+let quickConnectResumePromise = null;
+function resumeQuickConnectAfterAuthentication() {
+  // Account creation can finish through more than one native lifecycle callback
+  // (for example, the notification permission sheet returning while startup is
+  // also settling). Treat those callbacks as one resume. Without this guard each
+  // callback opened its own message-request sheet and a person could send the
+  // same introduction twice.
+  if (quickConnectResumePromise) return quickConnectResumePromise;
+  quickConnectResumePromise = (async () => {
+    const target = loadQuickConnectTarget();
+    if (!target || !loadAccountState()) return false;
+    await openPublicProfile(target);
+    if (!activePublicProfile) return false;
+    await requestPrivateVault();
+    return true;
+  })().finally(() => { quickConnectResumePromise = null; });
+  return quickConnectResumePromise;
 }
 function privateNumberFromQuickConnectText(value) {
   const text = String(value || '').trim();
@@ -22782,6 +22792,7 @@ function privateNumberFromQuickConnectText(value) {
   return normalizePrivateNumber(text);
 }
 let activePublicProfile = null;
+let privateVaultRequestInFlight = false;
 function openNewConnection() {
   const state = loadAccountState();
   if (!state) { openAccountPanel(); return; }
@@ -23155,6 +23166,12 @@ async function requestPrivateVault(authenticationMode = 'create') {
     openQuickConnectAuthentication(authenticationMode);
     return;
   }
+  // A native handoff may ask to resume twice before the first lookup has put
+  // the request sheet on screen. Coalesce the entire signed-in flow, including
+  // the lookup and dialog, rather than relying on the dialog element as a lock.
+  if (privateVaultRequestInFlight) return;
+  privateVaultRequestInFlight = true;
+  try {
   if (normalizePrivateNumber(state.privateNumber) === normalizePrivateNumber(activePublicProfile.privateNumber)) {
     clearQuickConnectTarget();
     closePublicProfile();
@@ -23242,6 +23259,9 @@ async function requestPrivateVault(authenticationMode = 'create') {
   closePublicProfile();
   showScreen('s-vault-list');
   await refreshConnectionRequests();
+  } finally {
+    privateVaultRequestInFlight = false;
+  }
 }
 
 async function restoreConnectedConversationFromBackup(connection, peerPrivateNumber) {

@@ -330,6 +330,34 @@ test('both ways of sending a request ask for the optional message first, then en
   assert.match(profile, /replaceExisting:true,\s*\.\.\.preKeyOffer,\s*\.\.\.\(prepared\.intro \? \{ intro:prepared\.intro \} : \{\}\)/);
 });
 
+test('concurrent native authentication callbacks resume one Quick Connect request', async () => {
+  let profileLookups = 0;
+  let requestFlows = 0;
+  let releaseLookup;
+  const lookupGate = new Promise(resolve => { releaseLookup = resolve; });
+  const context = vm.createContext({
+    loadQuickConnectTarget:() => '2345678901',
+    loadAccountState:() => ({ accountId:'acc1' }),
+    activePublicProfile:null,
+    openPublicProfile:async () => {
+      profileLookups++;
+      await lookupGate;
+      context.activePublicProfile = { privateNumber:'2345678901' };
+    },
+    requestPrivateVault:async () => { requestFlows++; },
+  });
+  vm.runInContext(`let quickConnectResumePromise = null; ${extractFn(client, 'resumeQuickConnectAfterAuthentication')}`, context);
+  const first = vm.runInContext('resumeQuickConnectAfterAuthentication()', context);
+  const second = vm.runInContext('resumeQuickConnectAfterAuthentication()', context);
+  assert.equal(profileLookups, 1, 'the invitation is looked up once');
+  releaseLookup();
+  assert.equal(await first, true);
+  assert.equal(await second, true);
+  assert.equal(requestFlows, 1, 'only one message-request dialog can be started');
+  const profile = extractFn(client, 'requestPrivateVault');
+  assert.match(profile, /if \(privateVaultRequestInFlight\) return;[\s\S]*privateVaultRequestInFlight = true;[\s\S]*finally \{[\s\S]*privateVaultRequestInFlight = false/);
+});
+
 test('the dialog is optional: send, send without a message, or cancel', () => {
   const dialog = extractFn(client, 'promptRequestMessage');
   assert.match(dialog, /data-choice="send">Send request/);
