@@ -20333,13 +20333,31 @@ function confirmDeleteSelected() {
   showDeleteOptions(room, ids, allMine);
 }
 
+function applyReactionSnapshot(rec, reactions, ownToken) {
+  if (!rec) return;
+  const entries = Object.entries(reactions || {});
+  rec.reactionMine = entries.find(([token]) => token === ownToken)?.[1] || null;
+  rec.reactionTheirs = entries.find(([token]) => token !== ownToken)?.[1] || null;
+}
+
 async function sendReaction(room, msgId, emoji) {
   const rec = room.messages.find(m => m.id === msgId);
   if (!rec) return;
+  const previous = rec.reactionMine;
   const next = rec.reactionMine === emoji ? null : emoji; // tapping same emoji again clears it
   rec.reactionMine = next;
   renderReactions(room, msgId);
-  try { await api('/api/react', { code: room.code, token: room.token, msgId, emoji: next }); } catch (e) {}
+  try {
+    await api('/api/react', { code: room.code, token: room.token, msgId, emoji: next });
+  } catch (e) {
+    // An optimistic reaction that never reached the server used to remain
+    // briefly and then disappear at the next authoritative history refresh.
+    // Restore the last known value immediately so the UI never pretends the
+    // reaction was saved.
+    rec.reactionMine = previous;
+    renderReactions(room, msgId);
+    toast('Couldn\'t save reaction. Please try again.');
+  }
 }
 
 function renderReactionsForRec(div, rec) {
@@ -21658,6 +21676,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
             rec = null;
           } else if (rec) {
             rec.isMe = msg.from === room.token;
+            applyReactionSnapshot(rec, msg.reactions, room.token);
           }
         }
         processed[index] = rec;
@@ -21723,6 +21742,7 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
       encryptedAttachmentRef:msg.content, fromToken:msg.from,
       deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt,
       receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null };
+    applyReactionSnapshot(placeholder, msg.reactions, room.token);
     room.messages.push(placeholder);
     if (ledgerDeleteAt && ledgerDeleteAt > nowTs) {
       placeholder.deleteAt = ledgerDeleteAt;
@@ -21948,7 +21968,7 @@ async function restoreRoomHistory(room) {
     if (data.reactionUpdates && data.reactionUpdates.length > 0) {
       for (const u of data.reactionUpdates) {
         const rec = room.messages.find(m => m.id === u.msgId);
-        if (rec) rec.reactionTheirs = Object.entries(u.reactions || {}).find(([t]) => t !== room.token)?.[1] || null;
+        if (rec) applyReactionSnapshot(rec, u.reactions, room.token);
         if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
       }
     }
@@ -22307,7 +22327,7 @@ async function doPoll(room) {
       for (const u of data.reactionUpdates) {
         const rec = room.messages.find(m => m.id === u.msgId);
         if (rec) {
-          rec.reactionTheirs = Object.entries(u.reactions || {}).find(([token]) => token !== room.token)?.[1] || null;
+          applyReactionSnapshot(rec, u.reactions, room.token);
           renderReactions(room, u.msgId);
         }
         if (u.reactionSeq && u.reactionSeq > room.lastReactionSeq) room.lastReactionSeq = u.reactionSeq;
@@ -22385,6 +22405,7 @@ async function doPoll(room) {
           } else if (rec?.kind === 'edit') {
             applyDirectMessageEdit(room, rec);
           } else if (rec) {
+            applyReactionSnapshot(rec, msg.reactions, room.token);
             const isPerspectiveCallEvent = rec.kind === 'sys' && !!rec.callEvent;
             room.messages.push(rec);
             if (isRoomVisible(room)) {
