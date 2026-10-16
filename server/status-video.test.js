@@ -62,8 +62,9 @@ test('decrypted status videos survive feed refresh and upcoming videos preload i
 
 test('a newly published own video reuses its local playable bytes on iOS', () => {
   assert.match(client, /ownVideoUrl = URL\.createObjectURL\(uploadVideo\)/);
-  assert.match(client, /statusFeed\.find\(item => item\.id === result\.id && item\.own && item\.payload\?\.type === 'video'\)/);
-  assert.match(client, /ownItem\.payload\.videoUrl = ownVideoUrl/);
+  assert.match(client, /pendingOwnStatusVideoUrls\.set\(result\.id, ownVideoUrl\)/);
+  assert.match(client, /pendingOwnStatusVideoUrls\.get\(item\.id\)/);
+  assert.match(client, /payload\.videoUrl = pendingOwnVideo/);
   assert.match(client, /if \(ownVideoUrl\) URL\.revokeObjectURL\(ownVideoUrl\)/);
 });
 
@@ -77,6 +78,8 @@ test('status video never exposes native playback chrome and keeps status navigat
   assert.doesNotMatch(client, /const tapZones=item\.payload\.type==='video'\?'':/);
   assert.match(client, /className = 'status-video-manual-play'/);
   assert.match(client, /function ensureStatusViewerVideoPlayback\(video\)[\s\S]*video\.paused[\s\S]*revealStatusViewerVideo\(video, true\)/);
+  assert.match(client, /ontimeupdate="finishStatusViewerVideo\(this\)" onended="finishStatusViewerVideo\(this\)"/);
+  assert.match(client, /function finishStatusViewerVideo\(video\)[\s\S]*statusViewerStep\(1\)/);
   assert.doesNotMatch(client, /class="status-video-player"[^>]* controls/);
 });
 
