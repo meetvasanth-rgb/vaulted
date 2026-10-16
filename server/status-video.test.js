@@ -62,11 +62,14 @@ test('decrypted status videos survive feed refresh and upcoming videos preload i
 
 test('status video never exposes native playback chrome and keeps status navigation above it', () => {
   assert.match(client, /class="status-video-player"[\s\S]*onplaying="revealStatusViewerVideo\(this\)"/);
+  assert.match(client, /onloadeddata="ensureStatusViewerVideoPlayback\(this\)"/);
+  assert.match(client, /webkit-playsinline/);
   assert.match(client, /class="status-video-startup"/);
   assert.match(client, /function revealStatusViewerVideo\(video, allowManualPlayback = false\)[\s\S]*video\.controls = false/);
   assert.match(client, /const tapZones=`<button type="button" class="status-tap-zone status-prev"[\s\S]*status-tap-zone status-next/);
   assert.doesNotMatch(client, /const tapZones=item\.payload\.type==='video'\?'':/);
   assert.match(client, /className = 'status-video-manual-play'/);
+  assert.match(client, /function ensureStatusViewerVideoPlayback\(video\)[\s\S]*video\.paused[\s\S]*revealStatusViewerVideo\(video, true\)/);
   assert.doesNotMatch(client, /class="status-video-player"[^>]* controls/);
 });
 
