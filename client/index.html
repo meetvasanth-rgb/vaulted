@@ -10943,6 +10943,18 @@ function clearSpeechPauseTimer(draft = speechToTextDraft) {
   if (draft) { draft.pauseTimer = null; draft.pauseDeadline = 0; }
 }
 
+function checkpointSpeechDraft(draft = speechToTextDraft) {
+  if (!draft || speechToTextDraft !== draft) return;
+  const input = document.getElementById(draft.inputId);
+  if (!input) return;
+  // iOS creates a fresh recognition task after a silence. Use the visible
+  // composer as the immutable prefix for that next task, rather than relying
+  // only on the previous recognizer callback surviving the hand-off.
+  draft.prefix = input.value;
+  draft.committed = '';
+  draft.partial = '';
+}
+
 function startNativeSpeechSegment(draft = speechToTextDraft) {
   if (!draft || speechToTextDraft !== draft) return;
   try {
@@ -10962,6 +10974,7 @@ function startNativeSpeechSegment(draft = speechToTextDraft) {
 function continueSpeechAfterPause(draft = speechToTextDraft) {
   if (!draft || speechToTextDraft !== draft) return;
   clearSpeechPauseTimer(draft);
+  checkpointSpeechDraft(draft);
   draft.pauseDeadline = Date.now() + SPEECH_PAUSE_GRACE_MS;
   draft.pauseTimer = setTimeout(() => {
     if (speechToTextDraft !== draft) return;
@@ -11050,6 +11063,7 @@ window.addEventListener('vaultlix:speech-to-text', event => {
       toast(detail.error || 'Voice typing stopped. Please try again.');
     }
   } else if (detail.state === 'cancelled') {
+    if (speechToTextDraft.partial) commitCurrentSpeechSegment(speechToTextDraft);
     finishSpeechToTextDraft({ focus:false });
   }
 });

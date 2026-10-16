@@ -37,6 +37,9 @@ test('dictation keeps listening across a ten-second thinking pause', () => {
   assert.match(client, /function commitCurrentSpeechSegment/);
   assert.match(client, /speechToTextDraft\.partial = String\(detail\.text/);
   assert.match(client, /if \(speechToTextDraft\.partial\) commitCurrentSpeechSegment/);
+  assert.match(client, /function checkpointSpeechDraft/);
+  assert.match(client, /draft\.prefix = input\.value/);
+  assert.match(client, /clearSpeechPauseTimer\(draft\);\s*checkpointSpeechDraft\(draft\);/);
 });
 
 test('iOS voice-note playback explicitly uses the media speaker route', () => {
