@@ -60,6 +60,13 @@ test('decrypted status videos survive feed refresh and upcoming videos preload i
   assert.match(client, /function scheduleStatusVideoPreload\(\)[\s\S]*selected\.length === 2[\s\S]*hydrateStatusVideo\(item\)/);
 });
 
+test('a newly published own video reuses its local playable bytes on iOS', () => {
+  assert.match(client, /ownVideoUrl = URL\.createObjectURL\(uploadVideo\)/);
+  assert.match(client, /statusFeed\.find\(item => item\.id === result\.id && item\.own && item\.payload\?\.type === 'video'\)/);
+  assert.match(client, /ownItem\.payload\.videoUrl = ownVideoUrl/);
+  assert.match(client, /if \(ownVideoUrl\) URL\.revokeObjectURL\(ownVideoUrl\)/);
+});
+
 test('status video never exposes native playback chrome and keeps status navigation above it', () => {
   assert.match(client, /class="status-video-player"[\s\S]*onplaying="revealStatusViewerVideo\(this\)"/);
   assert.match(client, /onloadeddata="ensureStatusViewerVideoPlayback\(this\)"/);

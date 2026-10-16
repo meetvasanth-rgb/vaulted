@@ -17973,6 +17973,7 @@ async function publishStatus() {
   const selected = [...document.querySelectorAll('[data-status-room]:checked')].map(input => rooms.get(input.dataset.statusRoom)).filter(room => room?.sharedKey);
   if (!selected.length) { toast('Choose at least one friend.'); return; }
   const button=document.getElementById('status-publish'); button.disabled=true; button.textContent='Encrypting…';
+  let ownVideoUrl = '';
   try {
     let mediaId = null;
     let videoEnvelope = null;
@@ -17993,6 +17994,10 @@ async function publishStatus() {
         chunks.push(bytes);
       }
       const uploadVideo = new Blob(chunks, { type:optimised.mime || statusComposerVideo.mime });
+      // The author already has the exact playable bytes. Keep a separate
+      // in-memory URL so iOS can preview Your status immediately instead of
+      // downloading and decrypting its own upload again.
+      ownVideoUrl = URL.createObjectURL(uploadVideo);
       const keyBytes = crypto.getRandomValues(new Uint8Array(32));
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const key = await crypto.subtle.importKey('raw', keyBytes, { name:'AES-GCM' }, false, ['encrypt']);
@@ -18016,7 +18021,21 @@ async function publishStatus() {
     const result = await api('/api/status/publish', { accountId:state.accountId, sessionToken:state.sessionToken, entries, mediaId });
     if (result.error) throw new Error(result.error);
     closeStatusComposer(); toast('Status shared for 24 hours.'); await refreshStatusFeed();
-  } catch (error) { button.disabled=false; button.textContent='Share for 24 hours'; toast(error.message || 'Could not share status.'); }
+    if (ownVideoUrl) {
+      const ownItem = statusFeed.find(item => item.id === result.id && item.own && item.payload?.type === 'video');
+      if (ownItem) {
+        if (ownItem.payload.videoUrl && ownItem.payload.videoUrl !== ownVideoUrl) URL.revokeObjectURL(ownItem.payload.videoUrl);
+        ownItem.payload.videoUrl = ownVideoUrl;
+        ownItem.payload.videoLoading = false;
+        delete ownItem.payload.videoError;
+        ownVideoUrl = '';
+      }
+      if (ownVideoUrl) { URL.revokeObjectURL(ownVideoUrl); ownVideoUrl = ''; }
+    }
+  } catch (error) {
+    if (ownVideoUrl) URL.revokeObjectURL(ownVideoUrl);
+    button.disabled=false; button.textContent='Share for 24 hours'; toast(error.message || 'Could not share status.');
+  }
 }
 
 function closeStatusViewer() { if(statusViewerTimer)clearTimeout(statusViewerTimer);statusViewerTimer=null;document.getElementById('status-viewer')?.remove();statusViewerItems=[];renderStatusRail(); }
