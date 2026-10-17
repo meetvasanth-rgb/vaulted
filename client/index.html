@@ -7694,12 +7694,12 @@ async function flushPendingDecrypt(room) {
     room.messages.push(rec);
     if (isRoomVisible(room)) {
       renderMessageRecord(room, rec, true);
-      if (rec.kind === 'text' && rec.jumbo) triggerEmojiEffect(rec.content);
     } else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') {
       room.unread++;
       if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
       unreadChanged = true;
     }
+    handleIncomingEmojiEffect(room, rec);
     if (!isPerspectiveCallEvent) notifyMsg(room);
     room.readConfirmIds.push(item.msgId);
   }
@@ -9154,6 +9154,7 @@ function resumeForegroundWork() {
     flushPendingReads(active);
   }
   updateDocumentTitle();
+  if (active) requestAnimationFrame(() => flushPendingEmojiEffect(active));
 
   // Android dispatches both visibilitychange and focus when its WebView is
   // restored. Running the full inbox, push and signaling refresh from both
@@ -10358,6 +10359,39 @@ function playHeartShower() {
     document.body.appendChild(el);
     el.addEventListener('animationend', () => el.remove(), { once: true });
   }
+}
+
+// iOS can briefly resume message polling while its WKWebView is still behind
+// the lock screen/privacy cover. Starting a CSS animation at that point makes
+// the whole shower finish before the user can see it. Keep only the newest
+// incoming jumbo-emoji effect in memory and play it once, after the relevant
+// conversation is genuinely visible. Android's foreground path still plays
+// immediately, and ordinary off-screen chats are not queued while the user is
+// actively using a different conversation.
+function handleIncomingEmojiEffect(room, rec) {
+  if (!room || rec?.kind !== 'text' || !rec.jumbo) return;
+  if (isRoomVisible(room) && !document.hidden && tabFocused && !quickLockActive) {
+    triggerEmojiEffect(rec.content);
+    return;
+  }
+  if (document.hidden || !tabFocused || quickLockActive) {
+    room.pendingEmojiEffect = {
+      messageId: rec.id,
+      emoji: rec.content,
+      queuedAt: Date.now(),
+    };
+  }
+}
+
+function flushPendingEmojiEffect(room) {
+  const pending = room?.pendingEmojiEffect;
+  if (!pending || !isRoomVisible(room) || document.hidden || !tabFocused || quickLockActive) return false;
+  room.pendingEmojiEffect = null; // clear before playback so duplicate resume/focus events cannot replay it
+  // A very old unopened message should behave like normal chat history, not
+  // unexpectedly cover the screen with an animation much later.
+  if (Date.now() - pending.queuedAt > 10 * 60 * 1000) return false;
+  requestAnimationFrame(() => triggerEmojiEffect(pending.emoji));
+  return true;
 }
 
 function playPunchReaction() {
@@ -19148,6 +19182,7 @@ function setActiveRoom(code, { deferMessages = false } = {}) {
   updateTimerBar(room);
   refreshCallButton();
   checkMilestone(room);
+  flushPendingEmojiEffect(room);
 }
 
 // Make navigation respond in the same frame as the tap. The full message DOM
@@ -19163,7 +19198,10 @@ function openConversationAfterPaint(code) {
   requestAnimationFrame(() => setTimeout(() => {
     if (activeRoomCode !== code || !document.getElementById('s-chat')?.classList.contains('active')) return;
     const currentRoom = rooms.get(code);
-    if (currentRoom) renderChatBody(currentRoom);
+    if (currentRoom) {
+      renderChatBody(currentRoom);
+      flushPendingEmojiEffect(currentRoom);
+    }
   }, 0));
   return true;
 }
@@ -22571,16 +22609,12 @@ async function doPoll(room) {
             room.messages.push(rec);
             if (isRoomVisible(room)) {
               renderMessageRecord(room, rec, true);
-              // Only worth playing while this room is the one actually on
-              // screen — an offscreen room already gets its unread badge
-              // and (if backgrounded) the chime from notifyMsg below, no
-              // need to also queue a full-screen effect for later.
-              if (rec.kind === 'text' && rec.jumbo) triggerEmojiEffect(rec.content);
             }
             else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') {
               room.unread++;
               if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
             }
+            handleIncomingEmojiEffect(room, rec);
             if (!isPerspectiveCallEvent) notifyMsg(room);
             // Note: the disappearing-message timer does NOT start here. It
             // used to fire the instant a message was delivered via poll,

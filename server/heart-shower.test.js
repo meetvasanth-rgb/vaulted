@@ -87,3 +87,46 @@ test('both the call reaction and a single-heart chat message use it; other emoji
   assert.match(client, /function triggerEmojiEffect\(emoji\) \{\s*if \(isHeartEmoji\(emoji\)\) \{ playHeartShower\(\); return; \}/);
   assert.match(client, /animation:emoji-float-up \$\{duration\}ms/);
 });
+
+test('an emoji received behind the iOS lock screen plays once after the chat becomes visible', () => {
+  const played = [];
+  const room = { code:'room-1' };
+  const document = { hidden:true };
+  const context = vm.createContext({
+    document,
+    tabFocused:false,
+    quickLockActive:false,
+    isRoomVisible: () => true,
+    triggerEmojiEffect: emoji => played.push(emoji),
+    requestAnimationFrame: callback => callback(),
+    Date,
+  });
+  vm.runInContext(extract('handleIncomingEmojiEffect') + '\n' + extract('flushPendingEmojiEffect'), context);
+
+  context.handleIncomingEmojiEffect(room, { id:'heart-1', kind:'text', jumbo:true, content:'❤️' });
+  assert.equal(played.length, 0);
+  assert.equal(room.pendingEmojiEffect.messageId, 'heart-1');
+
+  document.hidden = false;
+  context.tabFocused = true;
+  assert.equal(context.flushPendingEmojiEffect(room), true);
+  assert.deepEqual(played, ['❤️']);
+  assert.equal(room.pendingEmojiEffect, null);
+  assert.equal(context.flushPendingEmojiEffect(room), false, 'duplicate lifecycle events must not replay the shower');
+});
+
+test('an off-screen emoji is not saved for later while the user is active in another chat', () => {
+  const room = { code:'room-2' };
+  const context = vm.createContext({
+    document:{ hidden:false },
+    tabFocused:true,
+    quickLockActive:false,
+    isRoomVisible: () => false,
+    triggerEmojiEffect: () => assert.fail('off-screen effect played'),
+    requestAnimationFrame: callback => callback(),
+    Date,
+  });
+  vm.runInContext(extract('handleIncomingEmojiEffect') + '\n' + extract('flushPendingEmojiEffect'), context);
+  context.handleIncomingEmojiEffect(room, { id:'heart-2', kind:'text', jumbo:true, content:'❤️' });
+  assert.equal(room.pendingEmojiEffect, undefined);
+});
