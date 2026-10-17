@@ -152,11 +152,30 @@ test('App Lock holds an effect until the unlock replays it', () => {
   assert.equal(h.played.length, 1);
 });
 
-test('an effect for a chat the person is not looking at is not saved while the app is in use', () => {
+test('a heart for a chat that is not open (another chat or the inbox is showing) is kept and plays when that chat is opened', () => {
   const h = playbackHarness({ visible:false });
   h.context.handleIncomingEmojiEffect(h.room, h.heart('elsewhere'));
-  assert.equal(h.room.pendingEmojiEffect, undefined);
-  assert.equal(h.played.length, 0);
+  assert.equal(h.played.length, 0, 'nothing plays over the chat that is open');
+  assert.equal(h.room.pendingEmojiEffect.messageId, 'elsewhere');
+  assert.equal(h.bridge.length, 0);
+
+  // Opening the conversation (the chat screen is shown) replays it, once.
+  h.context.isRoomVisible = room => room.code === 'room-1';
+  assert.equal(h.context.flushPendingEmojiEffect(h.room), true);
+  assert.deepEqual(h.played, ['\u2764\uFE0F']);
+  assert.equal(h.context.flushPendingEmojiEffect(h.room), false);
+  assert.equal(h.played.length, 1);
+});
+
+test('on iOS the same open-the-chat replay goes through the native permission first', () => {
+  const h = playbackHarness({ native:true, capable:true, visible:false });
+  h.context.handleIncomingEmojiEffect(h.room, h.heart('ios-elsewhere'));
+  assert.equal(h.bridge.length, 0, 'not asked while the chat is not open');
+  h.context.isRoomVisible = room => room.code === 'room-1';
+  assert.equal(h.context.flushPendingEmojiEffect(h.room), true);
+  assert.equal(h.played.length, 0, 'not before native says yes');
+  h.answer(0, true);
+  assert.equal(h.played.length, 1);
 });
 
 test('a queued effect waits for its conversation to be on screen, then plays after it opens', () => {
@@ -263,9 +282,52 @@ test('a missing answer times out and keeps the effect queued; repeated asks for 
   timeout.fn();
   assert.equal(h.played.length, 0);
   assert.equal(h.room.pendingEmojiEffect.messageId, 'silent');
-  // A late answer for the expired request is ignored.
+});
+
+test('a late "yes" (the page was busy) is still honoured within the grace period, once', () => {
+  const h = playbackHarness({ native:true, capable:true });
+  h.context.handleIncomingEmojiEffect(h.room, h.heart('late'));
+  h.timers.find(timer => timer.ms === 2000 && !timer.cleared).fn();
+  assert.equal(h.played.length, 0);
+  h.answer(0, true);
+  assert.deepEqual(h.played, ['\u2764\uFE0F']);
+  h.answer(0, true);
+  assert.equal(h.played.length, 1, 'a repeated late answer cannot replay it');
+});
+
+test('an answer that arrives after the grace period is ignored', () => {
+  const h = playbackHarness({ native:true, capable:true });
+  h.context.handleIncomingEmojiEffect(h.room, h.heart('too-late'));
+  h.timers.find(timer => timer.ms === 2000 && !timer.cleared).fn();
+  h.timers.find(timer => timer.ms === 10000 && !timer.cleared).fn();
   h.answer(0, true);
   assert.equal(h.played.length, 0);
+  assert.equal(h.room.pendingEmojiEffect.messageId, 'too-late');
+});
+
+test('a held effect asks again a few times by itself, then stops', () => {
+  const h = playbackHarness({ native:true, capable:true });
+  h.context.handleIncomingEmojiEffect(h.room, h.heart('retry'));
+  h.answer(0, false); // not allowed yet
+  const retryTimers = h.timers.filter(timer => timer.ms === 1200);
+  assert.equal(retryTimers.length, 1);
+  retryTimers[0].fn(); // the retry fires and asks native again
+  assert.equal(h.bridge.length, 2, 'asked again');
+  h.answer(1, true);
+  assert.equal(h.played.length, 1);
+
+  // Never more than five retries per effect.
+  const capped = playbackHarness({ native:true, capable:true });
+  capped.context.handleIncomingEmojiEffect(capped.room, capped.heart('capped'));
+  for (let i = 0; i < 8; i++) {
+    capped.answer(capped.bridge.length - 1, false);
+    const next = capped.timers.filter(timer => timer.ms === 1200 && !timer.fired).at(-1);
+    if (!next) break;
+    next.fired = true;
+    next.fn();
+  }
+  assert.ok(capped.bridge.length <= 6, `${capped.bridge.length} requests`);
+  assert.equal(capped.played.length, 0);
 });
 
 test('every step is traced with its timestamp and the page and native state', () => {

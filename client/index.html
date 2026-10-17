@@ -10392,6 +10392,12 @@ function playHeartShower() {
 // Android and browsers keep playing immediately when visible.
 const EMOJI_EFFECT_MAX_AGE_MS = 30 * 60 * 1000;
 const EMOJI_EFFECT_PERMISSION_TIMEOUT_MS = 2000;
+// The page can be too busy to run the native answer for a while (an iOS resume decrypts a backlog),
+// so an answer that arrives after the timeout is still honoured for a short grace period, and a
+// held effect asks again a few times rather than waiting for a lifecycle event that may not come.
+const EMOJI_EFFECT_ANSWER_GRACE_MS = 10 * 1000;
+const EMOJI_EFFECT_RETRY_MS = 1200;
+const EMOJI_EFFECT_MAX_RETRIES = 5;
 let nativeEmojiPermissionAvailable = false;
 const emojiEffectPermissionRequests = new Map(); // requestId -> { roomCode, entry, timer }
 const playedEmojiEffectIds = new Set();
@@ -10436,15 +10442,30 @@ function playEmojiEffectOnce(room, entry) {
   return true;
 }
 
+function scheduleEmojiEffectRetry(room, entry) {
+  entry.attempts = (entry.attempts || 0) + 1;
+  if (entry.attempts > EMOJI_EFFECT_MAX_RETRIES) return;
+  setTimeout(() => {
+    if (room?.pendingEmojiEffect?.messageId === entry.messageId) flushPendingEmojiEffect(room);
+  }, EMOJI_EFFECT_RETRY_MS);
+}
+
 function requestNativeEmojiEffectPermission(room, entry) {
-  for (const request of emojiEffectPermissionRequests.values()) if (request.entry.messageId === entry.messageId) return;
+  for (const request of emojiEffectPermissionRequests.values()) {
+    if (request.entry.messageId === entry.messageId && !request.expired) return;
+  }
   const requestId = `emoji-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  const timer = setTimeout(() => {
-    if (!emojiEffectPermissionRequests.delete(requestId)) return;
+  const request = { roomCode:room.code, entry, timer:null, expired:false };
+  request.timer = setTimeout(() => {
+    if (emojiEffectPermissionRequests.get(requestId) !== request) return;
     traceEmojiEffect('permission-timeout', { messageId:entry.messageId });
     holdEmojiEffect(room, entry);
+    scheduleEmojiEffectRetry(room, entry);
+    // Keep the request a little longer: a late "yes" is still a real "yes".
+    request.expired = true;
+    request.timer = setTimeout(() => emojiEffectPermissionRequests.delete(requestId), EMOJI_EFFECT_ANSWER_GRACE_MS);
   }, EMOJI_EFFECT_PERMISSION_TIMEOUT_MS);
-  emojiEffectPermissionRequests.set(requestId, { roomCode:room.code, entry, timer });
+  emojiEffectPermissionRequests.set(requestId, request);
   traceEmojiEffect('permission-requested', { messageId:entry.messageId, requestId });
   try {
     window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'requestEmojiEffectPermission', requestId });
@@ -10470,7 +10491,7 @@ window.addEventListener('vaultlix:emoji-effect-permission', event => {
   traceEmojiEffect('permission-returned', { messageId:request.entry.messageId, allowed:detail.allowed === true });
   if (!room) return;
   if (detail.allowed === true && isRoomVisible(room) && !emojiEffectSurfaceBlocked()) playEmojiEffectOnce(room, request.entry);
-  else holdEmojiEffect(room, request.entry);
+  else { holdEmojiEffect(room, request.entry); scheduleEmojiEffectRetry(room, request.entry); }
 });
 
 // Everything around the effect says it can be seen right now: ask the native wrapper first on iOS.
@@ -10487,9 +10508,10 @@ function handleIncomingEmojiEffect(room, rec) {
   const roomVisible = isRoomVisible(room);
   traceEmojiEffect('incoming', { messageId:rec.id, blocked, roomVisible });
   if (!blocked && roomVisible) { deliverEmojiEffect(room, entry); return; }
-  // Behind a cover or lock: keep it for when the conversation is on screen again. An effect for a
-  // conversation the person is simply not looking at (app in use, another chat open) is not kept.
-  if (blocked) { holdEmojiEffect(room, entry); traceEmojiEffect('queued', { messageId:rec.id }); }
+  // Not on screen right now (behind a cover or lock, or another conversation or the inbox is open):
+  // keep it, and play it once when this conversation is opened.
+  holdEmojiEffect(room, entry);
+  traceEmojiEffect('queued', { messageId:rec.id, blocked, roomVisible });
 }
 
 function flushPendingEmojiEffect(room) {
