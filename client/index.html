@@ -5868,6 +5868,21 @@ function shuffleNameSuggestion() {
 // ── GLOBAL (page-level, not room-specific) STATE ───────────────────────
 let mode = 'create';               // setup screen flow: create | named | join
 let tabFocused = true;
+// WKWebView does not reliably update document.hidden or window focus while
+// the native iOS scene is covered by the lock screen/app switcher. The
+// signed wrapper reports the real scene lifecycle so transient animations
+// cannot finish behind that native cover.
+let nativeIOSLifecycleKnown = false;
+let nativeIOSAppActive = true;
+window.addEventListener('vaultlix:app-state', event => {
+  nativeIOSLifecycleKnown = true;
+  nativeIOSAppActive = event.detail?.active === true;
+  if (!nativeIOSAppActive) {
+    tabFocused = false;
+    return;
+  }
+  resumeForegroundWork();
+});
 let lastInteractionTime = Date.now();
 let activeActionMsgId = null;      // message currently showing its Reply/React row
 let replyTo = null;                // encrypted message or status snapshot attached to the next text
@@ -10370,11 +10385,12 @@ function playHeartShower() {
 // actively using a different conversation.
 function handleIncomingEmojiEffect(room, rec) {
   if (!room || rec?.kind !== 'text' || !rec.jumbo) return;
-  if (isRoomVisible(room) && !document.hidden && tabFocused && !quickLockActive) {
+  const nativeInactive = nativeIOSLifecycleKnown && !nativeIOSAppActive;
+  if (isRoomVisible(room) && !document.hidden && tabFocused && !quickLockActive && !nativeInactive) {
     triggerEmojiEffect(rec.content);
     return;
   }
-  if (document.hidden || !tabFocused || quickLockActive) {
+  if (document.hidden || !tabFocused || quickLockActive || nativeInactive) {
     room.pendingEmojiEffect = {
       messageId: rec.id,
       emoji: rec.content,
@@ -10385,7 +10401,8 @@ function handleIncomingEmojiEffect(room, rec) {
 
 function flushPendingEmojiEffect(room) {
   const pending = room?.pendingEmojiEffect;
-  if (!pending || !isRoomVisible(room) || document.hidden || !tabFocused || quickLockActive) return false;
+  const nativeInactive = nativeIOSLifecycleKnown && !nativeIOSAppActive;
+  if (!pending || !isRoomVisible(room) || document.hidden || !tabFocused || quickLockActive || nativeInactive) return false;
   room.pendingEmojiEffect = null; // clear before playback so duplicate resume/focus events cannot replay it
   // A very old unopened message should behave like normal chat history, not
   // unexpectedly cover the screen with an animation much later.

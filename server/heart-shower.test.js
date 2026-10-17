@@ -96,6 +96,8 @@ test('an emoji received behind the iOS lock screen plays once after the chat bec
     document,
     tabFocused:false,
     quickLockActive:false,
+    nativeIOSLifecycleKnown:false,
+    nativeIOSAppActive:true,
     isRoomVisible: () => true,
     triggerEmojiEffect: emoji => played.push(emoji),
     requestAnimationFrame: callback => callback(),
@@ -121,6 +123,8 @@ test('an off-screen emoji is not saved for later while the user is active in ano
     document:{ hidden:false },
     tabFocused:true,
     quickLockActive:false,
+    nativeIOSLifecycleKnown:false,
+    nativeIOSAppActive:true,
     isRoomVisible: () => false,
     triggerEmojiEffect: () => assert.fail('off-screen effect played'),
     requestAnimationFrame: callback => callback(),
@@ -129,4 +133,37 @@ test('an off-screen emoji is not saved for later while the user is active in ano
   vm.runInContext(extract('handleIncomingEmojiEffect') + '\n' + extract('flushPendingEmojiEffect'), context);
   context.handleIncomingEmojiEffect(room, { id:'heart-2', kind:'text', jumbo:true, content:'❤️' });
   assert.equal(room.pendingEmojiEffect, undefined);
+});
+
+test('the native iOS scene state overrides stale WKWebView visibility while the phone is locked', () => {
+  const played = [];
+  const room = { code:'room-3' };
+  const context = vm.createContext({
+    document:{ hidden:false },
+    tabFocused:true,
+    quickLockActive:false,
+    nativeIOSLifecycleKnown:true,
+    nativeIOSAppActive:false,
+    isRoomVisible: () => true,
+    triggerEmojiEffect: emoji => played.push(emoji),
+    requestAnimationFrame: callback => callback(),
+    Date,
+  });
+  vm.runInContext(extract('handleIncomingEmojiEffect') + '\n' + extract('flushPendingEmojiEffect'), context);
+
+  context.handleIncomingEmojiEffect(room, { id:'heart-3', kind:'text', jumbo:true, content:'❤️' });
+  assert.equal(played.length, 0);
+  assert.equal(room.pendingEmojiEffect.messageId, 'heart-3');
+  assert.equal(context.flushPendingEmojiEffect(room), false, 'must not animate behind the native privacy cover');
+
+  context.nativeIOSAppActive = true;
+  assert.equal(context.flushPendingEmojiEffect(room), true);
+  assert.deepEqual(played, ['❤️']);
+});
+
+test('the iOS wrapper sends app-state events at startup, backgrounding, and foregrounding', () => {
+  const sceneDelegate = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
+  assert.match(sceneDelegate, /if action == "ready"[\s\S]*emit\(name: "vaultlix:app-state"/);
+  assert.match(sceneDelegate, /func sceneWillResignActive[\s\S]*emit\(name: "vaultlix:app-state", detail: \["active": false\]\)/);
+  assert.match(sceneDelegate, /func sceneDidBecomeActive[\s\S]*emit\(name: "vaultlix:app-state", detail: \["active": true\]\)/);
 });

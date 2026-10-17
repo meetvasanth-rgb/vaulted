@@ -1147,6 +1147,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 #endif
         if action == "ready" {
             webReady = true
+            emit(name: "vaultlix:app-state", detail: [
+                "active": window?.windowScene?.activationState == .foregroundActive
+            ])
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
             if let token = VaultlixCallManager.shared.voIPToken
@@ -1662,6 +1665,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
+        if webReady {
+            emit(name: "vaultlix:app-state", detail: ["active": false])
+        }
         showAppSwitcherPrivacyCover()
         cancelSpeechToText(notifyPage: false)
         VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-resign-active")
@@ -1669,6 +1675,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         hideAppSwitcherPrivacyCover()
+        if webReady {
+            emit(name: "vaultlix:app-state", detail: ["active": true])
+        }
         VaultlixCallManager.shared.enforceCallKeyboardGuard()
         VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-active")
         presentNativeVideoConsentPrompt()
