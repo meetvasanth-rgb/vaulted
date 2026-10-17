@@ -10376,40 +10376,134 @@ function playHeartShower() {
   }
 }
 
-// iOS can briefly resume message polling while its WKWebView is still behind
-// the lock screen/privacy cover. Starting a CSS animation at that point makes
-// the whole shower finish before the user can see it. Keep only the newest
-// incoming jumbo-emoji effect in memory and play it once, after the relevant
-// conversation is genuinely visible. Android's foreground path still plays
-// immediately, and ordinary off-screen chats are not queued while the user is
-// actively using a different conversation.
+// ── EMOJI EFFECT PLAYBACK ──────────────────────────────────────────────
+// A chat message that is just an emoji (a heart gives the full-screen shower) plays its effect on
+// screen the moment it arrives, but only if someone can actually see it. iOS can run the page while
+// the phone is locked, behind the app switcher, or behind the App Lock screen, and a CSS animation
+// started then finishes unseen. So an effect that arrives while the surface is not visible is kept
+// (the newest one per conversation) and played once when the conversation is genuinely on screen
+// again. Every effect is keyed by its message id and plays at most once.
+//
+// On the signed iOS app the page cannot be trusted to know whether it is visible: the WKWebView can
+// keep reporting "visible" under the native cover, and the "app went inactive" event is a
+// fire-and-forget script that may never run. So there, playing is a question put to the native
+// wrapper, which reads the real scene state when it answers; nothing plays without a "yes", and a
+// missing or late answer just leaves the effect queued. Older apps without the wrapper support,
+// Android and browsers keep playing immediately when visible.
+const EMOJI_EFFECT_MAX_AGE_MS = 30 * 60 * 1000;
+const EMOJI_EFFECT_PERMISSION_TIMEOUT_MS = 2000;
+let nativeEmojiPermissionAvailable = false;
+const emojiEffectPermissionRequests = new Map(); // requestId -> { roomCode, entry, timer }
+const playedEmojiEffectIds = new Set();
+const emojiEffectTrace = [];
+
+// Timestamped breadcrumbs for diagnosing a device: read window.__vaultlixEmojiTrace in Web Inspector.
+function traceEmojiEffect(stage, detail = {}) {
+  const entry = {
+    t: Date.now(), stage,
+    hidden: !!document.hidden,
+    focus: typeof document.hasFocus === 'function' ? document.hasFocus() : null,
+    tabFocused, nativeKnown: nativeIOSLifecycleKnown, nativeActive: nativeIOSAppActive,
+    appLock: !!quickLockActive, ...detail,
+  };
+  emojiEffectTrace.push(entry);
+  if (emojiEffectTrace.length > 60) emojiEffectTrace.shift();
+  try { window.__vaultlixEmojiTrace = emojiEffectTrace; } catch (_) {}
+}
+
+function emojiEffectSurfaceBlocked() {
+  if (document.hidden || !tabFocused || quickLockActive) return true;
+  if (nativeIOSLifecycleKnown && !nativeIOSAppActive) return true;
+  // The native cover can sit over a page that still reports itself visible.
+  return isNativeIOS() && !!document.getElementById('privacy-cover')?.classList.contains('show');
+}
+
+function holdEmojiEffect(room, entry) {
+  if (!room || !entry || playedEmojiEffectIds.has(entry.messageId)) return;
+  if (!room.pendingEmojiEffect || room.pendingEmojiEffect.queuedAt <= entry.queuedAt) room.pendingEmojiEffect = entry;
+}
+
+function playEmojiEffectOnce(room, entry) {
+  if (!entry) return false;
+  if (room?.pendingEmojiEffect?.messageId === entry.messageId) room.pendingEmojiEffect = null;
+  if (playedEmojiEffectIds.has(entry.messageId)) return false;
+  // A very old unopened message behaves like ordinary chat history, not a surprise animation.
+  if (Date.now() - entry.queuedAt > EMOJI_EFFECT_MAX_AGE_MS) { traceEmojiEffect('expired', { messageId:entry.messageId }); return false; }
+  playedEmojiEffectIds.add(entry.messageId);
+  if (playedEmojiEffectIds.size > 200) playedEmojiEffectIds.delete(playedEmojiEffectIds.values().next().value);
+  traceEmojiEffect('played', { messageId:entry.messageId });
+  requestAnimationFrame(() => triggerEmojiEffect(entry.emoji));
+  return true;
+}
+
+function requestNativeEmojiEffectPermission(room, entry) {
+  for (const request of emojiEffectPermissionRequests.values()) if (request.entry.messageId === entry.messageId) return;
+  const requestId = `emoji-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const timer = setTimeout(() => {
+    if (!emojiEffectPermissionRequests.delete(requestId)) return;
+    traceEmojiEffect('permission-timeout', { messageId:entry.messageId });
+    holdEmojiEffect(room, entry);
+  }, EMOJI_EFFECT_PERMISSION_TIMEOUT_MS);
+  emojiEffectPermissionRequests.set(requestId, { roomCode:room.code, entry, timer });
+  traceEmojiEffect('permission-requested', { messageId:entry.messageId, requestId });
+  try {
+    window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'requestEmojiEffectPermission', requestId });
+  } catch (error) {
+    clearTimeout(timer);
+    emojiEffectPermissionRequests.delete(requestId);
+    holdEmojiEffect(room, entry);
+  }
+}
+
+window.addEventListener('vaultlix:emoji-effect-capability', event => {
+  nativeEmojiPermissionAvailable = event.detail?.available === true;
+});
+
+window.addEventListener('vaultlix:emoji-effect-permission', event => {
+  const detail = event.detail || {};
+  const requestId = String(detail.requestId || '');
+  const request = emojiEffectPermissionRequests.get(requestId);
+  if (!request) return;
+  clearTimeout(request.timer);
+  emojiEffectPermissionRequests.delete(requestId);
+  const room = rooms.get(request.roomCode);
+  traceEmojiEffect('permission-returned', { messageId:request.entry.messageId, allowed:detail.allowed === true });
+  if (!room) return;
+  if (detail.allowed === true && isRoomVisible(room) && !emojiEffectSurfaceBlocked()) playEmojiEffectOnce(room, request.entry);
+  else holdEmojiEffect(room, request.entry);
+});
+
+// Everything around the effect says it can be seen right now: ask the native wrapper first on iOS.
+function deliverEmojiEffect(room, entry) {
+  if (nativeEmojiPermissionAvailable && isNativeIOS()) requestNativeEmojiEffectPermission(room, entry);
+  else playEmojiEffectOnce(room, entry);
+}
+
 function handleIncomingEmojiEffect(room, rec) {
   if (!room || rec?.kind !== 'text' || !rec.jumbo) return;
-  const nativeInactive = nativeIOSLifecycleKnown && !nativeIOSAppActive;
-  if (isRoomVisible(room) && !document.hidden && tabFocused && !quickLockActive && !nativeInactive) {
-    triggerEmojiEffect(rec.content);
-    return;
-  }
-  if (document.hidden || !tabFocused || quickLockActive || nativeInactive) {
-    room.pendingEmojiEffect = {
-      messageId: rec.id,
-      emoji: rec.content,
-      queuedAt: Date.now(),
-    };
-  }
+  if (playedEmojiEffectIds.has(rec.id)) return;
+  const entry = { messageId:rec.id, emoji:rec.content, queuedAt:Date.now() };
+  const blocked = emojiEffectSurfaceBlocked();
+  const roomVisible = isRoomVisible(room);
+  traceEmojiEffect('incoming', { messageId:rec.id, blocked, roomVisible });
+  if (!blocked && roomVisible) { deliverEmojiEffect(room, entry); return; }
+  // Behind a cover or lock: keep it for when the conversation is on screen again. An effect for a
+  // conversation the person is simply not looking at (app in use, another chat open) is not kept.
+  if (blocked) { holdEmojiEffect(room, entry); traceEmojiEffect('queued', { messageId:rec.id }); }
 }
 
 function flushPendingEmojiEffect(room) {
   const pending = room?.pendingEmojiEffect;
-  const nativeInactive = nativeIOSLifecycleKnown && !nativeIOSAppActive;
-  if (!pending || !isRoomVisible(room) || document.hidden || !tabFocused || quickLockActive || nativeInactive) return false;
-  room.pendingEmojiEffect = null; // clear before playback so duplicate resume/focus events cannot replay it
-  // A very old unopened message should behave like normal chat history, not
-  // unexpectedly cover the screen with an animation much later.
-  if (Date.now() - pending.queuedAt > 10 * 60 * 1000) return false;
-  requestAnimationFrame(() => triggerEmojiEffect(pending.emoji));
-  return true;
+  if (!pending || !isRoomVisible(room) || emojiEffectSurfaceBlocked()) return false;
+  if (Date.now() - pending.queuedAt > EMOJI_EFFECT_MAX_AGE_MS) {
+    room.pendingEmojiEffect = null;
+    traceEmojiEffect('expired', { messageId:pending.messageId });
+    return false;
+  }
+  if (nativeEmojiPermissionAvailable && isNativeIOS()) { requestNativeEmojiEffectPermission(room, pending); return true; }
+  return playEmojiEffectOnce(room, pending);
 }
+// ── END EMOJI EFFECT PLAYBACK ──────────────────────────────────────────
 
 function playPunchReaction() {
   const el = document.createElement('div');
@@ -10807,6 +10901,7 @@ function showScreen(id) {
   }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  if (id === 's-chat') requestAnimationFrame(() => flushPendingEmojiEffect(getActiveRoom()));
   if (id === 's-setup') {
     const btn = document.getElementById('setup-btn');
     if (btn) btn.disabled = false;
@@ -16070,6 +16165,9 @@ function completeQuickUnlock() {
   tabFocused = !document.hidden;
   lastInteractionTime = Date.now();
   catchUpPoll();
+  // An effect that arrived while the lock screen was up is replayed now that the chat is in view
+  // (twice, because the chat can need a moment to render; it still plays at most once).
+  for (const delay of [0, 1200]) setTimeout(() => requestAnimationFrame(() => flushPendingEmojiEffect(getActiveRoom())), delay);
   checkStaleIncomingCalls();
   refreshPushForAllRooms();
   reconnectSignalingForAllRooms();

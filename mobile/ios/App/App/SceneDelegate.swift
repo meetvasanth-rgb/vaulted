@@ -1150,6 +1150,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emit(name: "vaultlix:app-state", detail: [
                 "active": window?.windowScene?.activationState == .foregroundActive
             ])
+            emit(name: "vaultlix:emoji-effect-capability", detail: ["available": true])
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
             if let token = VaultlixCallManager.shared.voIPToken
@@ -1159,6 +1160,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             }
             flushPendingCallActions()
             flushPendingUniversalLink()
+            return
+        }
+        if action == "requestEmojiEffectPermission" {
+            // The page cannot reliably tell whether it is visible: WKWebView can keep reporting a
+            // visible page under the lock screen / app-switcher cover, and the "inactive" event is a
+            // script that may never run. Answer from the real scene state, read now.
+            guard message.frameInfo.isMainFrame,
+                  let requestId = body["requestId"] as? String,
+                  requestId.range(of: "^[A-Za-z0-9-]{8,80}$", options: .regularExpression) != nil else { return }
+            let allowed = window?.windowScene?.activationState == .foregroundActive
+                && UIApplication.shared.applicationState == .active
+                && appSwitcherPrivacyCover == nil
+            emit(name: "vaultlix:emoji-effect-permission", detail: ["requestId": requestId, "allowed": allowed])
             return
         }
         if action == "startSpeechToText" {
@@ -1664,21 +1678,22 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         appSwitcherPrivacyCover = nil
     }
 
+    // The native cover goes up first: nothing the page does may delay hiding its content.
     func sceneWillResignActive(_ scene: UIScene) {
+        showAppSwitcherPrivacyCover()
         if webReady {
             emit(name: "vaultlix:app-state", detail: ["active": false])
         }
-        showAppSwitcherPrivacyCover()
         cancelSpeechToText(notifyPage: false)
         VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-resign-active")
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         hideAppSwitcherPrivacyCover()
+        VaultlixCallManager.shared.enforceCallKeyboardGuard()
         if webReady {
             emit(name: "vaultlix:app-state", detail: ["active": true])
         }
-        VaultlixCallManager.shared.enforceCallKeyboardGuard()
         VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-active")
         presentNativeVideoConsentPrompt()
         if webReady,
