@@ -28,14 +28,14 @@ final class ShareViewController: UIViewController {
         statusLabel.numberOfLines = 0
         statusLabel.textAlignment = .center
 
-        openButton.setTitle("Open Vaultlix", for: .normal)
+        openButton.setTitle("Done", for: .normal)
         openButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         openButton.backgroundColor = UIColor(red: 104/255, green: 44/255, blue: 67/255, alpha: 1)
         openButton.tintColor = .white
         openButton.layer.cornerRadius = 14
         openButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
         openButton.isHidden = true
-        openButton.addTarget(self, action: #selector(openVaultlix), for: .touchUpInside)
+        openButton.addTarget(self, action: #selector(finishShare), for: .touchUpInside)
 
         let cancel = UIButton(type: .system)
         cancel.setTitle("Cancel", for: .normal)
@@ -106,7 +106,7 @@ final class ShareViewController: UIViewController {
             }
             do {
                 try data.write(to: transaction.appendingPathComponent("manifest.json"), options: .atomic)
-                self.statusLabel.text = "Your image is ready. Open Vaultlix and choose the encrypted conversation."
+                self.statusLabel.text = "Your image is ready. Tap Done, then open Vaultlix. After you unlock, choose the encrypted conversation."
                 self.openButton.isHidden = false
             } catch {
                 try? FileManager.default.removeItem(at: transaction)
@@ -134,12 +134,8 @@ final class ShareViewController: UIViewController {
         openButton.isHidden = true
     }
 
-    @objc private func openVaultlix() {
-        guard let url = URL(string: "vaultlix://share") else { return }
-        extensionContext?.open(url) { opened in
-            if opened { self.extensionContext?.completeRequest(returningItems: nil) }
-            else { self.statusLabel.text = "Image saved. Close this sheet and open Vaultlix to choose a chat." }
-        }
+    @objc private func finishShare() {
+        extensionContext?.completeRequest(returningItems: nil)
     }
 
     @objc private func cancelShare() {

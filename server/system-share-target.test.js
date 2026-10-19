@@ -26,6 +26,10 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   assert.match(plist, /NSExtensionActivationSupportsImageWithMaxCount/);
   const entitlements = read('mobile/ios/App/VaultlixShare/VaultlixShare.entitlements');
   assert.match(entitlements, /group\.com\.vaultlix\.app/);
+  const controller = read('mobile/ios/App/VaultlixShare/ShareViewController.swift');
+  assert.match(controller, /openButton\.setTitle\("Done"/);
+  assert.match(controller, /then open Vaultlix/);
+  assert.doesNotMatch(controller, /extensionContext\?\.open\(/);
   const scene = read('mobile/ios/App/App/SceneDelegate.swift');
   assert.match(scene, /flushPendingExternalShares\(\)/);
   assert.match(scene, /window\.vaultlixReceiveExternalShare/);
