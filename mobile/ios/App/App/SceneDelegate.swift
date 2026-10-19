@@ -1164,6 +1164,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             flushPendingExternalShares()
             return
         }
+        if action == "flushExternalShares" {
+            flushPendingExternalShares()
+            return
+        }
         if action == "requestEmojiEffectPermission" {
             // The page cannot reliably tell whether it is visible: WKWebView can keep reporting a
             // visible page under the lock screen / app-switcher cover, and the "inactive" event is a

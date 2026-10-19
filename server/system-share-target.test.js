@@ -34,7 +34,11 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
 test('the recipient chooser feeds shared images into the existing encrypted attachment path', () => {
   const client = read('client/index.html');
   assert.match(client, /window\.vaultlixReceiveExternalShare = function/);
+  assert.match(client, /if \(quickLockActive\) return false/);
+  assert.match(client, /postMessage\(\{ action:'flushExternalShares' \}\)/);
   assert.match(client, /showExternalShareChooser\(\)/);
   assert.match(client, /await sendSelectedFilesToRoom\(room, files\)/);
   assert.match(client, /encryptedPayload = await encryptMsg\(room, payload\)/);
+  const scene = read('mobile/ios/App/App/SceneDelegate.swift');
+  assert.match(scene, /if action == "flushExternalShares" \{\s*flushPendingExternalShares\(\)/);
 });

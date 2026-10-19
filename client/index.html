@@ -16193,6 +16193,7 @@ function completeQuickUnlock() {
   checkStaleIncomingCalls();
   refreshPushForAllRooms();
   reconnectSignalingForAllRooms();
+  requestPendingExternalShares();
   resumeDeferredQuickConnectURL().catch(() => toast('Could not resume the scanned Vaultlix request'));
 }
 
@@ -25979,18 +25980,18 @@ function externalShareRoomAvatar(room) {
 
 function showExternalShareChooser() {
   document.getElementById('external-share-overlay')?.remove();
-  if (!pendingExternalShareFiles.length) return;
+  if (!pendingExternalShareFiles.length) return false;
   const state = loadAccountState();
   if (!state) {
     toast('Sign in to share this image in Vaultlix');
     openLoginOrInbox();
-    return;
+    return false;
   }
   const choices = [...rooms.values()].filter(room => room?.sharedKey && room.everOnline && !room.reconnectRequired && !roomConcealed(room));
   if (!choices.length) {
     toast('Connect with someone before sharing an image');
     openVaultInbox();
-    return;
+    return false;
   }
   const overlay = document.createElement('div');
   overlay.id = 'external-share-overlay';
@@ -26016,17 +26017,27 @@ function showExternalShareChooser() {
     };
   });
   document.body.appendChild(overlay);
+  return true;
+}
+
+function requestPendingExternalShares() {
+  try {
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'flushExternalShares' });
+  } catch (error) {}
 }
 
 // Called by the native shells. Returning true lets native code delete its
 // temporary staging copy; false keeps it available for a later retry.
 window.vaultlixReceiveExternalShare = function(payload) {
+  // Do not acknowledge native staging while App Lock is covering the page.
+  // Acknowledgement lets iOS delete the only durable copy; keeping it staged
+  // means the unlock path can request delivery again and reveal the chooser.
+  if (quickLockActive) return false;
   const items = Array.isArray(payload) ? payload : [];
   const decoded = items.slice(0, 10).map(decodeExternalShareFile).filter(Boolean);
   if (!decoded.length) { toast('The shared image could not be opened'); return false; }
   pendingExternalShareFiles = decoded;
-  showExternalShareChooser();
-  return true;
+  return showExternalShareChooser();
 };
 
 // One shared send path for both the normal attach button and the view-once
