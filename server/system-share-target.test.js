@@ -26,13 +26,21 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   assert.match(plist, /NSExtensionActivationSupportsImageWithMaxCount/);
   const entitlements = read('mobile/ios/App/VaultlixShare/VaultlixShare.entitlements');
   assert.match(entitlements, /group\.com\.vaultlix\.app/);
+  assert.match(entitlements, /keychain-access-groups/);
   const controller = read('mobile/ios/App/VaultlixShare/ShareViewController.swift');
-  assert.match(controller, /openButton\.setTitle\("Done"/);
-  assert.match(controller, /then open Vaultlix/);
+  assert.match(controller, /vaultlix\.share\.app-lock\.v1/);
+  assert.match(controller, /CCKeyDerivationPBKDF/);
+  assert.match(controller, /NativeCallRoomStore\.shared\.shareEligibleRooms\(\)/);
+  assert.match(controller, /AES\.GCM\.seal/);
+  assert.match(controller, /\/api\/attachment\/prepare/);
+  assert.match(controller, /\/api\/send/);
+  assert.match(controller, /obj:v1:/);
   assert.doesNotMatch(controller, /extensionContext\?\.open\(/);
+  assert.match(project, /434ACA8947C20A71CB935E9A \/\* NativeCallRoomStore\.swift in Sources \*\//);
   const scene = read('mobile/ios/App/App/SceneDelegate.swift');
   assert.match(scene, /flushPendingExternalShares\(\)/);
   assert.match(scene, /window\.vaultlixReceiveExternalShare/);
+  assert.match(scene, /syncShareExtension/);
 });
 
 test('the recipient chooser feeds shared images into the existing encrypted attachment path', () => {
@@ -43,6 +51,8 @@ test('the recipient chooser feeds shared images into the existing encrypted atta
   assert.match(client, /showExternalShareChooser\(\)/);
   assert.match(client, /await sendSelectedFilesToRoom\(room, files\)/);
   assert.match(client, /encryptedPayload = await encryptMsg\(room, payload\)/);
+  assert.match(client, /syncNativeShareExtensionState/);
+  assert.match(client, /!isChatHidden\(room\.code\)/);
   const scene = read('mobile/ios/App/App/SceneDelegate.swift');
   assert.match(scene, /if action == "flushExternalShares" \{\s*flushPendingExternalShares\(\)/);
 });

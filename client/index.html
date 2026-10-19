@@ -7646,6 +7646,30 @@ async function provisionNativeCallRoom(room) {
   }
 }
 
+let nativeShareExtensionSyncTimer = null;
+let nativeShareExtensionSignature = '';
+
+function scheduleNativeShareExtensionSync(delay = 250) {
+  if (!window.webkit?.messageHandlers?.vaultlixCall) return;
+  clearTimeout(nativeShareExtensionSyncTimer);
+  nativeShareExtensionSyncTimer = setTimeout(() => syncNativeShareExtensionState().catch(() => {}), delay);
+}
+
+async function syncNativeShareExtensionState() {
+  const bridge = window.webkit?.messageHandlers?.vaultlixCall;
+  if (!bridge) return;
+  const eligible = [...rooms.values()].filter(room => room?.sharedKey && room.everOnline
+    && !room.reconnectRequired && !isChatHidden(room.code));
+  const handles = [...new Set(eligible.map(room => String(room.nativeRoomHandle || ''))
+    .filter(handle => /^[A-Za-z0-9_-]{16,64}$/.test(handle)))].sort();
+  const appLock = loadAppLockConfig();
+  const signature = JSON.stringify({ handles, appLock });
+  if (signature === nativeShareExtensionSignature) return;
+  await Promise.all(eligible.map(room => provisionNativeCallRoom(room)));
+  nativeShareExtensionSignature = signature;
+  bridge.postMessage({ action:'syncShareExtension', handles, appLock });
+}
+
 function triggerEncryptionPulse() {
   const bar = document.querySelector('.e2e-bar');
   if (!bar) return;
@@ -16234,6 +16258,7 @@ async function saveAppLock(event) {
   const verifier = await deriveAppLockVerifier(next, salt);
   localStorage.setItem(APP_LOCK_CONFIG_KEY, JSON.stringify({ version:1, iterations:APP_LOCK_ITERATIONS, passcodeLength:next.length, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
   localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+  scheduleNativeShareExtensionSync(0);
   closeAppLockSettings();
   updateAppLockStatus();
   activateAppLock(true);
@@ -16247,6 +16272,7 @@ async function disableAppLock() {
   localStorage.removeItem(APP_LOCK_FAILURE_KEY);
   sessionStorage.removeItem(QUICK_LOCK_KEY);
   quickLockActive = false;
+  scheduleNativeShareExtensionSync(0);
   closeAppLockSettings();
   updateAppLockStatus();
   toast('Vaultlix App Lock disabled');
@@ -19113,6 +19139,7 @@ function openPeerStatusFromInbox(privateNumber) {
 // live only on this device. Decrypted preview text is read from the current
 // in-memory room log and is never added to localStorage by this feature.
 function renderVaultList() {
+  scheduleNativeShareExtensionSync();
   const body = document.getElementById('vault-list-body');
   if (!body) return;
   renderRequestsPageIfOpen();

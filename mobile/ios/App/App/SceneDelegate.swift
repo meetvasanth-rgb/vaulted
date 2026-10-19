@@ -1168,6 +1168,30 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             flushPendingExternalShares()
             return
         }
+        if action == "syncShareExtension",
+           let handles = body["handles"] as? [String] {
+            let safeHandles = Array(Set(handles.filter {
+                $0.range(of: "^[A-Za-z0-9_-]{16,64}$", options: .regularExpression) != nil
+            })).sorted()
+            let defaults = UserDefaults(suiteName: "group.com.vaultlix.app")
+            defaults?.set(safeHandles, forKey: "vaultlix.share.recipient-handles.v1")
+            if let config = body["appLock"] as? [String: Any],
+               let salt = config["salt"] as? String,
+               let verifier = config["verifier"] as? String,
+               salt.count <= 128, verifier.count <= 128,
+               let iterations = config["iterations"] as? NSNumber,
+               let length = config["passcodeLength"] as? NSNumber,
+               iterations.intValue >= 100_000, iterations.intValue <= 1_000_000,
+               length.intValue >= 6, length.intValue <= 32 {
+                defaults?.set([
+                    "salt": salt, "verifier": verifier,
+                    "iterations": iterations, "passcodeLength": length,
+                ], forKey: "vaultlix.share.app-lock.v1")
+            } else {
+                defaults?.removeObject(forKey: "vaultlix.share.app-lock.v1")
+            }
+            return
+        }
         if action == "requestEmojiEffectPermission" {
             // The page cannot reliably tell whether it is visible: WKWebView can keep reporting a
             // visible page under the lock screen / app-switcher cover, and the "inactive" event is a

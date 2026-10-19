@@ -28,6 +28,7 @@ final class NativeCallRoomStore {
     static let shared = NativeCallRoomStore()
     private let service = "com.vaultlix.app.native-call-room"
     private let accessGroup = "3KLX2S84MV.com.vaultlix.app"
+    private let shareRecipientHandlesKey = "vaultlix.share.recipient-handles.v1"
 
     private init() {}
 
@@ -98,5 +99,12 @@ final class NativeCallRoomStore {
               let data = result as? Data,
               let handle = String(data: data, encoding: .utf8) else { return nil }
         return room(handle: handle)
+    }
+
+    func shareEligibleRooms() -> [NativeCallRoom] {
+        let handles = UserDefaults(suiteName: "group.com.vaultlix.app")?
+            .stringArray(forKey: shareRecipientHandlesKey) ?? []
+        var seenCodes = Set<String>()
+        return handles.compactMap { room(handle: $0) }.filter { seenCodes.insert($0.code).inserted }
     }
 }
