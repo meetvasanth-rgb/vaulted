@@ -19,6 +19,8 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5346D997D7EC1497FBF55D53 /* VaultlixShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2964180B6E5F670979C9A30A /* VaultlixShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		553B4DF231D632FF793AAFD7 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68F40671B650016D375E013F /* Foundation.framework */; };
 		754D7780C530FD6C2028B576 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68F40671B650016D375E013F /* Foundation.framework */; };
 		7E171E11C3F9EFC78281C0D1 /* SharedInvite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6770496E2B026FD0092E8023 /* SharedInvite.swift */; };
 		8F0CE198FD51B4B613135FAB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 10019F507318EA1E751F1F57 /* Assets.xcassets */; };
@@ -55,6 +57,7 @@
 		BA7255A4A3A0D1FE970B1E4D /* VaultlixClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */; };
 		C0B21D2DC7951604455920AD /* VaultlixNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10CA11030C1000100000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = C10CA11130C1000100000001 /* Localizable.strings */; };
+		E0F0184F8953D1002A22C992 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B8E675C8706668C1EEFA474 /* ShareViewController.swift */; };
 		E8D5083D1575680D76A3D6C1 /* InviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E33355AA68B410D9BD4DD0D /* InviteView.swift */; };
 		EE9973E4CAF21CF135D4A099 /* InviteModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B84A13BEABD782A61081E2C /* InviteModel.swift */; };
 		F86AD57BFBBC0FB06E997F14 /* VaultlixClip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = 90E1FC57F3C0F3056483E6BE /* VaultlixClip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -67,6 +70,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 1F9F9CDD1365411CA477AD6B;
 			remoteInfo = VaultlixClip;
+		};
+		56B395BF1B4A08EB794AB146 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B89BC00F1BC80B190344F876;
+			remoteInfo = VaultlixShare;
 		};
 		89A3D09A7FD2A718ABD2B682 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -84,6 +94,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				5346D997D7EC1497FBF55D53 /* VaultlixShare.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -114,6 +125,7 @@
 
 /* Begin PBXFileReference section */
 		10019F507318EA1E751F1F57 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2964180B6E5F670979C9A30A /* VaultlixShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VaultlixShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		3A6DD914EC85277EF2AAD978 /* VaultlixClip.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = VaultlixClip.entitlements; sourceTree = "<group>"; };
 		3B84A13BEABD782A61081E2C /* InviteModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InviteModel.swift; sourceTree = "<group>"; };
@@ -129,6 +141,7 @@
 		60AFFE039CAC0D2690F04416 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		6770496E2B026FD0092E8023 /* SharedInvite.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedInvite.swift; sourceTree = "<group>"; };
 		68F40671B650016D375E013F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		6B8E675C8706668C1EEFA474 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		7B20361DF30B1DEDE3ACDB47 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		827F970534559597001B2F3C /* VaultlixNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VaultlixNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VaultlixClipApp.swift; sourceTree = "<group>"; };
@@ -139,6 +152,8 @@
 		A11CE00230A1000100000001 /* NativeWebRTCCallEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeWebRTCCallEngine.swift; sourceTree = "<group>"; };
 		A11CE00430A1000100000001 /* NativeCallRoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallRoomStore.swift; sourceTree = "<group>"; };
 		A11CE00630A1000100000001 /* SecureMessageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureMessageStore.swift; sourceTree = "<group>"; };
+		A5365B073DF792CB9F9593FE /* VaultlixShare.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = VaultlixShare.entitlements; sourceTree = "<group>"; };
+		ADAC6086365522CFCF336141 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00D001130B0000100000001 /* vault_note.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_note.caf; path = App/Sounds/vault_note.caf; sourceTree = "<group>"; };
 		B00D001230B0000100000001 /* vault_soft.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_soft.caf; path = App/Sounds/vault_soft.caf; sourceTree = "<group>"; };
 		B00D001330B0000100000001 /* vault_call_vaultlix.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_call_vaultlix.caf; path = App/Sounds/vault_call_vaultlix.caf; sourceTree = "<group>"; };
@@ -178,6 +193,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8A088C57E6BB76DA55012973 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				553B4DF231D632FF793AAFD7 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -252,6 +275,7 @@
 				8B383A49928BBD6CDC3C595E /* VaultlixClip */,
 				4C07AE2912E500DDCF64C354 /* Frameworks */,
 				3BD3FB9F0AF40A749ACA9826 /* VaultlixNotificationService */,
+				6B4187A369F2308711E132DB /* VaultlixShare */,
 			);
 			sourceTree = "<group>";
 		};
@@ -261,6 +285,7 @@
 				504EC3041FED79650016851F /* App.app */,
 				90E1FC57F3C0F3056483E6BE /* VaultlixClip.app */,
 				827F970534559597001B2F3C /* VaultlixNotificationService.appex */,
+				2964180B6E5F670979C9A30A /* VaultlixShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -283,6 +308,17 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		6B4187A369F2308711E132DB /* VaultlixShare */ = {
+			isa = PBXGroup;
+			children = (
+				6B8E675C8706668C1EEFA474 /* ShareViewController.swift */,
+				ADAC6086365522CFCF336141 /* Info.plist */,
+				A5365B073DF792CB9F9593FE /* VaultlixShare.entitlements */,
+			);
+			name = VaultlixShare;
+			path = VaultlixShare;
 			sourceTree = "<group>";
 		};
 		8B383A49928BBD6CDC3C595E /* VaultlixClip */ = {
@@ -353,6 +389,7 @@
 			dependencies = (
 				64133D963F87E42C8E971F3B /* PBXTargetDependency */,
 				A661416665A9629D07FD6AC6 /* PBXTargetDependency */,
+				440BBC65F220BFD7ADFF0395 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -379,6 +416,23 @@
 			productReference = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		B89BC00F1BC80B190344F876 /* VaultlixShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C5151693E6997A2AA3D11D50 /* Build configuration list for PBXNativeTarget "VaultlixShare" */;
+			buildPhases = (
+				07CD027AFC4E33927396F9C6 /* Sources */,
+				8A088C57E6BB76DA55012973 /* Frameworks */,
+				D9E7CF8CE010FB0CEBA94CC5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VaultlixShare;
+			productName = VaultlixShare;
+			productReference = 2964180B6E5F670979C9A30A /* VaultlixShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -391,6 +445,10 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+					};
+					B89BC00F1BC80B190344F876 = {
+						CreatedOnToolsVersion = 16.0;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -419,6 +477,7 @@
 				504EC3031FED79650016851F /* App */,
 				1F9F9CDD1365411CA477AD6B /* VaultlixClip */,
 				5661908B6354B3522383D789 /* VaultlixNotificationService */,
+				B89BC00F1BC80B190344F876 /* VaultlixShare */,
 			);
 		};
 /* End PBXProject section */
@@ -477,9 +536,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D9E7CF8CE010FB0CEBA94CC5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		07CD027AFC4E33927396F9C6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E0F0184F8953D1002A22C992 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -518,6 +592,12 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		440BBC65F220BFD7ADFF0395 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = VaultlixShare;
+			target = B89BC00F1BC80B190344F876 /* VaultlixShare */;
+			targetProxy = 56B395BF1B4A08EB794AB146 /* PBXContainerItemProxy */;
+		};
 		64133D963F87E42C8E971F3B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = VaultlixClip;
@@ -834,6 +914,51 @@
 			};
 			name = Debug;
 		};
+		BE3C63FA6A8505A3560A96BD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VaultlixShare/VaultlixShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 105;
+				DEVELOPMENT_TEAM = 3KLX2S84MV;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VaultlixShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vaultlix.app.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E32E22DD1C3A048CC290F219 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = VaultlixShare/VaultlixShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 105;
+				DEVELOPMENT_TEAM = 3KLX2S84MV;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VaultlixShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vaultlix.app.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -869,6 +994,15 @@
 			buildConfigurations = (
 				4BD29515533C98D2001A943D /* Release */,
 				961EEE3D20B3FB071207DA5B /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C5151693E6997A2AA3D11D50 /* Build configuration list for PBXNativeTarget "VaultlixShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BE3C63FA6A8505A3560A96BD /* Release */,
+				E32E22DD1C3A048CC290F219 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

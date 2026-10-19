@@ -29,6 +29,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var audioRouteSettlesAt: Date?
     private var webReady = false
     private var pendingUniversalLink: URL?
+    private var externalShareDeliveryInFlight = false
     private var appSwitcherPrivacyCover: UIView?
     private var preparedShareImageURL: URL?
     private var preparedShareLinkURL: URL?
@@ -1160,6 +1161,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             }
             flushPendingCallActions()
             flushPendingUniversalLink()
+            flushPendingExternalShares()
             return
         }
         if action == "requestEmojiEffectPermission" {
@@ -1591,6 +1593,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         SceneDelegateProxy.shared.scene(scene, openURLContexts: URLContexts)
         if let url = URLContexts.first?.url,
+           url.scheme?.lowercased() == "vaultlix", url.host?.lowercased() == "share" {
+            flushPendingExternalShares()
+        } else if let url = URLContexts.first?.url,
            let translated = translatedVaultlixConnectURL(url) {
             pendingUniversalLink = translated
             flushPendingUniversalLink()
@@ -1645,6 +1650,52 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         webView.evaluateJavaScript(
             "window.vaultlixOpenInviteURL&&window.vaultlixOpenInviteURL(\(encodedURL));"
         )
+    }
+
+    private func flushPendingExternalShares() {
+        guard webReady, !externalShareDeliveryInFlight,
+              let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.vaultlix.app"),
+              let controller = window?.rootViewController as? CAPBridgeViewController,
+              let webView = controller.webView else { return }
+        let root = container.appendingPathComponent("ExternalShares", isDirectory: true)
+        guard let transactions = try? FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]),
+              let transaction = transactions.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).first else { return }
+        externalShareDeliveryInFlight = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            var payload: [[String: String]] = []
+            if let manifestData = try? Data(contentsOf: transaction.appendingPathComponent("manifest.json")),
+               let manifest = try? JSONSerialization.jsonObject(with: manifestData) as? [[String: String]] {
+                for entry in manifest.prefix(10) {
+                    guard let stored = entry["file"], stored.range(of: "^[A-Za-z0-9.-]{1,100}$", options: .regularExpression) != nil,
+                          let mime = entry["mime"], mime.hasPrefix("image/") else { continue }
+                    let fileURL = transaction.appendingPathComponent(stored)
+                    guard let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]),
+                          !data.isEmpty, data.count <= 25 * 1024 * 1024 else { continue }
+                    payload.append([
+                        "name": String((entry["name"] ?? "Shared image").prefix(180)),
+                        "mime": mime,
+                        "base64": data.base64EncodedString(),
+                    ])
+                }
+            }
+            let json = (!payload.isEmpty ? try? JSONSerialization.data(withJSONObject: payload) : nil)
+                .flatMap { String(data: $0, encoding: .utf8) }
+            DispatchQueue.main.async {
+                guard let json else {
+                    try? FileManager.default.removeItem(at: transaction)
+                    self.externalShareDeliveryInFlight = false
+                    self.flushPendingExternalShares()
+                    return
+                }
+                let encoded = String(reflecting: json)
+                webView.evaluateJavaScript("window.vaultlixReceiveExternalShare&&window.vaultlixReceiveExternalShare(JSON.parse(\(encoded)))") { result, _ in
+                    if (result as? Bool) == true { try? FileManager.default.removeItem(at: transaction) }
+                    self.externalShareDeliveryInFlight = false
+                    if (result as? Bool) == true { self.flushPendingExternalShares() }
+                }
+            }
+        }
     }
 
     private func showAppSwitcherPrivacyCover() {
@@ -1704,5 +1755,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
         flushPendingCallActions()
         flushPendingUniversalLink()
+        flushPendingExternalShares()
     }
 }

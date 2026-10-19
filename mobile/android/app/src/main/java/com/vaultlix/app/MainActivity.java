@@ -20,6 +20,7 @@ import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.CancellationSignal;
 import android.provider.Settings;
+import android.provider.OpenableColumns;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -51,12 +52,15 @@ import androidx.media3.transformer.Transformer;
 import androidx.media3.transformer.VideoEncoderSettings;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.lang.ref.WeakReference;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -94,6 +98,9 @@ public class MainActivity extends BridgeActivity {
     private volatile Uri preparedNumberCardUri;
     private volatile String preparedNumberCardLink;
     private volatile File pendingSaveMediaFile;
+    private volatile String pendingExternalShareJson;
+    private final Handler externalShareHandler = new Handler(Looper.getMainLooper());
+    private final Runnable deliverPendingExternalShare = this::deliverPendingExternalShare;
     private final ExecutorService mediaCacheCleanupExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "vaultlix-media-cache-cleanup");
         thread.setDaemon(true);
@@ -144,6 +151,7 @@ public class MainActivity extends BridgeActivity {
         // A friend's invitation that came through the Play Store install.
         InstallInvite.checkOnce(getApplicationContext());
         scheduleDecryptedMediaCacheCleanup();
+        captureExternalShare(getIntent());
         openVaultlixInvite(getIntent());
     }
 
@@ -178,6 +186,7 @@ public class MainActivity extends BridgeActivity {
         // a recipient app's explicit saved copy is outside our sandbox and
         // intentionally remains under that user's control.
         scheduleDecryptedMediaCacheCleanup();
+        externalShareHandler.postDelayed(deliverPendingExternalShare, 450);
     }
 
     private void scheduleDecryptedMediaCacheCleanup() {
@@ -568,7 +577,95 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        captureExternalShare(intent);
         openVaultlixInvite(intent);
+    }
+
+    private void captureExternalShare(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (!Intent.ACTION_SEND.equals(action) && !Intent.ACTION_SEND_MULTIPLE.equals(action)) return;
+        ArrayList<Uri> uris = new ArrayList<>();
+        if (Intent.ACTION_SEND.equals(action)) {
+            Uri uri = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    ? intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class)
+                    : intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (uri != null) uris.add(uri);
+        } else {
+            ArrayList<Uri> received = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    ? intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri.class)
+                    : intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (received != null) uris.addAll(received);
+        }
+        if (uris.isEmpty()) return;
+        mediaCompressionExecutor.execute(() -> {
+            JSONArray files = new JSONArray();
+            int count = Math.min(10, uris.size());
+            for (int index = 0; index < count; index++) {
+                Uri uri = uris.get(index);
+                try {
+                    String mime = getContentResolver().getType(uri);
+                    if (mime == null || !mime.toLowerCase(Locale.ROOT).startsWith("image/")) continue;
+                    byte[] bytes = readSharedImage(uri, 25 * 1024 * 1024);
+                    if (bytes == null || bytes.length == 0) continue;
+                    JSONObject file = new JSONObject();
+                    file.put("name", sharedDisplayName(uri, index));
+                    file.put("mime", mime);
+                    file.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+                    files.put(file);
+                } catch (Exception ignored) { }
+            }
+            if (files.length() == 0) return;
+            pendingExternalShareJson = files.toString();
+            runOnUiThread(() -> externalShareHandler.postDelayed(deliverPendingExternalShare, 350));
+        });
+        intent.setAction(null);
+        intent.removeExtra(Intent.EXTRA_STREAM);
+    }
+
+    private byte[] readSharedImage(Uri uri, int maximumBytes) throws Exception {
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (input == null) return null;
+            byte[] buffer = new byte[32 * 1024];
+            int total = 0;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > maximumBytes) return null;
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
+        }
+    }
+
+    private String sharedDisplayName(Uri uri, int index) {
+        String fallback = "Vaultlix image " + (index + 1) + ".jpg";
+        try (android.database.Cursor cursor = getContentResolver().query(
+                uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String value = cursor.getString(0);
+                if (value != null && !value.trim().isEmpty()) return value.trim();
+            }
+        } catch (Exception ignored) { }
+        return fallback;
+    }
+
+    private void deliverPendingExternalShare() {
+        String payload = pendingExternalShareJson;
+        if (payload == null || payload.isEmpty() || isFinishing() || isDestroyed()
+                || getBridge() == null || getBridge().getWebView() == null) return;
+        String current = getBridge().getWebView().getUrl();
+        if (current == null || !current.startsWith("https://vaultlix.com/")) {
+            externalShareHandler.postDelayed(deliverPendingExternalShare, 700);
+            return;
+        }
+        String script = "window.vaultlixReceiveExternalShare&&window.vaultlixReceiveExternalShare(JSON.parse("
+                + JSONObject.quote(payload) + "))";
+        getBridge().getWebView().evaluateJavascript(script, result -> {
+            if ("true".equals(result)) pendingExternalShareJson = null;
+            else externalShareHandler.postDelayed(deliverPendingExternalShare, 700);
+        });
     }
 
     @Override

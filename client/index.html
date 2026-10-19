@@ -25846,6 +25846,16 @@ async function handleFileSelect(event) {
   event.target.value = ''; // reset so the same file(s) can be selected again
   if (!files.length || !room) return;
 
+  await sendSelectedFilesToRoom(room, files);
+}
+
+// Shared images received from the Android Sharesheet or the iOS Share
+// Extension join the exact same preparation/encryption path as images picked
+// from inside a conversation. Native code only stages the bytes until the
+// person chooses a chat; nothing is uploaded or sent before that choice.
+async function sendSelectedFilesToRoom(room, files) {
+  if (!room || !Array.isArray(files) || !files.length) return;
+
   const valid = [];
   const tooLarge = [];
   const tooLargeVideos = [];
@@ -25937,6 +25947,87 @@ async function handleFileSelect(event) {
   // every image in the selection.
   if (images.length) showSendImageOptions(room, images);
 }
+
+let pendingExternalShareFiles = [];
+
+function decodeExternalShareFile(item) {
+  const mime = String(item?.mime || '').toLowerCase();
+  const name = String(item?.name || 'Shared image').replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 180);
+  const base64 = String(item?.base64 || '');
+  if (!mime.startsWith('image/') || !isValidMediaBase64(base64) || base64.length > Math.ceil(MAX_FILE_SIZE * 4 / 3) + 8) return null;
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], name || 'Shared image', { type:mime, lastModified:Date.now() });
+  } catch (error) {
+    return null;
+  }
+}
+
+function closeExternalShareChooser({ keepFiles = false } = {}) {
+  document.getElementById('external-share-overlay')?.remove();
+  if (!keepFiles) pendingExternalShareFiles = [];
+}
+
+function externalShareRoomAvatar(room) {
+  const image = displayProfileImageUri(room?.peerProfileImage);
+  const label = roomDisplayLabel(room);
+  if (image) return `<img src="${escapeHtml(image)}" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover">`;
+  return `<span style="width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:#f2e8ec;color:#682c43;font:750 18px Manrope,sans-serif">${escapeHtml(Array.from(label || 'V')[0].toUpperCase())}</span>`;
+}
+
+function showExternalShareChooser() {
+  document.getElementById('external-share-overlay')?.remove();
+  if (!pendingExternalShareFiles.length) return;
+  const state = loadAccountState();
+  if (!state) {
+    toast('Sign in to share this image in Vaultlix');
+    openLoginOrInbox();
+    return;
+  }
+  const choices = [...rooms.values()].filter(room => room?.sharedKey && room.everOnline && !room.reconnectRequired && !roomConcealed(room));
+  if (!choices.length) {
+    toast('Connect with someone before sharing an image');
+    openVaultInbox();
+    return;
+  }
+  const overlay = document.createElement('div');
+  overlay.id = 'external-share-overlay';
+  overlay.className = 'account-overlay open';
+  overlay.style.zIndex = '13050';
+  overlay.innerHTML = `<div class="account-card" role="dialog" aria-modal="true" aria-labelledby="external-share-title" style="padding-bottom:calc(22px + env(safe-area-inset-bottom))">
+    <div class="account-head"><div><div class="account-kicker">Share securely</div><div class="account-title" id="external-share-title">Send ${pendingExternalShareFiles.length === 1 ? 'image' : pendingExternalShareFiles.length + ' images'} to</div></div><button class="account-close" type="button" aria-label="Cancel">×</button></div>
+    <div style="max-height:min(62vh,520px);overflow:auto;border:1px solid #eadfe3;border-radius:18px;background:#fff">
+      ${choices.map(room => `<button type="button" data-external-share-room="${escapeHtml(room.code)}" style="width:100%;min-height:68px;border:0;border-bottom:1px solid #f0e7ea;background:#fff;display:flex;align-items:center;gap:13px;padding:10px 14px;text-align:left;color:#271d25"><span>${externalShareRoomAvatar(room)}</span><span style="font:700 15px Manrope,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(roomDisplayLabel(room))}</span></button>`).join('')}
+    </div>
+  </div>`;
+  overlay.querySelector('.account-close').onclick = () => closeExternalShareChooser();
+  overlay.onclick = event => { if (event.target === overlay) closeExternalShareChooser(); };
+  overlay.querySelectorAll('[data-external-share-room]').forEach(button => {
+    button.onclick = async () => {
+      const room = rooms.get(button.dataset.externalShareRoom);
+      if (!room) return;
+      const files = pendingExternalShareFiles.splice(0);
+      closeExternalShareChooser();
+      setActiveRoom(room.code);
+      showScreen('s-chat');
+      await sendSelectedFilesToRoom(room, files);
+    };
+  });
+  document.body.appendChild(overlay);
+}
+
+// Called by the native shells. Returning true lets native code delete its
+// temporary staging copy; false keeps it available for a later retry.
+window.vaultlixReceiveExternalShare = function(payload) {
+  const items = Array.isArray(payload) ? payload : [];
+  const decoded = items.slice(0, 10).map(decodeExternalShareFile).filter(Boolean);
+  if (!decoded.length) { toast('The shared image could not be opened'); return false; }
+  pendingExternalShareFiles = decoded;
+  showExternalShareChooser();
+  return true;
+};
 
 // One shared send path for both the normal attach button and the view-once
 // choice below, so the message-id/optimistic-render/API-call logic (and its
