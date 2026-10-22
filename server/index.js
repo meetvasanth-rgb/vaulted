@@ -7593,6 +7593,34 @@ function saveAnalytics() {
 let roomCheckpointTimer = null;
 
 let shuttingDown = false;
+let objectStorageRetryTimer = null;
+
+async function enableObjectStorage() {
+  if (!objectStorage.enabled) return false;
+  try {
+    await objectStorage.initialize();
+    objectStorageEnabled = true;
+    if (objectStorageRetryTimer) {
+      clearInterval(objectStorageRetryTimer);
+      objectStorageRetryTimer = null;
+    }
+    console.log('Encrypted attachment object storage ready.');
+    return true;
+  } catch (error) {
+    objectStorageEnabled = false;
+    console.error(`Object storage unavailable; messaging and calls remain online while Vaultlix retries: ${error.message}`);
+    if (!objectStorageRetryTimer) {
+      objectStorageRetryTimer = setInterval(() => {
+        enableObjectStorage().catch(retryError => {
+          console.error('Object storage retry failed:', retryError.message);
+        });
+      }, 30 * 1000);
+      objectStorageRetryTimer.unref();
+    }
+    return false;
+  }
+}
+
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -7604,6 +7632,7 @@ async function shutdown(signal) {
   }
   if (!postgresEnabled) saveSnapshot();
   try { await realtimeCoordinator.close(); } catch (e) { console.error('Redis realtime shutdown failed:', e.message); }
+  if (objectStorageRetryTimer) clearInterval(objectStorageRetryTimer);
   try { objectStorage.close(); } catch (e) {}
   try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
@@ -7662,9 +7691,7 @@ async function bootstrap() {
     console.warn('REDIS_URL is not set — calls, presence and WebSockets are limited to this single application replica.');
   }
   if (objectStorage.enabled) {
-    await objectStorage.initialize();
-    objectStorageEnabled = true;
-    console.log('Encrypted attachment object storage ready.');
+    await enableObjectStorage();
   } else {
     console.warn('Object storage is not configured — new image and file attachments cannot be externalized.');
   }
