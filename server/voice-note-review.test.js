@@ -232,9 +232,10 @@ test('unusually quiet received voice notes get bounded playback gain', () => {
   const prepare = extractFn('prepareQuietVoicePlayback');
   assert.match(prepare, /createMediaElementSource\(audio\)/);
   assert.match(prepare, /createDynamicsCompressor\(\)/);
-  assert.match(prepare, /rms < 0\.075/);
+  assert.match(prepare, /rms < VOICE_QUIET_RMS/);
+  assert.match(client, /const VOICE_QUIET_RMS = 0\.075;/);
   assert.match(prepare, /Math\.min\(6/);
-  assert.match(extractFn('toggleVoicePlayback'), /await prepareQuietVoicePlayback\(audio, rec\)/);
+  assert.match(extractFn('toggleVoicePlayback'), /audio = await prepareQuietVoicePlayback\(audio, rec\)/);
 });
 
 test('a malformed media tail cannot play beyond the duration the sender recorded', () => {
