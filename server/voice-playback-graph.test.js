@@ -42,8 +42,10 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
     get destination() { return {}; }
   }
   class FakeAudio {
-    constructor(src) { this.src = src; this.paused = true; this.ended = false; this.currentTime = 0; this.readyState = 4; this.muted = false; this.volume = 1; this.duration = 5; this.listeners = {}; audios.push(this); }
-    addEventListener(type, fn) { this.listeners[type] = fn; }
+    constructor(src) { this.src = src; this.paused = true; this.ended = false; this.currentTime = 0; this.readyState = 4; this.muted = false; this.volume = 1; this.duration = 5; this.listeners = {}; this.listenerLists = {}; this.loads = 0; audios.push(this); }
+    addEventListener(type, fn) { const list = this.listenerLists[type] ||= []; list.push(fn); this.listeners[type] = () => list.slice().forEach(listener => listener()); }
+    removeEventListener(type, fn) { const list = this.listenerLists[type] || []; this.listenerLists[type] = list.filter(listener => listener !== fn); this.listeners[type] = () => this.listenerLists[type].slice().forEach(listener => listener()); }
+    load() { this.loads++; }
     pause() { this.paused = true; }
     play() { this.paused = false; return Promise.resolve(); }
   }
@@ -55,7 +57,7 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
     toast: message => toasts.push(message),
     isNativeIOS: () => nativeIOS,
     setVoicePlayIcon: (id, playing) => icons.push([id, playing]),
-    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: () => {},
     voiceAudioEls: new Map(), voicePlaybackGraphs: new WeakMap(), currentlyPlayingVoiceId: null,
   });
   const source = [
@@ -68,6 +70,7 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
     extractFunction('watchVoiceAudible', 'function'),
     extractFunction('voiceTimelineOffset', 'function'),
     extractFunction('alignVoiceTimeline', 'function'),
+    extractFunction('waitForVoiceMetadata', 'function'),
     extractFunction('getOrCreateVoiceAudio', 'function'),
   ].join('\n');
   vm.runInContext(source, context);
@@ -97,6 +100,19 @@ test('an inflated Android WebM timeline starts at its real audio segment on iOS'
   assert.ok(Math.abs(audio.currentTime - 85.7) < 0.001);
   const offsets = vm.runInContext('voiceTimelineOffsets', h.context);
   assert.ok(Math.abs(offsets.get(audio) - 85.7) < 0.001);
+});
+
+test('cold playback waits until WebM metadata has resolved', async () => {
+  const h = harness({ nativeIOS:true });
+  const audio = h.context.getOrCreateVoiceAudio(h.rec);
+  audio.readyState = 0;
+  audio.duration = Number.NaN;
+  const waiting = h.context.waitForVoiceMetadata(audio);
+  assert.equal(audio.loads, 1);
+  audio.readyState = 1;
+  audio.duration = 90.7;
+  audio.listeners.loadedmetadata();
+  assert.equal(await waiting, true);
 });
 
 test('an ordinary recording plays on its plain element: no Web Audio capture at all', async () => {

@@ -244,3 +244,16 @@ test('a malformed media tail cannot play beyond the duration the sender recorded
   assert.match(progress, /finishVoicePlayback\(rec, audio\)/);
   assert.match(extractFn('seekVoice'), /timelineOffset \+ ratio \* playableSeconds/);
 });
+
+test('cold voice notes preload and wait for metadata before playback', () => {
+  assert.match(client, /scheduleVoiceMetadata\(body, room\);/);
+  assert.match(extractFn('buildVoicePlayerHtml'), /data-voice-id=/);
+  const wait = extractFn('waitForVoiceMetadata');
+  assert.match(wait, /readyState >= 1 && Number\.isFinite\(audio\.duration\)/);
+  assert.match(wait, /audio\?\.load\?\.\(\)/);
+  const toggle = extractFn('toggleVoicePlayback');
+  assert.match(toggle, /await waitForVoiceMetadata\(audio\)/);
+  assert.match(toggle, /traceVoicePlayback\('metadata-pending'/);
+  assert.match(toggle, /await audio\.play\(\)/);
+  assert.match(toggle, /traceVoicePlayback\('play-rejected'/);
+});

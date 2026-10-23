@@ -19818,6 +19818,7 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   body.scrollTop = keepPlace ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
   const keptReaderPlace = !keepPlace && readerAnchor ? restoreChatScrollAnchor(body, readerAnchor) : false;
   scheduleAttachmentLoads(body, room);
+  scheduleVoiceMetadata(body, room);
   // Inbox navigation renders the conversation immediately before s-chat is
   // made visible. WebKit reports a zero/stale scroll height for that hidden
   // frame, leaving the newest row (notably a missed call) below the viewport.
@@ -21374,6 +21375,7 @@ function renderMessageRecord(room, rec, animate) {
   wireMsgActions(div, room, rec.id, rec.kind === 'file' ? rec.fileName : (rec.kind === 'gif' ? `GIF · ${rec.title || ''}` : ((rec.kind === 'album' || rec.kind === 'voice' || rec.kind === 'blocked' || rec.kind === 'attachment-unavailable') ? '' : rec.content)), rec.isMe, rec);
   body.insertBefore(div, typing);
   body.scrollTop = body.scrollHeight;
+  if (animate && rec.kind === 'voice') primeVoiceMetadata(rec);
   if (animate && rec.kind === 'gif') {
     const gif = div.querySelector('img.msg-gif[data-klipy-src]');
     requestAnimationFrame(() => requestAnimationFrame(() => loadDeferredKlipyGif(gif)));
@@ -26684,7 +26686,7 @@ async function sendVoiceMessage(room, blob, durationSeconds, mime) {
 
 function buildVoicePlayerHtml(rec) {
   const transcript = rec.isMe ? '' : voiceTranscriptControlsHtml(`direct:${rec.id}`, `requestDirectVoiceTranscript('${rec.id}')`);
-  return `<div class="voice-note-shell"><div class="msg-voice" id="voice-${rec.id}" oncontextmenu="return false">
+  return `<div class="voice-note-shell"><div class="msg-voice" id="voice-${rec.id}" data-voice-id="${escHtml(rec.id)}" oncontextmenu="return false">
     <button type="button" class="voice-play-btn" onclick="event.stopPropagation();toggleVoicePlayback('${rec.id}')">
       <svg viewBox="0 0 24 24" class="voice-icon-play"><polygon points="6 4 20 12 6 20 6 4"/></svg>
       <svg viewBox="0 0 24 24" class="voice-icon-pause" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
@@ -26828,6 +26830,8 @@ window.addEventListener('vaultlix:voice-transcript', event => {
 const voiceAudioEls = new Map(); // msgId -> HTMLAudioElement
 const voicePlaybackGraphs = new WeakMap();
 const voiceTimelineOffsets = new WeakMap(); // HTMLAudioElement -> malformed WebM timestamp offset
+const voicePlaybackStarts = new Set();
+let voiceMetadataObserver = null;
 let currentlyPlayingVoiceId = null;
 
 function prepareVoiceNotePlayback() {
@@ -26995,6 +26999,55 @@ function alignVoiceTimeline(rec, audio) {
   return offset;
 }
 
+function primeVoiceMetadata(rec) {
+  if (!rec || rec.kind !== 'voice') return null;
+  const audio = getOrCreateVoiceAudio(rec);
+  if (audio && audio.readyState < 1) {
+    try { audio.load(); } catch (_) {}
+  }
+  return audio;
+}
+
+function scheduleVoiceMetadata(body, room) {
+  voiceMetadataObserver?.disconnect();
+  const nodes = [...(body?.querySelectorAll?.('.msg-voice[data-voice-id]') || [])];
+  if (!nodes.length) return;
+  const prime = node => {
+    const rec = room?.messages?.find(message => message.id === node.dataset.voiceId);
+    if (rec) primeVoiceMetadata(rec);
+  };
+  if (!('IntersectionObserver' in window)) { nodes.slice(-8).forEach(prime); return; }
+  voiceMetadataObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      voiceMetadataObserver.unobserve(entry.target);
+      prime(entry.target);
+    }
+  }, { root:body, rootMargin:'400px 0px' });
+  nodes.forEach(node => voiceMetadataObserver.observe(node));
+}
+
+function waitForVoiceMetadata(audio, timeoutMs = 2500) {
+  if (audio?.readyState >= 1 && Number.isFinite(audio.duration)) return Promise.resolve(true);
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = ready => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      audio?.removeEventListener?.('loadedmetadata', loaded);
+      audio?.removeEventListener?.('error', failed);
+      resolve(ready);
+    };
+    const loaded = () => finish(Number.isFinite(audio.duration));
+    const failed = () => finish(false);
+    const timer = setTimeout(() => finish(audio?.readyState >= 1 && Number.isFinite(audio.duration)), timeoutMs);
+    audio?.addEventListener?.('loadedmetadata', loaded);
+    audio?.addEventListener?.('error', failed);
+    try { audio?.load?.(); } catch (_) {}
+  });
+}
+
 function getOrCreateVoiceAudio(rec) {
   let audio = voiceAudioEls.get(rec.id);
   if (audio) return audio;
@@ -27022,27 +27075,47 @@ function finishVoicePlayback(rec, audio) {
 async function toggleVoicePlayback(msgId) {
   const rec = findMessageRec(msgId);
   if (!rec || rec.kind !== 'voice') return;
+  if (voicePlaybackStarts.has(msgId)) return;
   let audio = getOrCreateVoiceAudio(rec);
   if (!audio) { toast('Could not play voice note'); return; }
   if (audio.paused) {
-    prepareVoiceNotePlayback();
-    audio = await prepareQuietVoicePlayback(audio, rec);
-    const timelineOffset = alignVoiceTimeline(rec, audio);
-    // Only one voice note plays at a time.
-    if (currentlyPlayingVoiceId && currentlyPlayingVoiceId !== msgId) {
-      const prev = voiceAudioEls.get(currentlyPlayingVoiceId);
-      if (prev) prev.pause();
-      setVoicePlayIcon(currentlyPlayingVoiceId, false);
+    voicePlaybackStarts.add(msgId);
+    try {
+      prepareVoiceNotePlayback();
+      const metadataReady = await waitForVoiceMetadata(audio);
+      if (!metadataReady && isNativeIOS()) {
+        traceVoicePlayback('metadata-pending', audio);
+        toast('Voice note is still preparing. Tap play again.');
+        return;
+      }
+      audio = await prepareQuietVoicePlayback(audio, rec);
+      const timelineOffset = alignVoiceTimeline(rec, audio);
+      // Only one voice note plays at a time.
+      if (currentlyPlayingVoiceId && currentlyPlayingVoiceId !== msgId) {
+        const prev = voiceAudioEls.get(currentlyPlayingVoiceId);
+        if (prev) prev.pause();
+        setVoicePlayIcon(currentlyPlayingVoiceId, false);
+      }
+      try {
+        await audio.play();
+      } catch (error) {
+        traceVoicePlayback('play-rejected', audio, { reason:String(error?.name || 'error').slice(0, 32) });
+        setVoicePlayIcon(msgId, false);
+        if (currentlyPlayingVoiceId === msgId) currentlyPlayingVoiceId = null;
+        toast('Tap play again');
+        return;
+      }
+      currentlyPlayingVoiceId = msgId;
+      setVoicePlayIcon(msgId, true);
+      traceVoicePlayback('play', audio, {
+        declared:Number(rec.duration) || 0,
+        mediaDuration:Number.isFinite(audio.duration) ? Math.round(audio.duration * 10) / 10 : null,
+        timelineOffset:Math.round(timelineOffset * 10) / 10,
+      });
+      watchVoiceAudible(rec, audio);
+    } finally {
+      voicePlaybackStarts.delete(msgId);
     }
-    audio.play().catch(() => {});
-    currentlyPlayingVoiceId = msgId;
-    setVoicePlayIcon(msgId, true);
-    traceVoicePlayback('play', audio, {
-      declared:Number(rec.duration) || 0,
-      mediaDuration:Number.isFinite(audio.duration) ? Math.round(audio.duration * 10) / 10 : null,
-      timelineOffset:Math.round(timelineOffset * 10) / 10,
-    });
-    watchVoiceAudible(rec, audio);
   } else {
     audio.pause();
     setVoicePlayIcon(msgId, false);
