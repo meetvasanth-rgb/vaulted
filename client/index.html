@@ -26878,6 +26878,18 @@ function replaceVoiceAudioWithPlain(rec, oldAudio) {
 
 // Returns the element to play (the same one, or a plain replacement when its graph is not running).
 async function prepareQuietVoicePlayback(audio, rec) {
+  // WKWebView can report a Web Audio context as `running` while its output is
+  // disconnected after an AVAudioSession transition. Once a media element is
+  // captured by createMediaElementSource(), its timer continues through that
+  // silent graph and there is no browser API that can prove samples reached
+  // the speaker. Native iOS therefore always uses the reliable media-element
+  // path. Android/web keep the bounded quiet-note lift where the graph is
+  // known to work.
+  if (isNativeIOS()) {
+    voiceLoudnessCache.set(rec.id, 'ios-plain');
+    traceVoicePlayback('ios-plain', audio);
+    return audio;
+  }
   const existing = voicePlaybackGraphs.get(audio);
   if (existing) {
     try { await existing.context.resume(); } catch (_) {}

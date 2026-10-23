@@ -26,7 +26,7 @@ function extractFunction(name, prefix) {
 }
 
 // samples: Float32Array the fake decoder returns. contextState: what the fake AudioContext reports.
-function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'running', decodeFails = false } = {}) {
+function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'running', decodeFails = false, nativeIOS = false } = {}) {
   const contexts = [], audios = [], toasts = [], timers = [], icons = [];
   class FakeContext {
     constructor() { this.state = 'suspended'; this.sources = 0; this.closed = false; contexts.push(this); }
@@ -53,6 +53,7 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
     safeVoiceDataUri: (mime, base64) => `data:${mime};base64,${base64}`,
     updateVoiceProgress: () => {}, finishVoicePlayback: () => {},
     toast: message => toasts.push(message),
+    isNativeIOS: () => nativeIOS,
     setVoicePlayIcon: (id, playing) => icons.push([id, playing]),
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     voiceAudioEls: new Map(), voicePlaybackGraphs: new WeakMap(), currentlyPlayingVoiceId: null,
@@ -73,6 +74,16 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
 
 const loud = new Float32Array(2000).fill(0.3);     // rms 0.3: an ordinary recording
 const quiet = new Float32Array(2000).fill(0.02);   // rms 0.02: unusually quiet speech
+
+test('native iOS always plays the plain media element and never creates a Web Audio graph', async () => {
+  const h = harness({ samples:quiet, nativeIOS:true });
+  const audio = vm.runInContext('getOrCreateVoiceAudio', h.context)(h.rec);
+  const used = await h.context.prepareQuietVoicePlayback(audio, h.rec);
+  assert.equal(used, audio);
+  assert.equal(h.contexts.length, 0, 'iOS never creates an AudioContext for playback');
+  assert.equal(vm.runInContext("voiceLoudnessCache.get('v1')", h.context), 'ios-plain');
+  assert.equal(vm.runInContext('voiceTrace.at(-1).stage', h.context), 'ios-plain');
+});
 
 test('an ordinary recording plays on its plain element: no Web Audio capture at all', async () => {
   const h = harness({ samples:loud });
