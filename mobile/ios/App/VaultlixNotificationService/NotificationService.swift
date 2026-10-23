@@ -21,6 +21,7 @@ final class NotificationService: UNNotificationServiceExtension {
             deliver()
             return
         }
+        recordPendingInboxMessage(code: code, msgId: msgId)
         reportDelivered(code: code, msgId: msgId) { [weak self] in
             self?.deliver()
         }
@@ -39,6 +40,26 @@ final class NotificationService: UNNotificationServiceExtension {
         }
         contentHandler = nil
         bestAttemptContent = nil
+    }
+
+    // WKWebView is suspended while the phone is locked, so it cannot update
+    // localStorage when this notification arrives. Keep a content-free,
+    // per-message hint in the shared app group instead. The main app drains
+    // these hints before its foreground network catch-up, which lets the
+    // inbox show the correct unread badge immediately without putting any
+    // encrypted or plaintext message body in the push payload.
+    private func recordPendingInboxMessage(code: String, msgId: String) {
+        guard code.count <= 128, msgId.count <= 160,
+              let defaults = UserDefaults(suiteName: "group.com.vaultlix.app") else { return }
+        let safeKey = Data("\(code)\u{0}\(msgId)".utf8).base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        defaults.set([
+            "code": code,
+            "msgId": msgId,
+            "receivedAt": Date().timeIntervalSince1970 * 1000,
+        ], forKey: "vaultlix.background-inbox.v1." + safeKey)
     }
 
     // Best-effort and silent on any failure — the room's own poll loop (or,

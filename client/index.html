@@ -5897,10 +5897,107 @@ let pendingInviteKeyCommitment = null;
 let swRegistration = null;
 
 const rooms = new Map();           // code -> Room
+const backgroundInboxHints = new Map(); // code -> Map(msgId -> receivedAt)
+const backgroundInboxApplied = new Map(); // code -> Set(msgId) already reflected in unread
+const BACKGROUND_INBOX_HINTS_KEY = 'vaultlix_background_inbox_hints_v1';
 let activeRoomCode = null;
 const privateGroups = new Map();   // group id -> locally decryptable group
 let activePrivateGroupId = null;
 let groupPollTimer = null;
+
+function persistBackgroundInboxHints() {
+  try {
+    const snapshot = {};
+    for (const [code, hints] of backgroundInboxHints) {
+      const applied = backgroundInboxApplied.get(code);
+      snapshot[code] = Object.fromEntries([...hints].map(([id, receivedAt]) => [id, {
+        receivedAt, applied:applied?.has(id) === true,
+      }]));
+    }
+    if (Object.keys(snapshot).length) localStorage.setItem(BACKGROUND_INBOX_HINTS_KEY, JSON.stringify(snapshot));
+    else localStorage.removeItem(BACKGROUND_INBOX_HINTS_KEY);
+  } catch (_) {}
+}
+
+try {
+  const savedBackgroundHints = JSON.parse(localStorage.getItem(BACKGROUND_INBOX_HINTS_KEY) || '{}');
+  for (const [code, values] of Object.entries(savedBackgroundHints)) {
+    if (!values || typeof values !== 'object') continue;
+    const hints = new Map();
+    const applied = new Set();
+    for (const [id, value] of Object.entries(values)) {
+      const receivedAt = Number(value?.receivedAt ?? value) || Date.now();
+      hints.set(id, receivedAt);
+      if (value?.applied === true) applied.add(id);
+    }
+    backgroundInboxHints.set(code, hints);
+    if (applied.size) backgroundInboxApplied.set(code, applied);
+  }
+} catch (_) { localStorage.removeItem(BACKGROUND_INBOX_HINTS_KEY); }
+
+function consumeBackgroundInboxHint(code, msgId) {
+  const hints = backgroundInboxHints.get(code);
+  if (!hints?.has(msgId)) return false;
+  hints.delete(msgId);
+  if (!hints.size) backgroundInboxHints.delete(code);
+  const applied = backgroundInboxApplied.get(code);
+  const wasApplied = applied?.delete(msgId) === true;
+  if (applied && !applied.size) backgroundInboxApplied.delete(code);
+  persistBackgroundInboxHints();
+  return wasApplied;
+}
+
+function applyBackgroundInboxHints() {
+  let anyChanged = false;
+  for (const [code, hints] of backgroundInboxHints) {
+    const room = rooms.get(code);
+    if (!room) continue;
+    let applied = backgroundInboxApplied.get(code);
+    if (!applied) backgroundInboxApplied.set(code, applied = new Set());
+    let roomChanged = false;
+    for (const [msgId, receivedAt] of [...hints]) {
+      if (room.seenMsgIds.has(msgId) || receivedAt <= (Number(room.backgroundInboxSyncedAt) || 0)) {
+        hints.delete(msgId);
+        applied.delete(msgId);
+        continue;
+      }
+      // A message arriving while its conversation is already visible is
+      // rendered and acknowledged by the normal poll. Do not briefly show
+      // an unread badge for that foreground conversation on resume.
+      if (isRoomVisible(room)) {
+        hints.delete(msgId);
+        applied.delete(msgId);
+        continue;
+      }
+      if (applied.has(msgId)) continue;
+      room.unread = Math.max(0, Number(room.unread) || 0) + 1;
+      room.inboxActivityAt = Math.max(Number(room.inboxActivityAt) || 0, Number(receivedAt) || Date.now());
+      applied.add(msgId);
+      roomChanged = true;
+    }
+    if (!hints.size) backgroundInboxHints.delete(code);
+    if (!applied.size) backgroundInboxApplied.delete(code);
+    if (roomChanged) {
+      persistRoomSeq(room);
+      anyChanged = true;
+    }
+  }
+  persistBackgroundInboxHints();
+  if (anyChanged) { renderVaultList(); renderRoomTabs(); updateDocumentTitle(); }
+}
+
+window.addEventListener('vaultlix:background-inbox', event => {
+  for (const item of event.detail?.messages || []) {
+    const code = typeof item?.code === 'string' ? item.code : '';
+    const msgId = typeof item?.msgId === 'string' ? item.msgId : '';
+    if (!code || !msgId) continue;
+    let hints = backgroundInboxHints.get(code);
+    if (!hints) backgroundInboxHints.set(code, hints = new Map());
+    hints.set(msgId, Number(item.receivedAt) || Date.now());
+  }
+  persistBackgroundInboxHints();
+  applyBackgroundInboxHints();
+});
 
 const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
 const ACTIVE_ROOM_KEY = 'vaulted_active_room';
@@ -7023,6 +7120,7 @@ function persistRoomSeq(room) {
     existing.lastReadSeq = Math.max(0, Number(room.lastReadSeq) || 0);
     existing.unreadStateVersion = Math.max(0, Number(room.unreadStateVersion) || 0);
     existing.unreadMigrationCutoffAt = Math.max(0, Number(room.unreadMigrationCutoffAt) || 0);
+    existing.backgroundInboxSyncedAt = Math.max(0, Number(room.backgroundInboxSyncedAt) || 0);
     existing.inboxActivityAt = vaultLastActivity(room) || existing.inboxActivityAt || existing.lastMessageAt || existing.connectedSince || 0;
     existing.savedAt = Date.now();
     localStorage.setItem(key, JSON.stringify(existing));
@@ -7746,8 +7844,10 @@ async function flushPendingDecrypt(room) {
     } else if ((!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') && !item.readAt) {
       // A message the server already shows as read (read on this device before a restart, or on
       // another device of this account) is not new, however late it is delivered here.
-      room.unread++;
-      traceUnreadIncrement('deferred-decrypt', room, item.seq, item.readAt);
+      if (!item.backgroundInboxHinted) {
+        room.unread++;
+        traceUnreadIncrement('deferred-decrypt', room, item.seq, item.readAt);
+      }
       if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
       unreadChanged = true;
     }
@@ -22840,6 +22940,7 @@ async function doPoll(room) {
         if (msg.seq && msg.seq > room.lastSeq) room.lastSeq = msg.seq;
         if (room.seenMsgIds.has(msg.id)) continue;
         room.seenMsgIds.add(msg.id);
+        const backgroundInboxHinted = consumeBackgroundInboxHint(room.code, msg.id);
         if (room.seenMsgIds.size > 500) { const first = room.seenMsgIds.values().next().value; room.seenMsgIds.delete(first); }
 
         if (msg.type === 'message' || msg.type === 'edit') {
@@ -22851,7 +22952,7 @@ async function doPoll(room) {
             // redeliver it. Hold onto the raw envelope and replay it via
             // flushPendingDecrypt() the moment deriveSharedKey succeeds,
             // instead of silently dropping it.
-            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt, editOf:msg.editOf || null });
+            room.pendingDecrypt.push({ msgId: msg.id, content: msg.content, name: msg.name, time: formatMsgTime(msg.ts), ts:msg.ts, from:msg.from, deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt, editOf:msg.editOf || null, backgroundInboxHinted });
           } else if (rec?.kind === 'edit') {
             applyDirectMessageEdit(room, rec);
           } else if (rec) {
@@ -22865,8 +22966,10 @@ async function doPoll(room) {
               // Same rule as the full restore: a message the server already shows as read is not
               // unread. A poll after a restart redelivers everything past the saved position, and
               // counting those again is how read messages came back as "new".
-              room.unread++;
-              traceUnreadIncrement('poll', room, msg.seq, msg.readAt);
+              if (!backgroundInboxHinted) {
+                room.unread++;
+                traceUnreadIncrement('poll', room, msg.seq, msg.readAt);
+              }
               if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
             }
             handleIncomingEmojiEffect(room, rec);
@@ -22900,6 +23003,7 @@ async function doPoll(room) {
 
     renderRoomTabs();
     updateDocumentTitle();
+    room.backgroundInboxSyncedAt = Date.now();
     persistRoomSeq(room);
   } catch(e) {
     console.error('POLL ERROR', room.code, e.message);
@@ -25369,6 +25473,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const healedUnreadSystemCount = sessionUnreadStale ? 0 : session.unreadSystemCount;
       const room = makeRoom({ code: session.code, token: session.token, myName: session.name, peerName:session.peerName, peerNameEncrypted:session.peerNameEncrypted, peerNameFromAccountProfile:session.peerNameFromAccountProfile, everOnline:session.everOnline, peerProfileImage:session.peerProfileImage, peerPrivateNumber:session.peerPrivateNumber, lastKnownPeerPubKey:session.lastKnownPeerPubKey, reconnectRequired:session.reconnectRequired, deleteTimerSeconds: session.deleteTimerSeconds, persistent: session.persistent, connectedSince: session.connectedSince, totalMessageCount: session.totalMessageCount, lastMessageAt:session.lastMessageAt, inboxActivityAt:session.inboxActivityAt || session.lastMessageAt || session.connectedSince || 0, reconnectCount: session.reconnectCount, lastReconnectCountedAt: session.lastReconnectCountedAt, dismissedPersistentSuggestion: session.dismissedPersistentSuggestion, codeLabelLen: session.codeLabelLen, expectedCreatorKeyCommitment: session.expectedCreatorKeyCommitment, nativeRoomHandle: session.nativeRoomHandle, ownerAccountId:session.ownerAccountId, callHistoryClearedAt:session.callHistoryClearedAt, unread:healedUnread, unreadSystemCount:healedUnreadSystemCount, lastReadSeq:session.lastReadSeq === undefined ? session.lastSeq : session.lastReadSeq, unreadStateVersion:session.unreadStateVersion || 0, unreadMigrationCutoffAt:session.unreadMigrationCutoffAt || session.savedAt });
       if (sessionUnreadStale) persistHealedUnread(session.code);
+      room.backgroundInboxSyncedAt = Math.max(0, Number(session.backgroundInboxSyncedAt) || 0);
       room.nickname = session.nickname || null;
       room.restorePending = true;
       room.historyLoaded = false;
@@ -25386,6 +25491,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       room.deleteLedger = new Map(Object.entries(session.deleteLedger || {}).map(([k, v]) => [k, Number(v)]));
       addRoomToState(room);
     }
+    applyBackgroundInboxHints();
     showScreen('s-vault-list');
     hideRestoreSkeleton();
     await new Promise(resolve => requestAnimationFrame(resolve));

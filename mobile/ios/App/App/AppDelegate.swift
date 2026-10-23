@@ -1427,6 +1427,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if let code = userInfo["code"] as? String,
            let msgId = userInfo["msgId"] as? String,
            !code.isEmpty, !msgId.isEmpty {
+            recordPendingInboxMessage(code: code, msgId: msgId)
             reportMessageDelivered(code: code, msgId: msgId) { reported in
                 completionHandler(reported ? .newData : .noData)
             }
@@ -1441,6 +1442,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
         completionHandler(.noData)
+    }
+
+    private func recordPendingInboxMessage(code: String, msgId: String) {
+        guard code.count <= 128, msgId.count <= 160,
+              let defaults = UserDefaults(suiteName: "group.com.vaultlix.app") else { return }
+        let safeKey = Data("\(code)\u{0}\(msgId)".utf8).base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        defaults.set([
+            "code": code,
+            "msgId": msgId,
+            "receivedAt": Date().timeIntervalSince1970 * 1000,
+        ], forKey: "vaultlix.background-inbox.v1." + safeKey)
     }
 
     // Alert presentation is a user preference and must not decide whether a

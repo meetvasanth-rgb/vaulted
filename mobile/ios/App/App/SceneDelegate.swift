@@ -1151,6 +1151,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emit(name: "vaultlix:app-state", detail: [
                 "active": window?.windowScene?.activationState == .foregroundActive
             ])
+            flushPendingBackgroundInboxMessages()
             emit(name: "vaultlix:emoji-effect-capability", detail: ["available": true])
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
@@ -1612,6 +1613,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         VaultlixCallManager.shared.releaseOutgoingWebAudio()
     }
 
+    private func flushPendingBackgroundInboxMessages() {
+        guard webReady,
+              let defaults = UserDefaults(suiteName: "group.com.vaultlix.app") else { return }
+        let prefix = "vaultlix.background-inbox.v1."
+        let snapshot = defaults.dictionaryRepresentation()
+        var messages: [[String: Any]] = []
+        for (key, value) in snapshot where key.hasPrefix(prefix) {
+            defer { defaults.removeObject(forKey: key) }
+            guard let item = value as? [String: Any],
+                  let code = item["code"] as? String,
+                  let msgId = item["msgId"] as? String,
+                  !code.isEmpty, !msgId.isEmpty else { continue }
+            let receivedAt = (item["receivedAt"] as? NSNumber)?.doubleValue
+                ?? Date().timeIntervalSince1970 * 1000
+            messages.append(["code": code, "msgId": msgId, "receivedAt": receivedAt])
+        }
+        guard !messages.isEmpty else { return }
+        messages.sort {
+            (($0["receivedAt"] as? Double) ?? 0) < (($1["receivedAt"] as? Double) ?? 0)
+        }
+        emit(name: "vaultlix:background-inbox", detail: ["messages": messages])
+    }
+
     deinit {
         (window?.rootViewController as? CAPBridgeViewController)?
             .webView?.configuration.userContentController.removeScriptMessageHandler(forName: "vaultlixCall")
@@ -1772,6 +1796,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         VaultlixCallManager.shared.enforceCallKeyboardGuard()
         if webReady {
             emit(name: "vaultlix:app-state", detail: ["active": true])
+            flushPendingBackgroundInboxMessages()
         }
         VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-active")
         presentNativeVideoConsentPrompt()
