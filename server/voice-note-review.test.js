@@ -240,7 +240,7 @@ test('unusually quiet received voice notes get bounded playback gain', () => {
 
 test('a malformed media tail cannot play beyond the duration the sender recorded', () => {
   const progress = extractFn('updateVoiceProgress');
-  assert.match(progress, /audio\.currentTime >= declaredSeconds \+ 0\.2/);
+  assert.match(progress, /elapsedSeconds >= declaredSeconds \+ 0\.2/);
   assert.match(progress, /finishVoicePlayback\(rec, audio\)/);
-  assert.match(extractFn('seekVoice'), /ratio \* playableSeconds/);
+  assert.match(extractFn('seekVoice'), /timelineOffset \+ ratio \* playableSeconds/);
 });

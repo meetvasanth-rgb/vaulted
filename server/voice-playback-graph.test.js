@@ -61,10 +61,13 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
   const source = [
     client.slice(client.indexOf('const VOICE_QUIET_RMS'), client.indexOf('\n', client.indexOf('const VOICE_QUIET_RMS'))),
     'const voiceLoudnessCache = new Map(); const voiceTrace = [];',
+    'const voiceTimelineOffsets = new WeakMap();',
     extractFunction('traceVoicePlayback', 'function'),
     extractFunction('replaceVoiceAudioWithPlain', 'function'),
     extractFunction('prepareQuietVoicePlayback', 'async function'),
     extractFunction('watchVoiceAudible', 'function'),
+    extractFunction('voiceTimelineOffset', 'function'),
+    extractFunction('alignVoiceTimeline', 'function'),
     extractFunction('getOrCreateVoiceAudio', 'function'),
   ].join('\n');
   vm.runInContext(source, context);
@@ -83,6 +86,17 @@ test('native iOS always plays the plain media element and never creates a Web Au
   assert.equal(h.contexts.length, 0, 'iOS never creates an AudioContext for playback');
   assert.equal(vm.runInContext("voiceLoudnessCache.get('v1')", h.context), 'ios-plain');
   assert.equal(vm.runInContext('voiceTrace.at(-1).stage', h.context), 'ios-plain');
+});
+
+test('an inflated Android WebM timeline starts at its real audio segment on iOS', () => {
+  const h = harness({ nativeIOS:true });
+  h.rec.duration = 5;
+  const audio = h.context.getOrCreateVoiceAudio(h.rec);
+  audio.duration = 90.7;
+  audio.listeners.loadedmetadata();
+  assert.ok(Math.abs(audio.currentTime - 85.7) < 0.001);
+  const offsets = vm.runInContext('voiceTimelineOffsets', h.context);
+  assert.ok(Math.abs(offsets.get(audio) - 85.7) < 0.001);
 });
 
 test('an ordinary recording plays on its plain element: no Web Audio capture at all', async () => {
@@ -185,5 +199,5 @@ test('toggleVoicePlayback plays the element it is handed back and arms the watch
   const toggle = extractFunction('toggleVoicePlayback', 'async function');
   assert.match(toggle, /let audio = getOrCreateVoiceAudio\(rec\);/);
   assert.match(toggle, /audio = await prepareQuietVoicePlayback\(audio, rec\);/);
-  assert.match(toggle, /traceVoicePlayback\('play', audio\);\s*watchVoiceAudible\(rec, audio\);/);
+  assert.match(toggle, /traceVoicePlayback\('play', audio,[\s\S]*?watchVoiceAudible\(rec, audio\);/);
 });

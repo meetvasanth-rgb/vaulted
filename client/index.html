@@ -14740,6 +14740,8 @@ function collectDiagnostics() {
         loudness:voiceLoudnessCache.get(id) || 'unmeasured', paused:audio.paused, muted:audio.muted, volume:audio.volume,
         ready:audio.readyState, network:audio.networkState, error:audio.error ? audio.error.code : null,
         duration:Number.isFinite(audio.duration) ? Math.round(audio.duration * 10) / 10 : null,
+        declaredDuration:Number(findMessageRec(id)?.duration) || 0,
+        timelineOffset:Math.round((voiceTimelineOffsets.get(audio) || 0) * 10) / 10,
         time:Math.round(audio.currentTime * 10) / 10,
       });
     }
@@ -26825,6 +26827,7 @@ window.addEventListener('vaultlix:voice-transcript', event => {
 
 const voiceAudioEls = new Map(); // msgId -> HTMLAudioElement
 const voicePlaybackGraphs = new WeakMap();
+const voiceTimelineOffsets = new WeakMap(); // HTMLAudioElement -> malformed WebM timestamp offset
 let currentlyPlayingVoiceId = null;
 
 function prepareVoiceNotePlayback() {
@@ -26962,6 +26965,36 @@ function watchVoiceAudible(rec, audio) {
   }, 900);
 }
 
+// A few Android MediaRecorder/WebView combinations write short Opus notes into
+// a WebM whose first cluster starts near the end of a much longer container
+// timeline. Safari jumps straight to that cluster on Play. The old duration
+// guard saw the jump (for example 0s -> 88s for a 2s note) as an overlong tail
+// and stopped the note before its first audible sample. Treat the excess as a
+// timestamp offset and keep every UI/seek calculation relative to the actual
+// recorded segment.
+function voiceTimelineOffset(rec, audio) {
+  const declaredSeconds = Math.max(0, Number(rec?.duration) || 0);
+  const mediaSeconds = Number(audio?.duration);
+  if (!declaredSeconds || !Number.isFinite(mediaSeconds) || mediaSeconds <= 0) return 0;
+  const allowedDrift = Math.max(2, declaredSeconds * 0.25);
+  return mediaSeconds > declaredSeconds + allowedDrift ? Math.max(0, mediaSeconds - declaredSeconds) : 0;
+}
+
+function alignVoiceTimeline(rec, audio) {
+  if (!audio) return 0;
+  const offset = voiceTimelineOffset(rec, audio);
+  voiceTimelineOffsets.set(audio, offset);
+  const declaredSeconds = Math.max(0, Number(rec?.duration) || 0);
+  if (offset > 0 && (
+    audio.ended
+    || audio.currentTime < offset - 0.2
+    || (declaredSeconds > 0 && audio.currentTime > offset + declaredSeconds + 0.2)
+  )) {
+    try { audio.currentTime = offset; } catch (_) {}
+  }
+  return offset;
+}
+
 function getOrCreateVoiceAudio(rec) {
   let audio = voiceAudioEls.get(rec.id);
   if (audio) return audio;
@@ -26969,6 +27002,7 @@ function getOrCreateVoiceAudio(rec) {
   if (!safeSrc) return null;
   audio = new Audio(safeSrc);
   audio.preload = 'metadata';
+  audio.addEventListener('loadedmetadata', () => alignVoiceTimeline(rec, audio));
   audio.addEventListener('timeupdate', () => updateVoiceProgress(rec, audio));
   audio.addEventListener('ended', () => finishVoicePlayback(rec, audio));
   voiceAudioEls.set(rec.id, audio);
@@ -26993,6 +27027,7 @@ async function toggleVoicePlayback(msgId) {
   if (audio.paused) {
     prepareVoiceNotePlayback();
     audio = await prepareQuietVoicePlayback(audio, rec);
+    const timelineOffset = alignVoiceTimeline(rec, audio);
     // Only one voice note plays at a time.
     if (currentlyPlayingVoiceId && currentlyPlayingVoiceId !== msgId) {
       const prev = voiceAudioEls.get(currentlyPlayingVoiceId);
@@ -27002,7 +27037,11 @@ async function toggleVoicePlayback(msgId) {
     audio.play().catch(() => {});
     currentlyPlayingVoiceId = msgId;
     setVoicePlayIcon(msgId, true);
-    traceVoicePlayback('play', audio);
+    traceVoicePlayback('play', audio, {
+      declared:Number(rec.duration) || 0,
+      mediaDuration:Number.isFinite(audio.duration) ? Math.round(audio.duration * 10) / 10 : null,
+      timelineOffset:Math.round(timelineOffset * 10) / 10,
+    });
     watchVoiceAudible(rec, audio);
   } else {
     audio.pause();
@@ -27022,10 +27061,12 @@ function setVoicePlayIcon(msgId, playing) {
 
 function updateVoiceProgress(rec, audio) {
   const declaredSeconds = Math.max(0, Number(rec.duration) || 0);
+  const timelineOffset = alignVoiceTimeline(rec, audio);
+  const elapsedSeconds = Math.max(0, audio.currentTime - timelineOffset);
   // Never play a malformed container tail beyond the duration the sender
   // actually recorded and reviewed.
-  if (declaredSeconds > 0 && audio.currentTime >= declaredSeconds + 0.2) {
-    audio.currentTime = 0;
+  if (declaredSeconds > 0 && elapsedSeconds >= declaredSeconds + 0.2) {
+    audio.currentTime = timelineOffset;
     finishVoicePlayback(rec, audio);
     return;
   }
@@ -27033,9 +27074,9 @@ function updateVoiceProgress(rec, audio) {
   const durEl = document.getElementById(`voice-duration-${rec.id}`);
   const playableSeconds = declaredSeconds || (isFinite(audio.duration) ? audio.duration : 0);
   if (fill && playableSeconds > 0) {
-    fill.style.width = `${Math.min(100, (audio.currentTime / playableSeconds) * 100)}%`;
+    fill.style.width = `${Math.min(100, (elapsedSeconds / playableSeconds) * 100)}%`;
   }
-  if (durEl) durEl.textContent = formatVoiceTime(audio.currentTime * 1000);
+  if (durEl) durEl.textContent = formatVoiceTime(elapsedSeconds * 1000);
 }
 
 function seekVoice(e, msgId) {
@@ -27047,7 +27088,8 @@ function seekVoice(e, msgId) {
   const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
   const rec = findMessageRec(msgId);
   const playableSeconds = Math.max(0, Number(rec?.duration) || 0) || audio.duration;
-  audio.currentTime = ratio * playableSeconds;
+  const timelineOffset = alignVoiceTimeline(rec, audio);
+  audio.currentTime = timelineOffset + ratio * playableSeconds;
 }
 
 // Small confirm step, image sends only: lets you pick between normal
