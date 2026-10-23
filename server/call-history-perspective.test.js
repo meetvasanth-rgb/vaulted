@@ -101,7 +101,8 @@ test('the server treats a hang-up during ringing as unanswered so the callee get
 
 test('call history makes no-answer and missed-call records visible', () => {
   assert.match(client, /Encrypted call\|Missed\(\?: encrypted\)\? call\|No answer\|Call declined\|Declined call\|Caller cancelled\|Cancel/);
-  assert.match(client, /else if \(!isPerspectiveCallEvent \|\| rec\.callEventViewerRole === 'receiver'\) \{\s*room\.unread\+\+/);
+  // Only the receiver's side of a call event counts as unread, and never a message already read.
+  assert.match(client, /else if \(\(!isPerspectiveCallEvent \|\| rec\.callEventViewerRole === 'receiver'\) && !(?:item|msg)\.readAt\) \{[\s\S]*?room\.unread\+\+/);
 });
 
 test('terminal signalling carries the outcome through web and native paths', () => {

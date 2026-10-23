@@ -7713,6 +7713,16 @@ function updateE2EBar(room) {
   }
 }
 
+// Breadcrumbs for a device: why did this conversation's unread count go up? Read
+// window.__vaultlixUnreadTrace in Web Inspector. No message content, only counters.
+const unreadTrace = [];
+function traceUnreadIncrement(source, room, seq, readAt, extra = {}) {
+  unreadTrace.push({ t:Date.now(), source, room:String(room?.code || '').slice(0, 6), seq:Number(seq) || 0,
+    readAt:!!readAt, lastSeq:Number(room?.lastSeq) || 0, lastReadSeq:Number(room?.lastReadSeq) || 0, unread:Number(room?.unread) || 0, ...extra });
+  if (unreadTrace.length > 80) unreadTrace.shift();
+  try { window.__vaultlixUnreadTrace = unreadTrace; } catch (_) {}
+}
+
 // Live-arrived messages that couldn't be decrypted yet because room.sharedKey
 // didn't exist at the moment they polled in (see doPoll's message loop,
 // which queues onto room.pendingDecrypt instead of dropping them) — replayed
@@ -7733,8 +7743,11 @@ async function flushPendingDecrypt(room) {
     room.messages.push(rec);
     if (isRoomVisible(room)) {
       renderMessageRecord(room, rec, true);
-    } else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') {
+    } else if ((!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') && !item.readAt) {
+      // A message the server already shows as read (read on this device before a restart, or on
+      // another device of this account) is not new, however late it is delivered here.
       room.unread++;
+      traceUnreadIncrement('deferred-decrypt', room, item.seq, item.readAt);
       if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
       unreadChanged = true;
     }
@@ -22775,8 +22788,12 @@ async function doPoll(room) {
             if (isRoomVisible(room)) {
               renderMessageRecord(room, rec, true);
             }
-            else if (!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') {
+            else if ((!isPerspectiveCallEvent || rec.callEventViewerRole === 'receiver') && !msg.readAt) {
+              // Same rule as the full restore: a message the server already shows as read is not
+              // unread. A poll after a restart redelivers everything past the saved position, and
+              // counting those again is how read messages came back as "new".
               room.unread++;
+              traceUnreadIncrement('poll', room, msg.seq, msg.readAt);
               if (rec.kind === 'sys') room.unreadSystemCount = (room.unreadSystemCount || 0) + 1;
             }
             handleIncomingEmojiEffect(room, rec);
@@ -25366,6 +25383,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // zero is the only value that's actually defensible here.
     const preHealUnread = room.unread, preHealUnreadSystemCount = room.unreadSystemCount;
     const staleUnreadSelfHealed = room.lastReadSeq >= room.lastSeq && (room.unread > 0 || room.unreadSystemCount > 0);
+    traceUnreadIncrement('launch-restore', room, 0, false, { selfHealed:staleUnreadSelfHealed, storedUnread:preHealUnread });
     if (staleUnreadSelfHealed) {
       room.unread = 0;
       room.unreadSystemCount = 0;
