@@ -4677,7 +4677,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 
     <div class="settings-divider"></div>
 
-    <div class="settings-version">
+    <div class="settings-version" onclick="settingsVersionTap()">
       Vaultlix · Version 1.0<br/>
       <span style="color:#C4B8AC;">Anonymous · Encrypted · Unreadable to us</span>
     </div>
@@ -14718,6 +14718,75 @@ async function refreshRequestPolicyStatus() {
 }
 
 function closeRequestPolicySheet() { document.getElementById('request-policy-overlay')?.remove(); }
+
+// ── DIAGNOSTICS (hidden: tap the version line in Settings five times) ──────────
+// Gathers the on-device breadcrumbs (voice playback, unread counts, emoji effects) into one block of
+// text that can be copied and sent, for when Safari's Web Inspector cannot attach (a TestFlight/App
+// Store build is not inspectable). Counters and states only: no message text, names or keys.
+let settingsVersionTaps = 0, settingsVersionTapTimer = null;
+function settingsVersionTap() {
+  settingsVersionTaps++;
+  clearTimeout(settingsVersionTapTimer);
+  settingsVersionTapTimer = setTimeout(() => { settingsVersionTaps = 0; }, 2000);
+  if (settingsVersionTaps >= 5) { settingsVersionTaps = 0; openDiagnosticsSheet(); }
+}
+
+function collectDiagnostics() {
+  const audioFacts = [];
+  try {
+    for (const [id, audio] of voiceAudioEls) {
+      audioFacts.push({
+        id:String(id).slice(0, 8), mime:(audio.src.match(/^data:([^;,]+[^,]*)/) || [])[1] || '?',
+        loudness:voiceLoudnessCache.get(id) || 'unmeasured', paused:audio.paused, muted:audio.muted, volume:audio.volume,
+        ready:audio.readyState, network:audio.networkState, error:audio.error ? audio.error.code : null,
+        duration:Number.isFinite(audio.duration) ? Math.round(audio.duration * 10) / 10 : null,
+        time:Math.round(audio.currentTime * 10) / 10,
+      });
+    }
+  } catch (_) {}
+  const canPlay = type => { try { return new Audio().canPlayType(type) || 'no'; } catch (_) { return '?'; } };
+  return {
+    generatedAt:new Date().toISOString(),
+    userAgent:navigator.userAgent,
+    native:{ ios:isNativeIOS(), androidBridge:!!window.VaultlixAndroid },
+    canPlay:{ mp4:canPlay('audio/mp4'), webmOpus:canPlay('audio/webm;codecs=opus'), oggOpus:canPlay('audio/ogg;codecs=opus') },
+    voiceNotes:audioFacts,
+    voiceTrace:window.__vaultlixVoiceTrace || [],
+    unreadTrace:window.__vaultlixUnreadTrace || [],
+    emojiTrace:window.__vaultlixEmojiTrace || [],
+  };
+}
+
+function closeDiagnosticsSheet() { document.getElementById('diagnostics-overlay')?.remove(); }
+
+function openDiagnosticsSheet() {
+  closeDiagnosticsSheet();
+  const overlay = document.createElement('div');
+  overlay.id = 'diagnostics-overlay';
+  overlay.className = 'contact-sheet-overlay';
+  overlay.innerHTML = `<div class="contact-sheet" role="dialog" aria-modal="true" aria-label="Diagnostics">
+    <div class="contact-sheet-head"><strong>Diagnostics</strong><span>Technical details to help fix a problem. No messages, names or keys are included. Play a voice note or reproduce the problem first, then tap Refresh.</span></div>
+    <textarea id="diagnostics-text" readonly style="width:100%;height:38vh;box-sizing:border-box;font:11px/1.4 ui-monospace,Menlo,monospace;padding:10px;border:1px solid #E0CED6;border-radius:12px;background:#fff;color:#3a2a30"></textarea>
+    <button type="button" class="contact-sheet-btn" data-diag="refresh">Refresh</button>
+    <button type="button" class="contact-sheet-btn" data-diag="copy">Copy</button>
+    <button type="button" class="contact-sheet-btn quiet" data-diag="close">Close</button>
+  </div>`;
+  const fill = () => { overlay.querySelector('#diagnostics-text').value = JSON.stringify(collectDiagnostics(), null, 1); };
+  overlay.addEventListener('click', async event => {
+    if (event.target === overlay) { closeDiagnosticsSheet(); return; }
+    const action = event.target.closest?.('[data-diag]')?.dataset.diag;
+    if (!action) return;
+    const box = overlay.querySelector('#diagnostics-text');
+    if (action === 'close') closeDiagnosticsSheet();
+    else if (action === 'refresh') fill();
+    else if (action === 'copy') {
+      try { await navigator.clipboard.writeText(box.value); toast('Copied'); }
+      catch (_) { box.select(); try { document.execCommand('copy'); toast('Copied'); } catch (__) { toast('Select the text and copy it'); } }
+    }
+  });
+  document.body.appendChild(overlay);
+  fill();
+}
 
 function openRequestPolicySheet() {
   const state = loadAccountState();
