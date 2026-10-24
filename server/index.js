@@ -3919,6 +3919,26 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok:true, createdAt:group.updatedAt, keyVersion:group.keyVersion });
   }
 
+  // Tells the other members of a group that this member is typing, or recording a voice note. It is a
+  // sign of life, never stored: the sender repeats it every couple of seconds, and each client hides it
+  // after three. It goes only to active members, and not to anyone who has blocked or been blocked by
+  // the sender.
+  if (path === '/api/groups/typing' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to use private groups.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (typeof d.groupId !== 'string' || d.groupId.length > 80) return resErr(res, 'Private group not found.', 404);
+    if (await rateLimited(`group-typing:${d.accountId}`, 60, 60 * 1000)) return res200(res, { ok:true });
+    const memberIds = await activeGroupMemberIds(d.groupId);
+    if (!memberIds.includes(d.accountId)) return resErr(res, 'Private group not found.', 404);
+    const activity = d.activity === 'recording' ? 'recording' : 'typing';
+    for (const memberId of memberIds) {
+      if (memberId === d.accountId || await groupTypingBlocked(memberId, d.accountId)) continue;
+      publishGroupTyping(memberId, { groupId:d.groupId, accountId:d.accountId, activity });
+    }
+    return res200(res, { ok:true });
+  }
+
   if (path === '/api/groups/edit-message' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to edit a group message.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
@@ -6441,7 +6461,54 @@ async function publishInboxAccountLocal(accountId, accountRouteId, change, paylo
   }
 }
 
+// Group typing is a live-only event: its own message type, no sequence number, and nothing for a client
+// to catch up on, so a burst of it never makes anyone refresh their inbox.
+const GROUP_TYPING_MEMBER_TTL_MS = 10 * 1000;
+const GROUP_TYPING_BLOCK_TTL_MS = 30 * 1000;
+const groupTypingMemberCache = new Map();
+const groupTypingBlockCache = new Map();
+
+async function activeGroupMemberIds(groupId) {
+  const now = Date.now();
+  const cached = groupTypingMemberCache.get(groupId);
+  if (cached && now - cached.at < GROUP_TYPING_MEMBER_TTL_MS) return cached.ids;
+  const group = await groupStore.get(groupId);
+  const ids = group ? group.members.filter(member => member.active).map(member => member.accountId) : [];
+  if (groupTypingMemberCache.size > 2000) groupTypingMemberCache.delete(groupTypingMemberCache.keys().next().value);
+  groupTypingMemberCache.set(groupId, { at:now, ids });
+  return ids;
+}
+
+async function groupTypingBlocked(recipientId, senderId) {
+  const key = `${recipientId}|${senderId}`;
+  const now = Date.now();
+  const cached = groupTypingBlockCache.get(key);
+  if (cached && now - cached.at < GROUP_TYPING_BLOCK_TTL_MS) return cached.blocked;
+  const blocked = await safetyStore.blocked(recipientId, senderId);
+  if (groupTypingBlockCache.size > 5000) groupTypingBlockCache.delete(groupTypingBlockCache.keys().next().value);
+  groupTypingBlockCache.set(key, { at:now, blocked });
+  return blocked;
+}
+
+function publishGroupTypingLocal(accountId, accountRouteId, payload) {
+  const sockets = accountId ? inboxAccountSockets.get(accountId) : inboxAccountSocketsByRoute.get(accountRouteId);
+  if (!sockets) return;
+  const message = JSON.stringify({ type:'group-typing', ...payload });
+  for (const ws of sockets) {
+    if (ws.readyState !== ws.OPEN) continue;
+    try { ws.send(message); } catch (e) {}
+  }
+}
+
+function publishGroupTyping(accountId, payload) {
+  const accountRouteId = opaqueRouteId(accountId);
+  publishGroupTypingLocal(accountId, accountRouteId, payload);
+  realtimeCoordinator.publish('group-typing', { accountRouteId, payload }).catch(() => {});
+}
+
 function publishInboxAccount(accountId, change, payload = null) {
+  // Membership may have changed: drop the cached member list so typing is never sent to a removed member.
+  if (change === 'group-update' && payload?.groupId) groupTypingMemberCache.delete(payload.groupId);
   const accountRouteId = opaqueRouteId(accountId);
   publishInboxAccountLocal(accountId, accountRouteId, change, payload);
   realtimeCoordinator.publish('inbox-account', { accountRouteId, change, payload }).catch(() => {});
@@ -6680,6 +6747,10 @@ function handleRealtimeEvent(event) {
   }
   if (event.type === 'inbox-account' && event.accountRouteId) {
     publishInboxAccountLocal(null, event.accountRouteId, event.change, event.payload || null);
+    return;
+  }
+  if (event.type === 'group-typing' && event.accountRouteId && event.payload) {
+    publishGroupTypingLocal(null, event.accountRouteId, event.payload);
     return;
   }
   if (event.type === 'account-session-close' && event.accountRouteId && Array.isArray(event.revokedTokenHashes)) {

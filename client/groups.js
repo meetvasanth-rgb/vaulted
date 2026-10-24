@@ -84,7 +84,86 @@ function updatePrivateGroupComposer() {
   const footer = document.getElementById('group-chat-footer');
   const input = document.getElementById('group-message-input');
   resizeChatComposer(input);
-  footer?.classList.toggle('has-text', !!String(input?.value || '').trim());
+  const hasText = !!String(input?.value || '').trim();
+  footer?.classList.toggle('has-text', hasText);
+  if (hasText) sendPrivateGroupActivity('typing');
+}
+
+// ---- who is typing / recording ----------------------------------------------
+// The other members see a picture, a small bubble (dots for typing, a microphone for a voice note) and
+// a line naming them, like a direct chat. These are live signs of life only: nothing is stored, each is
+// repeated every couple of seconds, and each disappears three seconds after the last one.
+const GROUP_ACTIVITY_INTERVAL_MS = 2000;
+const GROUP_ACTIVITY_VISIBLE_MS = 3200;
+let groupActivitySentAt = { typing:0, recording:0 };
+let groupActivityTimer = null;
+const groupActivityUntil = new Map(); // groupId -> Map(accountId -> { activity, until })
+
+function sendPrivateGroupActivity(activity, now = Date.now()) {
+  const state = loadAccountState();
+  const groupId = activePrivateGroupId;
+  if (!state || !groupId || now - groupActivitySentAt[activity] < GROUP_ACTIVITY_INTERVAL_MS) return false;
+  groupActivitySentAt[activity] = now;
+  api('/api/groups/typing', { accountId:state.accountId, sessionToken:state.sessionToken, groupId, activity }).catch(() => {});
+  return true;
+}
+
+function handleGroupTypingEvent(message, now = Date.now()) {
+  const state = loadAccountState();
+  if (!message || typeof message.groupId !== 'string' || typeof message.accountId !== 'string') return;
+  if (!state || message.accountId === state.accountId || !privateGroups.has(message.groupId)) return;
+  const typers = groupActivityUntil.get(message.groupId) || new Map();
+  typers.set(message.accountId, { activity:message.activity === 'recording' ? 'recording' : 'typing', until:now + GROUP_ACTIVITY_VISIBLE_MS });
+  groupActivityUntil.set(message.groupId, typers);
+  renderPrivateGroupActivity(now);
+  clearTimeout(groupActivityTimer);
+  groupActivityTimer = setTimeout(() => renderPrivateGroupActivity(), GROUP_ACTIVITY_VISIBLE_MS + 50);
+}
+
+// A new message from someone ends their typing; everyone else repeats theirs within two seconds.
+function clearPrivateGroupActivity(groupId) {
+  groupActivityUntil.delete(groupId);
+  renderPrivateGroupActivity();
+}
+
+function groupActivityLabel(names, recording) {
+  if (!names.length) return '';
+  if (recording && names.length === 1) return `${names[0]} is recording a voice note…`;
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return `${names[0]} and ${names.length - 1} other${names.length - 1 === 1 ? '' : 's'} are typing…`;
+}
+
+function renderPrivateGroupActivity(now = Date.now()) {
+  const holder = document.getElementById('group-typing');
+  if (!holder) return;
+  const groupId = activePrivateGroupId;
+  const group = groupId ? privateGroups.get(groupId) : null;
+  const typers = groupId ? groupActivityUntil.get(groupId) : null;
+  const active = [];
+  if (typers) {
+    for (const [accountId, entry] of typers) {
+      if (entry.until <= now) typers.delete(accountId);
+      else active.push({ accountId, activity:entry.activity });
+    }
+  }
+  if (!group || !active.length) { holder.hidden = true; holder.replaceChildren(); return; }
+  const shown = active.slice(0, 3);
+  const names = active.map(entry => groupMemberLabel(group, entry.accountId));
+  const recording = active.every(entry => entry.activity === 'recording');
+  const avatars = shown.map(entry => {
+    const member = group.members?.find(candidate => candidate.accountId === entry.accountId);
+    const image = displayProfileImageUri(member?.profileImage);
+    const initial = Array.from(groupMemberLabel(group, entry.accountId))[0]?.toUpperCase() || '·';
+    return `<span class="group-typing-avatar">${image ? `<img src="${escapeHtml(image)}" alt=""/>` : escapeHtml(initial)}</span>`;
+  }).join('');
+  const bubble = recording
+    ? '<span class="group-typing-bubble group-typing-recording"><i></i><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>'
+    : '<span class="group-typing-bubble"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span>';
+  const label = groupActivityLabel(names, recording);
+  holder.innerHTML = `<span class="group-typing-avatars">${avatars}</span>${bubble}<span class="group-typing-label">${escapeHtml(label)}</span>`;
+  holder.setAttribute('aria-label', label);
+  holder.hidden = false;
 }
 
 function showPrivateGroupAttachOptions() {
@@ -338,6 +417,12 @@ async function togglePrivateGroupVoiceRecording() {
       } catch (error) { toast(error.message || 'Voice note could not be sent'); }
     };
     privateGroupVoiceRecorder.start(); document.querySelector('.group-mic-btn')?.classList.add('recording');
+    // Tell the other members a voice note is being recorded, for as long as it is.
+    sendPrivateGroupActivity('recording');
+    const recordingBeat = setInterval(() => {
+      if (privateGroupVoiceRecorder?.state === 'recording') sendPrivateGroupActivity('recording');
+      else clearInterval(recordingBeat);
+    }, GROUP_ACTIVITY_INTERVAL_MS);
     toast('Recording voice note — tap the microphone again to send');
     setTimeout(() => { if (privateGroupVoiceRecorder?.state === 'recording') privateGroupVoiceRecorder.stop(); }, 5 * 60 * 1000);
   } catch (error) { toast('Microphone permission is required for voice notes'); }
@@ -548,6 +633,7 @@ function closePrivateGroup() {
   }
   cancelPrivateGroupReply(); exitPrivateGroupSelectMode();
   activePrivateGroupId = null;
+  renderPrivateGroupActivity();
   document.getElementById('group-chat')?.classList.remove('open');
   document.getElementById('group-chat')?.setAttribute('aria-hidden','true'); renderVaultList();
 }
