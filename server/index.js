@@ -12,6 +12,7 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { buildActivationFunnel } = require('./activation-funnel');
 const { suggestionRequest: avatarSuggestionRequest, parseSuggestionResponse: parseAvatarSuggestion } = require('./avatar-suggestion');
 const { SafetyStore } = require('./safety-store');
 const { guardedSocketTask } = require('./socket-task');
@@ -6321,6 +6322,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         storedCiphertextMessages,
       },
       identities,
+      funnel: buildActivationFunnel(accounts.values(), now),
       lifetime: {
         roomsCreatedTemporary: analytics.roomsCreatedTemporary,
         roomsCreatedPermanent: analytics.roomsCreatedPermanent,

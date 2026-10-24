@@ -1218,6 +1218,13 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .swipe-reply-icon.ready{background:#682C43;color:#fff}
 .profile-photo-preview.has-image{cursor:zoom-in}
 .profile-photo-preview.has-image:focus-visible{outline:2px solid #682C43;outline-offset:2px}
+.vault-invite-card{margin:10px 14px 4px;padding:14px;border:1px solid #E9D9E0;border-radius:16px;background:linear-gradient(145deg,#FBF4F6,#F6E9EE)}
+.vault-invite-card strong{display:block;font:700 15px/1.3 Inter,sans-serif;color:#271D25}
+.vault-invite-card>span{display:block;margin-top:3px;font:500 12.5px/1.45 Inter,sans-serif;color:#6D5A63}
+.vault-invite-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.vault-invite-actions button{border:1px solid #DCCDD2;background:#fff;color:#682C43;border-radius:12px;padding:9px 14px;font:650 13px Inter,sans-serif;cursor:pointer}
+.vault-invite-actions button.primary{background:#682C43;border-color:#682C43;color:#fff}
+.vault-invite-actions button.quiet{border-color:transparent;background:none;color:#8A747C;text-decoration:underline}
 .vault-avatar-offer{display:flex;align-items:flex-start;gap:12px;margin:10px 14px 4px;padding:13px 14px;border:1px solid #E9D9E0;border-radius:16px;background:#FBF4F6}
 .vault-avatar-offer-icon{width:40px;height:40px;flex:none;border-radius:50%;background:#EBDDE3;color:#682C43;display:grid;place-items:center}
 .vault-avatar-offer-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -13513,12 +13520,17 @@ function dismissFirstConnectionGuide() {
   document.getElementById('first-connection-overlay')?.classList.remove('open');
 }
 
+// The message sent with an invitation: who is asking, and the link that connects to them.
+function inviteShareText(state, friendName = '') {
+  const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
+  return `${greeting}I’d like a private line with you on Vaultlix. Connect with ${state.displayName}: https://vaultlix.com/${state.privateNumber}`;
+}
+
 async function shareFirstConnectionInvite() {
   const state = loadAccountState();
   if (!state?.privateNumber) return;
   const friendName = String(document.getElementById('first-connection-name')?.value || '').trim().replace(/\s+/g, ' ').slice(0, 32);
-  const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
-  const text = `${greeting}I’d like a private line with you on Vaultlix. Connect with ${state.displayName}: https://vaultlix.com/${state.privateNumber}`;
+  const text = inviteShareText(state, friendName);
   try {
     if (await openSystemShare(text)) {
       dismissFirstConnectionGuide();
@@ -15112,6 +15124,60 @@ function markRequestsSeen() {
   if (Object.keys(before).length !== Object.keys(next).length) changed = true; // forget answered requests
   if (changed) { try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) {} }
   return changed;
+}
+
+// ── INVITE CARD ───────────────────────────────────────────────────────
+// An account with nobody to talk to yet is a dead end, so until the first connection exists the inbox
+// keeps a card at the top: share your number (or its QR) with someone. "Later" hides it for two days, then
+// it returns. Remembered per account in its own localStorage key, never in a conversation's data.
+const INVITE_CARD_KEY_PREFIX = 'vaultlix_invite_card:';
+const INVITE_CARD_SNOOZE_MS = 2 * 24 * 60 * 60 * 1000;
+
+function inviteCardKey(state = loadAccountState()) {
+  return state?.accountId ? INVITE_CARD_KEY_PREFIX + state.accountId : null;
+}
+
+function inviteCardSnoozed(state, now = Date.now()) {
+  const key = inviteCardKey(state);
+  if (!key) return true;
+  try { return Number(localStorage.getItem(key)) > now; } catch (e) { return false; }
+}
+
+function snoozeInviteCard() {
+  const key = inviteCardKey();
+  if (key) { try { localStorage.setItem(key, String(Date.now() + INVITE_CARD_SNOOZE_MS)); } catch (e) {} }
+  renderVaultList();
+}
+
+async function shareInviteFromCard() {
+  const state = loadAccountState();
+  if (!state?.privateNumber) return;
+  const text = inviteShareText(state);
+  try {
+    if (await openSystemShare(text)) return;
+    await navigator.clipboard.writeText(text);
+    toast('Invitation copied — send it in any messaging app');
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast('Could not open sharing. Please try again.');
+  }
+}
+
+function inviteCardHtml() {
+  const state = loadAccountState();
+  if (!state?.privateNumber || rooms.size > 0 || privateGroups.size > 0 || inviteCardSnoozed(state)) return '';
+  const waiting = pendingOutgoingConnections.length > 0;
+  const title = waiting ? 'Your request is on its way' : 'Invite someone to start your first private chat';
+  const copy = waiting
+    ? 'Invite someone else too, so your line is never empty.'
+    : 'Share your Vaultlix number. They connect in a few taps, and your phone number stays yours.';
+  return `<div class="vault-invite-card" role="region" aria-label="Invite someone">
+    <strong>${title}</strong><span>${copy}</span>
+    <div class="vault-invite-actions">
+      <button type="button" class="primary" onclick="shareInviteFromCard()">Share invite</button>
+      <button type="button" onclick="showOwnPrivateNumberQr()">Show QR</button>
+      <button type="button" class="quiet" onclick="snoozeInviteCard()">Later</button>
+    </div>
+  </div>`;
 }
 
 // ── AVATAR OFFER ──────────────────────────────────────────────────────
@@ -19535,11 +19601,11 @@ function renderVaultList() {
   const previews = vaultPreviewsEnabled();
   if (rooms.size === 0 && privateGroups.size === 0 && pendingIncomingConnections.length === 0 && pendingOutgoingConnections.length === 0) {
     body._vaultlixChatListHtml = null;
-    body.innerHTML = `<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
+    body.innerHTML = `${vaultSearchActive ? '' : inviteCardHtml() + avatarOfferHtml()}<div class="vault-list-empty"><strong>${escHtml(i18n('start_conversation'))}</strong>${escHtml(i18n('start_conversation_help'))}</div>`;
     return;
   }
   const searchQuery = vaultSearchActive ? vaultSearchQuery : '';
-  let html = searchQuery ? '' : avatarOfferHtml() + requestsRowHtml();
+  let html = searchQuery ? '' : inviteCardHtml() + avatarOfferHtml() + requestsRowHtml();
   const hiddenStatusIds = statusHiddenIds();
   const liveStatusAuthors = new Set(statusFeed
     .filter(item => !item.own && !hiddenStatusIds.has(item.id))

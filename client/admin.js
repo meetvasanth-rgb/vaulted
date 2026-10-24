@@ -109,6 +109,7 @@
     $('uptime').textContent = duration(s.system.uptimeSeconds);
     $('node-version').textContent = s.system.nodeVersion;
     $('cipher-count').textContent = number(s.live.storedCiphertextMessages);
+    renderFunnel(s.funnel);
     renderIdentities(s.identities || []);
     renderChart(s.daily || []);
   }
@@ -174,6 +175,43 @@
   function formatDate(value) {
     if (!value) return '—';
     return new Date(value).toLocaleString([], { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+
+  // Sign-up funnel: one column per cohort. Every cell is a count with its share of identities old enough
+  // to have had a chance (a day or more). Built with text nodes only.
+  function renderFunnel(funnel) {
+    const table = $('funnel-table');
+    if (!table) return;
+    const cohorts = funnel?.cohorts || [];
+    if (!cohorts.length) { table.replaceChildren(); return; }
+    const percent = (part, whole) => whole ? `${Math.round(part / whole * 100)}%` : '—';
+    const cell = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
+    const rows = [
+      ['Joined', cohort => number(cohort.created), 'strong'],
+      ['New today (too early to judge)', cohort => number(cohort.newToday), 'muted'],
+      ['Old enough to judge', cohort => number(cohort.matured), 'muted'],
+      [`Came back after ${funnel.returnAfterHours} hours`, cohort => `${number(cohort.returned)} · ${percent(cohort.returned, cohort.matured)}`],
+      ['Asked someone to connect', cohort => `${number(cohort.sentRequest)} · ${percent(cohort.sentRequest, cohort.matured)}`],
+      ['Connected with someone', cohort => `${number(cohort.connected)} · ${percent(cohort.connected, cohort.matured)}`, 'strong'],
+      ['Notifications on', cohort => `${number(cohort.notificationsOn)} · ${percent(cohort.notificationsOn, cohort.matured)}`, 'muted'],
+      ['Where the rest are', () => '', 'section'],
+      ['Waiting for a reply', cohort => number(cohort.outcome.waitingForReply)],
+      ['Got a request, not answered', cohort => number(cohort.outcome.receivedUnanswered)],
+      ['Came back, never asked anyone', cohort => number(cohort.outcome.noRequestsButReturned)],
+      ['Never came back', cohort => number(cohort.outcome.neverCameBack)],
+    ];
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.append(cell('th', ''), ...cohorts.map(cohort => cell('th', cohort.label)));
+    head.appendChild(headRow);
+    const body = document.createElement('tbody');
+    for (const [label, value, kind] of rows) {
+      const row = document.createElement('tr');
+      if (kind) row.className = `funnel-${kind}`;
+      row.append(cell('th', label), ...cohorts.map(cohort => cell('td', value(cohort))));
+      body.appendChild(row);
+    }
+    table.replaceChildren(head, body);
   }
 
   function renderIdentities(identities) {

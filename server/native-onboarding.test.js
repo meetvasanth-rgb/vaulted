@@ -38,7 +38,8 @@ test('a new identity is guided into its first private connection', () => {
   assert.match(client, /Who is one person you’d like a private line with\?/);
   assert.match(client, /localStorage\.setItem\(FIRST_CONNECTION_GUIDE_KEY, 'pending'\)/);
   assert.match(client, /if \(!resumedQuickConnect\) maybeOpenFirstConnectionGuide\(\)/);
-  assert.match(client, /function shareFirstConnectionInvite\(\)[\s\S]*https:\/\/vaultlix\.com\/\$\{state\.privateNumber\}/);
+  assert.match(client, /function inviteShareText\(state, friendName = ''\)[\s\S]*https:\/\/vaultlix\.com\/\$\{state\.privateNumber\}/);
+  assert.match(client, /function shareFirstConnectionInvite\(\)[\s\S]*inviteShareText\(state, friendName\)/);
   assert.match(client, /function showFirstConnectionQr\(\)[\s\S]*showOwnPrivateNumberQr\(\)/);
   assert.match(client, /The name stays on this device[\s\S]*never uploads your contacts/);
 });
