@@ -174,98 +174,6 @@ const DAILY_LOOK_RESET_OFFSET_MINUTES = (() => {
 })();
 const DAILY_LOOK_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
 const dailyLookClaims = new Set();
-const NAVRATRI_LOOKS = Object.freeze([
-  {
-    id:'blue-hour-garba', direction:'Blue-hour Garba courtyard portrait',
-    pose:'Joyful three-quarter full-body Garba step with the torso turned about 25 degrees, one decorated dandiya stick raised comfortably above the shoulder, the other crossing lower in rhythm, the face clearly visible and both feet grounded in a believable dance movement.',
-    camera:'Eye-level camera, 70mm short-telephoto perspective, photographed by another person from about 4 metres away.',
-    framing:'Source-aspect full-body environmental portrait with the complete head, both hands, both dandiya sticks and both feet inside the frame; preserve breathing room for the courtyard.',
-    styling:'Premium mirror-work or embroidered Navratri clothing in deep wine, saffron and teal, adapted respectfully to the subject\'s existing presentation, with restrained traditional accessories and practical dance footwear.',
-    setting:'Elegant Gujarati courtyard at blue hour with marigold accents, warm string lights, a few diyas placed safely at the edges and distant Garba dancers rendered only as soft background context.',
-    lighting:'Soft neutral key on the face matching the courtyard illumination, cool blue-hour ambient fill and warm practical lights behind; preserve accurate skin colour and believable highlights on mirror-work.',
-  },
-  {
-    id:'dandiya-night', direction:'Dandiya night action portrait',
-    pose:'Energetic mid-step pose with shoulders open, one foot advancing naturally and two dandiya sticks meeting diagonally beside rather than across the face; keep the expression confident and spontaneous.',
-    camera:'Camera slightly below eye level, 50mm normal-lens perspective, photographed from about 3.5 metres away without wide-angle distortion.',
-    framing:'Source-aspect thigh-to-head action portrait with the complete head, elbows, hands and both sticks visible and enough space around the gesture to avoid edge collisions.',
-    styling:'Authentic kediyu, kurta, chaniya choli or coordinated festive separates with mirror-work and woven detail, selected to suit the subject without forcing gendered presentation.',
-    setting:'Open-air dandiya venue with an orderly canopy of warm bulbs, tasteful textile banners and a softly blurred dance floor; no concert stage or nightclub styling.',
-    lighting:'Clean neutral facial light with restrained amber and burgundy rim light from visible festival fixtures; freeze the face and hands while allowing slight natural fabric motion.',
-  },
-  {
-    id:'royal-haveli', direction:'Royal haveli festive portrait',
-    pose:'Elegant upright three-quarter stance in a carved doorway, torso angled gently, one hand resting naturally near the waist and the other lightly touching the doorway, with calm direct eye contact.',
-    camera:'Eye-level camera, 85mm portrait-lens perspective, photographed from approximately 3 metres away.',
-    framing:'Source-aspect three-quarter portrait from complete head to below the hands, keeping the doorway geometry balanced and the head naturally proportional.',
-    styling:'Refined bandhani, silk, brocade or embroidered festive clothing with restrained jewellery or accessories appropriate to the subject and no bridal styling.',
-    setting:'Tastefully decorated heritage haveli entrance with carved stone, small marigold details and distant warm lamps; retain architectural realism and avoid palace fantasy.',
-    lighting:'Large soft daylight key from the courtyard, warm lamp separation from inside the doorway and subtle neutral fill; preserve fabric texture and natural skin.',
-  },
-  {
-    id:'aarti-glow', direction:'Aarti glow portrait',
-    pose:'Composed standing three-quarter pose holding a modest brass diya plate securely at mid-torso with both hands, shoulders relaxed, eyes directed toward the warm light and a peaceful natural expression.',
-    camera:'Natural eye-level camera, 85mm portrait perspective, photographed from roughly 2.6 metres away.',
-    framing:'Source-aspect waist-up portrait showing the complete head, shoulders, forearms, hands and diya plate with safe negative space around the flame.',
-    styling:'Understated traditional festive clothing in rich natural textiles with minimal accessories, adapted respectfully to the subject and kept distinct from wedding attire.',
-    setting:'Quiet decorated courtyard corner with rangoli, marigold strands and softly glowing lamps; no visible deity, ritual spectacle or invented sacred symbols.',
-    lighting:'The diya provides a believable warm lower fill while a soft neutral key keeps the face accurate and detailed; background lamps share the same warm colour and shadow direction.',
-  },
-  {
-    id:'garba-circle', direction:'Garba circle environmental portrait',
-    pose:'Natural full-body dance step inside a Garba circle with one arm extended rhythmically, the other bent near the torso, the face turned clearly toward camera and clothing moving believably around the legs.',
-    camera:'Eye-level documentary camera, 50mm normal-lens perspective, photographed from about 4.5 metres away at the edge of the circle.',
-    framing:'Source-aspect full-body environmental portrait with complete head, hands and feet, the main subject unmistakable and surrounding dancers kept secondary without being cropped into stray limbs.',
-    styling:'Colourful coordinated Navratri clothing with authentic regional textile detail and practical movement, preserving existing hair, religious marks and cultural cues.',
-    setting:'Community Garba circle in a clean open courtyard with patterned ground decoration, warm lights and a small number of coherent background participants.',
-    lighting:'Broad overhead festival illumination balanced by a soft frontal fill; maintain one consistent exposure and colour temperature across the subject, dancers and courtyard.',
-  },
-  {
-    id:'festive-close-up', direction:'Festive mirror-work close-up',
-    pose:'Relaxed shoulder-up portrait with the shoulders turned slightly, face returning to camera, a warm restrained smile and hands outside the frame unless already naturally near the face.',
-    camera:'Camera just above eye level, 105mm portrait-lens perspective, photographed by another person from about 2.2 metres away.',
-    framing:'Source-aspect head-and-shoulders portrait with the complete hair silhouette, both shoulders and generous breathing room; the face occupies no more than half the frame height.',
-    styling:'Sophisticated Navratri textile at the neckline with fine mirror-work, restrained accessories and grooming that preserves the subject\'s exact hairstyle and presentation.',
-    setting:'Softly recognisable festive courtyard with warm bulbs, marigold colour and textile detail rendered as controlled natural bokeh.',
-    lighting:'Broad soft beauty key matching the visible courtyard lights, subtle eye light and gentle warm separation; retain pores, facial fullness and accurate skin tone.',
-  },
-  {
-    id:'golu-evening', direction:'South Indian Golu evening portrait',
-    pose:'Poised three-quarter seated or standing pose beside the display, hands composed naturally at waist level or resting in the lap, shoulders relaxed and face turned toward camera with a welcoming expression.',
-    camera:'Eye-level camera, 70mm short-telephoto perspective, photographed from approximately 3 metres away.',
-    framing:'Source-aspect three-quarter environmental portrait with the complete head and hands visible and enough background to identify the stepped Golu display without crowding the subject.',
-    styling:'Elegant silk sari, veshti-kurta, salwar or other South Indian festive clothing appropriate to the subject, with restrained jewellery and existing cultural markers preserved.',
-    setting:'Warm home Golu arrangement with orderly doll steps, kolam detail, brass lamps and flowers; keep display figures small, coherent and respectfully presented.',
-    lighting:'Soft warm practical lamps supported by neutral window or bounced fill, with believable light falloff across the subject and display and no orange skin cast.',
-  },
-  {
-    id:'pandal-celebration', direction:'Eastern Indian festive pandal portrait',
-    pose:'Confident three-quarter standing pose with shoulders gently angled, one hand relaxed at the side and the other holding a small flower or resting naturally near the waist, with direct friendly eye contact.',
-    camera:'Eye-level camera, 85mm portrait perspective, photographed from roughly 3 metres away.',
-    framing:'Source-aspect knee-to-head portrait with the complete head and hands visible and architectural festival detail forming a balanced background.',
-    styling:'Refined Bengali or Eastern Indian festive clothing adapted to the subject, with authentic textile detail and restrained accessories; never style the person as a deity.',
-    setting:'Tastefully crafted festive pandal entrance with fabric, cane and warm light patterns; keep sacred imagery outside the frame and avoid visual clutter.',
-    lighting:'Soft frontal-neutral key integrated with warm pandal practicals and a delicate edge light; preserve accurate complexion and consistent shadows.',
-  },
-  {
-    id:'friends-at-navratri', direction:'Friends at Navratri group portrait',
-    pose:'Balanced celebratory group pose preserving every visible person, with shoulders naturally staggered, dandiya sticks held safely away from faces and each person looking engaged rather than arranged in a rigid line.',
-    camera:'Eye-level camera, 50mm normal-lens perspective, photographed from a distance that includes the full group without stretching people at the edges.',
-    framing:'Source-aspect knee-to-head or full-body group portrait chosen from the number of people, with every complete head, visible hand and relationship retained and no person added, merged or omitted.',
-    styling:'Coordinated but non-identical Navratri clothing using complementary festive colours, preserving each person\'s identity, age, presentation, hairstyle and cultural markers.',
-    setting:'Welcoming community Navratri venue with textile canopies, warm lights and open space behind the group; background people remain minimal and coherent.',
-    lighting:'Large soft frontal source with warm practical separation, even exposure across all faces and no coloured light that changes individual skin tones.',
-  },
-  {
-    id:'contemporary-navratri', direction:'Contemporary Navratri editorial portrait',
-    pose:'Confident relaxed standing pose with torso angled about 20 degrees, one hand holding a single dandiya stick vertically beside the body and the other resting naturally, with direct eye contact.',
-    camera:'Eye-level camera, 70mm portrait perspective, photographed by another person from approximately 3 metres away.',
-    framing:'Source-aspect three-quarter portrait with complete head, shoulders, hands and stick visible, clean negative space and natural head-to-body proportions.',
-    styling:'Modern festive separates grounded in authentic woven, bandhani or mirror-work detail, using elegant saturated colour without turning the subject into a fashion mannequin.',
-    setting:'Clean contemporary terrace prepared for Navratri with restrained textile panels, potted greenery and warm suspended lights at dusk.',
-    lighting:'Polished editorial soft key consistent with the dusk sky, gentle neutral fill and warm practical rim light; crisp natural face and finely resolved textile detail.',
-  },
-]);
 // One transformation family per successful creation. There are more families
 // than the five-look daily allowance: the account/day seed chooses the starting
 // point and the successful-generation count advances through distinct families
@@ -316,28 +224,6 @@ Style: soft, smooth, appealing cartoon proportions with clean shading, expressiv
 Background: one clean, flat, soft pastel colour that complements their skin and clothing. No scene, no props, no pattern, no gradient noise.
 
 If the photograph contains several people, make the avatar of the single most prominent or central person only. Do not depict a celebrity, a character or any real person other than the one photographed. Do not generate any text, logo or watermark.`,
-  },
-  {
-    id:'navratri-special', name:'Navratri Special', note:'Ten festive portraits with authentic colour, movement and light',
-    size:'1024x1024',
-    quality:'high',
-    prompt:`Recreate the source photograph as a premium photorealistic Navratri portrait with current-season styling, following the selected festive shot direction. Transform the setting and clothing coherently while keeping the result culturally grounded, elegant and recognisably the same person rather than a generic festival model.
-
-The visual direction must feel current and trend-aware: contemporary 2026 festival silhouettes, refined mirror-work and embroidery, sophisticated coordinated colours, current natural grooming and polished social-editorial photography. Traditional textiles, regional details and festive settings should remain authentic, but the styling, tailoring, composition and finish must look fresh enough for a premium present-day fashion campaign. Do not introduce 1980s or 1990s styling, vintage colour grading, old film grain, bouffant hair, dated makeup, faded studio backdrops, retro props or nostalgic cinema treatment.
-
-Identity and youthfulness are the highest priorities. Preserve the subject's unmistakable identity: facial structure, eyes, nose, mouth, skin tone, exact apparent age, expression, gaze and natural facial fullness. Preserve bright eyes, healthy youthful skin and the energy of the source photograph. Do not add wrinkles, eye bags, grey hair, hollow cheeks, aged skin texture or a tired expression. Do not beautify, slim, age, de-age or change ethnicity. Keep the subject recognisably the same person and keep all stylisation away from their facial features.
-
-The selected Navratri shot brief below is mandatory. Follow its pose, body angle, gaze, hand placement, camera height, lens perspective, camera distance, crop, styling, setting and lighting as one coherent photograph. Recompose the person into that directed pose instead of copying an accidental pose from the source. Adapt all clothing and accessories respectfully to the subject's existing presentation and visible regional or cultural cues. Never add facial hair, change hair length, invent religious marks, remove existing cultural markers or force gendered styling that conflicts with the source person.
-
-Rebuild the setting to match the selected shot brief while keeping every object believable in scale and placement. Preserve every clearly visible person from the source and do not invent additional foreground people. Preserve each person's identity, apparent age and relationship naturally. Do not add extra limbs, fingers, hands, faces, jewellery, religious marks or dandiya sticks. Keep hands, feet and dance gestures anatomically accurate and unobstructed wherever visible. Distant festival participants are permitted only when the selected setting explicitly asks for them, and they must remain secondary background context.
-
-The uploaded photograph is an identity reference only; discard its camera distance, crop, arm position and selfie perspective. Use the exact camera height, focal-length perspective, distance and framing prescribed by the selected shot brief. The final photograph must visibly have been taken by another person using a professional portrait camera. Never create a selfie, phone-camera perspective, outstretched camera arm, wide-angle facial distortion or an oversized foreground head.
-
-Compose the portrait in the source photograph's original aspect ratio using the crop in the selected brief as a subject-framing guide. Always show the complete head and both shoulders, maintain natural proportions between the head, neck, shoulders, torso and hands, and keep every prescribed hand gesture inside the frame. Preserve enough sharply coherent setting to make the selected direction unmistakable, with realistic depth and perspective. Do not crop through the chin or forehead, enlarge the face to fill the frame, make the body unnaturally small beneath the head or revert every direction to the same close-up portrait.
-
-Lighting integration is critical. Follow the exact light sources named in the selected brief. The face and background must share the same light direction, colour temperature, exposure, shadow softness, contrast and atmospheric depth. Recreate matching highlights on hair, skin, clothing, jewellery and nearby surfaces. Do not use an independent portrait key light that contradicts the specified courtyard, dusk, festival lights, lamps or soft fill. Avoid cut-out edges, halos, pasted-on faces, orange skin, muddy shadows, harsh hotspots, blown highlights, grey skin or unexplained mixed lighting.
-
-Render at premium present-day editorial quality with crisp facial detail, realistic skin pores, natural hair strands, fine fabric and embroidery texture, accurate accessories and clean edges. Use restrained festive colour with natural contrast and believable depth. Do not age the person. Do not depict any person as a deity, turn the scene into bridal photography, invent sacred symbols or use costume-like stereotypes. Add no text, logos, date stamps or watermarks. The final result must feel like a current premium Navratri campaign photographed for today, not an AI effect, a generic wedding portrait, an older-era recreation or the same repeated composition.`,
   },
   {
     id:'surprise-enhancer', name:'Surprise Enhancer', note:'Lighting, caricature, headshot, enhancement, Mini Me or anime — without repeats',
@@ -1361,7 +1247,7 @@ function dailyLookVariantIndex(accountId, generationCount, now = Date.now()) {
   const day = Math.floor((now + DAILY_LOOK_RESET_OFFSET_MINUTES * 60 * 1000) / DAY_MS);
   const seed = crypto.createHash('sha256').update(`${accountId}:${day}`).digest().readUInt32BE(0);
   // Keep the seed unbounded here and apply modulo only at the target style
-  // collection. Modding by the ten Navratri briefs first caused shorter style
+  // collection. Modding by one style's own list size first caused shorter style
   // collections to repeat when the sequence crossed 9 -> 0.
   return seed + Math.max(0, Number(generationCount) || 0);
 }
@@ -1370,18 +1256,6 @@ function dailyLookRotationItem(items, variantIndex) {
   if (!Array.isArray(items) || !items.length) return null;
   const index = Math.max(0, Math.trunc(Number(variantIndex) || 0));
   return items[index % items.length];
-}
-
-function navratriShotBrief(look) {
-  return [
-    `Direction: ${look.direction}`,
-    `Prescribed pose: ${look.pose}`,
-    `Camera angle and lens: ${look.camera}`,
-    `Required framing: ${look.framing}`,
-    `Wardrobe and grooming: ${look.styling}`,
-    `Festive setting: ${look.setting}`,
-    `Integrated lighting: ${look.lighting}`,
-  ].join('\n');
 }
 
 function enhancerLookBrief(look) {
@@ -1396,17 +1270,12 @@ function enhancerLookBrief(look) {
 async function createDailyLook(image, style, apiKey, variantIndex = 0, dimensions = null) {
   const form = new FormData();
   form.append('model', process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-sunburst');
-  const look = style.id === 'navratri-special'
-    ? dailyLookRotationItem(NAVRATRI_LOOKS, variantIndex)
-    : null;
   const enhancerLook = style.id === 'surprise-enhancer'
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
-  const directedPrompt = look
-    ? `${style.prompt}\n\nSelected Navratri shot brief for this generation:\n${navratriShotBrief(look)}`
-    : enhancerLook
-      ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
-      : style.prompt;
+  const directedPrompt = enhancerLook
+    ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
+    : style.prompt;
   // An avatar is always a 1024px square; every other style keeps the source photo's own shape.
   const squareOutput = style.canvas === 'square';
   const sourceWidth = squareOutput ? 1024 : (dimensions?.width || 1024);

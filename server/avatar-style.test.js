@@ -27,7 +27,7 @@ function extractFunction(name) {
 }
 
 test('the avatar style is square, medium quality, identity-preserving and brand-free', () => {
-  const style = server.slice(server.indexOf("id:'vaultlix-avatar'"), server.indexOf("id:'navratri-special'"));
+  const style = server.slice(server.indexOf("id:'vaultlix-avatar'"), server.indexOf("id:'surprise-enhancer'"));
   assert.match(style, /canvas:'square', size:'1024x1024', quality:'medium'/);
   assert.match(style, /unmistakably the same person/);
   assert.match(style, /face shape and proportions, skin tone, hair colour, hair style and hairline/);
@@ -55,7 +55,7 @@ test('a square style replaces the "never make it a square" instruction and alway
 test('the avatar style is listed first and is publicly selectable by id', () => {
   const block = server.match(/const DAILY_LOOK_STYLES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)[1];
   const ids = [...block.matchAll(/\n  \{\n(?:\s*\/\/[^\n]*\n)*\s*id:'([^']+)'/g)].map(match => match[1]);
-  assert.deepEqual(ids, ['vaultlix-avatar', 'navratri-special', 'surprise-enhancer']);
+  assert.deepEqual(ids, ['vaultlix-avatar', 'surprise-enhancer']);
 });
 
 function offerHarness({ state, stored = {} }) {

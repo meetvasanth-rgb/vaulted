@@ -57,7 +57,8 @@ test('Daily Look sends only an explicitly selected, reduced image, preserves its
 });
 
 test('Daily Look offers curated rotating styles, profile use, and download', () => {
-  assert.match(server, /id:'navratri-special', name:'Navratri Special'/);
+  assert.match(server, /id:'surprise-enhancer', name:'Surprise Enhancer'/);
+  assert.doesNotMatch(server, /navratri/i, 'the Navratri Special style has been retired');
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
   assert.match(client, /Create today’s look/);
   assert.match(client, /function useDailyLookAsProfile\(\)/);
@@ -77,29 +78,9 @@ test('status creation can return a generated Daily Look into preview before audi
   assert.match(client, /id="status-compose-audience" hidden><h2>Select contacts<\/h2>/);
 });
 
-test('Navratri Special creates a high-quality identity-preserving festive portrait', () => {
-  assert.match(server, /premium photorealistic Navratri portrait/);
-  assert.match(server, /culturally grounded, elegant and recognisably the same person/);
-  assert.match(server, /contemporary 2026 festival silhouettes/);
-  assert.match(server, /Do not introduce 1980s or 1990s styling/);
-  assert.match(server, /current premium Navratri campaign photographed for today/);
+test('Daily Look uses the configured image model, provider size and per-style quality', () => {
   assert.match(server, /process\.env\.OPENAI_IMAGE_MODEL \|\| 'gpt-image-2\.5-sunburst'/);
-  assert.match(server, /uploaded photograph is an identity reference only/);
-  assert.match(server, /taken by another person using a professional portrait camera/);
-  assert.match(server, /exact camera height, focal-length perspective, distance and framing/);
-  assert.match(server, /Never create a selfie, phone-camera perspective, outstretched camera arm/);
-  assert.match(server, /natural proportions between the head, neck, shoulders, torso and hands/);
-  assert.match(server, /Do not crop through the chin or forehead/);
-  assert.match(server, /Preserve bright eyes, healthy youthful skin/);
-  assert.match(server, /selected Navratri shot brief below is mandatory/);
-  assert.match(server, /pose, body angle, gaze, hand placement, camera height, lens perspective/);
-  assert.match(server, /Do not add extra limbs, fingers, hands, faces/);
-  assert.match(server, /The face and background must share the same light direction, colour temperature, exposure, shadow softness/);
-  assert.match(server, /Do not use an independent portrait key light/);
-  assert.match(server, /Do not depict any person as a deity/);
-  assert.match(server, /Do not age the person/);
   assert.match(server, /dailyLookProviderSize\(sourceWidth, sourceHeight\)/);
-  assert.match(server, /quality:'high'/);
   assert.match(server, /style\.quality \|\| process\.env\.OPENAI_IMAGE_QUALITY \|\| 'medium'/);
   assert.match(client, /\.daily-look-preview\{[^}]*aspect-ratio:var\(--daily-look-aspect,1\)/);
 });
@@ -127,45 +108,10 @@ test('Surprise Enhancer rotates source-aware transformations without repeating t
   assert.doesNotMatch(server, /id:'neon-night'|id:'anime-portrait'/);
 });
 
-test('Navratri Special rotates through ten fully directed festive shot briefs per account', () => {
-  const lookBlock = server.match(/const NAVRATRI_LOOKS = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
-  const ids = [...lookBlock.matchAll(/id:'([^']+)'/g)].map(match => match[1]);
-  assert.deepEqual(ids, [
-    'blue-hour-garba', 'dandiya-night', 'royal-haveli', 'aarti-glow', 'garba-circle',
-    'festive-close-up', 'golu-evening', 'pandal-celebration', 'friends-at-navratri', 'contemporary-navratri',
-  ]);
-  for (let start = 0; start < ids.length; start++) {
-    const today = Array.from({ length:5 }, (_, offset) => ids[(start + offset) % ids.length]);
-    assert.equal(new Set(today).size, 5);
-  }
-  assert.match(lookBlock, /Blue-hour Garba courtyard portrait/);
-  assert.match(lookBlock, /Dandiya night action portrait/);
-  assert.match(lookBlock, /Royal haveli festive portrait/);
-  assert.match(lookBlock, /Aarti glow portrait/);
-  assert.match(lookBlock, /Garba circle environmental portrait/);
-  assert.match(lookBlock, /Festive mirror-work close-up/);
-  assert.match(lookBlock, /South Indian Golu evening portrait/);
-  assert.match(lookBlock, /Eastern Indian festive pandal portrait/);
-  assert.match(lookBlock, /Friends at Navratri group portrait/);
-  assert.match(lookBlock, /Contemporary Navratri editorial portrait/);
-  assert.equal((lookBlock.match(/pose:'/g) || []).length, 10);
-  assert.equal((lookBlock.match(/camera:'/g) || []).length, 10);
-  assert.equal((lookBlock.match(/framing:'/g) || []).length, 10);
-  assert.equal((lookBlock.match(/setting:'/g) || []).length, 10);
-  assert.equal((lookBlock.match(/lighting:'/g) || []).length, 10);
-  assert.match(lookBlock, /preserving every visible person/);
-  assert.match(lookBlock, /never style the person as a deity/);
+test('the per-account rotation seed is unbounded and applied by modulo at the style collection', () => {
   assert.match(server, /function dailyLookVariantIndex\(accountId, generationCount, now = Date\.now\(\)\)/);
   assert.match(server, /return seed \+ Math\.max\(0, Number\(generationCount\) \|\| 0\)/);
-  assert.match(server, /dailyLookRotationItem\(NAVRATRI_LOOKS, variantIndex\)/);
-  assert.match(server, /function navratriShotBrief\(look\)/);
-  assert.match(server, /Prescribed pose:/);
-  assert.match(server, /Camera angle and lens:/);
-  assert.match(server, /Required framing:/);
-  assert.match(server, /Festive setting:/);
-  assert.match(server, /Integrated lighting:/);
   assert.match(server, /dailyLookVariantIndex\(d\.accountId, usage\.count, now\)/);
-  assert.match(server, /Selected Navratri shot brief for this generation/);
 });
 
 test('Android Daily Look offers a dedicated camera capture path', () => {
