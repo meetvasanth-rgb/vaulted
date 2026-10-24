@@ -4441,7 +4441,8 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
           <div class="profile-photo-actions">
             <button class="profile-photo-action" id="account-profile-photo-change" type="button" onclick="chooseProfileImage()">Add image</button>
             <button class="profile-photo-action daily-look-trigger" type="button" onclick="openDailyLook()">Create today’s look</button>
-            <button class="profile-photo-action" type="button" onclick="openAvatarCreator()">Create my avatar</button>
+            <button class="profile-photo-action" type="button" onclick="openAvatarBuilder()">Create my avatar</button>
+            <button class="profile-photo-action" type="button" onclick="openAvatarFromPhoto()">Avatar from a photo</button>
             <button class="profile-photo-action remove" id="account-profile-photo-remove" type="button" onclick="removeProfileImage()" hidden>Remove</button>
           </div>
         </div>
@@ -15073,8 +15074,35 @@ function dismissAvatarOffer() {
   renderVaultList();
 }
 
-function openAvatarCreator() {
+// Two ways to an avatar: build one from parts on this device (the default), or have an AI turn a photo
+// into a cartoon (the Daily Look "My Avatar" style).
+function openAvatarFromPhoto() {
   openDailyLook({ styleId:AVATAR_STYLE_ID });
+}
+
+// The builder and its art (about 100 KB compressed) load only when someone opens it.
+const AVATAR_ASSET_VERSION = 2;
+let avatarBuilderLoading = null;
+function loadAvatarBuilder() {
+  if (window.VaultlixAvatar) return Promise.resolve(window.VaultlixAvatar);
+  if (!avatarBuilderLoading) {
+    const add = src => new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `${src}?v=${AVATAR_ASSET_VERSION}`;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error(`Could not load ${src}`));
+      document.head.appendChild(script);
+    });
+    avatarBuilderLoading = add('/vendor/open-peeps.js').then(() => add('/avatar.js')).then(() => window.VaultlixAvatar)
+      .catch(error => { avatarBuilderLoading = null; throw error; });
+  }
+  return avatarBuilderLoading;
+}
+
+async function openAvatarBuilder() {
+  if (!loadAccountState()) { openAccountPanel(); return; }
+  try { (await loadAvatarBuilder()).open(); }
+  catch (error) { toast('Could not open the avatar builder. Check your connection and try again.'); }
 }
 
 function avatarOfferHtml() {
@@ -15083,7 +15111,7 @@ function avatarOfferHtml() {
   return `<div class="vault-avatar-offer" role="region" aria-label="Make your avatar">
     <span class="vault-avatar-offer-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1 1.4 2.2 2 3.5 2s2.5-.6 3.5-2"/><path d="M9 10h.01M15 10h.01"/></svg></span>
     <div class="vault-avatar-offer-text"><strong>Make your avatar</strong><span>A friendly cartoon of you for your profile picture.</span>
-      <div class="vault-avatar-offer-actions"><button type="button" class="primary" onclick="openAvatarCreator()">Create</button><button type="button" onclick="dismissAvatarOffer()">Not now</button></div>
+      <div class="vault-avatar-offer-actions"><button type="button" class="primary" onclick="openAvatarBuilder()">Create</button><button type="button" onclick="dismissAvatarOffer()">Not now</button></div>
     </div>
   </div>`;
 }

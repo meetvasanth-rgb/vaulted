@@ -12,6 +12,7 @@ const { WebSocketServer } = require('ws');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
+const { suggestionRequest: avatarSuggestionRequest, parseSuggestionResponse: parseAvatarSuggestion } = require('./avatar-suggestion');
 const { SafetyStore } = require('./safety-store');
 const { guardedSocketTask } = require('./socket-task');
 const { buildHistoryPage } = require('./history-page');
@@ -2978,7 +2979,7 @@ function bodyLimitFor(pathname, req) {
   }
   if (pathname === '/api/account/register') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
-  if (pathname === '/api/account/daily-look') return BODY_LIMIT_DAILY_LOOK;
+  if (pathname === '/api/account/daily-look' || pathname === '/api/account/avatar-suggest') return BODY_LIMIT_DAILY_LOOK;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
@@ -4074,6 +4075,39 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       configured:!!OPENAI_API_KEY,
       styles:publicDailyLookStyles(),
     });
+  }
+
+  // Suggests avatar features (hair, skin, beard, glasses...) from a photo for the on-device avatar builder.
+  // Same consent, moderation and no-keep rule as Daily Look; the photo is read once and never stored. The
+  // answer is only ever a choice from the builder's own lists.
+  if (path === '/api/account/avatar-suggest' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (await rateLimited(`avatar-suggest:${d.accountId}`, 12, 24 * 60 * 60 * 1000) ||
+        await rateLimited(`avatar-suggest-ip:${ip}`, 30, 60 * 60 * 1000)) {
+      return resErr(res, 'Too many suggestions today — build your avatar by hand, or try again tomorrow.', 429);
+    }
+    const apiKey = OPENAI_API_KEY;
+    if (!apiKey) return resErr(res, 'Avatar suggestions are temporarily unavailable.', 503);
+    const image = parseDailyLookImage(d.image);
+    if (!image) return resErr(res, 'Choose a valid photo.', 400);
+    try {
+      if (await moderateDailyLookImage(d.image, apiKey)) return resErr(res, 'This photo cannot be used. Choose another.', 400);
+      const response = await openAiJson('https://api.openai.com/v1/chat/completions', {
+        method:'POST',
+        headers:{ Authorization:`Bearer ${apiKey}`, 'Content-Type':'application/json' },
+        body:JSON.stringify(avatarSuggestionRequest(process.env.OPENAI_AVATAR_MODEL || 'gpt-4.1-mini', d.image)),
+      }, 45000);
+      if (!response.ok) throw new Error(`avatar-${response.status}`);
+      const suggestion = parseAvatarSuggestion(await response.json());
+      if (!suggestion || !Object.keys(suggestion).length) throw new Error('avatar-empty');
+      res.setHeader('Cache-Control', 'no-store');
+      return res200(res, { ok:true, suggestion });
+    } catch (error) {
+      console.warn(`Avatar suggestion failed (${String(error?.message || 'unknown').slice(0, 32)}).`);
+      return resErr(res, 'Could not suggest an avatar from this photo. You can build it by hand.', 502);
+    }
   }
 
   if (path === '/api/account/daily-look' && method === 'POST') {

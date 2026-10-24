@@ -68,7 +68,7 @@ function offerHarness({ state, stored = {} }) {
     AVATAR_STYLE_ID: 'vaultlix-avatar',
     Map,
   });
-  vm.runInContext("const AVATAR_OFFER_KEY_PREFIX = 'vaultlix_avatar_offer:';\n" + ['avatarOfferKey', 'avatarOfferDismissed', 'dismissAvatarOffer', 'openAvatarCreator', 'avatarOfferHtml'].map(extractFunction).join('\n'), context);
+  vm.runInContext("const AVATAR_OFFER_KEY_PREFIX = 'vaultlix_avatar_offer:';\n" + ['avatarOfferKey', 'avatarOfferDismissed', 'dismissAvatarOffer', 'openAvatarFromPhoto', 'avatarOfferHtml'].map(extractFunction).join('\n'), context);
   return { context, store };
 }
 
@@ -76,7 +76,7 @@ test('an account without a profile picture is offered an avatar, once', () => {
   const h = offerHarness({ state:{ accountId:'acc1', profileImage:null } });
   const html = h.context.avatarOfferHtml();
   assert.match(html, /Make your avatar/);
-  assert.match(html, /onclick="openAvatarCreator\(\)">Create</);
+  assert.match(html, /onclick="openAvatarBuilder\(\)">Create</);
   assert.match(html, /onclick="dismissAvatarOffer\(\)">Not now</);
   h.context.dismissAvatarOffer();
   assert.equal(h.store.get('vaultlix_avatar_offer:acc1'), 'dismissed', 'its own key, not a conversation record');
@@ -92,9 +92,9 @@ test('no offer once there is a profile picture, when signed out, or after it was
   assert.match(offerHarness({ state:{ accountId:'acc2' }, stored:{ 'vaultlix_avatar_offer:acc1':'dismissed' } }).context.avatarOfferHtml(), /Make your avatar/);
 });
 
-test('Create opens the Daily Look sheet on the avatar style; the sheet is reworded and skips the saved look', () => {
+test('The photo route opens the Daily Look sheet on the avatar style; the sheet is reworded and skips the saved look', () => {
   const h = offerHarness({ state:{ accountId:'acc1' } });
-  h.context.openAvatarCreator();
+  h.context.openAvatarFromPhoto();
   assert.deepEqual(JSON.parse(JSON.stringify(h.context.opened)), { styleId:'vaultlix-avatar' });
   const open = extractFunction('openDailyLook');
   assert.match(open, /const avatarMode = options\.styleId === AVATAR_STYLE_ID/);
@@ -105,6 +105,7 @@ test('Create opens the Daily Look sheet on the avatar style; the sheet is reword
   assert.match(apply, /The photo is not kept/);
   // Only the avatar style is shown in avatar mode, and the profile button keeps its meaning.
   assert.match(extractFunction('renderDailyLookStyles'), /style\.id === AVATAR_STYLE_ID/);
-  assert.match(client, /onclick="openAvatarCreator\(\)">Create my avatar<\/button>/);
+  assert.match(client, /onclick="openAvatarBuilder\(\)">Create my avatar<\/button>/);
+  assert.match(client, /onclick="openAvatarFromPhoto\(\)">Avatar from a photo<\/button>/);
   assert.match(client, /let html = searchQuery \? '' : avatarOfferHtml\(\) \+ requestsRowHtml\(\);/);
 });
