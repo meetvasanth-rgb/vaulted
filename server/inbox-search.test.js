@@ -71,7 +71,7 @@ function filteredIds({ privateGroups, rooms, query }) {
     statusFeed: [],
     normalizePrivateNumber: value => value,
     pendingIncomingConnections: [], pendingOutgoingConnections: [],
-    requestHtml: '', outgoingRequestHtml: '', requestsRowHtml: () => '',
+    requestHtml: '', outgoingRequestHtml: '', requestsRowHtml: () => '', avatarOfferHtml: () => '',
     result: null,
   };
   vm.createContext(context);

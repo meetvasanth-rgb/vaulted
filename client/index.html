@@ -522,6 +522,13 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .t-dot{width:5px;height:5px;border-radius:50%;background:#AAA;animation:typing-bounce .9s infinite}
 .t-dot:nth-child(2){animation-delay:.15s}.t-dot:nth-child(3){animation-delay:.3s}
 @keyframes typing-bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+/* Someone is typing: their picture with a small bubble of bouncing dots on its upper right. */
+.typing-indicator.peer-typing{position:relative;width:46px;height:38px;padding:0;gap:0;background:transparent;border:0;border-radius:0;margin:8px 0 2px 2px;align-items:flex-end}
+.peer-typing-avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;flex:none;background:#EBDDE3;color:#682C43;display:grid;place-items:center;font:700 13px/1 Inter,sans-serif}
+.peer-typing-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.peer-typing-dots{position:absolute;left:20px;top:0;display:flex;align-items:center;gap:2px;padding:5px 7px;background:#fff;border:1px solid #E8DDE1;border-radius:12px;box-shadow:0 1px 3px rgba(60,20,40,.12)}
+.peer-typing-dots .t-dot{width:4px;height:4px;background:#8A747C;animation-name:typing-bounce-small}
+@keyframes typing-bounce-small{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-3px)}}
 .chat-ftr{flex-shrink:0;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:4px;align-items:flex-end}
 /* 16px, not 15 — anything smaller than 16px on a text input makes iOS
    Safari auto-zoom the whole page in on focus, which is a likely
@@ -1185,6 +1192,16 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 #request-message-overlay{z-index:13000}
 .vault-requests-row{display:flex;align-items:center;gap:12px;width:calc(100% - 28px);margin:10px 14px 4px;padding:12px 14px;border:1px solid #E9D9E0;border-radius:16px;background:linear-gradient(145deg,#FFFDFE,#F8F0F3);color:#271D25;text-align:left;cursor:pointer;font-family:inherit}
 .vault-requests-row:active{background:#F4E8ED}
+.daily-look-styles[hidden]{display:none}
+.vault-avatar-offer{display:flex;align-items:flex-start;gap:12px;margin:10px 14px 4px;padding:13px 14px;border:1px solid #E9D9E0;border-radius:16px;background:#FBF4F6}
+.vault-avatar-offer-icon{width:40px;height:40px;flex:none;border-radius:50%;background:#EBDDE3;color:#682C43;display:grid;place-items:center}
+.vault-avatar-offer-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.vault-avatar-offer-text{min-width:0;flex:1}
+.vault-avatar-offer-text strong{display:block;font:700 14px/1.3 Inter,sans-serif;color:#271D25}
+.vault-avatar-offer-text>span{display:block;margin-top:2px;font:500 12.5px/1.4 Inter,sans-serif;color:#8A747C}
+.vault-avatar-offer-actions{display:flex;gap:8px;margin-top:10px}
+.vault-avatar-offer-actions button{border:1px solid #DCCDD2;background:#fff;color:#682C43;border-radius:12px;padding:8px 14px;font:650 13px Inter,sans-serif;cursor:pointer}
+.vault-avatar-offer-actions button.primary{background:#682C43;border-color:#682C43;color:#fff}
 .vault-requests-icon{width:40px;height:40px;border-radius:12px;background:#682C43;color:#fff;display:grid;place-items:center;flex:none}
 .vault-requests-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .vault-requests-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -2660,6 +2677,7 @@ html.vaultlix-native .landing-marketing{display:none!important}
 #s-chat .msg-name{display:none!important}
 #s-chat .msg-time{font:550 9.5px/1 'Manrope',sans-serif!important;color:#8C7D84!important}
 #s-chat .typing-indicator{background:#F8F3F5!important;border:1px solid #E8DDE1!important;box-shadow:none!important}
+#s-chat .typing-indicator.peer-typing{background:transparent!important;border:0!important}
 
 /* Original empty-conversation motion: two private identities establish a
    protected line. It is intentionally code-native (SVG + transforms), so it
@@ -3677,8 +3695,8 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <button type="button" id="secure-reconnect-button" onclick="requestSecureReconnection()">Reconnect securely</button>
   </div>
   <div class="chat-body" id="chat-body">
-    <div class="typing-indicator" id="typing-indicator">
-      <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
+    <div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing">
+      <span class="peer-typing-avatar" id="typing-avatar"></span><span class="peer-typing-dots"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span>
     </div>
   </div>
   <div style="position:relative">
@@ -4423,6 +4441,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
           <div class="profile-photo-actions">
             <button class="profile-photo-action" id="account-profile-photo-change" type="button" onclick="chooseProfileImage()">Add image</button>
             <button class="profile-photo-action daily-look-trigger" type="button" onclick="openDailyLook()">Create today’s look</button>
+            <button class="profile-photo-action" type="button" onclick="openAvatarCreator()">Create my avatar</button>
             <button class="profile-photo-action remove" id="account-profile-photo-remove" type="button" onclick="removeProfileImage()" hidden>Remove</button>
           </div>
         </div>
@@ -4844,7 +4863,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="account-overlay" id="daily-look-overlay" onclick="if(event.target===this)closeDailyLook()">
   <div class="account-card daily-look-card" role="dialog" aria-modal="true" aria-labelledby="daily-look-title">
     <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to five creations daily</div><div class="account-title" id="daily-look-title">Vaultlix Daily Look</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
-    <div class="daily-look-hero"><strong>A fresh look. Still unmistakably you.</strong><span>Choose a changing Vaultlix style, then keep the result or make it your profile image.</span></div>
+    <div class="daily-look-hero"><strong id="daily-look-hero-title">A fresh look. Still unmistakably you.</strong><span id="daily-look-hero-copy">Choose a changing Vaultlix style, then keep the result or make it your profile image.</span></div>
     <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
     <div class="daily-look-styles" id="daily-look-styles" aria-label="Choose a Daily Look style"></div>
     <input id="daily-look-profile-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookProfilePhoto(event)"/>
@@ -11056,7 +11075,7 @@ function showScreen(id) {
     if (klipyGifObserver) klipyGifObserver.disconnect();
     klipyGifObserver = null;
     const chatBody = document.getElementById('chat-body');
-    if (chatBody) chatBody.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+    if (chatBody) chatBody.innerHTML = '<div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing"><span class="peer-typing-avatar" id="typing-avatar"></span><span class="peer-typing-dots"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span></div>';
   }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -11987,8 +12006,23 @@ function setStatus(online, name) {
   if (label && online) label.textContent = 'Online';
 }
 
-function showTypingIndicator(show) {
-  document.getElementById('typing-indicator')?.classList.toggle('show', show);
+// The indicator shows the other person's picture (or their initial) with the typing dots beside it.
+function typingAvatarHtml(room) {
+  const image = displayProfileImageUri(room?.peerProfileImage);
+  if (image) return `<img src="${escapeHtml(image)}" alt=""/>`;
+  const label = String(roomDisplayLabel(room) || room?.peerName || '').trim();
+  return escapeHtml(Array.from(label)[0]?.toUpperCase() || '·');
+}
+
+function showTypingIndicator(show, room = getActiveRoom()) {
+  const indicator = document.getElementById('typing-indicator');
+  if (!indicator) return;
+  if (show) {
+    const avatar = indicator.querySelector('#typing-avatar');
+    const html = typingAvatarHtml(room);
+    if (avatar && avatar.dataset.shown !== html) { avatar.innerHTML = html; avatar.dataset.shown = html; }
+  }
+  indicator.classList.toggle('show', show);
 }
 
 let crossVaultBannerTimer = null;
@@ -13054,6 +13088,20 @@ function loadDailyLookResult(accountId) {
   return dailyLookResultStore('read', accountId);
 }
 
+// The same sheet makes an avatar: reworded, and only the avatar style is offered.
+let dailyLookAvatarMode = false;
+function applyDailyLookMode(avatarMode) {
+  dailyLookAvatarMode = !!avatarMode;
+  const set = (id, text) => { const node = document.getElementById(id); if (node) node.textContent = text; };
+  set('daily-look-title', avatarMode ? 'Your Vaultlix avatar' : 'Vaultlix Daily Look');
+  set('daily-look-hero-title', avatarMode ? 'A friendly cartoon of you.' : 'A fresh look. Still unmistakably you.');
+  set('daily-look-hero-copy', avatarMode
+    ? 'Pick a clear photo of your face. We turn it into an avatar you can use as your profile picture. The photo is not kept.'
+    : 'Choose a changing Vaultlix style, then keep the result or make it your profile image.');
+  const generate = document.getElementById('daily-look-generate');
+  if (generate && !generate.hidden && !generate.disabled) generate.textContent = avatarMode ? 'Create my avatar' : 'Create my Daily Look';
+}
+
 function closeDailyLook() {
   document.getElementById('daily-look-overlay')?.classList.remove('open');
   dailyLookSourceImage = null;
@@ -13065,6 +13113,15 @@ function closeDailyLook() {
 function renderDailyLookStyles(styles = []) {
   const holder = document.getElementById('daily-look-styles');
   if (!holder) return;
+  if (dailyLookAvatarMode) {
+    // Avatar mode offers the avatar style alone: nothing to choose, no gallery shortcut.
+    styles = styles.filter(style => style.id === AVATAR_STYLE_ID);
+    dailyLookStyleId = AVATAR_STYLE_ID;
+    holder.replaceChildren();
+    holder.hidden = true;
+    return;
+  }
+  holder.hidden = false;
   const featured = styles.find(style => style.featured) || styles[0];
   if (!styles.some(style => style.id === dailyLookStyleId)) dailyLookStyleId = featured?.id || null;
   const gallery = document.createElement('button');
@@ -13100,7 +13157,7 @@ function resetDailyLookView() {
   if (consent) consent.checked = false;
   document.getElementById('daily-look-result-actions')?.setAttribute('hidden', '');
   const generate = document.getElementById('daily-look-generate');
-  if (generate) { generate.hidden = false; generate.disabled = false; generate.textContent = 'Create my Daily Look'; }
+  if (generate) { generate.hidden = false; generate.disabled = false; generate.textContent = dailyLookAvatarMode ? 'Create my avatar' : 'Create my Daily Look'; }
   const photoActions = document.getElementById('daily-look-photo-actions');
   if (photoActions) photoActions.hidden = false;
   const photoButton = document.getElementById('daily-look-photo-button');
@@ -13113,8 +13170,12 @@ function resetDailyLookView() {
   if (statusUse) statusUse.hidden = true;
 }
 
+const AVATAR_STYLE_ID = 'vaultlix-avatar';
+
 async function openDailyLook(options = {}) {
   dailyLookDestination = options.destination === 'status' ? 'status' : null;
+  // The avatar flow starts from the picker (never from the last saved look) with its style chosen.
+  const avatarMode = options.styleId === AVATAR_STYLE_ID;
   const state = loadAccountState();
   if (!state) {
     document.getElementById('status-composer')?.style.removeProperty('display');
@@ -13123,6 +13184,8 @@ async function openDailyLook(options = {}) {
     return;
   }
   resetDailyLookView();
+  dailyLookStyleId = avatarMode ? AVATAR_STYLE_ID : null;
+  applyDailyLookMode(avatarMode);
   renderDailyLookStyles([]);
   document.getElementById('daily-look-overlay')?.classList.add('open');
   const status = document.getElementById('daily-look-status');
@@ -13138,7 +13201,7 @@ async function openDailyLook(options = {}) {
   const kicker = document.getElementById('daily-look-kicker');
   if (kicker) kicker.textContent = `Testing · up to ${result.limit || 5} creations daily`;
   renderDailyLookStyles(result.styles || []);
-  if (savedLook?.image) {
+  if (savedLook?.image && !avatarMode) {
     showDailyLookResult(savedLook, 'Your last Daily Look is saved on this device and ready to download.');
     return;
   }
@@ -13259,7 +13322,7 @@ async function useDailyLookAsProfile() {
   try {
     if (status) status.textContent = 'Updating your profile…';
     const image = await dailyLookProfileImage();
-    if (await saveProfileImageUpdate('replace', image)) { toast('Daily Look added to your profile'); closeDailyLook(); }
+    if (await saveProfileImageUpdate('replace', image)) { toast(dailyLookAvatarMode ? 'Avatar added to your profile' : 'Daily Look added to your profile'); closeDailyLook(); }
   } catch (error) { if (status) status.textContent = error?.message || 'Could not update your profile.'; }
 }
 
@@ -14986,6 +15049,43 @@ function markRequestsSeen() {
   if (Object.keys(before).length !== Object.keys(next).length) changed = true; // forget answered requests
   if (changed) { try { localStorage.setItem(key, JSON.stringify(next)); } catch (e) {} }
   return changed;
+}
+
+// ── AVATAR OFFER ──────────────────────────────────────────────────────
+// A card at the top of the inbox, for an account that has no profile picture yet: "Make your avatar".
+// It stays until the account has a picture or the person taps "Not now" (remembered per account in its
+// own localStorage key, never in a room's data).
+const AVATAR_OFFER_KEY_PREFIX = 'vaultlix_avatar_offer:';
+
+function avatarOfferKey(state = loadAccountState()) {
+  return state?.accountId ? AVATAR_OFFER_KEY_PREFIX + state.accountId : null;
+}
+
+function avatarOfferDismissed(state) {
+  const key = avatarOfferKey(state);
+  if (!key) return true;
+  try { return !!localStorage.getItem(key); } catch (e) { return false; }
+}
+
+function dismissAvatarOffer() {
+  const key = avatarOfferKey();
+  if (key) { try { localStorage.setItem(key, 'dismissed'); } catch (e) {} }
+  renderVaultList();
+}
+
+function openAvatarCreator() {
+  openDailyLook({ styleId:AVATAR_STYLE_ID });
+}
+
+function avatarOfferHtml() {
+  const state = loadAccountState();
+  if (!state || state.profileImage || avatarOfferDismissed(state)) return '';
+  return `<div class="vault-avatar-offer" role="region" aria-label="Make your avatar">
+    <span class="vault-avatar-offer-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1 1.4 2.2 2 3.5 2s2.5-.6 3.5-2"/><path d="M9 10h.01M15 10h.01"/></svg></span>
+    <div class="vault-avatar-offer-text"><strong>Make your avatar</strong><span>A friendly cartoon of you for your profile picture.</span>
+      <div class="vault-avatar-offer-actions"><button type="button" class="primary" onclick="openAvatarCreator()">Create</button><button type="button" onclick="dismissAvatarOffer()">Not now</button></div>
+    </div>
+  </div>`;
 }
 
 function requestsRowHtml() {
@@ -19349,7 +19449,7 @@ function renderVaultList() {
     return;
   }
   const searchQuery = vaultSearchActive ? vaultSearchQuery : '';
-  let html = searchQuery ? '' : requestsRowHtml();
+  let html = searchQuery ? '' : avatarOfferHtml() + requestsRowHtml();
   const hiddenStatusIds = statusHiddenIds();
   const liveStatusAuthors = new Set(statusFeed
     .filter(item => !item.own && !hiddenStatusIds.has(item.id))
@@ -19492,7 +19592,7 @@ function prepareChatBodyForFirstPaint() {
     body.innerHTML = '<div class="chat-restore-pending" role="status"><div class="typing-indicator show" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div><span>Opening encrypted conversation…</span></div>';
     return;
   }
-  body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+  body.innerHTML = '<div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing"><span class="peer-typing-avatar" id="typing-avatar"></span><span class="peer-typing-dots"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span></div>';
 }
 
 function setActiveRoom(code, { deferMessages = false } = {}) {
@@ -19896,7 +19996,7 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
     }
     return;
   }
-  body.innerHTML = '<div class="typing-indicator" id="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+  body.innerHTML = '<div class="typing-indicator peer-typing" id="typing-indicator" aria-label="Typing"><span class="peer-typing-avatar" id="typing-avatar"></span><span class="peer-typing-dots"><i class="t-dot"></i><i class="t-dot"></i><i class="t-dot"></i></span></div>';
   if (room.historyOldestSeq > 1 && !room.historyEarlierExhausted) {
     const more = document.createElement('div');
     more.className = 'load-earlier';
@@ -22640,7 +22740,7 @@ async function syncInbox({ refreshAll = false } = {}) {
     const room = rooms.get(update.code);
     if (!room) continue;
     if (update.roomGone || update.changed || refreshAll) doPoll(room);
-    if (room.code === activeRoomCode) showTypingIndicator(!!update.typing);
+    if (room.code === activeRoomCode) showTypingIndicator(!!update.typing, room);
   }
 }
 
@@ -22687,7 +22787,7 @@ function connectInbox() {
     if (!room) return;
     if (message.type === 'typing') {
       if (room.inboxTypingHideTimer) clearTimeout(room.inboxTypingHideTimer);
-      if (room.code === activeRoomCode) showTypingIndicator(message.active !== false);
+      if (room.code === activeRoomCode) showTypingIndicator(message.active !== false, room);
       room.inboxTypingHideTimer = setTimeout(() => {
         if (room.code === activeRoomCode) showTypingIndicator(false);
       }, 3200);
@@ -23142,7 +23242,7 @@ async function checkTyping(room) {
   if (!room.code || !room.token) return;
   try {
     const data = await api('/api/check_typing', { code: room.code, token: room.token });
-    if (room.code === activeRoomCode) showTypingIndicator(data.typing);
+    if (room.code === activeRoomCode) showTypingIndicator(data.typing, room);
   } catch(e) {}
 }
 

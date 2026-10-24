@@ -8,5 +8,5 @@ const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'
 test('chat does not inject the retired two-circle connection animation', () => {
   assert.doesNotMatch(client, /function privateLineWelcomeMarkup\(\)/);
   assert.doesNotMatch(client, /privateLineWelcomeMarkup\(\)/);
-  assert.match(client, /body\.innerHTML = '<div class="typing-indicator"/);
+  assert.match(client, /body\.innerHTML = '<div class="typing-indicator(?: peer-typing)?"/);
 });

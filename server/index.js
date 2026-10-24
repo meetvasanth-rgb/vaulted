@@ -300,6 +300,21 @@ Choose finishing from the actual scenario. For a gym image, keep the gym recogni
 ]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
+    // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
+    // cartoon built from the person's own photo. Always a square, whatever the source photo's shape.
+    id:'vaultlix-avatar', name:'My Avatar', note:'A friendly cartoon portrait of you, made for your profile',
+    canvas:'square', size:'1024x1024', quality:'medium',
+    prompt:`Turn the person in the uploaded photograph into a friendly, polished, stylised 3D-cartoon avatar for a messaging profile picture.
+
+The avatar must be unmistakably the same person. Keep their face shape and proportions, skin tone, hair colour, hair style and hairline, eyebrows, eye shape and colour, nose, mouth, any facial hair, glasses or visible accessories, and the colour and neckline of their clothing. Keep their apparent age, gender presentation and build exactly as they are. Do not beautify, slim, age or change them in any way beyond the cartoon style.
+
+Style: soft, smooth, appealing cartoon proportions with clean shading, expressive natural eyes and a warm, relaxed, slightly smiling expression. Front-facing, centred head and shoulders, with the whole head and both shoulders inside the frame and some space around them.
+
+Background: one clean, flat, soft pastel colour that complements their skin and clothing. No scene, no props, no pattern, no gradient noise.
+
+If the photograph contains several people, make the avatar of the single most prominent or central person only. Do not depict a celebrity, a character or any real person other than the one photographed. Do not generate any text, logo or watermark.`,
+  },
+  {
     id:'navratri-special', name:'Navratri Special', note:'Ten festive portraits with authentic colour, movement and light',
     size:'1024x1024',
     quality:'high',
@@ -1376,10 +1391,15 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0, dimension
     : enhancerLook
       ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
       : style.prompt;
-  const sourceWidth = dimensions?.width || 1024;
-  const sourceHeight = dimensions?.height || 1024;
+  // An avatar is always a 1024px square; every other style keeps the source photo's own shape.
+  const squareOutput = style.canvas === 'square';
+  const sourceWidth = squareOutput ? 1024 : (dimensions?.width || 1024);
+  const sourceHeight = squareOutput ? 1024 : (dimensions?.height || 1024);
   const orientation = sourceWidth > sourceHeight ? 'landscape' : sourceHeight > sourceWidth ? 'portrait' : 'square';
-  form.append('prompt', `${directedPrompt}\n\nPreserve the source image's ${orientation} canvas, full composition and ${sourceWidth}:${sourceHeight} aspect ratio. Keep all important people, hands, feet and scene details safely inside that frame. Do not convert the composition into a square or crop it to a profile portrait. Do not generate any text, logo or watermark.`);
+  const canvasInstruction = squareOutput
+    ? 'Create the avatar on a square 1:1 canvas. Do not generate any text, logo or watermark.'
+    : `Preserve the source image's ${orientation} canvas, full composition and ${sourceWidth}:${sourceHeight} aspect ratio. Keep all important people, hands, feet and scene details safely inside that frame. Do not convert the composition into a square or crop it to a profile portrait. Do not generate any text, logo or watermark.`;
+  form.append('prompt', `${directedPrompt}\n\n${canvasInstruction}`);
   form.append('image', new Blob([image.bytes], { type:image.mime }), `vaultlix-source.${image.extension}`);
   form.append('size', dailyLookProviderSize(sourceWidth, sourceHeight));
   form.append('quality', style.quality || process.env.OPENAI_IMAGE_QUALITY || 'medium');
@@ -4105,7 +4125,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, {
         ok:true, generatedImage, generatedAt:completedAt,
-        width:dimensions.width, height:dimensions.height,
+        width:style.canvas === 'square' ? 1024 : dimensions.width, height:style.canvas === 'square' ? 1024 : dimensions.height,
         nextAt:account.dailyLookGenerationCount >= DAILY_LOOK_DAILY_LIMIT
           ? completedDay.nextAt : 0,
         limit:DAILY_LOOK_DAILY_LIMIT,
