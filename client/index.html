@@ -528,6 +528,13 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .peer-typing-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .peer-typing-dots{position:absolute;left:20px;top:0;display:flex;align-items:center;gap:2px;padding:5px 7px;background:#fff;border:1px solid #E8DDE1;border-radius:12px;box-shadow:0 1px 3px rgba(60,20,40,.12)}
 .peer-typing-dots .t-dot{width:4px;height:4px;background:#8A747C;animation-name:typing-bounce-small}
+/* Someone is recording a voice note: the same bubble, with a pulsing red dot and a microphone. */
+.peer-typing-mic{position:absolute;left:20px;top:0;display:none;align-items:center;gap:4px;padding:5px 8px;background:#fff;border:1px solid #E8DDE1;border-radius:12px;box-shadow:0 1px 3px rgba(60,20,40,.12);color:#682C43}
+.peer-typing-mic svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.peer-typing-mic i{width:6px;height:6px;border-radius:50%;background:#D93B4A;animation:recording-pulse 1s ease-in-out infinite}
+@keyframes recording-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+.typing-indicator.peer-typing.recording .peer-typing-dots{display:none}
+.typing-indicator.peer-typing.recording .peer-typing-mic{display:flex}
 @keyframes typing-bounce-small{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-3px)}}
 .chat-ftr{flex-shrink:0;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:4px;align-items:flex-end}
 /* 16px, not 15 — anything smaller than 16px on a text input makes iOS
@@ -12021,9 +12028,19 @@ function typingAvatarHtml(room) {
   return escapeHtml(Array.from(label)[0]?.toUpperCase() || '·');
 }
 
-function showTypingIndicator(show, room = getActiveRoom()) {
+function showTypingIndicator(show, room = getActiveRoom(), activity = 'typing') {
   const indicator = document.getElementById('typing-indicator');
   if (!indicator) return;
+  // 'recording' swaps the dots for a microphone: they are recording a voice note, not typing.
+  const recording = !!show && activity === 'recording';
+  if (recording && !indicator.querySelector('.peer-typing-mic')) {
+    const mic = document.createElement('span');
+    mic.className = 'peer-typing-mic';
+    mic.innerHTML = '<i></i><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+    indicator.appendChild(mic);
+  }
+  indicator.classList.toggle('recording', recording);
+  indicator.setAttribute('aria-label', recording ? 'Recording a voice note' : 'Typing');
   if (show) {
     const avatar = indicator.querySelector('#typing-avatar');
     const html = typingAvatarHtml(room);
@@ -22890,7 +22907,7 @@ async function syncInbox({ refreshAll = false } = {}) {
     const room = rooms.get(update.code);
     if (!room) continue;
     if (update.roomGone || update.changed || refreshAll) doPoll(room);
-    if (room.code === activeRoomCode) showTypingIndicator(!!update.typing, room);
+    if (room.code === activeRoomCode) showTypingIndicator(!!update.typing, room, update.activity);
   }
 }
 
@@ -22937,7 +22954,7 @@ function connectInbox() {
     if (!room) return;
     if (message.type === 'typing') {
       if (room.inboxTypingHideTimer) clearTimeout(room.inboxTypingHideTimer);
-      if (room.code === activeRoomCode) showTypingIndicator(message.active !== false, room);
+      if (room.code === activeRoomCode) showTypingIndicator(message.active !== false, room, message.activity);
       room.inboxTypingHideTimer = setTimeout(() => {
         if (room.code === activeRoomCode) showTypingIndicator(false);
       }, 3200);
@@ -23392,7 +23409,7 @@ async function checkTyping(room) {
   if (!room.code || !room.token) return;
   try {
     const data = await api('/api/check_typing', { code: room.code, token: room.token });
-    if (room.code === activeRoomCode) showTypingIndicator(data.typing, room);
+    if (room.code === activeRoomCode) showTypingIndicator(data.typing, room, data.activity);
   } catch(e) {}
 }
 
@@ -26908,6 +26925,19 @@ function hideVoiceRecordBar() {
   if (bar) bar.classList.remove('show');
 }
 
+// While a voice note is being recorded the other person sees that, like typing. It rides on the recording
+// timer: once the timer stops (sent, cancelled, reviewing) nothing more is sent and the indicator expires
+// on their side after three seconds.
+let voiceActivityRoom = null, voiceActivitySentAt = 0;
+const RECORDING_ACTIVITY_INTERVAL_MS = 2000;
+function sendRecordingActivity(now = Date.now()) {
+  const room = voiceActivityRoom;
+  if (!room?.code || !room.token || now - voiceActivitySentAt < RECORDING_ACTIVITY_INTERVAL_MS) return false;
+  voiceActivitySentAt = now;
+  api('/api/typing', { code:room.code, token:room.token, activity:'recording' }).catch(() => {});
+  return true;
+}
+
 async function startVoiceRecording() {
   const room = getActiveRoom();
   const input = document.getElementById('msg-input');
@@ -26942,10 +26972,13 @@ async function startVoiceRecording() {
   startVoiceMeter();
   const timeEl = document.getElementById('voice-record-time');
   if (timeEl) timeEl.textContent = '0:00';
+  voiceActivityRoom = room;
+  voiceActivitySentAt = 0;
   voiceTimerInterval = setInterval(() => {
     const el = document.getElementById('voice-record-time');
     const elapsedMs = Date.now() - voiceStartTime;
     if (el) el.textContent = formatVoiceTime(elapsedMs);
+    sendRecordingActivity();
     if (elapsedMs >= VOICE_MAX_MS) stopVoiceRecording(); // at the cap, open the review bar instead of sending
   }, 200);
 }

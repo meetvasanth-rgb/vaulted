@@ -1259,6 +1259,19 @@ async function profileLookupRetryAfter(headers, ip) {
   return delaySeconds;
 }
 
+// What the other person in a conversation is doing right now: typing, or recording a voice note.
+// A sign of life lasts three seconds, so a sender keeps repeating it while they do it.
+const TYPING_ACTIVITY_TTL_MS = 3000;
+function peerActivity(room, ownToken, now = Date.now()) {
+  let activity = null;
+  for (const [token, member] of room.members) {
+    if (sameConversationToken(token, ownToken) || !member.typing || now - member.typing >= TYPING_ACTIVITY_TTL_MS) continue;
+    if (member.typingActivity === 'recording') return 'recording';
+    activity = 'typing';
+  }
+  return activity;
+}
+
 function publicDailyLookStyles(now = Date.now()) {
   const featuredIndex = Math.floor(now / (7 * DAY_MS)) % DAILY_LOOK_STYLES.length;
   return DAILY_LOOK_STYLES.map((style, index) => ({
@@ -4257,16 +4270,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const receiptChanged = room.msgs.some(msg => msg.type === 'message' && messageFromToken(msg, item.token) &&
         msg.deliveredAt && (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)));
       const peerMessageChanged = room.msgs.some(msg => msg.seq > lastSeq && !msg.deleted && !messageFromToken(msg, item.token));
-      let typing = false;
-      const now = Date.now();
-      for (const [token, member] of room.members) {
-        if (!sameConversationToken(token, item.token) && member.typing && now - member.typing < 3000) typing = true;
-      }
+      const activity = peerActivity(room, item.token);
+      const typing = activity !== null;
       updates.push({
         code,
         changed: peerMessageChanged || room.reactionSeq > lastReactionSeq ||
           room.deletionSeq > lastDeletionSeq || (room.clearedAt || 0) > Number(item.lastKnownClearedAt || 0) || receiptChanged,
         typing,
+        ...(activity ? { activity } : {}),
       });
     }
     res.setHeader('Cache-Control', 'no-store');
@@ -5948,8 +5959,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (room && room.members.has(d.token)) {
       const m = room.members.get(d.token);
       m.lastSeen = Date.now(); m.typing = Date.now();
+      // 'recording' tells the other person a voice note is being recorded; anything else is ordinary typing.
+      m.typingActivity = d.activity === 'recording' ? 'recording' : 'typing';
       room.lastActivity = Date.now();
-      publishInboxRoom(d.code, 'typing', { excludeToken:d.token, payload:{ active:true } });
+      publishInboxRoom(d.code, 'typing', { excludeToken:d.token, payload:{ active:true, activity:m.typingActivity } });
     }
     return res200(res, { ok: true });
   }
@@ -5970,10 +5983,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   if (path==='/api/check_typing' && method==='POST') {
     const room = await ensureConversationLoaded(d.code);
     if (!room || !room.members.has(d.token)) return res200(res,{typing:false});
-    const now = Date.now();
-    let typing = false;
-    for (const [t,m] of room.members) if (!sameConversationToken(t, d.token) && m.typing && now-m.typing<3000) typing=true;
-    return res200(res,{typing});
+    const activity = peerActivity(room, d.token);
+    return res200(res, { typing:activity !== null, ...(activity ? { activity } : {}) });
   }
 
   // POST /api/leave — previously had NO auth check at all: it read d.code,
