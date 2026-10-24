@@ -758,6 +758,11 @@ function wirePrivateGroupMessage(row) {
   }, true);
   const quote = row.querySelector('[data-reply-to]');
   if (quote) quote.onclick = event => { if (!groupSelectMode) { event.stopPropagation(); jumpToPrivateGroupMessage(quote.dataset.replyTo); } };
+  // Swipe a message to the right to reply, as in a direct conversation (attachSwipeToReply lives in index.html).
+  const card = row.querySelector('.group-message');
+  if (card && privateGroupMessageById(id)) {
+    attachSwipeToReply(card, () => { if (!groupSelectMode) startPrivateGroupReply(id); }, () => groupSelectMode);
+  }
 }
 
 function jumpToPrivateGroupMessage(id) {

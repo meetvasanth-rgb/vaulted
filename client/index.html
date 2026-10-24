@@ -1193,6 +1193,9 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .vault-requests-row{display:flex;align-items:center;gap:12px;width:calc(100% - 28px);margin:10px 14px 4px;padding:12px 14px;border:1px solid #E9D9E0;border-radius:16px;background:linear-gradient(145deg,#FFFDFE,#F8F0F3);color:#271D25;text-align:left;cursor:pointer;font-family:inherit}
 .vault-requests-row:active{background:#F4E8ED}
 .daily-look-styles[hidden]{display:none}
+.swipe-reply-icon{position:fixed;z-index:60;width:34px;height:34px;border-radius:50%;background:rgba(104,44,67,.14);color:#682C43;display:grid;place-items:center;pointer-events:none;opacity:0;transform:scale(.6)}
+.swipe-reply-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.swipe-reply-icon.ready{background:#682C43;color:#fff}
 .profile-photo-preview.has-image{cursor:zoom-in}
 .profile-photo-preview.has-image:focus-visible{outline:2px solid #682C43;outline-offset:2px}
 .vault-avatar-offer{display:flex;align-items:flex-start;gap:12px;margin:10px 14px 4px;padding:13px 14px;border:1px solid #E9D9E0;border-radius:16px;background:#FBF4F6}
@@ -20140,7 +20143,8 @@ function nativeSwipeNavigationBlocked(target) {
     '.pdf-preview-overlay.open, .image-viewer-overlay, #status-composer, ' +
     '#group-chat.selecting, #group-members.open, #group-create-overlay.open, #group-add-overlay.open'
   )) return true;
-  return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile, .group-message');
+  // A message row is where swipe-to-reply starts, so a right swipe there replies and does not go back.
+  return !!target?.closest?.('input, textarea, select, button, a, [contenteditable="true"], .msg-bubble, .msg-album-tile, .group-message, #chat-body .msg');
 }
 
 function navigateBackFromNativeSwipe() {
@@ -20705,6 +20709,89 @@ function attachLongPress(el, msgId, onFire) {
   el.addEventListener('mouseleave', clearTimer);
 }
 
+// Swipe a message to the right to reply to it (WhatsApp style): the message follows the finger with a
+// reply arrow beside it, and letting go past the threshold opens the reply bar and the keyboard.
+// It starts only from a mostly-horizontal rightward drag, so scrolling, long-press selection, taps and
+// the left-edge back gesture are untouched.
+const SWIPE_REPLY_THRESHOLD_PX = 56;
+const SWIPE_REPLY_MAX_PX = 92;
+const SWIPE_REPLY_EDGE_PX = 24;
+let swipeReplyIcon = null;
+
+function swipeReplyIconEl() {
+  if (swipeReplyIcon?.isConnected) return swipeReplyIcon;
+  swipeReplyIcon = document.createElement('div');
+  swipeReplyIcon.className = 'swipe-reply-icon';
+  swipeReplyIcon.setAttribute('aria-hidden', 'true');
+  swipeReplyIcon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v3"/></svg>';
+  document.body.appendChild(swipeReplyIcon);
+  return swipeReplyIcon;
+}
+
+// `blocked` lets another screen (the group chat) say when selection mode is on.
+function attachSwipeToReply(el, onReply, blocked = () => selectMode) {
+  let startX = 0, startY = 0, pull = 0;
+  let tracking = false, locked = false, passed = false;
+  const settle = () => {
+    el.style.transition = 'transform .18s ease';
+    el.style.transform = '';
+    const icon = swipeReplyIcon;
+    if (icon) { icon.style.transition = 'opacity .15s'; icon.style.opacity = '0'; icon.classList.remove('ready'); }
+  };
+  const stop = () => { tracking = false; locked = false; passed = false; pull = 0; };
+  el.addEventListener('touchstart', event => {
+    stop();
+    if (blocked() || event.touches.length !== 1 || event.target.closest?.('input, textarea, select, audio, video, a')) return;
+    const touch = event.touches[0];
+    // The left screen edge belongs to the system back gesture.
+    if (touch.clientX < SWIPE_REPLY_EDGE_PX) return;
+    startX = touch.clientX; startY = touch.clientY;
+    tracking = true;
+  }, { passive:true });
+  el.addEventListener('touchmove', event => {
+    if (!tracking) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - startX, dy = touch.clientY - startY;
+    if (!locked) {
+      // Vertical movement is a scroll; leftward movement is not ours.
+      if ((Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) || dx < -12) { tracking = false; return; }
+      if (!(dx > 12 && dx > Math.abs(dy) * 1.5)) return;
+      locked = true;
+    }
+    event.preventDefault();
+    // The message trails the finger with some resistance.
+    pull = Math.min(SWIPE_REPLY_MAX_PX, Math.max(0, dx - 12) * 0.85);
+    el.style.transition = 'none';
+    el.style.transform = `translateX(${pull}px)`;
+    const rect = el.getBoundingClientRect();
+    const icon = swipeReplyIconEl();
+    const progress = Math.min(1, pull / SWIPE_REPLY_THRESHOLD_PX);
+    icon.style.transition = 'none';
+    icon.style.left = `${Math.max(4, rect.left - 40)}px`;
+    icon.style.top = `${rect.top + rect.height / 2 - 17}px`;
+    icon.style.opacity = String(progress);
+    icon.style.transform = `scale(${0.6 + progress * 0.4})`;
+    const reached = pull >= SWIPE_REPLY_THRESHOLD_PX;
+    icon.classList.toggle('ready', reached);
+    if (reached && !passed && navigator.vibrate) navigator.vibrate(10);
+    passed = reached;
+  }, { passive:false });
+  el.addEventListener('touchend', event => {
+    if (!tracking) return;
+    const replying = locked && pull >= SWIPE_REPLY_THRESHOLD_PX;
+    const swiped = locked;
+    settle();
+    if (swiped) {
+      // The lift after a drag must not also count as a tap on a photo or a link.
+      lastLongPressAt = Date.now();
+      event.preventDefault();
+    }
+    stop();
+    if (replying) onReply();
+  });
+  el.addEventListener('touchcancel', () => { if (tracking && locked) settle(); stop(); });
+}
+
 function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   // What the selection bar needs to know about this message.
   messageActionRegistry.set(msgId, { room, rec, replyText, isMe });
@@ -20719,6 +20806,13 @@ function wireMsgActions(div, room, msgId, replyText, isMe, rec) {
   const media = div.querySelector('.msg-image, .msg-file, .msg-pdf-card, .msg-viewonce, .msg-album-grid, .msg-voice, .msg-gif, .msg-video-card');
   if (media) attachLongPress(media, msgId);
   if (textBubble) attachLongPress(textBubble, msgId);
+  if (messageReplyable(rec)) {
+    attachSwipeToReply(div, () => {
+      if (selectMode) return;
+      startReply(rec, msgId, replyText);
+      document.getElementById('msg-input')?.focus({ preventScroll:true });
+    });
+  }
   const bubble = textBubble || div.querySelector('.msg-meta');
   if (!bubble) return;
   if (!media && !textBubble) attachLongPress(bubble, msgId);
