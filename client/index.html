@@ -1193,6 +1193,8 @@ body.native-ios-call-over-app-lock #privacy-cover{display:none!important}
 .vault-requests-row{display:flex;align-items:center;gap:12px;width:calc(100% - 28px);margin:10px 14px 4px;padding:12px 14px;border:1px solid #E9D9E0;border-radius:16px;background:linear-gradient(145deg,#FFFDFE,#F8F0F3);color:#271D25;text-align:left;cursor:pointer;font-family:inherit}
 .vault-requests-row:active{background:#F4E8ED}
 .daily-look-styles[hidden]{display:none}
+.profile-photo-preview.has-image{cursor:zoom-in}
+.profile-photo-preview.has-image:focus-visible{outline:2px solid #682C43;outline-offset:2px}
 .vault-avatar-offer{display:flex;align-items:flex-start;gap:12px;margin:10px 14px 4px;padding:13px 14px;border:1px solid #E9D9E0;border-radius:16px;background:#FBF4F6}
 .vault-avatar-offer-icon{width:40px;height:40px;flex:none;border-radius:50%;background:#EBDDE3;color:#682C43;display:grid;place-items:center}
 .vault-avatar-offer-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -4443,6 +4445,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
             <button class="profile-photo-action daily-look-trigger" type="button" onclick="openDailyLook()">Create today’s look</button>
             <button class="profile-photo-action" type="button" onclick="openAvatarBuilder()">Create my avatar</button>
             <button class="profile-photo-action" type="button" onclick="openAvatarFromPhoto()">Avatar from a photo</button>
+            <button class="profile-photo-action" id="account-profile-photo-view" type="button" onclick="viewOwnProfileImage()" hidden>View full size</button>
             <button class="profile-photo-action remove" id="account-profile-photo-remove" type="button" onclick="removeProfileImage()" hidden>Remove</button>
           </div>
         </div>
@@ -12882,8 +12885,33 @@ function renderAccountProfilePhoto(state = loadAccountState()) {
   } else {
     preview.textContent = String(state?.displayName || 'V').trim().charAt(0).toUpperCase() || 'V';
   }
+  // Tapping the picture (or the "View full size" button) shows it large.
+  preview.classList.toggle('has-image', !!image);
+  if (image) {
+    preview.setAttribute('role', 'button');
+    preview.tabIndex = 0;
+    preview.setAttribute('aria-label', 'View your profile image full size');
+    preview.onclick = viewOwnProfileImage;
+    preview.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); viewOwnProfileImage(); } };
+  } else {
+    preview.removeAttribute('role');
+    preview.removeAttribute('tabindex');
+    preview.setAttribute('aria-label', 'Profile image preview');
+    preview.onclick = null;
+    preview.onkeydown = null;
+  }
+  const view = document.getElementById('account-profile-photo-view');
+  if (view) view.hidden = !image;
   if (change) change.textContent = image ? 'Change image' : 'Add image';
   if (remove) remove.hidden = !image;
+}
+
+// Your own profile picture, large: the same full-screen viewer as chat photos (pinch to zoom, swipe or
+// tap outside to close, Save), raised above the account panel.
+function viewOwnProfileImage() {
+  const image = safeProfileImageUri(loadAccountState()?.profileImage);
+  if (!image) { toast('Add a profile image first'); return; }
+  viewImage(image, { zIndex:14000 });
 }
 async function refreshOwnProfileFromServer() {
   const state = loadAccountState();
