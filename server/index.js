@@ -13,6 +13,7 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { PostgresStore } = require('./postgres');
 const { buildActivationFunnel } = require('./activation-funnel');
+const { detectClientKind, normalizeClientKind, normalizeClientsSeen, noteAccountClient, describeAccountClients } = require('./account-clients');
 const { suggestionRequest: avatarSuggestionRequest, parseSuggestionResponse: parseAvatarSuggestion } = require('./avatar-suggestion');
 const { SafetyStore } = require('./safety-store');
 const { guardedSocketTask } = require('./socket-task');
@@ -3464,6 +3465,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       }
       if (await safetyStore.isSuspended(d.accountId)) return resErr(res, 'This account has been suspended.', 403);
       const sessionToken = await replaceAccountLoginSession(d.accountId, existing, accountDeviceHash(d.deviceId));
+      noteAccountClient(existing, detectClientKind(headers?.['user-agent']));
       await persistAccount(d.accountId);
       res.setHeader('Cache-Control', 'no-store');
       return res200(res, { ok:true, accountId:d.accountId, ...publicAccount(existing), sessionToken, revision:existing.revision, retention:accountRetention(existing) });
@@ -3518,6 +3520,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       tier, isFounding, creationOrder,
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
       dailyLookGeneratedAt:null, dailyLookWindowStartedAt:null, dailyLookGenerationCount:0,
+      registeredVia:detectClientKind(headers?.['user-agent']), clientsSeen:[detectClientKind(headers?.['user-agent'])],
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
@@ -3550,6 +3553,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!account || !valid) return resErr(res, 'Vaultlix Private Number or password is incorrect.', 403);
     if (await safetyStore.isSuspended(found.accountId)) return resErr(res, 'This account has been suspended.', 403);
     const sessionToken = await replaceAccountLoginSession(found.accountId, account, accountDeviceHash(d.deviceId));
+    noteAccountClient(account, detectClientKind(headers?.['user-agent']));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, passwordWrap: account.passwordWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
@@ -3645,6 +3649,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       notificationTag:'vaultlix-identity-recovered',
     });
     account.updatedAt = Date.now();
+    noteAccountClient(account, detectClientKind(headers?.['user-agent']));
     await persistAccount(found.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok: true, accountId:found.accountId, ...publicAccount(account), sessionToken, recoveryWrap: account.recoveryWrap, bundle: account.bundle, revision: account.revision, retention:accountRetention(account) });
@@ -4108,6 +4113,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       remaining:usage.remaining,
       configured:!!OPENAI_API_KEY,
       styles:publicDailyLookStyles(),
+      // For the account's own app only: whether it is old enough, and has never made one, for the nudge.
+      createdAt:Number(account.createdAt) || 0,
+      lastGeneratedAt:Number(account.dailyLookGeneratedAt) || 0,
     });
   }
 
@@ -4699,6 +4707,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       .filter(item => (item.fcmToken || item.apnsToken) !== token)
       .concat(destination)
       .slice(-10);
+    noteAccountClient(account, destination.platform);
     await persistAccount(d.accountId);
     return res200(res, { ok:true });
   }
@@ -6278,6 +6287,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           activeDevices: (account.sessions || []).filter(session => session.expiresAt > now).length,
           notificationDevices: (account.pushDestinations || []).length,
           pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
+          ...describeAccountClients(account),
         };
       })
       // lastActiveAt (kept fresh by the inbox socket's pong heartbeat) reflects
@@ -7488,6 +7498,8 @@ function hydrateAccounts(entries, source) {
       record.dailyLookGeneratedAt = Number(record.dailyLookGeneratedAt) || null;
       record.dailyLookWindowStartedAt = Number(record.dailyLookWindowStartedAt) || null;
       record.dailyLookGenerationCount = Math.max(0, Number(record.dailyLookGenerationCount) || 0);
+      record.registeredVia = normalizeClientKind(record.registeredVia);
+      record.clientsSeen = normalizeClientsSeen(record.clientsSeen);
       record.inboxKey = normalizeInboxKey(record.inboxKey);
       record.requestPolicy = normalizeRequestPolicy(record.requestPolicy);
       const storedProfileShareCode = normalizeProfileShareCode(record.profileShareCode);

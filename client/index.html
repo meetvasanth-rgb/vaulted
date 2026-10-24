@@ -13354,6 +13354,7 @@ async function generateDailyLook() {
   dailyLookSourceImage = null;
   dailyLookSourceDimensions = null;
   const savedLook = { accountId:state.accountId, image:result.generatedImage, width:result.width, height:result.height, styleName:result.style?.name || 'Daily Look', generatedAt:result.generatedAt || Date.now() };
+  endDailyLookNudge('tried');
   await saveDailyLookResult(savedLook.accountId, savedLook.image, savedLook.styleName, savedLook.generatedAt, savedLook.width, savedLook.height).catch(() => null);
   showDailyLookResult(savedLook, `${savedLook.styleName} is ready. ${result.remaining} creation${result.remaining === 1 ? '' : 's'} remaining today.`);
 }
@@ -15176,6 +15177,78 @@ function inviteCardHtml() {
       <button type="button" class="primary" onclick="shareInviteFromCard()">Share invite</button>
       <button type="button" onclick="showOwnPrivateNumberQr()">Show QR</button>
       <button type="button" class="quiet" onclick="snoozeInviteCard()">Later</button>
+    </div>
+  </div>`;
+}
+
+// ── DAILY LOOK NUDGE ──────────────────────────────────────────────────
+// A day after joining, a member who has a connection and has never made a Daily Look sees a card in the
+// inbox suggesting it. Whether they are eligible comes from the server (account age, never created one,
+// Daily Look switched on), asked at most every six hours. "Not now", or opening Daily Look from the card,
+// ends it for good; so does making a look any other way. Remembered per account in its own localStorage
+// key, never in a conversation's data.
+const DAILY_LOOK_NUDGE_KEY_PREFIX = 'vaultlix_daily_look_nudge:';
+const DAILY_LOOK_NUDGE_AFTER_MS = 24 * 60 * 60 * 1000;
+const DAILY_LOOK_NUDGE_RECHECK_MS = 6 * 60 * 60 * 1000;
+let dailyLookNudgeEligible = false;
+let dailyLookNudgeCheckedAt = 0;
+let dailyLookNudgeChecking = false;
+
+function dailyLookNudgeKey(state = loadAccountState()) {
+  return state?.accountId ? DAILY_LOOK_NUDGE_KEY_PREFIX + state.accountId : null;
+}
+
+function dailyLookNudgeEnded(state) {
+  const key = dailyLookNudgeKey(state);
+  if (!key) return true;
+  try { return !!localStorage.getItem(key); } catch (e) { return false; }
+}
+
+function endDailyLookNudge(reason = 'dismissed') {
+  const key = dailyLookNudgeKey();
+  if (key) { try { localStorage.setItem(key, reason); } catch (e) {} }
+  dailyLookNudgeEligible = false;
+}
+
+function dismissDailyLookNudge() {
+  endDailyLookNudge('dismissed');
+  renderVaultList();
+}
+
+function tryDailyLookFromNudge() {
+  endDailyLookNudge('tried');
+  renderVaultList();
+  openDailyLook();
+}
+
+// Asks the server, at most every six hours, and only when a nudge could be shown at all.
+async function refreshDailyLookNudge(now = Date.now()) {
+  const state = loadAccountState();
+  if (!state || dailyLookNudgeChecking || dailyLookNudgeEnded(state)) return;
+  if (rooms.size === 0 && privateGroups.size === 0) return;
+  if (now - dailyLookNudgeCheckedAt < DAILY_LOOK_NUDGE_RECHECK_MS) return;
+  dailyLookNudgeChecking = true;
+  dailyLookNudgeCheckedAt = now;
+  try {
+    const result = await api('/api/account/daily-look/status', { accountId:state.accountId, sessionToken:state.sessionToken });
+    if (result.error) return;
+    const eligible = !!result.configured && !!result.available && !result.lastGeneratedAt
+      && Number(result.createdAt) > 0 && now - Number(result.createdAt) >= DAILY_LOOK_NUDGE_AFTER_MS;
+    // They already made one (on this or another device): the nudge has nothing left to say.
+    if (result.lastGeneratedAt) endDailyLookNudge('tried');
+    if (eligible !== dailyLookNudgeEligible) { dailyLookNudgeEligible = eligible; renderVaultList(); }
+  } catch (error) {
+    // Try again at the next check.
+  } finally { dailyLookNudgeChecking = false; }
+}
+
+function dailyLookNudgeHtml() {
+  const state = loadAccountState();
+  if (!state || !dailyLookNudgeEligible || dailyLookNudgeEnded(state) || (rooms.size === 0 && privateGroups.size === 0)) return '';
+  return `<div class="vault-avatar-offer vault-daily-look-nudge" role="region" aria-label="Try Daily Look">
+    <span class="vault-avatar-offer-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>
+    <div class="vault-avatar-offer-text"><strong>Try Daily Look</strong><span>See yourself in a fresh style. Your photo isn’t kept.</span>
+      <div class="vault-avatar-offer-actions"><button type="button" class="primary" onclick="tryDailyLookFromNudge()">Try it</button><button type="button" onclick="dismissDailyLookNudge()">Not now</button></div>
     </div>
   </div>`;
 }
@@ -19605,7 +19678,8 @@ function renderVaultList() {
     return;
   }
   const searchQuery = vaultSearchActive ? vaultSearchQuery : '';
-  let html = searchQuery ? '' : inviteCardHtml() + avatarOfferHtml() + requestsRowHtml();
+  if (!searchQuery) refreshDailyLookNudge().catch(() => {});
+  let html = searchQuery ? '' : inviteCardHtml() + avatarOfferHtml() + dailyLookNudgeHtml() + requestsRowHtml();
   const hiddenStatusIds = statusHiddenIds();
   const liveStatusAuthors = new Set(statusFeed
     .filter(item => !item.own && !hiddenStatusIds.has(item.id))

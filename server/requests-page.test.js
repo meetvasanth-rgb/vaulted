@@ -121,7 +121,7 @@ test('opening needs an account, and closing returns to Chats and forgets the foc
 
 test('the chat list renders only the row, not the cards, and stays in step with an open page', () => {
   const list = extractFn('renderVaultList');
-  assert.match(list, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ requestsRowHtml\(\);/);
+  assert.match(list, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
   assert.doesNotMatch(list, /vault-list-request/);
   assert.match(list, /if \(!body\) return;\s*renderRequestsPageIfOpen\(\);/);
 });

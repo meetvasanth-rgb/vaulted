@@ -95,6 +95,6 @@ test('share opens the system share sheet with the invitation, falling back to co
 test('the one-time guide uses the same invitation text, and the card heads the inbox including the empty state', () => {
   assert.match(client, /const text = inviteShareText\(state, friendName\);/);
   assert.equal(harness().context.inviteShareText({ displayName:'V', privateNumber:'2345678901' }, 'Sam'), 'Hi Sam, I’d like a private line with you on Vaultlix. Connect with V: https://vaultlix.com/2345678901');
-  assert.match(client, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ requestsRowHtml\(\);/);
+  assert.match(client, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
   assert.match(client, /\$\{vaultSearchActive \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\)\}<div class="vault-list-empty">/);
 });

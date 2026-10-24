@@ -214,18 +214,32 @@
     table.replaceChildren(head, body);
   }
 
+  const CLIENT_LABELS = { ios:'iOS app', android:'Android app', web:'Web' };
+  // Where the identity was created, then every other kind of client it has used since.
+  function clientCell(identity) {
+    const seen = Array.isArray(identity.clientsSeen) ? identity.clientsSeen : [];
+    const first = CLIENT_LABELS[identity.registeredVia];
+    const others = seen.filter(kind => kind !== identity.registeredVia).map(kind => CLIENT_LABELS[kind]).filter(Boolean);
+    const main = first || (seen.length ? 'Not recorded' : 'Unknown');
+    const extra = first ? (others.length ? `Also ${others.join(', ')}` : '') : (seen.length ? `Used ${seen.map(kind => CLIENT_LABELS[kind]).filter(Boolean).join(', ')}` : '');
+    return `<strong>${escapeHtml(main)}</strong>${extra ? `<br><small>${escapeHtml(extra)}</small>` : ''}`;
+  }
+
   function renderIdentities(identities) {
-    $('identity-count').textContent = `${number(identities.length)} total`;
+    const withApp = identities.filter(identity => identity.usesApp).length;
+    const viaWeb = identities.filter(identity => identity.registeredVia === 'web').length;
+    $('identity-count').textContent = `${number(identities.length)} total · ${number(withApp)} used the app · ${number(viaWeb)} signed up on the web`;
     $('identity-rows').innerHTML = identities.length ? identities.map(identity => `<tr>
       <td><strong>${escapeHtml(identity.displayName || 'Unnamed')}</strong></td>
       <td><a href="/${encodeURIComponent(identity.privateNumber)}" target="_blank" rel="noopener">${escapeHtml(formatPrivateNumber(identity.privateNumber))}</a></td>
+      <td>${clientCell(identity)}</td>
       <td>${escapeHtml(formatDate(identity.createdAt))}</td>
       <td>${escapeHtml(formatDate(identity.updatedAt))}</td>
       <td>${escapeHtml(formatDate(identity.lastActiveAt))}</td>
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>
-    </tr>`).join('') : '<tr><td colspan="8" class="empty-row">No registered identities yet.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="9" class="empty-row">No registered identities yet.</td></tr>';
   }
 
   function setGauge(prefix, value, max) {

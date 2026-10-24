@@ -58,6 +58,6 @@ test('the identity table has a separate Last Online column sourced from lastActi
   assert.notEqual(lastOnlineIndex, -1);
   assert.ok(lastOnlineIndex > updatedIndex, 'Last Online column comes after Updated, matching the header order');
   // Both empty-state and loading-state colspans must match the real <th> count.
-  assert.match(html, /<td colspan="8" class="empty-row">Loading identities…<\/td>/);
-  assert.match(js, /<tr><td colspan="8" class="empty-row">No registered identities yet\.<\/td><\/tr>/);
+  assert.match(html, /<td colspan="9" class="empty-row">Loading identities…<\/td>/);
+  assert.match(js, /<tr><td colspan="9" class="empty-row">No registered identities yet\.<\/td><\/tr>/);
 });
