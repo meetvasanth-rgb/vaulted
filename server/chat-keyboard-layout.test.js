@@ -473,10 +473,39 @@ test('a real scroll after the keyboard has settled still counts', () => {
 
 test('wiring: Send keeps focus in the message box on touch screens', () => {
   const fn = extract(client, 'keepKeyboardOnTap');
-  assert.match(fn, /addEventListener\('touchstart'[^]*preventDefault[^]*\{ passive:false \}/);
-  assert.match(fn, /addEventListener\('touchend'[^]*button\.click\(\)/);
+  assert.match(fn, /addEventListener\('pointerdown'[^]*preventDefault[^]*setPointerCapture/);
+  assert.match(fn, /addEventListener\('pointerup'[^]*button\.click\(\)/);
+  assert.match(fn, /\['pointercancel','lostpointercapture'\]/);
+  assert.doesNotMatch(fn, /touchstart|touchend/);
   assert.match(fn, /addEventListener\('mousedown', event => event\.preventDefault\(\)\)/);
   assert.match(client, /keepKeyboardOnTap\(document\.getElementById\('send-btn'\)\);\s*keepKeyboardOnTap\(document\.querySelector\('\.group-send-btn'\)\);/);
+
+  const listeners = {};
+  let clicks = 0;
+  const button = {
+    dataset:{},
+    addEventListener(type, listener) { listeners[type] = listener; },
+    getBoundingClientRect() { return { left:10, right:54, top:10, bottom:54 }; },
+    setPointerCapture() {},
+    releasePointerCapture(pointerId) { listeners.lostpointercapture?.({ pointerId }); },
+    click() { clicks++; },
+  };
+  vm.runInNewContext(`(${fn})`)(button);
+  const down = { pointerType:'touch', isPrimary:true, pointerId:7, cancelable:true, preventDefault() {} };
+  listeners.pointerdown(down);
+  listeners.pointerup({ ...down, clientX:32, clientY:32 });
+  listeners.pointerup({ ...down, clientX:32, clientY:32 });
+  assert.equal(clicks, 1, 'one iPhone tap produces exactly one send click');
+});
+
+test('direct send is single-flight and preserves text entered while encryption is pending', () => {
+  const fn = extract(client, 'sendMsg');
+  assert.match(client, /let directSendInFlight = false;/);
+  assert.match(fn, /!content \|\| !room \|\| directSendInFlight/);
+  assert.match(fn, /directSendInFlight = true/);
+  assert.match(fn, /if \(input\.value === rawDraft\) input\.value = ''/);
+  assert.match(fn, /else if \(input\.value\.startsWith\(rawDraft\)\) input\.value = input\.value\.slice\(rawDraft\.length\)/);
+  assert.match(fn, /finally \{[^]*directSendInFlight = false/);
 });
 
 test('the iOS app asks for the light keyboard, and any exposed page area is white', () => {

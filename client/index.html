@@ -558,10 +558,11 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 #msg-input::placeholder{color:#BBB}
 #msg-input:disabled{opacity:.35;cursor:not-allowed}
 .group-chat-footer textarea{overflow-y:hidden}
-.send-btn{width:44px;height:44px;background:#682C43;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;border:none;box-shadow:0 2px 8px rgba(104,44,67,0.3)}
+.send-btn{width:44px;height:44px;background:#682C43;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;border:none;box-shadow:0 2px 8px rgba(104,44,67,0.3);touch-action:manipulation}
 .send-btn:hover{background:#542237;transform:scale(1.05)}
 .send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
 .send-btn svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.group-send-btn{touch-action:manipulation}
 .secure-reconnect-banner{display:none;margin:10px 16px 0;padding:12px 14px;border:1px solid rgba(104,44,67,.24);border-radius:14px;background:#FAF3F5;color:#4A2835;align-items:center;gap:12px;font-size:13px;line-height:1.35}
 .secure-reconnect-banner.show{display:flex}
 .secure-reconnect-banner span{flex:1}
@@ -23444,13 +23445,20 @@ async function doPoll(room) {
 }
 
 // ── SEND MESSAGE ─────────────────────────────────────────────────────────
+let directSendInFlight = false;
 async function sendMsg() {
   unlockAudio();
   const room = getActiveRoom();
   const input = document.getElementById('msg-input');
-  const content = input.value.trim();
-  if (!content || !room) return;
+  const rawDraft = input?.value || '';
+  const content = rawDraft.trim();
+  if (!content || !room || directSendInFlight) return false;
   if (editingMessage) return submitDirectMessageEdit(room, content);
+  directSendInFlight = true;
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn?.setAttribute('aria-busy', 'true');
+  sendBtn?.classList.add('sending');
+  try {
   // The tiny re-compressed thumbnail (see makeTinyThumbnail/startReply)
   // finishes in the background; await it here so it's actually ready by
   // the time the reply goes out, in case send happens right after tapping
@@ -23481,7 +23489,12 @@ async function sendMsg() {
     return false;
   }
 
-  input.value = '';
+  // WebCrypto is normally immediate, but an iPhone resuming from suspension
+  // can take long enough for the user to continue typing. Remove only the
+  // draft that was actually sent; never erase text added while encryption
+  // was pending.
+  if (input.value === rawDraft) input.value = '';
+  else if (input.value.startsWith(rawDraft)) input.value = input.value.slice(rawDraft.length);
   resizeChatComposer(input);
   updateComposerButtons();
   // Keep the active conversation ready for the next message. Hiding the
@@ -23513,7 +23526,13 @@ async function sendMsg() {
   // Update inbox ordering immediately rather than waiting for the next poll.
   room.lastMessageAt = sentAt;
 
-  try { await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }); } catch(e) {}
+  api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }).catch(() => {});
+  return true;
+  } finally {
+    directSendInFlight = false;
+    sendBtn?.removeAttribute('aria-busy');
+    sendBtn?.classList.remove('sending');
+  }
 }
 
 // ── EMOJI SCREEN EFFECT ──────────────────────────────────────────────────
@@ -25335,22 +25354,30 @@ function isNativeIOS() {
 function keepKeyboardOnTap(button) {
   if (!button || button.dataset.keepKeyboard) return;
   button.dataset.keepKeyboard = '1';
-  let tracking = null;
+  let trackingPointer = null;
   button.addEventListener('mousedown', event => event.preventDefault()); // desktop: keep focus too
-  button.addEventListener('touchstart', event => {
+  button.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'mouse' || event.isPrimary === false) return;
     if (event.cancelable) event.preventDefault();
-    tracking = event.touches && event.touches.length === 1 ? true : null;
+    trackingPointer = event.pointerId;
+    try { button.setPointerCapture?.(event.pointerId); } catch (error) {}
   }, { passive:false });
-  button.addEventListener('touchend', event => {
+  button.addEventListener('pointerup', event => {
+    if (trackingPointer !== event.pointerId) return;
     if (event.cancelable) event.preventDefault();
-    const touch = event.changedTouches && event.changedTouches[0];
     const box = button.getBoundingClientRect();
-    const inside = !touch || (touch.clientX >= box.left - 12 && touch.clientX <= box.right + 12 && touch.clientY >= box.top - 12 && touch.clientY <= box.bottom + 12);
-    const wanted = tracking && inside;
-    tracking = null;
+    const inside = event.clientX >= box.left - 12 && event.clientX <= box.right + 12
+      && event.clientY >= box.top - 12 && event.clientY <= box.bottom + 12;
+    trackingPointer = null;
+    try { button.releasePointerCapture?.(event.pointerId); } catch (error) {}
+    const wanted = inside;
     if (wanted) button.click();
   }, { passive:false });
-  button.addEventListener('touchcancel', () => { tracking = null; });
+  for (const type of ['pointercancel','lostpointercapture']) {
+    button.addEventListener(type, event => {
+      if (trackingPointer === event.pointerId) trackingPointer = null;
+    });
+  }
 }
 
 function keepIOSComposerFocused(inputId) {
