@@ -39,4 +39,6 @@
     <string name="native_reconnecting">正在重新连接…</string>
     <string name="native_call_connect_failed">无法接通通话，请重试。</string>
     <string name="native_call_connection_lost">通话连接已中断。</string>
+  <string name="ongoing_call_channel">通话中</string>
+  <string name="ongoing_call_return">点按返回通话</string>
 </resources>

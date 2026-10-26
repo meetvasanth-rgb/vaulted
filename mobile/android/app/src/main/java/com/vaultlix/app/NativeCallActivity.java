@@ -3,6 +3,12 @@ package com.vaultlix.app;
 import android.Manifest;
 import android.app.Activity;
 import android.app.KeyguardManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Intent;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
@@ -45,6 +51,8 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private static volatile boolean running;
 
     static boolean isRunning() { return running; }
+    private static final String ONGOING_CHANNEL_ID = "vaultlix_ongoing_call_v1";
+    private static final int ONGOING_NOTIFICATION_ID = 0x5641;
     static final String EXTRA_CALLER = "caller";
     static final String EXTRA_ROOM_CODE = "roomCode";
     static final String EXTRA_OUTGOING = "outgoing";
@@ -146,6 +154,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         running = true;
+        registerBackToInbox();
         setShowWhenLocked(true);
         setTurnScreenOn(true);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -502,11 +511,15 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             resumeCameraOnStart = true;
             engine.setCameraEnabled(false);
         }
+        // Once the call screen is out of sight (Back to the inbox, Home, screen off) the only
+        // way back to it is this ongoing notification, and the call's own task card in Recents.
+        if (!finishingCall && !isFinishing()) showOngoingCallNotification();
         super.onStop();
     }
 
     @Override protected void onStart() {
         super.onStart();
+        cancelOngoingCallNotification();
         if (resumeCameraOnStart && engine != null && !finishingCall) {
             resumeCameraOnStart = false;
             engine.setCameraEnabled(true);
@@ -752,6 +765,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
 
     @Override protected void onDestroy() {
         running = false;
+        cancelOngoingCallNotification();
         if (videoDialog != null && videoDialog.isShowing()) videoDialog.dismiss();
         handler.removeCallbacks(tick);
         handler.removeCallbacks(videoRequestTimeout);
@@ -762,6 +776,63 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         if (remoteView != null) { remoteView.release(); remoteView = null; }
         restoreAudio();
         super.onDestroy();
+    }
+
+    /**
+     * Back (or the back gesture) used to finish this screen while the call carried on unseen, with
+     * no way to reopen it. While the call is live it now steps aside instead: this activity has its
+     * own task, so the inbox underneath comes to the front and the call can be reopened from the
+     * ongoing notification or Recents. Once the call is over, Back closes the screen as before.
+     */
+    private void registerBackToInbox() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                (OnBackInvokedCallback) this::leaveCallScreen);
+    }
+
+    @Override public void onBackPressed() { leaveCallScreen(); }
+
+    private void leaveCallScreen() {
+        if (finishingCall || isFinishing()) { finish(); return; }
+        moveTaskToBack(true);
+    }
+
+    private void showOngoingCallNotification() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null || engine == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager.getNotificationChannel(ONGOING_CHANNEL_ID) == null) {
+            NotificationChannel channel = new NotificationChannel(
+                    ONGOING_CHANNEL_ID, getString(R.string.ongoing_call_channel), NotificationManager.IMPORTANCE_LOW);
+            channel.setSound(null, null);
+            channel.enableVibration(false);
+            channel.setShowBadge(false);
+            channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PRIVATE);
+            manager.createNotificationChannel(channel);
+        }
+        Intent reopen = new Intent(this, NativeCallActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this, ONGOING_NOTIFICATION_ID, reopen, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        android.app.Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new android.app.Notification.Builder(this, ONGOING_CHANNEL_ID)
+                : new android.app.Notification.Builder(this);
+        builder.setSmallIcon(R.drawable.ic_stat_vaultlix)
+                .setColor(Color.rgb(104, 44, 67))
+                .setContentTitle(callerDisplay == null || callerDisplay.isEmpty() ? getString(R.string.native_private_call) : callerDisplay)
+                .setContentText(getString(R.string.ongoing_call_return))
+                .setCategory(android.app.Notification.CATEGORY_CALL)
+                .setVisibility(android.app.Notification.VISIBILITY_PRIVATE)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(contentIntent);
+        if (connectedAt != 0) builder.setWhen(connectedAt).setUsesChronometer(true).setShowWhen(true);
+        manager.notify(ONGOING_NOTIFICATION_ID, builder.build());
+    }
+
+    private void cancelOngoingCallNotification() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.cancel(ONGOING_NOTIFICATION_ID);
     }
 
     private void clearIncomingCallBanner() {

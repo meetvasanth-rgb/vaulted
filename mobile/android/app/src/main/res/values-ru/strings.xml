@@ -39,4 +39,6 @@
     <string name="native_reconnecting">Повторное подключение…</string>
     <string name="native_call_connect_failed">Не удалось соединить звонок. Попробуйте ещё раз.</string>
     <string name="native_call_connection_lost">Соединение звонка потеряно.</string>
+  <string name="ongoing_call_channel">Текущий звонок</string>
+  <string name="ongoing_call_return">Нажмите, чтобы вернуться к звонку</string>
 </resources>

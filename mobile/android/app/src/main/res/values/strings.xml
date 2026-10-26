@@ -45,4 +45,6 @@
     <string name="native_reconnecting">Reconnecting…</string>
     <string name="native_call_connect_failed">Couldn’t connect the call. Please try again.</string>
     <string name="native_call_connection_lost">The call lost its connection.</string>
+  <string name="ongoing_call_channel">Ongoing call</string>
+  <string name="ongoing_call_return">Tap to return to your call</string>
 </resources>

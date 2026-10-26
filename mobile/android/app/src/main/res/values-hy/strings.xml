@@ -39,4 +39,6 @@
     <string name="native_reconnecting">Վերամիացում…</string>
     <string name="native_call_connect_failed">Չհաջողվեց միացնել զանգը։ Խնդրում ենք նորից փորձել։</string>
     <string name="native_call_connection_lost">Զանգի կապը խզվեց։</string>
+  <string name="ongoing_call_channel">Ընթացիկ զանգ</string>
+  <string name="ongoing_call_return">Հպեք՝ զանգին վերադառնալու համար</string>
 </resources>

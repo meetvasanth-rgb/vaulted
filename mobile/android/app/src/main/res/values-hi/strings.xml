@@ -39,4 +39,6 @@
     <string name="native_reconnecting">फिर से जोड़ा जा रहा है…</string>
     <string name="native_call_connect_failed">कॉल कनेक्ट नहीं हो सका। कृपया फिर कोशिश करें।</string>
     <string name="native_call_connection_lost">कॉल का कनेक्शन टूट गया।</string>
+  <string name="ongoing_call_channel">चालू कॉल</string>
+  <string name="ongoing_call_return">अपने कॉल पर लौटने के लिए टैप करें</string>
 </resources>
