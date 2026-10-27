@@ -13522,17 +13522,30 @@ function dismissFirstConnectionGuide() {
   document.getElementById('first-connection-overlay')?.classList.remove('open');
 }
 
-// The message sent with an invitation: who is asking, and the link that connects to them.
-function inviteShareText(state, friendName = '') {
+// Share invitation is an explicit, short-lived approval from the sender.
+// It therefore uses a one-time /invite/ link, never the permanent public
+// Private Number link (which continues to require the owner to accept).
+function inviteShareText(state, friendName = '', inviteUrl = '') {
   const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
-  return `${greeting}I’d like a private line with you on Vaultlix. Connect with ${state.displayName}: https://vaultlix.com/${state.privateNumber}`;
+  return `${greeting}I’d like a private line with you on Vaultlix. Connect with ${state.displayName}: ${inviteUrl}`;
+}
+async function createPrivateInvitation(state = loadAccountState()) {
+  if (!state) return null;
+  const result = await api('/api/private-invites/create', { accountId:state.accountId, sessionToken:state.sessionToken });
+  if (result.error || !/^https:\/\/vaultlix\.com\/invite\/[A-HJ-NP-Z2-9]{6}$/.test(result.url || '')) {
+    toast(result.error || 'Could not create an invitation. Please try again.');
+    return null;
+  }
+  return result;
 }
 
 async function shareFirstConnectionInvite() {
   const state = loadAccountState();
   if (!state?.privateNumber) return;
   const friendName = String(document.getElementById('first-connection-name')?.value || '').trim().replace(/\s+/g, ' ').slice(0, 32);
-  const text = inviteShareText(state, friendName);
+  const invitation = await createPrivateInvitation(state);
+  if (!invitation) return;
+  const text = inviteShareText(state, friendName, invitation.url);
   try {
     if (await openSystemShare(text)) {
       dismissFirstConnectionGuide();
@@ -15154,7 +15167,9 @@ function snoozeInviteCard() {
 async function shareInviteFromCard() {
   const state = loadAccountState();
   if (!state?.privateNumber) return;
-  const text = inviteShareText(state);
+  const invitation = await createPrivateInvitation(state);
+  if (!invitation) return;
+  const text = inviteShareText(state, '', invitation.url);
   try {
     if (await openSystemShare(text)) return;
     await navigator.clipboard.writeText(text);
@@ -23673,6 +23688,10 @@ function parseProfileShareCode(pathname = location.pathname) {
   const match = String(pathname || '').match(/^\/(?:p\/|p-)([a-hj-np-z2-9]{6})\/?$/i);
   return match ? normalizeProfileShareCode(match[1]) : null;
 }
+function parsePrivateInviteCode(pathname = location.pathname) {
+  const match = String(pathname || '').match(/^\/invite\/([a-hj-np-z2-9]{6})\/?$/i);
+  return match ? normalizeProfileShareCode(match[1]) : null;
+}
 function attemptMobileAppHandoff(target) {
   const params = new URLSearchParams(location.search);
   if (!target || params.get('appAttempted') === '1' || isNativeApp()) return;
@@ -23681,7 +23700,7 @@ function attemptMobileAppHandoff(target) {
     || (/macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
   if (!android && !ios) return;
   const code = normalizeProfileShareCode(target);
-  const path = code ? `p-${code}` : String(target);
+  const path = code ? (activePublicProfile?.privateInvitation ? `invite/${code}` : `p-${code}`) : String(target);
   const fallbackUrl = new URL(`/${path}`, location.origin);
   for (const [key,value] of params.entries()) fallbackUrl.searchParams.set(key,value);
   fallbackUrl.searchParams.set('appAttempted','1');
@@ -23699,7 +23718,11 @@ function attemptMobileAppHandoff(target) {
   // Apple's App Clip link performs the installed-app check for us: the full
   // app replaces its Clip after installation, while a device without Vaultlix
   // receives the small invitation Clip and its install sheet.
-  const inviteCode = normalizeProfileShareCode(activePublicProfile?.profileShareCode || target);
+  const inviteCode = normalizeProfileShareCode(
+    activePublicProfile?.privateInvitation
+      ? activePublicProfile?.inviteCode
+      : (activePublicProfile?.profileShareCode || target)
+  );
   if (!inviteCode) return;
   history.replaceState(null,'',`${fallbackUrl.pathname}${fallbackUrl.search}${fallbackUrl.hash}`);
   setTimeout(() => { location.href = iosAppClipInviteURL(inviteCode); }, 160);
@@ -23725,16 +23748,27 @@ function openRecoveryFromLink(recovery) {
   return true;
 }
 const QUICK_CONNECT_TARGET_KEY = 'vaultlix_quick_connect_target_v1';
+const PRIVATE_INVITE_TARGET_KEY = 'vaultlix_private_invite_target_v1';
 const PENDING_QUICK_CONNECT_URL_KEY = 'vaultlix_pending_quick_connect_url_v1';
 let quickConnectHandshakePending = new URLSearchParams(location.search).get('ref') === 'qr' || sessionStorage.getItem('vaultlix:qr-handshake') === '1';
 function rememberQuickConnectTarget(privateNumber) {
   const normalized = normalizePrivateNumber(privateNumber);
   if (normalized) localStorage.setItem(QUICK_CONNECT_TARGET_KEY, normalized);
 }
+function rememberPrivateInviteTarget(code) {
+  const normalized = normalizeProfileShareCode(code);
+  if (normalized) localStorage.setItem(PRIVATE_INVITE_TARGET_KEY, normalized);
+}
+function loadPrivateInviteTarget() {
+  return normalizeProfileShareCode(localStorage.getItem(PRIVATE_INVITE_TARGET_KEY));
+}
 function loadQuickConnectTarget() {
   return normalizePrivateNumber(localStorage.getItem(QUICK_CONNECT_TARGET_KEY));
 }
-function clearQuickConnectTarget() { localStorage.removeItem(QUICK_CONNECT_TARGET_KEY); }
+function clearQuickConnectTarget() {
+  localStorage.removeItem(QUICK_CONNECT_TARGET_KEY);
+  localStorage.removeItem(PRIVATE_INVITE_TARGET_KEY);
+}
 function deferQuickConnectURL(rawURL) {
   try { sessionStorage.setItem(PENDING_QUICK_CONNECT_URL_KEY, String(rawURL || '')); } catch (_) {}
 }
@@ -23750,6 +23784,8 @@ async function resumeDeferredQuickConnectURL() {
   return true;
 }
 async function restoreQuickConnectInvitationAfterReload() {
+  const invitation = loadPrivateInviteTarget();
+  if (invitation && !loadAccountState()) return openPublicProfileShareCode(invitation);
   const target = loadQuickConnectTarget();
   if (!target || loadAccountState()) return false;
   return openPublicProfile(target);
@@ -23763,9 +23799,11 @@ function resumeQuickConnectAfterAuthentication() {
   // same introduction twice.
   if (quickConnectResumePromise) return quickConnectResumePromise;
   quickConnectResumePromise = (async () => {
+    const invitation = loadPrivateInviteTarget();
     const target = loadQuickConnectTarget();
-    if (!target || !loadAccountState()) return false;
-    await openPublicProfile(target);
+    if ((!target && !invitation) || !loadAccountState()) return false;
+    if (invitation) await openPublicProfileShareCode(invitation);
+    else await openPublicProfile(target);
     if (!activePublicProfile) return false;
     await requestPrivateVault();
     return true;
@@ -23953,7 +23991,9 @@ function inviteStoreTarget(code, ua = navigator.userAgent || '', platform = navi
 function showInviteGetApp(profile) {
   const box = document.getElementById('public-profile-get-app');
   if (!box) return;
-  const code = normalizeProfileShareCode(profile?.profileShareCode);
+  const code = normalizeProfileShareCode(
+    profile?.privateInvitation ? profile?.inviteCode : profile?.profileShareCode
+  );
   const target = isNativeApp() ? null : inviteStoreTarget(code);
   box.hidden = !target;
   if (!target) return;
@@ -23968,7 +24008,7 @@ function showInviteGetApp(profile) {
 // "P-ABC234", or a whole vaultlix.com link.
 function inviteCodeFromText(value) {
   const text = String(value || '').trim();
-  const link = text.match(/vaultlix\.com\/(?:p\/|p-)([A-Za-z0-9]{6})(?![A-Za-z0-9])/i);
+  const link = text.match(/vaultlix\.com\/(?:(?:p\/|p-)|invite\/)([A-Za-z0-9]{6})(?![A-Za-z0-9])/i);
   let cleaned = (link ? link[1] : text.replace(/[\s-]/g, '')).toUpperCase();
   if (!link && cleaned.length === 7 && cleaned[0] === 'P') cleaned = cleaned.slice(1);
   return normalizeProfileShareCode(cleaned);
@@ -24152,12 +24192,47 @@ function openQuickConnectAuthentication(mode = 'create') {
   const copy = document.getElementById('account-guest-copy');
   if (copy) copy.textContent = `Your invitation from ${inviterName} will be waiting after this step.`;
 }
+async function redeemPrivateInvitation(state) {
+  const inviteCode = normalizeProfileShareCode(activePublicProfile?.inviteCode || loadPrivateInviteTarget());
+  if (!inviteCode) return false;
+  const result = await api('/api/private-invites/redeem', {
+    accountId:state.accountId,
+    sessionToken:state.sessionToken,
+    inviteCode,
+  });
+  if (result.error) {
+    toast(result.error);
+    if (result.status === 404 || /expired|already used/i.test(result.error)) clearQuickConnectTarget();
+    return true;
+  }
+  if (result.status === 'connected') {
+    // The pair already has a durable relationship. Continue through the
+    // ordinary connected-room restoration path without asking either person
+    // to approve again.
+    activePublicProfile.privateInvitation = false;
+    activePublicProfile.inviteCode = null;
+    localStorage.removeItem(PRIVATE_INVITE_TARGET_KEY);
+    return false;
+  }
+  if (result.status !== 'ready' || !result.request?.id) {
+    toast('Could not accept this invitation. Please try again.');
+    return true;
+  }
+  pendingIncomingConnections = pendingIncomingConnections
+    .filter(request => request.id !== result.request.id)
+    .concat(result.request);
+  clearQuickConnectTarget();
+  closePublicProfile();
+  await acceptConnectionRequest(result.request.id);
+  return true;
+}
 async function requestPrivateVault(authenticationMode = 'create') {
   const state = loadAccountState();
   if (!activePublicProfile) return;
   const requestedProfile = activePublicProfile;
   if (!state) {
     rememberQuickConnectTarget(activePublicProfile.privateNumber);
+    if (activePublicProfile.privateInvitation && activePublicProfile.inviteCode) rememberPrivateInviteTarget(activePublicProfile.inviteCode);
     if (quickConnectHandshakePending) sessionStorage.setItem('vaultlix:qr-handshake', '1');
     openQuickConnectAuthentication(authenticationMode);
     return;
@@ -24168,6 +24243,7 @@ async function requestPrivateVault(authenticationMode = 'create') {
   if (privateVaultRequestInFlight) return;
   privateVaultRequestInFlight = true;
   try {
+  if (activePublicProfile.privateInvitation && await redeemPrivateInvitation(state)) return;
   if (normalizePrivateNumber(state.privateNumber) === normalizePrivateNumber(activePublicProfile.privateNumber)) {
     clearQuickConnectTarget();
     closePublicProfile();
@@ -24360,7 +24436,8 @@ async function openQuickConnectURL(rawURL) {
     }
     const profile = url.pathname.match(/^\/([2-9][0-9]{5,9})\/?$/);
     const shareCode = parseProfileShareCode(url.pathname);
-    if ((profile || shareCode) && quickLockActive) {
+    const privateInviteCode = parsePrivateInviteCode(url.pathname);
+    if ((profile || shareCode || privateInviteCode) && quickLockActive) {
       deferQuickConnectURL(url.href);
       return true;
     }
@@ -24375,7 +24452,8 @@ async function openQuickConnectURL(rawURL) {
     }
     const opened = profile
       ? await openPublicProfile(profile[1])
-      : shareCode ? await openPublicProfileShareCode(shareCode) : false;
+      : (privateInviteCode || shareCode) ? await openPublicProfileShareCode(privateInviteCode || shareCode) : false;
+    if (opened && privateInviteCode) rememberPrivateInviteTarget(privateInviteCode);
     if (opened && fromQr && loadAccountState()) await requestPrivateVault();
     return opened;
   } catch (e) { return false; }
@@ -25843,6 +25921,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const joinLinkCode = parseJoinLinkCode();
   const publicPrivateNumber = parsePublicPrivateNumber();
   const publicProfileShareCode = parseProfileShareCode();
+  const privateInviteCode = parsePrivateInviteCode();
   const startupRecovery = parseRecoveryLink();
   // Android's native incoming-call surface has already collected the user's
   // Answer decision. Preserve it across WebView startup/room restoration and
@@ -26342,9 +26421,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     await openConnectionRequest(startupConnectionRequestId);
   } else if (startupCreateNumber && !loadAccountState()) {
     openCreateAccount();
-  } else if (publicProfileShareCode) {
-    const opened = await openPublicProfileShareCode(publicProfileShareCode);
-    if (opened) attemptMobileAppHandoff(publicProfileShareCode);
+  } else if (privateInviteCode || publicProfileShareCode) {
+    const profileCode = privateInviteCode || publicProfileShareCode;
+    const opened = await openPublicProfileShareCode(profileCode);
+    if (opened && privateInviteCode) rememberPrivateInviteTarget(privateInviteCode);
+    if (opened) attemptMobileAppHandoff(profileCode);
     if (opened && startupParams.get('ref') === 'qr') {
       quickConnectHandshakePending = true;
       sessionStorage.setItem('vaultlix:qr-handshake', '1');
@@ -26360,7 +26441,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (quickLockActive) deferQuickConnectURL(location.href);
       else if (loadAccountState()) await requestPrivateVault();
     }
-  } else if (loadQuickConnectTarget()) {
+  } else if (loadPrivateInviteTarget() || loadQuickConnectTarget()) {
     if (loadAccountState()) await resumeQuickConnectAfterAuthentication();
     else await restoreQuickConnectInvitationAfterReload();
   }
@@ -26369,8 +26450,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     toast('Existing private conversation restored securely');
   }
   // An invitation that came through the Play Store install (Android app only).
-  if (!publicProfileShareCode && !publicPrivateNumber && !startupRecovery && !startupConnectionRequestId && !pendingNumberGift
-      && !loadQuickConnectTarget()) {
+  if (!privateInviteCode && !publicProfileShareCode && !publicPrivateNumber && !startupRecovery && !startupConnectionRequestId && !pendingNumberGift
+      && !loadPrivateInviteTarget() && !loadQuickConnectTarget()) {
     checkInstallInvite().catch(() => {});
   }
   scheduleRecoveryReminder();

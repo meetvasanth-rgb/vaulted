@@ -56,6 +56,7 @@ test('the invite code out of whatever was typed or pasted', () => {
   assert.equal(parse('PABC23'), 'PABC23', 'a code that happens to start with P is left alone');
   assert.equal(parse('https://vaultlix.com/p-ABC234?ref=qr'), 'ABC234');
   assert.equal(parse('open vaultlix.com/p/abc234 now'), 'ABC234');
+  assert.equal(parse('https://vaultlix.com/invite/ABC234'), 'ABC234');
   for (const bad of ['', 'ABC', 'ABC2345', 'ABC0O1', 'https://example.com/p-ABC234x', 'hello world', null, undefined]) assert.equal(parse(bad), '', String(bad));
 });
 
@@ -143,7 +144,7 @@ test('the invite code goes through the same public, rate-limited lookup and show
 });
 
 test('the startup only asks for an install invitation when the app was not opened by a link', () => {
-  assert.match(client, /if \(!publicProfileShareCode && !publicPrivateNumber && !startupRecovery && !startupConnectionRequestId && !pendingNumberGift\s*&& !loadQuickConnectTarget\(\)\) \{\s*checkInstallInvite\(\)\.catch\(\(\) => \{\}\);/);
+  assert.match(client, /if \(!privateInviteCode && !publicProfileShareCode && !publicPrivateNumber && !startupRecovery && !startupConnectionRequestId && !pendingNumberGift\s*&& !loadPrivateInviteTarget\(\) && !loadQuickConnectTarget\(\)\) \{\s*checkInstallInvite\(\)\.catch\(\(\) => \{\}\);/);
 });
 
 test('Android: the install referrer is read once, validated, and offered to the page through the bridge', () => {

@@ -74,14 +74,14 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /\/p-\$\{code\}\?ref=qr/);
   assert.match(client, /package=com\.vaultlix\.app/);
   assert.match(client, /function attemptMobileAppHandoff\(target\)/);
-  assert.match(client, /if \(opened\) attemptMobileAppHandoff\(publicProfileShareCode\)/);
+  assert.match(client, /if \(opened\) attemptMobileAppHandoff\(profileCode\)/);
   assert.match(client, /if \(opened\) attemptMobileAppHandoff\(publicPrivateNumber\)/);
   assert.match(client, /location\.href = iosAppClipInviteURL\(inviteCode\)/);
   assert.doesNotMatch(client, /params\.get\('ref'\) !== 'qr'/);
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);
   assert.match(client, /if \(opened && fromQr && loadAccountState\(\)\) await requestPrivateVault\(\)/);
-  assert.match(client, /if \(\(profile \|\| shareCode\) && quickLockActive\)[\s\S]*deferQuickConnectURL\(url\.href\)/);
+  assert.match(client, /if \(\(profile \|\| shareCode \|\| privateInviteCode\) && quickLockActive\)[\s\S]*deferQuickConnectURL\(url\.href\)/);
   assert.match(client, /resumeDeferredQuickConnectURL\(\)\.catch/);
   assert.ok(iosScene.includes('^/p/[A-HJ-NP-Za-hj-np-z2-9]{6}/?$'));
 });
@@ -101,7 +101,7 @@ test('logged-out Quick Connect is invitation-aware and creation-first', () => {
 test('Quick Connect survives a logged-out reload and resumes after authentication', () => {
   assert.match(client, /async function restoreQuickConnectInvitationAfterReload\(\)/);
   assert.match(client, /const target = loadQuickConnectTarget\(\);[\s\S]*return openPublicProfile\(target\);/);
-  assert.match(client, /else if \(loadQuickConnectTarget\(\)\) \{[\s\S]*if \(loadAccountState\(\)\) await resumeQuickConnectAfterAuthentication\(\);[\s\S]*else await restoreQuickConnectInvitationAfterReload\(\);/);
+  assert.match(client, /else if \(loadPrivateInviteTarget\(\) \|\| loadQuickConnectTarget\(\)\) \{[\s\S]*if \(loadAccountState\(\)\) await resumeQuickConnectAfterAuthentication\(\);[\s\S]*else await restoreQuickConnectInvitationAfterReload\(\);/);
   assert.match(client, /async function finishAccountCreation[\s\S]*await resumeQuickConnectAfterAuthentication\(\)/);
 });
 

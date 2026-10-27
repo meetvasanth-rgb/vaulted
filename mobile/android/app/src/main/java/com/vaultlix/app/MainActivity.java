@@ -706,7 +706,8 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean isAllowedVaultlixPath(String path) {
-        if (path == null || path.equals("/") || path.startsWith("/join/")) return true;
+        if (path == null || path.equals("/") || path.startsWith("/join/")
+                || path.matches("/invite/[A-HJ-NP-Za-hj-np-z2-9]{6}/?")) return true;
         return path.matches("/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?");
     }
 

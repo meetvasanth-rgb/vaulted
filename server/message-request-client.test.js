@@ -336,6 +336,7 @@ test('concurrent native authentication callbacks resume one Quick Connect reques
   let releaseLookup;
   const lookupGate = new Promise(resolve => { releaseLookup = resolve; });
   const context = vm.createContext({
+    loadPrivateInviteTarget:() => '',
     loadQuickConnectTarget:() => '2345678901',
     loadAccountState:() => ({ accountId:'acc1' }),
     activePublicProfile:null,

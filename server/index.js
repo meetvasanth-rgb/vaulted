@@ -109,6 +109,7 @@ const { buildTemporaryVaultAcceptedPayload } = require('./temporary-vault-notifi
 const accounts = new Map();
 const privateNumbers = new Map(); // public Vaultlix Private Number -> private random account id
 const profileShareCodes = new Map(); // short public link code -> private random account id
+const privateInviteCodes = new Map(); // one-time invitation code -> inviting account id
 const privateNumberReservations = new Map();
 const privateNumberLifecycle = new Map();
 const profileLookupBuckets = new Map();
@@ -1410,6 +1411,8 @@ function accountByPrivateNumber(value) {
   return accountId ? { accountId, account:accounts.get(accountId) } : null;
 }
 const PROFILE_SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PRIVATE_INVITE_TTL_MS = 24 * 60 * 60 * 1000;
+const PRIVATE_INVITE_MAX_ACTIVE = 5;
 function normalizeProfileShareCode(value) {
   const code = String(value || '').trim().toUpperCase();
   return /^[A-HJ-NP-Z2-9]{6}$/.test(code) ? code : '';
@@ -1419,9 +1422,37 @@ function generateProfileShareCode() {
     const bytes = crypto.randomBytes(6);
     let code = '';
     for (const byte of bytes) code += PROFILE_SHARE_ALPHABET[byte % PROFILE_SHARE_ALPHABET.length];
-    if (!profileShareCodes.has(code)) return code;
+    if (!profileShareCodes.has(code) && !privateInviteCodes.has(code)) return code;
   }
   throw new Error('Could not allocate a profile share code');
+}
+function normalizePrivateInvites(value, now = Date.now()) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  return value.flatMap(invite => {
+    const code = normalizeProfileShareCode(invite?.code);
+    const createdAt = Number(invite?.createdAt) || 0;
+    const expiresAt = Number(invite?.expiresAt) || 0;
+    if (!code || seen.has(code) || !createdAt || expiresAt <= now || invite?.usedAt) return [];
+    seen.add(code);
+    return [{ code, createdAt, expiresAt }];
+  }).slice(-PRIVATE_INVITE_MAX_ACTIVE);
+}
+function generatePrivateInviteCode() {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let code = '';
+    for (const byte of bytes) code += PROFILE_SHARE_ALPHABET[byte % PROFILE_SHARE_ALPHABET.length];
+    if (!profileShareCodes.has(code) && !privateInviteCodes.has(code)) return code;
+  }
+  throw new Error('Could not allocate a private invitation code');
+}
+function accountByPrivateInviteCode(value) {
+  const code = normalizeProfileShareCode(value);
+  const accountId = code ? privateInviteCodes.get(code) : null;
+  const account = accountId ? accounts.get(accountId) : null;
+  const invite = account?.privateInvites?.find(item => item.code === code && item.expiresAt > Date.now() && !item.usedAt);
+  return account && invite ? { accountId, account, invite } : null;
 }
 function accountByProfileShareCode(value) {
   const code = normalizeProfileShareCode(value);
@@ -4218,6 +4249,25 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok: true });
   }
 
+  if (path === '/api/private-invites/create' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    if (await rateLimited(`private-invite-create:${d.accountId}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many invitations — try again later.', 429);
+    const now = Date.now();
+    account.privateInvites = normalizePrivateInvites(account.privateInvites, now);
+    while (account.privateInvites.length >= PRIVATE_INVITE_MAX_ACTIVE) {
+      const removed = account.privateInvites.shift();
+      if (removed) privateInviteCodes.delete(removed.code);
+    }
+    const code = generatePrivateInviteCode();
+    const invite = { code, createdAt:now, expiresAt:now + PRIVATE_INVITE_TTL_MS };
+    account.privateInvites.push(invite);
+    privateInviteCodes.set(code, d.accountId);
+    await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true, code, expiresAt:invite.expiresAt, url:`https://vaultlix.com/invite/${code}` });
+  }
+
   if (path.startsWith('/api/profile/') && method === 'GET') {
     const retryAfter = await profileLookupRetryAfter(headers, ip);
     if (retryAfter) {
@@ -4238,10 +4288,100 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       res.setHeader('Cache-Control', 'no-store');
       return resErr(res, 'Too many lookups. Please wait before trying again.', 429);
     }
-    const found = accountByProfileShareCode(decodeURIComponent(path.slice('/api/profile-share/'.length)));
+    const code = decodeURIComponent(path.slice('/api/profile-share/'.length));
+    const privateInvitation = accountByPrivateInviteCode(code);
+    const found = privateInvitation || accountByProfileShareCode(code);
     if (!found) return resErr(res, 'Vaultlix profile link not found.', 404);
     res.setHeader('Cache-Control', 'no-store');
-    return res200(res, { ok:true, profile:publicAccount(found.account) });
+    return res200(res, {
+      ok:true,
+      profile:{ ...publicAccount(found.account), ...(privateInvitation ? { privateInvitation:true, inviteCode:privateInvitation.invite.code } : {}) },
+    });
+  }
+
+  if (path === '/api/private-invites/redeem' && method === 'POST') {
+    const recipient = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!recipient) return resErr(res, 'Your session has expired.', 401);
+    if (await rateLimited(`private-invite-redeem:${d.accountId}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many invitation attempts — try again later.', 429);
+    const found = accountByPrivateInviteCode(d.inviteCode);
+    if (!found) return resErr(res, 'This invitation has expired or was already used.', 404);
+    if (found.accountId === d.accountId) return resErr(res, 'You cannot use your own invitation.', 400);
+    if (await safetyStore.isSuspended(d.accountId) || await safetyStore.isSuspended(found.accountId) || await safetyStore.blocked(d.accountId, found.accountId)) return resErr(res, 'This connection is unavailable.', 403);
+
+    // The safety checks above are asynchronous. Another recipient may have
+    // redeemed the same code while this request was waiting, so claim it
+    // again immediately before the first state change. No await occurs
+    // between this check and removing the code from the live index.
+    const liveFound = accountByPrivateInviteCode(d.inviteCode);
+    if (!liveFound || liveFound.invite !== found.invite) return resErr(res, 'This invitation has expired or was already used.', 404);
+
+    const now = Date.now();
+    const inviter = found.account;
+    recipient.connectionRequests = compactConnectionRequests(recipient.connectionRequests, now);
+    inviter.connectionRequests = compactConnectionRequests(inviter.connectionRequests, now);
+    const samePair = request =>
+      (request.senderAccountId === found.accountId && request.recipientAccountId === d.accountId) ||
+      (request.recipientAccountId === found.accountId && request.senderAccountId === d.accountId);
+    const accepted = (recipient.connectionRequests || []).find(request => samePair(request) && request.status === 'accepted');
+
+    found.invite.usedAt = now;
+    found.invite.usedBy = d.accountId;
+    privateInviteCodes.delete(found.invite.code);
+    if (accepted) {
+      await persistAccount(found.accountId);
+      return res200(res, { ok:true, status:'connected', requestId:accepted.id, inviteUrl:accepted.inviteUrl || null });
+    }
+
+    let request = (recipient.connectionRequests || []).find(item => samePair(item) && item.status === 'pending' && item.senderAccountId === found.accountId);
+    if (!request) {
+      // A previous ordinary request in the opposite direction still needed
+      // the inviter to accept. This private link is that inviter's explicit
+      // advance approval, so replace the pending mirrors with the approved
+      // direction before presenting Connect to the recipient.
+      const reversed = (recipient.connectionRequests || []).find(item => samePair(item) && item.status === 'pending');
+      if (reversed) {
+        recipient.connectionRequests = recipient.connectionRequests.filter(item => item.id !== reversed.id);
+        inviter.connectionRequests = inviter.connectionRequests.filter(item => item.id !== reversed.id);
+      }
+      request = {
+        id:uid(),
+        senderAccountId:found.accountId,
+        senderPrivateNumber:inviter.privateNumber,
+        senderDisplayName:inviter.displayName,
+        recipientAccountId:d.accountId,
+        recipientPrivateNumber:recipient.privateNumber,
+        recipientDisplayName:recipient.displayName,
+        direction:'incoming',
+        status:'pending',
+        createdAt:now,
+        expiresAt:now + CONNECTION_REQUEST_TTL_MS,
+      };
+      const inviterPreKey = normalizeInboxKey(inviter.inboxKey);
+      if (inviterPreKey) {
+        request.conversationPreKeyVersion = 1;
+        request.senderConversationPreKey = inviterPreKey;
+      }
+      recipient.connectionRequests.push(request);
+      inviter.connectionRequests.push({ ...request, direction:'outgoing', introCount:0 });
+    }
+    await Promise.all([persistAccount(d.accountId), persistAccount(found.accountId)]);
+    publishInboxAccount(d.accountId, 'connection-request');
+    return res200(res, {
+      ok:true,
+      status:'ready',
+      request:{
+        id:request.id,
+        direction:'incoming',
+        status:'pending',
+        senderPrivateNumber:request.senderPrivateNumber,
+        senderDisplayName:request.senderDisplayName,
+        senderProfileImage:normalizeProfileImage(inviter.profileImage) || null,
+        recipientPrivateNumber:request.recipientPrivateNumber,
+        recipientDisplayName:request.recipientDisplayName,
+        conversationPreKeyVersion:request.conversationPreKeyVersion,
+        senderConversationPreKey:request.senderConversationPreKey,
+      },
+    });
   }
 
   if (path === '/api/status/publish' && method === 'POST') {
@@ -7336,6 +7476,7 @@ function hydrateAccounts(entries, source) {
   accounts.clear();
   privateNumbers.clear();
   profileShareCodes.clear();
+  privateInviteCodes.clear();
   let fallbackCreationOrder = 0;
   for (const entry of entries) {
       if (!Array.isArray(entry) || entry.length !== 2 || !validAccountId(entry[0])) continue;
@@ -7372,9 +7513,12 @@ function hydrateAccounts(entries, source) {
       record.inboxKey = normalizeInboxKey(record.inboxKey);
       record.requestPolicy = normalizeRequestPolicy(record.requestPolicy);
       const storedProfileShareCode = normalizeProfileShareCode(record.profileShareCode);
-      record.profileShareCode = storedProfileShareCode && !profileShareCodes.has(storedProfileShareCode)
+      record.profileShareCode = storedProfileShareCode
+        && !profileShareCodes.has(storedProfileShareCode)
+        && !privateInviteCodes.has(storedProfileShareCode)
         ? storedProfileShareCode
         : generateProfileShareCode();
+      record.privateInvites = normalizePrivateInvites(record.privateInvites);
       record.pushDestinations = (record.pushDestinations || []).flatMap(destination => {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
@@ -7392,6 +7536,9 @@ function hydrateAccounts(entries, source) {
       accounts.set(entry[0], record);
       privateNumbers.set(record.privateNumber, entry[0]);
       profileShareCodes.set(record.profileShareCode, entry[0]);
+      for (const invite of record.privateInvites) {
+        if (!profileShareCodes.has(invite.code) && !privateInviteCodes.has(invite.code)) privateInviteCodes.set(invite.code, entry[0]);
+      }
   }
   console.log(`Anonymous accounts loaded from ${source}: ${accounts.size}.`);
 }

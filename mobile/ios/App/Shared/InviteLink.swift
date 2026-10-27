@@ -35,6 +35,14 @@ enum InviteLink {
         }
         guard host == "vaultlix.com" || host == "www.vaultlix.com" else { return nil }
         let path = url.path
+        // /invite/ABC234 is a one-time pre-approved invitation. It uses the
+        // same public lookup transport as a profile code; the server marks
+        // the returned profile as a private invitation.
+        if path.hasPrefix("/invite/") {
+            var code = String(path.dropFirst("/invite/".count)).uppercased()
+            if code.hasSuffix("/") { code.removeLast() }
+            return isValidShareCode(code) ? .shareCode(code) : nil
+        }
         // /p-ABC234 and /p/ABC234, with an optional trailing slash.
         for prefix in ["/p-", "/p/"] where path.hasPrefix(prefix) {
             var code = String(path.dropFirst(prefix.count)).uppercased()

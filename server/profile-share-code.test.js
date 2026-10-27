@@ -15,7 +15,7 @@ test('profile cards use a server-issued six-character link instead of exposing t
   assert.match(server, /address:`https:\/\/vaultlix\.com\/p-\$\{account\.profileShareCode\}`/);
   assert.match(server, /path\.startsWith\('\/api\/profile-share\/'\)/);
   assert.match(client, /https:\/\/vaultlix\.com\/p-\$\{code\}\?ref=qr/);
-  assert.match(client, /openPublicProfileShareCode\(publicProfileShareCode\)/);
+  assert.match(client, /const profileCode = privateInviteCode \|\| publicProfileShareCode;[\s\S]*openPublicProfileShareCode\(profileCode\)/);
   assert.ok(worker.includes("/^\\/p\\/[a-hj-np-z2-9]{6}\\/?$/i.test(pathname)"));
   assert.ok(worker.includes("/^\\/p-[a-hj-np-z2-9]{6}\\/?$/i.test(pathname)"));
   assert.match(appleAssociation, /"\/p\/\*"/);

@@ -11,6 +11,7 @@ func url(_ text: String) -> URL? { URL(string: text) }
 check(InviteLink.target(from: url("https://vaultlix.com/p-ABC234")) == .shareCode("ABC234"), "p- link")
 check(InviteLink.target(from: url("https://vaultlix.com/p-abc234?ref=qr")) == .shareCode("ABC234"), "lower case with a query")
 check(InviteLink.target(from: url("https://vaultlix.com/p/ABC234/")) == .shareCode("ABC234"), "p/ link with a trailing slash")
+check(InviteLink.target(from: url("https://vaultlix.com/invite/ABC234")) == .shareCode("ABC234"), "private invitation link")
 check(InviteLink.target(from: url("https://www.vaultlix.com/p-ABC234")) == .shareCode("ABC234"), "www host")
 check(InviteLink.target(from: url("https://vaultlix.com/2345678901?ref=qr")) == .privateNumber("2345678901"), "private number link")
 check(InviteLink.target(from: url("https://vaultlix.com/234567")) == .privateNumber("234567"), "six-digit private number")
