@@ -5,6 +5,7 @@ import SwiftUI
 struct InvitedFriend: Equatable {
     let name: String
     let code: String
+    let privateInvitation: Bool
     let photo: Data?
 }
 
@@ -26,7 +27,7 @@ final class InviteModel: ObservableObject {
 #if DEBUG
         // Debug builds only: show the invitation screen without a network lookup.
         if let name = ProcessInfo.processInfo.environment["VAULTLIX_CLIP_PREVIEW_NAME"] {
-            state = .ready(InvitedFriend(name: name, code: "ABC234", photo: nil))
+            state = .ready(InvitedFriend(name: name, code: "ABC234", privateInvitation: false, photo: nil))
             return
         }
 #endif
@@ -80,7 +81,25 @@ enum ProfileService {
         guard http.statusCode == 200, data.count < 2_000_000,
               let profile = try? JSONDecoder().decode(Payload.self, from: data).profile,
               InviteLink.isValidShareCode(profile.profileShareCode.uppercased()) else { throw Failure.invalid }
-        return InvitedFriend(name: displayName(profile.displayName), code: profile.profileShareCode.uppercased(), photo: photo(from: profile.profileImage))
+        let carriedCode: String
+        let privateInvitation: Bool
+        switch target {
+        case .privateInvite(let code):
+            carriedCode = code
+            privateInvitation = true
+        case .shareCode(let code):
+            carriedCode = code
+            privateInvitation = false
+        case .privateNumber:
+            carriedCode = profile.profileShareCode.uppercased()
+            privateInvitation = false
+        }
+        return InvitedFriend(
+            name: displayName(profile.displayName),
+            code: carriedCode,
+            privateInvitation: privateInvitation,
+            photo: photo(from: profile.profileImage)
+        )
     }
 
     /// A name as shown: trimmed, one line, not absurdly long.

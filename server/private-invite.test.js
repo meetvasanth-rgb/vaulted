@@ -63,6 +63,8 @@ test('private invitation paths are recognized by the page and both native apps',
   assert.equal(vm.runInContext("parsePrivateInviteCode('/invite/K6AKTD')", context), 'K6AKTD');
   assert.equal(vm.runInContext("parsePrivateInviteCode('/invite/K6AKTD7')", context), null);
   assert.match(iosLinks, /path\.hasPrefix\("\/invite\/"\)/);
+  assert.match(iosLinks, /return isValidShareCode\(code\) \? \.privateInvite\(code\) : nil/);
+  assert.match(extract('iosAppClipInviteURL'), /privateInvitation \? '&private=1' : ''/);
   assert.match(iosAssociation, /"\/invite\/\*"/);
   assert.match(android, /\/invite\/\[A-HJ-NP-Za-hj-np-z2-9\]\{6\}/);
 });

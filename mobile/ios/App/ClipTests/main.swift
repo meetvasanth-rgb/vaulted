@@ -11,11 +11,12 @@ func url(_ text: String) -> URL? { URL(string: text) }
 check(InviteLink.target(from: url("https://vaultlix.com/p-ABC234")) == .shareCode("ABC234"), "p- link")
 check(InviteLink.target(from: url("https://vaultlix.com/p-abc234?ref=qr")) == .shareCode("ABC234"), "lower case with a query")
 check(InviteLink.target(from: url("https://vaultlix.com/p/ABC234/")) == .shareCode("ABC234"), "p/ link with a trailing slash")
-check(InviteLink.target(from: url("https://vaultlix.com/invite/ABC234")) == .shareCode("ABC234"), "private invitation link")
+check(InviteLink.target(from: url("https://vaultlix.com/invite/ABC234")) == .privateInvite("ABC234"), "private invitation link")
 check(InviteLink.target(from: url("https://www.vaultlix.com/p-ABC234")) == .shareCode("ABC234"), "www host")
 check(InviteLink.target(from: url("https://vaultlix.com/2345678901?ref=qr")) == .privateNumber("2345678901"), "private number link")
 check(InviteLink.target(from: url("https://vaultlix.com/234567")) == .privateNumber("234567"), "six-digit private number")
 check(InviteLink.target(from: url("https://appclip.apple.com/id?p=com.vaultlix.app.Clip&invite=ABC234")) == .shareCode("ABC234"), "default App Clip invitation")
+check(InviteLink.target(from: url("https://appclip.apple.com/id?p=com.vaultlix.app.Clip&invite=ABC234&private=1")) == .privateInvite("ABC234"), "one-time App Clip invitation")
 check(InviteLink.target(from: url("https://appclip.apple.com/id?p=com.someone.else.Clip&invite=ABC234")) == nil, "another App Clip is rejected")
 check(InviteLink.target(from: url("http://vaultlix.com/p-ABC234")) == nil, "http is refused")
 check(InviteLink.target(from: url("https://evil.com/p-ABC234")) == nil, "another host is refused")
@@ -29,6 +30,7 @@ check(InviteLink.target(from: url("https://vaultlix.com/1234567890")) == nil, "p
 check(InviteLink.target(from: url("https://vaultlix.com/23456")) == nil, "private number too short")
 check(InviteLink.target(from: nil) == nil, "no link")
 check(InviteLink.lookupPath(for: .shareCode("ABC234")) == "/api/profile-share/ABC234", "lookup path (code)")
+check(InviteLink.lookupPath(for: .privateInvite("ABC234")) == "/api/profile-share/ABC234", "lookup path (private invite)")
 check(InviteLink.lookupPath(for: .privateNumber("2345678901")) == "/api/profile/2345678901", "lookup path (number)")
 
 // ── the invitation handed from the App Clip to the app ───────────────────

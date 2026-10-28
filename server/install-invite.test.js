@@ -39,6 +39,9 @@ test('the install link carries a friend through Play or the iPhone App Clip', ()
     `inviteStoreTarget('ABC234', ${JSON.stringify(ua)}, ${JSON.stringify(platform)}, ${touch})`, context)));
   assert.deepEqual(target('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/126'), { platform:'android', href:`${PLAY}&referrer=vaultlix_invite%3DABC234` });
   assert.deepEqual(target('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) Safari/604.1'), { platform:'ios', href:`${APP_CLIP}&invite=ABC234` });
+  assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext(
+    `inviteStoreTarget('ABC234', 'Mozilla/5.0 (iPhone) Safari', 'iPhone', 5, true)`, context
+  ))), { platform:'ios', href:`${APP_CLIP}&invite=ABC234&private=1` }, 'one-time approval survives the App Clip handoff');
   assert.deepEqual(target('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari', 'MacIntel', 5), { platform:'ios', href:`${APP_CLIP}&invite=ABC234` }, 'iPadOS presents as a Mac');
   assert.equal(target('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome', 'MacIntel', 0), null, 'a desktop gets no store button');
   assert.equal(vm.runInContext("inviteStoreTarget('', 'Android')", context), null);
@@ -128,7 +131,7 @@ test('a browser or the iOS app (no Android bridge) does nothing', async () => {
 test('the pages: a store button on a friend\'s page, and "Have an invite code?" where a new person starts', () => {
   assert.match(client, /id="public-profile-get-app"/);
   assert.match(extract('performPublicProfileLookup', 'async function'), /showInviteGetApp\(result\.profile\)/);
-  assert.match(extract('showInviteGetApp'), /isNativeApp\(\) \? null : inviteStoreTarget\(code\)/);
+  assert.match(extract('showInviteGetApp'), /isNativeApp\(\) \? null : inviteStoreTarget\(code,[\s\S]*!!profile\?\.privateInvitation\)/);
   assert.match(client, /class="landing-invite-link" type="button" onclick="openInviteCodePrompt\(\)">Have an invite code\?/);
   assert.match(client, /id="native-onboarding-invite"[^>]*onclick="openInviteCodePrompt\(\)"/);
   assert.match(extract('renderNativeOnboarding'), /inviteButton\.style\.display = page === 'welcome' \|\| page === 'identity' \? '' : 'none'/);

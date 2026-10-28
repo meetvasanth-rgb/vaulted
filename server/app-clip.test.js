@@ -1,7 +1,7 @@
 'use strict';
 
 // The iPhone App Clip: scanning a friend's QR without Vaultlix installed shows
-// the invitation, saves the friend's public code where the full app can read it
+// the invitation, saves the exact invitation code where the full app can read it
 // after install, and the app then opens that friend's page. The pieces that can be
 // checked without a phone are checked here.
 
@@ -81,6 +81,8 @@ test('the clip is small and asks for nothing: no calling, no encrypted storage, 
   assert.match(sources, /https:\/\/vaultlix\.com\\\(InviteLink\.lookupPath\(for: target\)\)/);
   assert.doesNotMatch(sources, /httpMethod\s*=\s*"POST"/);
   assert.match(sources, /SharedInvite\.save\(code: friend\.code\)/);
+  assert.match(sources, /case \.privateInvite\(let code\):[\s\S]*carriedCode = code/,
+    'a one-time code is preserved instead of being replaced by the permanent profile code');
   assert.match(sources, /SKOverlay\.AppClipConfiguration/);
 });
 
@@ -93,6 +95,8 @@ test('the full app hands the saved invitation to the page, validated, and lets i
   assert.match(shared, /maxAge: TimeInterval = 7 \* 24 \* 60 \* 60/);
   assert.match(scene, /translatedAppClipInviteURL\(incoming\)/);
   assert.match(scene, /https:\/\/vaultlix\.com\/p-\\\(code\)\?ref=qr/);
+  assert.match(scene, /case \.privateInvite\(let code\):[\s\S]*https:\/\/vaultlix\.com\/invite\/\\\(code\)\?ref=qr/,
+    'the full app preserves the one-time invitation route');
 });
 
 function runIos({ code = 'ABC234', done = null, lookup = async () => true } = {}) {

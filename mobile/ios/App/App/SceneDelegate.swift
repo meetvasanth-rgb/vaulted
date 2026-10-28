@@ -1671,8 +1671,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     }
 
     private func translatedAppClipInviteURL(_ url: URL) -> URL? {
-        guard case .shareCode(let code) = InviteLink.target(from: url) else { return nil }
-        return URL(string: "https://vaultlix.com/p-\(code)?ref=qr")
+        switch InviteLink.target(from: url) {
+        case .shareCode(let code):
+            return URL(string: "https://vaultlix.com/p-\(code)?ref=qr")
+        case .privateInvite(let code):
+            return URL(string: "https://vaultlix.com/invite/\(code)?ref=qr")
+        default:
+            return nil
+        }
     }
 
     private func isVaultlixLink(_ url: URL) -> Bool {

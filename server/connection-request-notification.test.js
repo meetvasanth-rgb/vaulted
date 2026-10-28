@@ -76,7 +76,7 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /function attemptMobileAppHandoff\(target\)/);
   assert.match(client, /if \(opened\) attemptMobileAppHandoff\(profileCode\)/);
   assert.match(client, /if \(opened\) attemptMobileAppHandoff\(publicPrivateNumber\)/);
-  assert.match(client, /location\.href = iosAppClipInviteURL\(inviteCode\)/);
+  assert.match(client, /location\.href = iosAppClipInviteURL\(inviteCode, !!activePublicProfile\?\.privateInvitation\)/);
   assert.doesNotMatch(client, /params\.get\('ref'\) !== 'qr'/);
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);

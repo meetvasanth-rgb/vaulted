@@ -6,6 +6,8 @@ enum InviteLink {
     enum Target: Equatable {
         /// The six-character public profile code (vaultlix.com/p-ABC234).
         case shareCode(String)
+        /// A single-use, pre-approved invitation (vaultlix.com/invite/ABC234).
+        case privateInvite(String)
         /// A Private Number link (vaultlix.com/2345678901), from older cards.
         case privateNumber(String)
     }
@@ -29,9 +31,10 @@ enum InviteLink {
         if host == "appclip.apple.com", url.path == "/id",
            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
            components.queryItems?.first(where: { $0.name == "p" })?.value == "com.vaultlix.app.Clip",
-           let code = components.queryItems?.first(where: { $0.name == "invite" })?.value?.uppercased(),
+           let code = components.queryItems?.first(where: { $0.name == "invite" || $0.name == "code" })?.value?.uppercased(),
            isValidShareCode(code) {
-            return .shareCode(code)
+            let isPrivate = components.queryItems?.first(where: { $0.name == "private" })?.value == "1"
+            return isPrivate ? .privateInvite(code) : .shareCode(code)
         }
         guard host == "vaultlix.com" || host == "www.vaultlix.com" else { return nil }
         let path = url.path
@@ -41,7 +44,7 @@ enum InviteLink {
         if path.hasPrefix("/invite/") {
             var code = String(path.dropFirst("/invite/".count)).uppercased()
             if code.hasSuffix("/") { code.removeLast() }
-            return isValidShareCode(code) ? .shareCode(code) : nil
+            return isValidShareCode(code) ? .privateInvite(code) : nil
         }
         // /p-ABC234 and /p/ABC234, with an optional trailing slash.
         for prefix in ["/p-", "/p/"] where path.hasPrefix(prefix) {
@@ -57,7 +60,7 @@ enum InviteLink {
     /// The path of the public lookup for a target.
     static func lookupPath(for target: Target) -> String {
         switch target {
-        case .shareCode(let code): return "/api/profile-share/\(code)"
+        case .shareCode(let code), .privateInvite(let code): return "/api/profile-share/\(code)"
         case .privateNumber(let number): return "/api/profile/\(number)"
         }
     }

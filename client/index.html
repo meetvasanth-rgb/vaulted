@@ -23806,7 +23806,7 @@ function attemptMobileAppHandoff(target) {
   );
   if (!inviteCode) return;
   history.replaceState(null,'',`${fallbackUrl.pathname}${fallbackUrl.search}${fallbackUrl.hash}`);
-  setTimeout(() => { location.href = iosAppClipInviteURL(inviteCode); }, 160);
+  setTimeout(() => { location.href = iosAppClipInviteURL(inviteCode, !!activePublicProfile?.privateInvitation); }, 160);
 }
 function parseRecoveryLink(rawURL = location.href) {
   try {
@@ -24054,17 +24054,18 @@ let publicProfileLookup = null;
 // iPhone the App Clip saves the same code in the full app's shared container.
 // Either way the new person sees who invited them and chooses whether to
 // connect; nothing is sent for them.
-function iosAppClipInviteURL(code) {
+function iosAppClipInviteURL(code, privateInvitation = false) {
   const normalized = normalizeProfileShareCode(code);
-  return normalized ? `${VAULTLIX_IOS_APP_CLIP_LINK}&invite=${encodeURIComponent(normalized)}` : VAULTLIX_IOS_APP_CLIP_LINK;
+  if (!normalized) return VAULTLIX_IOS_APP_CLIP_LINK;
+  return `${VAULTLIX_IOS_APP_CLIP_LINK}&invite=${encodeURIComponent(normalized)}${privateInvitation ? '&private=1' : ''}`;
 }
-function inviteStoreTarget(code, ua = navigator.userAgent || '', platform = navigator.platform, touchPoints = navigator.maxTouchPoints) {
+function inviteStoreTarget(code, ua = navigator.userAgent || '', platform = navigator.platform, touchPoints = navigator.maxTouchPoints, privateInvitation = false) {
   if (!code) return null;
   if (/android/i.test(ua)) {
     return { platform:'android', href:`${VAULTLIX_GOOGLE_PLAY_LINK}&referrer=${encodeURIComponent(`vaultlix_invite=${code}`)}` };
   }
   if (/iphone|ipad|ipod/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1)) {
-    return { platform:'ios', href:iosAppClipInviteURL(code) };
+    return { platform:'ios', href:iosAppClipInviteURL(code, privateInvitation) };
   }
   return null;
 }
@@ -24075,7 +24076,7 @@ function showInviteGetApp(profile) {
   const code = normalizeProfileShareCode(
     profile?.privateInvitation ? profile?.inviteCode : profile?.profileShareCode
   );
-  const target = isNativeApp() ? null : inviteStoreTarget(code);
+  const target = isNativeApp() ? null : inviteStoreTarget(code, navigator.userAgent || '', navigator.platform, navigator.maxTouchPoints, !!profile?.privateInvitation);
   box.hidden = !target;
   if (!target) return;
   document.getElementById('public-profile-get-app-link').href = target.href;
@@ -24169,6 +24170,7 @@ async function checkInstallInvite({ waitMs = 6000, pollMs = 400 } = {}) {
   try { localStorage.setItem(INSTALL_INVITE_ATTEMPTS_KEY, String(attempts + 1)); } catch (error) {}
   const opened = await openPublicProfileShareCode(code);
   if (opened) {
+    if (typeof activePublicProfile !== 'undefined' && activePublicProfile?.privateInvitation) rememberPrivateInviteTarget(code);
     try { source.clear(); localStorage.removeItem(INSTALL_INVITE_ATTEMPTS_KEY); localStorage.setItem(INSTALL_INVITE_DONE_KEY, code); } catch (error) {}
   }
   return opened;
