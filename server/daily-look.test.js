@@ -121,12 +121,15 @@ test('Android Daily Look offers a dedicated camera capture path', () => {
   assert.match(client, /function chooseDailyLookCamera\(\)/);
 });
 
-test('the latest generated Daily Look remains downloadable after profile use and reopening', () => {
+test('Daily Look opens fresh instead of restoring the previous generated preview', () => {
   assert.match(client, /const DAILY_LOOK_RESULT_DB = 'vaultlix-daily-look'/);
   assert.match(client, /indexedDB\.open\(DAILY_LOOK_RESULT_DB, 1\)/);
   assert.match(client, /saveDailyLookResult\(savedLook\.accountId, savedLook\.image/);
-  assert.match(client, /loadDailyLookResult\(state\.accountId\)/);
-  assert.match(client, /Your last Daily Look is saved on this device and ready to download/);
+  const openStart = client.indexOf('async function openDailyLook(');
+  const openEnd = client.indexOf('function chooseDailyLookPhoto(', openStart);
+  const open = client.slice(openStart, openEnd);
+  assert.doesNotMatch(open, /loadDailyLookResult\(/);
+  assert.doesNotMatch(open, /showDailyLookResult\(/);
   assert.match(client, /onclick="downloadDailyLook\(\)"/);
   assert.match(client, /onclick="beginAnotherDailyLook\(\)"/);
   assert.match(client, /function downloadDailyLook\(\)[\s\S]{0,220}downloadDataUri\(dailyLookGeneratedImage/);

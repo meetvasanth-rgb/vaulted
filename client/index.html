@@ -13261,21 +13261,14 @@ async function openDailyLook(options = {}) {
   document.getElementById('daily-look-overlay')?.classList.add('open');
   const status = document.getElementById('daily-look-status');
   if (status) status.textContent = 'Checking today’s creation…';
-  const savedLookPromise = loadDailyLookResult(state.accountId).catch(() => null);
   const result = await api('/api/account/daily-look/status', { accountId:state.accountId, sessionToken:state.sessionToken });
-  const savedLook = await savedLookPromise;
   if (result.error) {
-    if (savedLook?.image) showDailyLookResult(savedLook, 'Your last Daily Look is saved on this device and ready to download.');
-    else if (status) status.textContent = result.error;
+    if (status) status.textContent = result.error;
     return;
   }
   const kicker = document.getElementById('daily-look-kicker');
   if (kicker) kicker.textContent = `Testing · up to ${result.limit || 5} creations daily`;
   renderDailyLookStyles(result.styles || []);
-  if (savedLook?.image && !avatarMode) {
-    showDailyLookResult(savedLook, 'Your last Daily Look is saved on this device and ready to download.');
-    return;
-  }
   const generate = document.getElementById('daily-look-generate');
   if (!result.configured) {
     if (status) status.textContent = 'Daily Look is being prepared and will be available shortly.';
