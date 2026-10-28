@@ -23454,6 +23454,12 @@ async function doPoll(room) {
 
 // ── SEND MESSAGE ─────────────────────────────────────────────────────────
 let directSendInFlight = false;
+// The send arrow and microphone share one physical spot. Android WebView can
+// dispatch the tail end of a Send tap after the composer has cleared and the
+// microphone has replaced the arrow, which used to start a voice note from the
+// same tap. Keep the microphone inert briefly while that control morphs.
+const TEXT_SEND_MIC_GUARD_MS = 700;
+let composerMicBlockedUntil = 0;
 async function sendMsg() {
   unlockAudio();
   const room = getActiveRoom();
@@ -23501,6 +23507,7 @@ async function sendMsg() {
   // can take long enough for the user to continue typing. Remove only the
   // draft that was actually sent; never erase text added while encryption
   // was pending.
+  composerMicBlockedUntil = Date.now() + TEXT_SEND_MIC_GUARD_MS;
   if (input.value === rawDraft) input.value = '';
   else if (input.value.startsWith(rawDraft)) input.value = input.value.slice(rawDraft.length);
   resizeChatComposer(input);
@@ -25423,6 +25430,10 @@ function isNativeIOS() {
 // message. The touch is cancelled here and the tap is sent on to the button as a
 // normal click, so the button's own action runs exactly once.
 function keepKeyboardOnTap(button) {
+  // This manual pointer-to-click bridge exists only for iOS, where cancelling
+  // the complete touch keeps the software keyboard open. Applying it on
+  // Android creates a second synthetic click after Send changes into Mic.
+  if (!isNativeIOS()) return;
   if (!button || button.dataset.keepKeyboard) return;
   button.dataset.keepKeyboard = '1';
   let trackingPointer = null;
@@ -27200,6 +27211,7 @@ function sendRecordingActivity(now = Date.now()) {
 }
 
 async function startVoiceRecording() {
+  if (Date.now() < composerMicBlockedUntil) return;
   const room = getActiveRoom();
   const input = document.getElementById('msg-input');
   if (!room || !input || input.disabled) return;

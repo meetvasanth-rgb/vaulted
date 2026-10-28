@@ -473,6 +473,7 @@ test('a real scroll after the keyboard has settled still counts', () => {
 
 test('wiring: Send keeps focus in the message box on touch screens', () => {
   const fn = extract(client, 'keepKeyboardOnTap');
+  assert.match(fn, /if \(!isNativeIOS\(\)\) return/);
   assert.match(fn, /addEventListener\('pointerdown'[^]*preventDefault[^]*setPointerCapture/);
   assert.match(fn, /addEventListener\('pointerup'[^]*button\.click\(\)/);
   assert.match(fn, /\['pointercancel','lostpointercapture'\]/);
@@ -490,12 +491,28 @@ test('wiring: Send keeps focus in the message box on touch screens', () => {
     releasePointerCapture(pointerId) { listeners.lostpointercapture?.({ pointerId }); },
     click() { clicks++; },
   };
-  vm.runInNewContext(`(${fn})`)(button);
+  vm.runInNewContext(`(${fn})`, { isNativeIOS:() => true })(button);
   const down = { pointerType:'touch', isPrimary:true, pointerId:7, cancelable:true, preventDefault() {} };
   listeners.pointerdown(down);
   listeners.pointerup({ ...down, clientX:32, clientY:32 });
   listeners.pointerup({ ...down, clientX:32, clientY:32 });
   assert.equal(clicks, 1, 'one iPhone tap produces exactly one send click');
+
+  const androidListeners = {};
+  const androidButton = {
+    dataset:{},
+    addEventListener(type, listener) { androidListeners[type] = listener; },
+  };
+  vm.runInNewContext(`(${fn})`, { isNativeIOS:() => false })(androidButton);
+  assert.deepEqual(androidListeners, {}, 'Android uses its native single click instead of the iOS pointer bridge');
+});
+
+test('one Android Send tap cannot become a microphone tap after the buttons morph', () => {
+  const send = extract(client, 'sendMsg');
+  const record = extract(client, 'startVoiceRecording');
+  assert.match(client, /const TEXT_SEND_MIC_GUARD_MS = 700;/);
+  assert.match(send, /composerMicBlockedUntil = Date\.now\(\) \+ TEXT_SEND_MIC_GUARD_MS;\s*if \(input\.value === rawDraft\)/);
+  assert.match(record, /if \(Date\.now\(\) < composerMicBlockedUntil\) return;/);
 });
 
 test('direct send is single-flight and preserves text entered while encryption is pending', () => {
