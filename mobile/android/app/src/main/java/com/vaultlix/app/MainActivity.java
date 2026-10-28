@@ -1361,7 +1361,9 @@ public class MainActivity extends BridgeActivity {
                 String path = uri.getPath();
                 if (!"https".equalsIgnoreCase(uri.getScheme())
                         || !"vaultlix.com".equalsIgnoreCase(uri.getHost())
-                        || path == null || !path.matches("/[2-9][0-9]{5,9}")) return null;
+                        || path == null
+                        || (!path.matches("/[2-9][0-9]{5,9}")
+                            && !path.matches("/invite/[A-HJ-NP-Z2-9]{6}"))) return null;
                 return uri.toString();
             } catch (RuntimeException ignored) { return null; }
         }

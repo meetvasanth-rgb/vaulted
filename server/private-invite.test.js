@@ -40,8 +40,21 @@ test('existing users can create a one-time approved invitation from the number-c
   const share = extract('shareOneTimePrivateInvitation', 'async function');
   assert.match(share, /await createPrivateInvitation\(state\)/);
   assert.match(share, /inviteShareText\(state, '', invitation\.url\)/);
-  assert.match(share, /await openSystemShare\(text\)/);
+  assert.match(share, /await sharePrivateInvitationWithQr\(state, invitation, text\)/);
   assert.match(share, /navigator\.clipboard\.writeText\(text\)/);
+});
+
+test('every 24-hour invitation share includes a branded QR image', () => {
+  const renderer = extract('renderPrivateInviteCard', 'async function');
+  const share = extract('sharePrivateInvitationWithQr', 'async function');
+  assert.match(renderer, /createPrivateInviteCardSvg/);
+  assert.match(renderer, /privateInviteQrMatrix\(invitation\.url\)/);
+  assert.match(share, /vaultlix-private-invitation\.png/);
+  assert.match(share, /shareImageWithLink\(asset\.dataUrl, invitation\.url\)/);
+  assert.match(share, /action:'shareImage', dataUrl:asset\.dataUrl, shareUrl:invitation\.url/);
+  assert.match(share, /navigator\.share\(\{ title:'Private Vaultlix invitation', text, files:\[file\] \}\)/);
+  assert.match(extract('shareFirstConnectionInvite', 'async function'), /sharePrivateInvitationWithQr\(state, invitation, text\)/);
+  assert.match(extract('shareInviteFromCard', 'async function'), /sharePrivateInvitationWithQr\(state, invitation, text\)/);
 });
 
 test('private invitation paths are recognized by the page and both native apps', () => {

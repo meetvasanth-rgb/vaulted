@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
-const { WIDTH, HEIGHT, BRAND, createNumberCardSvg } = require('../client/number-card');
+const { WIDTH, HEIGHT, BRAND, createNumberCardSvg, createPrivateInviteCardSvg } = require('../client/number-card');
 
 const client = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
@@ -41,6 +41,19 @@ test('number card explains the scan and includes a readable connection fallback'
   assert.doesNotMatch(svg, /Scan to extend a private line/);
 });
 
+test('one-time invitation card carries its QR destination and expiry without exposing a Private Number', () => {
+  const svg = createPrivateInviteCardSvg({
+    username:'Vasanthkumar',
+    inviteUrl:'https://vaultlix.com/invite/ER49TD',
+    qrMatrix:[[true, false], [false, true]],
+  });
+  assert.match(svg, /PRIVATE INVITATION/);
+  assert.match(svg, /Vasanthkumar invited you/);
+  assert.match(svg, /SINGLE USE · VALID FOR 24 HOURS/);
+  assert.match(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
+  assert.doesNotMatch(svg, /24-8059-9999|MY PRIVATE LINE/);
+});
+
 test('native apps prepare the image before opening the system share sheet', () => {
   const android = readFileSync(join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
   const ios = readFileSync(join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
@@ -53,8 +66,10 @@ test('native apps prepare the image before opening the system share sheet', () =
   assert.match(android, /boolean sharePreparedImage\(\)/);
   assert.match(android, /boolean shareImage\(String dataUrl\)/);
   assert.match(android, /boolean shareImageWithLink\(String dataUrl, String shareUrl\)/);
+  assert.match(android, /path\.matches\("\/invite\/\[A-HJ-NP-Z2-9\]\{6\}"\)/);
   assert.match(ios, /action == "prepareShareImage"/);
   assert.match(ios, /action == "sharePreparedImage"/);
+  assert.match(ios, /inviteParts\[0\] == "invite"/);
   assert.match(ios, /vaultlix:share-image-presented/);
   assert.match(client, /numberCardAssetPromise = prepareNumberCardAsset\(canvas\)/);
   assert.match(client, /prepareNativeNumberCard\(asset\.dataUrl, numberCardShareUrl\(state\.privateNumber\)\)/);

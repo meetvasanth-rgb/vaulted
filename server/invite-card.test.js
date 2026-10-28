@@ -32,6 +32,7 @@ function harness({ state = { accountId:'acc1', privateNumber:'2345678901', displ
     localStorage: { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, value) },
     renderVaultList: () => { context.rendered = (context.rendered || 0) + 1; },
     openSystemShare: async text => { shared.push(text); return share(text); },
+    sharePrivateInvitationWithQr: async (_state, _invitation, text) => { shared.push(text); return share(text); },
     createPrivateInvitation: async () => ({ url:'https://vaultlix.com/invite/K6AKTD' }),
     navigator:{ clipboard:{ writeText: async text => { copied.push(text); } } },
     toast: message => toasts.push(message), showOwnPrivateNumberQr: () => {},
@@ -79,7 +80,7 @@ test('"Later" hides it for two days, per account, in its own key, then it comes 
   assert.match(harness({ state:{ accountId:'acc2', privateNumber:'3456789012', displayName:'B' }, stored:{ 'vaultlix_invite_card:acc1':String(Date.now() + 99999) } }).context.inviteCardHtml(), /Share invite/);
 });
 
-test('share opens the system share sheet with the invitation, falling back to copying it', async () => {
+test('share opens the system share sheet with the invitation QR card, falling back to copying its text', async () => {
   const shared = harness();
   await shared.context.shareInviteFromCard();
   assert.deepEqual(shared.shared, ['Hi, let’s connect privately on Vaultlix. This one-time invitation from Vasanth is valid for 24 hours: https://vaultlix.com/invite/K6AKTD']);

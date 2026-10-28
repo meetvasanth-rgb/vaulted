@@ -12493,6 +12493,14 @@ function quickConnectQrMatrix(privateNumber, profileShareCode) {
     Array.from({ length:qr.getModuleCount() }, (_, column) => qr.isDark(row, column)));
 }
 
+function privateInviteQrMatrix(inviteUrl) {
+  const qr = qrcode(0, 'M');
+  qr.addData(inviteUrl);
+  qr.make();
+  return Array.from({ length:qr.getModuleCount() }, (_, row) =>
+    Array.from({ length:qr.getModuleCount() }, (_, column) => qr.isDark(row, column)));
+}
+
 function quickConnectQrUrl(privateNumber, profileShareCode = loadAccountState()?.profileShareCode) {
   const code = normalizeProfileShareCode(profileShareCode);
   // Keep the six-character public token while using a single path segment.
@@ -12654,7 +12662,7 @@ async function shareOneTimePrivateInvitation() {
     const invitation = await createPrivateInvitation(state);
     if (!invitation) return;
     const text = inviteShareText(state, '', invitation.url);
-    if (await openSystemShare(text)) {
+    if (await sharePrivateInvitationWithQr(state, invitation, text)) {
       closeNumberCard();
       return;
     }
@@ -13562,6 +13570,39 @@ function inviteShareText(state, friendName = '', inviteUrl = '') {
   const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
   return `${greeting}let’s connect privately on Vaultlix. This one-time invitation from ${state.displayName} is valid for 24 hours: ${inviteUrl}`;
 }
+async function renderPrivateInviteCard(state, invitation) {
+  const svg = VaultlixNumberCard.createPrivateInviteCardSvg({
+    username:state.displayName,
+    inviteUrl:invitation.url,
+    qrMatrix:privateInviteQrMatrix(invitation.url),
+  });
+  const objectUrl = URL.createObjectURL(new Blob([svg], { type:'image/svg+xml' }));
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => { image.onload=resolve; image.onerror=reject; image.src=objectUrl; });
+    const canvas = document.createElement('canvas');
+    canvas.width = VaultlixNumberCard.WIDTH;
+    canvas.height = VaultlixNumberCard.HEIGHT;
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    return prepareNumberCardAsset(canvas);
+  } finally { URL.revokeObjectURL(objectUrl); }
+}
+async function sharePrivateInvitationWithQr(state, invitation, text) {
+  const asset = await renderPrivateInviteCard(state, invitation);
+  if (typeof window.VaultlixAndroid?.shareImageWithLink === 'function') {
+    if (window.VaultlixAndroid.shareImageWithLink(asset.dataUrl, invitation.url) === true) return true;
+  }
+  if (window.webkit?.messageHandlers?.vaultlixCall) {
+    window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'shareImage', dataUrl:asset.dataUrl, shareUrl:invitation.url });
+    return true;
+  }
+  const file = new File([asset.blob], 'vaultlix-private-invitation.png', { type:'image/png' });
+  if (navigator.canShare?.({ files:[file] })) {
+    await navigator.share({ title:'Private Vaultlix invitation', text, files:[file] });
+    return true;
+  }
+  return openSystemShare(text);
+}
 async function createPrivateInvitation(state = loadAccountState()) {
   if (!state) return null;
   const result = await api('/api/private-invites/create', { accountId:state.accountId, sessionToken:state.sessionToken });
@@ -13580,7 +13621,7 @@ async function shareFirstConnectionInvite() {
   if (!invitation) return;
   const text = inviteShareText(state, friendName, invitation.url);
   try {
-    if (await openSystemShare(text)) {
+    if (await sharePrivateInvitationWithQr(state, invitation, text)) {
       dismissFirstConnectionGuide();
       return;
     }
@@ -15204,7 +15245,7 @@ async function shareInviteFromCard() {
   if (!invitation) return;
   const text = inviteShareText(state, '', invitation.url);
   try {
-    if (await openSystemShare(text)) return;
+    if (await sharePrivateInvitationWithQr(state, invitation, text)) return;
     await navigator.clipboard.writeText(text);
     toast('Invitation copied — send it in any messaging app');
   } catch (error) {

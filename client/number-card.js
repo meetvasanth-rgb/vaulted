@@ -73,5 +73,35 @@
 </svg>`;
   }
 
-  return { WIDTH, HEIGHT, BRAND, createNumberCardSvg };
+  function createPrivateInviteCardSvg({ username, inviteUrl, qrMatrix = [] }) {
+    const displayUsername = String(username || 'A Vaultlix member').trim().slice(0, 32);
+    const safeUsername = escapeXml(displayUsername);
+    const headlineSize = displayUsername.length > 24 ? 36 : (displayUsername.length > 18 ? 44 : 56);
+    const safeInviteUrl = escapeXml(inviteUrl || 'https://vaultlix.com');
+    const modules = qrPath(qrMatrix, 314, 438, 452);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
+  <defs>
+    <linearGradient id="invite-bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7B2947"/><stop offset=".52" stop-color="${BRAND}"/><stop offset="1" stop-color="#3D1022"/></linearGradient>
+    <radialGradient id="invite-glow"><stop stop-color="#F6DCE5" stop-opacity=".22"/><stop offset="1" stop-color="#F6DCE5" stop-opacity="0"/></radialGradient>
+    <style>.brand{font:700 34px Inter,Arial,sans-serif;letter-spacing:12px;fill:#FFF5F8}.eyebrow{font:700 22px Inter,Arial,sans-serif;letter-spacing:7px;fill:#EDC5D2}.headline{font:700 56px Inter,Arial,sans-serif;fill:#FFF7FA}.copy{font:600 31px Inter,Arial,sans-serif;fill:#F3DDE5}.url{font:700 32px Inter,Arial,sans-serif;fill:#FFF7FA}.small{font:700 25px Inter,Arial,sans-serif;letter-spacing:4px;fill:#E9C5D1}</style>
+  </defs>
+  <rect width="1080" height="1350" fill="url(#invite-bg)"/>
+  <circle cx="540" cy="420" r="470" fill="url(#invite-glow)"/>
+  <path d="M80 84h920M80 1320h920" stroke="#F6DCE5" stroke-opacity=".24"/>
+  <g text-anchor="middle">
+    <text x="540" y="150" class="brand">VAULTLIX</text>
+    <text x="540" y="230" class="eyebrow">PRIVATE INVITATION</text>
+    <text x="540" y="325" class="headline" style="font-size:${headlineSize}px">${safeUsername} invited you</text>
+    <text x="540" y="382" class="copy">Connect without sharing your mobile number</text>
+  </g>
+  <rect x="300" y="424" width="480" height="480" rx="48" fill="#FFF"/>
+  <path d="${modules}" fill="#2D0C18"/>
+  <text x="540" y="982" text-anchor="middle" class="copy">Scan to connect privately</text>
+  <text x="540" y="1052" text-anchor="middle" class="small">SINGLE USE · VALID FOR 24 HOURS</text>
+  <text x="540" y="1143" text-anchor="middle" class="url">${safeInviteUrl}</text>
+  <text x="540" y="1252" text-anchor="middle" class="small">PRIVATE BY DESIGN</text>
+</svg>`;
+  }
+
+  return { WIDTH, HEIGHT, BRAND, createNumberCardSvg, createPrivateInviteCardSvg };
 });

@@ -1000,10 +1000,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
               let url = URL(string: raw),
               url.scheme?.lowercased() == "https",
               url.host?.lowercased() == "vaultlix.com" else { return nil }
-        let number = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard (6...10).contains(number.count),
-              number.first.map({ "23456789".contains($0) }) == true,
-              number.allSatisfy({ $0.isNumber }) else { return nil }
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let validNumber = (6...10).contains(path.count)
+            && path.first.map({ "23456789".contains($0) }) == true
+            && path.allSatisfy({ $0.isNumber })
+        let inviteParts = path.split(separator: "/")
+        let validInvite = inviteParts.count == 2
+            && inviteParts[0] == "invite"
+            && inviteParts[1].count == 6
+            && inviteParts[1].allSatisfy({ "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains($0) })
+        guard validNumber || validInvite else { return nil }
         return url
     }
 
