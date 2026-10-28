@@ -96,6 +96,8 @@ test('an unsafe stored value is never shown', () => {
 });
 
 test('the profile editor has the View full size button, wired and hidden until there is an image', () => {
-  assert.match(client, /<button class="profile-photo-action" id="account-profile-photo-view" type="button" onclick="viewOwnProfileImage\(\)" hidden>View full size<\/button>/);
+  assert.match(client, /<button class="profile-photo-action" id="account-profile-photo-view" type="button" onclick="closeProfilePhotoMenu\(\);viewOwnProfileImage\(\)" hidden>View full size<\/button>/);
+  assert.match(client, /<details class="profile-photo-menu" id="account-profile-photo-menu">/);
+  assert.match(client, /<summary>More options<\/summary>/);
   assert.match(client, /\.profile-photo-preview\.has-image\{cursor:zoom-in\}/);
 });
