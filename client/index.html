@@ -1382,7 +1382,7 @@ html.vaultlix-native-ios #settings-panel .toggle-switch input:checked ~ .toggle-
 @media (prefers-reduced-motion:reduce){.achievement-celebration{transition:opacity .15s ease}.achievement-celebration.open .achievement-kicker,.achievement-celebration.open .achievement-title,.achievement-celebration.open .achievement-badge-medal{animation:none;transform:none;opacity:1}.achievement-badge-glow,.achievement-badge-shine{display:none}}
 .number-card-overlay{position:fixed;inset:0;background:rgba(20,7,13,.76);z-index:620;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .number-card-overlay.open{display:flex}.number-card-modal{width:min(390px,92vw);background:#2D0C18;border:1px solid rgba(255,255,255,.15);border-radius:24px;padding:14px;box-shadow:0 28px 80px rgba(0,0,0,.5)}
-#number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}
+#number-card-canvas{display:block;width:100%;height:auto;border-radius:16px;background:#6B1F3A}.number-card-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.number-card-actions button{border-radius:14px;padding:13px;border:1px solid rgba(255,255,255,.2);font:700 14px Inter,sans-serif}.number-card-share{background:#F8EDF1;color:#6B1F3A}.number-card-close{background:transparent;color:#F8EDF1}.number-card-invite{grid-column:1/-1;background:#682C43;color:#fff}.number-card-invite-copy{margin:12px 8px 0;color:#DCC7CF;font:500 12px/1.45 Inter,sans-serif;text-align:center}
 .number-card-modal.preparing #number-card-canvas{opacity:.5}.number-card-progress{display:none;text-align:center;color:#F8EDF1;font:650 12px/1.4 Inter,sans-serif;padding:10px 0 0}.number-card-modal.preparing .number-card-progress{display:block}
 .pdf-preview-overlay{position:fixed;inset:0;z-index:950;display:none;flex-direction:column;background:#F4EFF1;color:#281F23;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}.pdf-preview-overlay.open{display:flex}.pdf-preview-head{height:62px;flex:0 0 62px;display:flex;align-items:center;gap:12px;padding:9px 14px;background:#fff;border-bottom:1px solid #E4D9DE}.pdf-preview-close{width:42px;height:42px;border-radius:13px;background:#F4E9ED;color:#682C43;font-size:25px}.pdf-preview-title{min-width:0;flex:1}.pdf-preview-name{font:700 15px/1.25 Manrope,Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pdf-preview-meta{margin-top:3px;color:#83757C;font:550 11px Inter,sans-serif}.pdf-preview-stage{min-height:0;flex:1;overflow:auto;display:block;padding:18px;touch-action:pan-x pan-y}.pdf-preview-paper{position:relative;width:min(720px,100%);min-height:240px;margin:0 auto;display:grid;place-items:center;background:#fff;border-radius:10px;box-shadow:0 8px 30px rgba(62,33,45,.14);overflow:hidden;transform-origin:top left}.pdf-preview-paper canvas{display:block;width:100%;height:auto}.pdf-preview-placeholder{width:100%;height:auto;display:block}.pdf-preview-loading{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.84);color:#755D68;font:650 13px Inter,sans-serif}.pdf-preview-controls{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:14px;padding:10px 14px;background:#fff;border-top:1px solid #E4D9DE}.pdf-preview-controls button{width:42px;height:38px;border-radius:12px;background:#F4E9ED;color:#682C43;font-size:19px}.pdf-preview-controls button:disabled{opacity:.35}.pdf-preview-page{min-width:76px;text-align:center;font:650 12px Inter,sans-serif;color:#6E5B64}.pdf-preview-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:0 14px 12px;background:#fff}.pdf-preview-actions button{min-height:44px;border-radius:13px;font:700 13px Inter,sans-serif}.pdf-preview-dismiss{min-width:96px;margin-right:auto;background:#F4E9ED;color:#682C43}.pdf-preview-icon-action{width:48px;display:grid;place-items:center;background:#682C43;color:#fff}.pdf-preview-icon-action svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .first-connection-icon{width:70px;height:70px;margin:2px 0 20px;display:grid;place-items:center;border-radius:23px;background:linear-gradient(145deg,#73314B,#512033);color:#fff;box-shadow:0 16px 34px rgba(104,44,67,.22)}.first-connection-icon svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.first-connection-privacy{display:flex;align-items:flex-start;gap:9px;margin:13px 0 2px;padding:12px 13px;border-radius:13px;background:#F7F1F3;color:#75656D;font:550 11.5px/1.45 Inter,sans-serif}.first-connection-privacy svg{width:16px;height:16px;flex:none;margin-top:1px;fill:none;stroke:#682C43;stroke-width:1.8}
@@ -4996,9 +4996,11 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   <div class="number-card-modal" role="dialog" aria-modal="true" aria-label="Share your Vaultlix Private Number card">
     <canvas id="number-card-canvas" width="1080" height="1350"></canvas>
     <div class="number-card-progress" role="status">Preparing your number card…</div>
+    <div class="number-card-invite-copy">Share the card for a normal connection request, or create a single-use invitation that is already approved by you.</div>
     <div class="number-card-actions">
       <button class="number-card-close" type="button" onclick="closeNumberCard()">Not now</button>
       <button class="number-card-share" type="button" onclick="shareNumberCard()">Share card</button>
+      <button class="number-card-invite" type="button" onclick="shareOneTimePrivateInvitation()">Create 24-hour invitation</button>
     </div>
   </div>
 </div>
@@ -12630,6 +12632,33 @@ async function shareNumberCard() {
   } catch (error) {
     resetNumberCardShareState();
     if (error?.name !== 'AbortError') toast('Sharing was not available');
+  }
+}
+
+let privateInviteShareInFlight = false;
+async function shareOneTimePrivateInvitation() {
+  if (privateInviteShareInFlight) return;
+  const state = loadAccountState();
+  if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
+  const button = document.querySelector('.number-card-invite');
+  privateInviteShareInFlight = true;
+  if (button) { button.disabled = true; button.textContent = 'Creating invitation…'; }
+  try {
+    const invitation = await createPrivateInvitation(state);
+    if (!invitation) return;
+    const text = inviteShareText(state, '', invitation.url);
+    if (await openSystemShare(text)) {
+      closeNumberCard();
+      return;
+    }
+    await navigator.clipboard.writeText(text);
+    closeNumberCard();
+    toast('One-time invitation copied');
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast('Could not share the invitation');
+  } finally {
+    privateInviteShareInFlight = false;
+    if (button) { button.disabled = false; button.textContent = 'Create 24-hour invitation'; }
   }
 }
 

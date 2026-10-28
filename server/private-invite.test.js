@@ -34,6 +34,16 @@ test('Share invitation creates a private invite URL instead of sharing the perma
   assert.doesNotMatch(extract('inviteShareText'), /state\.privateNumber/);
 });
 
+test('existing users can create a one-time approved invitation from the number-card screen', () => {
+  assert.match(client, /onclick="shareOneTimePrivateInvitation\(\)">Create 24-hour invitation<\/button>/);
+  assert.match(client, /Share the card for a normal connection request, or create a single-use invitation that is already approved by you\./);
+  const share = extract('shareOneTimePrivateInvitation', 'async function');
+  assert.match(share, /await createPrivateInvitation\(state\)/);
+  assert.match(share, /inviteShareText\(state, '', invitation\.url\)/);
+  assert.match(share, /await openSystemShare\(text\)/);
+  assert.match(share, /navigator\.clipboard\.writeText\(text\)/);
+});
+
 test('private invitation paths are recognized by the page and both native apps', () => {
   const context = vm.createContext({ String, normalizeProfileShareCode:value => /^[A-HJ-NP-Z2-9]{6}$/.test(String(value).toUpperCase()) ? String(value).toUpperCase() : '' });
   vm.runInContext(extract('parsePrivateInviteCode'), context);
