@@ -31,16 +31,16 @@
 <meta property="og:title" content="Vaultlix">
 <meta property="og:description" content="Message, share and call privately without sharing your personal phone number or uploading your contacts.">
 <meta property="og:url" content="https://vaultlix.com/">
-<meta property="og:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
-<meta property="og:image:secure_url" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
+<meta property="og:image" content="https://vaultlix.com/media/vaultlix-app-preview.png?v=20261028">
+<meta property="og:image:secure_url" content="https://vaultlix.com/media/vaultlix-app-preview.png?v=20261028">
 <meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Vaultlix private messaging logo">
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Vaultlix">
 <meta name="twitter:description" content="Message, share and call privately without sharing your personal phone number or uploading your contacts.">
-<meta name="twitter:image" content="https://vaultlix.com/icons/icon-512.png?v=20260904">
+<meta name="twitter:image" content="https://vaultlix.com/media/vaultlix-app-preview.png?v=20261028">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -13520,7 +13520,7 @@ function dismissFirstConnectionGuide() {
 // Private Number link (which continues to require the owner to accept).
 function inviteShareText(state, friendName = '', inviteUrl = '') {
   const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
-  return `${greeting}I’d like a private line with you on Vaultlix. Connect with ${state.displayName}: ${inviteUrl}`;
+  return `${greeting}let’s connect privately on Vaultlix. This one-time invitation from ${state.displayName} is valid for 24 hours: ${inviteUrl}`;
 }
 async function createPrivateInvitation(state = loadAccountState()) {
   if (!state) return null;

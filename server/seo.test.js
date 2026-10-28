@@ -97,7 +97,7 @@ test('trailing slash redirects to the canonical page URL', () => {
 
 test('private entry points get noindex but are left to the app', () => {
   const seo = makeSeo();
-  for (const url of ['/join/amber-frost-42', '/9876543210', '/admin', '/admin.html']) {
+  for (const url of ['/join/amber-frost-42', '/invite/K6AKTD', '/9876543210', '/admin', '/admin.html']) {
     const r = call(seo, url);
     assert.strictEqual(r.handled, false, url);
     assert.match(r.headers['x-robots-tag'], /noindex/, url);
@@ -107,7 +107,7 @@ test('private entry points get noindex but are left to the app', () => {
 
 test('app shell routes are recognised; everything else is not', () => {
   const seo = makeSeo();
-  for (const p of ['/', '/index.html', '/join/amber-frost-42', '/join/abc/', '/p/ABC234', '/p-ABC234', '/234567', '/9876543210']) assert.ok(seo.isAppShellRoute(p), p);
+  for (const p of ['/', '/index.html', '/join/amber-frost-42', '/join/abc/', '/invite/K6AKTD', '/invite/K6AKTD/', '/p/ABC234', '/p-ABC234', '/234567', '/9876543210']) assert.ok(seo.isAppShellRoute(p), p);
   for (const p of ['/nonexistent-page-xyz', '/blog', '/llms.txt', '/123456', '/join/', '/12345678901']) assert.ok(!seo.isAppShellRoute(p), p);
 });
 
