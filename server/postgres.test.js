@@ -139,9 +139,21 @@ test('account persistence uses parameterized upserts', async () => {
   assert.deepEqual(calls[1][1], ['a'.repeat(64), 'cipher']);
   assert.match(calls[2][0], /ON CONFLICT \(account_id\) DO UPDATE/);
   assert.match(calls[2][0], /profile_share_code=EXCLUDED\.profile_share_code/);
-  assert.equal(calls[2][1].length, 31); // includes inbox_key, request_policy, registered_via and clients_seen
+  assert.equal(calls[2][1].length, 32); // includes inbox_key, request_policy, registered_via, clients_seen and private_invites
   assert.equal(calls[2][1][0], 'a'.repeat(64));
   assert.match(calls[3][0], /DELETE FROM account_bundle_history/);
+});
+
+test('private invitations use a compact durable PostgreSQL update', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => { calls.push(args); return { rows:[] }; } };
+  const store = new PostgresStore('', { pool });
+  const invitations = [{ code:'K6AKTD', createdAt:100, expiresAt:200 }];
+  await store.savePrivateInvites('a'.repeat(64), invitations);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0][0], /UPDATE accounts SET private_invites=\$2::jsonb/);
+  assert.equal(calls[0][1][0], 'a'.repeat(64));
+  assert.equal(calls[0][1][1], JSON.stringify(invitations));
 });
 
 test('Daily Look claim uses the current midnight-reset window in PostgreSQL', async () => {

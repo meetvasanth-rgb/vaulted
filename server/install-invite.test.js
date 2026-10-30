@@ -132,7 +132,8 @@ test('the pages: a store button on a friend\'s page, and "Have an invite code?" 
   assert.match(client, /id="public-profile-get-app"/);
   assert.match(extract('performPublicProfileLookup', 'async function'), /showInviteGetApp\(result\.profile\)/);
   assert.match(extract('showInviteGetApp'), /isNativeApp\(\) \? null : inviteStoreTarget\(code,[\s\S]*!!profile\?\.privateInvitation\)/);
-  assert.doesNotMatch(extract('attemptMobileAppHandoff'), /location\.href = iosAppClipInviteURL/, 'iOS waits for the explicit Continue action');
+  assert.match(extract('attemptMobileAppHandoff'), /location\.href = iosAppClipInviteURL/, 'iOS automatically opens the installed app or App Clip');
+  assert.match(client, /link\.onclick = cancelPendingMobileAppHandoff/, 'the visible Continue link cancels the pending duplicate handoff');
   assert.match(client, /class="landing-invite-link" type="button" onclick="openInviteCodePrompt\(\)">Have an invite code\?/);
   assert.match(client, /id="native-onboarding-invite"[^>]*onclick="openInviteCodePrompt\(\)"/);
   assert.match(extract('renderNativeOnboarding'), /inviteButton\.style\.display = page === 'welcome' \|\| page === 'identity' \? '' : 'none'/);

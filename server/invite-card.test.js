@@ -23,9 +23,10 @@ function extractFunction(name, prefix = 'function') {
   throw new Error('unbalanced');
 }
 
-function harness({ state = { accountId:'acc1', privateNumber:'2345678901', displayName:'Vasanth' }, rooms = 0, groups = 0, outgoing = 0, stored = {}, share = async () => true } = {}) {
+function harness({ state = { accountId:'acc1', privateNumber:'2345678901', displayName:'Vasanth' }, rooms = 0, groups = 0, outgoing = 0, stored = {}, share = async () => true, recipientName = '' } = {}) {
   const store = new Map(Object.entries(stored));
   const shared = [], copied = [], toasts = [];
+  let created = 0;
   const context = vm.createContext({
     loadAccountState: () => state,
     rooms:{ size:rooms }, privateGroups:{ size:groups }, pendingOutgoingConnections:{ length:outgoing },
@@ -33,16 +34,17 @@ function harness({ state = { accountId:'acc1', privateNumber:'2345678901', displ
     renderVaultList: () => { context.rendered = (context.rendered || 0) + 1; },
     openSystemShare: async text => { shared.push(text); return share(text); },
     sharePrivateInvitationWithQr: async (_state, _invitation, text) => { shared.push(text); return share(text); },
-    createPrivateInvitation: async () => ({ url:'https://vaultlix.com/invite/K6AKTD' }),
+    requestInviteRecipientName: async () => recipientName,
+    createPrivateInvitation: async () => { created++; return { url:'https://vaultlix.com/invite/K6AKTD' }; },
     navigator:{ clipboard:{ writeText: async text => { copied.push(text); } } },
     toast: message => toasts.push(message), showOwnPrivateNumberQr: () => {},
     Date, Number, String,
   });
-  const source = "const INVITE_CARD_KEY_PREFIX = 'vaultlix_invite_card:'; const INVITE_CARD_SNOOZE_MS = 2 * 24 * 60 * 60 * 1000;\n"
+  const source = "const INVITE_CARD_KEY_PREFIX = 'vaultlix_invite_card:'; const INVITE_CARD_SNOOZE_MS = 2 * 24 * 60 * 60 * 1000; let inviteCardShareInFlight = false;\n"
     + ['inviteShareText', 'inviteCardKey', 'inviteCardSnoozed', 'snoozeInviteCard', 'inviteCardHtml'].map(name => extractFunction(name)).join('\n')
     + '\n' + extractFunction('shareInviteFromCard', 'async function');
   vm.runInContext(source, context);
-  return { context, store, shared, copied, toasts };
+  return { context, store, shared, copied, toasts, created:() => created };
 }
 
 test('an account with no chats is shown the invite card, with share, QR and later', () => {
@@ -92,6 +94,18 @@ test('share opens the system share sheet with the invitation QR card, falling ba
   const cancelled = harness({ share: async () => { const error = new Error('x'); error.name = 'AbortError'; throw error; } });
   await cancelled.context.shareInviteFromCard();
   assert.deepEqual(cancelled.toasts, [], 'closing the share sheet is not an error');
+});
+
+test('the optional recipient name personalizes only the outgoing text, and cancelling creates no invitation', async () => {
+  const named = harness({ recipientName:'Sam' });
+  await named.context.shareInviteFromCard();
+  assert.equal(named.created(), 1);
+  assert.deepEqual(named.shared, ['Hi Sam, Vasanth invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD']);
+
+  const cancelled = harness({ recipientName:null });
+  await cancelled.context.shareInviteFromCard();
+  assert.equal(cancelled.created(), 0);
+  assert.deepEqual(cancelled.shared, []);
 });
 
 test('the one-time guide uses the same invitation text, and the card heads the inbox including the empty state', () => {

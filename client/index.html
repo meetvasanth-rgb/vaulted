@@ -4877,6 +4877,17 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   </div>
 </div>
 
+<div class="account-overlay" id="invite-recipient-overlay" onclick="if(event.target===this)cancelInviteRecipientName()">
+  <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="invite-recipient-title">
+    <div class="account-head"><div><div class="account-kicker">24-hour invitation</div><div class="account-title" id="invite-recipient-title">Add their name</div></div><button class="account-close" type="button" onclick="cancelInviteRecipientName()" aria-label="Close">×</button></div>
+    <div class="account-copy">Personalize the message with their first name, or leave it blank to share the invitation as it is.</div>
+    <label class="account-field"><span>Their first name <small style="font-weight:500;color:#93868D">(optional)</small></span><input id="invite-recipient-name" maxlength="32" autocomplete="off" placeholder="For example, Maya" onkeydown="if(event.key==='Enter'){event.preventDefault();completeInviteRecipientName()}"/></label>
+    <button class="account-primary" type="button" onclick="completeInviteRecipientName()">Create invitation</button>
+    <button class="account-secondary" type="button" onclick="completeInviteRecipientName(false)">Continue without a name</button>
+    <div class="first-connection-privacy"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>The name is used only in the outgoing message. It is never sent to or stored by Vaultlix.</span></div>
+  </div>
+</div>
+
 <div class="account-overlay" id="recovery-reminder-overlay">
   <div class="account-card recovery-reminder-card" role="dialog" aria-modal="true" aria-labelledby="recovery-reminder-title">
     <div class="recovery-reminder-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
@@ -12655,11 +12666,14 @@ async function shareOneTimePrivateInvitation() {
   if (!state?.privateNumber) { toast('Create your Vaultlix Private Number first'); return; }
   const button = document.querySelector('.number-card-invite');
   privateInviteShareInFlight = true;
-  if (button) { button.disabled = true; button.textContent = 'Creating invitation…'; }
+  if (button) button.disabled = true;
   try {
+    const friendName = await requestInviteRecipientName();
+    if (friendName === null) return;
+    if (button) button.textContent = 'Creating invitation…';
     const invitation = await createPrivateInvitation(state);
     if (!invitation) return;
-    const text = inviteShareText(state, '', invitation.url);
+    const text = inviteShareText(state, friendName, invitation.url);
     if (await sharePrivateInvitationWithQr(state, invitation, text)) {
       closeNumberCard();
       return;
@@ -13568,6 +13582,35 @@ function inviteShareText(state, friendName = '', inviteUrl = '') {
   const greeting = friendName ? `Hi ${friendName}, ` : '';
   return `${greeting}${state.displayName} invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: ${inviteUrl}`;
 }
+function sanitizeInviteRecipientName(value = '') {
+  return String(value).trim().replace(/\s+/g, ' ').slice(0, 32);
+}
+let inviteRecipientNameResolver = null;
+function requestInviteRecipientName() {
+  if (inviteRecipientNameResolver) return Promise.resolve(null);
+  const overlay = document.getElementById('invite-recipient-overlay');
+  const input = document.getElementById('invite-recipient-name');
+  if (!overlay || !input) return Promise.resolve('');
+  input.value = '';
+  overlay.classList.add('open');
+  setTimeout(() => input.focus(), 120);
+  return new Promise(resolve => { inviteRecipientNameResolver = resolve; });
+}
+function finishInviteRecipientName(value) {
+  const resolve = inviteRecipientNameResolver;
+  inviteRecipientNameResolver = null;
+  document.getElementById('invite-recipient-overlay')?.classList.remove('open');
+  if (resolve) resolve(value);
+}
+function completeInviteRecipientName(includeName = true) {
+  const value = includeName
+    ? sanitizeInviteRecipientName(document.getElementById('invite-recipient-name')?.value)
+    : '';
+  finishInviteRecipientName(value);
+}
+function cancelInviteRecipientName() {
+  finishInviteRecipientName(null);
+}
 async function renderPrivateInviteCard(state, invitation) {
   const svg = VaultlixNumberCard.createPrivateInviteCardSvg({
     username:state.displayName,
@@ -13579,8 +13622,12 @@ async function renderPrivateInviteCard(state, invitation) {
     const image = new Image();
     await new Promise((resolve, reject) => { image.onload=resolve; image.onerror=reject; image.src=objectUrl; });
     const canvas = document.createElement('canvas');
-    canvas.width = VaultlixNumberCard.WIDTH;
-    canvas.height = VaultlixNumberCard.HEIGHT;
+    // Android passes this PNG through the WebView bridge as Base64 and writes
+    // it to a temporary file before its native share sheet can open. A 720px
+    // card keeps the QR crisp while cutting that work by more than half.
+    const androidShare = typeof window.VaultlixAndroid?.shareImageWithText === 'function';
+    canvas.width = androidShare ? 720 : VaultlixNumberCard.WIDTH;
+    canvas.height = androidShare ? 900 : VaultlixNumberCard.HEIGHT;
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
     return prepareNumberCardAsset(canvas);
   } finally { URL.revokeObjectURL(objectUrl); }
@@ -13619,7 +13666,7 @@ async function createPrivateInvitation(state = loadAccountState()) {
 async function shareFirstConnectionInvite() {
   const state = loadAccountState();
   if (!state?.privateNumber) return;
-  const friendName = String(document.getElementById('first-connection-name')?.value || '').trim().replace(/\s+/g, ' ').slice(0, 32);
+  const friendName = sanitizeInviteRecipientName(document.getElementById('first-connection-name')?.value);
   const invitation = await createPrivateInvitation(state);
   if (!invitation) return;
   const text = inviteShareText(state, friendName, invitation.url);
@@ -15241,18 +15288,25 @@ function snoozeInviteCard() {
   renderVaultList();
 }
 
+let inviteCardShareInFlight = false;
 async function shareInviteFromCard() {
+  if (inviteCardShareInFlight) return;
   const state = loadAccountState();
   if (!state?.privateNumber) return;
-  const invitation = await createPrivateInvitation(state);
-  if (!invitation) return;
-  const text = inviteShareText(state, '', invitation.url);
+  inviteCardShareInFlight = true;
   try {
+    const friendName = await requestInviteRecipientName();
+    if (friendName === null) return;
+    const invitation = await createPrivateInvitation(state);
+    if (!invitation) return;
+    const text = inviteShareText(state, friendName, invitation.url);
     if (await sharePrivateInvitationWithQr(state, invitation, text)) return;
     await navigator.clipboard.writeText(text);
     toast('Invitation copied — send it in any messaging app');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Could not open sharing. Please try again.');
+  } finally {
+    inviteCardShareInFlight = false;
   }
 }
 
@@ -23781,6 +23835,11 @@ function parsePrivateInviteCode(pathname = location.pathname) {
   const match = String(pathname || '').match(/^\/invite\/([a-hj-np-z2-9]{6})\/?$/i);
   return match ? normalizeProfileShareCode(match[1]) : null;
 }
+let mobileAppHandoffTimer = null;
+function cancelPendingMobileAppHandoff() {
+  if (mobileAppHandoffTimer) clearTimeout(mobileAppHandoffTimer);
+  mobileAppHandoffTimer = null;
+}
 function attemptMobileAppHandoff(target) {
   const params = new URLSearchParams(location.search);
   if (!target || params.get('appAttempted') === '1' || isNativeApp()) return;
@@ -23804,11 +23863,9 @@ function attemptMobileAppHandoff(target) {
     setTimeout(() => { location.href = intent; }, 160);
     return;
   }
-  // Do not launch the App Clip automatically. The invitation page already
-  // offers one explicit Continue action. Auto-launching here and then letting
-  // the person tap Continue could start two App Clip handoffs at once, which
-  // made the first attempt intermittently return to Safari without opening.
-  // The explicit link still lets iOS open the installed app or its App Clip.
+  // Send iPhone invitation links into the installed app or App Clip. The
+  // visible Continue action cancels this timer before following the same URL,
+  // so a quick tap cannot start a duplicate handoff.
   const inviteCode = normalizeProfileShareCode(
     activePublicProfile?.privateInvitation
       ? activePublicProfile?.inviteCode
@@ -23816,7 +23873,11 @@ function attemptMobileAppHandoff(target) {
   );
   if (!inviteCode) return;
   history.replaceState(null,'',`${fallbackUrl.pathname}${fallbackUrl.search}${fallbackUrl.hash}`);
-  return;
+  cancelPendingMobileAppHandoff();
+  mobileAppHandoffTimer = setTimeout(() => {
+    mobileAppHandoffTimer = null;
+    location.href = iosAppClipInviteURL(inviteCode, !!activePublicProfile?.privateInvitation);
+  }, 160);
 }
 function parseRecoveryLink(rawURL = location.href) {
   try {
@@ -24089,8 +24150,10 @@ function showInviteGetApp(profile) {
   const target = isNativeApp() ? null : inviteStoreTarget(code, navigator.userAgent || '', navigator.platform, navigator.maxTouchPoints, !!profile?.privateInvitation);
   box.hidden = !target;
   if (!target) return;
-  document.getElementById('public-profile-get-app-link').href = target.href;
-  document.getElementById('public-profile-get-app-link').textContent = 'Continue in Vaultlix';
+  const link = document.getElementById('public-profile-get-app-link');
+  link.href = target.href;
+  link.onclick = cancelPendingMobileAppHandoff;
+  link.textContent = 'Continue in Vaultlix';
   document.getElementById('public-profile-get-app-copy').textContent = target.platform === 'android'
     ? 'Installing from here brings this invitation straight into the app.'
     : 'Vaultlix will open if installed. Otherwise, the App Clip keeps this invitation while you install.';

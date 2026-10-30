@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   revision bigint NOT NULL DEFAULT 1,
   sessions jsonb NOT NULL DEFAULT '[]'::jsonb,
   connection_requests jsonb NOT NULL DEFAULT '[]'::jsonb,
+  private_invites jsonb NOT NULL DEFAULT '[]'::jsonb,
   push_destinations jsonb NOT NULL DEFAULT '[]'::jsonb,
   last_active_at bigint NOT NULL,
   number_category varchar(32) NOT NULL DEFAULT 'standard',
@@ -221,6 +222,7 @@ CREATE TABLE IF NOT EXISTS device_sync_cursors (
 );
 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS push_destinations jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS private_invites jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_image text;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS last_active_at bigint;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS number_category varchar(32) NOT NULL DEFAULT 'standard';
@@ -279,7 +281,7 @@ UPDATE private_number_lifecycle SET status='retired', available_after=NULL WHERE
 UPDATE accounts SET last_active_at=(extract(epoch from clock_timestamp()) * 1000)::bigint WHERE last_active_at IS NULL;
 ALTER TABLE accounts ALTER COLUMN last_active_at SET NOT NULL;
 
-INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3), (4), (5), (6) ON CONFLICT DO NOTHING;
+INSERT INTO vaultlix_schema(version) VALUES (1), (2), (3), (4), (5), (6), (7) ON CONFLICT DO NOTHING;
 `;
 
 function tokenHash(token) {
@@ -328,6 +330,7 @@ class PostgresStore {
       passwordWrap:row.password_wrap, recoveryWrap:row.recovery_wrap,
       bundle:row.encrypted_bundle, revision:Number(row.revision),
       sessions:row.sessions || [], connectionRequests:row.connection_requests || [],
+      privateInvites:row.private_invites || [],
       pushDestinations:row.push_destinations || [],
       inboxKey:row.inbox_key || null, requestPolicy:row.request_policy || 'anyone',
       lastActiveAt:Number(row.last_active_at), numberCategory:row.number_category || 'standard',
@@ -358,8 +361,8 @@ class PostgresStore {
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
       creation_order, daily_look_generated_at, daily_look_window_started_at,
       daily_look_generation_count, created_at, updated_at, inbox_key, request_policy,
-      registered_via, clients_seen
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31::jsonb)
+      registered_via, clients_seen, private_invites
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31::jsonb,$32::jsonb)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, profile_share_code=EXCLUDED.profile_share_code,
       display_name=EXCLUDED.display_name,
@@ -380,6 +383,7 @@ class PostgresStore {
       inbox_key=EXCLUDED.inbox_key, request_policy=EXCLUDED.request_policy,
       registered_via=COALESCE(accounts.registered_via, EXCLUDED.registered_via),
       clients_seen=EXCLUDED.clients_seen,
+      private_invites=EXCLUDED.private_invites,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.profileShareCode || null, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -393,12 +397,21 @@ class PostgresStore {
       account.inboxKey ? JSON.stringify(account.inboxKey) : null,
       account.requestPolicy || 'anyone',
       account.registeredVia || null, JSON.stringify(account.clientsSeen || []),
+      JSON.stringify(account.privateInvites || []),
     ]);
     await queryClient.query(`DELETE FROM account_bundle_history
       WHERE account_id=$1 AND revision NOT IN (
         SELECT revision FROM account_bundle_history
         WHERE account_id=$1 ORDER BY created_at DESC, revision DESC LIMIT 4
       )`, [accountId]);
+  }
+
+  async savePrivateInvites(accountId, privateInvites, queryClient = this.pool) {
+    if (!this.enabled) return;
+    await queryClient.query(
+      'UPDATE accounts SET private_invites=$2::jsonb, updated_at=$3 WHERE account_id=$1',
+      [accountId, JSON.stringify(privateInvites || []), Date.now()],
+    );
   }
 
   async loadAccountBundleHistory(accountId, limit = 4) {

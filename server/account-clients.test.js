@@ -77,7 +77,7 @@ test('PostgreSQL stores and restores both fields, and never overwrites where an 
   const upsert = calls.find(call => /ON CONFLICT \(account_id\) DO UPDATE/.test(call[0]));
   assert.match(upsert[0], /registered_via, clients_seen/);
   assert.match(upsert[0], /registered_via=COALESCE\(accounts\.registered_via, EXCLUDED\.registered_via\)/);
-  assert.match(upsert[0], /\$30,\$31::jsonb\)/);
+  assert.match(upsert[0], /\$30,\$31::jsonb,\$32::jsonb\)/);
   assert.equal(upsert[1][29], 'android');
   assert.equal(upsert[1][30], JSON.stringify(['android', 'web']));
   assert.match(fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8'), /ADD COLUMN IF NOT EXISTS registered_via varchar\(16\);\s*ALTER TABLE accounts ADD COLUMN IF NOT EXISTS clients_seen jsonb/);

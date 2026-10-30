@@ -38,10 +38,22 @@ test('existing users can create a one-time approved invitation from the number-c
   assert.match(client, /onclick="shareOneTimePrivateInvitation\(\)">Create 24-hour invitation<\/button>/);
   assert.match(client, /Share the card for a normal connection request, or create a single-use invitation that is already approved by you\./);
   const share = extract('shareOneTimePrivateInvitation', 'async function');
+  assert.match(share, /await requestInviteRecipientName\(\)/);
   assert.match(share, /await createPrivateInvitation\(state\)/);
-  assert.match(share, /inviteShareText\(state, '', invitation\.url\)/);
+  assert.match(share, /inviteShareText\(state, friendName, invitation\.url\)/);
   assert.match(share, /await sharePrivateInvitationWithQr\(state, invitation, text\)/);
   assert.match(share, /navigator\.clipboard\.writeText\(text\)/);
+});
+
+test('recipient names are optional, local-only and requested before creating regular invitations', () => {
+  assert.match(client, /id="invite-recipient-name"[^>]*maxlength="32"/);
+  assert.match(client, /The name is used only in the outgoing message\. It is never sent to or stored by Vaultlix\./);
+  assert.match(extract('sanitizeInviteRecipientName'), /trim\(\)\.replace\(\/\\s\+\/g, ' '\)\.slice\(0, 32\)/);
+  const cardShare = extract('shareInviteFromCard', 'async function');
+  assert.ok(cardShare.indexOf('await requestInviteRecipientName()') < cardShare.indexOf('await createPrivateInvitation(state)'));
+  assert.match(cardShare, /if \(friendName === null\) return/);
+  const create = extract('createPrivateInvitation', 'async function');
+  assert.doesNotMatch(create, /friendName|recipientName/);
 });
 
 test('every 24-hour invitation share includes a branded QR image', () => {
@@ -49,6 +61,8 @@ test('every 24-hour invitation share includes a branded QR image', () => {
   const share = extract('sharePrivateInvitationWithQr', 'async function');
   assert.match(renderer, /createPrivateInviteCardSvg/);
   assert.match(renderer, /privateInviteQrMatrix\(invitation\.url\)/);
+  assert.match(renderer, /androidShare \? 720 : VaultlixNumberCard\.WIDTH/);
+  assert.match(renderer, /androidShare \? 900 : VaultlixNumberCard\.HEIGHT/);
   assert.match(share, /vaultlix-private-invitation\.png/);
   assert.match(share, /shareImageWithText\(asset\.dataUrl, invitation\.url, text\)/);
   assert.match(share, /shareImageWithLink\(asset\.dataUrl, invitation\.url\)/);

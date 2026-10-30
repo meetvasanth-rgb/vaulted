@@ -1631,6 +1631,13 @@ async function persistAccount(accountId) {
   else saveAccounts();
 }
 
+async function persistPrivateInvites(accountId) {
+  const account = accounts.get(accountId);
+  if (!account) return;
+  if (postgresEnabled) await postgresStore.savePrivateInvites(accountId, account.privateInvites || []);
+  else saveAccounts();
+}
+
 async function acceptedRoomMembersForAccount(accountId) {
   const slots = new Map();
   // The account list is compacted for the inbox; a peer may still retain an
@@ -4263,7 +4270,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const invite = { code, createdAt:now, expiresAt:now + PRIVATE_INVITE_TTL_MS };
     account.privateInvites.push(invite);
     privateInviteCodes.set(code, d.accountId);
-    await persistAccount(d.accountId);
+    await persistPrivateInvites(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, code, expiresAt:invite.expiresAt, url:`https://vaultlix.com/invite/${code}` });
   }
