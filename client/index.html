@@ -13566,7 +13566,7 @@ function dismissFirstConnectionGuide() {
 // Private Number link (which continues to require the owner to accept).
 function inviteShareText(state, friendName = '', inviteUrl = '') {
   const greeting = friendName ? `Hi ${friendName}, ` : 'Hi, ';
-  return `${greeting}let’s connect privately on Vaultlix. This one-time invitation from ${state.displayName} is valid for 24 hours: ${inviteUrl}`;
+  return `${greeting}let’s connect on Vaultlix. This one-time invitation from ${state.displayName} is valid for 24 hours: ${inviteUrl}`;
 }
 async function renderPrivateInviteCard(state, invitation) {
   const svg = VaultlixNumberCard.createPrivateInviteCardSvg({
