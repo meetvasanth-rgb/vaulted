@@ -83,7 +83,7 @@ test('"Later" hides it for two days, per account, in its own key, then it comes 
 test('share opens the system share sheet with the invitation QR card, falling back to copying its text', async () => {
   const shared = harness();
   await shared.context.shareInviteFromCard();
-  assert.deepEqual(shared.shared, ['Hi, let’s connect on Vaultlix. This one-time invitation from Vasanth is valid for 24 hours: https://vaultlix.com/invite/K6AKTD']);
+  assert.deepEqual(shared.shared, ['Vasanth invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD']);
   assert.deepEqual(shared.copied, []);
   const fallback = harness({ share: async () => false });
   await fallback.context.shareInviteFromCard();
@@ -96,7 +96,7 @@ test('share opens the system share sheet with the invitation QR card, falling ba
 
 test('the one-time guide uses the same invitation text, and the card heads the inbox including the empty state', () => {
   assert.match(client, /const text = inviteShareText\(state, friendName, invitation\.url\);/);
-  assert.equal(harness().context.inviteShareText({ displayName:'V', privateNumber:'2345678901' }, 'Sam', 'https://vaultlix.com/invite/K6AKTD'), 'Hi Sam, let’s connect on Vaultlix. This one-time invitation from V is valid for 24 hours: https://vaultlix.com/invite/K6AKTD');
+  assert.equal(harness().context.inviteShareText({ displayName:'V', privateNumber:'2345678901' }, 'Sam', 'https://vaultlix.com/invite/K6AKTD'), 'Hi Sam, V invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD');
   assert.match(client, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
   assert.match(client, /\$\{vaultSearchActive \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\)\}<div class="vault-list-empty">/);
 });
