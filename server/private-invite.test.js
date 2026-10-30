@@ -50,9 +50,14 @@ test('every 24-hour invitation share includes a branded QR image', () => {
   assert.match(renderer, /createPrivateInviteCardSvg/);
   assert.match(renderer, /privateInviteQrMatrix\(invitation\.url\)/);
   assert.match(share, /vaultlix-private-invitation\.png/);
+  assert.match(share, /shareImageWithText\(asset\.dataUrl, invitation\.url, text\)/);
   assert.match(share, /shareImageWithLink\(asset\.dataUrl, invitation\.url\)/);
-  assert.match(share, /action:'shareImage', dataUrl:asset\.dataUrl, shareUrl:invitation\.url/);
+  assert.match(share, /action:'shareImage', dataUrl:asset\.dataUrl, shareUrl:invitation\.url, shareText:text/);
   assert.match(share, /navigator\.share\(\{ title:'Private Vaultlix invitation', text, files:\[file\] \}\)/);
+  assert.match(android, /shareImageWithText\(String dataUrl, String shareUrl, String shareText\)/);
+  assert.match(android, /Intent\.EXTRA_TEXT, shareText/);
+  assert.match(fs.readFileSync(path.join(root, 'mobile/ios/App/App/SceneDelegate.swift'), 'utf8'),
+    /presentShareImage\(fileURL, shareURL: preparedShareLinkURL, shareText: shareText\)/);
   assert.match(extract('shareFirstConnectionInvite', 'async function'), /sharePrivateInvitationWithQr\(state, invitation, text\)/);
   assert.match(extract('shareInviteFromCard', 'async function'), /sharePrivateInvitationWithQr\(state, invitation, text\)/);
 });

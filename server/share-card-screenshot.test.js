@@ -58,8 +58,8 @@ test('native apps prepare the image before opening the system share sheet', () =
   const android = readFileSync(join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
   const ios = readFileSync(join(__dirname, '..', 'mobile', 'ios', 'App', 'App', 'SceneDelegate.swift'), 'utf8');
   assert.match(android, /boolean sharePreparedImage\(\)[\s\S]*Intent\.ACTION_SEND/);
-  assert.match(android, /Intent\.EXTRA_TEXT, preparedNumberCardLink/);
-  assert.match(ios, /action == "shareImage"[\s\S]*presentShareImage\(fileURL, shareURL: preparedShareLinkURL\)/);
+  assert.match(android, /Intent\.EXTRA_TEXT, shareText/);
+  assert.match(ios, /action == "shareImage"[\s\S]*presentShareImage\(fileURL, shareURL: preparedShareLinkURL, shareText: shareText\)/);
   assert.match(ios, /func presentShareImage[\s\S]*UIActivityViewController/);
   assert.match(android, /setClipData\(ClipData\.newRawUri/);
   assert.match(android, /boolean prepareShareImage\(String dataUrl\)/);

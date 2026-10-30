@@ -968,7 +968,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         return controller
     }
 
-    private func presentShareImage(_ fileURL: URL, shareURL: URL? = nil) {
+    private func presentShareImage(_ fileURL: URL, shareURL: URL? = nil, shareText: String? = nil) {
         guard let presenter = topViewController(from: window?.rootViewController),
               presenter.viewIfLoaded?.window != nil else {
             emit(name: "vaultlix:share-image-failed", detail: [:])
@@ -978,7 +978,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             emit(name: "vaultlix:share-image-presented", detail: [:])
             return
         }
-        let sheet = UIActivityViewController(activityItems: [fileURL, shareURL].compactMap { $0 }, applicationActivities: nil)
+        let caption = validShareImageText(shareText, containing: shareURL) ?? shareURL?.absoluteString
+        var activityItems: [Any] = [fileURL]
+        if let caption { activityItems.append(caption) }
+        let sheet = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
         sheet.completionWithItemsHandler = { [weak self] _, _, _, _ in
             // The prepared private-number card is deliberately retained for
             // instant repeat sharing. Conversation media uses unique URLs and
@@ -1011,6 +1014,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             && inviteParts[1].allSatisfy({ "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".contains($0) })
         guard validNumber || validInvite else { return nil }
         return url
+    }
+
+    private func validShareImageText(_ value: String?, containing shareURL: URL?) -> String? {
+        guard let shareURL,
+              let text = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty, text.count <= 500,
+              text.contains(shareURL.absoluteString) else { return nil }
+        return text
     }
 
     private func presentSaveFile(_ fileURL: URL) {
@@ -1369,7 +1380,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 try data.write(to: fileURL, options: .atomic)
                 preparedShareImageURL = fileURL
                 preparedShareLinkURL = validNumberCardShareURL(body["shareUrl"])
-                presentShareImage(fileURL, shareURL: preparedShareLinkURL)
+                let shareText = body["shareText"] as? String
+                presentShareImage(fileURL, shareURL: preparedShareLinkURL, shareText: shareText)
             } catch { emit(name: "vaultlix:share-image-failed", detail: [:]) }
             return
         }

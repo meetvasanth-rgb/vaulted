@@ -97,6 +97,7 @@ public class MainActivity extends BridgeActivity {
     private String pendingSpeechLocale;
     private volatile Uri preparedNumberCardUri;
     private volatile String preparedNumberCardLink;
+    private volatile String preparedNumberCardText;
     private volatile File pendingSaveMediaFile;
     private volatile String pendingExternalShareJson;
     private final Handler externalShareHandler = new Handler(Looper.getMainLooper());
@@ -1332,6 +1333,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean prepareShareImage(String dataUrl) {
             preparedNumberCardLink = null;
+            preparedNumberCardText = null;
             if (dataUrl == null || !dataUrl.startsWith("data:image/png;base64,") || dataUrl.length() > 12_000_000) return false;
             try {
                 int comma = dataUrl.indexOf(',');
@@ -1352,6 +1354,21 @@ public class MainActivity extends BridgeActivity {
             if (!prepared) return false;
             preparedNumberCardLink = validNumberCardShareUrl(shareUrl);
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean prepareShareImageWithText(String dataUrl, String shareUrl, String shareText) {
+            boolean prepared = prepareShareImageWithLink(dataUrl, shareUrl);
+            if (!prepared || preparedNumberCardLink == null) return false;
+            preparedNumberCardText = validNumberCardShareText(shareText, preparedNumberCardLink);
+            return preparedNumberCardText != null;
+        }
+
+        private String validNumberCardShareText(String shareText, String shareUrl) {
+            if (shareText == null || shareUrl == null) return null;
+            String value = shareText.trim();
+            if (value.isEmpty() || value.length() > 500 || !value.contains(shareUrl)) return null;
+            return value;
         }
 
         private String validNumberCardShareUrl(String shareUrl) {
@@ -1377,7 +1394,8 @@ public class MainActivity extends BridgeActivity {
                     Intent sendIntent = new Intent(Intent.ACTION_SEND);
                     sendIntent.setType("image/png");
                     sendIntent.putExtra(Intent.EXTRA_STREAM, uri);
-                    if (preparedNumberCardLink != null) sendIntent.putExtra(Intent.EXTRA_TEXT, preparedNumberCardLink);
+                    String shareText = preparedNumberCardText != null ? preparedNumberCardText : preparedNumberCardLink;
+                    if (shareText != null) sendIntent.putExtra(Intent.EXTRA_TEXT, shareText);
                     sendIntent.setClipData(ClipData.newRawUri("Vaultlix number card", uri));
                     sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(Intent.createChooser(sendIntent, "Share your Vaultlix number"));
@@ -1394,6 +1412,11 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public boolean shareImageWithLink(String dataUrl, String shareUrl) {
             return prepareShareImageWithLink(dataUrl, shareUrl) && sharePreparedImage();
+        }
+
+        @JavascriptInterface
+        public boolean shareImageWithText(String dataUrl, String shareUrl, String shareText) {
+            return prepareShareImageWithText(dataUrl, shareUrl, shareText) && sharePreparedImage();
         }
 
         @JavascriptInterface

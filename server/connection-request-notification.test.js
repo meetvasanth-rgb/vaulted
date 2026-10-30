@@ -76,7 +76,7 @@ test('Quick Connect preserves intent through authentication and supports QR or p
   assert.match(client, /function attemptMobileAppHandoff\(target\)/);
   assert.match(client, /if \(opened\) attemptMobileAppHandoff\(profileCode\)/);
   assert.match(client, /if \(opened\) attemptMobileAppHandoff\(publicPrivateNumber\)/);
-  assert.match(client, /location\.href = iosAppClipInviteURL\(inviteCode, !!activePublicProfile\?\.privateInvitation\)/);
+  assert.doesNotMatch(client, /location\.href = iosAppClipInviteURL/);
   assert.doesNotMatch(client, /params\.get\('ref'\) !== 'qr'/);
   assert.match(client, /Paste Vaultlix link or number/);
   assert.match(client, /privateNumberFromQuickConnectText/);
@@ -89,7 +89,10 @@ test('Quick Connect preserves intent through authentication and supports QR or p
 test('logged-out Quick Connect is invitation-aware and creation-first', () => {
   assert.match(client, /invited you to extend a private line/);
   assert.match(client, /Create your Vaultlix Private Number to connect\. No phone number, email or contacts required\./);
-  assert.match(client, /Create my private line/);
+  assert.match(client, /Create my Vaultlix number/);
+  assert.match(client, /const requiresVaultlix = !signedIn && !isNativeApp\(\)/);
+  assert.match(client, /button\.hidden = requiresVaultlix/);
+  assert.match(client, /signIn\.hidden = !!signedIn \|\| requiresVaultlix/);
   assert.match(client, /Already have a Vaultlix number\? Sign in/);
   assert.match(client, /openQuickConnectAuthentication\(authenticationMode\)/);
   assert.match(client, /Your invitation from \$\{inviterName\} will be waiting after this step\./);

@@ -13587,11 +13587,16 @@ async function renderPrivateInviteCard(state, invitation) {
 }
 async function sharePrivateInvitationWithQr(state, invitation, text) {
   const asset = await renderPrivateInviteCard(state, invitation);
+  if (typeof window.VaultlixAndroid?.shareImageWithText === 'function') {
+    if (window.VaultlixAndroid.shareImageWithText(asset.dataUrl, invitation.url, text) === true) return true;
+  }
   if (typeof window.VaultlixAndroid?.shareImageWithLink === 'function') {
     if (window.VaultlixAndroid.shareImageWithLink(asset.dataUrl, invitation.url) === true) return true;
   }
   if (window.webkit?.messageHandlers?.vaultlixCall) {
-    window.webkit.messageHandlers.vaultlixCall.postMessage({ action:'shareImage', dataUrl:asset.dataUrl, shareUrl:invitation.url });
+    window.webkit.messageHandlers.vaultlixCall.postMessage({
+      action:'shareImage', dataUrl:asset.dataUrl, shareUrl:invitation.url, shareText:text,
+    });
     return true;
   }
   const file = new File([asset.blob], 'vaultlix-private-invitation.png', { type:'image/png' });
@@ -23799,9 +23804,11 @@ function attemptMobileAppHandoff(target) {
     setTimeout(() => { location.href = intent; }, 160);
     return;
   }
-  // Apple's App Clip link performs the installed-app check for us: the full
-  // app replaces its Clip after installation, while a device without Vaultlix
-  // receives the small invitation Clip and its install sheet.
+  // Do not launch the App Clip automatically. The invitation page already
+  // offers one explicit Continue action. Auto-launching here and then letting
+  // the person tap Continue could start two App Clip handoffs at once, which
+  // made the first attempt intermittently return to Safari without opening.
+  // The explicit link still lets iOS open the installed app or its App Clip.
   const inviteCode = normalizeProfileShareCode(
     activePublicProfile?.privateInvitation
       ? activePublicProfile?.inviteCode
@@ -23809,7 +23816,7 @@ function attemptMobileAppHandoff(target) {
   );
   if (!inviteCode) return;
   history.replaceState(null,'',`${fallbackUrl.pathname}${fallbackUrl.search}${fallbackUrl.hash}`);
-  setTimeout(() => { location.href = iosAppClipInviteURL(inviteCode, !!activePublicProfile?.privateInvitation); }, 160);
+  return;
 }
 function parseRecoveryLink(rawURL = location.href) {
   try {
@@ -24248,13 +24255,19 @@ async function performPublicProfileLookup(privateNumber, options = {}, byShareCo
     showInviteGetApp(result.profile);
     const button = document.getElementById('public-profile-request');
     const isOwnProfile = signedIn && normalizePrivateNumber(signedIn.privateNumber) === normalizePrivateNumber(result.profile.privateNumber);
+    // On a mobile browser, installation/App Clip handoff is the only account
+    // action. Creating or signing into an identity belongs inside Vaultlix,
+    // after the invitation has been carried across the install boundary.
+    const requiresVaultlix = !signedIn && !isNativeApp()
+      && document.getElementById('public-profile-get-app')?.hidden === false;
+    button.hidden = requiresVaultlix;
     button.textContent = isOwnProfile
       ? 'This is your Private Number'
       : signedIn && roomForPrivateNumber(result.profile.privateNumber)
       ? 'Open conversation'
-      : signedIn ? 'Connect privately' : 'Create my private line';
+      : signedIn ? 'Connect privately' : 'Create my Vaultlix number';
     const signIn = document.getElementById('public-profile-sign-in');
-    if (signIn) signIn.hidden = !!signedIn;
+    if (signIn) signIn.hidden = !!signedIn || requiresVaultlix;
     document.getElementById('public-profile-overlay').classList.add('open');
     return true;
   } catch (e) {
@@ -24274,7 +24287,7 @@ function openQuickConnectAuthentication(mode = 'create') {
   const title = document.getElementById('account-title');
   if (title) title.textContent = authenticationMode === 'login'
     ? `Sign in to connect with ${inviterName}`
-    : `Create your private line to connect with ${inviterName}`;
+    : `Create your Vaultlix number to connect with ${inviterName}`;
   const copy = document.getElementById('account-guest-copy');
   if (copy) copy.textContent = `Your invitation from ${inviterName} will be waiting after this step.`;
 }
