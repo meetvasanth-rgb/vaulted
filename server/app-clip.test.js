@@ -83,7 +83,9 @@ test('the clip is small and asks for nothing: no calling, no encrypted storage, 
   assert.match(sources, /SharedInvite\.save\(code: friend\.code\)/);
   assert.match(sources, /case \.privateInvite\(let code\):[\s\S]*carriedCode = code/,
     'a one-time code is preserved instead of being replaced by the permanent profile code');
-  assert.match(sources, /SKOverlay\.AppClipConfiguration/);
+  assert.doesNotMatch(sources, /StoreKit|SKOverlay|appStoreOverlay|Get Vaultlix/,
+    'the App Clip relies on Apple’s single built-in App Store action instead of adding duplicate install prompts');
+  assert.match(sources, /Tap App Store above to install Vaultlix/);
 });
 
 test('the full app hands the saved invitation to the page, validated, and lets it clear it', () => {

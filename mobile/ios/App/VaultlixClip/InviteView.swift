@@ -1,9 +1,7 @@
 import SwiftUI
-import StoreKit
 
 struct InviteView: View {
     @ObservedObject var model: InviteModel
-    @State private var showInstall = false
 
     private let burgundy = Color(red: 0.408, green: 0.173, blue: 0.263)
 
@@ -11,28 +9,10 @@ struct InviteView: View {
         VStack(spacing: 18) {
             Spacer(minLength: 24)
             content
-            Spacer(minLength: 12)
-            Button {
-                showInstall = true
-            } label: {
-                Text("Get Vaultlix")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(burgundy)
-                    .foregroundColor(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 12)
+            Spacer(minLength: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.98, green: 0.97, blue: 0.97).ignoresSafeArea())
-        // Apple's own install sheet for an App Clip, shown once the invitation is on screen.
-        .appStoreOverlay(isPresented: $showInstall) { SKOverlay.AppClipConfiguration(position: .bottom) }
-        .onChange(of: model.state) { state in
-            if case .ready = state { showInstall = true }
-        }
     }
 
     @ViewBuilder private var content: some View {
@@ -55,7 +35,7 @@ struct InviteView: View {
                     .font(.footnote.monospaced())
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
-                Text("After installing, Vaultlix opens \(friend.name)'s invitation. If it does not, tap “Have an invite code?” and enter the code above.")
+                Text("Tap App Store above to install Vaultlix. This invitation will be waiting when the full app opens. If needed, enter the code above under “Have an invite code?”")
                     .font(.caption)
                     .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
