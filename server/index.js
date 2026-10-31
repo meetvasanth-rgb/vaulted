@@ -4069,7 +4069,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       return resErr(res, 'Too many image attempts — try again later.', 429);
     }
     const apiKey = OPENAI_API_KEY;
-    if (!apiKey) return resErr(res, 'Daily Look is temporarily unavailable.', 503);
+    if (!apiKey) return resErr(res, 'Portrait Studio is temporarily unavailable.', 503);
     const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId);
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
@@ -4077,15 +4077,15 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
-      return resErr(res, 'You have created five Daily Looks. Your next one will be available tomorrow.', 429);
+      return resErr(res, 'You have created five portraits. Your next one will be available tomorrow.', 429);
     }
     if (!(await claimDailyLook(d.accountId, account, now))) {
-      return resErr(res, 'A Daily Look is already being created, or today’s five looks are complete.', 429);
+      return resErr(res, 'A portrait is already being created, or today’s five portraits are complete.', 429);
     }
     try {
       if (await moderateDailyLookImage(d.image, apiKey)) {
         await releaseDailyLookClaim(d.accountId);
-        return resErr(res, 'This photo cannot be used for Daily Look. Choose another.', 400);
+        return resErr(res, 'This photo cannot be used in Portrait Studio. Choose another.', 400);
       }
       const dimensions = await dailyLookSourceDimensions(image, Number(d.sourceWidth), Number(d.sourceHeight));
       const variantIndex = dailyLookVariantIndex(d.accountId, usage.count, now);
@@ -4122,7 +4122,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     } catch (error) {
       await releaseDailyLookClaim(d.accountId).catch(() => {});
       console.warn(`Daily Look provider request failed (${String(error?.message || 'unknown').slice(0, 32)}).`);
-      return resErr(res, 'Daily Look could not be created. Your daily creation is still available.', 502);
+      return resErr(res, 'Portrait Studio could not create your portrait. Your daily creation is still available.', 502);
     }
   }
 

@@ -35,7 +35,7 @@ test('Daily Look allows five successful creations and resets at midnight IST acr
   assert.match(postgres, /UPDATE accounts SET daily_look_claimed_at=\$2[\s\S]*RETURNING account_id/);
   assert.match(postgres, /daily_look_window_started_at <> \$3/);
   assert.match(postgres, /completeDailyLook[\s\S]*daily_look_generation_count=CASE/);
-  assert.match(client, /up to \$\{result\.limit \|\| 5\} creations daily/);
+  assert.match(client, /Up to \$\{result\.limit \|\| 5\} portraits daily/);
 });
 
 test('Daily Look sends only an explicitly selected, reduced image, preserves its original dimensions, and never stores the source', () => {
@@ -60,7 +60,7 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(server, /id:'surprise-enhancer', name:'Surprise Enhancer'/);
   assert.doesNotMatch(server, /navratri/i, 'the Navratri Special style has been retired');
   assert.match(server, /Math\.floor\(now \/ \(7 \* DAY_MS\)\)/);
-  assert.match(client, /Create today’s look/);
+  assert.match(client, /Create New Portrait/);
   assert.match(client, /function useDailyLookAsProfile\(\)/);
   assert.match(client, /saveProfileImageUpdate\('replace', image\)/);
   assert.match(client, /function downloadDailyLook\(\)/);
@@ -68,7 +68,7 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
 });
 
 test('status creation can return a generated Daily Look into preview before audience selection', () => {
-  assert.match(client, /onclick="openDailyLookForStatus\(\)">Create Today’s Look<\/button>/);
+  assert.match(client, /onclick="openDailyLookForStatus\(\)">Create Portrait<\/button>/);
   assert.match(client, /function openDailyLookForStatus\(\)[\s\S]*openDailyLook\(\{ destination:'status' \}\)/);
   assert.match(client, /id="daily-look-use-status"[^>]*onclick="useDailyLookInStatus\(\)"[^>]*hidden/);
   assert.match(client, /async function useDailyLookInStatus\(\)[\s\S]*dailyLookProfileImage\(\)[\s\S]*statusComposerImage = image/);

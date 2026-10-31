@@ -59,7 +59,7 @@ test('an eligible member with a connection gets the card, once the server says s
   await h.context.refreshDailyLookNudge(NOW);
   assert.deepEqual(h.apiCalls.map(call => call[0]), ['/api/account/daily-look/status']);
   const html = h.context.dailyLookNudgeHtml();
-  assert.match(html, /Try Daily Look/);
+  assert.match(html, /Try Portrait Studio/);
   assert.match(html, /Your photo isn’t kept/);
   assert.match(html, /onclick="tryDailyLookFromNudge\(\)">Try it</);
   assert.match(html, /onclick="dismissDailyLookNudge\(\)">Not now</);
@@ -98,7 +98,7 @@ test('no connection, no card, and no request to the server either', async () => 
   const group = harness({ rooms:0, groups:1 });
   await group.context.refreshDailyLookNudge(NOW);
   assert.equal(group.apiCalls.length, 1, 'a group counts as a connection');
-  assert.match(group.context.dailyLookNudgeHtml(), /Try Daily Look/);
+  assert.match(group.context.dailyLookNudgeHtml(), /Try Portrait Studio/);
 });
 
 test('the server is asked at most every six hours, and not twice at once', async () => {
@@ -117,7 +117,7 @@ test('a failed check changes nothing and is retried at the next check', async ()
   assert.equal(h.context.dailyLookNudgeHtml(), '');
   h.setStatus({ configured:true, available:true, createdAt:NOW - 3 * DAY, lastGeneratedAt:0 });
   await h.context.refreshDailyLookNudge(NOW + 6 * 60 * 60 * 1000);
-  assert.match(h.context.dailyLookNudgeHtml(), /Try Daily Look/);
+  assert.match(h.context.dailyLookNudgeHtml(), /Try Portrait Studio/);
 });
 
 test('"Not now" ends it for good and redraws; "Try it" opens Daily Look and ends it too', async () => {
@@ -143,7 +143,7 @@ test('an earlier decision on this device is respected, per account', async () =>
   assert.equal(h.apiCalls.length, 0);
   const other = harness({ stored:{ 'vaultlix_daily_look_nudge:someone-else':'dismissed' } });
   await other.context.refreshDailyLookNudge(NOW);
-  assert.match(other.context.dailyLookNudgeHtml(), /Try Daily Look/);
+  assert.match(other.context.dailyLookNudgeHtml(), /Try Portrait Studio/);
 });
 
 test('wired into the inbox, ended by making a look, and kept apart from the invite card', () => {
