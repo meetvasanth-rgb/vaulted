@@ -35,7 +35,7 @@ test('settings reduce recovery to the Private Number and recovery code', () => {
 });
 
 test('recovery code follows an authorized account to future password sign-ins', () => {
-  assert.match(client, /function accountBundleSnapshot\([\s\S]*recoveryCodeWrap[\s\S]*return \{ v:1,[^\n]*recoveryCodeWrap \}/);
+  assert.match(client, /function accountBundleSnapshot\([\s\S]*recoveryCodeWrap[\s\S]*return \{ v:1,[^\n]*recoveryCodeWrap,[^\n]*privacy/);
   assert.match(client, /recoveryCodeWrap:typeof bundle\.recoveryCodeWrap === 'string'/);
   assert.match(client, /async function createReplacementRecoveryCode/);
   assert.match(client, /api\('\/api\/account\/recovery-code'/);

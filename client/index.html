@@ -6301,7 +6301,7 @@ function savePrivateGroupSessions(groups = [...privateGroups.values()]) {
   }));
   localStorage.setItem(PRIVATE_GROUPS_KEY, JSON.stringify(safe));
 }
-function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includeUnowned = false, recoveryCodeWrap = loadAccountState()?.recoveryCodeWrap || null) {
+function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includeUnowned = false, recoveryCodeWrap = loadAccountState()?.recoveryCodeWrap || null, privacy = null) {
   const sessions = [];
   for (const code of loadRoomsIndex()) {
     try {
@@ -6314,7 +6314,7 @@ function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includ
   const active = loadActiveRoomCode();
   const groups = loadPrivateGroupSessions().filter(group => group.ownerAccountId === accountId);
   const inbox = accountId && accountId === loadAccountState()?.accountId ? loadLocalInboxKey() : null;
-  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), missedCalls:missedCallSeenBundleSnapshot(accountId), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap };
+  return { v:1, savedAt:Date.now(), activeRoomCode:sessions.some(session => session.code === active) ? active : null, sessions, groups, ...(inbox ? { inbox } : {}), missedCalls:missedCallSeenBundleSnapshot(accountId), achievements:achievementBundleSnapshot(accountId), recoveryCodeWrap, ...(privacy ? { privacy } : {}) };
 }
 
 // The server accepts an encrypted account envelope up to 8MB. Start making
@@ -11619,6 +11619,7 @@ function saveHiddenChatsStore(patch) {
   const next = { ...loadHiddenChatsStore(), ...patch };
   hiddenChatsCache = next;
   try { localStorage.setItem(HIDDEN_CHATS_KEY, JSON.stringify(next)); } catch (error) {}
+  if (typeof scheduleAccountSync === 'function') scheduleAccountSync();
 }
 
 // Hidden-chats passwords are numbers only (4–12 digits), so the keypad is numeric.
@@ -13980,7 +13981,8 @@ async function createReplacementRecoveryCode(state = loadAccountState()) {
   // instead of continuing to display the now-invalid previous code.
   state.pendingRecoveryCodeWrap = recoveryCodeWrap;
   saveAccountState(state);
-  const encryptedBundle = await encryptAccountBundleForUpload(masterKey, accountBundleSnapshot(state.accountId, false, recoveryCodeWrap));
+  const privacy = await accountPrivacyBackupSnapshot(state.accountId);
+  const encryptedBundle = await encryptAccountBundleForUpload(masterKey, accountBundleSnapshot(state.accountId, false, recoveryCodeWrap, privacy));
   const result = await api('/api/account/recovery-code', {
     accountId:state.accountId,
     sessionToken:state.sessionToken,
@@ -16126,6 +16128,7 @@ async function loginAnonymousAccount(event) {
     const masterKey = base64UrlToBytes(wrapped.masterKey);
     const bundle = await aesDecryptJson(masterKey, result.bundle);
     importAccountBundle(bundle, result.accountId);
+    await restoreAccountPrivacyBackup(bundle.privacy, result.accountId);
     accountReauthenticationActive = false;
     saveAccountState({ v:4, privateNumber, profileShareCode:result.profileShareCode, displayName:result.displayName, profileImage:safeProfileImageUri(result.profileImage), accountId:result.accountId, sessionToken:result.sessionToken, masterKey:wrapped.masterKey, revision:result.revision, recoveryCodeWrap:typeof bundle.recoveryCodeWrap === 'string' ? bundle.recoveryCodeWrap : null, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     if (document.getElementById('account-overlay').classList.contains('native-onboarding-account')) localStorage.setItem(NATIVE_ONBOARDING_KEY, 'notifications');
@@ -16159,6 +16162,7 @@ async function recoverAnonymousAccount(event) {
     if (result.error) { if (replacingSignedInAccount) connectInbox(); toast(result.error); return; }
     const recoveredBundle = await aesDecryptJson(masterKey, existing.bundle);
     importAccountBundle(recoveredBundle, result.accountId);
+    await restoreAccountPrivacyBackup(recoveredBundle.privacy, result.accountId);
     const recoveryCodeWrap = await aesEncryptJson(masterKey, { recoveryCode:code.trim() });
     saveAccountState({ v:4, privateNumber, profileShareCode:result.profileShareCode, displayName:result.displayName, profileImage:safeProfileImageUri(result.profileImage), accountId:result.accountId, sessionToken:result.sessionToken, masterKey:recovered.masterKey, revision:result.revision, recoveryCodeWrap, tier:result.tier || 'standard', isFounding:!!result.isFounding });
     await syncAnonymousAccount(false);
@@ -16167,7 +16171,7 @@ async function recoverAnonymousAccount(event) {
   } catch (e) { console.error(e); toast('Recovery code is incorrect'); }
   finally { setAccountBusy(form, false); }
 }
-async function syncAnonymousAccount(showFeedback) {
+async function syncAnonymousAccount(showFeedback, preparedPrivacy = null) {
   const state = loadAccountState(); if (!state) return false;
   lastAccountSyncFailure = null;
   if ((state.v || 1) < 2) {
@@ -16181,7 +16185,8 @@ async function syncAnonymousAccount(showFeedback) {
     const recoveryProof = state.recoveryCodeWrap
       ? await recoverySecretForWrap(state, state.recoveryCodeWrap)
       : null;
-    const bundle = await encryptAccountBundleForUpload(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
+    const privacy = preparedPrivacy || await accountPrivacyBackupSnapshot(state.accountId);
+    const bundle = await encryptAccountBundleForUpload(base64UrlToBytes(state.masterKey), accountBundleSnapshot(state.accountId, false, state.recoveryCodeWrap || null, privacy));
     const result = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle, ...(recoveryProof ? { recoverySecret:recoveryProof.recoverySecret } : {}) });
     if (result.recoveryCodeMismatch) {
       lastAccountSyncFailure = result;
@@ -16198,7 +16203,7 @@ async function syncAnonymousAccount(showFeedback) {
       state.tier = latest.tier || state.tier || 'standard';
       state.isFounding = !!latest.isFounding;
       saveAccountState(state);
-      const mergedBundle = await encryptAccountBundleForUpload(base64UrlToBytes(state.masterKey), accountBundleSnapshot());
+      const mergedBundle = await encryptAccountBundleForUpload(base64UrlToBytes(state.masterKey), accountBundleSnapshot(state.accountId, false, state.recoveryCodeWrap || null, privacy));
       const retry = await api('/api/account/sync', { accountId:state.accountId, sessionToken:state.sessionToken, revision:state.revision, bundle:mergedBundle, ...(recoveryProof ? { recoverySecret:recoveryProof.recoverySecret } : {}) });
       if (retry.error) { lastAccountSyncFailure = retry; if (status) status.textContent = retry.error; return false; }
       state.revision = retry.revision;
@@ -16268,14 +16273,15 @@ async function prepareAndConfirmAccountBackup(state) {
   // `ownedCodes`. The safety check then rejected every sign-out even though
   // the encrypted data itself was valid.
   const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)?.ownerAccountId === state.accountId);
-  const expected = accountBundleSnapshot(state.accountId);
+  const expectedPrivacy = await accountPrivacyBackupSnapshot(state.accountId);
+  const expected = accountBundleSnapshot(state.accountId, false, state.recoveryCodeWrap || null, expectedPrivacy);
   const expectedKeys = accountBundleKeyMap(expected, state.accountId);
   const expectedGroupKeys = accountBundleGroupKeyMap(expected, state.accountId);
   if (expectedKeys.size !== ownedCodes.length || ownedCodes.some(code => !expectedKeys.has(code))) {
     return { ok:false, reason:'local-keys' };
   }
 
-  if (!await syncAnonymousAccount(false)) {
+  if (!await syncAnonymousAccount(false, expectedPrivacy)) {
     if (lastAccountSyncFailure?.status === 401) return { ok:false, reason:'session' };
     if (lastAccountSyncFailure?.status === 413 || /too large/i.test(lastAccountSyncFailure?.error || '')) {
       return { ok:false, reason:'size' };
@@ -16298,6 +16304,9 @@ async function prepareAndConfirmAccountBackup(state) {
   if (remoteKeys.size < expectedKeys.size) return { ok:false, reason:'verify' };
   for (const [code, key] of expectedKeys) if (remoteKeys.get(code) !== key) return { ok:false, reason:'verify' };
   for (const [id, key] of expectedGroupKeys) if (remoteGroupKeys.get(id) !== key) return { ok:false, reason:'verify' };
+  if (accountPrivacyBackupFingerprint(remote.privacy) !== accountPrivacyBackupFingerprint(expectedPrivacy)) {
+    return { ok:false, reason:'privacy' };
+  }
   return { ok:true };
 }
 function accountBackupFailureMessage(reason) {
@@ -16305,6 +16314,7 @@ function accountBackupFailureMessage(reason) {
   if (reason === 'session') return 'Sign out paused — your account session needs to be reconnected. Nothing was removed. Sign in again, then retry.';
   if (reason === 'size') return 'Sign out paused — the encrypted backup is larger than this Vaultlix version supports. Nothing was removed.';
   if (reason === 'sync') return 'Sign out paused — the encrypted backup could not be updated. Nothing was removed. Check your connection and try again.';
+  if (reason === 'privacy') return 'Sign out paused — Hidden Chats, App Lock or Locker could not be verified in your encrypted backup. Nothing was removed.';
   if (reason === 'fetch' || reason === 'verify') return 'Sign out paused — the encrypted backup could not be verified. Nothing was removed. Please try again.';
   return 'Sign out paused — your encrypted conversations could not be backed up. Nothing was removed.';
 }
@@ -17049,6 +17059,7 @@ async function saveAppLock(event) {
   localStorage.setItem(APP_LOCK_CONFIG_KEY, JSON.stringify({ version:1, iterations:APP_LOCK_ITERATIONS, passcodeLength:next.length, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
   localStorage.removeItem(APP_LOCK_FAILURE_KEY);
   scheduleNativeShareExtensionSync(0);
+  if (typeof scheduleAccountSync === 'function') scheduleAccountSync();
   closeAppLockSettings();
   updateAppLockStatus();
   activateAppLock(true);
@@ -17063,6 +17074,7 @@ async function disableAppLock() {
   sessionStorage.removeItem(QUICK_LOCK_KEY);
   quickLockActive = false;
   scheduleNativeShareExtensionSync(0);
+  if (typeof scheduleAccountSync === 'function') scheduleAccountSync();
   closeAppLockSettings();
   updateAppLockStatus();
   toast('Vaultlix App Lock disabled');
@@ -17094,6 +17106,7 @@ window.addEventListener('pagehide', () => { if (appLockConfigured()) activateApp
 const LOCKER_DB_NAME = 'vaultlix-locker';
 const LOCKER_CONFIG_KEY = 'vaultlix_locker_v1';
 const LOCKER_FAILURE_KEY = 'vaultlix_locker_failures_v1';
+const ACCOUNT_PRIVACY_OWNER_KEY = 'vaultlix_account_privacy_owner_v1';
 const LOCKER_PBKDF2_ITERATIONS = 310000;
 const LOCKER_IDLE_LOCK_MS = 2 * 60 * 1000;
 
@@ -17121,6 +17134,7 @@ async function setUpLocker(password) {
   const { verifier } = await deriveLockerMaterial(password, salt);
   localStorage.setItem(LOCKER_CONFIG_KEY, JSON.stringify({ version:1, iterations:LOCKER_PBKDF2_ITERATIONS, salt:bytesToBase64UrlCompact(salt), verifier:bytesToBase64UrlCompact(verifier) }));
   localStorage.removeItem(LOCKER_FAILURE_KEY);
+  if (typeof scheduleAccountSync === 'function') scheduleAccountSync();
 }
 
 function loadLockerFailures() {
@@ -17256,7 +17270,7 @@ async function lockerItemPut(record) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('items', 'readwrite');
     tx.objectStore('items').put(record);
-    tx.oncomplete = () => resolve(record);
+    tx.oncomplete = () => { if (typeof scheduleAccountSync === 'function') scheduleAccountSync(); resolve(record); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -17277,7 +17291,7 @@ async function lockerItemDelete(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('items', 'readwrite');
     tx.objectStore('items').delete(id);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { if (typeof scheduleAccountSync === 'function') scheduleAccountSync(); resolve(); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -17297,6 +17311,94 @@ async function lockerItemList() {
     };
     request.onerror = () => resolve(results);
   });
+}
+
+async function lockerEncryptedRecords() {
+  const db = await lockerDb();
+  if (!db) return [];
+  return new Promise(resolve => {
+    const request = db.transaction('items', 'readonly').objectStore('items').getAll();
+    request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+    request.onerror = () => resolve([]);
+  });
+}
+
+async function replaceLockerEncryptedRecords(records) {
+  const db = await lockerDb();
+  if (!db) throw new Error('Locker storage unavailable');
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('items', 'readwrite');
+    const store = tx.objectStore('items');
+    store.clear();
+    for (const record of records || []) {
+      if (record?.id && record?.ciphertext && record?.wrappedKey) store.put(record);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function storedJsonValue(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (error) { return null; }
+}
+
+async function accountPrivacyBackupSnapshot(accountId) {
+  const owner = localStorage.getItem(ACCOUNT_PRIVACY_OWNER_KEY);
+  const hiddenChats = storedJsonValue(HIDDEN_CHATS_KEY);
+  const appLock = storedJsonValue(APP_LOCK_CONFIG_KEY);
+  const locker = storedJsonValue(LOCKER_CONFIG_KEY);
+  const lockerItems = await lockerEncryptedRecords();
+  const hasPrivacy = Boolean(hiddenChats || appLock || locker || lockerItems.length);
+  if (owner && owner !== accountId) {
+    return { v:1, accountId, hiddenChats:null, appLock:null, locker:null, lockerItems:[] };
+  }
+  if (hasPrivacy && accountId && !owner) localStorage.setItem(ACCOUNT_PRIVACY_OWNER_KEY, accountId);
+  return { v:1, accountId, hiddenChats, appLock, locker, lockerItems:lockerItems.sort((a, b) => String(a.id).localeCompare(String(b.id))) };
+}
+
+function accountPrivacyBackupFingerprint(privacy) {
+  if (!privacy || privacy.v !== 1) return '';
+  const lockerItems = Array.isArray(privacy.lockerItems)
+    ? [...privacy.lockerItems].sort((a, b) => String(a?.id || '').localeCompare(String(b?.id || '')))
+    : [];
+  return JSON.stringify({ v:1, accountId:privacy.accountId || null, hiddenChats:privacy.hiddenChats || null,
+    appLock:privacy.appLock || null, locker:privacy.locker || null, lockerItems });
+}
+
+async function restoreAccountPrivacyBackup(privacy, accountId) {
+  const owner = localStorage.getItem(ACCOUNT_PRIVACY_OWNER_KEY);
+  if (!privacy || privacy.v !== 1 || privacy.accountId !== accountId) {
+    // Upgrade path: an older encrypted bundle has no privacy section. Keep
+    // unowned device data and attach it to the account so the next sync adds it.
+    if (!owner) {
+      const local = await accountPrivacyBackupSnapshot(accountId);
+      if (accountPrivacyBackupFingerprint(local)) localStorage.setItem(ACCOUNT_PRIVACY_OWNER_KEY, accountId);
+    } else if (owner !== accountId) {
+      localStorage.removeItem(HIDDEN_CHATS_KEY);
+      localStorage.removeItem(APP_LOCK_CONFIG_KEY);
+      localStorage.removeItem(LOCKER_CONFIG_KEY);
+      localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY);
+      localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+      localStorage.removeItem(LOCKER_FAILURE_KEY);
+      hiddenChatsCache = null;
+      await replaceLockerEncryptedRecords([]);
+      lockerItemsCache = [];
+      localStorage.setItem(ACCOUNT_PRIVACY_OWNER_KEY, accountId);
+    }
+    return false;
+  }
+  const writeOrRemove = (key, value) => value ? localStorage.setItem(key, JSON.stringify(value)) : localStorage.removeItem(key);
+  writeOrRemove(HIDDEN_CHATS_KEY, privacy.hiddenChats);
+  writeOrRemove(APP_LOCK_CONFIG_KEY, privacy.appLock);
+  writeOrRemove(LOCKER_CONFIG_KEY, privacy.locker);
+  localStorage.removeItem(HIDDEN_CHATS_FAILURE_KEY);
+  localStorage.removeItem(APP_LOCK_FAILURE_KEY);
+  localStorage.removeItem(LOCKER_FAILURE_KEY);
+  hiddenChatsCache = null;
+  await replaceLockerEncryptedRecords(Array.isArray(privacy.lockerItems) ? privacy.lockerItems : []);
+  lockerItemsCache = [];
+  localStorage.setItem(ACCOUNT_PRIVACY_OWNER_KEY, accountId);
+  return true;
 }
 
 async function deleteLockerItem(id) {
@@ -17320,6 +17422,7 @@ async function deleteLockerVault() {
   localStorage.removeItem(LOCKER_FAILURE_KEY);
   lockerItemsCache = [];
   lockLocker();
+  if (typeof scheduleAccountSync === 'function') scheduleAccountSync();
 }
 
 // ── LOCKER UI ────────────────────────────────────────────────────────

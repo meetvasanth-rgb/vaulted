@@ -101,7 +101,7 @@ test('messages sent while history restores retain timestamps for chronological m
 test('sign-out never erases conversation keys before a verified encrypted backup', () => {
   assert.match(client, /if \(room\.everOnline && \(!keys\.pubJwk \|\| !keys\.privJwk\)\) return false/);
   assert.match(client, /async function prepareAndConfirmAccountBackup\(state\)/);
-  assert.match(client, /if \(!await syncAnonymousAccount\(false\)\) \{[\s\S]*reason:'session'[\s\S]*reason:'size'[\s\S]*reason:'sync'/);
+  assert.match(client, /if \(!await syncAnonymousAccount\(false, expectedPrivacy\)\) \{[\s\S]*reason:'session'[\s\S]*reason:'size'[\s\S]*reason:'sync'/);
   assert.match(client, /const fetched = await api\('\/api\/account\/fetch'/);
   assert.match(client, /for \(const \[code, key\] of expectedKeys\) if \(remoteKeys\.get\(code\) !== key\) return \{ ok:false, reason:'verify' \}/);
   assert.match(client, /if \(!backupResult\?\.ok\) \{[\s\S]*accountBackupFailureMessage\(backupResult\?\.reason\)[\s\S]*return;/);
@@ -118,7 +118,7 @@ test('sign-out cleans expired room sessions before taking its verification snaps
   const end = client.indexOf('let accountReplacementActive', start);
   const section = client.slice(start, end);
   const cleanupAt = section.indexOf('const ownedCodes = loadRoomsIndex().filter(code => loadRoomSession(code)');
-  const snapshotAt = section.indexOf('const expected = accountBundleSnapshot(state.accountId)');
+  const snapshotAt = section.indexOf('const expected = accountBundleSnapshot(state.accountId');
   assert.ok(cleanupAt > -1 && snapshotAt > cleanupAt,
     'expired sessions must be removed before the backup snapshot is captured');
 });
