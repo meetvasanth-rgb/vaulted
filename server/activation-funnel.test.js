@@ -61,6 +61,29 @@ test('being accepted counts as connected even for the person who never asked', (
   assert.equal(entry.waitingForReply, false);
 });
 
+test('one-time invitation milestones are counted and marked test identities are excluded', () => {
+  const activation = {
+    inviteCreatedAt:NOW - 5 * DAY,
+    inviteSharedAt:NOW - 5 * DAY + 1,
+    inviteOpenedAt:NOW - 5 * DAY + 2,
+    inviteRedeemedAt:NOW - 5 * DAY + 3,
+    firstMessageAt:NOW - 5 * DAY + 4,
+  };
+  const funnel = buildActivationFunnel([
+    account(5, { activation, acquisitionSource:'cafe-poster' }),
+    account(5, { activation, isTestAccount:true, acquisitionSource:'internal-test' }),
+  ], NOW);
+  const all = cohort(funnel, 'all');
+  assert.equal(funnel.excludedTestAccounts, 1);
+  assert.deepEqual(funnel.sources, { 'cafe-poster':1 });
+  assert.equal(all.created, 1);
+  assert.equal(all.inviteCreated, 1);
+  assert.equal(all.inviteShared, 1);
+  assert.equal(all.inviteOpened, 1);
+  assert.equal(all.inviteRedeemed, 1);
+  assert.equal(all.firstMessage, 1);
+});
+
 test('cohorts are nested by age and accounts without a creation time are ignored', () => {
   const funnel = buildActivationFunnel([account(2), account(20), account(200), { displayName:'no date' }, null], NOW);
   assert.deepEqual(funnel.cohorts.map(item => [item.id, item.created]), [['7d', 1], ['30d', 2], ['all', 3]]);

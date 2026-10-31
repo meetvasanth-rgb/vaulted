@@ -77,7 +77,7 @@ test('PostgreSQL stores and restores both fields, and never overwrites where an 
   const upsert = calls.find(call => /ON CONFLICT \(account_id\) DO UPDATE/.test(call[0]));
   assert.match(upsert[0], /registered_via, clients_seen/);
   assert.match(upsert[0], /registered_via=COALESCE\(accounts\.registered_via, EXCLUDED\.registered_via\)/);
-  assert.match(upsert[0], /\$30,\$31::jsonb,\$32::jsonb\)/);
+  assert.match(upsert[0], /\$30,\$31::jsonb,\$32::jsonb,\$33,\$34::jsonb,\$35\)/);
   assert.equal(upsert[1][29], 'android');
   assert.equal(upsert[1][30], JSON.stringify(['android', 'web']));
   assert.match(fs.readFileSync(path.join(__dirname, 'postgres.js'), 'utf8'), /ADD COLUMN IF NOT EXISTS registered_via varchar\(16\);\s*ALTER TABLE accounts ADD COLUMN IF NOT EXISTS clients_seen jsonb/);
@@ -99,7 +99,7 @@ test('PostgreSQL stores and restores both fields, and never overwrites where an 
 test('the admin page shows where each identity signed up and which clients it has used', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'client', 'admin.html'), 'utf8');
   const js = fs.readFileSync(path.join(__dirname, '..', 'client', 'admin.js'), 'utf8');
-  assert.match(html, /<th>Private Number<\/th><th>Signed up via<\/th><th>Created<\/th>/);
+  assert.match(html, /<th>Private Number<\/th><th>Source<\/th><th>Signed up via<\/th><th>Created<\/th>/);
   const start = js.indexOf('const CLIENT_LABELS');
   const source = js.slice(start, js.indexOf('function renderIdentities'));
   const context = vm.createContext({ escapeHtml: value => String(value).replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`) });

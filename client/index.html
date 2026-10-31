@@ -4863,17 +4863,28 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   </div>
 </div>
 
-<div class="account-overlay" id="first-connection-overlay" onclick="if(event.target===this)dismissFirstConnectionGuide()">
+<div class="account-overlay" id="first-connection-overlay">
   <div class="account-card" role="dialog" aria-modal="true" aria-labelledby="first-connection-title">
-    <div class="first-connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg></div>
-    <div class="account-kicker">Your first private line</div>
-    <div class="account-title" id="first-connection-title">Who is one person you’d like a private line with?</div>
-    <div class="account-copy">Send them a personal invitation now. They can open it, create their Private Number if needed, and connect with your approval.</div>
-    <label class="account-field"><span>Their first name <small style="font-weight:500;color:#93868D">(optional)</small></span><input id="first-connection-name" maxlength="32" autocomplete="off" placeholder="For example, Maya"/></label>
-    <button class="account-primary" type="button" onclick="shareFirstConnectionInvite()">Share invitation</button>
-    <button class="account-secondary" type="button" onclick="showFirstConnectionQr()">Let them scan my QR</button>
-    <button class="account-secondary" type="button" onclick="dismissFirstConnectionGuide()" style="border-color:transparent;background:transparent">I’ll invite someone later</button>
-    <div class="first-connection-privacy"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>The name stays on this device and is used only to personalize this invitation. Vaultlix never uploads your contacts.</span></div>
+    <div id="first-connection-compose">
+      <div class="first-connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg></div>
+      <div class="account-kicker">Your first connection</div>
+      <div class="account-title" id="first-connection-title">Connect with your first person</div>
+      <div class="account-copy">Vaultlix works with people you choose. Invite one person to begin.</div>
+      <label class="account-field"><span>Their first name <small style="font-weight:500;color:#93868D">(optional)</small></span><input id="first-connection-name" maxlength="32" autocomplete="off" placeholder="For example, Maya"/></label>
+      <button class="account-primary" type="button" onclick="shareFirstConnectionInvite()">Create &amp; share invitation</button>
+      <button class="account-secondary" type="button" onclick="showFirstConnectionQr()">Show invitation QR</button>
+      <button class="account-secondary" type="button" onclick="dismissFirstConnectionGuide()" style="border-color:transparent;background:transparent">Do this later</button>
+      <div class="first-connection-privacy"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>The name stays on this device. The one-time invitation expires in 24 hours and connects you automatically when they finish.</span></div>
+    </div>
+    <div id="first-connection-waiting" hidden>
+      <div class="first-connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 1-5.9-7.7"/><path d="M20 4v7h-7"/></svg></div>
+      <div class="account-kicker">Invitation sent</div>
+      <div class="account-title" id="first-connection-waiting-title">Waiting for your person</div>
+      <div class="account-copy" id="first-connection-waiting-copy">We’ll let you know when they join. You can share the same invitation again until it expires.</div>
+      <button class="account-primary" type="button" onclick="shareWaitingInvitation()">Share again</button>
+      <button class="account-secondary" type="button" onclick="showWaitingInvitationQr()">Show invitation QR</button>
+      <button class="account-secondary" type="button" onclick="dismissFirstConnectionGuide()" style="border-color:transparent;background:transparent">Go to inbox</button>
+    </div>
   </div>
 </div>
 
@@ -13479,6 +13490,8 @@ function downloadDailyLook() {
 }
 const NATIVE_ONBOARDING_KEY = 'vaultlix_native_onboarding_v1';
 const FIRST_CONNECTION_GUIDE_KEY = 'vaultlix_first_connection_guide_v1';
+const FIRST_CONNECTION_WAITING_KEY_PREFIX = 'vaultlix_first_connection_waiting:';
+const ACQUISITION_SOURCE_KEY = 'vaultlix_acquisition_source_v1';
 const RECOVERY_FIRST_REMINDER_MS = 4 * 60 * 60 * 1000;
 const RECOVERY_REPEAT_REMINDER_MS = 24 * 60 * 60 * 1000;
 let recoveryReminderTimer = null;
@@ -13562,18 +13575,75 @@ function maybeOpenFirstConnectionGuide() {
   if (localStorage.getItem(FIRST_CONNECTION_GUIDE_KEY) !== 'pending' || !loadAccountState()) return false;
   if (rooms.size > 0) {
     localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'complete');
+    clearFirstConnectionWaiting();
     return false;
   }
   const input = document.getElementById('first-connection-name');
-  if (input) input.value = '';
+  const waiting = loadFirstConnectionWaiting();
+  renderFirstConnectionState(waiting);
+  if (input && !waiting) input.value = '';
   document.getElementById('first-connection-overlay')?.classList.add('open');
-  setTimeout(() => input?.focus(), 120);
+  if (!waiting) setTimeout(() => input?.focus(), 120);
   return true;
 }
 
 function dismissFirstConnectionGuide() {
   localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'complete');
   document.getElementById('first-connection-overlay')?.classList.remove('open');
+  renderVaultList();
+}
+
+function firstConnectionWaitingKey(state = loadAccountState()) {
+  return state?.accountId ? FIRST_CONNECTION_WAITING_KEY_PREFIX + state.accountId : null;
+}
+function loadFirstConnectionWaiting(state = loadAccountState()) {
+  const key = firstConnectionWaitingKey(state);
+  if (!key) return null;
+  try {
+    const waiting = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!waiting?.url || Number(waiting.expiresAt) <= Date.now()) { localStorage.removeItem(key); return null; }
+    return waiting;
+  } catch (e) { return null; }
+}
+function saveFirstConnectionWaiting(invitation, friendName = '') {
+  const key = firstConnectionWaitingKey();
+  if (!key) return null;
+  const waiting = { url:invitation.url, code:invitation.code, expiresAt:invitation.expiresAt, friendName:sanitizeInviteRecipientName(friendName), sharedAt:Date.now() };
+  try { localStorage.setItem(key, JSON.stringify(waiting)); } catch (e) {}
+  localStorage.setItem(FIRST_CONNECTION_GUIDE_KEY, 'pending');
+  renderFirstConnectionState(waiting);
+  renderVaultList();
+  return waiting;
+}
+function clearFirstConnectionWaiting(state = loadAccountState()) {
+  const key = firstConnectionWaitingKey(state);
+  if (key) try { localStorage.removeItem(key); } catch (e) {}
+}
+function renderFirstConnectionState(waiting = loadFirstConnectionWaiting()) {
+  const compose = document.getElementById('first-connection-compose');
+  const panel = document.getElementById('first-connection-waiting');
+  if (compose) compose.hidden = !!waiting;
+  if (panel) panel.hidden = !waiting;
+  if (!waiting) return;
+  const title = document.getElementById('first-connection-waiting-title');
+  const copy = document.getElementById('first-connection-waiting-copy');
+  if (title) title.textContent = waiting.friendName ? `Waiting for ${waiting.friendName}` : 'Waiting for your person';
+  if (copy) copy.textContent = `We’ll let you know when they join. This invitation expires ${new Date(waiting.expiresAt).toLocaleString([], { hour:'numeric', minute:'2-digit' })}.`;
+}
+
+function acquisitionSource() {
+  try {
+    const current = new URLSearchParams(location.search).get('src');
+    if (current && /^[a-z0-9_-]{1,40}$/i.test(current)) localStorage.setItem(ACQUISITION_SOURCE_KEY, current.toLowerCase());
+    return (localStorage.getItem(ACQUISITION_SOURCE_KEY) || '').slice(0, 40);
+  } catch (e) { return ''; }
+}
+acquisitionSource();
+
+function recordActivationEvent(event) {
+  const state = loadAccountState();
+  if (!state) return Promise.resolve();
+  return api('/api/account/activation', { accountId:state.accountId, sessionToken:state.sessionToken, event }).catch(() => {});
 }
 
 // Share invitation is an explicit, short-lived approval from the sender.
@@ -13673,20 +13743,57 @@ async function shareFirstConnectionInvite() {
   const text = inviteShareText(state, friendName, invitation.url);
   try {
     if (await sharePrivateInvitationWithQr(state, invitation, text)) {
-      dismissFirstConnectionGuide();
+      saveFirstConnectionWaiting(invitation, friendName);
+      recordActivationEvent('invite_shared');
       return;
     }
     await navigator.clipboard.writeText(text);
-    dismissFirstConnectionGuide();
+    saveFirstConnectionWaiting(invitation, friendName);
+    recordActivationEvent('invite_shared');
     toast('Invitation copied — send it in any messaging app');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Could not open sharing. Please try again.');
   }
 }
 
-function showFirstConnectionQr() {
-  dismissFirstConnectionGuide();
-  showOwnPrivateNumberQr();
+async function showPrivateInvitationQr(invitation, friendName = '') {
+  if (!invitation?.url) return;
+  closeQrPanel();
+  const overlay = document.createElement('div');
+  overlay.id = 'qr-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+  overlay.innerHTML = `<div style="background:#fff;border-radius:20px;padding:24px;max-width:340px;width:100%;text-align:center;font-family:inherit"><div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#A65B72;margin-bottom:5px">24-hour invitation</div><div style="font-size:22px;font-weight:700;color:#241B1E;margin-bottom:6px">${escapeHtml(friendName ? `For ${friendName}` : 'Scan to connect')}</div><div style="display:flex;justify-content:center;margin:16px 0"><canvas id="qr-canvas"></canvas></div><div style="font-size:12px;line-height:1.5;color:#7A6E65;margin-bottom:16px">One person can use this invitation. It expires in 24 hours.</div><button style="background:#682C43;color:#fff;border:none;border-radius:20px;padding:10px 28px;font-size:13px;cursor:pointer" onclick="closeQrPanel()">Done</button></div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', event => { if (event.target === overlay) closeQrPanel(); });
+  renderQrCanvas(document.getElementById('qr-canvas'), invitation.url);
+  qrPanelAutoHideTimer = setTimeout(closeQrPanel, 60000);
+}
+async function showFirstConnectionQr() {
+  const state = loadAccountState();
+  if (!state?.privateNumber) return;
+  const friendName = sanitizeInviteRecipientName(document.getElementById('first-connection-name')?.value);
+  const invitation = await createPrivateInvitation(state);
+  if (!invitation) return;
+  saveFirstConnectionWaiting(invitation, friendName);
+  recordActivationEvent('invite_shared');
+  await showPrivateInvitationQr(invitation, friendName);
+}
+async function shareWaitingInvitation() {
+  const state = loadAccountState();
+  const waiting = loadFirstConnectionWaiting(state);
+  if (!state || !waiting) { renderFirstConnectionState(null); return; }
+  const text = inviteShareText(state, waiting.friendName, waiting.url);
+  const invitation = { url:waiting.url, code:waiting.code, expiresAt:waiting.expiresAt };
+  try {
+    if (await sharePrivateInvitationWithQr(state, invitation, text)) return;
+    await navigator.clipboard.writeText(text);
+    toast('Invitation copied — send it in any messaging app');
+  } catch (error) { if (error?.name !== 'AbortError') toast('Could not open sharing. Please try again.'); }
+}
+async function showWaitingInvitationQr() {
+  const waiting = loadFirstConnectionWaiting();
+  if (!waiting) { renderFirstConnectionState(null); return; }
+  await showPrivateInvitationQr(waiting, waiting.friendName);
 }
 function openAccountPanel() {
   closeSettings();
@@ -15301,8 +15408,14 @@ async function shareInviteFromCard() {
     const invitation = await createPrivateInvitation(state);
     if (!invitation) return;
     const text = inviteShareText(state, friendName, invitation.url);
-    if (await sharePrivateInvitationWithQr(state, invitation, text)) return;
+    if (await sharePrivateInvitationWithQr(state, invitation, text)) {
+      saveFirstConnectionWaiting(invitation, friendName);
+      recordActivationEvent('invite_shared');
+      return;
+    }
     await navigator.clipboard.writeText(text);
+    saveFirstConnectionWaiting(invitation, friendName);
+    recordActivationEvent('invite_shared');
     toast('Invitation copied — send it in any messaging app');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Could not open sharing. Please try again.');
@@ -15313,20 +15426,35 @@ async function shareInviteFromCard() {
 
 function inviteCardHtml() {
   const state = loadAccountState();
-  if (!state?.privateNumber || rooms.size > 0 || privateGroups.size > 0 || inviteCardSnoozed(state)) return '';
-  const waiting = pendingOutgoingConnections.length > 0;
-  const title = waiting ? 'Your request is on its way' : 'Invite someone to start your first private chat';
+  if (!state?.privateNumber) return '';
+  if (rooms.size > 0 || privateGroups.size > 0) { clearFirstConnectionWaiting(state); return ''; }
+  if (inviteCardSnoozed(state)) return '';
+  const waitingInvite = loadFirstConnectionWaiting(state);
+  const waiting = !!waitingInvite || pendingOutgoingConnections.length > 0;
+  const title = waitingInvite?.friendName ? `Waiting for ${escapeHtml(waitingInvite.friendName)}` : waiting ? 'Your invitation is on its way' : 'Connect with your first person';
   const copy = waiting
-    ? 'Invite someone else too, so your line is never empty.'
-    : 'Share your Vaultlix number. They connect in a few taps, and your phone number stays yours.';
+    ? 'Share the invitation again or show its QR while it is still valid.'
+    : 'Vaultlix works with people you choose. Invite one person to begin.';
   return `<div class="vault-invite-card" role="region" aria-label="Invite someone">
     <strong>${title}</strong><span>${copy}</span>
     <div class="vault-invite-actions">
-      <button type="button" class="primary" onclick="shareInviteFromCard()">Share invite</button>
-      <button type="button" onclick="showOwnPrivateNumberQr()">Show QR</button>
+      <button type="button" class="primary" onclick="${waitingInvite ? 'shareWaitingInvitation()' : 'shareInviteFromCard()'}">${waitingInvite ? 'Share again' : 'Create invitation'}</button>
+      <button type="button" onclick="${waitingInvite ? 'showWaitingInvitationQr()' : 'showInviteQrFromCard()'}">Show QR</button>
       <button type="button" class="quiet" onclick="snoozeInviteCard()">Later</button>
     </div>
   </div>`;
+}
+
+async function showInviteQrFromCard() {
+  const state = loadAccountState();
+  if (!state?.privateNumber) return;
+  const friendName = await requestInviteRecipientName();
+  if (friendName === null) return;
+  const invitation = await createPrivateInvitation(state);
+  if (!invitation) return;
+  saveFirstConnectionWaiting(invitation, friendName);
+  recordActivationEvent('invite_shared');
+  await showPrivateInvitationQr(invitation, friendName);
 }
 
 // ── DAILY LOOK NUDGE ──────────────────────────────────────────────────
@@ -15907,6 +16035,7 @@ async function createAnonymousAccount(event) {
           passwordWrap: await aesEncryptJson(passwordMaterial.wrapKey, { masterKey:masterKeyEncoded }),
           recoveryWrap: await aesEncryptJson(recovery.wrapKey, { masterKey:masterKeyEncoded }),
           bundle: await encryptAccountBundleForUpload(masterKey, accountBundleSnapshot(accountId, true, recoveryCodeWrap)),
+          acquisitionSource: acquisitionSource(),
         };
         break;
       } catch (error) {
@@ -21267,6 +21396,7 @@ async function sendForwardedText(room, text) {
   try {
     const result = await api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId });
     if (result?.error) throw new Error(result.error);
+    recordActivationEvent('first_message');
     return true;
   } catch (e) {
     toast('Failed to send message');
@@ -23685,7 +23815,7 @@ async function sendMsg() {
   // Update inbox ordering immediately rather than waiting for the next poll.
   room.lastMessageAt = sentAt;
 
-  api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }).catch(() => {});
+  api('/api/send', { code: room.code, token: room.token, content: encrypted, msgId }).then(result => { if (!result?.error) recordActivationEvent('first_message'); }).catch(() => {});
   return true;
   } finally {
     directSendInFlight = false;

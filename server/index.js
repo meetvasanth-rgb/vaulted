@@ -1394,6 +1394,17 @@ function normalizeDisplayName(value) {
   // hydration. New registrations and edits enforce the tighter UI limit.
   return displayName.length >= 2 && displayName.length <= 40 && !/[<>\u0000-\u001f]/.test(displayName) ? displayName : '';
 }
+function normalizeAcquisitionSource(value) {
+  const source = String(value || '').trim().toLowerCase();
+  return /^[a-z0-9_-]{1,40}$/.test(source) ? source : null;
+}
+function noteActivation(account, field, at = Date.now()) {
+  if (!account) return false;
+  account.activation = account.activation && typeof account.activation === 'object' ? account.activation : {};
+  if (Number(account.activation[field]) > 0) return false;
+  account.activation[field] = at;
+  return true;
+}
 function normalizeProfileImage(value) {
   if (value == null || value === '') return null;
   if (typeof value !== 'string' || value.length > 342 * 1024) return undefined;
@@ -3428,6 +3439,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       premiumUntil:null, lastActiveAt:now, reclaimWarnings:[],
       dailyLookGeneratedAt:null, dailyLookWindowStartedAt:null, dailyLookGenerationCount:0,
       registeredVia:detectClientKind(headers?.['user-agent']), clientsSeen:[detectClientKind(headers?.['user-agent'])],
+      acquisitionSource:normalizeAcquisitionSource(d.acquisitionSource), activation:{}, isTestAccount:false,
       createdAt:now, updatedAt:now, sessions: [], connectionRequests:[], pushDestinations:[],
     };
     const sessionToken = newAccountSession(account, accountDeviceHash(d.deviceId));
@@ -4270,9 +4282,21 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const invite = { code, createdAt:now, expiresAt:now + PRIVATE_INVITE_TTL_MS };
     account.privateInvites.push(invite);
     privateInviteCodes.set(code, d.accountId);
-    await persistPrivateInvites(d.accountId);
+    noteActivation(account, 'inviteCreatedAt', now);
+    await persistAccount(d.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, { ok:true, code, expiresAt:invite.expiresAt, url:`https://vaultlix.com/invite/${code}` });
+  }
+
+  if (path === '/api/account/activation' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your session has expired.', 401);
+    const fields = { invite_shared:'inviteSharedAt', first_message:'firstMessageAt' };
+    const field = fields[d.event];
+    if (!field) return resErr(res, 'Invalid activation event.', 400);
+    if (noteActivation(account, field)) await persistAccount(d.accountId);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true });
   }
 
   if (path.startsWith('/api/profile/') && method === 'GET') {
@@ -4299,6 +4323,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const privateInvitation = accountByPrivateInviteCode(code);
     const found = privateInvitation || accountByProfileShareCode(code);
     if (!found) return resErr(res, 'Vaultlix profile link not found.', 404);
+    if (privateInvitation && noteActivation(privateInvitation.account, 'inviteOpenedAt')) await persistAccount(privateInvitation.accountId);
     res.setHeader('Cache-Control', 'no-store');
     return res200(res, {
       ok:true,
@@ -4324,6 +4349,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
 
     const now = Date.now();
     const inviter = found.account;
+    noteActivation(inviter, 'inviteRedeemedAt', now);
+    noteActivation(recipient, 'joinedFromInviteAt', now);
     recipient.connectionRequests = compactConnectionRequests(recipient.connectionRequests, now);
     inviter.connectionRequests = compactConnectionRequests(inviter.connectionRequests, now);
     const samePair = request =>
@@ -4335,7 +4362,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     found.invite.usedBy = d.accountId;
     privateInviteCodes.delete(found.invite.code);
     if (accepted) {
-      await persistAccount(found.accountId);
+      noteActivation(inviter, 'connectedAt', now);
+      noteActivation(recipient, 'connectedAt', now);
+      await Promise.all([persistAccount(found.accountId), persistAccount(d.accountId)]);
       return res200(res, { ok:true, status:'connected', requestId:accepted.id, inviteUrl:accepted.inviteUrl || null });
     }
 
@@ -4880,6 +4909,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const sender = accounts.get(request.senderAccountId);
     const outgoing = (sender?.connectionRequests || []).find(r => r.id === request.id);
     if (outgoing) { outgoing.status=request.status; outgoing.respondedAt=request.respondedAt; if (request.inviteUrl) outgoing.inviteUrl=request.inviteUrl; }
+    if (d.action === 'accepted') {
+      noteActivation(account, 'connectedAt', request.respondedAt);
+      noteActivation(sender, 'connectedAt', request.respondedAt);
+    }
     await Promise.all([persistAccount(d.accountId), request.senderAccountId ? persistAccount(request.senderAccountId) : Promise.resolve()]);
     publishInboxAccount(request.senderAccountId, 'connection-response');
     return res200(res, { ok:true, status:request.status, inviteUrl:request.inviteUrl || null });
@@ -6139,7 +6172,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -6175,6 +6208,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       })();
       if(!reserved) return resErr(res,'This number is assigned, reserved or retired.',409);
       return res200(res,{ok:true,privateNumber,reservedUntil,claimUrl:`https://vaultlix.com/#g=${privateNumber}.${reservationToken}`});
+    }
+    if (path === '/api/admin/test-account') {
+      res.setHeader('Cache-Control','no-store');
+      const found = accountByPrivateNumber(d.privateNumber);
+      if (!found) return resErr(res, 'Vaultlix identity not found.', 404);
+      found.account.isTestAccount = d.isTestAccount === true;
+      await persistAccount(found.accountId);
+      return res200(res, { ok:true, privateNumber:found.account.privateNumber, isTestAccount:found.account.isTestAccount });
     }
     if (path === '/api/admin/health') {
       res.setHeader('Cache-Control','no-store');
@@ -6303,6 +6344,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           activeDevices: (account.sessions || []).filter(session => session.expiresAt > now).length,
           notificationDevices: (account.pushDestinations || []).length,
           pendingRequests: (account.connectionRequests || []).filter(request => request.status === 'pending').length,
+          acquisitionSource:account.acquisitionSource || null,
+          activation:account.activation || {},
+          isTestAccount:!!account.isTestAccount,
           ...describeAccountClients(account),
         };
       })

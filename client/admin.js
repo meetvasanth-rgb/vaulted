@@ -183,6 +183,8 @@
     const table = $('funnel-table');
     if (!table) return;
     const cohorts = funnel?.cohorts || [];
+    const exclusions = $('funnel-exclusions');
+    if (exclusions) exclusions.textContent = funnel?.excludedTestAccounts ? `${number(funnel.excludedTestAccounts)} test ${funnel.excludedTestAccounts === 1 ? 'account' : 'accounts'} excluded.` : 'No test accounts are currently excluded.';
     if (!cohorts.length) { table.replaceChildren(); return; }
     const percent = (part, whole) => whole ? `${Math.round(part / whole * 100)}%` : '—';
     const cell = (tag, text, className) => { const node = document.createElement(tag); node.textContent = text; if (className) node.className = className; return node; };
@@ -191,8 +193,13 @@
       ['New today (too early to judge)', cohort => number(cohort.newToday), 'muted'],
       ['Old enough to judge', cohort => number(cohort.matured), 'muted'],
       [`Came back after ${funnel.returnAfterHours} hours`, cohort => `${number(cohort.returned)} · ${percent(cohort.returned, cohort.matured)}`],
+      ['Created an invitation', cohort => `${number(cohort.inviteCreated)} · ${percent(cohort.inviteCreated, cohort.matured)}`],
+      ['Shared the invitation', cohort => `${number(cohort.inviteShared)} · ${percent(cohort.inviteShared, cohort.matured)}`],
+      ['Invitation opened', cohort => `${number(cohort.inviteOpened)} · ${percent(cohort.inviteOpened, cohort.matured)}`],
+      ['Invitation redeemed', cohort => `${number(cohort.inviteRedeemed)} · ${percent(cohort.inviteRedeemed, cohort.matured)}`],
       ['Asked someone to connect', cohort => `${number(cohort.sentRequest)} · ${percent(cohort.sentRequest, cohort.matured)}`],
       ['Connected with someone', cohort => `${number(cohort.connected)} · ${percent(cohort.connected, cohort.matured)}`, 'strong'],
+      ['Sent a first message', cohort => `${number(cohort.firstMessage)} · ${percent(cohort.firstMessage, cohort.matured)}`],
       ['Notifications on', cohort => `${number(cohort.notificationsOn)} · ${percent(cohort.notificationsOn, cohort.matured)}`, 'muted'],
       ['Where the rest are', () => '', 'section'],
       ['Waiting for a reply', cohort => number(cohort.outcome.waitingForReply)],
@@ -232,6 +239,7 @@
     $('identity-rows').innerHTML = identities.length ? identities.map(identity => `<tr>
       <td><strong>${escapeHtml(identity.displayName || 'Unnamed')}</strong></td>
       <td><a href="/${encodeURIComponent(identity.privateNumber)}" target="_blank" rel="noopener">${escapeHtml(formatPrivateNumber(identity.privateNumber))}</a></td>
+      <td>${escapeHtml(identity.acquisitionSource || 'Unattributed')}</td>
       <td>${clientCell(identity)}</td>
       <td>${escapeHtml(formatDate(identity.createdAt))}</td>
       <td>${escapeHtml(formatDate(identity.updatedAt))}</td>
@@ -239,8 +247,19 @@
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>
-    </tr>`).join('') : '<tr><td colspan="9" class="empty-row">No registered identities yet.</td></tr>';
+      <td><button type="button" class="quiet" onclick="setTestAccount('${encodeURIComponent(identity.privateNumber)}', ${identity.isTestAccount ? 'false' : 'true'})">${identity.isTestAccount ? 'Count as real' : 'Mark as test'}</button></td>
+    </tr>`).join('') : '<tr><td colspan="11" class="empty-row">No registered identities yet.</td></tr>';
   }
+
+  async function setTestAccount(privateNumber, isTestAccount) {
+    try {
+      const response = await fetch('/api/admin/test-account', { method:'POST', headers:{ Authorization:`Bearer ${adminKey}`, 'Content-Type':'application/json' }, body:JSON.stringify({ privateNumber:decodeURIComponent(privateNumber), isTestAccount }) });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Could not update this identity.');
+      await loadStats(false);
+    } catch (error) { alert(error.message); }
+  }
+  window.setTestAccount = setTestAccount;
 
   function setGauge(prefix, value, max) {
     const pct = max ? Math.min(100, Math.round(value / max * 100)) : 0;

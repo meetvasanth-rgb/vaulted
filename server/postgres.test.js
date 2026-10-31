@@ -139,7 +139,7 @@ test('account persistence uses parameterized upserts', async () => {
   assert.deepEqual(calls[1][1], ['a'.repeat(64), 'cipher']);
   assert.match(calls[2][0], /ON CONFLICT \(account_id\) DO UPDATE/);
   assert.match(calls[2][0], /profile_share_code=EXCLUDED\.profile_share_code/);
-  assert.equal(calls[2][1].length, 32); // includes inbox_key, request_policy, registered_via, clients_seen and private_invites
+  assert.equal(calls[2][1].length, 35); // also includes acquisition source, activation milestones and test-account status
   assert.equal(calls[2][1][0], 'a'.repeat(64));
   assert.match(calls[3][0], /DELETE FROM account_bundle_history/);
 });

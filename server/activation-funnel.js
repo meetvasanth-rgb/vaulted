@@ -33,6 +33,12 @@ function accountActivation(account, now) {
     receivedUnanswered:!accepted && incoming.some(request => request.status === 'pending')
       && !outgoing.some(request => request.status === 'pending'),
     notificationsOn:Array.isArray(account?.pushDestinations) && account.pushDestinations.length > 0,
+    inviteCreated:!!Number(account?.activation?.inviteCreatedAt),
+    inviteShared:!!Number(account?.activation?.inviteSharedAt),
+    inviteOpened:!!Number(account?.activation?.inviteOpenedAt),
+    inviteRedeemed:!!Number(account?.activation?.inviteRedeemedAt),
+    firstMessage:!!Number(account?.activation?.firstMessageAt),
+    source:account?.acquisitionSource || 'unattributed',
   };
 }
 
@@ -53,6 +59,11 @@ function summarize(entries) {
     sentRequest:count(entry => entry.sent),
     connected,
     notificationsOn:count(entry => entry.notificationsOn),
+    inviteCreated:count(entry => entry.inviteCreated),
+    inviteShared:count(entry => entry.inviteShared),
+    inviteOpened:count(entry => entry.inviteOpened),
+    inviteRedeemed:count(entry => entry.inviteRedeemed),
+    firstMessage:count(entry => entry.firstMessage),
     outcome:{
       connected,
       waitingForReply,
@@ -64,10 +75,16 @@ function summarize(entries) {
 }
 
 function buildActivationFunnel(accounts, now = Date.now()) {
-  const entries = [...accounts].map(account => accountActivation(account, now)).filter(entry => entry.created > 0);
+  const allAccounts = [...accounts];
+  const included = allAccounts.filter(account => !account?.isTestAccount);
+  const entries = included.map(account => accountActivation(account, now)).filter(entry => entry.created > 0);
+  const sources = {};
+  for (const entry of entries) sources[entry.source] = (sources[entry.source] || 0) + 1;
   return {
     generatedAt:now,
     returnAfterHours:RETURN_AFTER_MS / (60 * 60 * 1000),
+    excludedTestAccounts:allAccounts.length - included.length,
+    sources,
     cohorts:COHORTS.map(cohort => ({
       id:cohort.id, label:cohort.label,
       ...summarize(entries.filter(entry => entry.age <= cohort.maxAgeMs)),

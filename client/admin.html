@@ -59,15 +59,15 @@
         <div id="allocate-result" hidden><label for="allocate-link">Private claim link</label><input id="allocate-link" type="text" readonly style="width:100%;box-sizing:border-box"><canvas id="allocate-qr" aria-label="Private number claim QR code" role="img" style="display:block;max-width:100%;margin:16px 0"></canvas><button id="allocate-save-qr" type="button">Save QR code</button><button id="allocate-copy" type="button">Copy claim link</button><p class="micro">Share privately with your friend. Anyone holding this link or QR code can claim the number. Your friend chooses their own password and recovery details. Copy the link now; it is not shown again after sign-out or refresh.</p></div>
       </section>
       <section class="panel" aria-labelledby="funnel-title">
-        <div class="panel-head"><div><p class="eyebrow">Activation</p><h2 id="funnel-title">From sign-up to a first connection</h2><p class="panel-copy">How far new identities get. Counts only, nobody is named, and no messages are involved. Percentages use identities at least a day old. "Asked someone" counts requests still on record (accepted or still waiting), so it can undercount older accounts.</p></div></div>
+        <div class="panel-head"><div><p class="eyebrow">Activation</p><h2 id="funnel-title">From sign-up to a first connection</h2><p class="panel-copy">How far new identities get. Counts only, nobody is named, and no messages are involved. Percentages use identities at least a day old. Accounts marked as tests are excluded.</p><p class="micro" id="funnel-exclusions"></p></div></div>
         <div class="table-wrap"><table class="funnel-table" id="funnel-table"><tbody><tr><td class="empty-row">Loading…</td></tr></tbody></table></div>
       </section>
 
       <section class="panel identity-panel">
         <div class="panel-head"><div><p class="eyebrow">User directory</p><h2>Vaultlix identities</h2><p class="panel-copy">Only account metadata needed for support and operations is shown.</p></div><span class="identity-count" id="identity-count">—</span></div>
         <div class="table-wrap"><table class="identity-table">
-          <thead><tr><th>Username</th><th>Private Number</th><th>Signed up via</th><th>Created</th><th>Updated</th><th>Last Online</th><th>Devices</th><th>Notifications</th><th>Pending requests</th></tr></thead>
-          <tbody id="identity-rows"><tr><td colspan="9" class="empty-row">Loading identities…</td></tr></tbody>
+          <thead><tr><th>Username</th><th>Private Number</th><th>Source</th><th>Signed up via</th><th>Created</th><th>Updated</th><th>Last Online</th><th>Devices</th><th>Notifications</th><th>Pending requests</th><th>Funnel status</th></tr></thead>
+          <tbody id="identity-rows"><tr><td colspan="11" class="empty-row">Loading identities…</td></tr></tbody>
         </table></div>
       </section>
 

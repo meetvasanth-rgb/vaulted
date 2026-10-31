@@ -35,7 +35,11 @@ function harness({ state = { accountId:'acc1', privateNumber:'2345678901', displ
     openSystemShare: async text => { shared.push(text); return share(text); },
     sharePrivateInvitationWithQr: async (_state, _invitation, text) => { shared.push(text); return share(text); },
     requestInviteRecipientName: async () => recipientName,
-    createPrivateInvitation: async () => { created++; return { url:'https://vaultlix.com/invite/K6AKTD' }; },
+    createPrivateInvitation: async () => { created++; return { url:'https://vaultlix.com/invite/K6AKTD', code:'K6AKTD', expiresAt:Date.now() + 86400000 }; },
+    loadFirstConnectionWaiting: () => null,
+    clearFirstConnectionWaiting: () => {},
+    saveFirstConnectionWaiting: () => {},
+    recordActivationEvent: () => {},
     navigator:{ clipboard:{ writeText: async text => { copied.push(text); } } },
     toast: message => toasts.push(message), showOwnPrivateNumberQr: () => {},
     Date, Number, String,
@@ -49,9 +53,9 @@ function harness({ state = { accountId:'acc1', privateNumber:'2345678901', displ
 
 test('an account with no chats is shown the invite card, with share, QR and later', () => {
   const html = harness().context.inviteCardHtml();
-  assert.match(html, /Invite someone to start your first private chat/);
-  assert.match(html, /onclick="shareInviteFromCard\(\)">Share invite</);
-  assert.match(html, /onclick="showOwnPrivateNumberQr\(\)">Show QR</);
+  assert.match(html, /Connect with your first person/);
+  assert.match(html, /onclick="shareInviteFromCard\(\)">Create invitation</);
+  assert.match(html, /onclick="showInviteQrFromCard\(\)">Show QR</);
   assert.match(html, /onclick="snoozeInviteCard\(\)">Later</);
 });
 
@@ -64,9 +68,9 @@ test('it goes away as soon as there is a first connection or group, and when sig
 
 test('while a request is waiting it says so, and still offers to invite someone else', () => {
   const html = harness({ outgoing:1 }).context.inviteCardHtml();
-  assert.match(html, /Your request is on its way/);
-  assert.match(html, /Invite someone else too/);
-  assert.match(html, /Share invite/);
+  assert.match(html, /Your invitation is on its way/);
+  assert.match(html, /Share the invitation again/);
+  assert.match(html, /Create invitation/);
 });
 
 test('"Later" hides it for two days, per account, in its own key, then it comes back', () => {
@@ -78,8 +82,8 @@ test('"Later" hides it for two days, per account, in its own key, then it comes 
   assert.equal(h.context.rendered, 1);
   assert.equal(h.context.inviteCardHtml(), '');
   // Past the snooze it returns; another account on the device is unaffected.
-  assert.match(harness({ stored:{ 'vaultlix_invite_card:acc1':String(Date.now() - 1) } }).context.inviteCardHtml(), /Share invite/);
-  assert.match(harness({ state:{ accountId:'acc2', privateNumber:'3456789012', displayName:'B' }, stored:{ 'vaultlix_invite_card:acc1':String(Date.now() + 99999) } }).context.inviteCardHtml(), /Share invite/);
+  assert.match(harness({ stored:{ 'vaultlix_invite_card:acc1':String(Date.now() - 1) } }).context.inviteCardHtml(), /Create invitation/);
+  assert.match(harness({ state:{ accountId:'acc2', privateNumber:'3456789012', displayName:'B' }, stored:{ 'vaultlix_invite_card:acc1':String(Date.now() + 99999) } }).context.inviteCardHtml(), /Create invitation/);
 });
 
 test('share opens the system share sheet with the invitation QR card, falling back to copying its text', async () => {

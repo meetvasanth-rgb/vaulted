@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   daily_look_generation_count integer NOT NULL DEFAULT 0,
   registered_via varchar(16),
   clients_seen jsonb NOT NULL DEFAULT '[]'::jsonb,
+  acquisition_source varchar(40),
+  activation jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_test_account boolean NOT NULL DEFAULT false,
   created_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
@@ -241,6 +244,9 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_window_started_at bigin
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS daily_look_generation_count integer NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS registered_via varchar(16);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS clients_seen jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS acquisition_source varchar(40);
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS activation jsonb NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS is_test_account boolean NOT NULL DEFAULT false;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS status varchar(16) NOT NULL DEFAULT 'active';
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_named boolean NOT NULL DEFAULT false;
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_activity bigint NOT NULL DEFAULT 0;
@@ -342,6 +348,8 @@ class PostgresStore {
       dailyLookWindowStartedAt:row.daily_look_window_started_at == null ? null : Number(row.daily_look_window_started_at),
       dailyLookGenerationCount:Math.max(0, Number(row.daily_look_generation_count) || 0),
       registeredVia:row.registered_via || null, clientsSeen:Array.isArray(row.clients_seen) ? row.clients_seen : [],
+      acquisitionSource:row.acquisition_source || null, activation:row.activation && typeof row.activation === 'object' ? row.activation : {},
+      isTestAccount:!!row.is_test_account,
       createdAt:Number(row.created_at), updatedAt:Number(row.updated_at),
     }]);
   }
@@ -361,8 +369,8 @@ class PostgresStore {
       number_protection, premium_until, reclaim_warnings, tier, is_founding,
       creation_order, daily_look_generated_at, daily_look_window_started_at,
       daily_look_generation_count, created_at, updated_at, inbox_key, request_policy,
-      registered_via, clients_seen, private_invites
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31::jsonb,$32::jsonb)
+      registered_via, clients_seen, private_invites, acquisition_source, activation, is_test_account
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28::jsonb,$29,$30,$31::jsonb,$32::jsonb,$33,$34::jsonb,$35)
     ON CONFLICT (account_id) DO UPDATE SET
       private_number=EXCLUDED.private_number, profile_share_code=EXCLUDED.profile_share_code,
       display_name=EXCLUDED.display_name,
@@ -384,6 +392,9 @@ class PostgresStore {
       registered_via=COALESCE(accounts.registered_via, EXCLUDED.registered_via),
       clients_seen=EXCLUDED.clients_seen,
       private_invites=EXCLUDED.private_invites,
+      acquisition_source=COALESCE(accounts.acquisition_source, EXCLUDED.acquisition_source),
+      activation=EXCLUDED.activation,
+      is_test_account=EXCLUDED.is_test_account,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.profileShareCode || null, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -398,6 +409,7 @@ class PostgresStore {
       account.requestPolicy || 'anyone',
       account.registeredVia || null, JSON.stringify(account.clientsSeen || []),
       JSON.stringify(account.privateInvites || []),
+      account.acquisitionSource || null, JSON.stringify(account.activation || {}), !!account.isTestAccount,
     ]);
     await queryClient.query(`DELETE FROM account_bundle_history
       WHERE account_id=$1 AND revision NOT IN (
