@@ -9378,7 +9378,11 @@ function releaseCallWakeLock() {
 
 let foregroundResumeTimer = null;
 function resumeForegroundWork() {
-  if (quickLockActive) { renderQuickLock(); return; }
+  if (quickLockActive) {
+    renderQuickLock();
+    requestAppLockPasscodeFocus();
+    return;
+  }
   hidePrivacyCover();
   tabFocused = true;
   lastInteractionTime = Date.now();
@@ -16887,6 +16891,25 @@ function hidePrivacyCover() {
   if (!quickLockActive) document.getElementById('privacy-cover')?.classList.remove('show');
 }
 
+let appLockFocusRequest = 0;
+function requestAppLockPasscodeFocus() {
+  const request = ++appLockFocusRequest;
+  // WKWebView can report scene-active before it has finished restoring its
+  // editable content view after a notification tap. A few bounded attempts
+  // cover that transition; once the field owns focus, later attempts no-op.
+  for (const delay of [0, 80, 220, 500]) {
+    setTimeout(() => {
+      if (request !== appLockFocusRequest || !quickLockActive || quickLockUnlocking || nativeIOSCallOverAppLock) return;
+      const appIsActive = nativeIOSLifecycleKnown ? nativeIOSAppActive : !document.hidden;
+      if (!appIsActive) return;
+      const input = document.getElementById('app-lock-passcode');
+      const cover = document.getElementById('privacy-cover');
+      if (!input || !cover?.classList.contains('quick-locked') || document.activeElement === input) return;
+      try { input.focus({ preventScroll:true }); } catch (error) { input.focus(); }
+    }, delay);
+  }
+}
+
 function renderQuickLock() {
   const cover = document.getElementById('privacy-cover');
   if (!cover) return;
@@ -16925,7 +16948,7 @@ function activateAppLock(manual = false) {
     }
     clearAndroidCallNotifications();
   }
-  setTimeout(() => document.getElementById('app-lock-passcode')?.focus(), 50);
+  requestAppLockPasscodeFocus();
 }
 
 function quickLockFromHeader() {
@@ -18207,6 +18230,12 @@ async function ensureNativePushListeners() {
   });
   await plugin.addListener('pushNotificationActionPerformed', event => {
     const notification = event?.notification || {};
+    // Opening from a notification adds a second native foreground/navigation
+    // transition after App Lock was rendered. That transition can clear the
+    // focus requested while the app was still inactive, so ask again once the
+    // notification action reaches the page. The helper waits for the real iOS
+    // scene-active signal and never competes with CallKit.
+    if (quickLockActive) requestAppLockPasscodeFocus();
     if (notification?.data?.sessionReplaced === true || notification?.data?.sessionReplaced === 'true') {
       clearReplacedAccountLocally(notification.data.accountId || null);
       return;
