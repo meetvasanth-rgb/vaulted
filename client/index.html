@@ -26305,9 +26305,15 @@ function showRestoreSkeleton() {
 
 function hideRestoreSkeleton() {
   const overlay = document.getElementById('restore-skeleton-overlay');
-  if (!overlay) return;
-  overlay.classList.add('leaving');
-  setTimeout(() => overlay.remove(), 190);
+  if (overlay) {
+    overlay.classList.add('leaving');
+    setTimeout(() => overlay.remove(), 190);
+  }
+  // Release Android's native cover only after the selected app screen has
+  // had two paint opportunities, avoiding Chromium's white/dark startup frames.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    try { window.VaultlixAndroid?.hideLaunchCover?.(); } catch (error) {}
+  }));
 }
 
 window.addEventListener('DOMContentLoaded', async () => {

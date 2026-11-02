@@ -9,6 +9,7 @@ import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.AudioFormat;
@@ -34,10 +35,13 @@ import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.getcapacitor.BridgeActivity;
 import androidx.core.content.FileProvider;
+import androidx.core.splashscreen.SplashScreen;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.util.UnstableApi;
@@ -87,6 +91,10 @@ public class MainActivity extends BridgeActivity {
     private AudioDeviceInfo previousCommunicationDevice;
     private boolean audioRouteConfigured;
     private View appSwitcherPrivacyCover;
+    private View launchCover;
+    private volatile boolean launchCoverAttached;
+    private final Handler launchCoverHandler = new Handler(Looper.getMainLooper());
+    private final Runnable checkWebLaunchReady = this::checkWebLaunchReady;
     private SecureMessageStore secureMessageStore;
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
@@ -142,7 +150,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+        splashScreen.setKeepOnScreenCondition(() -> !launchCoverAttached);
         super.onCreate(savedInstanceState);
+        showLaunchCover();
         activeInstance = new WeakReference<>(this);
         secureMessageStore = new SecureMessageStore(this);
         nativeCallRoomStore = new NativeCallRoomStore(this);
@@ -154,6 +165,99 @@ public class MainActivity extends BridgeActivity {
         scheduleDecryptedMediaCacheCleanup();
         captureExternalShare(getIntent());
         openVaultlixInvite(getIntent());
+        launchCoverHandler.postDelayed(checkWebLaunchReady, 80L);
+    }
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /** Keep a native Vaultlix frame above Chromium until the app has painted. */
+    private void showLaunchCover() {
+        if (launchCover != null || isFinishing() || isDestroyed()) {
+            launchCoverAttached = true;
+            return;
+        }
+
+        FrameLayout cover = new FrameLayout(this);
+        GradientDrawable background = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[] { Color.rgb(251, 247, 248), Color.rgb(247, 238, 241) });
+        cover.setBackground(background);
+        cover.setClickable(true);
+        cover.setFocusable(true);
+        cover.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        brand.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        FrameLayout mark = new FrameLayout(this);
+        GradientDrawable markBackground = new GradientDrawable();
+        markBackground.setColor(Color.rgb(104, 44, 67));
+        markBackground.setCornerRadius(dp(25));
+        mark.setBackground(markBackground);
+
+        ImageView lock = new ImageView(this);
+        lock.setImageResource(R.drawable.ic_launcher_foreground);
+        lock.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int lockInset = dp(12);
+        lock.setPadding(lockInset, lockInset, lockInset, lockInset);
+        mark.addView(lock, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        brand.addView(mark, new LinearLayout.LayoutParams(dp(82), dp(82)));
+
+        TextView wordmark = new TextView(this);
+        wordmark.setText("Vaultlix");
+        wordmark.setTextColor(Color.rgb(39, 29, 37));
+        wordmark.setTextSize(27);
+        wordmark.setGravity(Gravity.CENTER);
+        wordmark.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        LinearLayout.LayoutParams wordmarkParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        wordmarkParams.topMargin = dp(16);
+        brand.addView(wordmark, wordmarkParams);
+
+        cover.addView(brand, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
+        addContentView(cover, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        cover.bringToFront();
+        launchCover = cover;
+        launchCoverAttached = true;
+
+        // Reveal Capacitor's local offline/error page if the hosted document fails.
+        cover.postDelayed(this::hideLaunchCover, 12_000L);
+    }
+
+    private void hideLaunchCover() {
+        View cover = launchCover;
+        launchCover = null;
+        launchCoverHandler.removeCallbacks(checkWebLaunchReady);
+        if (cover == null) return;
+        cover.animate().alpha(0f).setDuration(140L).withEndAction(() -> {
+            ViewParent parent = cover.getParent();
+            if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(cover);
+        }).start();
+    }
+
+    private void checkWebLaunchReady() {
+        if (launchCover == null || isFinishing() || isDestroyed()) return;
+        String readinessScript = "(function(){var o=document.getElementById('restore-skeleton-overlay');"
+                + "var s=document.querySelector('.screen.active');"
+                + "return !!s&&(!o||o.classList.contains('leaving'));})()";
+        getBridge().getWebView().evaluateJavascript(readinessScript, result -> {
+            if ("true".equals(result)) {
+                hideLaunchCover();
+            } else if (launchCover != null) {
+                launchCoverHandler.postDelayed(checkWebLaunchReady, 80L);
+            }
+        });
     }
 
     // True while the app's own screen is in front. Incoming calls still use
@@ -976,6 +1080,11 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class AndroidCallBridge {
+        @JavascriptInterface
+        public void hideLaunchCover() {
+            runOnUiThread(MainActivity.this::hideLaunchCover);
+        }
+
         // The six-character invite code carried through the Play Store install, or "".
         @JavascriptInterface
         public String pendingInstallInvite() { return InstallInvite.pendingCode(MainActivity.this); }
