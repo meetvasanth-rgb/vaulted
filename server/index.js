@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const { createSeo } = require('./seo');
 const seo = createSeo({ clientDir: path.join(__dirname, '../client') });
+const { compileClientShell } = require('./client-shell');
+const clientShell = compileClientShell({ clientDir:path.join(__dirname, '../client') });
 const crypto = require('crypto');
 const { promisify } = require('util');
 const sharp = require('sharp');
@@ -2785,17 +2787,17 @@ function computeETag(buf) {
 
 // The HTML shell (index.html, install.html, and the SPA catch-all below that
 // serves index.html's content for any unrecognized path like /join/<code>)
-// is the one thing here that actually needs a cache directive — the entire
-// app, including encryptMsg/decryptMsg, lives in that one inline <script>,
-// so a stale copy of this file IS a stale copy of the app. With no explicit
-// caching headers at all, a browser is permitted to apply heuristic caching
+// is the one thing here that needs revalidation. The delivered index names
+// immutable, content-hashed app assets, so a stale shell would keep pointing
+// at a stale app version even though those assets themselves are safe to cache
+// for a year. With no explicit caching headers at all, a browser is permitted
+// to apply heuristic caching
 // (RFC 9111 §4.2.2) to a plain navigation (a bookmark, history, back/
 // forward) even though a manual reload wouldn't hit that path — no-cache
 // (not no-store) forces revalidation with the server before ever reusing a
 // cached copy, without losing the copy entirely, so a 304 stays cheap. The
 // ETag below is what makes that revalidation actually cost a 304 instead of
-// a full refetch. Deliberately not applied to any other static asset —
-// there's nothing else here whose staleness has security consequences.
+// a full refetch.
 function sendHtmlShell(req, res, data) {
   const etag = computeETag(data);
   const cacheControl = res.getHeader('Cache-Control') || 'no-cache';
@@ -2811,6 +2813,17 @@ function sendHtmlShell(req, res, data) {
 function serveStatic(req, res) {
   if (seo.handle(req, res)) return;
   let url = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+  const shellAsset = clientShell.assets.get(url);
+  if (shellAsset) {
+    res.writeHead(200, {
+      'Content-Type':shellAsset.contentType,
+      'Content-Length':shellAsset.body.length,
+      'Cache-Control':'public, max-age=31536000, immutable',
+      'ETag':computeETag(shellAsset.body),
+    });
+    res.end(shellAsset.body);
+    return;
+  }
   // Explicit route, ahead of the SPA catch-all below — without this, a
   // request for /robots.txt falls through to the readFile-miss branch and
   // silently gets served index.html instead (wrong content, wrong
@@ -2842,12 +2855,14 @@ function serveStatic(req, res) {
     if (err) {
       if (vendorFile) { res.writeHead(404); res.end(); return; }
       if (!seo.isAppShellRoute(req.url.split('?')[0])) { seo.sendNotFound(req, res); return; }
-      fs.readFile(path.join(__dirname,'../client/index.html'), (e,d) => {
-        if (e) { res.writeHead(404); res.end(); return; }
-        sendHtmlShell(req, res, d);
-      }); return;
+      sendHtmlShell(req, res, clientShell.html);
+      return;
     }
-    if (url === '/index.html' || url === '/install.html') {
+    if (url === '/index.html') {
+      sendHtmlShell(req, res, clientShell.html);
+      return;
+    }
+    if (url === '/install.html') {
       sendHtmlShell(req, res, data);
       return;
     }
