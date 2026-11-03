@@ -41,10 +41,10 @@ test('a private-group FCM push is data-only (same reliability fix already applie
   assert.match(server, /if \(!parsed\.isCall && !parsed\.isCallEnd && !parsed\.missedCall && !parsed\.msgId && !parsed\.groupId\) \{/);
 });
 
-test('pushNotificationActionPerformed routes a group-message notification to openPrivateGroup, with a deferred fallback for the not-yet-loaded race', () => {
+test('pushNotificationActionPerformed queues a group-message target for App Lock-safe routing', () => {
   assert.match(client, /if \(notification\?\.data\?\.privateGroup === true \|\| notification\?\.data\?\.privateGroup === 'true'\) \{/);
-  assert.match(client, /if \(privateGroups\.has\(groupId\)\) refreshPrivateGroups\(\)\.then\(\(\) => openPrivateGroup\(groupId\)\)\.catch\(\(\) => \{\}\);/);
-  assert.match(client, /else pendingNotificationGroupId = groupId;/);
+  assert.match(client, /pendingNotificationGroupId = groupId;\s*\n\s*openPendingNotificationTarget\(\);/);
+  assert.match(client, /function openPendingNotificationTarget\(\) \{[\s\S]*if \(quickLockActive\) return false;[\s\S]*refreshPrivateGroups\(\)\.then\(\(\) => openPrivateGroup\(groupId\)\)/);
 });
 
 test('pendingNotificationGroupId is declared and consumed at startup, alongside the URL-param (?group=) path', () => {

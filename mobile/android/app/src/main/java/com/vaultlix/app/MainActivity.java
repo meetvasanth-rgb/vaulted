@@ -807,7 +807,45 @@ public class MainActivity extends BridgeActivity {
             return;
         }
 
-        getBridge().getWebView().loadUrl(uri.toString());
+        openNotificationTargetWithoutReload(uri);
+    }
+
+    /**
+     * A message notification normally reaches an already-running WebView. Reloading the
+     * hosted page just to pass ?room=... made the user see inbox -> startup cover -> inbox
+     * -> conversation. Let the live client consume message/group targets in place. A cold
+     * launch (or an older client without the handler) still uses the URL and follows the
+     * normal authenticated restore path.
+     */
+    private void openNotificationTargetWithoutReload(Uri uri) {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        android.webkit.WebView webView = getBridge().getWebView();
+        String path = uri.getPath();
+        String roomCode = uri.getQueryParameter("room");
+        String groupId = uri.getQueryParameter("group");
+        boolean notificationTarget = "/".equals(path)
+                && ((roomCode != null && !roomCode.isEmpty()) || (groupId != null && !groupId.isEmpty()));
+        if (!notificationTarget) {
+            webView.loadUrl(uri.toString());
+            return;
+        }
+
+        String current = webView.getUrl();
+        if (current == null || !current.startsWith("https://vaultlix.com/")) {
+            webView.loadUrl(uri.toString());
+            return;
+        }
+
+        String kind = roomCode != null && !roomCode.isEmpty() ? "room" : "group";
+        String target = "room".equals(kind) ? roomCode : groupId;
+        String script = "(function(){if(typeof window.vaultlixOpenNotificationTarget!=='function')return false;"
+                + "window.vaultlixOpenNotificationTarget(" + JSONObject.quote(kind) + ","
+                + JSONObject.quote(target) + ");return true;})()";
+        webView.evaluateJavascript(script, result -> {
+            // During a true cold launch the document may have a vaultlix.com URL before
+            // its application script is ready. Preserve the URL fallback in that race.
+            if (!"true".equals(result)) webView.loadUrl(uri.toString());
+        });
     }
 
     private boolean isAllowedVaultlixPath(String path) {

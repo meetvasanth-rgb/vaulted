@@ -17041,6 +17041,7 @@ function completeQuickUnlock() {
   refreshPushForAllRooms();
   reconnectSignalingForAllRooms();
   requestPendingExternalShares();
+  openPendingNotificationTarget();
   resumeDeferredQuickConnectURL().catch(() => toast('Could not resume the scanned Vaultlix request'));
 }
 
@@ -18249,15 +18250,18 @@ async function ensureNativePushListeners() {
       if (!groupId) return;
       // privateGroups may not have finished loading yet (this listener can
       // fire before startup restore completes) — same race
-      // pendingNotificationRoomCode exists for below. If it's already
-      // loaded, navigate immediately; otherwise queue it for the startup
-      // consumption block to pick up once refreshPrivateGroups() has run.
-      if (privateGroups.has(groupId)) refreshPrivateGroups().then(() => openPrivateGroup(groupId)).catch(() => {});
-      else pendingNotificationGroupId = groupId;
+      // Queue every target through the shared router: it opens immediately
+      // when safe, waits for startup data when needed, and stays behind App
+      // Lock until the user has unlocked Vaultlix.
+      pendingNotificationGroupId = groupId;
+      openPendingNotificationTarget();
       return;
     }
     const code = notification?.data?.code;
-    if (code && !switchToRoomByCode(code)) pendingNotificationRoomCode = code;
+    if (code) {
+      pendingNotificationRoomCode = code;
+      openPendingNotificationTarget();
+    }
   });
 }
 
@@ -20319,6 +20323,39 @@ let pendingNotificationRoomCode = null;
 // pushNotificationActionPerformed listener above) — privateGroups may not
 // have finished loading yet when the tap arrives.
 let pendingNotificationGroupId = null;
+
+function openPendingNotificationTarget() {
+  // Keep the destination queued behind App Lock. After a successful unlock,
+  // completeQuickUnlock() calls this again so no private chat is exposed first.
+  if (quickLockActive) return false;
+  if (pendingNotificationGroupId) {
+    const groupId = pendingNotificationGroupId;
+    if (!privateGroups.has(groupId)) return false;
+    pendingNotificationGroupId = null;
+    refreshPrivateGroups().then(() => openPrivateGroup(groupId)).catch(() => {});
+    return true;
+  }
+  if (pendingNotificationRoomCode) {
+    const code = pendingNotificationRoomCode;
+    if (!switchToRoomByCode(code)) return false;
+    pendingNotificationRoomCode = null;
+    return true;
+  }
+  return false;
+}
+
+// Android's native notification PendingIntent uses this on a warm app instead
+// of reloading the entire WebView with ?room=... or ?group=.... Cold launches
+// still carry the URL through the normal startup restore below.
+window.vaultlixOpenNotificationTarget = (kind, target) => {
+  const value = String(target || '');
+  if (!value) return;
+  if (kind === 'group') pendingNotificationGroupId = value;
+  else if (kind === 'room') pendingNotificationRoomCode = value;
+  else return;
+  openPendingNotificationTarget();
+};
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'session-replaced') {
