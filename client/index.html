@@ -5984,6 +5984,7 @@ window.addEventListener('vaultlix:app-state', event => {
   nativeIOSLifecycleKnown = true;
   nativeIOSAppActive = event.detail?.active === true;
   if (!nativeIOSAppActive) {
+    revokeVoiceNotePlayback('native-inactive');
     tabFocused = false;
     return;
   }
@@ -11756,6 +11757,10 @@ function refreshHiddenChatsViews() {
 function lockHiddenChats() {
   if (hiddenChatsRelockTimer) clearTimeout(hiddenChatsRelockTimer);
   hiddenChatsRelockTimer = null;
+  // A hidden conversation must not remain accessible through iOS Now Playing
+  // after its UI has been concealed. Unload the media element before changing
+  // the visible chat so the lock-screen Play command has nothing to resume.
+  if (isChatHidden(activeRoomCode) && typeof revokeVoiceNotePlayback === 'function') revokeVoiceNotePlayback('hidden-chat-lock');
   if (!hiddenChatsUnlocked) return;
   hiddenChatsUnlocked = false;
   const chatShowing = document.getElementById('s-chat')?.classList.contains('active');
@@ -17345,6 +17350,7 @@ function activateAppLock(manual = false) {
   const error = document.getElementById('app-lock-error');
   if (error) error.textContent = appLockWaitCopy();
   renderQuickLock();
+  revokeVoiceNotePlayback('app-lock');
 
   const input = document.getElementById('msg-input');
   if (input) { input.value = ''; input.blur(); }
@@ -28397,6 +28403,44 @@ const voiceTimelineOffsets = new WeakMap(); // HTMLAudioElement -> malformed Web
 const voicePlaybackStarts = new Set();
 let voiceMetadataObserver = null;
 let currentlyPlayingVoiceId = null;
+
+// Pausing an HTMLAudioElement is insufficient on iOS: its Now Playing card
+// remains on the lock screen and the system Play command can resume it without
+// reopening Vaultlix. Privacy transitions therefore unload every voice-note
+// element, close any Web Audio graph and ask the wrapper to relinquish the
+// playback audio session. The note is recreated normally after unlock.
+function revokeVoiceNotePlayback(reason = 'privacy-lock') {
+  for (const [id, audio] of voiceAudioEls) {
+    try { audio.pause(); } catch (_) {}
+    const graph = voicePlaybackGraphs.get(audio);
+    try { graph?.context?.close(); } catch (_) {}
+    try { audio.removeAttribute('src'); audio.load(); } catch (_) {}
+    voicePlaybackGraphs.delete(audio);
+    setVoicePlayIcon(id, false);
+  }
+  voiceAudioEls.clear();
+  voicePlaybackStarts.clear();
+  currentlyPlayingVoiceId = null;
+
+  if (voiceDraft?.audio) {
+    try { voiceDraft.audio.pause(); } catch (_) {}
+    try { voiceDraft.audio.removeAttribute('src'); voiceDraft.audio.load(); } catch (_) {}
+    voiceDraft.audio = null;
+    setVoiceDraftPlayIcon(false);
+    paintVoiceDraftProgress(0);
+  }
+
+  try {
+    if (navigator.mediaSession) {
+      navigator.mediaSession.playbackState = 'none';
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.setPositionState?.();
+    }
+  } catch (_) {}
+  try {
+    window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'stopVoiceNotePlayback', reason });
+  } catch (_) {}
+}
 
 function prepareVoiceNotePlayback() {
   try {

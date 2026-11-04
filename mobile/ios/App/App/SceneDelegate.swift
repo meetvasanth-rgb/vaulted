@@ -1243,6 +1243,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             VaultlixCallManager.shared.prepareVoiceNotePlayback()
             return
         }
+        if action == "stopVoiceNotePlayback" {
+            guard message.frameInfo.isMainFrame,
+                  message.frameInfo.securityOrigin.host == "vaultlix.com" else { return }
+            VaultlixCallManager.shared.stopVoiceNotePlayback()
+            return
+        }
         if action == "transcribeVoiceNote" {
             guard message.frameInfo.isMainFrame,
                   message.frameInfo.securityOrigin.host == "vaultlix.com",

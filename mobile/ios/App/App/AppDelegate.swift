@@ -3,6 +3,7 @@ import Capacitor
 import PushKit
 import CallKit
 import AVFoundation
+import MediaPlayer
 import UserNotifications
 
 extension Notification.Name {
@@ -663,6 +664,21 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
             try session.setActive(true)
         } catch {
             print("VXVOICE playback audio route failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// A paused WebKit media element remains registered with iOS Now Playing,
+    /// so the lock-screen Play command can resume a protected voice note. The
+    /// web layer unloads the element; this clears the process-level Now Playing
+    /// entry and relinquishes the playback session when no call owns it.
+    func stopVoiceNotePlayback() {
+        guard calls.isEmpty else { return }
+        MPNowPlayingInfoCenter.default().playbackState = .stopped
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("VXVOICE playback audio stop failed: \(error.localizedDescription)")
         }
     }
 
