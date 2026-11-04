@@ -46,6 +46,22 @@ test('authenticated launch paints the local inbox before network restoration', (
   assert.match(client, /room\?\.restorePending[\s\S]*Opening encrypted conversation/);
 });
 
+test('the large QR camera decoder stays out of the launch path', () => {
+  assert.match(client, /type="application\/x-vaultlix-lazy" data-src="\/vendor\/jsQR\.js"/);
+  assert.match(client, /function ensurePrivateNumberScannerDecoder\(\)/);
+  assert.match(client, /async function openPrivateNumberScanner\(\)[\s\S]*await ensurePrivateNumberScannerDecoder\(\)[\s\S]*getUserMedia/);
+  assert.doesNotMatch(client, /<script src="\/vendor\/jsQR\.js"><\/script>/);
+});
+
+test('share-card PNG preparation waits until the first app screen is ready', () => {
+  const scheduleAt = client.indexOf('function scheduleNumberCardPrewarm(');
+  const renderAt = client.indexOf('async function renderNumberCard(', scheduleAt);
+  const schedule = client.slice(scheduleAt, renderAt);
+  assert.match(schedule, /restore-skeleton-overlay/);
+  assert.match(schedule, /window\.addEventListener\('vaultlix:launch-ready', queueWhenIdle, \{ once:true \}\)/);
+  assert.match(client, /window\.dispatchEvent\(new Event\('vaultlix:launch-ready'\)\)[\s\S]{0,120}hideLaunchCover/);
+});
+
 test('startup restores conversations concurrently and prioritizes the room a user taps', () => {
   assert.match(client, /const STARTUP_ROOM_RESTORE_CONCURRENCY = 3/);
   assert.match(client, /async function restoreStartupRooms\(codes, restoreOne\)/);

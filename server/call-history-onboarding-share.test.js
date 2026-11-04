@@ -74,9 +74,10 @@ test('public invitations retain branded previews while number-card QR uses the v
   assert.match(shareBody, /navigator\.share\(\{[\s\S]*title:'My Vaultlix Private Number'[\s\S]*url:shareUrl[\s\S]*files:\[file\]/);
 });
 
-test('number-card preparation starts quietly before the first Android share tap', () => {
+test('number-card preparation starts quietly after launch and before the first Android share tap', () => {
   assert.match(client, /function scheduleNumberCardPrewarm/);
-  assert.match(client, /requestIdleCallback\(work, \{ timeout:1200 \}\)/);
+  assert.match(client, /requestIdleCallback\(work, \{ timeout:2000 \}\)/);
+  assert.match(client, /window\.addEventListener\('vaultlix:launch-ready', queueWhenIdle, \{ once:true \}\)/);
   assert.match(client, /if \(state\) scheduleNumberCardPrewarm\(state\)/);
   assert.match(client, /overlay\?\.classList\.add\('open'\)[\s\S]*await renderNumberCard\(state\)/);
 });

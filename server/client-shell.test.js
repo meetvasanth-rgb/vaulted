@@ -31,7 +31,6 @@ test('application and QR scripts are extracted byte-for-byte into hashed assets'
 
 test('deferred scripts retain their dependency order', () => {
   const expected = [
-    '/vendor/jsQR.js',
     compiled.paths.qr,
     '/number-card.js',
     compiled.paths.app,
@@ -44,6 +43,8 @@ test('deferred scripts retain their dependency order', () => {
     assert.ok(index > previous, `${scriptPath} is missing or out of order`);
     previous = index;
   }
+  assert.doesNotMatch(html, /<script defer src="\/vendor\/jsQR\.js"><\/script>/);
+  assert.match(html, /<script type="application\/x-vaultlix-lazy" data-src="\/vendor\/jsQR\.js"><\/script>/);
 });
 
 test('service worker recognizes the generated immutable assets', () => {
