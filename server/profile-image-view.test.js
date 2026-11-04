@@ -34,9 +34,9 @@ function harness(profileImage) {
     removeAttribute: name => attributes.delete(name),
     getAttribute: name => attributes.get(name),
   };
-  const view = { hidden:true }, change = { textContent:'' }, remove = { hidden:true };
+  const view = { hidden:true }, pixelPreview = { hidden:true }, change = { textContent:'' }, remove = { hidden:true };
   const toasts = [], viewed = [];
-  const byId = { 'account-profile-photo-preview':preview, 'account-profile-photo-view':view, 'account-profile-photo-change':change, 'account-profile-photo-remove':remove };
+  const byId = { 'account-profile-photo-preview':preview, 'account-profile-photo-view':view, 'account-profile-photo-pixel-preview':pixelPreview, 'account-profile-photo-change':change, 'account-profile-photo-remove':remove };
   const context = vm.createContext({
     document: { getElementById: id => byId[id] || null, createElement: () => ({}) },
     loadAccountState: () => ({ displayName:'Vasanth', profileImage }),
@@ -47,7 +47,7 @@ function harness(profileImage) {
   });
   vm.runInContext(extractFunction('renderAccountProfilePhoto') + '\n' + extractFunction('viewOwnProfileImage'), context);
   context.renderAccountProfilePhoto();
-  return { context, preview, view, change, remove, toasts, viewed, attributes };
+  return { context, preview, view, pixelPreview, change, remove, toasts, viewed, attributes };
 }
 
 const IMAGE = 'data:image/jpeg;base64,AAAA';
@@ -58,6 +58,7 @@ test('with a profile image, the picture is a button and "View full size" is offe
   assert.equal(h.attributes.get('role'), 'button');
   assert.equal(h.preview.tabIndex, 0);
   assert.equal(h.view.hidden, false);
+  assert.equal(h.pixelPreview.hidden, false);
   assert.equal(h.change.textContent, 'Change image');
   assert.equal(h.remove.hidden, false);
 });
@@ -82,6 +83,7 @@ test('without a profile image the picture is not a button, and nothing opens', (
   assert.equal(h.attributes.has('role'), false);
   assert.equal(h.preview.onclick, null);
   assert.equal(h.view.hidden, true);
+  assert.equal(h.pixelPreview.hidden, true);
   assert.equal(h.change.textContent, 'Add image');
   h.context.viewOwnProfileImage();
   assert.equal(h.viewed.length, 0);
@@ -100,4 +102,16 @@ test('the profile editor has the View full size button, wired and hidden until t
   assert.match(client, /<details class="profile-photo-menu" id="account-profile-photo-menu">/);
   assert.match(client, /<summary>More options<\/summary>/);
   assert.match(client, /\.profile-photo-preview\.has-image\{cursor:zoom-in\}/);
+});
+
+test('the profile editor offers a local pixel-assembly preview with replay and close controls', () => {
+  assert.match(client, /id="account-profile-photo-pixel-preview"[^>]*onclick="closeProfilePhotoMenu\(\);openProfilePixelPreview\(\)" hidden>Preview pixel animation/);
+  assert.match(client, /id="profile-pixel-preview-overlay"[\s\S]*id="profile-pixel-stage"[\s\S]*onclick="playProfilePixelPreview\(\)">Replay/);
+  const play = extractFunction('playProfilePixelPreview');
+  assert.match(play, /const columns = 10;\s*const rows = 10/);
+  assert.match(play, /tile\.className = 'profile-pixel-tile'/);
+  assert.match(play, /stage\.classList\.add\('assembling'\)/);
+  assert.match(play, /stage\.classList\.add\('settled'\)/);
+  assert.doesNotMatch(play, /\bapi\(|\bfetch\(/, 'the preview must not upload the profile image');
+  assert.match(client, /\.profile-pixel-stage\.assembling \.profile-pixel-tile/);
 });
