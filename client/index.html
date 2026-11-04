@@ -13206,6 +13206,19 @@ let dailyLookGeneratedImage = null;
 let dailyLookStyleId = null;
 let dailyLookDestination = null;
 const DAILY_LOOK_RESULT_DB = 'vaultlix-daily-look';
+const AVATAR_STYLE_ID = 'vaultlix-avatar';
+const DIWALI_GLOW_STYLE_ID = 'diwali-glow';
+
+function dailyLookGenerateCopy(busy = false) {
+  if (dailyLookAvatarMode) return busy ? 'Creating your avatar…' : 'Create My Avatar';
+  if (dailyLookStyleId === DIWALI_GLOW_STYLE_ID) return busy ? 'Creating your Diwali portrait…' : 'Create My Diwali Portrait';
+  return busy ? 'Creating your portrait…' : 'Create My Portrait';
+}
+
+function refreshDailyLookGenerateCopy() {
+  const generate = document.getElementById('daily-look-generate');
+  if (generate && !generate.hidden) generate.textContent = dailyLookGenerateCopy();
+}
 
 function dailyLookResultStore(mode, value) {
   return new Promise((resolve, reject) => {
@@ -13247,7 +13260,7 @@ function applyDailyLookMode(avatarMode) {
     ? 'Pick a clear photo of your face. We turn it into an avatar you can use as your profile picture. The photo is not kept.'
     : 'Choose a portrait style, then keep the result or make it your profile image.');
   const generate = document.getElementById('daily-look-generate');
-  if (generate && !generate.hidden && !generate.disabled) generate.textContent = avatarMode ? 'Create My Avatar' : 'Create My Portrait';
+  if (generate && !generate.hidden && !generate.disabled) generate.textContent = dailyLookGenerateCopy();
 }
 
 function closeDailyLook() {
@@ -13267,11 +13280,13 @@ function renderDailyLookStyles(styles = []) {
     dailyLookStyleId = AVATAR_STYLE_ID;
     holder.replaceChildren();
     holder.hidden = true;
+    refreshDailyLookGenerateCopy();
     return;
   }
   holder.hidden = false;
   const featured = styles.find(style => style.featured) || styles[0];
   if (!styles.some(style => style.id === dailyLookStyleId)) dailyLookStyleId = featured?.id || null;
+  refreshDailyLookGenerateCopy();
   const gallery = document.createElement('button');
   gallery.type = 'button'; gallery.className = 'daily-look-style';
   const galleryTitle = document.createElement('strong'); galleryTitle.textContent = 'Choose profile photo';
@@ -13305,7 +13320,7 @@ function resetDailyLookView() {
   if (consent) consent.checked = false;
   document.getElementById('daily-look-result-actions')?.setAttribute('hidden', '');
   const generate = document.getElementById('daily-look-generate');
-  if (generate) { generate.hidden = false; generate.disabled = false; generate.textContent = dailyLookAvatarMode ? 'Create My Avatar' : 'Create My Portrait'; }
+  if (generate) { generate.hidden = false; generate.disabled = false; generate.textContent = dailyLookGenerateCopy(); }
   const photoActions = document.getElementById('daily-look-photo-actions');
   if (photoActions) photoActions.hidden = false;
   const photoButton = document.getElementById('daily-look-photo-button');
@@ -13317,8 +13332,6 @@ function resetDailyLookView() {
   const statusUse = document.getElementById('daily-look-use-status');
   if (statusUse) statusUse.hidden = true;
 }
-
-const AVATAR_STYLE_ID = 'vaultlix-avatar';
 
 async function openDailyLook(options = {}) {
   dailyLookDestination = options.destination === 'status' ? 'status' : null;
@@ -13410,8 +13423,12 @@ async function generateDailyLook() {
   if (!state || !dailyLookSourceImage) { if (status) status.textContent = 'Choose a photo first.'; return; }
   if (!document.getElementById('daily-look-consent')?.checked) { if (status) status.textContent = 'Please confirm the photo-processing permission.'; return; }
   if (!dailyLookStyleId) { if (status) status.textContent = 'Choose a style.'; return; }
-  if (button) { button.disabled = true; button.textContent = dailyLookAvatarMode ? 'Creating your avatar…' : 'Creating your portrait…'; }
-  if (status) status.textContent = dailyLookAvatarMode ? 'Creating your avatar. This can take a moment.' : 'Creating your portrait. This can take a moment.';
+  if (button) { button.disabled = true; button.textContent = dailyLookGenerateCopy(true); }
+  if (status) status.textContent = dailyLookAvatarMode
+    ? 'Creating your avatar. This can take a moment.'
+    : dailyLookStyleId === DIWALI_GLOW_STYLE_ID
+      ? 'Creating your Diwali portrait. This can take a moment.'
+      : 'Creating your portrait. This can take a moment.';
   const result = await api('/api/account/daily-look', {
     accountId:state.accountId, sessionToken:state.sessionToken,
     image:dailyLookSourceImage, styleId:dailyLookStyleId,

@@ -67,6 +67,22 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
+test('Diwali Glow is a temporary featured style with five natural non-repeating scenes', () => {
+  assert.match(server, /const DIWALI_GLOW_STYLE_ID = 'diwali-glow'/);
+  assert.match(server, /name:'Diwali Glow', note:'A natural festive portrait in warm diya light'/);
+  assert.match(server, /function diwaliGlowActive\(now = Date\.now\(\)\)/);
+  assert.match(server, /featuredId = diwaliGlowActive\(now\) \? DIWALI_GLOW_STYLE_ID/);
+  assert.match(server, /style\.id !== DIWALI_GLOW_STYLE_ID \|\| diwaliGlowActive\(now\)/);
+  const scenes = server.match(/const DIWALI_GLOW_SCENES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
+  assert.equal((scenes.match(/`/g) || []).length / 2, 5);
+  assert.match(scenes, /real home[\s\S]*living room[\s\S]*balcony or terrace[\s\S]*courtyard or verandah[\s\S]*home celebration/);
+  assert.match(server, /dailyLookRotationItem\(DIWALI_GLOW_SCENES, variantIndex\)/);
+  assert.match(server, /Preserve every visible person's unmistakable face/);
+  assert.match(server, /Avoid fireworks, floating lamps, gold particles, magical sparkles/);
+  assert.match(client, /Create My Diwali Portrait/);
+  assert.match(client, /Creating your Diwali portrait/);
+});
+
 test('status creation can return a generated Daily Look into preview before audience selection', () => {
   assert.match(client, /onclick="openDailyLookForStatus\(\)">Create Portrait<\/button>/);
   assert.match(client, /function openDailyLookForStatus\(\)[\s\S]*openDailyLook\(\{ destination:'status' \}\)/);

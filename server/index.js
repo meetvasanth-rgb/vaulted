@@ -158,6 +158,12 @@ const DELETION_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PRIVATE_NUMBER_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_LOOK_DAILY_LIMIT = 5;
+const DIWALI_GLOW_STYLE_ID = 'diwali-glow';
+// Keep the seasonal style focused around Diwali instead of leaving a festival
+// treatment in Portrait Studio all year. These can be moved without a code
+// change if the campaign dates change.
+const DIWALI_GLOW_START_AT = Date.parse(process.env.DIWALI_GLOW_START_AT || '2026-11-01T00:00:00+05:30');
+const DIWALI_GLOW_END_AT = Date.parse(process.env.DIWALI_GLOW_END_AT || '2026-11-16T00:00:00+05:30');
 const ATTACHMENT_UPLOAD_TTL_MS = 15 * 60 * 1000;
 const ATTACHMENT_GARBAGE_SWEEP_MS = 10 * 60 * 1000;
 const STATUS_MEDIA_UPLOAD_TTL_MS = 15 * 60 * 1000;
@@ -212,6 +218,15 @@ Choose finishing from the actual scenario. For a gym image, keep the gym recogni
     direction:`Create a premium hand-drawn cinematic anime interpretation with faithful facial proportions, recognisable identity, restrained cel shading, delicate linework and luminous natural colour. Preserve exact apparent age, skin tone, hairstyle, expression, clothing and cultural markers; do not enlarge the eyes excessively, sharpen the jaw, slim the face or substitute a generic anime character. A close portrait uses a refined shoulder-up composition, a wider image preserves the pose and meaningful setting, and a couple or group retains every person with distinct likenesses. Adapt the background from the source into a coherent illustrated environment with matching light and perspective rather than defaulting to cherry blossoms or a generic fantasy scene.`,
   },
 ]);
+// Five natural settings match the five-portrait daily allowance, so an account
+// can explore every Diwali treatment in a day without seeing the same scene.
+const DIWALI_GLOW_SCENES = Object.freeze([
+  `A relaxed portrait near the entrance of a real home at early evening. Use two or three lit clay diyas and a restrained marigold detail as practical decor. Let warm lamp light mix naturally with the remaining cool daylight; keep the home believable and lived-in rather than styled as a set.`,
+  `A candid indoor portrait in a contemporary living room. Place a small tasteful rangoli softly in the background and use existing room lamps plus a few diyas for warm, directionally consistent light. Keep the background recognisable, uncluttered and realistic.`,
+  `A natural balcony or terrace portrait at blue hour with a few distant warm string lights. Use one nearby diya as a subtle foreground practical. Keep the skyline and atmosphere photographic, with no fireworks, spectacle or artificial glow effects.`,
+  `A quiet courtyard or verandah portrait with a modest cluster of diyas placed safely in the scene. Balance warm flame light with soft ambient evening light and preserve natural shadows, skin colour and environmental detail.`,
+  `A candid home celebration portrait beside a simple brass lamp and understated marigolds. Suggest festive preparation through real household details and warm practical lighting, without turning the setting into a palace, stage or commercial studio.`,
+]);
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
@@ -227,6 +242,19 @@ Style: soft, smooth, appealing cartoon proportions with clean shading, expressiv
 Background: one clean, flat, soft pastel colour that complements their skin and clothing. No scene, no props, no pattern, no gradient noise.
 
 If the photograph contains several people, make the avatar of the single most prominent or central person only. Do not depict a celebrity, a character or any real person other than the one photographed. Do not generate any text, logo or watermark.`,
+  },
+  {
+    id:DIWALI_GLOW_STYLE_ID, name:'Diwali Glow', note:'A natural festive portrait in warm diya light',
+    quality:'high',
+    prompt:`Create a premium, natural photographic Diwali portrait from the uploaded photograph. It must feel like a real moment captured at home during the festival, not a fantasy composite, costume shoot or advertising set.
+
+The source photograph is authoritative for identity. Preserve every visible person's unmistakable face, facial proportions, skin tone and texture, exact apparent age, expression, gaze, hairline, hairstyle, body shape and cultural markers. Keep every person in a couple or group; do not add, merge or omit anyone. Preserve natural anatomy and believable hands. Do not beautify, slim, lighten skin, smooth skin, change teeth, add makeup, alter age or substitute a generic face.
+
+Dress the people in tasteful, realistic festive clothing that suits their existing age, gender presentation and personal style. Use believable Indian textiles and restrained colour, while preserving recognisable accessories and avoiding theatrical costumes or stereotypes. Adapt the composition to the source photo instead of forcing every person into the same pose.
+
+Light the complete scene from real, visible sources. Diyas and household lamps should cast restrained warm light with physically consistent direction, falloff, highlights and shadows. Keep skin tones accurate and texture photographic. The result should resemble a high-quality phone or camera portrait with careful natural colour, not an illustration or beauty filter.
+
+Avoid fireworks, floating lamps, gold particles, magical sparkles, excessive bokeh, artificial halos, palaces, temples used as fantasy scenery, heavy jewellery added without basis, text, logos and watermarks.`,
   },
   {
     id:'surprise-enhancer', name:'Surprise Enhancer', note:'Lighting, caricature, headshot, enhancement, Mini Me or anime — without repeats',
@@ -1163,10 +1191,16 @@ function peerActivity(room, ownToken, now = Date.now()) {
   return activity;
 }
 
+function diwaliGlowActive(now = Date.now()) {
+  return now >= DIWALI_GLOW_START_AT && now < DIWALI_GLOW_END_AT;
+}
+
 function publicDailyLookStyles(now = Date.now()) {
-  const featuredIndex = Math.floor(now / (7 * DAY_MS)) % DAILY_LOOK_STYLES.length;
-  return DAILY_LOOK_STYLES.map((style, index) => ({
-    id:style.id, name:style.name, note:style.note, featured:index === featuredIndex,
+  const styles = DAILY_LOOK_STYLES.filter(style => style.id !== DIWALI_GLOW_STYLE_ID || diwaliGlowActive(now));
+  const featuredIndex = Math.floor(now / (7 * DAY_MS)) % styles.length;
+  const featuredId = diwaliGlowActive(now) ? DIWALI_GLOW_STYLE_ID : styles[featuredIndex]?.id;
+  return styles.map(style => ({
+    id:style.id, name:style.name, note:style.note, featured:style.id === featuredId,
   }));
 }
 
@@ -1276,8 +1310,13 @@ async function createDailyLook(image, style, apiKey, variantIndex = 0, dimension
   const enhancerLook = style.id === 'surprise-enhancer'
     ? dailyLookRotationItem(ENHANCER_LOOKS, variantIndex)
     : null;
+  const diwaliScene = style.id === DIWALI_GLOW_STYLE_ID
+    ? dailyLookRotationItem(DIWALI_GLOW_SCENES, variantIndex)
+    : null;
   const directedPrompt = enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
+    : diwaliScene
+      ? `${style.prompt}\n\nSelected natural scene variation for this generation:\n${diwaliScene}\nUse this variation as art direction while adapting it to the source photograph and preserving identity.`
     : style.prompt;
   // An avatar is always a 1024px square; every other style keeps the source photo's own shape.
   const squareOutput = style.canvas === 'square';
@@ -4097,10 +4136,11 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     const apiKey = OPENAI_API_KEY;
     if (!apiKey) return resErr(res, 'Portrait Studio is temporarily unavailable.', 503);
-    const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId);
+    const now = Date.now();
+    const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId &&
+      (item.id !== DIWALI_GLOW_STYLE_ID || diwaliGlowActive(now)));
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
-    const now = Date.now();
     const usage = dailyLookUsage(account, now);
     if (usage.remaining <= 0) {
       res.setHeader('Cache-Control', 'no-store');
