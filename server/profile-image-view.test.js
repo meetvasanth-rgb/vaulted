@@ -104,9 +104,10 @@ test('the profile editor has the View full size button, wired and hidden until t
   assert.match(client, /\.profile-photo-preview\.has-image\{cursor:zoom-in\}/);
 });
 
-test('the profile editor offers a local pixel-assembly preview with replay and close controls', () => {
+test('the profile editor offers a local three-second pixel animation with replay, download and close controls', () => {
   assert.match(client, /id="account-profile-photo-pixel-preview"[^>]*onclick="closeProfilePhotoMenu\(\);openProfilePixelPreview\(\)" hidden>Preview pixel animation/);
   assert.match(client, /id="profile-pixel-preview-overlay"[\s\S]*id="profile-pixel-stage"[\s\S]*onclick="playProfilePixelPreview\(\)">Replay/);
+  assert.match(client, /id="profile-pixel-download"[^>]*onclick="downloadProfilePixelAnimation\(\)">Download animation/);
   const play = extractFunction('playProfilePixelPreview');
   assert.match(play, /const columns = 16;\s*const rows = 16/);
   assert.match(play, /tile\.className = 'profile-pixel-tile'/);
@@ -115,7 +116,23 @@ test('the profile editor offers a local pixel-assembly preview with replay and c
   assert.match(play, /startY = -outside[\s\S]*startX = viewportWidth \+ outside[\s\S]*startY = viewportHeight \+ outside[\s\S]*startX = -outside/);
   assert.match(play, /overlay\.classList\.add\('assembling'\)/);
   assert.match(play, /overlay\.classList\.add\('settled'\)/);
+  assert.match(play, /1500 \+ Math\.random\(\) \* 650/);
+  assert.match(play, /}, 3000\);/);
   assert.doesNotMatch(play, /\bapi\(|\bfetch\(/, 'the preview must not upload the profile image');
   assert.match(client, /#profile-pixel-preview-overlay\.assembling \.profile-pixel-tile/);
   assert.match(client, /\.profile-pixel-grid\{position:fixed;inset:0/);
+  const download = extractFunction('downloadProfilePixelAnimation');
+  assert.match(download, /frameCount = 30/);
+  assert.match(download, /encodeProfilePixelGif\(width, height, frames, 10\)/);
+  assert.match(download, /downloadDataUri\(`data:image\/gif;base64,/);
+  assert.doesNotMatch(download, /\bapi\(|\bfetch\(/, 'the animation export must remain on device');
+});
+
+test('the local GIF encoder produces a looping GIF89a file', () => {
+  const context = vm.createContext({ Uint8Array, Map });
+  vm.runInContext(extractFunction('profilePixelGifLzw') + '\n' + extractFunction('encodeProfilePixelGif'), context);
+  const bytes = context.encodeProfilePixelGif(2, 2, [new Uint8Array([0, 1, 2, 3])], 10);
+  assert.equal(Buffer.from(bytes.slice(0, 6)).toString('ascii'), 'GIF89a');
+  assert.equal(bytes[bytes.length - 1], 0x3B);
+  assert.match(Buffer.from(bytes).toString('latin1'), /NETSCAPE2\.0/);
 });
