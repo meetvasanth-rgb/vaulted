@@ -108,10 +108,14 @@ test('the profile editor offers a local pixel-assembly preview with replay and c
   assert.match(client, /id="account-profile-photo-pixel-preview"[^>]*onclick="closeProfilePhotoMenu\(\);openProfilePixelPreview\(\)" hidden>Preview pixel animation/);
   assert.match(client, /id="profile-pixel-preview-overlay"[\s\S]*id="profile-pixel-stage"[\s\S]*onclick="playProfilePixelPreview\(\)">Replay/);
   const play = extractFunction('playProfilePixelPreview');
-  assert.match(play, /const columns = 10;\s*const rows = 10/);
+  assert.match(play, /const columns = 16;\s*const rows = 16/);
   assert.match(play, /tile\.className = 'profile-pixel-tile'/);
-  assert.match(play, /stage\.classList\.add\('assembling'\)/);
-  assert.match(play, /stage\.classList\.add\('settled'\)/);
+  assert.match(play, /Math\.hypot\(circleX, circleY\) > \.5/);
+  assert.match(play, /const edge = Math\.floor\(Math\.random\(\) \* 4\)/);
+  assert.match(play, /startY = -outside[\s\S]*startX = viewportWidth \+ outside[\s\S]*startY = viewportHeight \+ outside[\s\S]*startX = -outside/);
+  assert.match(play, /overlay\.classList\.add\('assembling'\)/);
+  assert.match(play, /overlay\.classList\.add\('settled'\)/);
   assert.doesNotMatch(play, /\bapi\(|\bfetch\(/, 'the preview must not upload the profile image');
-  assert.match(client, /\.profile-pixel-stage\.assembling \.profile-pixel-tile/);
+  assert.match(client, /#profile-pixel-preview-overlay\.assembling \.profile-pixel-tile/);
+  assert.match(client, /\.profile-pixel-grid\{position:fixed;inset:0/);
 });
