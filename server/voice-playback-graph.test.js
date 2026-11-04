@@ -63,7 +63,9 @@ function harness({ samples = new Float32Array(1000).fill(0.2), contextState = 'r
   const source = [
     client.slice(client.indexOf('const VOICE_QUIET_RMS'), client.indexOf('\n', client.indexOf('const VOICE_QUIET_RMS'))),
     'const voiceLoudnessCache = new Map(); const voiceTrace = [];',
+    'const VOICE_PLAYBACK_RATES = [1, 1.5, 2, 3]; const voicePlaybackRates = new Map();',
     'const voiceTimelineOffsets = new WeakMap();',
+    extractFunction('applyVoicePlaybackRate', 'function'),
     extractFunction('traceVoicePlayback', 'function'),
     extractFunction('replaceVoiceAudioWithPlain', 'function'),
     extractFunction('prepareQuietVoicePlayback', 'async function'),

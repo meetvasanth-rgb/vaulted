@@ -608,12 +608,17 @@ html.speech-to-text-ready .speech-to-text-btn{display:flex}
 .voice-record-dot{width:9px;height:9px;border-radius:50%;background:#C87588;animation:voice-rec-pulse 1s ease-in-out infinite}
 @keyframes voice-rec-pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .voice-note-shell{margin-top:4px;min-width:180px;max-width:260px}
-.msg-voice{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,0.04);border:0.5px solid #E0D9D0;border-radius:20px;padding:8px 12px 8px 8px;min-width:180px;max-width:220px}
+.msg-voice{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,0.04);border:0.5px solid #E0D9D0;border-radius:20px;padding:8px 9px 8px 8px;min-width:210px;max-width:250px}
 .voice-play-btn{width:32px;height:32px;border-radius:50%;background:#682C43;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
 .voice-play-btn svg{width:14px;height:14px;fill:#fff;stroke:none}
 .voice-track{flex:1;height:3px;background:#D9D2C6;border-radius:2px;cursor:pointer;position:relative}
 .voice-track-fill{position:absolute;top:0;left:0;height:100%;background:#682C43;border-radius:2px;width:0%}
 .voice-duration{font-size:11px;color:#8A7F72;font-variant-numeric:tabular-nums;flex-shrink:0}
+.voice-rate-btn{height:28px;min-width:32px;padding:0 6px;border:0.5px solid #CDBFC4;border-radius:14px;background:#fff;color:#682C43;font-size:10px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;flex-shrink:0}
+.voice-rate-btn:active{background:#F3E7EB}
+.group-voice-player{display:flex;align-items:center;gap:7px;max-width:min(300px,72vw)}
+.group-voice-player .group-message-attachment{flex:1;min-width:0;margin:0}
+.group-message.mine .voice-rate-btn{background:#ffffff22;border-color:#ffffff55;color:#fff}
 .voice-transcript-action{display:none;margin:7px 4px 0;padding:0;border:0;background:none;color:#682C43;font-size:12px;font-weight:650;line-height:1.4;cursor:pointer;text-align:left}
 html.voice-transcript-ready .voice-transcript-action{display:block}
 .voice-transcript-action:disabled{color:#9A8C7E;cursor:default}
@@ -28265,6 +28270,7 @@ function buildVoicePlayerHtml(rec) {
       <div class="voice-track-fill" id="voice-fill-${rec.id}"></div>
     </div>
     <span class="voice-duration" id="voice-duration-${rec.id}">${formatVoiceTime((rec.duration||0) * 1000)}</span>
+    <button type="button" class="voice-rate-btn" id="voice-rate-${rec.id}" aria-label="Playback speed 1 times" title="Playback speed" onclick="event.stopPropagation();cycleVoicePlaybackRate('${rec.id}')">1×</button>
   </div>${transcript}</div>`;
 }
 
@@ -28401,8 +28407,48 @@ const voiceAudioEls = new Map(); // msgId -> HTMLAudioElement
 const voicePlaybackGraphs = new WeakMap();
 const voiceTimelineOffsets = new WeakMap(); // HTMLAudioElement -> malformed WebM timestamp offset
 const voicePlaybackStarts = new Set();
+const VOICE_PLAYBACK_RATES = [1, 1.5, 2, 3];
+const voicePlaybackRates = new Map(); // direct message id -> preferred playback rate
 let voiceMetadataObserver = null;
 let currentlyPlayingVoiceId = null;
+
+function voicePlaybackRateLabel(rate) {
+  return `${Number(rate) || 1}×`;
+}
+
+function nextVoicePlaybackRate(current) {
+  const index = VOICE_PLAYBACK_RATES.findIndex(rate => Math.abs(rate - Number(current || 1)) < 0.01);
+  return VOICE_PLAYBACK_RATES[(index + 1) % VOICE_PLAYBACK_RATES.length];
+}
+
+function applyVoicePlaybackRate(audio, rate) {
+  if (!audio) return;
+  const safeRate = VOICE_PLAYBACK_RATES.includes(Number(rate)) ? Number(rate) : 1;
+  audio.defaultPlaybackRate = safeRate;
+  audio.playbackRate = safeRate;
+  try { audio.preservesPitch = true; } catch (_) {}
+}
+
+function cycleVoicePlaybackRate(messageId) {
+  const current = voicePlaybackRates.get(messageId) || 1;
+  const next = nextVoicePlaybackRate(current);
+  voicePlaybackRates.set(messageId, next);
+  applyVoicePlaybackRate(voiceAudioEls.get(messageId), next);
+  const button = document.getElementById(`voice-rate-${messageId}`);
+  if (button) {
+    button.textContent = voicePlaybackRateLabel(next);
+    button.setAttribute('aria-label', `Playback speed ${next} times`);
+  }
+}
+
+function cycleInlineVoicePlaybackRate(button) {
+  const audio = button?.parentElement?.querySelector?.('audio');
+  if (!audio) return;
+  const next = nextVoicePlaybackRate(audio.playbackRate || 1);
+  applyVoicePlaybackRate(audio, next);
+  button.textContent = voicePlaybackRateLabel(next);
+  button.setAttribute('aria-label', `Playback speed ${next} times`);
+}
 
 // Pausing an HTMLAudioElement is insufficient on iOS: its Now Playing card
 // remains on the lock screen and the system Play command can resume it without
@@ -28663,6 +28709,7 @@ function getOrCreateVoiceAudio(rec) {
   if (!safeSrc) return null;
   audio = new Audio(safeSrc);
   audio.preload = 'metadata';
+  applyVoicePlaybackRate(audio, voicePlaybackRates.get(rec.id) || 1);
   audio.addEventListener('loadedmetadata', () => alignVoiceTimeline(rec, audio));
   audio.addEventListener('timeupdate', () => updateVoiceProgress(rec, audio));
   audio.addEventListener('ended', () => finishVoicePlayback(rec, audio));
