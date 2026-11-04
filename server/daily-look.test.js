@@ -154,6 +154,18 @@ test('Daily Look opens fresh instead of restoring the previous generated preview
   assert.match(client, /indexedDB\.deleteDatabase\(DAILY_LOOK_RESULT_DB\)/);
 });
 
+test('finished Daily Look previews support bounded pinch zoom, drag and double-tap reset', () => {
+  assert.match(client, /function enableDailyLookPreviewZoom\(preview, image\)/);
+  assert.match(client, /preview\.addEventListener\('pointerdown', onPointerDown\)/);
+  assert.match(client, /preview\.addEventListener\('pointermove', onPointerMove\)/);
+  assert.match(client, /clamp\(pinchStart\.scale \* pointDistance\(first, second\) \/ pinchStart\.distance, 1, 4\)/);
+  assert.match(client, /function showDailyLookResult[\s\S]*enableDailyLookPreviewZoom\(preview, image\)/);
+  assert.match(client, /Pinch to zoom · double-tap to reset/);
+  assert.match(client, /function resetDailyLookView\(\) \{\s*resetDailyLookPreviewZoom\(\)/);
+  assert.match(client, /function closeDailyLook\(\) \{\s*resetDailyLookPreviewZoom\(\)/);
+  assert.match(client, /\.daily-look-preview\.zoomable\{touch-action:none/);
+});
+
 test('finished Daily Look images are returned and saved without a Vaultlix watermark', () => {
   assert.match(server, /Do not generate any text, logo or watermark/);
   assert.match(server, /return `data:image\/jpeg;base64,\$\{output\.toString\('base64'\)\}`/);
