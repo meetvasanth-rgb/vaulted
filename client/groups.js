@@ -86,7 +86,26 @@ function updatePrivateGroupComposer() {
   resizeChatComposer(input);
   const hasText = !!String(input?.value || '').trim();
   footer?.classList.toggle('has-text', hasText);
+  if (hasText) hideSmartReplyRail('group-smart-reply-rail');
+  else updatePrivateGroupSmartReplies();
   if (hasText) sendPrivateGroupActivity('typing');
+}
+
+function latestIncomingPrivateGroupText(group) {
+  const state = loadAccountState();
+  const { visible } = derivePrivateGroupView(group?.messages || [], group?.hiddenIds || []);
+  for (let index = visible.length - 1; index >= 0; index--) {
+    const message = visible[index];
+    if (message.control) continue;
+    if (message.senderId === state?.accountId) return '';
+    return groupMessageKind(message) === 'text' ? String(message.text || '') : '';
+  }
+  return '';
+}
+
+function updatePrivateGroupSmartReplies(group = privateGroups.get(activePrivateGroupId)) {
+  const text = group?.id === activePrivateGroupId ? latestIncomingPrivateGroupText(group) : '';
+  renderSmartReplyRail('group-smart-reply-rail', 'group-message-input', smartReplySuggestions(text), true);
 }
 
 // ---- who is typing / recording ----------------------------------------------
@@ -631,6 +650,7 @@ function closePrivateGroup() {
     privateGroupVoiceRecorder.onstop = null; privateGroupVoiceRecorder.stop();
     privateGroupVoiceStream?.getTracks().forEach(track => track.stop()); privateGroupVoiceStream = null;
   }
+  hideSmartReplyRail('group-smart-reply-rail');
   cancelPrivateGroupReply(); exitPrivateGroupSelectMode();
   activePrivateGroupId = null;
   renderPrivateGroupActivity();
@@ -798,10 +818,12 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
   const body = document.getElementById('group-chat-body'); if (!body) return;
   const state = loadAccountState();
   if (!hasPrivateGroupKeys(group)) {
+    hideSmartReplyRail('group-smart-reply-rail');
     body.innerHTML = '<div class="group-chat-empty">This device does not have the encryption key for this group.<br>Your messages are safe and unchanged for the other members. Reopen Vaultlix to try restoring the key from your encrypted backup.</div>';
     return;
   }
   if (!group.historyHydrated) {
+    hideSmartReplyRail('group-smart-reply-rail');
     body.innerHTML = '<div class="group-chat-empty">Loading encrypted messages…</div>';
     return;
   }
@@ -814,7 +836,7 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
     if (newlyDeleted) savePrivateGroupSessions();
   }
   const { visible, reactions } = derivePrivateGroupView(group.messages || [], group.hiddenIds || []);
-  if (!visible.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; return; }
+  if (!visible.length) { body.innerHTML = '<div class="group-chat-empty">This private group is ready.<br>Send the first encrypted message.</div>'; hideSmartReplyRail('group-smart-reply-rail'); return; }
   let previousDay = '';
   const earlier = privateGroupCanLoadEarlier(group)
     ? '<div class="load-earlier"><button type="button" class="load-earlier-btn" onclick="loadEarlierPrivateGroupMessages()">Load earlier messages</button></div>' : '';
@@ -830,6 +852,7 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
   body.scrollTop = typeof keepDistanceFromBottom === 'number'
     ? Math.max(0, body.scrollHeight - body.clientHeight - keepDistanceFromBottom) : body.scrollHeight;
   fillPrivateGroupPdfPreviews(group.id);
+  updatePrivateGroupSmartReplies(group);
   schedulePrivateGroupAttachmentLoads(body, group);
 }
 
