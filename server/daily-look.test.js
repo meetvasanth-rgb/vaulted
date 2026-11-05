@@ -75,13 +75,17 @@ test('Diwali Glow is a temporary featured style with five natural non-repeating 
   assert.match(server, /style\.id !== DIWALI_GLOW_STYLE_ID \|\| diwaliGlowActive\(now\)/);
   const scenes = server.match(/const DIWALI_GLOW_SCENES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
   assert.equal((scenes.match(/`/g) || []).length / 2, 5);
-  assert.match(scenes, /real home[\s\S]*living room[\s\S]*balcony or terrace[\s\S]*courtyard or verandah[\s\S]*home celebration/);
+  assert.match(scenes, /well-designed home[\s\S]*contemporary living room[\s\S]*balcony or terrace[\s\S]*courtyard or verandah[\s\S]*contemporary home/);
   assert.match(server, /dailyLookRotationItem\(DIWALI_GLOW_SCENES, variantIndex\)/);
   assert.match(server, /Preserve every visible person's unmistakable face/);
   assert.match(server, /head size as a percentage of the frame/);
   assert.match(server, /face-to-shoulder ratio/);
   assert.match(server, /selfie foreshortening/);
   assert.match(server, /never recompose, recrop/);
+  assert.match(server, /contemporary 2020s festive clothing/);
+  assert.match(server, /deep teal, midnight blue, muted emerald, wine, charcoal/);
+  assert.match(server, /Avoid 1980s or 1990s interiors/);
+  assert.match(server, /sepia grading/);
   assert.match(server, /Avoid fireworks, floating lamps, gold particles, magical sparkles/);
   assert.match(client, /Create My Diwali Portrait/);
   assert.match(client, /Creating your Diwali portrait/);
