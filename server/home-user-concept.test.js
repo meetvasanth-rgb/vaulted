@@ -5,14 +5,14 @@ const path = require('node:path');
 
 const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
-test('home page leads with private messaging and explains the Vaultlix-number model', () => {
-  assert.match(client, /aria-label="Private messaging\. No phone number\."/);
+test('home page leads with the App Store campaign and explains the Vaultlix-number model', () => {
+  assert.match(client, /aria-label="Give them a number\. Not your number\."/);
   assert.match(client, /Create my number/);
-  assert.equal((client.match(/Send encrypted messages, photos and files\. Make private voice and video calls\. Connect through a Vaultlix number without sharing your personal phone number\./g) || []).length, 2);
-  assert.match(client, /Encrypted chats/);
-  assert.match(client, /Photos &amp; files/);
-  assert.match(client, /Voice &amp; video/);
-  assert.match(client, /<span>No SIM<\/span><span>No phone number<\/span><span>No email<\/span><span>No contact upload<\/span>/);
+  assert.equal((client.match(/Chat and call with a private Vaultlix number\. Your real phone number stays yours\./g) || []).length, 2);
+  assert.match(client, /End-to-end encrypted/);
+  assert.match(client, /No contact upload/);
+  assert.match(client, /You approve every connection/);
+  assert.match(client, /<span>No real phone number<\/span><span>No email<\/span><span>Free<\/span>/);
   assert.match(client, /Create your identity/);
   assert.match(client, /Connect by consent/);
   assert.match(client, /Message or call/);
@@ -34,12 +34,14 @@ test('shareable create-number link opens account creation directly', () => {
 
 test('home page leads with the core messenger experience', () => {
   assert.match(client, /id="everyday-privacy"/);
-  assert.match(client, /Everything you expect from a messenger\. Less personal information\./);
-  assert.match(client, /Message privately/);
-  assert.match(client, /Share moments/);
-  assert.match(client, /Call securely/);
-  assert.match(client, /one-to-one or private group conversations/);
-  assert.match(client, /It works only inside Vaultlix—it cannot receive regular calls, SMS messages or OTPs/);
+  assert.match(client, /Private messaging, with less of your personal information\./);
+  assert.match(client, /No real phone number\. No email\./);
+  assert.match(client, /End-to-end encrypted chats\./);
+  assert.match(client, /Find friends by number, not contacts\./);
+  assert.match(client, /You choose who reaches you\./);
+  for (let index = 1; index <= 5; index += 1) {
+    assert.match(client, new RegExp(`iphone-${index}-[a-z-]+\\.webp`));
+  }
 });
 
 test('home page footer does not repeat the FAQ section', () => {

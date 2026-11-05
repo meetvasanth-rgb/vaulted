@@ -36,9 +36,16 @@ function extractFromClient(name) {
 // extract cleanly (see pdf-preview.test.js, video-attachment-experience.test.js).
 function domStub() {
   const buttons = {};
+  const makeNode = () => ({
+    dataset: {},
+    style: {},
+    setAttribute() {},
+    addEventListener() {},
+    remove() {},
+  });
   return {
     document: {
-      createElement: () => ({ style: {}, querySelector: key => buttons[key] ||= {}, addEventListener() {}, remove() {} }),
+      createElement: () => ({ style: {}, querySelector: key => buttons[key] ||= makeNode(), addEventListener() {}, remove() {} }),
       body: { appendChild() {} },
     },
     buttons,
@@ -61,24 +68,37 @@ test('showSendImageOptions groupMode hides the view-once choice and shows a sing
   vm.runInContext(extractFromClient('showSendImageOptions'), context);
   let overlayHtml = '';
   context.document.createElement = () => ({
-    style: {}, querySelector: key => context.buttons[key] ||= {}, addEventListener() {}, remove() {},
+    style: {}, querySelector: key => context.buttons[key] ||= { dataset: {}, setAttribute() {} }, addEventListener() {}, remove() {},
     set innerHTML(value) { overlayHtml = value; }, get innerHTML() { return overlayHtml; },
   });
   context.showSendImageOptions(null, [{ file: { type: 'image/jpeg' }, base64: 'a' }], { groupMode: true, onSend: async () => {} });
-  assert.ok(!overlayHtml.includes('id="send-img-once"'), 'groupMode must not render a view-once button at all');
-  assert.ok(overlayHtml.includes('id="send-img-normal"') && overlayHtml.includes('>Send<'), 'groupMode must render a single plain "Send" button');
+  assert.ok(!overlayHtml.includes('id="send-img-once-toggle"'), 'groupMode must not render a view-once control at all');
+  assert.ok(overlayHtml.includes('id="send-img-normal"') && overlayHtml.includes('aria-label="Send photo"'), 'groupMode must render one send button');
   assert.ok(context.buttons['#send-img-normal'].onclick, 'groupMode must still wire up the single Send button');
 });
 
-test('showSendImageOptions (1:1 mode) still wires up both the view-once and normal-send buttons', async () => {
+test('showSendImageOptions (1:1 mode) uses an inline circled-1 toggle and one send button', async () => {
   const context = domStub();
   vm.createContext(context);
   vm.runInContext(extractFromClient('showSendImageOptions'), context);
   let sentViewOnce = null;
   context.sendFileMessage = async (...args) => { sentViewOnce = args[4]; return true; };
   context.showSendImageOptions({}, [{ file: { type: 'image/jpeg' }, base64: 'a' }]);
-  await context.buttons['#send-img-once'].onclick();
-  assert.equal(sentViewOnce, true, 'the view-once button must send with viewOnce=true');
+  context.buttons['#send-img-once-toggle'].onclick();
+  await context.buttons['#send-img-normal'].onclick();
+  assert.equal(context.buttons['#send-img-once-toggle'].dataset.enabled, 'true');
+  assert.equal(sentViewOnce, true, 'the send button must honor the selected view-once state');
+});
+
+test('showSendImageOptions sends a normal photo by default when circled-1 is not selected', async () => {
+  const context = domStub();
+  vm.createContext(context);
+  vm.runInContext(extractFromClient('showSendImageOptions'), context);
+  let sentViewOnce = null;
+  context.sendFileMessage = async (...args) => { sentViewOnce = args[4]; return true; };
+  context.showSendImageOptions({}, [{ file: { type: 'image/jpeg' }, base64: 'a' }]);
+  await context.buttons['#send-img-normal'].onclick();
+  assert.equal(sentViewOnce, false);
 });
 
 test('the caption typed into showSendImageOptions is trimmed and passed through to onSend/sendFileMessage/sendAlbumMessage', async () => {

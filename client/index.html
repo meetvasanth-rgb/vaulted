@@ -495,6 +495,14 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .msg-media-wrap.has-caption .msg-album-grid{max-width:none;border-radius:0;margin-top:0}
 .msg-link{color:#0B63C5;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;-webkit-tap-highlight-color:rgba(11,99,197,.18)}.group-message.mine .msg-link{color:#FFD9E5}
 .msg-caption-text{padding:8px 12px 10px;font:450 14px/1.42 Inter,sans-serif;color:#30242B;white-space:pre-wrap;overflow-wrap:anywhere}
+.send-img-overlay{position:fixed;inset:0;z-index:10060;display:flex;align-items:flex-end;justify-content:center;padding:18px;background:rgba(26,25,22,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.send-img-sheet{width:min(520px,100%);max-height:calc(100dvh - 36px);overflow:auto;border-radius:25px;background:#fff;padding:15px;box-shadow:0 28px 80px rgba(20,11,16,.32)}
+.send-img-sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.send-img-sheet-head strong{font:750 16px/1.2 Manrope,sans-serif;color:#2b2026}.send-img-close{width:38px;height:38px;border:0;border-radius:50%;background:#f5ecef;color:#682c43;font:500 25px/1 Inter,sans-serif}
+.send-img-preview{position:relative;display:grid;place-items:center;min-height:180px;max-height:min(56dvh,520px);overflow:hidden;border-radius:18px;background:#21181e}.send-img-preview img{display:block;max-width:100%;max-height:min(56dvh,520px);object-fit:contain}.send-img-count{position:absolute;top:10px;right:10px;padding:5px 9px;border-radius:999px;background:rgba(26,25,22,.82);color:#fff;font:700 11px/1 Inter,sans-serif}
+.send-img-compose{display:grid;grid-template-columns:minmax(0,1fr) 44px 48px;align-items:end;gap:8px;margin-top:12px}.send-img-compose.send-img-compose-group{grid-template-columns:minmax(0,1fr) 48px}.send-img-compose textarea{width:100%;min-height:48px;max-height:120px;resize:none;border:1px solid #e2d5da;border-radius:18px;background:#f8f3f5;padding:13px 14px;font:500 15px/1.4 Inter,sans-serif;color:#2b2026}
+.send-img-once-toggle{width:44px;height:44px;border:1.5px solid #9b8c93;border-radius:50%;background:#fff;color:#6e6067;display:grid;place-items:center;transition:.16s ease}.send-img-once-toggle svg{width:26px;height:26px;overflow:visible}.send-img-once-toggle circle{fill:none;stroke:currentColor;stroke-width:1.8;stroke-dasharray:4 2}.send-img-once-toggle text{fill:currentColor;font:700 12px Inter,sans-serif}.send-img-once-toggle[aria-pressed="true"]{border-color:#682c43;background:#682c43;color:#fff;box-shadow:0 0 0 4px rgba(104,44,67,.13)}
+.send-img-submit{width:48px;height:48px;border:0;border-radius:50%;background:#682c43;color:#fff;display:grid;place-items:center;box-shadow:0 8px 18px rgba(104,44,67,.24)}.send-img-submit svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.send-img-once-hint{min-height:18px;margin:8px 52px 0 2px;color:#826f78;font:600 11px/1.4 Inter,sans-serif}
+@media(min-width:620px){.send-img-overlay{align-items:center}.send-img-sheet{padding:18px}}
 /* The browser's own "save/copy/share image" long-press menu (both iOS
    Safari's callout and Android Chrome's context menu) would otherwise pop
    up on top of / instead of the app's own action row. Long-press is now a
@@ -2613,6 +2621,106 @@ html.vaultlix-native .landing-marketing{display:none!important}
   #s-landing .landing-footer{position:relative!important;right:auto;bottom:auto;width:100%;margin-top:18px!important;text-align:center}
 }
 
+/* ── PUBLIC WEBSITE — APP STORE CAMPAIGN SYSTEM ─────────────────── */
+html:not(.vaultlix-native) #s-landing{
+  --campaign-ink:#21171e;--campaign-ink-soft:#2c1d26;--campaign-paper:#fbf7f8;
+  --campaign-cream:#fffafb;--campaign-pink:#efa0ba;--campaign-wine:#772c4a;
+  padding:0 0 34px;background:var(--campaign-ink);color:var(--campaign-cream);
+}
+html:not(.vaultlix-native) #s-landing::before{
+  position:fixed;background:radial-gradient(circle at 86% 8%,rgba(119,44,74,.32),transparent 26%),radial-gradient(circle at 12% 72%,rgba(119,44,74,.18),transparent 28%);
+}
+html:not(.vaultlix-native) #s-landing .landing-content{max-width:1240px;padding:24px 32px 0!important}
+html:not(.vaultlix-native) #s-landing .landing-header{margin:0 0 38px;padding:0 2px}
+html:not(.vaultlix-native) #s-landing .landing-mark{display:none!important}
+html:not(.vaultlix-native) #s-landing .landing-wordmark{font-family:Georgia,'Times New Roman',serif!important;font-size:42px!important;font-weight:400!important;letter-spacing:-.04em!important;color:#fff!important}
+html:not(.vaultlix-native) #s-landing .landing-brand-note{color:rgba(255,250,251,.55);letter-spacing:.2em}
+html:not(.vaultlix-native) #s-landing .landing-menu summary,
+html:not(.vaultlix-native) #s-landing .landing-account-btn.signed-in{border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.07);color:#fff;box-shadow:none}
+html:not(.vaultlix-native) #s-landing .landing-account-btn{border-color:#fff;background:#fff;color:var(--campaign-ink);box-shadow:none}
+html:not(.vaultlix-native) #s-landing .landing-hero{position:relative;max-width:none;margin:0;padding:48px 0 62px}
+html:not(.vaultlix-native) #s-landing .landing-hero>:not(.landing-hero-art){position:relative;z-index:1}
+html:not(.vaultlix-native) #s-landing .logo-rule{display:none}
+html:not(.vaultlix-native) #s-landing .logo-sub{margin-bottom:18px!important;color:var(--campaign-pink)!important}
+html:not(.vaultlix-native) #s-landing .landing-title{max-width:750px;margin-bottom:24px;color:#fff;font-size:clamp(54px,7.4vw,102px);line-height:.94;letter-spacing:-.065em}
+html:not(.vaultlix-native) #s-landing .landing-title.landing-reveal{min-height:0}
+html:not(.vaultlix-native) #s-landing .landing-reveal-line{gap:.18em;overflow:visible}
+html:not(.vaultlix-native) #s-landing .landing-reveal-accent{color:var(--campaign-pink)}
+html:not(.vaultlix-native) #s-landing .landing-reveal-accent::after{background:var(--campaign-pink);bottom:-.01em}
+html:not(.vaultlix-native) #s-landing .tagline{max-width:570px!important;color:rgba(255,250,251,.74)!important;font-size:19px!important;line-height:1.55!important}
+html:not(.vaultlix-native) #s-landing .messenger-capabilities{margin-top:25px}
+html:not(.vaultlix-native) #s-landing .messenger-capabilities span{padding:9px 12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff}
+html:not(.vaultlix-native) #s-landing .messenger-capabilities span::before{background:var(--campaign-pink)}
+html:not(.vaultlix-native) #s-landing .landing-invite-link{color:#f4cad7}
+html:not(.vaultlix-native) #s-landing .identity-proof{margin-top:19px}
+html:not(.vaultlix-native) #s-landing .identity-proof span{border-color:rgba(255,255,255,.2);background:transparent;color:#fff;box-shadow:none}
+html:not(.vaultlix-native) #s-landing .identity-proof span::before{background:rgba(239,160,186,.17);color:var(--campaign-pink)}
+html:not(.vaultlix-native) #s-landing .landing-hero-art{position:absolute;z-index:0;right:0;top:0;width:min(39%,430px);height:100%;margin:0;overflow:hidden;border:1px solid rgba(255,255,255,.14);border-radius:38px;background:#2b1c25;box-shadow:0 38px 90px rgba(0,0,0,.34);transform:rotate(1.3deg)}
+html:not(.vaultlix-native) #s-landing .landing-hero-art img{display:block;width:100%;height:100%;object-fit:cover;object-position:center 72%}
+html:not(.vaultlix-native) #s-landing .landing-actions{margin:0 0 30px;padding:28px;border-radius:28px;background:var(--campaign-paper);color:var(--campaign-ink)}
+html:not(.vaultlix-native) #s-landing .landing-section-heading{margin-bottom:18px}
+html:not(.vaultlix-native) #s-landing .landing-section-heading h2{color:var(--campaign-ink)}
+html:not(.vaultlix-native) #s-landing .cards{grid-template-columns:1.1fr .9fr!important}
+html:not(.vaultlix-native) #s-landing .card{min-height:116px;display:grid!important;grid-template-columns:48px minmax(0,1fr) 36px;align-items:center!important;column-gap:15px!important;padding:18px!important}
+html:not(.vaultlix-native) #s-landing .card-icon{margin:0!important}
+html:not(.vaultlix-native) #s-landing .card-arrow{align-self:center;margin:0}
+html:not(.vaultlix-native) #s-landing .landing-assurance{display:none}
+html:not(.vaultlix-native) #s-landing .landing-marketing{margin-top:0;color:var(--campaign-ink)}
+html:not(.vaultlix-native) #s-landing .store-story{padding:78px 0 82px;border-radius:36px 36px 0 0;background:var(--campaign-paper)}
+html:not(.vaultlix-native) #s-landing .store-story-intro{max-width:880px;padding:0 48px 42px}
+html:not(.vaultlix-native) #s-landing .store-story .marketing-title{font-size:clamp(43px,6vw,76px);max-width:960px}
+html:not(.vaultlix-native) #s-landing .store-story-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 16px}
+html:not(.vaultlix-native) #s-landing .store-story-card{position:relative;min-height:0;aspect-ratio:660/1434;overflow:hidden;border-radius:30px;background:var(--campaign-ink-soft);color:#fff}
+html:not(.vaultlix-native) #s-landing .store-story-card-wide{grid-column:auto;min-height:0}
+html:not(.vaultlix-native) #s-landing .store-story-copy{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+html:not(.vaultlix-native) #s-landing .store-story-copy>span{display:block;margin-bottom:12px;color:var(--campaign-pink);font:750 10px/1 'Manrope',sans-serif;letter-spacing:.18em}
+html:not(.vaultlix-native) #s-landing .store-story-copy h3{margin:0 0 10px;color:#fff;font:750 clamp(29px,3.3vw,48px)/1.02 'Manrope',sans-serif;letter-spacing:-.05em}
+html:not(.vaultlix-native) #s-landing .store-story-copy p{max-width:520px;margin:0;color:rgba(255,255,255,.68);font:500 14px/1.55 'Manrope',sans-serif}
+html:not(.vaultlix-native) #s-landing .store-story-card img,
+html:not(.vaultlix-native) #s-landing .store-story-card-wide img{position:static;display:block;width:100%;height:100%;object-fit:cover;transform:none;filter:none}
+html:not(.vaultlix-native) #s-landing #get-started-video,
+html:not(.vaultlix-native) #s-landing #messenger-features,
+html:not(.vaultlix-native) #s-landing #privacy-difference,
+html:not(.vaultlix-native) #s-landing #how-it-works,
+html:not(.vaultlix-native) #s-landing #private-conversation-demo{display:none}
+html:not(.vaultlix-native) #s-landing #privacy-architecture{padding:82px 48px;background:#fff}
+html:not(.vaultlix-native) #s-landing #safety-controls{padding:82px 48px;background:#f2e7eb}
+html:not(.vaultlix-native) #s-landing #frequently-asked-questions{padding:82px 48px;background:#fff}
+html:not(.vaultlix-native) #s-landing .marketing-cta{margin:0;padding:46px 48px;border-radius:0 0 36px 36px;background:linear-gradient(135deg,#7d2f4f,#4c1c31)}
+html:not(.vaultlix-native) #s-landing .landing-footer{color:rgba(255,255,255,.56)!important}
+
+@media(min-width:900px){
+  html:not(.vaultlix-native) #s-landing .landing-content{display:block;min-height:0}
+  html:not(.vaultlix-native) #s-landing .landing-header{min-height:56px}
+  html:not(.vaultlix-native) #s-landing .landing-hero{padding-right:42%}
+  html:not(.vaultlix-native) #s-landing .landing-actions{max-width:760px}
+  html:not(.vaultlix-native) #s-landing .landing-marketing{margin-top:34px}
+  html:not(.vaultlix-native) #s-landing .landing-footer{position:relative!important;right:auto;bottom:auto}
+}
+@media(max-width:899px){
+  html:not(.vaultlix-native) #s-landing .landing-content{padding:18px 15px 0!important}
+  html:not(.vaultlix-native) #s-landing .landing-header{margin-bottom:18px}
+  html:not(.vaultlix-native) #s-landing .landing-wordmark{font-size:34px!important}
+  html:not(.vaultlix-native) #s-landing .landing-hero{display:flex;flex-direction:column;padding:30px 0 34px}
+  html:not(.vaultlix-native) #s-landing .landing-title{font-size:clamp(46px,15vw,68px);line-height:.95}
+  html:not(.vaultlix-native) #s-landing .tagline{font-size:16px!important}
+  html:not(.vaultlix-native) #s-landing .landing-hero-art{position:relative;z-index:0;order:20;right:auto;top:auto;width:100%;height:auto;aspect-ratio:1/1.08;margin:28px 0 0;border-radius:28px;transform:none}
+  html:not(.vaultlix-native) #s-landing .landing-hero-art img{object-position:center 68%}
+  html:not(.vaultlix-native) #s-landing .landing-actions{padding:20px;border-radius:24px}
+  html:not(.vaultlix-native) #s-landing .cards{grid-template-columns:1fr!important}
+  html:not(.vaultlix-native) #s-landing .card{min-height:104px}
+  html:not(.vaultlix-native) #s-landing .store-story{padding-top:56px;border-radius:28px 28px 0 0}
+  html:not(.vaultlix-native) #s-landing .store-story-intro{padding:0 22px 30px}
+  html:not(.vaultlix-native) #s-landing .store-story .marketing-title{font-size:39px}
+  html:not(.vaultlix-native) #s-landing .store-story-grid{grid-template-columns:1fr;padding:0 10px;gap:10px}
+  html:not(.vaultlix-native) #s-landing .store-story-card,
+  html:not(.vaultlix-native) #s-landing .store-story-card-wide{grid-column:auto;min-height:0;border-radius:24px}
+  html:not(.vaultlix-native) #s-landing #privacy-architecture,
+  html:not(.vaultlix-native) #s-landing #safety-controls,
+  html:not(.vaultlix-native) #s-landing #frequently-asked-questions{padding:56px 22px}
+  html:not(.vaultlix-native) #s-landing .marketing-cta{padding:34px 24px;border-radius:0 0 28px 28px}
+}
+
 /* ── VAULT CONVERSATION — CALM, PRIVATE, PURPOSEFUL ──────────────── */
 #s-chat{position:relative;background:#fff!important;font-family:'Manrope',sans-serif!important}
 #s-chat .chat-hdr{
@@ -3285,19 +3393,22 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 
     <section class="landing-hero">
       <div class="logo-rule" id="logoRule"></div>
-      <div class="logo-sub" id="logoSub">A private messenger built around consent</div>
-      <h1 class="landing-title landing-reveal landing-reveal-run" aria-label="Private messaging. No phone number.">
-        <span class="landing-reveal-line" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:0">Private</span> <span class="landing-reveal-word" style="--word-index:1">messaging.</span></span>
-        <span class="landing-reveal-line landing-reveal-accent" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:2">No</span> <span class="landing-reveal-word" style="--word-index:3">phone</span> <span class="landing-reveal-word" style="--word-index:4">number.</span></span>
+      <div class="logo-sub" id="logoSub">Private by design</div>
+      <h1 class="landing-title landing-reveal landing-reveal-run" aria-label="Give them a number. Not your number.">
+        <span class="landing-reveal-line" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:0">Give</span> <span class="landing-reveal-word" style="--word-index:1">them</span> <span class="landing-reveal-word" style="--word-index:2">a</span> <span class="landing-reveal-word" style="--word-index:3">number.</span></span>
+        <span class="landing-reveal-line" aria-hidden="true"><span class="landing-reveal-word" style="--word-index:4">Not</span> <span class="landing-reveal-accent"><span class="landing-reveal-word" style="--word-index:5">your</span></span> <span class="landing-reveal-word" style="--word-index:6">number.</span></span>
       </h1>
-      <p class="tagline" id="logoTag">Send encrypted messages, photos and files. Make private voice and video calls. Connect through a Vaultlix number without sharing your personal phone number.</p>
-      <div class="messenger-capabilities" aria-label="Vaultlix messaging features"><span>Encrypted chats</span><span>Photos &amp; files</span><span>Voice &amp; video</span></div>
+      <p class="tagline" id="logoTag">Chat and call with a private Vaultlix number. Your real phone number stays yours.</p>
+      <div class="messenger-capabilities" aria-label="Vaultlix messaging features"><span>End-to-end encrypted</span><span>No contact upload</span><span>You approve every connection</span></div>
       <button class="landing-invite-link" type="button" onclick="openInviteCodePrompt()">Have an invite code?</button>
       <div class="landing-store-badges" aria-label="Download Vaultlix">
         <a class="official-store-badge apple" href="https://apps.apple.com/in/app/vaultlix/id6798266989" aria-label="Download Vaultlix on the App Store"><img src="/media/download-on-the-app-store.svg" alt="Download on the App Store"/></a>
         <a class="official-store-badge google" href="https://play.google.com/store/apps/details?id=com.vaultlix.app" aria-label="Get Vaultlix on Google Play"><img src="/media/get-it-on-google-play.png" alt="Get it on Google Play"/></a>
       </div>
-      <div class="identity-proof" aria-label="Vaultlix account benefits"><span>No SIM</span><span>No phone number</span><span>No email</span><span>No contact upload</span></div>
+      <div class="identity-proof" aria-label="Vaultlix account benefits"><span>No real phone number</span><span>No email</span><span>Free</span></div>
+      <figure class="landing-hero-art" aria-label="Vaultlix private number preview">
+        <img src="/media/app-store/iphone-1-private-number.webp" width="660" height="1434" alt="Give them a number, not your number — Vaultlix private number preview" fetchpriority="high"/>
+      </figure>
     </section>
 
     <section class="landing-actions" id="use-vaultlix" aria-labelledby="landing-actions-title">
@@ -3329,6 +3440,31 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     </aside>
 
     <div class="landing-marketing" aria-label="About Vaultlix">
+      <section class="store-story" id="everyday-privacy" aria-labelledby="store-story-title">
+        <div class="store-story-intro">
+          <span class="marketing-eyebrow">THE VAULTLIX DIFFERENCE</span>
+          <h2 class="marketing-title" id="store-story-title">Private messaging, with less of your personal information.</h2>
+          <p class="marketing-lede">A Vaultlix number gives people a way to reach you without revealing the phone number, email address or contact list behind your life.</p>
+        </div>
+        <div class="store-story-grid">
+          <article class="store-story-card store-story-card-wide">
+            <div class="store-story-copy"><span>01</span><h3>No real phone number. No email.</h3><p>Create one private number. That’s all you need.</p></div>
+            <img src="/media/app-store/iphone-2-no-real-number.webp" width="660" height="1434" alt="Vaultlix needs no real phone number or email" loading="lazy"/>
+          </article>
+          <article class="store-story-card">
+            <div class="store-story-copy"><span>02</span><h3>End-to-end encrypted chats.</h3><p>Only you and your friend can read your messages. Not even Vaultlix.</p></div>
+            <img src="/media/app-store/iphone-3-encrypted-chats.webp" width="660" height="1434" alt="End-to-end encrypted Vaultlix chat" loading="lazy"/>
+          </article>
+          <article class="store-story-card">
+            <div class="store-story-copy"><span>03</span><h3>Find friends by number, not contacts.</h3><p>Vaultlix never uploads your contacts or suggests people.</p></div>
+            <img src="/media/app-store/iphone-4-find-by-number.webp" width="660" height="1434" alt="Find friends by Vaultlix number instead of contacts" loading="lazy"/>
+          </article>
+          <article class="store-story-card store-story-card-wide">
+            <div class="store-story-copy"><span>04</span><h3>You choose who reaches you.</h3><p>Every new connection needs your approval. Decline, block or leave at any time.</p></div>
+            <img src="/media/app-store/iphone-5-you-choose.webp" width="660" height="1434" alt="Choose who can connect with you on Vaultlix" loading="lazy"/>
+          </article>
+        </div>
+      </section>
       <section class="marketing-section" id="get-started-video" aria-labelledby="get-started-video-title">
         <span class="marketing-eyebrow">WATCH THE 10-SECOND WALKTHROUGH</span>
         <h2 class="marketing-title" id="get-started-video-title">From hello to a private conversation.</h2>
@@ -3354,7 +3490,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
           </div>
         </div>
       </section>
-      <section class="marketing-section everyday-privacy" id="everyday-privacy">
+      <section class="marketing-section everyday-privacy" id="messenger-features">
         <div class="everyday-privacy-head motion-reveal">
           <span class="marketing-eyebrow">PRIVATE MESSAGING, CLEARLY</span>
           <h2 class="marketing-title">Everything you expect from a messenger. Less personal information.</h2>
@@ -26727,7 +26863,7 @@ let landingTaglineInterval = null;
 function startLandingTaglineRotation() {
   stopLandingTaglineRotation();
   const el = document.getElementById('logoTag');
-  if (el) el.textContent = 'Send encrypted messages, photos and files. Make private voice and video calls. Connect through a Vaultlix number without sharing your personal phone number.';
+  if (el) el.textContent = 'Chat and call with a private Vaultlix number. Your real phone number stays yours.';
 }
 function stopLandingTaglineRotation() {
   if (landingTaglineInterval) { clearInterval(landingTaglineInterval); landingTaglineInterval = null; }
@@ -28869,8 +29005,7 @@ function beginPhotoSendProgress(count, initialMessage = '', onCancel = null, pre
   };
 }
 // options.groupMode: private groups have no view-once concept (see
-// handlePrivateGroupFileSelect), so this hides that choice and shows a
-// single "Send" button instead.
+// handlePrivateGroupFileSelect), so the inline circled-1 control is omitted.
 // options.onSend(caption, viewOnce, onProgress): when provided, this dialog
 // only collects the caption/view-once choice and hands off to the caller's
 // own send pipeline, instead of calling sendFileMessage/sendAlbumMessage
@@ -28882,18 +29017,11 @@ function showSendImageOptions(room, items, options = {}) {
   const { groupMode = false, onSend } = options;
   const overlay = document.createElement('div');
   overlay.id = 'send-img-overlay';
-  // z-index:999 (this dialog's original value, fine when only ever opened
-  // from 1:1 chat) rendered BEHIND .group-chat's own z-index:10018 once this
-  // same dialog started being reused for groups — the dialog was there and
-  // working, just invisible/unreachable underneath the group chat screen
-  // until that screen closed. 10060 clears every existing overlay z-index
-  // in this file (.group-chat 10018, .locker-fullscreen 10046, etc.).
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.7);display:flex;align-items:center;justify-content:center;z-index:10060;padding:24px;';
+  overlay.className = 'send-img-overlay';
   const first = items[0];
   const countBadge = items.length > 1
-    ? `<div style="position:absolute;top:8px;right:8px;background:#1A1916;color:#fff;font-size:11px;padding:3px 8px;border-radius:12px">+${items.length - 1} more</div>`
+    ? `<div class="send-img-count">+${items.length - 1} more</div>`
     : '';
-  const copy = items.length > 1 ? `Send these ${items.length} photos normally, or as view-once` : 'Send this photo normally, or as view-once';
   // This is the sender's own freshly-picked local file, not peer data — but
   // validated the same way regardless, for the same reason downloadDataUri
   // is now checked centrally rather than trusting each call site: one
@@ -28901,22 +29029,18 @@ function showSendImageOptions(room, items, options = {}) {
   // it's local".
   const previewSafeSrc = safeMessageImagePreview(first.imagePreview) || safeImageDataUri(first.mime || first.file.type, first.base64);
   const previewHtml = previewSafeSrc
-    ? `<img src="${previewSafeSrc}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:contain;display:block;margin:0 auto"/>`
+    ? `<img src="${previewSafeSrc}" alt="Selected photo preview"/>`
     : MEDIA_BLOCKED_HTML;
   overlay.innerHTML = `
-    <div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;text-align:center;font-family:inherit">
-      <div style="position:relative;margin-bottom:16px">
-        ${previewHtml}
-        ${countBadge}
+    <div class="send-img-sheet">
+      <div class="send-img-sheet-head"><strong>${items.length > 1 ? `${items.length} photos` : 'Photo preview'}</strong><button id="send-img-cancel" class="send-img-close" type="button" aria-label="Close">×</button></div>
+      <div class="send-img-preview">${previewHtml}${countBadge}</div>
+      <div class="send-img-compose${groupMode ? ' send-img-compose-group' : ''}">
+        <textarea id="send-img-caption" placeholder="Add a caption…" maxlength="2000" aria-label="Photo caption"></textarea>
+        ${groupMode ? '' : '<button id="send-img-once-toggle" class="send-img-once-toggle" type="button" aria-label="Send as view once" aria-pressed="false" title="View once"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12"></circle><text x="16" y="20" text-anchor="middle">1</text></svg></button>'}
+        <button id="send-img-normal" class="send-img-submit" type="button" aria-label="Send photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 4 17 8-17 8 3-8-3-8Z"></path><path d="M7 12h14"></path></svg></button>
       </div>
-      <textarea id="send-img-caption" placeholder="Add a caption…" maxlength="2000" style="width:100%;box-sizing:border-box;min-height:44px;max-height:120px;resize:vertical;border:1px solid #E4DAD3;border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;margin-bottom:14px;text-align:left"></textarea>
-      ${groupMode ? '' : `<div style="font-size:12.5px;color:#7A6E65;line-height:1.5;margin-bottom:16px">${copy} — hidden until opened, then removed shortly after.</div>`}
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${groupMode
-          ? '<button id="send-img-normal" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send</button>'
-          : '<button id="send-img-once" style="background:#1A1916;color:#fff;border:none;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">👁 Send view-once</button><button id="send-img-normal" style="background:none;border:1px solid #D0CAC0;color:#4A4038;border-radius:20px;padding:10px;font-size:13px;cursor:pointer">Send normally</button>'}
-        <button id="send-img-cancel" style="background:none;border:none;color:#B0A89C;font-size:12.5px;padding:6px;cursor:pointer">Cancel</button>
-      </div>
+      <div class="send-img-once-hint" id="send-img-once-hint">${groupMode ? '' : 'Tap ① to let the recipient view this once.'}</div>
     </div>`;
   document.body.appendChild(overlay);
   const close = () => overlay.remove();
@@ -28944,9 +29068,15 @@ function showSendImageOptions(room, items, options = {}) {
       progress.close();
     }
   };
-  const onceBtn = overlay.querySelector('#send-img-once');
-  if (onceBtn) onceBtn.onclick = () => sendAll(true);
-  overlay.querySelector('#send-img-normal').onclick = () => sendAll(false);
+  const onceBtn = overlay.querySelector('#send-img-once-toggle');
+  const onceHint = overlay.querySelector('#send-img-once-hint');
+  if (onceBtn) onceBtn.onclick = () => {
+    const enabled = onceBtn.dataset.enabled !== 'true';
+    onceBtn.dataset.enabled = enabled ? 'true' : 'false';
+    onceBtn.setAttribute?.('aria-pressed', enabled ? 'true' : 'false');
+    if (onceHint) onceHint.textContent = enabled ? 'View once selected. The photo disappears after it is opened.' : 'Tap ① to let the recipient view this once.';
+  };
+  overlay.querySelector('#send-img-normal').onclick = () => sendAll(onceBtn?.dataset.enabled === 'true');
   overlay.querySelector('#send-img-cancel').onclick = close;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 }
