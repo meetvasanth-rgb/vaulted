@@ -19,3 +19,20 @@ test('a read receipt cancels catch-up and delivery advances its sequence waterma
   assert.match(client, /for \(const r of data\.readReceipts\) if \(r\.seq && r\.seq > room\.lastReceiptSeq\) room\.lastReceiptSeq = r\.seq/);
   assert.doesNotMatch(client, /for \(const r of data\.readReceipts\) if \(r\.readAt && r\.seq/);
 });
+
+test('opening a restored conversation confirms both restored and background read queues', () => {
+  const start = client.indexOf('function flushPendingReads(room) {');
+  const end = client.indexOf('\n}', start) + 2;
+  const source = client.slice(start, end);
+  const confirmations = [];
+  const flushPendingReads = Function('confirmRead', `${source}; return flushPendingReads;`)(
+    (room, ids) => confirmations.push({ room, ids }),
+  );
+  const room = { readConfirmIds:['restored', 'overlap'], pendingReadIds:['overlap', 'background'] };
+
+  flushPendingReads(room);
+
+  assert.deepEqual(confirmations.map(item => item.ids), [['restored', 'overlap', 'background']]);
+  assert.deepEqual(room.readConfirmIds, []);
+  assert.deepEqual(room.pendingReadIds, []);
+});

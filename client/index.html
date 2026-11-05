@@ -18467,17 +18467,18 @@ document.addEventListener('pointerup', cancelEmergencyHold);
 document.addEventListener('pointercancel', cancelEmergencyHold);
 document.addEventListener('pointerleave', event => { if (event.target.closest?.('#emergency-hold')) cancelEmergencyHold(); }, true);
 
-// Read confirmations queued while the tab was hidden/inactive (or while a
-// room sat in the background behind another one) only get sent from inside
-// doPoll's own flush, which is gated behind "a new message also arrived in
-// this exact poll cycle" — if nothing new comes in right when you return or
-// switch to that room, anything already queued would sit unsent forever, the
-// sender never gets a readAt receipt, and their sent message's disappearing
-// timer never starts (it just stays on screen indefinitely). This flushes
-// on demand instead of waiting for that coincidence.
+// Read confirmations can be waiting in either queue when a conversation is
+// opened. Live messages move to pendingReadIds while the room is hidden, but
+// messages rebuilt from encrypted local/server history stay in readConfirmIds.
+// Reopening a room used to flush only the former, so restored messages could
+// visibly be on screen without ever receiving readAt. Send both queues from
+// every explicit open/resume flush and deduplicate an id that crossed between
+// the two while polling and restoration overlapped.
 function flushPendingReads(room) {
-  if (!room || room.pendingReadIds.length === 0) return;
-  const toConfirm = [...room.pendingReadIds];
+  if (!room) return;
+  const toConfirm = [...new Set([...room.readConfirmIds, ...room.pendingReadIds])];
+  if (toConfirm.length === 0) return;
+  room.readConfirmIds.length = 0;
   room.pendingReadIds.length = 0;
   confirmRead(room, toConfirm);
 }
