@@ -78,6 +78,10 @@ test('Diwali Glow is a temporary featured style with five natural non-repeating 
   assert.match(scenes, /real home[\s\S]*living room[\s\S]*balcony or terrace[\s\S]*courtyard or verandah[\s\S]*home celebration/);
   assert.match(server, /dailyLookRotationItem\(DIWALI_GLOW_SCENES, variantIndex\)/);
   assert.match(server, /Preserve every visible person's unmistakable face/);
+  assert.match(server, /head size as a percentage of the frame/);
+  assert.match(server, /face-to-shoulder ratio/);
+  assert.match(server, /selfie foreshortening/);
+  assert.match(server, /never recompose, recrop/);
   assert.match(server, /Avoid fireworks, floating lamps, gold particles, magical sparkles/);
   assert.match(client, /Create My Diwali Portrait/);
   assert.match(client, /Creating your Diwali portrait/);
