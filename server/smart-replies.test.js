@@ -35,8 +35,12 @@ test('smart replies are short, useful and chosen from the decrypted message on t
 test('suggestion count follows confidence instead of always showing three chips', () => {
   assert.equal(context.suggest('Can you come tonight?').length, 3);
   assert.equal(context.suggest('Thanks for helping me').length, 2);
-  assert.deepEqual([...context.suggest('Yup')], []);
-  assert.deepEqual([...context.suggest('The parcel was left beside the blue gate')], []);
+  assert.deepEqual([...context.suggest('Yup')], ['👍']);
+  assert.deepEqual([...context.suggest('The parcel was left beside the blue gate')], ['Okay 👍']);
+});
+
+test('common abbreviated questions still produce contextual suggestions', () => {
+  assert.deepEqual([...context.suggest('whr r u??')], ['I’m on my way.', 'I’ll share the details.', 'Where should we meet?']);
 });
 
 test('smart replies avoid links, long messages and sensitive codes', () => {
