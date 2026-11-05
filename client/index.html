@@ -24609,21 +24609,21 @@ function smartReplySuggestions(message) {
   if (/\b(?:otp|passcode|password|pin|bank|account number|verification code)\b/i.test(lower)) return [];
   const replies = (...items) => [...new Set(items.map(item => String(item).trim()).filter(Boolean))].slice(0, 3);
 
-  if (/\b(?:happy diwali|deepavali)\b/i.test(lower)) return replies('Happy Diwali! 🪔', 'Thank you! 😊', 'Same to you!');
-  if (/\b(?:good morning|morning!)\b/i.test(lower)) return replies('Good morning! 😊', 'Morning!', 'Have a great day!');
-  if (/\b(?:good night|sleep well)\b/i.test(lower)) return replies('Good night! 🌙', 'Sleep well!', 'Talk tomorrow.');
-  if (/\b(?:thank you|thanks|thx)\b/i.test(lower)) return replies('You’re welcome!', 'Anytime 😊', 'No problem!');
-  if (/\b(?:sorry|apologize|apologies)\b/i.test(lower)) return replies('It’s okay.', 'No worries.', 'We can talk about it.');
-  if (/^(?:hi|hello|hey|hiya)\b|\bhowdy\b/i.test(lower)) return replies('Hi! 👋', 'Hello!', 'How are you?');
-  if (/\bhow are you\b|\bhow's it going\b|\bhow are things\b/i.test(lower)) return replies('I’m good, thanks!', 'Doing well 😊', 'How about you?');
+  if (/^(?:yup|yep|yeah|yes|okay|ok|k|alright|sure|done|perfect|great|fine|got it|noted)[.! ]*$/i.test(raw)) return [];
+  if (/\b(?:happy diwali|deepavali)\b/i.test(lower)) return replies('Happy Diwali! 🪔', 'Same to you!');
+  if (/\b(?:good morning|morning!)\b/i.test(lower)) return replies('Good morning! 😊', 'Have a great day!');
+  if (/\b(?:good night|sleep well)\b/i.test(lower)) return replies('Good night! 🌙', 'Sleep well!');
+  if (/\b(?:thank you|thanks|thx)\b/i.test(lower)) return replies('You’re welcome!', 'Anytime 😊');
+  if (/\b(?:sorry|apologize|apologies)\b/i.test(lower)) return replies('It’s okay.', 'No worries.');
+  if (/^(?:hi|hello|hey|hiya)\b|\bhowdy\b/i.test(lower)) return replies('Hi! 👋', 'How are you?');
+  if (/\bhow are you\b|\bhow's it going\b|\bhow are things\b/i.test(lower)) return replies('I’m good, thanks!', 'How about you?');
   if (/\bwhere are you\b|\bwhere r u\b/i.test(lower)) return replies('I’m on my way.', 'I’ll share the details.', 'Where should we meet?');
   if (/\b(?:call me|can we call|shall we call|phone me)\b/i.test(lower)) return replies('Sure, I’ll call you.', 'Give me a minute.', 'Can I call later?');
   if (/\b(?:meet|coffee|lunch|dinner|catch up|hang out)\b/i.test(lower)) return replies('Sounds good!', 'What time?', 'I’ll let you know.');
-  if (/\b(?:when|what time|which time)\b/i.test(lower)) return replies('I’ll let you know.', 'Let me check.', 'Soon.');
+  if (/\b(?:when|what time|which time)\b/i.test(lower)) return replies('I’ll let you know.', 'Let me check.');
   if (/\b(?:are you coming|will you come|can you come|shall we)\b/i.test(lower)) return replies('Yes, I’ll be there.', 'Not sure yet.', 'I’ll let you know.');
   if (/\?$/.test(raw) || /^(?:are|is|can|could|would|will|do|did|have|has)\b/i.test(lower)) return replies('Yes.', 'Not right now.', 'Let me check.');
-  if (/\b(?:okay|ok|alright|sure|done|perfect|great)\b/i.test(lower)) return replies('Okay 👍', 'Sounds good!', 'Great!');
-  return replies('Okay 👍', 'Sounds good!', 'I’ll get back to you.');
+  return [];
 }
 
 function fillSmartReply(inputId, text, groupMode = false) {

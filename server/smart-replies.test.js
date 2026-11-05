@@ -26,10 +26,17 @@ vm.createContext(context);
 vm.runInContext(`${suggestionSource}; this.suggest = smartReplySuggestions;`, context);
 
 test('smart replies are short, useful and chosen from the decrypted message on this device', () => {
-  assert.deepEqual([...context.suggest('Thanks for helping me')], ['You’re welcome!', 'Anytime 😊', 'No problem!']);
+  assert.deepEqual([...context.suggest('Thanks for helping me')], ['You’re welcome!', 'Anytime 😊']);
   assert.deepEqual([...context.suggest('Can you come tonight?')], ['Yes, I’ll be there.', 'Not sure yet.', 'I’ll let you know.']);
-  assert.deepEqual([...context.suggest('Happy Diwali!')], ['Happy Diwali! 🪔', 'Thank you! 😊', 'Same to you!']);
+  assert.deepEqual([...context.suggest('Happy Diwali!')], ['Happy Diwali! 🪔', 'Same to you!']);
   assert.ok(context.suggest('Let us meet for coffee').length <= 3);
+});
+
+test('suggestion count follows confidence instead of always showing three chips', () => {
+  assert.equal(context.suggest('Can you come tonight?').length, 3);
+  assert.equal(context.suggest('Thanks for helping me').length, 2);
+  assert.deepEqual([...context.suggest('Yup')], []);
+  assert.deepEqual([...context.suggest('The parcel was left beside the blue gate')], []);
 });
 
 test('smart replies avoid links, long messages and sensitive codes', () => {
