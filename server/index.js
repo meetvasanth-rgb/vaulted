@@ -30,6 +30,7 @@ const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator')
 const { EncryptedObjectStorage } = require('./object-storage');
 const { HeadBucketCommand } = require('@aws-sdk/client-s3');
 const { createHealthMonitor } = require('./system-health');
+const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload } = require('./admin-announcements');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
@@ -792,7 +793,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
         if (tone === 'none') return {};
         return { sound: tone === 'chime' ? 'vault_chime.caf' : `vault_tone_${tone}.caf` };
       })(),
-      'thread-id': parsed.code || 'vaultlix',
+      'thread-id': parsed.announcement ? 'vaultlix-updates' : (parsed.code || 'vaultlix'),
       // Scoped to regular chat messages (identified by carrying a msgId,
       // same discriminator used for Android's equivalent fix) — this is
       // what actually invokes VaultlixNotificationService before the alert
@@ -825,6 +826,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
     sessionReplaced: !!parsed.sessionReplaced,
     accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
+    announcement: !!parsed.announcement,
   });
   return new Promise((resolve) => {
     let client;
@@ -900,6 +902,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
         sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
         accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
+        announcement: parsed.announcement ? 'true' : 'false',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
       },
@@ -934,6 +937,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
         sound: 'vault_chime',
+        ...(parsed.tag ? { tag:String(parsed.tag) } : {}),
       };
     }
     await firebaseMessaging.send(message);
@@ -6227,7 +6231,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && method === 'POST') || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -6271,6 +6275,25 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       found.account.isTestAccount = d.isTestAccount === true;
       await persistAccount(found.accountId);
       return res200(res, { ok:true, privateNumber:found.account.privateNumber, isTestAccount:found.account.isTestAccount });
+    }
+    if (path === '/api/admin/announcements') {
+      res.setHeader('Cache-Control','no-store');
+      const checked = validateAnnouncement(d);
+      if (checked.error) return resErr(res, checked.error, 400);
+      if (await rateLimited(`admin-announcement:${checked.value.audience}`, checked.value.audience === 'all' ? 6 : 30, 60 * 60 * 1000)) {
+        return resErr(res, 'Announcement sending limit reached. Try again later.', 429);
+      }
+      const targets = selectAnnouncementTargets(accounts, checked.value);
+      const encoded = JSON.stringify(buildAnnouncementPayload(checked.value));
+      const results = await Promise.all(targets.map(async ({ destination }) => {
+        if (destination.platform === 'ios') return sendApnsNotification(destination, encoded, 24 * 60 * 60);
+        return sendFcmNotification(destination, encoded, 24 * 60 * 60);
+      }));
+      const delivered = results.filter(Boolean).length;
+      const ios = targets.filter(target => target.destination.platform === 'ios').length;
+      const android = targets.length - ios;
+      console.log(`Admin announcement: audience=${checked.value.audience} platform=${checked.value.platform} targeted=${targets.length} delivered=${delivered}`);
+      return res200(res, { ok:true, audience:checked.value.audience, platform:checked.value.platform, targeted:targets.length, delivered, failed:targets.length - delivered, ios, android });
     }
     if (path === '/api/admin/health') {
       res.setHeader('Cache-Control','no-store');

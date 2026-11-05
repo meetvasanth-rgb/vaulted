@@ -318,6 +318,37 @@
     try{await navigator.clipboard.writeText($('allocate-link').value);$('allocate-status').textContent='Claim link copied. Share it privately.';}
     catch(_){$('allocate-link').focus();$('allocate-link').select();$('allocate-status').textContent='Copy the selected claim link.';}
   });
+  function updateAnnouncementPreview() {
+    const title=$('announcement-title').value.trim();
+    const body=$('announcement-body').value.trim();
+    const all=$('announcement-audience').value==='all';
+    $('announcement-preview-title').textContent=title || 'Vaultlix update';
+    $('announcement-preview-body').textContent=body || 'Your message preview appears here.';
+    $('announcement-counter').textContent=`${$('announcement-body').value.length} / 180`;
+    $('announcement-submit').textContent=all ? 'Send to all opted-in users' : 'Send to test accounts';
+    $('announcement-submit').classList.toggle('danger',all);
+  }
+  for (const id of ['announcement-title','announcement-body','announcement-audience']) $(id).addEventListener('input',updateAnnouncementPreview);
+  $('announcement-audience').addEventListener('change',updateAnnouncementPreview);
+  updateAnnouncementPreview();
+  $('announcement-form').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const key=adminKey;if(!key)return;
+    const audience=$('announcement-audience').value;
+    if(audience==='all' && !confirm('Send this announcement now to every opted-in Vaultlix app device in the selected platform?'))return;
+    const button=$('announcement-submit');button.disabled=true;
+    $('announcement-status').textContent='Sending announcement…';
+    try {
+      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all'}),cache:'no-store'});
+      const result=await response.json();if(adminKey!==key)return;
+      if(!response.ok)throw Error(result.error || 'Announcement could not be sent.');
+      const scope=result.audience==='test'?'test devices':'opted-in devices';
+      $('announcement-status').textContent=result.targeted
+        ? `Delivered to ${result.delivered} of ${result.targeted} ${scope} (${result.ios} iOS, ${result.android} Android).${result.failed ? ` ${result.failed} delivery attempt${result.failed===1?'':'s'} failed.` : ''}`
+        : `No matching ${scope} were found for this platform.`;
+    } catch(error) { if(adminKey===key)$('announcement-status').textContent=error.message; }
+    finally { button.disabled=false; }
+  });
   $('login-form').addEventListener('submit', event => {
     event.preventDefault();
     adminKey = $('admin-key').value;
@@ -328,6 +359,7 @@
   function signOut() {
     adminKey = '';
     clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';
+    $('announcement-status').textContent='';
     clearInterval(healthTimer); healthTimer=null;
     $('service-health-cards').replaceChildren();
     $('service-health-history').replaceChildren();
