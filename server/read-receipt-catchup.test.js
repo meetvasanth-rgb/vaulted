@@ -1,0 +1,21 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const client = fs.readFileSync(path.join(__dirname, '../client/index.html'), 'utf8');
+
+test('delivered direct messages get bounded receipt catch-up polls', () => {
+  assert.match(client, /const READ_RECEIPT_CATCHUP_DELAYS = \[700, 1800, 4000, 8000, 15000\]/);
+  assert.match(client, /message\.isMe && message\.receiptState === 'delivered'/);
+  assert.match(client, /READ_RECEIPT_CATCHUP_DELAYS\.map\(delay => setTimeout\(\(\) => \{/);
+  assert.match(client, /doPoll\(room\)/);
+  assert.doesNotMatch(client, /receiptCatchupTimers\s*=\s*setInterval/);
+});
+
+test('a read receipt cancels catch-up and delivery advances its sequence watermark', () => {
+  assert.match(client, /else if \(typeof clearReadReceiptCatchup === 'function'\) clearReadReceiptCatchup\(room\)/);
+  assert.match(client, /for \(const r of data\.readReceipts\) if \(r\.seq && r\.seq > room\.lastReceiptSeq\) room\.lastReceiptSeq = r\.seq/);
+  assert.doesNotMatch(client, /for \(const r of data\.readReceipts\) if \(r\.readAt && r\.seq/);
+});

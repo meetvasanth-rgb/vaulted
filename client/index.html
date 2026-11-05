@@ -6862,7 +6862,7 @@ function makeRoom({ code, token, myName, peerName, peerNameEncrypted, peerNameFr
     // (or images) sitting in storage between sessions.
     deleteLedger: new Map(),
     seenMsgIds: new Set(),  // dedupe across overlapping polls
-    readConfirmIds: [], pendingReadIds: [],
+    readConfirmIds: [], pendingReadIds: [], receiptCatchupTimers: [],
     msgTimers: new Map(),   // msgId -> setTimeout handle (disappearing messages)
     pollInterval: null, typingInterval: null, typingTimer: null, waitInterval: null,
     isPollRunning: false,
@@ -22942,6 +22942,31 @@ function renderMessageRecord(room, rec, animate) {
 }
 
 // ── READ RECEIPTS + DISAPPEARING MESSAGES ───────────────────────────────
+const READ_RECEIPT_CATCHUP_DELAYS = [700, 1800, 4000, 8000, 15000];
+
+function clearReadReceiptCatchup(room) {
+  for (const timer of room?.receiptCatchupTimers || []) clearTimeout(timer);
+  if (room) room.receiptCatchupTimers = [];
+}
+
+// Inbox WebSockets normally wake the sender the instant /api/read changes a
+// receipt. A mobile network transition can lose that one invalidation while
+// leaving the socket looking open; without a bounded fallback the ticks stay
+// gray until the peer happens to send another message. Poll only while this
+// room still has a delivered-but-unread outgoing message, then stop.
+function scheduleReadReceiptCatchup(room) {
+  clearReadReceiptCatchup(room);
+  if (!room?.messages?.some(message => message.isMe && message.receiptState === 'delivered')) return;
+  room.receiptCatchupTimers = READ_RECEIPT_CATCHUP_DELAYS.map(delay => setTimeout(() => {
+    if (rooms.get(room.code) !== room) return;
+    if (!room.messages.some(message => message.isMe && message.receiptState === 'delivered')) {
+      clearReadReceiptCatchup(room);
+      return;
+    }
+    doPoll(room);
+  }, delay));
+}
+
 function handleReadReceipts(room, receipts) {
   if (!receipts || !receipts.length) return;
   for (const { msgId, deliveredAt, readAt, deleteTimerSeconds = 0 } of receipts) {
@@ -22973,6 +22998,9 @@ function handleReadReceipts(room, receipts) {
       }
     }
   }
+  if (room.messages.some(message => message.isMe && message.receiptState === 'delivered')) {
+    if (typeof scheduleReadReceiptCatchup === 'function') scheduleReadReceiptCatchup(room);
+  } else if (typeof clearReadReceiptCatchup === 'function') clearReadReceiptCatchup(room);
 }
 
 // Sender-side timer: starts once the peer has confirmed reading the message.
@@ -24315,7 +24343,7 @@ async function doPoll(room) {
 
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
-      for (const r of data.readReceipts) if (r.readAt && r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
+      for (const r of data.readReceipts) if (r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
     }
 
     if (data.reactionUpdates && data.reactionUpdates.length > 0) {
