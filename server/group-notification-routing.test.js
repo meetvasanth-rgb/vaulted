@@ -38,7 +38,8 @@ test('the server never sees a stripped group push: groupId/privateGroup travel t
 
 test('a private-group FCM push is data-only (same reliability fix already applied to regular messages)', () => {
   const server = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
-  assert.match(server, /if \(!parsed\.isCall && !parsed\.isCallEnd && !parsed\.missedCall && !parsed\.msgId && !parsed\.groupId\) \{/);
+  assert.match(server, /const nativeAnnouncement = parsed\.announcement && Number\(member\.announcementPushVersion\) >= 1;/);
+  assert.match(server, /if \(!parsed\.isCall && !parsed\.isCallEnd && !parsed\.missedCall && !parsed\.msgId && !parsed\.groupId && \(!parsed\.announcement \|\| !nativeAnnouncement\)\) \{/);
 });
 
 test('pushNotificationActionPerformed queues a group-message target for App Lock-safe routing', () => {

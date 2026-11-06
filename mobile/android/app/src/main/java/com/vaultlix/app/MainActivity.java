@@ -1118,6 +1118,11 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class AndroidCallBridge {
+        // Capability reported with the FCM token. The server keeps the
+        // legacy Firebase-rendered announcement path for older store builds.
+        @JavascriptInterface
+        public int announcementPushVersion() { return 1; }
+
         @JavascriptInterface
         public void hideLaunchCover() {
             runOnUiThread(MainActivity.this::hideLaunchCover);

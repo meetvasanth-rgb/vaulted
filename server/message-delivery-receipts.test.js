@@ -7,6 +7,8 @@ const path = require('node:path');
 
 const server = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const android = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
+const androidActivity = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'MainActivity.java'), 'utf8');
+const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'index.html'), 'utf8');
 
 function extract(name) {
   let start = server.indexOf(`function ${name}(`);
@@ -30,14 +32,14 @@ function extractToneHelpers() {
 // client — proves the actual branching logic, not just a regex over the
 // source text, per this class of bug (timing/ordering/delivery-signal
 // correctness) needing more than a read-through.
-async function buildFcmMessage(parsed) {
+async function buildFcmMessage(parsed, member = {}) {
   const context = {
     firebaseMessaging: { send: async message => { context.sentJson = JSON.stringify(message); } },
     sentJson: null,
   };
   vm.createContext(context);
-  vm.runInContext(extractToneHelpers() + extract('sendFcmNotification') + '\nasync function run(p){ return sendFcmNotification({fcmToken:"tok"}, JSON.stringify(p), 60); }', context);
-  await context.run(parsed);
+  vm.runInContext(extractToneHelpers() + extract('sendFcmNotification') + '\nasync function run(p,m){ return sendFcmNotification({fcmToken:"tok",...m}, JSON.stringify(p), 60); }', context);
+  await context.run(parsed, member);
   // JSON round-trip on the way out — comparing a vm-realm object's
   // structure directly against a main-realm object literal can trip
   // node:assert's reference-equality check even when the values match.
@@ -64,12 +66,41 @@ test('a push with no msgId and not a call (e.g. a connection request) keeps the 
   assert.equal(message.android.notification.channelId, 'vaultlix_messages_universal_v2');
 });
 
-test('an app announcement gives Android a system-rendered thumbnail', async () => {
+test('an app announcement is data-only so Android can reliably render its sound and thumbnail natively', async () => {
   const thumbnailUrl = 'https://vaultlix.com/icons/icon-192.png';
-  const message = await buildFcmMessage({ title:'Vaultlix update', body:'A new update is ready.', announcement:true, thumbnailUrl });
+  const message = await buildFcmMessage({ title:'Vaultlix update', body:'A new update is ready.', announcement:true, updateId:'update-1', thumbnailUrl }, { announcementPushVersion:1 });
   assert.equal(message.data.thumbnailUrl, thumbnailUrl);
+  assert.equal(message.data.announcement, 'true');
+  assert.equal(message.data.updateId, 'update-1');
+  assert.equal(message.notification, undefined);
+  assert.equal(message.android.notification, undefined);
+});
+
+test('an older Android build keeps the existing Firebase-rendered announcement during rollout', async () => {
+  const thumbnailUrl = 'https://vaultlix.com/icons/icon-192.png';
+  const message = await buildFcmMessage({ title:'Vaultlix update', body:'A new update is ready.', announcement:true, updateId:'update-1', thumbnailUrl });
   assert.equal(message.notification.imageUrl, thumbnailUrl);
   assert.equal(message.android.notification.imageUrl, thumbnailUrl);
+});
+
+test('Android build 120 advertises native announcement support while older builds safely report zero', () => {
+  assert.match(androidActivity, /public int announcementPushVersion\(\) \{ return 1; \}/);
+  assert.match(client, /function nativeAnnouncementPushVersion\(\)/);
+  assert.match(client, /window\.VaultlixAndroid\?\.announcementPushVersion\?\.\(\)/);
+  assert.equal((client.match(/announcementPushVersion: nativeAnnouncementPushVersion\(\),/g) || []).length, 2);
+  assert.match(server, /announcementPushVersion:Number\(d\.announcementPushVersion\) >= 1 \? 1 : 0/);
+});
+
+test('Android announcements use a dedicated audible channel, safe thumbnail download, and update deep link', () => {
+  assert.match(android, /if \("true"\.equalsIgnoreCase\(data\.get\("announcement"\)\)\) \{\s*showAnnouncementNotification\(data\);\s*return;/);
+  assert.match(android, /UPDATE_CHANNEL_ID = "vaultlix_updates_v1"/);
+  assert.match(android, /private void showAnnouncementNotification\(Map<String, String> data\)/);
+  assert.match(android, /appendQueryParameter\("update", updateId\.isEmpty\(\) \? "latest" : updateId\)/);
+  assert.match(android, /builder\.setLargeIcon\(thumbnail\)/);
+  assert.match(android, /new NotificationCompat\.BigPictureStyle\(\)/);
+  assert.match(android, /manager\.notify\(notificationId, builder\.build\(\)\);\s*Bitmap thumbnail = downloadAnnouncementThumbnail/);
+  assert.match(android, /\.setOnlyAlertOnce\(true\)/);
+  assert.match(android, /!"https"\.equalsIgnoreCase\(url\.getProtocol\(\)\) \|\| !"vaultlix\.com"\.equalsIgnoreCase\(url\.getHost\(\)\)/);
 });
 
 test('a private-group message (carries groupId, no msgId) is sent data-only, with groupId/privateGroup forwarded', async () => {
@@ -107,8 +138,8 @@ test('Android builds the notification itself and reports delivery for a data-onl
 
 test('mark-delivered stays the shared server endpoint both sw.js (web push) and Android now call', () => {
   assert.match(server, /if \(path==='\/api\/mark-delivered' && method==='POST'\)/);
-  const client = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
-  assert.match(client, /fetch\('\/api\/mark-delivered'/);
+  const serviceWorker = fs.readFileSync(path.join(__dirname, '..', 'client', 'sw.js'), 'utf8');
+  assert.match(serviceWorker, /fetch\('\/api\/mark-delivered'/);
 });
 
 // Isolated run of the real sendApnsNotification against a stubbed http2

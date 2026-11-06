@@ -122,7 +122,7 @@ test('Android uses one notification channel per tone and keeps the original chan
   assert.match(android, /if \("chime"\.equals\(tone\)\) \{\s*ensureMessageChannel\(manager\);\s*return Build\.VERSION\.SDK_INT < Build\.VERSION_CODES\.O \? MESSAGE_CHANNEL_ID : CHIME_CHANNEL_ID;/);
   assert.match(android, /getIdentifier\("vault_tone_" \+ tone, "raw", getPackageName\(\)\)/);
   assert.equal((android.match(/String channelId = ensureMessageChannel\(manager, chosenTone\(data\)\);/g) || []).length, 2, '1:1 and group message notifications');
-  assert.equal((android.match(/new NotificationCompat\.Builder\(this, channelId\)/g) || []).length, 2);
+  assert.equal((android.match(/new NotificationCompat\.Builder\(this, channelId\)/g) || []).length, 3, '1:1, group and Vaultlix update notifications');
 });
 
 function clientHarness({ native = true, stored = null, result = () => ({ ok:true }) } = {}) {

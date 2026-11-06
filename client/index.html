@@ -18798,6 +18798,14 @@ function nativePushPlugin() {
   return isNativeApp() ? window.Capacitor?.Plugins?.PushNotifications : null;
 }
 
+function nativeAnnouncementPushVersion() {
+  if (nativePlatform() !== 'android') return 0;
+  try {
+    const value=Number(window.VaultlixAndroid?.announcementPushVersion?.() || 0);
+    return Number.isInteger(value) && value > 0 ? Math.min(value, 10) : 0;
+  } catch (error) { return 0; }
+}
+
 async function ensureAndroidNotificationChannels() {
   const plugin = nativePushPlugin();
   if (nativePlatform() !== 'android' || !plugin?.createChannel) return;
@@ -18821,6 +18829,7 @@ async function registerNativeTokenForRoom(room) {
     platform,
     environment: nativeVoipRegistration?.environment || 'production',
     tone: selectedMessageTone(),
+    announcementPushVersion: nativeAnnouncementPushVersion(),
   });
 }
 
@@ -18836,6 +18845,7 @@ async function registerNativeTokenForAccount() {
     platform,
     environment: nativeVoipRegistration?.environment || 'production',
     tone: selectedMessageTone(),
+    announcementPushVersion: nativeAnnouncementPushVersion(),
   });
 }
 

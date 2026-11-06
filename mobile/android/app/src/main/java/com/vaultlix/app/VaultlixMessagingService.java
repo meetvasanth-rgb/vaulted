@@ -24,6 +24,7 @@ import com.google.firebase.messaging.RemoteMessage;
 
 import org.json.JSONObject;
 
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -38,6 +39,7 @@ public class VaultlixMessagingService extends MessagingService {
     // quieter chime needs a new channel id for installs that already have v2.
     private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_universal_v2";
     private static final String CHIME_CHANNEL_ID = "vaultlix_messages_universal_v3";
+    private static final String UPDATE_CHANNEL_ID = "vaultlix_updates_v1";
     private static final String MISSED_CALL_CHANNEL_ID = "vaultlix_missed_calls_silent_v1";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
@@ -96,6 +98,15 @@ public class VaultlixMessagingService extends MessagingService {
         }
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) ensureMessageChannel(manager);
+        // App announcements are data-only so this service always runs, even
+        // while Vaultlix is open. Firebase's automatic notification route can
+        // silently hand foreground announcements to the WebView without ever
+        // posting a tray notification. Build the alert here on its own fresh
+        // channel so the thumbnail and sound behave consistently.
+        if ("true".equalsIgnoreCase(data.get("announcement"))) {
+            showAnnouncementNotification(data);
+            return;
+        }
         // A regular chat message (server/index.js sends it data-only,
         // identified by carrying a msgId, for exactly this reason — see the
         // comment there). Building the notification here ourselves, instead
@@ -127,6 +138,25 @@ public class VaultlixMessagingService extends MessagingService {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         createChimeChannel(manager, MESSAGE_CHANNEL_ID, "Requests and alerts");
         createChimeChannel(manager, CHIME_CHANNEL_ID, "Messages · Chime");
+    }
+
+    private String ensureUpdateChannel(NotificationManager manager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return MESSAGE_CHANNEL_ID;
+        if (manager.getNotificationChannel(UPDATE_CHANNEL_ID) != null) return UPDATE_CHANNEL_ID;
+        NotificationChannel channel = new NotificationChannel(
+                UPDATE_CHANNEL_ID,
+                "Vaultlix updates",
+                NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.enableVibration(true);
+        Uri sound = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.vault_chime);
+        channel.setSound(sound, new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build());
+        channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(channel);
+        return UPDATE_CHANNEL_ID;
     }
 
     private void createChimeChannel(NotificationManager manager, String id, String name) {
@@ -280,6 +310,79 @@ public class VaultlixMessagingService extends MessagingService {
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)
                 .build());
+    }
+
+    private void showAnnouncementNotification(Map<String, String> data) {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        String channelId = ensureUpdateChannel(manager);
+        String updateId = safe(data.get("updateId"));
+        String title = safe(data.get("title"));
+        String body = safe(data.get("body"));
+        Uri updateUri = Uri.parse("https://vaultlix.com/").buildUpon()
+                .appendQueryParameter("update", updateId.isEmpty() ? "latest" : updateId)
+                .build();
+        int notificationId = ("announcement:" + (updateId.isEmpty() ? body : updateId)).hashCode();
+        Intent openUpdate = new Intent(Intent.ACTION_VIEW, updateUri, this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this,
+                notificationId,
+                openUpdate,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(R.drawable.ic_stat_vaultlix)
+                .setColor(Color.rgb(104, 44, 67))
+                .setContentTitle(title.isEmpty() ? "Vaultlix update" : title)
+                .setContentText(body.isEmpty() ? "Open Vaultlix to see what is new." : body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setCategory(NotificationCompat.CATEGORY_PROMO)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOnlyAlertOnce(true)
+                .setAutoCancel(true)
+                .setContentIntent(contentIntent);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            builder.setSound(Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.vault_chime));
+            builder.setVibrate(new long[]{0, 180, 90, 180});
+        }
+        // Alert immediately. A remote image is an enhancement and must never
+        // be allowed to delay or suppress the notification or its sound.
+        manager.notify(notificationId, builder.build());
+        Bitmap thumbnail = downloadAnnouncementThumbnail(safe(data.get("thumbnailUrl")));
+        if (thumbnail != null) {
+            builder.setLargeIcon(thumbnail);
+            builder.setStyle(new NotificationCompat.BigPictureStyle()
+                    .bigPicture(thumbnail)
+                    .setSummaryText(body));
+            manager.notify(notificationId, builder.build());
+        }
+    }
+
+    private Bitmap downloadAnnouncementThumbnail(String value) {
+        if (value.isEmpty()) return null;
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(value);
+            if (!"https".equalsIgnoreCase(url.getProtocol()) || !"vaultlix.com".equalsIgnoreCase(url.getHost())) return null;
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(2500);
+            connection.setReadTimeout(3500);
+            connection.setInstanceFollowRedirects(false);
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) return null;
+            int length = connection.getContentLength();
+            if (length > 1024 * 1024) return null;
+            try (InputStream stream = connection.getInputStream()) {
+                return BitmapFactory.decodeStream(stream);
+            }
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
     }
 
     // Group-message equivalent of showMessageNotification above — same

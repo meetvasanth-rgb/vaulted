@@ -956,10 +956,11 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
     // system-rendered notification carries no custom data at all. Data-only +
     // a self-built notification (see showMessageNotification/
     // showGroupMessageNotification in VaultlixMessagingService) makes both
-    // reliable. Everything else routed through this function (connection
-    // requests, session-replaced notices — anything with no msgId or groupId)
-    // keeps the existing system-rendered path unchanged.
-    if (!parsed.isCall && !parsed.isCallEnd && !parsed.missedCall && !parsed.msgId && !parsed.groupId) {
+    // reliable. Capable Android builds use the same native route for app
+    // announcements; older builds keep Firebase's system-rendered path during
+    // rollout. Connection requests and session-replaced notices are unchanged.
+    const nativeAnnouncement = parsed.announcement && Number(member.announcementPushVersion) >= 1;
+    if (!parsed.isCall && !parsed.isCallEnd && !parsed.missedCall && !parsed.msgId && !parsed.groupId && (!parsed.announcement || !nativeAnnouncement)) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',
@@ -4982,7 +4983,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (d.platform === 'android') {
       const fcmToken = validateFcmToken(d.deviceToken);
       if (!fcmToken) return resErr(res, 'Invalid device token.', 400);
-      destination = { platform:'android', fcmToken, deviceHash, updatedAt:Date.now(), tone:storedMessageTone(d.tone) };
+      destination = { platform:'android', fcmToken, deviceHash, updatedAt:Date.now(), tone:storedMessageTone(d.tone), announcementPushVersion:Number(d.announcementPushVersion) >= 1 ? 1 : 0 };
     } else if (d.platform === 'ios') {
       const apnsToken = validateApnsToken(d.deviceToken);
       if (!apnsToken) return resErr(res, 'Invalid device token.', 400);
@@ -5855,6 +5856,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (!deviceToken) return resErr(res,'Invalid device token.',400);
       m.fcmToken = deviceToken;
       m.fcmTone = storedMessageTone(d.tone);
+      m.announcementPushVersion = Number(d.announcementPushVersion) >= 1 ? 1 : 0;
       delete m.tone; // the older shared field; per-platform tones replace it
     } else if (d.platform === 'ios' || !d.platform) {
       const deviceToken = validateApnsToken(d.deviceToken);
@@ -7882,7 +7884,7 @@ function hydrateAccounts(entries, source) {
         if (destination?.platform === 'android') {
           const fcmToken = validateFcmToken(destination.fcmToken);
           const deviceHash = /^[a-f0-9]{64}$/.test(destination.deviceHash || '') ? destination.deviceHash : null;
-          return fcmToken ? [{ platform:'android', fcmToken, deviceHash, updatedAt:Number(destination.updatedAt) || 0, tone:storedMessageTone(destination.tone) }] : [];
+          return fcmToken ? [{ platform:'android', fcmToken, deviceHash, updatedAt:Number(destination.updatedAt) || 0, tone:storedMessageTone(destination.tone), announcementPushVersion:Number(destination.announcementPushVersion) >= 1 ? 1 : 0 }] : [];
         }
         if (destination?.platform === 'ios') {
           const apnsToken = validateApnsToken(destination.apnsToken);
