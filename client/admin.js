@@ -364,8 +364,12 @@
   });
   $('announcement-thumbnail').addEventListener('change',async event=>{
     const file=event.target.files?.[0];announcementThumbnailDataUrl='';
-    try{announcementThumbnailDataUrl=await prepareAnnouncementThumbnail(file);$('announcement-status').textContent=file?'Custom push thumbnail ready.':'';}
-    catch(error){event.target.value='';$('announcement-status').textContent=error.message;}
+    try{
+      announcementThumbnailDataUrl=await prepareAnnouncementThumbnail(file);
+      $('announcement-thumbnail-help').textContent=file?`Ready: ${file.name}`:'Optional square image · the Vaultlix icon is the fallback';
+      $('announcement-status').textContent=file?'Custom push thumbnail ready. It will upload when you publish the update.':'';
+    }
+    catch(error){event.target.value='';$('announcement-thumbnail-help').textContent='Optional square image · the Vaultlix icon is the fallback';$('announcement-status').textContent=error.message;}
     updateAnnouncementPreview();
   });
   function updateAnnouncementPreview() {

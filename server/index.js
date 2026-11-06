@@ -3156,7 +3156,10 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
   }
   if (u.pathname === '/admin' || u.pathname === '/admin.html' || u.pathname === '/admin.js' || u.pathname === '/admin.css') {
-    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    // The announcement composer renders a selected image through a local
+    // data URL before it is submitted. Keep every remote image blocked while
+    // allowing that in-memory preview alongside same-origin admin assets.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     res.setHeader('Cache-Control', 'no-store');
   }
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
