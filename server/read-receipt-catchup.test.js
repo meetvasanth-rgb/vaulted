@@ -44,3 +44,47 @@ test('opening a restored conversation confirms both restored and background read
   assert.deepEqual(room.readConfirmIds, []);
   assert.deepEqual(room.pendingReadIds, []);
 });
+
+test('native keyboards cannot make a visible chat look inactive', () => {
+  const start = client.indexOf('function isUserActive() {');
+  const end = client.indexOf('\n}', start) + 2;
+  const source = client.slice(start, end);
+  const evaluate = ({ hidden = false, locked = false, iosKnown = false, iosActive = true, platform = null, focused = false, interactedAt = 0 } = {}) =>
+    Function('document', 'quickLockActive', 'nativeIOSLifecycleKnown', 'nativeIOSAppActive', 'nativePlatform', 'tabFocused', 'lastInteractionTime',
+      `${source}; return isUserActive();`)(
+        { hidden }, locked, iosKnown, iosActive, () => platform, focused, interactedAt,
+      );
+
+  assert.equal(evaluate({ platform:'android' }), true, 'an Android software keyboard may blur the WebView while the chat stays visible');
+  assert.equal(evaluate({ iosKnown:true, iosActive:true }), true, 'the signed iOS scene lifecycle is authoritative');
+  assert.equal(evaluate({ iosKnown:true, iosActive:false }), false);
+  assert.equal(evaluate({ hidden:true, platform:'android' }), false);
+});
+
+test('read acknowledgements stay queued until the server confirms them', async () => {
+  const start = client.indexOf('const READ_ACK_RETRY_DELAYS =');
+  const end = client.indexOf("\ndocument.addEventListener('visibilitychange'", start);
+  const source = client.slice(start, end);
+  const calls = [];
+  const room = {
+    code:'room', token:'token', pendingReadAckIds:new Set(), readAckTimer:null,
+    readAckInFlight:false, readAckAttempt:0, lastReadSeq:0, lastSeq:2, messages:[],
+  };
+  const rooms = new Map([[room.code, room]]);
+  const confirmRead = Function('fetch', 'rooms', 'persistRoomSeq', 'startReceiveDeleteTimer',
+    'AbortController', 'setTimeout', 'clearTimeout',
+    `${source}; return confirmRead;`)(
+      async (path, options) => {
+        calls.push({ path, body:JSON.parse(options.body) });
+        return { ok:true, status:200, text:async () => JSON.stringify({ ok:true }) };
+      },
+      rooms, () => {}, () => {}, AbortController, setTimeout, clearTimeout,
+    );
+
+  confirmRead(room, ['message-1']);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(calls.map(call => call.body.msgIds), [['message-1']]);
+  assert.deepEqual([...room.pendingReadAckIds], []);
+  assert.equal(room.readAckAttempt, 0);
+});

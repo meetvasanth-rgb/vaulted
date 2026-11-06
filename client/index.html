@@ -6862,7 +6862,9 @@ function makeRoom({ code, token, myName, peerName, peerNameEncrypted, peerNameFr
     // (or images) sitting in storage between sessions.
     deleteLedger: new Map(),
     seenMsgIds: new Set(),  // dedupe across overlapping polls
-    readConfirmIds: [], pendingReadIds: [], receiptCatchupTimers: [],
+    readConfirmIds: [], pendingReadIds: [], pendingReadAckIds: new Set(),
+    readAckTimer: null, readAckInFlight: false, readAckAttempt: 0,
+    receiptCatchupTimers: [],
     msgTimers: new Map(),   // msgId -> setTimeout handle (disappearing messages)
     pollInterval: null, typingInterval: null, typingTimer: null, waitInterval: null,
     isPollRunning: false,
@@ -7258,6 +7260,8 @@ function removeRoomFromState(code) {
     if (room.pollInterval) clearInterval(room.pollInterval);
     if (room.typingInterval) clearInterval(room.typingInterval);
     if (room.waitInterval) clearInterval(room.waitInterval);
+    if (room.readAckTimer) clearTimeout(room.readAckTimer);
+    clearReadReceiptCatchup(room);
     for (const h of room.msgTimers.values()) clearTimeout(h);
     disconnectSignaling(room);
     // Leaving/closing a room mid-call shouldn't leave a dangling overlay,
@@ -18491,9 +18495,63 @@ function flushPendingReads(room) {
 // via poll, regardless of whether the recipient had the room open and
 // visible. Tying it to the same moment the read receipt itself goes out
 // means "disappears after being read" actually means read, not delivered.
+const READ_ACK_RETRY_DELAYS = [700, 1800, 4000, 8000, 15000, 30000];
+const READ_ACK_REQUEST_TIMEOUT_MS = 6000;
+
+function schedulePendingReadAck(room) {
+  if (!room || room.readAckTimer || room.readAckInFlight || room.pendingReadAckIds.size === 0) return;
+  const delay = READ_ACK_RETRY_DELAYS[Math.min(room.readAckAttempt, READ_ACK_RETRY_DELAYS.length - 1)];
+  room.readAckAttempt += 1;
+  room.readAckTimer = setTimeout(() => {
+    room.readAckTimer = null;
+    sendPendingReadAcks(room);
+  }, delay);
+}
+
+async function postReadAck(room, msgIds, signal) {
+  const response = await fetch('/api/read', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body:JSON.stringify({ code:room.code, token:room.token, msgIds }),
+    signal,
+  });
+  const responseText = await response.text();
+  let body;
+  try { body = responseText ? JSON.parse(responseText) : {}; }
+  catch (error) { body = { error:'Vaultlix returned an unreadable response' }; }
+  if (!response.ok && body && typeof body === 'object') body.status = response.status;
+  return body;
+}
+
+async function sendPendingReadAcks(room) {
+  if (!room || room.readAckInFlight || room.pendingReadAckIds.size === 0 || rooms.get(room.code) !== room) return;
+  room.readAckInFlight = true;
+  const msgIds = [...room.pendingReadAckIds];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), READ_ACK_REQUEST_TIMEOUT_MS);
+  try {
+    const result = await postReadAck(room, msgIds, controller.signal);
+    if (result?.ok) {
+      for (const id of msgIds) room.pendingReadAckIds.delete(id);
+      room.readAckAttempt = 0;
+    } else if (result?.status === 403 || result?.status === 404) {
+      room.pendingReadAckIds.clear();
+    }
+  } catch (error) {
+    // A mobile handoff or a busy conversation lock can interrupt this small
+    // idempotent request. The same ids remain queued for the bounded retry.
+  } finally {
+    clearTimeout(timeout);
+    room.readAckInFlight = false;
+    if (room.pendingReadAckIds.size) schedulePendingReadAck(room);
+  }
+}
+
 function confirmRead(room, msgIds) {
   if (!msgIds || !msgIds.length) return;
-  api('/api/read', { code: room.code, token: room.token, msgIds }).catch(() => {});
+  if (!room.pendingReadAckIds) room.pendingReadAckIds = new Set();
+  for (const id of msgIds) room.pendingReadAckIds.add(id);
+  if (typeof sendPendingReadAcks === 'function') sendPendingReadAcks(room);
   // lastSeq has already advanced past every envelope being acknowledged.
   // Persisting it here gives unread reconstruction a device-local truth even
   // for legacy server messages whose readAt was never recorded.
@@ -18536,11 +18594,28 @@ window.addEventListener('blur', () => { tabFocused = false; });
 window.addEventListener('pageshow', (e) => { if (e.persisted) resumeForegroundWork(); });
 
 ['click','keydown','pointerdown','touchstart','touchmove','wheel','scroll'].forEach(evt => {
-  document.addEventListener(evt, () => { lastInteractionTime = Date.now(); }, { passive: true });
+  document.addEventListener(evt, () => {
+    lastInteractionTime = Date.now();
+    // A visible iOS WebView may emit window blur while its software keyboard
+    // is open. Any real interaction inside the open conversation proves the
+    // user is present, so release read confirmations that were conservatively
+    // queued during that false blur instead of waiting for a later focus event.
+    const room = getActiveRoom();
+    if (!document.hidden && !quickLockActive && isRoomVisible(room) && room.pendingReadIds.length) {
+      queueMicrotask(() => flushPendingReads(room));
+    }
+  }, { passive: true });
 });
 
 function isUserActive() {
-  if (document.hidden) return false;
+  if (document.hidden || quickLockActive) return false;
+  // The signed iOS wrapper reports the real scene lifecycle. Treat that as
+  // authoritative because keyboard presentation can blur WKWebView without
+  // taking the app or its visible chat off screen.
+  if (nativeIOSLifecycleKnown) return nativeIOSAppActive;
+  // Android WebView can likewise lose window focus to the system keyboard.
+  // A non-hidden, unlocked native surface is still the foreground chat.
+  if (nativePlatform() === 'android') return true;
   if (tabFocused) return true;
   return (Date.now() - lastInteractionTime) < 5000;
 }
