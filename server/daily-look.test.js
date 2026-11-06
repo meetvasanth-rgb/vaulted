@@ -95,7 +95,7 @@ test('status creation can return a generated Daily Look into preview before audi
   assert.match(client, /onclick="openDailyLookForStatus\(\)">Create Portrait<\/button>/);
   assert.match(client, /function openDailyLookForStatus\(\)[\s\S]*openDailyLook\(\{ destination:'status' \}\)/);
   assert.match(client, /id="daily-look-use-status"[^>]*onclick="useDailyLookInStatus\(\)"[^>]*hidden/);
-  assert.match(client, /async function useDailyLookInStatus\(\)[\s\S]*dailyLookProfileImage\(\)[\s\S]*statusComposerImage = image/);
+  assert.match(client, /async function useDailyLookInStatus\(\)[\s\S]*dailyLookStatusImage\(\)[\s\S]*statusComposerImage = image/);
   assert.doesNotMatch(client, /allowLocalImageSend|checkLocalImages|localImageSafetyEnabled/);
   assert.match(client, /statusComposerImage = image[\s\S]*status-image-preview[\s\S]*preview\.hidden = false/);
   assert.match(client, /dailyLookDestination === 'status'[\s\S]*status-composer/);

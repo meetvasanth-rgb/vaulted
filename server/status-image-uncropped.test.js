@@ -98,6 +98,14 @@ test('the status composer uses it, and the profile picture still uses the square
   assert.match(client, /canvas\.width = 512; canvas\.height = 512;/);
 });
 
+test('a Portrait Studio result keeps its full frame when added directly to status', () => {
+  const statusImage = client.slice(client.indexOf('async function dailyLookStatusImage'), client.indexOf('async function useDailyLookAsProfile'));
+  const useInStatus = client.slice(client.indexOf('async function useDailyLookInStatus'), client.indexOf('function downloadDailyLook'));
+  assert.match(statusImage, /return compressStatusImage\(/);
+  assert.doesNotMatch(statusImage, /compressProfileImage/);
+  assert.match(useInStatus, /await dailyLookStatusImage\(\)/);
+});
+
 test('the viewer shows the whole image (contain), the same as video', () => {
   assert.match(client, /\.status-stage>img,\.status-stage>video\{[^}]*object-fit:contain/);
 });
