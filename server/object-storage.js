@@ -78,13 +78,13 @@ class EncryptedObjectStorage {
     return Number(result.ContentLength || 0);
   }
 
-  async put(key, body) {
+  async put(key, body, options = {}) {
     await this.client.send(new PutObjectCommand({
       Bucket:this.bucket,
       Key:key,
       Body:body,
-      ContentType:'application/octet-stream',
-      CacheControl:'private, no-store',
+      ContentType:options.contentType || 'application/octet-stream',
+      CacheControl:options.cacheControl || 'private, no-store',
     }));
   }
 

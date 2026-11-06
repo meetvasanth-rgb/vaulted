@@ -68,6 +68,39 @@ CREATE TABLE IF NOT EXISTS account_bundle_history (
 CREATE INDEX IF NOT EXISTS account_bundle_history_recent_idx
   ON account_bundle_history(account_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS admin_announcements (
+  announcement_id uuid PRIMARY KEY,
+  title varchar(60) NOT NULL,
+  body varchar(180) NOT NULL,
+  platform varchar(16) NOT NULL CHECK (platform IN ('all', 'ios', 'android')),
+  audience varchar(16) NOT NULL CHECK (audience IN ('test', 'all')),
+  thumbnail_object_key text,
+  media_object_key text,
+  media_type varchar(16) CHECK (media_type IS NULL OR media_type IN ('image', 'video')),
+  view_once boolean NOT NULL DEFAULT true,
+  expires_after_ms bigint NOT NULL DEFAULT 43200000,
+  scheduled_at bigint NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'sent', 'failed')),
+  created_at bigint NOT NULL,
+  claimed_at bigint,
+  sent_at bigint,
+  targeted integer,
+  delivered integer,
+  failed integer
+);
+CREATE INDEX IF NOT EXISTS admin_announcements_due_idx
+  ON admin_announcements(status, scheduled_at);
+ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS media_object_key text;
+ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS media_type varchar(16);
+ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS view_once boolean NOT NULL DEFAULT true;
+ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS expires_after_ms bigint NOT NULL DEFAULT 43200000;
+CREATE TABLE IF NOT EXISTS admin_announcement_views (
+  announcement_id uuid NOT NULL REFERENCES admin_announcements(announcement_id) ON DELETE CASCADE,
+  account_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
+  viewed_at bigint NOT NULL,
+  PRIMARY KEY (announcement_id, account_id)
+);
+
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS profile_share_code char(6);
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS inbox_key jsonb;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS request_policy varchar(8) NOT NULL DEFAULT 'anyone';
@@ -427,6 +460,81 @@ class PostgresStore {
       [accountId, isTestAccount === true],
     );
     return result.rowCount === 1;
+  }
+
+  async scheduleAdminAnnouncement(record) {
+    if (!this.enabled) return false;
+    const { rowCount } = await this.pool.query(`INSERT INTO admin_announcements (
+      announcement_id,title,body,platform,audience,thumbnail_object_key,media_object_key,media_type,
+      view_once,expires_after_ms,scheduled_at,status,created_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
+      record.id, record.title, record.body, record.platform, record.audience,
+      record.thumbnailObjectKey || null, record.mediaObjectKey || null, record.mediaType || null,
+      record.viewOnce !== false, record.expiresAfterMs, record.scheduledAt,
+      record.status || 'pending', record.createdAt,
+    ]);
+    return rowCount === 1;
+  }
+
+  async claimDueAdminAnnouncements(now = Date.now(), limit = 10) {
+    if (!this.enabled) return [];
+    const retryBefore = now - 5 * 60 * 1000;
+    const { rows } = await this.pool.query(`UPDATE admin_announcements SET status='sending',claimed_at=$1
+      WHERE announcement_id IN (
+        SELECT announcement_id FROM admin_announcements
+        WHERE scheduled_at <= $1 AND (status='pending' OR (status='sending' AND claimed_at <= $2))
+        ORDER BY scheduled_at FOR UPDATE SKIP LOCKED LIMIT $3
+      ) RETURNING *`, [now, retryBefore, Math.max(1, Math.min(25, Number(limit) || 10))]);
+    return rows.map(row => ({
+      id:row.announcement_id, title:row.title, body:row.body,
+      platform:row.platform, audience:row.audience,
+      thumbnailObjectKey:row.thumbnail_object_key || null,
+      mediaObjectKey:row.media_object_key || null,
+      mediaType:row.media_type || null,
+      viewOnce:row.view_once !== false,
+      expiresAfterMs:Number(row.expires_after_ms || 43200000),
+      scheduledAt:Number(row.scheduled_at),
+    }));
+  }
+
+  async completeAdminAnnouncement(id, result, sentAt = Date.now()) {
+    if (!this.enabled) return;
+    await this.pool.query(`UPDATE admin_announcements SET status='sent',sent_at=$2,
+      targeted=$3,delivered=$4,failed=$5 WHERE announcement_id=$1`, [
+      id, sentAt, result.targeted, result.delivered, result.failed,
+    ]);
+  }
+
+  async failAdminAnnouncement(id) {
+    if (!this.enabled) return;
+    await this.pool.query("UPDATE admin_announcements SET status='failed' WHERE announcement_id=$1", [id]);
+  }
+
+  async listRecentAdminAnnouncements({ accountId, platform, isTestAccount, now = Date.now(), limit = 10 }) {
+    if (!this.enabled) return [];
+    const { rows } = await this.pool.query(`SELECT * FROM admin_announcements
+      WHERE status='sent' AND sent_at IS NOT NULL AND sent_at + expires_after_ms > $1
+        AND (platform='all' OR platform=$2)
+        AND (audience='all' OR ($3::boolean AND audience='test'))
+        AND (view_once=false OR NOT EXISTS (SELECT 1 FROM admin_announcement_views v
+          WHERE v.announcement_id=admin_announcements.announcement_id AND v.account_id=$4))
+      ORDER BY sent_at DESC LIMIT $5`, [now, platform, isTestAccount === true, accountId, Math.max(1, Math.min(20, Number(limit) || 10))]);
+    return rows.map(row => ({
+      id:row.announcement_id, title:row.title, body:row.body,
+      mediaObjectKey:row.media_object_key || null, mediaType:row.media_type || null,
+      thumbnailObjectKey:row.thumbnail_object_key || null,
+      viewOnce:row.view_once !== false, sentAt:Number(row.sent_at),
+      expiresAt:Number(row.sent_at) + Number(row.expires_after_ms || 43200000),
+    }));
+  }
+
+  async markAdminAnnouncementViewed(id, accountId, viewedAt = Date.now()) {
+    if (!this.enabled) return false;
+    const { rowCount } = await this.pool.query(`INSERT INTO admin_announcement_views (announcement_id,account_id,viewed_at)
+      SELECT announcement_id,$2,$3 FROM admin_announcements
+      WHERE announcement_id=$1 AND status='sent' AND sent_at + expires_after_ms > $3
+      ON CONFLICT (announcement_id,account_id) DO NOTHING`, [id, accountId, viewedAt]);
+    return rowCount === 1;
   }
 
   async savePrivateInvites(accountId, privateInvites, queryClient = this.pool) {

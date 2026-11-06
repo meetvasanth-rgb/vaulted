@@ -63,6 +63,7 @@ function filteredIds({ privateGroups, rooms, query }) {
   const context = {
     roomConcealed: () => false, hiddenChatsUnlocked: false,
     privateGroups, rooms, vaultSearchActive: true, vaultSearchQuery: query.trim().toLowerCase(),
+    latestVaultlixUpdate: null,
     vaultLastActivity: () => 0,
     syncAchievementActivityFromMessages: () => {},
     roomDisplayLabel: room => room.peerDisplayName || '',
@@ -71,7 +72,7 @@ function filteredIds({ privateGroups, rooms, query }) {
     statusFeed: [],
     normalizePrivateNumber: value => value,
     pendingIncomingConnections: [], pendingOutgoingConnections: [],
-    requestHtml: '', outgoingRequestHtml: '', requestsRowHtml: () => '', avatarOfferHtml: () => '', inviteCardHtml: () => '', dailyLookNudgeHtml: () => '', refreshDailyLookNudge: () => Promise.resolve(),
+    requestHtml: '', outgoingRequestHtml: '', requestsRowHtml: () => '', avatarOfferHtml: () => '', inviteCardHtml: () => '', dailyLookNudgeHtml: () => '', vaultlixUpdateRowHtml: () => '', availableVaultlixUpdates: () => [], refreshDailyLookNudge: () => Promise.resolve(),
     result: null,
   };
   vm.createContext(context);

@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v241';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v242';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
@@ -163,6 +163,7 @@ self.addEventListener('push', (event) => {
   const body = data.body || 'New message';
   const tag = data.tag || 'vaultlix-message';
   const isCall = !!data.isCall;
+  const isAnnouncement = !!data.announcement;
   const sessionReplaced = !!data.sessionReplaced;
 
   event.waitUntil((async () => {
@@ -250,6 +251,8 @@ self.addEventListener('push', (event) => {
         groupId: data.groupId || null,
         sessionReplaced,
         accountId: sessionReplaced ? (data.accountId || null) : null,
+        announcement: isAnnouncement,
+        updateId: isAnnouncement ? (data.updateId || null) : null,
       },
     });
 
@@ -312,6 +315,8 @@ self.addEventListener('notificationclick', (event) => {
   const groupId = (event.notification.data && event.notification.data.groupId) || null;
   const sessionReplaced = !!(event.notification.data && event.notification.data.sessionReplaced);
   const accountId = (event.notification.data && event.notification.data.accountId) || null;
+  const announcement = !!(event.notification.data && event.notification.data.announcement);
+  const updateId = (event.notification.data && event.notification.data.updateId) || null;
   event.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     if (clientsList.length > 0) {
@@ -326,6 +331,7 @@ self.addEventListener('notificationclick', (event) => {
       // code and applies it once that finishes instead of dropping it.
       if ('postMessage' in c) {
         if (sessionReplaced) c.postMessage({ type:'session-replaced', accountId });
+        else if (announcement) c.postMessage({ type:'vaultlix-update-click', updateId });
         else if (connectionRequest) c.postMessage({ type:'connection-request-click', requestId });
         else if (privateGroup) c.postMessage({ type:'private-group-click', groupId });
         else if (code) c.postMessage({ type: 'notification-click', code });
@@ -344,6 +350,7 @@ self.addEventListener('notificationclick', (event) => {
         return self.clients.openWindow(requestId ? `/?connectionRequest=${encodeURIComponent(requestId)}` : '/?connectionRequest=pending');
       }
       if (privateGroup) return self.clients.openWindow(groupId ? `/?group=${encodeURIComponent(groupId)}` : '/');
+      if (announcement) return self.clients.openWindow(updateId ? `/?update=${encodeURIComponent(updateId)}` : '/?update=1');
       return self.clients.openWindow(code ? `/?room=${encodeURIComponent(code)}` : '/');
     }
   })());

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload } = require('./admin-announcements');
+const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload, decodeAnnouncementMedia, validateAnnouncementExperience } = require('./admin-announcements');
 
 test('announcement validation protects an all-user broadcast and normalizes copy', () => {
   assert.match(validateAnnouncement({}).error, /title/i);
@@ -22,12 +22,22 @@ test('announcement targets are restricted by audience and platform and deduplica
 });
 
 test('announcement payload is display-only and carries no conversation data', () => {
-  const payload = buildAnnouncementPayload({ title:'Vaultlix update', body:'A faster app is ready.' });
+  const payload = buildAnnouncementPayload({ id:'56fdc337-4d75-4eaf-9022-74b85945e86a', title:'Vaultlix update', body:'A faster app is ready.' });
   assert.equal(payload.announcement, true);
+  assert.equal(payload.updateId, '56fdc337-4d75-4eaf-9022-74b85945e86a');
   assert.equal(payload.thumbnailUrl, 'https://vaultlix.com/icons/icon-192.png');
   assert.match(payload.tag, /^vaultlix-update-/);
   assert.equal(payload.code, undefined);
   assert.equal(payload.msgId, undefined);
+});
+
+test('ephemeral update options and media are validated before storage', () => {
+  assert.deepEqual(validateAnnouncementExperience({ viewOnce:true, expiryHours:12 }).value, { viewOnce:true, expiryHours:12 });
+  assert.match(validateAnnouncementExperience({ expiryHours:0 }).error, /expiry/i);
+  const media = decodeAnnouncementMedia(`data:video/mp4;base64,${Buffer.from('small-video').toString('base64')}`);
+  assert.equal(media.value.kind, 'video');
+  assert.equal(media.value.contentType, 'video/mp4');
+  assert.match(decodeAnnouncementMedia('data:text/html;base64,PGgxPg==').error, /JPEG|PNG|WebP|MP4/);
 });
 
 test('announcement endpoint requires admin authentication and never defaults to all users', { timeout:15000 }, async t => {
@@ -61,9 +71,13 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   const html = require('node:fs').readFileSync('client/admin.html', 'utf8');
   const script = require('node:fs').readFileSync('client/admin.js', 'utf8');
   assert.match(html, /id="announcement-form"/);
-  assert.match(html, /class="announcement-icon" src="\/icons\/icon-192\.png"/);
-  assert.match(html, /Thumbnail included/);
+  assert.match(html, /id="announcement-preview-icon" class="announcement-icon" src="\/icons\/icon-192\.png"/);
+  assert.match(html, /id="announcement-thumbnail"/);
+  assert.match(html, /id="announcement-media"/);
+  assert.match(html, /id="announcement-view-once"[^>]+checked/);
+  assert.match(html, /id="announcement-expiry"/);
+  assert.match(html, /id="announcement-schedule-enabled"/);
   assert.match(html, /<option value="test">Test accounts<\/option><option value="all">/);
-  assert.match(script, /confirm\('Send this announcement now to every opted-in Vaultlix app device/);
+  assert.match(script, /Schedule.*Publish.*update for every opted-in Vaultlix app device/s);
   assert.match(script, /fetch\('\/api\/admin\/announcements'/);
 });

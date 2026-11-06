@@ -59,19 +59,26 @@
         <div id="allocate-result" hidden><label for="allocate-link">Private claim link</label><input id="allocate-link" type="text" readonly style="width:100%;box-sizing:border-box"><canvas id="allocate-qr" aria-label="Private number claim QR code" role="img" style="display:block;max-width:100%;margin:16px 0"></canvas><button id="allocate-save-qr" type="button">Save QR code</button><button id="allocate-copy" type="button">Copy claim link</button><p class="micro">Share privately with your friend. Anyone holding this link or QR code can claim the number. Your friend chooses their own password and recovery details. Copy the link now; it is not shown again after sign-out or refresh.</p></div>
       </section>
       <section class="panel announcement-panel" aria-labelledby="announcement-title-heading">
-        <div class="panel-head"><div><p class="eyebrow">App announcements</p><h2 id="announcement-title-heading">Compose and send</h2><p class="panel-copy">Send a short update to opted-in Vaultlix app devices. Start with test accounts, check the result, then choose all users. Tapping opens Vaultlix.</p></div><span class="health-pill">Push</span></div>
+        <div class="panel-head"><div><p class="eyebrow">Vaultlix Updates</p><h2 id="announcement-title-heading">Compose and publish</h2><p class="panel-copy">Publish an ephemeral update inside the inbox and alert opted-in devices. Add an image or short video, choose whether it opens once, and set when it expires.</p></div><span class="health-pill">Inbox + push</span></div>
         <form id="announcement-form" class="announcement-form">
           <div class="announcement-fields">
             <label>Title<input id="announcement-title" maxlength="60" value="Vaultlix update" required></label>
             <label>Message<textarea id="announcement-body" maxlength="180" rows="3" placeholder="Tell users what is new and why they should open Vaultlix." required></textarea></label>
+            <div class="announcement-media-grid">
+              <label>Update media<input id="announcement-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4"><small>Optional image or MP4 video · up to 8 MB</small></label>
+              <label>Push thumbnail<input id="announcement-thumbnail" type="file" accept="image/jpeg,image/png,image/webp"><small>Optional square image · the Vaultlix icon is the fallback</small></label>
+            </div>
             <div class="announcement-options">
               <label>Audience<select id="announcement-audience"><option value="test">Test accounts</option><option value="all">All opted-in users</option></select></label>
               <label>Platform<select id="announcement-platform"><option value="all">iOS and Android</option><option value="ios">iOS only</option><option value="android">Android only</option></select></label>
-              <label>Tap destination<select disabled><option>Open Vaultlix</option></select></label>
+              <label>Expiry<select id="announcement-expiry"><option value="1">1 hour</option><option value="6">6 hours</option><option value="12" selected>12 hours</option><option value="24">24 hours</option><option value="48">48 hours</option><option value="custom">Custom</option></select></label>
             </div>
+            <label id="announcement-custom-expiry-wrap" hidden>Custom expiry (hours)<input id="announcement-custom-expiry" type="number" min="1" max="168" step="1" value="12"></label>
+            <div class="announcement-toggle-row"><label><input id="announcement-view-once" type="checkbox" checked> Open once, then remove from the inbox</label><label><input id="announcement-schedule-enabled" type="checkbox"> Schedule for later</label></div>
+            <label id="announcement-schedule-wrap" hidden>Publish time<input id="announcement-scheduled-at" type="datetime-local"></label>
           </div>
-          <aside class="announcement-preview" aria-label="Notification preview"><img class="announcement-icon" src="/icons/icon-192.png" alt="Vaultlix notification thumbnail"><div><small>Vaultlix · now</small><strong id="announcement-preview-title">Vaultlix update</strong><p id="announcement-preview-body">Your message preview appears here.</p><span class="announcement-thumbnail-note">Thumbnail included</span></div></aside>
-          <div class="announcement-actions"><button id="announcement-submit" type="submit">Send to test accounts</button><span id="announcement-counter">0 / 180</span></div>
+          <aside class="announcement-preview" aria-label="Notification preview"><img id="announcement-preview-icon" class="announcement-icon" src="/icons/icon-192.png" alt="Vaultlix notification thumbnail"><div><small id="announcement-preview-time">Vaultlix · now</small><strong id="announcement-preview-title">Vaultlix update</strong><p id="announcement-preview-body">Your message preview appears here.</p><span id="announcement-preview-note" class="announcement-thumbnail-note">Opens once · expires in 12 hours</span></div></aside>
+          <div class="announcement-actions"><button id="announcement-submit" type="submit">Publish to test accounts</button><span id="announcement-counter">0 / 180</span></div>
         </form>
         <p id="announcement-status" class="announcement-status" role="status"></p>
       </section>

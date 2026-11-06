@@ -30,7 +30,7 @@ const { RealtimeCoordinator, opaqueRouteId } = require('./realtime-coordinator')
 const { EncryptedObjectStorage } = require('./object-storage');
 const { HeadBucketCommand } = require('@aws-sdk/client-s3');
 const { createHealthMonitor } = require('./system-health');
-const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload } = require('./admin-announcements');
+const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload, decodeAnnouncementThumbnail, decodeAnnouncementMedia, validateAnnouncementExperience } = require('./admin-announcements');
 const {
   NUMBER_TIERS,
   normalizePrivateNumber:normalizePrivateNumberPolicy,
@@ -121,6 +121,29 @@ const realtimeCoordinator = new RealtimeCoordinator({ url:process.env.REDIS_URL 
 const objectStorage = new EncryptedObjectStorage();
 let postgresEnabled = false;
 let objectStorageEnabled = false;
+let adminAnnouncementTimer = null;
+const ANNOUNCEMENT_THUMBNAIL_LIFETIME_MS = 49 * 60 * 60 * 1000;
+const ANNOUNCEMENT_SCHEDULE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+function announcementThumbnailKey(id) {
+  return `admin-announcements/${id}.png`;
+}
+
+function announcementThumbnailSignature(id, expiresAt) {
+  return crypto.createHmac('sha256', ADMIN_KEY).update(`${id}.${expiresAt}`).digest('base64url');
+}
+
+function announcementThumbnailUrl(id, expiresAt = Date.now() + ANNOUNCEMENT_THUMBNAIL_LIFETIME_MS) {
+  const sig = announcementThumbnailSignature(id, expiresAt);
+  return `https://vaultlix.com/api/announcement-thumbnail?id=${encodeURIComponent(id)}&exp=${expiresAt}&sig=${encodeURIComponent(sig)}`;
+}
+
+function validAnnouncementThumbnailRequest(id, expiresAt, signature) {
+  if (!ADMIN_KEY || !/^[a-f0-9-]{36}$/i.test(id) || !Number.isSafeInteger(expiresAt) || expiresAt < Date.now()) return false;
+  const expected = Buffer.from(announcementThumbnailSignature(id, expiresAt));
+  const actual = Buffer.from(String(signature || ''));
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
 let providerStatusCache;
 const getSystemHealth = createHealthMonitor({ checks:[
   { id:'app', name:'Railway application', run:async()=>({status:'healthy',detail:'This application instance is responding.', uptimeSeconds:Math.floor(process.uptime()), version:String(process.env.RAILWAY_GIT_COMMIT_SHA || 'local').slice(0,12), memoryMB:Math.round(process.memoryUsage().rss/1048576)}) },
@@ -832,6 +855,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     sessionReplaced: !!parsed.sessionReplaced,
     accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
     announcement: !!parsed.announcement,
+    updateId: parsed.announcement ? String(parsed.updateId || '') : '',
     thumbnailUrl: parsed.announcement ? String(parsed.thumbnailUrl || '') : '',
   });
   return new Promise((resolve) => {
@@ -909,6 +933,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
         accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
         announcement: parsed.announcement ? 'true' : 'false',
+        updateId: parsed.announcement ? String(parsed.updateId || '') : '',
         thumbnailUrl: parsed.announcement ? String(parsed.thumbnailUrl || '') : '',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
@@ -958,6 +983,76 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
       console.warn(`FCM send failed: ${e.code || e.message}`);
     }
     return false;
+  }
+}
+
+async function storeAnnouncementThumbnail(bytes) {
+  if (!bytes) return null;
+  if (!objectStorageEnabled) throw new Error('Thumbnail storage is unavailable.');
+  const image = await sharp(bytes, { limitInputPixels:20 * 1000 * 1000 })
+    .rotate()
+    .resize(512, 512, { fit:'cover', position:'centre', withoutEnlargement:true })
+    .png({ compressionLevel:9, quality:90 })
+    .toBuffer();
+  if (!image.length || image.length > 700 * 1024) throw new Error('The thumbnail could not be reduced enough.');
+  const id = crypto.randomUUID();
+  const objectKey = announcementThumbnailKey(id);
+  await objectStorage.put(objectKey, image, { contentType:'image/png', cacheControl:'private, no-store' });
+  return { objectKey };
+}
+
+async function storeAnnouncementMedia(media) {
+  if (!media) return null;
+  if (!objectStorageEnabled) throw new Error('Update media storage is unavailable.');
+  let bytes = media.bytes;
+  let contentType = media.contentType;
+  let extension = contentType === 'video/mp4' ? 'mp4' : 'jpg';
+  if (media.kind === 'image') {
+    bytes = await sharp(bytes, { limitInputPixels:30 * 1000 * 1000 })
+      .rotate().resize(1600, 1600, { fit:'inside', withoutEnlargement:true })
+      .jpeg({ quality:88, mozjpeg:true }).toBuffer();
+    contentType = 'image/jpeg';
+    extension = 'jpg';
+  }
+  const objectKey = `admin-updates/${crypto.randomUUID()}.${extension}`;
+  await objectStorage.put(objectKey, bytes, { contentType, cacheControl:'private, no-store' });
+  return { objectKey, mediaType:media.kind };
+}
+
+function announcementThumbnailUrlForKey(objectKey, lifetimeMs = ANNOUNCEMENT_THUMBNAIL_LIFETIME_MS) {
+  const match = /^admin-announcements\/([a-f0-9-]{36})\.png$/i.exec(String(objectKey || ''));
+  return match ? announcementThumbnailUrl(match[1], Date.now() + Math.max(ANNOUNCEMENT_THUMBNAIL_LIFETIME_MS, Number(lifetimeMs) || 0)) : undefined;
+}
+
+async function deliverAdminAnnouncement(record) {
+  const targets = selectAnnouncementTargets(accounts, record);
+  const thumbnailUrl = announcementThumbnailUrlForKey(record.thumbnailObjectKey, record.expiresAfterMs);
+  const sentAt = Date.now();
+  const encoded = JSON.stringify(buildAnnouncementPayload({
+    ...record, thumbnailUrl, expiresAt:sentAt + Number(record.expiresAfterMs || 12 * 60 * 60 * 1000),
+  }));
+  const results = await Promise.all(targets.map(async ({ destination }) => {
+    const ttlSeconds=Math.max(60,Math.floor(Number(record.expiresAfterMs || 12 * 60 * 60 * 1000)/1000));
+    if (destination.platform === 'ios') return sendApnsNotification(destination, encoded, ttlSeconds);
+    return sendFcmNotification(destination, encoded, ttlSeconds);
+  }));
+  const delivered = results.filter(Boolean).length;
+  const ios = targets.filter(target => target.destination.platform === 'ios').length;
+  return { targeted:targets.length, delivered, failed:targets.length - delivered, ios, android:targets.length - ios, sentAt };
+}
+
+async function processScheduledAdminAnnouncements() {
+  if (!postgresEnabled) return;
+  const due = await postgresStore.claimDueAdminAnnouncements(Date.now(), 10);
+  for (const announcement of due) {
+    try {
+      const result = await deliverAdminAnnouncement(announcement);
+      await postgresStore.completeAdminAnnouncement(announcement.id, result, result.sentAt);
+      console.log(`Scheduled admin announcement: id=${announcement.id} targeted=${result.targeted} delivered=${result.delivered}`);
+    } catch (error) {
+      await postgresStore.failAdminAnnouncement(announcement.id).catch(() => {});
+      console.error(`Scheduled admin announcement failed: id=${announcement.id} error=${error.message}`);
+    }
   }
 }
 
@@ -2962,6 +3057,7 @@ const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_PROFILE = 384 * 1024;
 const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_STATUS = 8 * 1024 * 1024;
+const BODY_LIMIT_ADMIN_ANNOUNCEMENT = 12 * 1024 * 1024;
 const BODY_LIMIT_DEFAULT = 8 * 1024;
 const ACCOUNT_BUNDLE_MAX_BYTES = 8 * 1024 * 1024;
 const BODY_LIMIT_ACCOUNT_BUNDLE_AUTHENTICATED = ACCOUNT_BUNDLE_MAX_BYTES + 256 * 1024;
@@ -2981,6 +3077,13 @@ function bodyLimitFor(pathname, req) {
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
   if (pathname === '/api/account/daily-look' || pathname === '/api/account/avatar-suggest') return BODY_LIMIT_DAILY_LOOK;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
+  if (pathname === '/api/admin/announcements') {
+    const authorization=String(req?.headers?.authorization || '');
+    const key=authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+    const supplied=Buffer.from(key),expected=Buffer.from(ADMIN_KEY);
+    const authenticated=ADMIN_KEY && supplied.length===expected.length && crypto.timingSafeEqual(supplied,expected);
+    return authenticated ? BODY_LIMIT_ADMIN_ANNOUNCEMENT : BODY_LIMIT_DEFAULT;
+  }
   return pathname === '/api/send' ? BODY_LIMIT_SEND : BODY_LIMIT_DEFAULT;
 }
 
@@ -3178,6 +3281,64 @@ async function dispatchApi(path, method, d, p, res, ip, headers) {
 }
 
 async function api(path, method, d, p, res, ip, headers, transactionClient = null) {
+  if (path === '/api/announcement-thumbnail' && method === 'GET') {
+    const id = String(p.get('id') || '');
+    const expiresAt = Number(p.get('exp'));
+    if (!objectStorageEnabled || !validAnnouncementThumbnailRequest(id, expiresAt, p.get('sig'))) {
+      res.writeHead(404); res.end(); return;
+    }
+    try {
+      const object = await objectStorage.open(announcementThumbnailKey(id));
+      const size = Number(object.ContentLength || 0);
+      const body = object.Body;
+      if (!Number.isSafeInteger(size) || size < 1 || size > 700 * 1024 || !body || typeof body.pipe !== 'function') {
+        body?.destroy?.(); res.writeHead(404); res.end(); return;
+      }
+      res.writeHead(200, {
+        'Content-Type':'image/png',
+        'Content-Length':String(size),
+        'Cache-Control':`public, max-age=${Math.max(0, Math.min(86400, Math.floor((expiresAt - Date.now()) / 1000)))}`,
+      });
+      body.once('error', () => res.destroy());
+      res.once('close', () => body.destroy?.());
+      body.pipe(res);
+      return;
+    } catch (_) {
+      if (!res.headersSent) { res.writeHead(404); res.end(); }
+      else res.destroy();
+      return;
+    }
+  }
+
+  if (path === '/api/account/updates' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Sign in again to load Vaultlix updates.', 401);
+    if (!postgresEnabled) return res200(res, { updates:[] });
+    const platform = ['ios','android','web'].includes(d.platform) ? d.platform : 'web';
+    const records = await postgresStore.listRecentAdminAnnouncements({
+      accountId:d.accountId, platform, isTestAccount:account.isTestAccount === true, now:Date.now(), limit:10,
+    });
+    const updates = await Promise.all(records.map(async record => ({
+      id:record.id, title:record.title, body:record.body,
+      mediaType:record.mediaType, viewOnce:record.viewOnce,
+      sentAt:record.sentAt, expiresAt:record.expiresAt,
+      mediaUrl:record.mediaObjectKey && objectStorageEnabled
+        ? await objectStorage.createDownloadUrl(record.mediaObjectKey).catch(() => '') : '',
+      thumbnailUrl:record.thumbnailObjectKey && objectStorageEnabled
+        ? await objectStorage.createDownloadUrl(record.thumbnailObjectKey).catch(() => '') : '',
+    })));
+    res.setHeader('Cache-Control','no-store');
+    return res200(res, { updates });
+  }
+
+  if (path === '/api/account/updates/view' && method === 'POST') {
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Sign in again to open this Vaultlix update.', 401);
+    if (!/^[a-f0-9-]{36}$/i.test(String(d.updateId || ''))) return resErr(res, 'Update unavailable.', 400);
+    if (postgresEnabled) await postgresStore.markAdminAnnouncementViewed(String(d.updateId), d.accountId);
+    return res200(res, { ok:true });
+  }
+
   // A moderator restriction covers existing sessions and room bearer tokens,
   // not only new friend requests.
   if (validAccountId(d.accountId) &&
@@ -6315,20 +6476,51 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       res.setHeader('Cache-Control','no-store');
       const checked = validateAnnouncement(d);
       if (checked.error) return resErr(res, checked.error, 400);
+      const decodedThumbnail = decodeAnnouncementThumbnail(d.thumbnailDataUrl);
+      if (decodedThumbnail.error) return resErr(res, decodedThumbnail.error, 400);
+      const decodedMedia = decodeAnnouncementMedia(d.mediaDataUrl);
+      if (decodedMedia.error) return resErr(res, decodedMedia.error, 400);
+      const experience = validateAnnouncementExperience(d);
+      if (experience.error) return resErr(res, experience.error, 400);
+      let scheduledAt = null;
+      if (d.scheduledAt !== undefined && d.scheduledAt !== null && d.scheduledAt !== '') {
+        scheduledAt = Date.parse(String(d.scheduledAt));
+        if (!Number.isFinite(scheduledAt) || scheduledAt < Date.now() + 60 * 1000) {
+          return resErr(res, 'Choose a notification time at least one minute from now.', 400);
+        }
+        if (scheduledAt > Date.now() + ANNOUNCEMENT_SCHEDULE_MAX_MS) {
+          return resErr(res, 'Schedule notifications no more than 30 days ahead.', 400);
+        }
+        if (!postgresEnabled) return resErr(res, 'Notification scheduling is temporarily unavailable.', 503);
+      }
       if (await rateLimited(`admin-announcement:${checked.value.audience}`, checked.value.audience === 'all' ? 6 : 30, 60 * 60 * 1000)) {
         return resErr(res, 'Announcement sending limit reached. Try again later.', 429);
       }
-      const targets = selectAnnouncementTargets(accounts, checked.value);
-      const encoded = JSON.stringify(buildAnnouncementPayload(checked.value));
-      const results = await Promise.all(targets.map(async ({ destination }) => {
-        if (destination.platform === 'ios') return sendApnsNotification(destination, encoded, 24 * 60 * 60);
-        return sendFcmNotification(destination, encoded, 24 * 60 * 60);
-      }));
-      const delivered = results.filter(Boolean).length;
-      const ios = targets.filter(target => target.destination.platform === 'ios').length;
-      const android = targets.length - ios;
-      console.log(`Admin announcement: audience=${checked.value.audience} platform=${checked.value.platform} targeted=${targets.length} delivered=${delivered}`);
-      return res200(res, { ok:true, audience:checked.value.audience, platform:checked.value.platform, targeted:targets.length, delivered, failed:targets.length - delivered, ios, android });
+      let thumbnail = null, media = null;
+      try {
+        media = await storeAnnouncementMedia(decodedMedia.value);
+        thumbnail = await storeAnnouncementThumbnail(decodedThumbnail.value || (decodedMedia.value?.kind === 'image' ? decodedMedia.value.bytes : null));
+      }
+      catch (error) { return resErr(res, error.message || 'Could not prepare the thumbnail.', 503); }
+      const id = crypto.randomUUID();
+      const record = {
+        id, ...checked.value,
+        thumbnailObjectKey:thumbnail?.objectKey || null,
+        mediaObjectKey:media?.objectKey || null,
+        mediaType:media?.mediaType || null,
+        viewOnce:experience.value.viewOnce,
+        expiresAfterMs:experience.value.expiryHours * 60 * 60 * 1000,
+        scheduledAt:scheduledAt || Date.now(), createdAt:Date.now(),
+      };
+      if (scheduledAt) {
+        await postgresStore.scheduleAdminAnnouncement(record);
+        return res200(res, { ok:true, scheduled:true, id, scheduledAt, audience:checked.value.audience, platform:checked.value.platform });
+      }
+      if (postgresEnabled) await postgresStore.scheduleAdminAnnouncement({ ...record, status:'sending' });
+      const result = await deliverAdminAnnouncement(record);
+      if (postgresEnabled) await postgresStore.completeAdminAnnouncement(id, result, result.sentAt);
+      console.log(`Admin announcement: audience=${checked.value.audience} platform=${checked.value.platform} targeted=${result.targeted} delivered=${result.delivered}`);
+      return res200(res, { ok:true, audience:checked.value.audience, platform:checked.value.platform, ...result });
     }
     if (path === '/api/admin/health') {
       res.setHeader('Cache-Control','no-store');
@@ -7963,6 +8155,7 @@ async function shutdown(signal) {
   if (!postgresEnabled) saveSnapshot();
   try { await realtimeCoordinator.close(); } catch (e) { console.error('Redis realtime shutdown failed:', e.message); }
   if (objectStorageRetryTimer) clearInterval(objectStorageRetryTimer);
+  if (adminAnnouncementTimer) clearInterval(adminAnnouncementTimer);
   try { objectStorage.close(); } catch (e) {}
   try { await postgresStore.close(); } catch (e) { console.error('PostgreSQL shutdown failed:', e.message); }
   srv.close(() => process.exit(0));
@@ -8065,6 +8258,13 @@ async function bootstrap() {
     roomCheckpointTimer.unref();
   }
   srv.listen(PORT, () => console.log(`Vaultlix on port ${PORT}`));
+  if (postgresEnabled) {
+    processScheduledAdminAnnouncements().catch(error => console.error('Scheduled announcement check failed:', error.message));
+    adminAnnouncementTimer = setInterval(() => {
+      processScheduledAdminAnnouncements().catch(error => console.error('Scheduled announcement check failed:', error.message));
+    }, 15 * 1000);
+    adminAnnouncementTimer.unref();
+  }
   if (objectStorageEnabled && postgresEnabled) {
     setImmediate(() => migrateInlineAttachmentPayloads().catch(error => console.error('Encrypted attachment migration failed:', error.message)));
     const attachmentGarbageTimer = setInterval(() => {

@@ -340,6 +340,34 @@
     try{await navigator.clipboard.writeText($('allocate-link').value);$('allocate-status').textContent='Claim link copied. Share it privately.';}
     catch(_){$('allocate-link').focus();$('allocate-link').select();$('allocate-status').textContent='Copy the selected claim link.';}
   });
+  let announcementMediaDataUrl='';
+  let announcementThumbnailDataUrl='';
+  const readFileDataUrl=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('The selected file could not be read.'));reader.readAsDataURL(file);});
+  async function prepareAnnouncementThumbnail(file) {
+    if(!file)return '';
+    const source=await readFileDataUrl(file);
+    const image=await new Promise((resolve,reject)=>{const node=new Image();node.onload=()=>resolve(node);node.onerror=()=>reject(Error('Choose a valid thumbnail image.'));node.src=source;});
+    const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;
+    const context=canvas.getContext('2d');
+    const scale=Math.max(512/image.naturalWidth,512/image.naturalHeight);
+    const width=image.naturalWidth*scale,height=image.naturalHeight*scale;
+    context.drawImage(image,(512-width)/2,(512-height)/2,width,height);
+    return canvas.toDataURL('image/jpeg',.84);
+  }
+  $('announcement-media').addEventListener('change',async event=>{
+    const file=event.target.files?.[0];announcementMediaDataUrl='';
+    if(!file){updateAnnouncementPreview();return;}
+    if(file.size>8*1024*1024){event.target.value='';$('announcement-status').textContent='Choose update media smaller than 8 MB.';return;}
+    try{announcementMediaDataUrl=await readFileDataUrl(file);$('announcement-status').textContent=`${file.type.startsWith('video/')?'Video':'Image'} ready for the inbox update.`;}
+    catch(error){event.target.value='';$('announcement-status').textContent=error.message;}
+    updateAnnouncementPreview();
+  });
+  $('announcement-thumbnail').addEventListener('change',async event=>{
+    const file=event.target.files?.[0];announcementThumbnailDataUrl='';
+    try{announcementThumbnailDataUrl=await prepareAnnouncementThumbnail(file);$('announcement-status').textContent=file?'Custom push thumbnail ready.':'';}
+    catch(error){event.target.value='';$('announcement-status').textContent=error.message;}
+    updateAnnouncementPreview();
+  });
   function updateAnnouncementPreview() {
     const title=$('announcement-title').value.trim();
     const body=$('announcement-body').value.trim();
@@ -347,23 +375,36 @@
     $('announcement-preview-title').textContent=title || 'Vaultlix update';
     $('announcement-preview-body').textContent=body || 'Your message preview appears here.';
     $('announcement-counter').textContent=`${$('announcement-body').value.length} / 180`;
-    $('announcement-submit').textContent=all ? 'Send to all opted-in users' : 'Send to test accounts';
+    const scheduled=$('announcement-schedule-enabled').checked;
+    const expiry=$('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value;
+    const once=$('announcement-view-once').checked;
+    $('announcement-submit').textContent=scheduled?'Schedule update':(all ? 'Publish to all opted-in users' : 'Publish to test accounts');
     $('announcement-submit').classList.toggle('danger',all);
+    $('announcement-schedule-wrap').hidden=!scheduled;
+    $('announcement-custom-expiry-wrap').hidden=$('announcement-expiry').value!=='custom';
+    $('announcement-preview-time').textContent=scheduled?'Vaultlix · scheduled':'Vaultlix · now';
+    $('announcement-preview-note').textContent=`${once?'Opens once':'Can be reopened'} · expires in ${expiry} hour${expiry==='1'?'':'s'}`;
+    $('announcement-preview-icon').src=announcementThumbnailDataUrl || (announcementMediaDataUrl.startsWith('data:image/')?announcementMediaDataUrl:'/icons/icon-192.png');
   }
-  for (const id of ['announcement-title','announcement-body','announcement-audience']) $(id).addEventListener('input',updateAnnouncementPreview);
-  $('announcement-audience').addEventListener('change',updateAnnouncementPreview);
+  for (const id of ['announcement-title','announcement-body','announcement-audience','announcement-expiry','announcement-custom-expiry','announcement-view-once','announcement-schedule-enabled','announcement-scheduled-at']) $(id).addEventListener('input',updateAnnouncementPreview);
+  for (const id of ['announcement-audience','announcement-expiry','announcement-view-once','announcement-schedule-enabled']) $(id).addEventListener('change',updateAnnouncementPreview);
   updateAnnouncementPreview();
   $('announcement-form').addEventListener('submit',async event=>{
     event.preventDefault();
     const key=adminKey;if(!key)return;
     const audience=$('announcement-audience').value;
-    if(audience==='all' && !confirm('Send this announcement now to every opted-in Vaultlix app device in the selected platform?'))return;
+    const scheduled=$('announcement-schedule-enabled').checked;
+    if(audience==='all' && !confirm(`${scheduled?'Schedule':'Publish'} this update for every opted-in Vaultlix app device in the selected platform?`))return;
     const button=$('announcement-submit');button.disabled=true;
-    $('announcement-status').textContent='Sending announcement…';
+    $('announcement-status').textContent=scheduled?'Scheduling update…':'Publishing update…';
     try {
-      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all'}),cache:'no-store'});
+      if(scheduled&&!$('announcement-scheduled-at').value)throw Error('Choose the date and time to publish this update.');
+      const scheduledAt=scheduled?new Date($('announcement-scheduled-at').value).toISOString():null;
+      const expiryHours=Number($('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value);
+      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt}),cache:'no-store'});
       const result=await response.json();if(adminKey!==key)return;
       if(!response.ok)throw Error(result.error || 'Announcement could not be sent.');
+      if(result.scheduled){$('announcement-status').textContent=`Update scheduled for ${new Date(result.scheduledAt).toLocaleString()}.`;return;}
       const scope=result.audience==='test'?'test devices':'opted-in devices';
       $('announcement-status').textContent=result.targeted
         ? `Delivered to ${result.delivered} of ${result.targeted} ${scope} (${result.ios} iOS, ${result.android} Android).${result.failed ? ` ${result.failed} delivery attempt${result.failed===1?'':'s'} failed.` : ''}`

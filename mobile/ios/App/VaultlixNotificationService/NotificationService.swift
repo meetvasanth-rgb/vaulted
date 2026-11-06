@@ -55,7 +55,7 @@ final class NotificationService: UNNotificationServiceExtension {
               let url = URL(string: value),
               url.scheme == "https",
               url.host == "vaultlix.com",
-              url.path.hasPrefix("/icons/") else {
+              (url.path.hasPrefix("/icons/") || url.path == "/api/announcement-thumbnail") else {
             completion()
             return
         }
