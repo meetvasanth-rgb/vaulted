@@ -63,9 +63,11 @@ test('the identity table has a separate Last Online column sourced from lastActi
 });
 
 test('mark-as-test gives immediate progress and validates the saved server value', () => {
-  const action = js.slice(js.indexOf('async function setTestAccount'), js.indexOf('window.setTestAccount'));
+  const action = js.slice(js.indexOf('async function setTestAccount'), js.indexOf('function setGauge'));
   assert.match(js, /data-test-account=/);
-  assert.match(js, /onclick="setTestAccount\(this\)"/);
+  assert.match(js, /data-action="test-account"/);
+  assert.match(js, /'identity-rows'\)\.addEventListener\('click'/);
+  assert.doesNotMatch(js, /onclick="setTestAccount/);
   assert.match(action, /button\.disabled = true/);
   assert.match(action, /button\.textContent = 'Saving…'/);
   assert.match(action, /result\.ok !== true/);

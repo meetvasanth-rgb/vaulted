@@ -247,7 +247,7 @@
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>
-      <td><button type="button" class="quiet" data-private-number="${encodeURIComponent(identity.privateNumber)}" data-test-account="${identity.isTestAccount ? 'true' : 'false'}" onclick="setTestAccount(this)">${identity.isTestAccount ? 'Count as real' : 'Mark as test'}</button></td>
+      <td><button type="button" class="quiet" data-action="test-account" data-private-number="${encodeURIComponent(identity.privateNumber)}" data-test-account="${identity.isTestAccount ? 'true' : 'false'}">${identity.isTestAccount ? 'Count as real' : 'Mark as test'}</button></td>
     </tr>`).join('') : '<tr><td colspan="11" class="empty-row">No registered identities yet.</td></tr>';
   }
 
@@ -278,7 +278,10 @@
       }
     }
   }
-  window.setTestAccount = setTestAccount;
+  $('identity-rows').addEventListener('click', event => {
+    const button = event.target.closest('button[data-action="test-account"]');
+    if (button) setTestAccount(button);
+  });
 
   function setGauge(prefix, value, max) {
     const pct = max ? Math.min(100, Math.round(value / max * 100)) : 0;
