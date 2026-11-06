@@ -6292,10 +6292,18 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     if (path === '/api/admin/test-account') {
       res.setHeader('Cache-Control','no-store');
+      if (typeof d.privateNumber !== 'string' || typeof d.isTestAccount !== 'boolean') {
+        return resErr(res, 'Choose whether this identity is a test account.', 400);
+      }
       const found = accountByPrivateNumber(d.privateNumber);
       if (!found) return resErr(res, 'Vaultlix identity not found.', 404);
-      found.account.isTestAccount = d.isTestAccount === true;
-      await persistAccount(found.accountId);
+      const isTestAccount = d.isTestAccount === true;
+      if (postgresEnabled) {
+        const updated = await postgresStore.setTestAccount(found.accountId, isTestAccount);
+        if (!updated) return resErr(res, 'Vaultlix identity not found.', 404);
+      }
+      found.account.isTestAccount = isTestAccount;
+      if (!postgresEnabled) saveAccounts();
       return res200(res, { ok:true, privateNumber:found.account.privateNumber, isTestAccount:found.account.isTestAccount });
     }
     if (path === '/api/admin/announcements') {

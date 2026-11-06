@@ -139,9 +139,20 @@ test('account persistence uses parameterized upserts', async () => {
   assert.deepEqual(calls[1][1], ['a'.repeat(64), 'cipher']);
   assert.match(calls[2][0], /ON CONFLICT \(account_id\) DO UPDATE/);
   assert.match(calls[2][0], /profile_share_code=EXCLUDED\.profile_share_code/);
+  assert.match(calls[2][0], /is_test_account=accounts\.is_test_account/);
   assert.equal(calls[2][1].length, 35); // also includes acquisition source, activation milestones and test-account status
   assert.equal(calls[2][1][0], 'a'.repeat(64));
   assert.match(calls[3][0], /DELETE FROM account_bundle_history/);
+});
+
+test('test-account classification uses an atomic admin-owned update', async () => {
+  const calls = [];
+  const pool = { query:async (...args) => { calls.push(args); return { rowCount:1, rows:[] }; } };
+  const store = new PostgresStore('', { pool });
+  assert.equal(await store.setTestAccount('a'.repeat(64), true), true);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0][0], /UPDATE accounts SET is_test_account=\$2 WHERE account_id=\$1/);
+  assert.deepEqual(calls[0][1], ['a'.repeat(64), true]);
 });
 
 test('private invitations use a compact durable PostgreSQL update', async () => {

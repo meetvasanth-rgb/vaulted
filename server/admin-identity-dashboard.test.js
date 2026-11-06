@@ -61,3 +61,18 @@ test('the identity table has a separate Last Online column sourced from lastActi
   assert.match(html, /<td colspan="11" class="empty-row">Loading identities…<\/td>/);
   assert.match(js, /<tr><td colspan="11" class="empty-row">No registered identities yet\.<\/td><\/tr>/);
 });
+
+test('mark-as-test gives immediate progress and validates the saved server value', () => {
+  const action = js.slice(js.indexOf('async function setTestAccount'), js.indexOf('window.setTestAccount'));
+  assert.match(js, /data-test-account=/);
+  assert.match(js, /onclick="setTestAccount\(this\)"/);
+  assert.match(action, /button\.disabled = true/);
+  assert.match(action, /button\.textContent = 'Saving…'/);
+  assert.match(action, /result\.ok !== true/);
+  assert.match(action, /typeof result\.isTestAccount !== 'boolean'/);
+  assert.match(action, /button\.textContent = 'Saved'/);
+  const route = server.slice(server.indexOf("if (path === '/api/admin/test-account')"), server.indexOf("if (path === '/api/admin/announcements')"));
+  assert.match(route, /typeof d\.isTestAccount !== 'boolean'/);
+  assert.match(route, /postgresStore\.setTestAccount/);
+  assert.doesNotMatch(route, /persistAccount/);
+});

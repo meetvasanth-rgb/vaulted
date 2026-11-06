@@ -394,7 +394,9 @@ class PostgresStore {
       private_invites=EXCLUDED.private_invites,
       acquisition_source=COALESCE(accounts.acquisition_source, EXCLUDED.acquisition_source),
       activation=EXCLUDED.activation,
-      is_test_account=EXCLUDED.is_test_account,
+      -- This flag is owned by the admin action. Ordinary account saves may
+      -- come from an older in-memory snapshot and must not undo that action.
+      is_test_account=accounts.is_test_account,
       updated_at=EXCLUDED.updated_at`, [
       accountId, account.privateNumber, account.profileShareCode || null, account.displayName, account.profileImage || null, account.authVerifier,
       account.recoveryVerifier, account.passwordWrap, account.recoveryWrap,
@@ -416,6 +418,15 @@ class PostgresStore {
         SELECT revision FROM account_bundle_history
         WHERE account_id=$1 ORDER BY created_at DESC, revision DESC LIMIT 4
       )`, [accountId]);
+  }
+
+  async setTestAccount(accountId, isTestAccount, queryClient = this.pool) {
+    if (!this.enabled) return false;
+    const result = await queryClient.query(
+      'UPDATE accounts SET is_test_account=$2 WHERE account_id=$1',
+      [accountId, isTestAccount === true],
+    );
+    return result.rowCount === 1;
   }
 
   async savePrivateInvites(accountId, privateInvites, queryClient = this.pool) {

@@ -247,17 +247,36 @@
       <td><span class="count-pill">${number(identity.activeDevices)}</span></td>
       <td><span class="status-dot ${identity.notificationDevices ? 'on' : ''}"></span>${identity.notificationDevices ? `${number(identity.notificationDevices)} ready` : 'Not enabled'}</td>
       <td>${number(identity.pendingRequests)}</td>
-      <td><button type="button" class="quiet" onclick="setTestAccount('${encodeURIComponent(identity.privateNumber)}', ${identity.isTestAccount ? 'false' : 'true'})">${identity.isTestAccount ? 'Count as real' : 'Mark as test'}</button></td>
+      <td><button type="button" class="quiet" data-private-number="${encodeURIComponent(identity.privateNumber)}" data-test-account="${identity.isTestAccount ? 'true' : 'false'}" onclick="setTestAccount(this)">${identity.isTestAccount ? 'Count as real' : 'Mark as test'}</button></td>
     </tr>`).join('') : '<tr><td colspan="11" class="empty-row">No registered identities yet.</td></tr>';
   }
 
-  async function setTestAccount(privateNumber, isTestAccount) {
+  async function setTestAccount(button) {
+    const privateNumber = decodeURIComponent(button.dataset.privateNumber || '');
+    const isTestAccount = button.dataset.testAccount !== 'true';
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Saving…';
     try {
-      const response = await fetch('/api/admin/test-account', { method:'POST', headers:{ Authorization:`Bearer ${adminKey}`, 'Content-Type':'application/json' }, body:JSON.stringify({ privateNumber:decodeURIComponent(privateNumber), isTestAccount }) });
-      const result = await response.json();
-      if (!response.ok) throw Error(result.error || 'Could not update this identity.');
+      const response = await fetch('/api/admin/test-account', { method:'POST', headers:{ Authorization:`Bearer ${adminKey}`, 'Content-Type':'application/json' }, body:JSON.stringify({ privateNumber, isTestAccount }) });
+      const raw = await response.text();
+      let result = {};
+      try { result = raw ? JSON.parse(raw) : {}; } catch {}
+      if (!response.ok || result.ok !== true || typeof result.isTestAccount !== 'boolean') {
+        throw Error(typeof result.error === 'string' && result.error ? result.error : `Could not update this identity (${response.status}).`);
+      }
+      button.dataset.testAccount = String(result.isTestAccount);
+      button.textContent = 'Saved';
       await loadStats(false);
-    } catch (error) { alert(error.message); }
+    } catch (error) {
+      button.textContent = originalLabel;
+      alert(error instanceof Error && error.message ? error.message : 'Could not update this identity.');
+    } finally {
+      if (button.isConnected) {
+        button.disabled = false;
+        if (button.textContent === 'Saved') button.textContent = button.dataset.testAccount === 'true' ? 'Count as real' : 'Mark as test';
+      }
+    }
   }
   window.setTestAccount = setTestAccount;
 
