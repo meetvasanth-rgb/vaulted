@@ -4276,10 +4276,12 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (!room.members.has(item.token)) continue;
       const lastSeq = Number.parseInt(item.lastSeq || 0, 10);
       const lastReceiptSeq = Number.parseInt(item.lastReceiptSeq || 0, 10);
+      const hasReadReceiptCursor = item.lastReadReceiptSeq !== undefined;
+      const lastReadReceiptSeq = Number.parseInt(item.lastReadReceiptSeq || 0, 10);
       const lastReactionSeq = Number.parseInt(item.lastReactionSeq || 0, 10);
       const lastDeletionSeq = Number.parseInt(item.lastDeletionSeq || 0, 10);
       const receiptChanged = room.msgs.some(msg => msg.type === 'message' && messageFromToken(msg, item.token) &&
-        msg.deliveredAt && (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)));
+        msg.deliveredAt && (msg.seq > lastReceiptSeq || (msg.readAt && (hasReadReceiptCursor ? msg.seq > lastReadReceiptSeq : !msg.readReported))));
       const peerMessageChanged = room.msgs.some(msg => msg.seq > lastSeq && !msg.deleted && !messageFromToken(msg, item.token));
       const activity = peerActivity(room, item.token);
       const typing = activity !== null;
@@ -5912,6 +5914,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const token = d.token;
     const clientLastSeq = parseInt(d.lastSeq||0, 10);
     const lastReceiptSeq = parseInt(d.lastReceiptSeq||0, 10);
+    const hasReadReceiptCursor = d.lastReadReceiptSeq !== undefined;
+    const lastReadReceiptSeq = parseInt(d.lastReadReceiptSeq||0, 10);
     const lastReactionSeq = parseInt(d.lastReactionSeq||0, 10);
     const lastDeletionSeq = parseInt(d.lastDeletionSeq||0, 10);
     // full=1 is only ever sent once, right after a reload, to rebuild the
@@ -5996,10 +6000,14 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const readReceipts = [];
     for (const msg of room.msgs) {
       if (!messageFromToken(msg, token) || msg.type !== 'message' || !msg.deliveredAt) continue;
-      // Return if: new delivery (seq > lastReceiptSeq) OR newly read (readAt set but not yet reported)
-      if (msg.seq > lastReceiptSeq || (msg.readAt && !msg.readReported)) {
+      // Delivery and reading are independent monotonic states. Current
+      // clients carry a separate read cursor, making this response safe to
+      // retry after a dropped mobile request and independent across devices.
+      // Keep the old one-shot flag only for compatibility with older shells.
+      const readChanged = msg.readAt && (hasReadReceiptCursor ? msg.seq > lastReadReceiptSeq : !msg.readReported);
+      if (msg.seq > lastReceiptSeq || readChanged) {
         readReceipts.push({ msgId: msg.id, seq: msg.seq, deliveredAt: msg.deliveredAt, readAt: msg.readAt || null, deleteTimerSeconds:messageDeleteTimer(room, msg) });
-        if (msg.readAt) msg.readReported = true;
+        if (msg.readAt && !hasReadReceiptCursor) msg.readReported = true;
       }
     }
 

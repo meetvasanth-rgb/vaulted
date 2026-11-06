@@ -6811,7 +6811,7 @@ function makeRoom({ code, token, myName, peerName, peerNameEncrypted, peerNameFr
     // why that distinction matters.
     mySignalSessionId: 'sg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
     peerSignalSessionId: null,
-    lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
+    lastSeq: 0, lastReceiptSeq: 0, lastReadReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0,
     // Local watermark for "clear chat" — bumped whenever we act on a
     // clearedAt value from the server, so a poll only wipes this session's
     // in-memory history once per actual clear, not on every subsequent
@@ -7327,7 +7327,7 @@ async function persistRoom(room) {
       lastKnownPeerPubKey: room.lastKnownPeerPubKey || null,
       nativeRoomHandle: room.nativeRoomHandle,
       ownerAccountId: room.ownerAccountId || null,
-      lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
+      lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReadReceiptSeq: room.lastReadReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq,
       callHistoryClearedAt:Number(room.callHistoryClearedAt) || 0,
       unread:Math.max(0, Number(room.unread) || 0),
       unreadSystemCount:Math.max(0, Number(room.unreadSystemCount) || 0),
@@ -7367,6 +7367,7 @@ function persistRoomSeq(room) {
     if (!existing) return false; // not persisted yet (still connecting) — nothing to update
     existing.lastSeq = room.lastSeq;
     existing.lastReceiptSeq = room.lastReceiptSeq;
+    existing.lastReadReceiptSeq = room.lastReadReceiptSeq;
     existing.lastReactionSeq = room.lastReactionSeq;
     existing.lastDeletionSeq = room.lastDeletionSeq;
     existing.unread = Math.max(0, Number(room.unread) || 0);
@@ -15159,7 +15160,7 @@ async function localRoomIsGone(room) {
   for (let attempt = 0; attempt < 2; attempt++) {
     let data = null;
     try {
-      data = await api('/api/poll', { code:room.code, token:room.token, lastSeq:Number(room.lastSeq) || 0, lastReceiptSeq:0, lastReactionSeq:0, lastDeletionSeq:0 });
+      data = await api('/api/poll', { code:room.code, token:room.token, lastSeq:Number(room.lastSeq) || 0, lastReceiptSeq:0, lastReadReceiptSeq:0, lastReactionSeq:0, lastDeletionSeq:0 });
     } catch (e) { return false; }
     if (!data?.roomGone) return false;
     if (attempt === 0) await delay(1500);
@@ -22970,7 +22971,11 @@ function scheduleReadReceiptCatchup(room) {
 
 function handleReadReceipts(room, receipts) {
   if (!receipts || !receipts.length) return;
-  for (const { msgId, deliveredAt, readAt, deleteTimerSeconds = 0 } of receipts) {
+  for (const { msgId, seq, deliveredAt, readAt, deleteTimerSeconds = 0 } of receipts) {
+    // Advance cursors for every acknowledged server record, including an
+    // older item no longer held in this device's bounded local history.
+    if (seq && deliveredAt && seq > room.lastReceiptSeq) room.lastReceiptSeq = seq;
+    if (seq && readAt && seq > room.lastReadReceiptSeq) room.lastReadReceiptSeq = seq;
     const rec = room.messages.find(m => m.id === msgId);
     if (!rec) continue;
     rec.deleteTimerSeconds = deleteTimerSeconds;
@@ -23925,7 +23930,7 @@ async function restoreRoomHistory(room) {
   const localMessages = await restoreLocalHistory(room);
   try {
     // 2. Ask the server what is current and bring the chat up to date.
-    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
+    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReadReceiptSeq: 0, lastReactionSeq: 0, lastDeletionSeq: 0, full: 1 });
     if (!data || data.roomGone) return;
     if (data.error) throw new Error(data.error);
     const nowTs = Date.now();
@@ -23981,7 +23986,6 @@ async function restoreRoomHistory(room) {
     }
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
-      for (const r of data.readReceipts) if (r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
     }
     if (data.reactionUpdates && data.reactionUpdates.length > 0) {
       for (const u of data.reactionUpdates) {
@@ -24067,6 +24071,7 @@ function inboxConversationCredentials() {
     token:room.token,
     lastSeq:room.lastSeq || 0,
     lastReceiptSeq:room.lastReceiptSeq || 0,
+    lastReadReceiptSeq:room.lastReadReceiptSeq || 0,
     lastReactionSeq:room.lastReactionSeq || 0,
     lastDeletionSeq:room.lastDeletionSeq || 0,
     lastKnownClearedAt:room.lastKnownClearedAt || 0,
@@ -24208,7 +24213,7 @@ async function doPoll(room) {
   if (room.isPollRunning) { room.pollAfterHistoryRestore = true; return; }
   room.isPollRunning = true;
   try {
-    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq });
+    const data = await api('/api/poll', { code: room.code, token: room.token, lastSeq: room.lastSeq, lastReceiptSeq: room.lastReceiptSeq, lastReadReceiptSeq: room.lastReadReceiptSeq, lastReactionSeq: room.lastReactionSeq, lastDeletionSeq: room.lastDeletionSeq });
 
     if (data.roomGone) {
       // A single roomGone response is not trusted on its own —
@@ -24344,7 +24349,6 @@ async function doPoll(room) {
 
     if (data.readReceipts && data.readReceipts.length > 0) {
       handleReadReceipts(room, data.readReceipts);
-      for (const r of data.readReceipts) if (r.seq && r.seq > room.lastReceiptSeq) room.lastReceiptSeq = r.seq;
     }
 
     if (data.reactionUpdates && data.reactionUpdates.length > 0) {
@@ -25652,7 +25656,7 @@ function resumeWaitingScreen(room) {
 function startWaitingForPeer(room, { silent = false } = {}) {
   if (room.waitInterval) clearInterval(room.waitInterval);
   room.waitInterval = setInterval(async () => {
-    const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0 });
+    const d = await api('/api/poll', { code: room.code, token: room.token, lastSeq: 0, lastReceiptSeq: 0, lastReadReceiptSeq: 0 });
     // "Online" is only a moment-in-time presence reading (the peer's live connection, or a poll
     // within the last few seconds), so a peer who joined and then went to another screen can
     // read offline here for a long while. A peer's name and public key only exist once they
@@ -27253,6 +27257,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // incremental polling still has a sane position to resume from.
     room.lastSeq = session.lastSeq || 0;
     room.lastReceiptSeq = session.lastReceiptSeq || 0;
+    room.lastReadReceiptSeq = session.lastReadReceiptSeq || 0;
     room.lastReactionSeq = session.lastReactionSeq || 0;
     room.lastDeletionSeq = session.lastDeletionSeq || 0;
     // Self-healing invariant, independent of (and running on every launch,

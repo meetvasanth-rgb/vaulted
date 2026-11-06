@@ -16,8 +16,16 @@ test('delivered direct messages get bounded receipt catch-up polls', () => {
 
 test('a read receipt cancels catch-up and delivery advances its sequence watermark', () => {
   assert.match(client, /else if \(typeof clearReadReceiptCatchup === 'function'\) clearReadReceiptCatchup\(room\)/);
-  assert.match(client, /for \(const r of data\.readReceipts\) if \(r\.seq && r\.seq > room\.lastReceiptSeq\) room\.lastReceiptSeq = r\.seq/);
-  assert.doesNotMatch(client, /for \(const r of data\.readReceipts\) if \(r\.readAt && r\.seq/);
+  assert.match(client, /if \(seq && deliveredAt && seq > room\.lastReceiptSeq\) room\.lastReceiptSeq = seq/);
+  assert.match(client, /if \(seq && readAt && seq > room\.lastReadReceiptSeq\) room\.lastReadReceiptSeq = seq/);
+  assert.match(client, /lastReadReceiptSeq:room\.lastReadReceiptSeq \|\| 0/);
+});
+
+test('delivery and read acknowledgements use separate persisted cursors', () => {
+  assert.match(client, /lastSeq: 0, lastReceiptSeq: 0, lastReadReceiptSeq: 0/);
+  assert.match(client, /existing\.lastReadReceiptSeq = room\.lastReadReceiptSeq/);
+  assert.match(client, /room\.lastReadReceiptSeq = session\.lastReadReceiptSeq \|\| 0/);
+  assert.match(client, /lastReceiptSeq: room\.lastReceiptSeq, lastReadReceiptSeq: room\.lastReadReceiptSeq/);
 });
 
 test('opening a restored conversation confirms both restored and background read queues', () => {
