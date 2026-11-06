@@ -19486,6 +19486,30 @@ function rememberStatusesHidden(ids) {
 }
 function statusRoomForCode(code) { return rooms.get(String(code || '').toLowerCase()) || null; }
 
+async function handleStatusAccountSessionFailure(result, { reveal = false } = {}) {
+  if (result?.status !== 401) return false;
+  await confirmAccountReauthentication();
+  if (reveal && accountReauthenticationActive) showAccountReauthentication();
+  return accountReauthenticationActive;
+}
+
+async function statusAccountSessionReady(state, { reveal = false } = {}) {
+  let result;
+  try {
+    result = await api('/api/account/session-check', {
+      accountId:state.accountId,
+      sessionToken:state.sessionToken,
+    });
+  } catch (_) {
+    toast('Could not verify your Vaultlix session. Check your connection and try again.');
+    return false;
+  }
+  if (!result?.error) return true;
+  if (await handleStatusAccountSessionFailure(result, { reveal })) return false;
+  toast(result.error || 'Could not verify your Vaultlix session.');
+  return false;
+}
+
 async function refreshStatusFeed({ quiet = false } = {}) {
   const state = loadAccountState();
   if (!state) return;
@@ -19499,7 +19523,11 @@ async function refreshStatusFeed({ quiet = false } = {}) {
   statusFeedLoading = true;
   try {
     const result = await api('/api/status/feed', { accountId:state.accountId, sessionToken:state.sessionToken });
-    if (result.error) { if (!quiet) toast(result.error); return; }
+    if (result.error) {
+      if (result.status === 401) await handleStatusAccountSessionFailure(result);
+      else if (!quiet) toast(result.error);
+      return;
+    }
     const previousById = new Map(statusFeed.map(item => [item.id, item]));
     const decrypted = [];
     let waitingForRoomKeys = false;
@@ -19745,7 +19773,12 @@ async function publishStatus() {
   if (!text && !statusComposerImage && !statusComposerVideo) { toast('Add text, an image or a video first.'); return; }
   const selected = [...document.querySelectorAll('[data-status-room]:checked')].map(input => rooms.get(input.dataset.statusRoom)).filter(room => room?.sharedKey);
   if (!selected.length) { toast('Choose at least one friend.'); return; }
-  const button=document.getElementById('status-publish'); button.disabled=true; button.textContent='Encrypting…';
+  const button=document.getElementById('status-publish'); button.disabled=true; button.textContent='Checking account…';
+  if (!await statusAccountSessionReady(state, { reveal:true })) {
+    button.disabled=false; button.textContent='Share for 24 hours';
+    return;
+  }
+  button.textContent='Encrypting…';
   let ownVideoUrl = '';
   try {
     let mediaId = null;
@@ -19778,6 +19811,12 @@ async function publishStatus() {
       if (ciphertext.byteLength > MAX_STATUS_VIDEO_CIPHERTEXT_BYTES) throw new Error('This video is too large to upload. Choose a shorter or lower-resolution video.');
       button.textContent='Uploading encrypted video…';
       const prepared = await api('/api/status/media/prepare', { accountId:state.accountId, sessionToken:state.sessionToken, size:ciphertext.byteLength });
+      if (prepared?.status === 401) {
+        await handleStatusAccountSessionFailure(prepared, { reveal:true });
+        const error = new Error('Sign in again to share this status.');
+        error.accountReauthentication = true;
+        throw error;
+      }
       if (!prepared?.mediaId || !prepared?.uploadUrl) throw new Error(prepared?.error || 'Could not prepare this video.');
       const uploadUrl = new URL(prepared.uploadUrl, location.href);
       if (uploadUrl.protocol !== 'https:' && uploadUrl.hostname !== 'localhost' && uploadUrl.hostname !== '127.0.0.1') throw new Error('Invalid encrypted upload address.');
@@ -19792,6 +19831,12 @@ async function publishStatus() {
     const entries = [];
     for (const room of selected) entries.push({ code:room.code, ciphertext:await encryptMsg(room,payload) });
     const result = await api('/api/status/publish', { accountId:state.accountId, sessionToken:state.sessionToken, entries, mediaId });
+    if (result?.status === 401) {
+      await handleStatusAccountSessionFailure(result, { reveal:true });
+      const error = new Error('Sign in again to share this status.');
+      error.accountReauthentication = true;
+      throw error;
+    }
     if (result.error) throw new Error(result.error);
     if (ownVideoUrl) {
       // A refresh can already be decrypting when publishing finishes. Keep
@@ -19803,7 +19848,8 @@ async function publishStatus() {
     closeStatusComposer(); toast('Status shared for 24 hours.'); await refreshStatusFeed();
   } catch (error) {
     if (ownVideoUrl) URL.revokeObjectURL(ownVideoUrl);
-    button.disabled=false; button.textContent='Share for 24 hours'; toast(error.message || 'Could not share status.');
+    button.disabled=false; button.textContent='Share for 24 hours';
+    if (!error?.accountReauthentication) toast(error.message || 'Could not share status.');
   }
 }
 

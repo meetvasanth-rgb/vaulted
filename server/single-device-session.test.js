@@ -125,10 +125,16 @@ test('a sign-in on another device immediately replaces the previous session', { 
     accountId:registered.data.accountId, sessionToken:registered.data.sessionToken,
   });
   assert.equal(oldFetch.status, 401);
+  assert.equal((await post(base, '/api/account/session-check', {
+    accountId:registered.data.accountId, sessionToken:registered.data.sessionToken,
+  })).status, 401);
   const newFetch = await post(base, '/api/account/fetch', {
     accountId:signedIn.data.accountId, sessionToken:signedIn.data.sessionToken,
   });
   assert.equal(newFetch.status, 200);
+  assert.deepEqual((await post(base, '/api/account/session-check', {
+    accountId:signedIn.data.accountId, sessionToken:signedIn.data.sessionToken,
+  })).data, { ok:true });
 
   const newAuthSecret = 'new-account-auth-b'.padEnd(48, 'b');
   const changed = await post(base, '/api/account/change-password', {
@@ -182,6 +188,17 @@ test('ordinary authentication and restoration failures preserve local conversati
   assert.doesNotMatch(client, /toast\('Session expired · conversations preserved'\)/);
   assert.match(client, /if \(result\.error\) \{[\s\S]*room\.restoreUnavailable = true;[\s\S]*addRoomToState\(room\);[\s\S]*restoredAny = true;[\s\S]*continue;/);
   assert.match(client, /Connection unavailable · tap to retry/);
+});
+
+test('Status detects a replaced account session before processing media and opens reconnection', () => {
+  const server = readFileSync(join(__dirname, 'index.js'), 'utf8');
+  const client = readFileSync(join(__dirname, '..', 'client', 'index.html'), 'utf8');
+  assert.match(server, /path === '\/api\/account\/session-check'/);
+  assert.match(client, /async function statusAccountSessionReady[\s\S]*\/api\/account\/session-check/);
+  assert.match(client, /button\.textContent='Checking account…'[\s\S]*statusAccountSessionReady\(state, \{ reveal:true \}\)[\s\S]*button\.textContent='Encrypting…'/);
+  assert.match(client, /async function handleStatusAccountSessionFailure[\s\S]*confirmAccountReauthentication\(\)[\s\S]*showAccountReauthentication\(\)/);
+  assert.match(client, /status\/media\/prepare[\s\S]*prepared\?\.status === 401[\s\S]*handleStatusAccountSessionFailure\(prepared, \{ reveal:true \}\)/);
+  assert.match(client, /status\/publish[\s\S]*result\?\.status === 401[\s\S]*handleStatusAccountSessionFailure\(result, \{ reveal:true \}\)/);
 });
 
 test('active account sessions renew before their rolling expiry', () => {

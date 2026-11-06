@@ -4241,6 +4241,16 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok: true, bundle: account.bundle, revision: account.revision, retention:accountRetention(account), ...publicAccount(account) });
   }
 
+  // Lightweight authentication preflight for actions such as Status video
+  // processing. It avoids downloading the encrypted account bundle merely
+  // to discover that another device has replaced this session.
+  if (path === '/api/account/session-check' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
+    if (!authenticateAccountSession(d.accountId, d.sessionToken)) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    res.setHeader('Cache-Control', 'no-store');
+    return res200(res, { ok:true });
+  }
+
   if (path === '/api/account/recovery-candidates' && method === 'POST') {
     if (!validAccountId(d.accountId)) return resErr(res, 'Not signed in.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
