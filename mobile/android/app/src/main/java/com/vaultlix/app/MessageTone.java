@@ -22,7 +22,7 @@ final class MessageTone {
         switch (tone) {
             case "chime": case "none": case "glow": case "bright": case "sweet": case "notify":
             case "soft": case "whistle": case "triplet": case "ripple": case "spark":
-            case "lantern": case "harp": case "marimba": case "droplet":
+            case "lantern": case "harp": case "marimba": case "droplet": case "shutter":
                 return true;
             default:
                 return false;

@@ -785,7 +785,7 @@ function validateApnsToken(value) {
 // registration and applied when that device is pushed to.
 const MESSAGE_TONE_IDS = new Set([
   'chime', 'none', 'glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet',
-  'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet',
+  'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet', 'shutter',
 ]);
 const DEFAULT_MESSAGE_TONE = 'glow';
 function normalizeMessageTone(value) {

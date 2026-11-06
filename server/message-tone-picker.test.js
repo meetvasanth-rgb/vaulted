@@ -19,7 +19,7 @@ const client = read('client', 'index.html');
 const android = read('mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java');
 const pbxproj = read('mobile', 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
 
-const FILE_TONES = ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet'];
+const FILE_TONES = ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet', 'shutter'];
 
 function extractBlock(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);

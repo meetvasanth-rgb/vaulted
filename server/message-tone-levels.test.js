@@ -14,11 +14,15 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 // The tones offered in Settings -> Message sound ship as vault_tone_<id> files.
-const PICKER_TONE_IDS = ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet'];
+const PICKER_TONE_IDS = ['glow', 'bright', 'sweet', 'notify', 'soft', 'whistle', 'triplet', 'ripple', 'spark', 'lantern', 'harp', 'marimba', 'droplet', 'shutter'];
 const TONES = ['chime', 'note', 'soft', 'glass', 'pulse', ...PICKER_TONE_IDS.map(id => `tone_${id}`)];
 const TARGET_LUFS = -12;
 // The Android chime and Glow were lowered to -14 LUFS on request. iOS and the web keep -12.
 const ANDROID_QUIETER = new Map([['chime', -14], ['tone_glow', -14]]);
+// Shutter is a real 0.13 s camera click. A click that short has far less energy than the sustained
+// tones, so reaching -12 LUFS would mean crushing it into a buzz; it ships natural at about -18 LUFS
+// (same file on iOS and Android) and keeps the shared -1 dBFS peak ceiling.
+const NATURAL_LEVEL = new Map([['tone_shutter', -18]]);
 const TOLERANCE = 0.6;
 const CEILING_DBFS = -1;
 
@@ -114,7 +118,7 @@ test('every message tone is levelled to -12 LUFS', () => {
   for (const tone of TONES) {
     const pcm = wavPcm(fs.readFileSync(androidPath(tone)));
     const loudness = integratedLufs(samples(pcm), pcm.rate);
-    const target = ANDROID_QUIETER.get(tone) ?? TARGET_LUFS;
+    const target = NATURAL_LEVEL.get(tone) ?? ANDROID_QUIETER.get(tone) ?? TARGET_LUFS;
     assert.ok(Math.abs(loudness - target) <= TOLERANCE, `${tone} measures ${loudness.toFixed(2)} LUFS, expected ${target} ±${TOLERANCE}`);
   }
 });

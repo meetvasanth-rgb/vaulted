@@ -55,6 +55,7 @@
 		B00E000B30B0000100000001 /* vault_tone_harp.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010B30B0000100000001 /* vault_tone_harp.caf */; };
 		B00E000C30B0000100000001 /* vault_tone_marimba.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010C30B0000100000001 /* vault_tone_marimba.caf */; };
 		B00E000D30B0000100000001 /* vault_tone_droplet.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010D30B0000100000001 /* vault_tone_droplet.caf */; };
+		B00E000E30B0000100000001 /* vault_tone_shutter.caf in Resources */ = {isa = PBXBuildFile; fileRef = B00E010E30B0000100000001 /* vault_tone_shutter.caf */; };
 		BA7255A4A3A0D1FE970B1E4D /* VaultlixClipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98E2BBD2223F9B9F527779 /* VaultlixClipApp.swift */; };
 		C0B21D2DC7951604455920AD /* VaultlixNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 827F970534559597001B2F3C /* VaultlixNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C10CA11030C1000100000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = C10CA11130C1000100000001 /* Localizable.strings */; };
@@ -179,6 +180,7 @@
 		B00E010B30B0000100000001 /* vault_tone_harp.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_harp.caf; path = App/Sounds/vault_tone_harp.caf; sourceTree = "<group>"; };
 		B00E010C30B0000100000001 /* vault_tone_marimba.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_marimba.caf; path = App/Sounds/vault_tone_marimba.caf; sourceTree = "<group>"; };
 		B00E010D30B0000100000001 /* vault_tone_droplet.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_droplet.caf; path = App/Sounds/vault_tone_droplet.caf; sourceTree = "<group>"; };
+		B00E010E30B0000100000001 /* vault_tone_shutter.caf */ = {isa = PBXFileReference; lastKnownFileType = file; name = vault_tone_shutter.caf; path = App/Sounds/vault_tone_shutter.caf; sourceTree = "<group>"; };
 		C10CA11230C1000100000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		C10CA11330C1000100000001 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		C10CA11430C1000100000001 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -269,6 +271,7 @@
 				B00E010B30B0000100000001 /* vault_tone_harp.caf */,
 				B00E010C30B0000100000001 /* vault_tone_marimba.caf */,
 				B00E010D30B0000100000001 /* vault_tone_droplet.caf */,
+				B00E010E30B0000100000001 /* vault_tone_shutter.caf */,
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
@@ -512,6 +515,7 @@
 				B00E000B30B0000100000001 /* vault_tone_harp.caf in Resources */,
 				B00E000C30B0000100000001 /* vault_tone_marimba.caf in Resources */,
 				B00E000D30B0000100000001 /* vault_tone_droplet.caf in Resources */,
+				B00E000E30B0000100000001 /* vault_tone_shutter.caf in Resources */,
 				C10CA11030C1000100000001 /* Localizable.strings in Resources */,
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
