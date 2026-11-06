@@ -64,6 +64,14 @@ test('a push with no msgId and not a call (e.g. a connection request) keeps the 
   assert.equal(message.android.notification.channelId, 'vaultlix_messages_universal_v2');
 });
 
+test('an app announcement gives Android a system-rendered thumbnail', async () => {
+  const thumbnailUrl = 'https://vaultlix.com/icons/icon-192.png';
+  const message = await buildFcmMessage({ title:'Vaultlix update', body:'A new update is ready.', announcement:true, thumbnailUrl });
+  assert.equal(message.data.thumbnailUrl, thumbnailUrl);
+  assert.equal(message.notification.imageUrl, thumbnailUrl);
+  assert.equal(message.android.notification.imageUrl, thumbnailUrl);
+});
+
 test('a private-group message (carries groupId, no msgId) is sent data-only, with groupId/privateGroup forwarded', async () => {
   const message = await buildFcmMessage({ title: 'Vaultlix', body: 'New encrypted group message', privateGroup: true, groupId: 'grp1' });
   assert.equal(message.notification, undefined);
@@ -160,6 +168,23 @@ test('a call push does not set mutable-content (unchanged behavior — calls hav
 test('a push with no msgId (e.g. a connection request) does not set mutable-content', async () => {
   const body = await buildApnsRequestBody({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1' });
   assert.equal(body.aps['mutable-content'], undefined);
+});
+
+test('an app announcement invokes the iOS service extension and carries its thumbnail URL', async () => {
+  const thumbnailUrl = 'https://vaultlix.com/icons/icon-192.png';
+  const body = await buildApnsRequestBody({ title:'Vaultlix update', body:'A new update is ready.', announcement:true, thumbnailUrl });
+  assert.equal(body.aps['mutable-content'], 1);
+  assert.equal(body.aps['content-available'], undefined);
+  assert.equal(body.thumbnailUrl, thumbnailUrl);
+});
+
+test('the iOS extension only attaches small Vaultlix HTTPS icon assets', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'mobile', 'ios', 'App', 'VaultlixNotificationService', 'NotificationService.swift'), 'utf8');
+  assert.match(source, /url\.scheme == "https"/);
+  assert.match(source, /url\.host == "vaultlix\.com"/);
+  assert.match(source, /url\.path\.hasPrefix\("\/icons\/"\)/);
+  assert.match(source, /size > 0, size <= 2_000_000/);
+  assert.match(source, /UNNotificationAttachment/);
 });
 
 test('a private-group push forwards groupId/privateGroup so the client can navigate to it on tap', async () => {

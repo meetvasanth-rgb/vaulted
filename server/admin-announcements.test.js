@@ -24,6 +24,7 @@ test('announcement targets are restricted by audience and platform and deduplica
 test('announcement payload is display-only and carries no conversation data', () => {
   const payload = buildAnnouncementPayload({ title:'Vaultlix update', body:'A faster app is ready.' });
   assert.equal(payload.announcement, true);
+  assert.equal(payload.thumbnailUrl, 'https://vaultlix.com/icons/icon-192.png');
   assert.match(payload.tag, /^vaultlix-update-/);
   assert.equal(payload.code, undefined);
   assert.equal(payload.msgId, undefined);
@@ -60,6 +61,8 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   const html = require('node:fs').readFileSync('client/admin.html', 'utf8');
   const script = require('node:fs').readFileSync('client/admin.js', 'utf8');
   assert.match(html, /id="announcement-form"/);
+  assert.match(html, /class="announcement-icon" src="\/icons\/icon-192\.png"/);
+  assert.match(html, /Thumbnail included/);
   assert.match(html, /<option value="test">Test accounts<\/option><option value="all">/);
   assert.match(script, /confirm\('Send this announcement now to every opted-in Vaultlix app device/);
   assert.match(script, /fetch\('\/api\/admin\/announcements'/);

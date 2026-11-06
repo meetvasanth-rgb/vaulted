@@ -4,6 +4,7 @@ const TITLE_MAX = 60;
 const BODY_MAX = 180;
 const PLATFORMS = new Set(['all', 'ios', 'android']);
 const AUDIENCES = new Set(['test', 'all']);
+const ANNOUNCEMENT_THUMBNAIL_URL = 'https://vaultlix.com/icons/icon-192.png';
 
 function cleanText(value) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
@@ -46,6 +47,7 @@ function buildAnnouncementPayload({ title, body }) {
     title,
     body,
     announcement:true,
+    thumbnailUrl:ANNOUNCEMENT_THUMBNAIL_URL,
     tag:`vaultlix-update-${Date.now()}`,
   };
 }
@@ -53,6 +55,7 @@ function buildAnnouncementPayload({ title, body }) {
 module.exports = {
   TITLE_MAX,
   BODY_MAX,
+  ANNOUNCEMENT_THUMBNAIL_URL,
   validateAnnouncement,
   selectAnnouncementTargets,
   buildAnnouncementPayload,

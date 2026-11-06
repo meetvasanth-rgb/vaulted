@@ -1,8 +1,9 @@
+import Foundation
 import UserNotifications
 
 // Runs on receipt of any push whose aps payload sets mutable-content:1 (see
 // sendApnsNotification in server/index.js, scoped there to regular chat
-// message pushes) — the one place iOS lets an app run code on a locked
+// messages and branded app announcements) — the one place iOS lets an app run code on a locked
 // device before a notification is shown. That's what actually makes
 // reporting delivery here possible at all: a plain "alert" push runs zero
 // app code on receipt.
@@ -17,13 +18,16 @@ final class NotificationService: UNNotificationServiceExtension {
         let userInfo = request.content.userInfo
         let code = (userInfo["code"] as? String) ?? ""
         let msgId = (userInfo["msgId"] as? String) ?? ""
-        guard !code.isEmpty, !msgId.isEmpty else {
-            deliver()
-            return
-        }
-        recordPendingInboxMessage(code: code, msgId: msgId)
-        reportDelivered(code: code, msgId: msgId) { [weak self] in
-            self?.deliver()
+        attachAnnouncementThumbnail(from: userInfo["thumbnailUrl"] as? String) { [weak self] in
+            guard let self else { return }
+            guard !code.isEmpty, !msgId.isEmpty else {
+                self.deliver()
+                return
+            }
+            self.recordPendingInboxMessage(code: code, msgId: msgId)
+            self.reportDelivered(code: code, msgId: msgId) { [weak self] in
+                self?.deliver()
+            }
         }
     }
 
@@ -40,6 +44,45 @@ final class NotificationService: UNNotificationServiceExtension {
         }
         contentHandler = nil
         bestAttemptContent = nil
+    }
+
+    // App announcements use a small, first-party image. Restrict downloads to
+    // Vaultlix HTTPS icon assets so a malformed push cannot make the extension
+    // contact an arbitrary host. Any download or attachment error falls back
+    // to the normal notification immediately.
+    private func attachAnnouncementThumbnail(from value: String?, completion: @escaping () -> Void) {
+        guard let value,
+              let url = URL(string: value),
+              url.scheme == "https",
+              url.host == "vaultlix.com",
+              url.path.hasPrefix("/icons/") else {
+            completion()
+            return
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        URLSession.shared.downloadTask(with: request) { [weak self] temporaryURL, response, _ in
+            defer { completion() }
+            guard let self,
+                  let temporaryURL,
+                  let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode),
+                  let size = try? temporaryURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                  size > 0, size <= 2_000_000 else { return }
+            let localURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vaultlix-announcement-\(UUID().uuidString).png")
+            do {
+                try FileManager.default.copyItem(at: temporaryURL, to: localURL)
+                let attachment = try UNNotificationAttachment(
+                    identifier: "vaultlix-announcement-thumbnail",
+                    url: localURL,
+                    options: nil
+                )
+                self.bestAttemptContent?.attachments = [attachment]
+            } catch {
+                return
+            }
+        }.resume()
     }
 
     // WKWebView is suspended while the phone is locked, so it cannot update

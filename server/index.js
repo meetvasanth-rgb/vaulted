@@ -809,7 +809,8 @@ function sendApnsNotification(member, payload, ttlSeconds) {
       // Screen and Notification Centre. The service extension remains the
       // primary locked-device path; /api/mark-delivered is idempotent when
       // both callbacks run.
-      ...(parsed.msgId ? { 'mutable-content': 1, 'content-available': 1 } : {}),
+      ...(parsed.msgId || parsed.thumbnailUrl ? { 'mutable-content': 1 } : {}),
+      ...(parsed.msgId ? { 'content-available': 1 } : {}),
     },
     // No message text, encrypted payload, room credential, or member token is
     // included. `code` only lets an authenticated local session select the
@@ -831,6 +832,7 @@ function sendApnsNotification(member, payload, ttlSeconds) {
     sessionReplaced: !!parsed.sessionReplaced,
     accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
     announcement: !!parsed.announcement,
+    thumbnailUrl: parsed.announcement ? String(parsed.thumbnailUrl || '') : '',
   });
   return new Promise((resolve) => {
     let client;
@@ -907,6 +909,7 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         sessionReplaced: parsed.sessionReplaced ? 'true' : 'false',
         accountId: parsed.sessionReplaced ? String(parsed.accountId || '') : '',
         announcement: parsed.announcement ? 'true' : 'false',
+        thumbnailUrl: parsed.announcement ? String(parsed.thumbnailUrl || '') : '',
         title: String(parsed.title || 'Vaultlix'),
         body: String(parsed.body || 'New activity'),
       },
@@ -935,12 +938,14 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',
+        ...(parsed.thumbnailUrl ? { imageUrl:String(parsed.thumbnailUrl) } : {}),
       };
       message.android.notification = {
         channelId: 'vaultlix_messages_universal_v2',
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
         sound: 'vault_chime',
+        ...(parsed.thumbnailUrl ? { imageUrl:String(parsed.thumbnailUrl) } : {}),
         ...(parsed.tag ? { tag:String(parsed.tag) } : {}),
       };
     }
