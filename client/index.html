@@ -20798,11 +20798,12 @@ async function refreshVaultlixUpdates({ force=false }={}) {
 }
 function vaultlixUpdateRowHtml(item) {
   if(!item)return '';
-  const mediaLabel=item.mediaType==='video'?'Video update':item.mediaType==='image'?'Photo update':'New update';
+  const seen=vaultlixSeenUpdateIds().has(item.id);
+  const preview=String(item.body||item.title||'').trim();
   const avatar=item.thumbnailUrl
     ? `<span class="vault-list-avatar vaultlix-update-avatar"><img src="${escHtml(item.thumbnailUrl)}" alt=""></span>`
     : '<span class="vault-list-avatar vaultlix-update-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4.5 6v5.5c0 4.7 3.2 8 7.5 9.5 4.3-1.5 7.5-4.8 7.5-9.5V6L12 3Z"/><path d="M9 12.5 11 14.5 15.5 10"/></svg></span>';
-  return `<div class="vault-list-row vaultlix-update-row" data-vaultlix-update="${escHtml(item.id)}">${avatar}<span class="vault-list-row-name">Vaultlix Updates</span><span class="vault-list-row-preview">${escHtml(mediaLabel)} · ${escHtml(item.title)}</span><span class="vault-list-row-meta"><span class="vault-list-row-time">${formatVaultInboxTime(item.sentAt)}</span><span class="vault-list-row-unread">1</span></span></div>`;
+  return `<div class="vault-list-row vaultlix-update-row" data-vaultlix-update="${escHtml(item.id)}">${avatar}<span class="vault-list-row-name">Vaultlix</span><span class="vault-list-row-preview">${escHtml(preview)}</span><span class="vault-list-row-meta"><span class="vault-list-row-time">${formatVaultInboxTime(item.sentAt)}</span>${seen?'':'<span class="vault-list-row-unread">1</span>'}</span></div>`;
 }
 async function openVaultlixUpdate(id, urlsRefreshed=false) {
   if(!urlsRefreshed&&Date.now()-vaultlixUpdatesRefreshedAt>8*60*1000){
@@ -20811,11 +20812,9 @@ async function openVaultlixUpdate(id, urlsRefreshed=false) {
   }
   const item=vaultlixUpdates.find(update=>update.id===id);
   if(!item||Number(item.expiresAt)<=Date.now()){toast('This Vaultlix update has expired.');refreshVaultlixUpdates({force:true});return;}
-  if(item.viewOnce){
-    markVaultlixUpdateSeen(item.id);renderVaultList();
-    const account=loadAccountState();
-    if(account?.accountId&&account?.sessionToken)api('/api/account/updates/view',{accountId:account.accountId,sessionToken:account.sessionToken,updateId:item.id}).catch(()=>{});
-  }
+  markVaultlixUpdateSeen(item.id);renderVaultList();
+  const account=loadAccountState();
+  if(account?.accountId&&account?.sessionToken)api('/api/account/updates/view',{accountId:account.accountId,sessionToken:account.sessionToken,updateId:item.id}).catch(()=>{});
   const overlay=document.createElement('div');overlay.className='vaultlix-update-overlay';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');
   const media=item.mediaType==='video'&&item.mediaUrl
     ? `<video src="${escHtml(item.mediaUrl)}"${item.thumbnailUrl?` poster="${escHtml(item.thumbnailUrl)}"`:''} autoplay playsinline preload="auto"></video>`
