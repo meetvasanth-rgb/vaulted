@@ -89,6 +89,7 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(script, /fetch\('\/api\/admin\/announcements'/);
   assert.match(script, /Ready: \$\{file\.name\}/);
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);
+  assert.match(script, /else if\(!ctaLabel\.value\.trim\(\)\)ctaLabel\.value='Try it'/);
   assert.match(client, /class=\"vaultlix-update-cta\"/);
   assert.match(client, /action==='daily-look'.*openDailyLook\(\).*action==='status-composer'.*openStatusComposer\(\)/s);
   assert.match(server, /ctaLabel:record\.ctaLabel, ctaAction:record\.ctaAction/);

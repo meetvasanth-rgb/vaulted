@@ -386,6 +386,7 @@
     const ctaLabel=$('announcement-cta-label');
     ctaLabel.disabled=!ctaAction;
     if(!ctaAction)ctaLabel.value='';
+    else if(!ctaLabel.value.trim())ctaLabel.value='Try it';
     $('announcement-submit').textContent=scheduled?'Schedule update':(all ? 'Publish to all opted-in users' : 'Publish to test accounts');
     $('announcement-submit').classList.toggle('danger',all);
     $('announcement-schedule-wrap').hidden=!scheduled;
