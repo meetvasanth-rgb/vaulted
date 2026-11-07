@@ -46,7 +46,7 @@ test('number card uses the header theme with a prominent number and scan-safe em
   assert.doesNotMatch(svg, /Scan to extend a private line/);
 });
 
-test('one-time invitation card carries its QR destination and expiry without exposing a Private Number', () => {
+test('one-time invitation card uses the new theme while preserving its single-use expiry', () => {
   const svg = createPrivateInviteCardSvg({
     username:'Vasanthkumar',
     inviteUrl:'https://vaultlix.com/invite/ER49TD',
@@ -54,8 +54,11 @@ test('one-time invitation card carries its QR destination and expiry without exp
   });
   assert.match(svg, /PRIVATE INVITATION/);
   assert.match(svg, /Vasanthkumar invited you/);
-  assert.match(svg, /SINGLE USE · VALID FOR 24 HOURS/);
-  assert.match(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
+  assert.match(svg, /qr-emboss/);
+  assert.match(svg, /Scan to connect/);
+  assert.match(svg, /24 HOURS/);
+  assert.match(svg, /SINGLE USE · EXPIRES IN 24 HOURS/);
+  assert.doesNotMatch(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
   assert.doesNotMatch(svg, /24-8059-9999|MY PRIVATE LINE/);
 });
 
