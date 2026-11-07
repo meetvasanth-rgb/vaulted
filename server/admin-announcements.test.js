@@ -91,6 +91,10 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);
   assert.match(script, /else if\(!ctaLabel\.value\.trim\(\)\)ctaLabel\.value='Try it'/);
   assert.match(client, /class=\"vaultlix-update-cta\"/);
+  assert.match(client, /<video src=.*poster=.*autoplay playsinline preload=\"auto\"/s);
+  assert.doesNotMatch(client, /<video src=.* controls autoplay playsinline/s);
+  assert.match(client, /vaultlix-native-android \.vaultlix-update-copy.*android-safe-area-bottom/s);
+  assert.match(client, /if\(updateVideo\)updateVideo\.play\(\)\.catch/);
   assert.match(client, /action==='daily-look'.*openDailyLook\(\).*action==='status-composer'.*openStatusComposer\(\)/s);
   assert.match(server, /ctaLabel:record\.ctaLabel, ctaAction:record\.ctaAction/);
   assert.match(server, /img-src 'self' data:/);
