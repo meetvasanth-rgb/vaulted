@@ -26,6 +26,7 @@
       render(stats);
       if (!healthTimer) { loadHealth(); healthTimer=setInterval(loadHealth,30000); }
       loadSafetyReports();
+      if (initial) loadAnnouncementHistory();
       $('login').hidden = true;
       $('dashboard').hidden = false;
       history.replaceState({ signedOut: false }, '', '/admin');
@@ -455,8 +456,10 @@
   }
   function renderAnnouncementHistory() {
     const list=$('announcement-history-list');list.replaceChildren();
+    const pendingCount=announcementHistory.filter(item=>item.status==='pending'||item.status==='sending').length;
+    const badge=$('announcement-pending-badge');badge.textContent=`${pendingCount} pending`;badge.classList.toggle('has-pending',pendingCount>0);
     if(!announcementHistory.length){$('announcement-history-status').textContent='No push notifications have been sent or scheduled yet.';return;}
-    $('announcement-history-status').textContent=`Showing ${announcementHistory.length} most recent notification${announcementHistory.length===1?'':'s'}.`;
+    $('announcement-history-status').textContent=`Showing ${announcementHistory.length} most recent notification${announcementHistory.length===1?'':'s'} · ${pendingCount ? `${pendingCount} scheduled notification${pendingCount===1?' is':'s are'} pending` : 'nothing is scheduled'}.`;
     for(const item of announcementHistory) {
       const card=document.createElement('article');card.className='announcement-history-card';
       const media=document.createElement('div');media.className='announcement-history-media';
@@ -467,13 +470,13 @@
       const main=document.createElement('div');main.className='announcement-history-main';
       const heading=document.createElement('div');heading.className='announcement-history-title';
       const title=document.createElement('strong');title.textContent=item.title;
-      const status=document.createElement('span');status.className=`announcement-history-pill ${item.status}`;status.textContent=item.status;
+      const status=document.createElement('span');status.className=`announcement-history-pill ${item.status}`;status.textContent=item.status==='pending'?'Scheduled':item.status==='sending'?'Sending':item.status;
       heading.append(title,status);
       const body=document.createElement('p');body.textContent=item.body;
       const meta=document.createElement('div');meta.className='announcement-history-meta';
       const when=item.sentAt || item.scheduledAt || item.createdAt;
       const delivery=item.status==='sent'?` · ${item.delivered}/${item.targeted} delivered${item.failed?` · ${item.failed} failed`:''}`:'';
-      meta.textContent=`${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()} · ${item.expiryHours}h${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
+      meta.textContent=`${item.status==='pending'?'Scheduled for ':''}${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()} · ${item.expiryHours}h${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
       main.append(heading,body,meta);
       const actions=document.createElement('div');actions.className='announcement-history-actions';
       const reuse=document.createElement('button');reuse.type='button';reuse.textContent='Reuse';reuse.addEventListener('click',()=>fillAnnouncementDraft(item,false));
@@ -489,7 +492,7 @@
       const data=await response.json();if(adminKey!==key)return;
       if(!response.ok)throw Error(data.error || 'Notification history is unavailable.');
       announcementHistory=Array.isArray(data.announcements)?data.announcements:[];renderAnnouncementHistory();
-    } catch(error) { if(adminKey===key)$('announcement-history-status').textContent=error.message; }
+    } catch(error) { if(adminKey===key){$('announcement-history-status').textContent=error.message;$('announcement-pending-badge').textContent='Unavailable';} }
   }
   $('announcement-history-open').addEventListener('click',()=>{$('announcement-history-modal').hidden=false;loadAnnouncementHistory();setTimeout(()=>$('announcement-history-close').focus(),0);});
   $('announcement-history-close').addEventListener('click',()=>{$('announcement-history-modal').hidden=true;});
