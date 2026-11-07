@@ -468,11 +468,11 @@
       const main=document.createElement('div');main.className='announcement-history-main';
       const heading=document.createElement('div');heading.className='announcement-history-title';
       const title=document.createElement('strong');title.textContent=item.title;
-      const status=document.createElement('span');status.className=`announcement-history-pill ${item.status}`;status.textContent=item.status==='pending'?'Scheduled':item.status==='sending'?'Sending':item.status;
+      const status=document.createElement('span');status.className=`announcement-history-pill ${item.status}`;status.textContent=item.status==='pending'?'Scheduled':item.status==='sending'?'Sending':item.status==='cancelled'?'Cancelled':item.status;
       heading.append(title,status);
       const body=document.createElement('p');body.textContent=item.body;
       const meta=document.createElement('div');meta.className='announcement-history-meta';
-      const when=item.sentAt || item.scheduledAt || item.createdAt;
+      const when=item.sentAt || item.cancelledAt || item.scheduledAt || item.createdAt;
       const delivery=item.status==='sent'?` · ${item.delivered}/${item.targeted} delivered${item.failed?` · ${item.failed} failed`:''}`:'';
       const wasScheduled=Number(item.scheduledAt)>Number(item.createdAt)+30000;
       meta.textContent=`${item.status==='pending'?'Scheduled for ':''}${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()}${wasScheduled?'':` · ${item.expiryHours}h`}${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
@@ -485,7 +485,9 @@
           const countdown=document.createElement('strong');countdown.dataset.announcementDeadline=String(item.scheduledAt);countdown.dataset.announcementTimer='trigger';timing.append(triggered,countdown);
           const expiry=document.createElement('span');expiry.textContent=`Remains in Vaultlix for ${item.expiryHours} hour${item.expiryHours===1?'':'s'} after triggering`;timing.append(expiry);
         } else {
-          triggered.textContent=item.sentAt?`Triggered at ${new Date(item.sentAt).toLocaleString()}`:`Scheduled for ${new Date(item.scheduledAt).toLocaleString()}`;
+          triggered.textContent=item.status==='cancelled'&&item.cancelledAt
+            ? `Cancelled at ${new Date(item.cancelledAt).toLocaleString()}`
+            : item.sentAt?`Triggered at ${new Date(item.sentAt).toLocaleString()}`:`Scheduled for ${new Date(item.scheduledAt).toLocaleString()}`;
           timing.append(triggered);
           if(item.expiresAt){const countdown=document.createElement('strong');countdown.dataset.announcementDeadline=String(item.expiresAt);countdown.dataset.announcementTimer='expiry';timing.append(countdown);}
         }
@@ -494,9 +496,33 @@
       const actions=document.createElement('div');actions.className='announcement-history-actions';
       const reuse=document.createElement('button');reuse.type='button';reuse.textContent='Reuse';reuse.addEventListener('click',()=>fillAnnouncementDraft(item,false));
       const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit copy';edit.addEventListener('click',()=>fillAnnouncementDraft(item,true));
-      actions.append(reuse,edit);card.append(media,main,actions);list.append(card);
+      actions.append(reuse,edit);
+      if(item.status==='pending'){
+        const cancel=document.createElement('button');cancel.type='button';cancel.className='quiet announcement-cancel';cancel.textContent='Cancel';cancel.addEventListener('click',()=>manageScheduledAnnouncement(item,'cancel',cancel));actions.append(cancel);
+      }
+      if(['pending','cancelled','failed'].includes(item.status)){
+        const remove=document.createElement('button');remove.type='button';remove.className='danger announcement-delete';remove.textContent='Delete';remove.addEventListener('click',()=>manageScheduledAnnouncement(item,'delete',remove));actions.append(remove);
+      }
+      card.append(media,main,actions);list.append(card);
     }
     updateAnnouncementHistoryTimers();
+  }
+  async function manageScheduledAnnouncement(item,action,button) {
+    const deleting=action==='delete';
+    const message=deleting
+      ? `${item.status==='pending'?'Cancel and permanently delete':'Permanently delete'} “${item.title}”? This cannot be undone.`
+      : `Cancel the scheduled notification “${item.title}”? It will stay in history so you can reuse it.`;
+    if(!confirm(message))return;
+    const key=adminKey;button.disabled=true;
+    $('announcement-history-status').textContent=deleting?'Deleting notification…':'Cancelling scheduled notification…';
+    try{
+      const response=await fetch('/api/admin/announcements',{method:deleting?'DELETE':'PATCH',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({id:item.id,...(deleting?{}:{action:'cancel'})}),cache:'no-store'});
+      const result=await response.json();if(adminKey!==key)return;
+      if(!response.ok)throw Error(result.error || `Notification could not be ${deleting?'deleted':'cancelled'}.`);
+      await loadAnnouncementHistory();
+      $('announcement-history-status').textContent=deleting?'Notification deleted.':'Scheduled notification cancelled. You can still reuse it from this history.';
+    }catch(error){if(adminKey===key)$('announcement-history-status').textContent=error.message;}
+    finally{button.disabled=false;}
   }
   function announcementCountdown(milliseconds) {
     if(milliseconds<=0)return '';

@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload, decodeAnnouncementMedia, validateAnnouncementExperience } = require('./admin-announcements');
+const { PostgresStore } = require('./postgres');
 
 test('announcement validation protects an all-user broadcast and normalizes copy', () => {
   assert.match(validateAnnouncement({}).error, /title/i);
@@ -41,6 +42,22 @@ test('ephemeral update options, actions and media are validated before storage',
   assert.equal(media.value.kind, 'video');
   assert.equal(media.value.contentType, 'video/mp4');
   assert.match(decodeAnnouncementMedia('data:text/html;base64,PGgxPg==').error, /JPEG|PNG|WebP|MP4/);
+});
+
+test('scheduled announcements can be cancelled or deleted only from safe states', async () => {
+  const queries=[];
+  const pool={query:async (sql,params)=>{
+    queries.push({sql,params});
+    if(sql.startsWith('UPDATE admin_announcements')) return {rows:[{announcement_id:params[0],status:'cancelled',cancelled_at:params[1]}]};
+    if(sql.startsWith('DELETE FROM admin_announcements')) return {rows:[{announcement_id:params[0],status:'cancelled',thumbnail_object_key:'thumb',media_object_key:'video'}]};
+    return {rowCount:0,rows:[]};
+  }};
+  const store=new PostgresStore('',{pool});
+  const id='56fdc337-4d75-4eaf-9022-74b85945e86a';
+  assert.deepEqual(await store.cancelAdminAnnouncement(id,1234),{id,status:'cancelled',cancelledAt:1234});
+  assert.match(queries[0].sql,/status='pending'/);
+  assert.deepEqual(await store.deleteAdminAnnouncement(id),{id,status:'cancelled',thumbnailObjectKey:'thumb',mediaObjectKey:'video'});
+  assert.match(queries[1].sql,/status IN \('pending','cancelled','failed'\)/);
 });
 
 test('announcement endpoint requires admin authentication and never defaults to all users', { timeout:15000 }, async t => {
@@ -102,6 +119,11 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(script, /dataset\.announcementTimer='trigger'/);
   assert.match(script, /dataset\.announcementTimer='expiry'/);
   assert.match(script, /Triggered at/);
+  assert.match(script, /manageScheduledAnnouncement\(item,'cancel'/);
+  assert.match(script, /manageScheduledAnnouncement\(item,'delete'/);
+  assert.match(script, /method:deleting\?'DELETE':'PATCH'/);
+  assert.match(server, /cancelAdminAnnouncement\(id\)/);
+  assert.match(server, /deleteAdminAnnouncement\(id\)/);
   assert.match(server, /expiresAt:record\.sentAt \? Number\(record\.sentAt\)/);
   assert.match(script, /Ready: \$\{file\.name\}/);
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);

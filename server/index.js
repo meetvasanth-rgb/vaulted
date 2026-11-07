@@ -6425,7 +6425,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && ['GET','POST'].includes(method)) || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && ['GET','POST','PATCH','DELETE'].includes(method)) || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -6490,6 +6490,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           status:record.status, viewOnce:record.viewOnce !== false,
           expiryHours:Math.max(1, Math.round(Number(record.expiresAfterMs || 43200000) / 3600000)),
           scheduledAt:record.scheduledAt, createdAt:record.createdAt, sentAt:record.sentAt || null,
+          cancelledAt:record.cancelledAt || null,
           expiresAt:record.sentAt ? Number(record.sentAt) + Number(record.expiresAfterMs || 43200000) : null,
           targeted:Number(record.targeted || 0), delivered:Number(record.delivered || 0), failed:Number(record.failed || 0),
           viewed:Number(record.viewed || 0), hasThumbnail:!!record.thumbnailObjectKey,
@@ -6498,6 +6499,41 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           mediaUrl:record.mediaObjectKey && objectStorageEnabled ? await objectStorage.createDownloadUrl(record.mediaObjectKey).catch(() => '') : '',
         })));
         return res200(res, { announcements });
+      }
+      if (method === 'PATCH') {
+        const id=String(d.id || '');
+        if (!/^[a-f0-9-]{36}$/i.test(id) || d.action !== 'cancel') return resErr(res,'Choose a valid scheduled notification to cancel.',400);
+        if (!postgresEnabled) return resErr(res,'Notification scheduling is temporarily unavailable.',503);
+        const cancelled=await postgresStore.cancelAdminAnnouncement(id);
+        if (!cancelled) {
+          const current=await postgresStore.getAdminAnnouncement(id);
+          if (!current) return resErr(res,'Scheduled notification not found.',404);
+          return resErr(res,current.status==='sending'
+            ? 'This notification is already being sent and can no longer be cancelled.'
+            : 'Only pending scheduled notifications can be cancelled.',409);
+        }
+        return res200(res,{ok:true,...cancelled});
+      }
+      if (method === 'DELETE') {
+        const id=String(d.id || '');
+        if (!/^[a-f0-9-]{36}$/i.test(id)) return resErr(res,'Choose a valid notification to delete.',400);
+        if (!postgresEnabled) return resErr(res,'Notification scheduling is temporarily unavailable.',503);
+        const deleted=await postgresStore.deleteAdminAnnouncement(id);
+        if (!deleted) {
+          const current=await postgresStore.getAdminAnnouncement(id);
+          if (!current) return resErr(res,'Notification not found.',404);
+          return resErr(res,current.status==='sending'
+            ? 'This notification is being sent and cannot be deleted.'
+            : 'Sent notifications remain in the delivery record and cannot be deleted.',409);
+        }
+        if (objectStorageEnabled) {
+          const keys=[...new Set([deleted.thumbnailObjectKey,deleted.mediaObjectKey].filter(Boolean))];
+          for (const objectKey of keys) {
+            const referenced=await postgresStore.isAdminAnnouncementObjectReferenced(objectKey);
+            if (!referenced) await objectStorage.delete(objectKey).catch(error => console.error(`Admin announcement asset cleanup failed: ${error.message}`));
+          }
+        }
+        return res200(res,{ok:true,id:deleted.id,deleted:true});
       }
       const checked = validateAnnouncement(d);
       if (checked.error) return resErr(res, checked.error, 400);
