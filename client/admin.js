@@ -354,24 +354,44 @@
     context.drawImage(image,(512-width)/2,(512-height)/2,width,height);
     return canvas.toDataURL('image/jpeg',.84);
   }
-  $('announcement-media').addEventListener('change',async event=>{
-    const file=event.target.files?.[0];announcementMediaDataUrl='';
+  const announcementMediaTypes=new Set(['image/jpeg','image/png','image/webp','video/mp4']);
+  const announcementThumbnailTypes=new Set(['image/jpeg','image/png','image/webp']);
+  async function setAnnouncementMedia(file,input) {
+    announcementMediaDataUrl='';
     if(!file){updateAnnouncementPreview();return;}
-    if(file.size>8*1024*1024){event.target.value='';$('announcement-status').textContent='Choose update media smaller than 8 MB.';return;}
+    if(!announcementMediaTypes.has(file.type)){if(input)input.value='';$('announcement-status').textContent='Paste or choose a JPEG, PNG, WebP, or MP4 file.';return;}
+    if(file.size>8*1024*1024){if(input)input.value='';$('announcement-status').textContent='Choose update media smaller than 8 MB.';return;}
     try{announcementMediaDataUrl=await readFileDataUrl(file);$('announcement-status').textContent=`${file.type.startsWith('video/')?'Video':'Image'} ready for the inbox update.`;}
-    catch(error){event.target.value='';$('announcement-status').textContent=error.message;}
+    catch(error){if(input)input.value='';$('announcement-status').textContent=error.message;}
     updateAnnouncementPreview();
-  });
-  $('announcement-thumbnail').addEventListener('change',async event=>{
-    const file=event.target.files?.[0];announcementThumbnailDataUrl='';
+  }
+  async function setAnnouncementThumbnail(file,input) {
+    announcementThumbnailDataUrl='';
+    if(file&&!announcementThumbnailTypes.has(file.type)){if(input)input.value='';$('announcement-thumbnail-help').textContent='Optional square image · the Vaultlix icon is the fallback';$('announcement-status').textContent='Paste or choose a JPEG, PNG, or WebP thumbnail.';updateAnnouncementPreview();return;}
     try{
       announcementThumbnailDataUrl=await prepareAnnouncementThumbnail(file);
-      $('announcement-thumbnail-help').textContent=file?`Ready: ${file.name}`:'Optional square image · the Vaultlix icon is the fallback';
+      $('announcement-thumbnail-help').textContent=file?`Ready: ${file.name || 'pasted image'}`:'Optional square image · the Vaultlix icon is the fallback';
       $('announcement-status').textContent=file?'Custom push thumbnail ready. It will upload when you publish the update.':'';
     }
-    catch(error){event.target.value='';$('announcement-thumbnail-help').textContent='Optional square image · the Vaultlix icon is the fallback';$('announcement-status').textContent=error.message;}
+    catch(error){if(input)input.value='';$('announcement-thumbnail-help').textContent='Optional square image · the Vaultlix icon is the fallback';$('announcement-status').textContent=error.message;}
     updateAnnouncementPreview();
-  });
+  }
+  function wireAnnouncementPasteTarget(id,types,handler,emptyMessage) {
+    const target=$(id);
+    target.addEventListener('click',()=>target.focus());
+    target.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();target.focus();}});
+    target.addEventListener('paste',async event=>{
+      event.preventDefault();
+      const files=Array.from(event.clipboardData?.files || []);
+      const file=files.find(candidate=>types.has(candidate.type));
+      if(!file){$('announcement-status').textContent=emptyMessage;return;}
+      await handler(file,null);
+    });
+  }
+  $('announcement-media').addEventListener('change',event=>setAnnouncementMedia(event.target.files?.[0],event.target));
+  $('announcement-thumbnail').addEventListener('change',event=>setAnnouncementThumbnail(event.target.files?.[0],event.target));
+  wireAnnouncementPasteTarget('announcement-media-paste',announcementMediaTypes,setAnnouncementMedia,'Clipboard has no supported image or MP4 video.');
+  wireAnnouncementPasteTarget('announcement-thumbnail-paste',announcementThumbnailTypes,setAnnouncementThumbnail,'Clipboard has no supported thumbnail image.');
   function updateAnnouncementPreview() {
     const title=$('announcement-title').value.trim();
     const body=$('announcement-body').value.trim();
