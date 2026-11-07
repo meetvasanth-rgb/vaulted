@@ -87,7 +87,8 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(html, /id="announcement-thumbnail"/);
   assert.match(html, /id="announcement-media"/);
   assert.match(html, /id="announcement-view-once"[^>]+checked/);
-  assert.match(html, /id="announcement-expiry"/);
+  assert.match(html, /id="announcement-custom-expiry"[^>]+value="12"/);
+  assert.doesNotMatch(html, /id="announcement-expiry"/);
   assert.match(html, /id="announcement-schedule-enabled"/);
   assert.match(html, /id="announcement-cta-action"/);
   assert.match(html, /id="announcement-cta-label"/);
