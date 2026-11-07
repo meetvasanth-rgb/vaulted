@@ -79,8 +79,6 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(html, /id="announcement-preview-icon" class="announcement-icon" src="\/icons\/icon-192\.png"/);
   assert.match(html, /id="announcement-thumbnail"/);
   assert.match(html, /id="announcement-media"/);
-  assert.match(html, /id="announcement-media-paste"/);
-  assert.match(html, /id="announcement-thumbnail-paste"/);
   assert.match(html, /id="announcement-view-once"[^>]+checked/);
   assert.match(html, /id="announcement-expiry"/);
   assert.match(html, /id="announcement-schedule-enabled"/);
@@ -89,9 +87,7 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(html, /<option value="test">Test accounts<\/option><option value="all">/);
   assert.match(script, /Schedule.*Publish.*update for every opted-in Vaultlix app device/s);
   assert.match(script, /fetch\('\/api\/admin\/announcements'/);
-  assert.match(script, /event\.clipboardData\?\.files/);
-  assert.match(script, /wireAnnouncementPasteTarget\('announcement-media-paste',announcementMediaTypes,setAnnouncementMedia/);
-  assert.match(script, /wireAnnouncementPasteTarget\('announcement-thumbnail-paste',announcementThumbnailTypes,setAnnouncementThumbnail/);
+  assert.match(script, /Ready: \$\{file\.name\}/);
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);
   assert.match(client, /class=\"vaultlix-update-cta\"/);
   assert.match(client, /action==='daily-look'.*openDailyLook\(\).*action==='status-composer'.*openStatusComposer\(\)/s);
