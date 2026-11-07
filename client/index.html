@@ -559,10 +559,6 @@ button.vault-call-btn:focus-visible{outline:2px solid #8D3C56;outline-offset:2px
 .typing-indicator.peer-typing.recording .peer-typing-mic{display:flex}
 @keyframes typing-bounce-small{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-3px)}}
 .chat-ftr{flex-shrink:0;background:#fff;border-top:1px solid #EFEFEF;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:4px;align-items:flex-end}
-.smart-reply-rail{flex:none;display:flex;gap:8px;overflow-x:auto;padding:8px 12px 7px;background:#fff;border-top:1px solid #efe7ea;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-.smart-reply-rail::-webkit-scrollbar{display:none}.smart-reply-rail[hidden]{display:none}
-.smart-reply-chip{flex:0 0 auto;max-width:min(72vw,280px);min-height:36px;padding:8px 14px;border:1px solid #d9cbd1;border-radius:18px;background:#fff;color:#682c43;font:650 12.5px/1.3 Inter,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(71,30,47,.06)}
-.smart-reply-chip:active{background:#f5e9ed;border-color:#b98699}.smart-reply-chip:focus-visible{outline:3px solid rgba(104,44,67,.2);outline-offset:2px}
 /* 16px, not 15 — anything smaller than 16px on a text input makes iOS
    Safari auto-zoom the whole page in on focus, which is a likely
    contributor to text looking off afterward. */
@@ -3883,7 +3879,6 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <span class="reply-preview-text"><span class="reply-preview-name" id="reply-name"></span><span id="reply-text"></span></span>
     <button class="reply-close" onclick="cancelReply()">×</button>
   </div>
-  <div class="smart-reply-rail" id="smart-reply-rail" aria-label="Suggested replies" hidden></div>
   <div class="chat-ftr" id="chat-ftr">
     <button class="attach-btn" onclick="showAttachOptions()" id="attach-btn" title="Attach file">
       <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -4035,7 +4030,6 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
   <main class="group-chat-body" id="group-chat-body"></main>
   <div class="group-typing" id="group-typing" role="status" aria-live="polite" hidden></div>
   <div class="group-reply-preview" id="group-reply-preview"><div class="group-reply-body"><strong class="group-reply-name"></strong><span class="group-reply-snippet"></span></div><button type="button" onclick="cancelPrivateGroupReply()" aria-label="Cancel reply">✕</button></div>
-  <div class="smart-reply-rail" id="group-smart-reply-rail" aria-label="Suggested replies" hidden></div>
   <footer class="group-chat-footer" id="group-chat-footer">
     <button class="group-attach-btn" id="group-attach-btn" type="button" onclick="showPrivateGroupAttachOptions()" aria-label="Attach photo or file">+</button>
     <input type="file" id="group-image-input" multiple hidden accept="image/*,video/*" onchange="handlePrivateGroupFileSelect(event)"/>
@@ -21465,7 +21459,6 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   // arrive instead of replacing it one frame later with an apparently blank
   // conversation. Locally cached records can still paint immediately.
   if (!room.historyLoaded && !uniqueVisibleConversationRecords(room.messages).length) {
-    hideSmartReplyRail('smart-reply-rail');
     if (room.historyLoadFailed) {
       body.innerHTML = '<button class="chat-restore-pending" type="button" onclick="retryChatHistory()"><span>Could not load encrypted messages</span><strong>Tap to retry</strong></button>';
     } else {
@@ -21505,7 +21498,6 @@ function renderChatBody(room, { keepDistanceFromBottom = null } = {}) {
   });
   scheduleDeferredKlipyGifs(body);
   scheduleMessageImagePreviews(body, room);
-  updateDirectSmartReplies(room);
 }
 
 function retryChatHistory() {
@@ -23174,7 +23166,6 @@ function renderMessageRecord(room, rec, animate) {
       });
     }
   }
-  if (animate && room.code === activeRoomCode) updateDirectSmartReplies(room);
   return div;
 }
 
@@ -24865,92 +24856,10 @@ function triggerEmojiEffect(emoji) {
   } catch (e) {}
 }
 
-// ── PRIVATE, ON-DEVICE SMART REPLIES ─────────────────────────────────
-// Suggestions are derived from already-decrypted text in this WebView. The
-// message is never sent to Vaultlix, OpenAI or an OS service, and selecting a
-// chip only fills the composer — the person still reviews and sends it.
-function smartReplySuggestions(message) {
-  const raw = String(message || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-  if (!raw || raw.length > 280 || /^https?:\/\/\S+$/i.test(raw)) return [];
-  const lower = raw.toLocaleLowerCase();
-  // Do not encourage one-tap answers around secrets or financial details.
-  if (/\b(?:otp|passcode|password|pin|bank|account number|verification code)\b/i.test(lower)) return [];
-  const replies = (...items) => [...new Set(items.map(item => String(item).trim()).filter(Boolean))].slice(0, 3);
-
-  if (/^(?:yup|yep|yeah|yes|okay|ok|k|alright|sure|done|perfect|great|fine|got it|noted)[.! ]*$/i.test(raw)) return replies('👍');
-  if (/\b(?:happy diwali|deepavali)\b/i.test(lower)) return replies('Happy Diwali! 🪔', 'Same to you!');
-  if (/\b(?:good morning|morning!)\b/i.test(lower)) return replies('Good morning! 😊', 'Have a great day!');
-  if (/\b(?:good night|sleep well)\b/i.test(lower)) return replies('Good night! 🌙', 'Sleep well!');
-  if (/\b(?:thank you|thanks|thx)\b/i.test(lower)) return replies('You’re welcome!', 'Anytime 😊');
-  if (/\b(?:sorry|apologize|apologies)\b/i.test(lower)) return replies('It’s okay.', 'No worries.');
-  if (/^(?:hi|hello|hey|hiya)\b|\bhowdy\b/i.test(lower)) return replies('Hi! 👋', 'How are you?');
-  if (/\bhow are you\b|\bhow's it going\b|\bhow are things\b/i.test(lower)) return replies('I’m good, thanks!', 'How about you?');
-  if (/\b(?:where|wher|whr)\s+(?:are|r)\s+(?:you|u)\b/i.test(lower)) return replies('I’m on my way.', 'I’ll share the details.', 'Where should we meet?');
-  if (/\b(?:call me|can we call|shall we call|phone me)\b/i.test(lower)) return replies('Sure, I’ll call you.', 'Give me a minute.', 'Can I call later?');
-  if (/\b(?:meet|coffee|lunch|dinner|catch up|hang out)\b/i.test(lower)) return replies('Sounds good!', 'What time?', 'I’ll let you know.');
-  if (/\b(?:when|what time|which time)\b/i.test(lower)) return replies('I’ll let you know.', 'Let me check.');
-  if (/\b(?:are you coming|will you come|can you come|shall we)\b/i.test(lower)) return replies('Yes, I’ll be there.', 'Not sure yet.', 'I’ll let you know.');
-  if (/\?$/.test(raw) || /^(?:are|is|can|could|would|will|do|did|have|has)\b/i.test(lower)) return replies('Yes.', 'Not right now.', 'Let me check.');
-  return replies('Okay 👍');
-}
-
-function fillSmartReply(inputId, text, groupMode = false) {
-  const input = document.getElementById(inputId);
-  if (!input || input.disabled) return;
-  input.value = String(text || '');
-  hideSmartReplyRail(groupMode ? 'group-smart-reply-rail' : 'smart-reply-rail');
-  resizeChatComposer(input);
-  if (groupMode) updatePrivateGroupComposer(); else updateComposerButtons();
-  input.focus({ preventScroll:true });
-  input.setSelectionRange?.(input.value.length, input.value.length);
-}
-
-function hideSmartReplyRail(id) {
-  const rail = document.getElementById(id);
-  if (!rail) return;
-  rail.hidden = true;
-  rail.replaceChildren();
-}
-
-function renderSmartReplyRail(id, inputId, suggestions, groupMode = false) {
-  const rail = document.getElementById(id);
-  const input = document.getElementById(inputId);
-  if (!rail || !input || input.disabled || input.value.trim() || !suggestions.length) {
-    hideSmartReplyRail(id); return;
-  }
-  rail.replaceChildren();
-  for (const suggestion of suggestions) {
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'smart-reply-chip'; button.textContent = suggestion;
-    button.setAttribute('aria-label', `Use suggested reply: ${suggestion}`);
-    button.onclick = () => fillSmartReply(inputId, suggestion, groupMode);
-    rail.appendChild(button);
-  }
-  rail.hidden = false;
-}
-
-function latestIncomingDirectText(room) {
-  const messages = uniqueVisibleConversationRecords(room?.messages || []);
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (message.deleted || message.kind === 'sys') continue;
-    if (message.isMe) return '';
-    return message.kind === 'text' ? String(message.content || '') : '';
-  }
-  return '';
-}
-
-function updateDirectSmartReplies(room = getActiveRoom()) {
-  const text = room?.code === activeRoomCode ? latestIncomingDirectText(room) : '';
-  renderSmartReplyRail('smart-reply-rail', 'msg-input', smartReplySuggestions(text));
-}
-
 // ── TYPING ────────────────────────────────────────────────────────────
 function onTyping() {
   resizeChatComposer('msg-input');
   updateComposerButtons();
-  if (document.getElementById('msg-input')?.value.trim()) hideSmartReplyRail('smart-reply-rail');
-  else updateDirectSmartReplies();
   const room = getActiveRoom();
   if (!room) return;
   if (room.typingTimer) clearTimeout(room.typingTimer);
