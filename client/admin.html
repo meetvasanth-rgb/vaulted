@@ -59,7 +59,7 @@
         <div id="allocate-result" hidden><label for="allocate-link">Private claim link</label><input id="allocate-link" type="text" readonly style="width:100%;box-sizing:border-box"><canvas id="allocate-qr" aria-label="Private number claim QR code" role="img" style="display:block;max-width:100%;margin:16px 0"></canvas><button id="allocate-save-qr" type="button">Save QR code</button><button id="allocate-copy" type="button">Copy claim link</button><p class="micro">Share privately with your friend. Anyone holding this link or QR code can claim the number. Your friend chooses their own password and recovery details. Copy the link now; it is not shown again after sign-out or refresh.</p></div>
       </section>
       <section class="panel announcement-panel" aria-labelledby="announcement-title-heading">
-        <div class="panel-head"><div><p class="eyebrow">Vaultlix Updates</p><h2 id="announcement-title-heading">Compose and publish</h2><p class="panel-copy">Publish an ephemeral update inside the inbox and alert opted-in devices. Add an image or short video, choose whether it opens once, and set when it expires.</p></div><span class="health-pill">Inbox + push</span></div>
+        <div class="panel-head"><div><p class="eyebrow">Vaultlix Updates</p><h2 id="announcement-title-heading">Compose and publish</h2><p class="panel-copy">Publish an ephemeral update inside the inbox and alert opted-in devices. Add an image or short video, choose whether it opens once, and set when it expires.</p></div><div class="announcement-head-actions"><span class="health-pill">Inbox + push</span><button id="announcement-history-open" type="button" class="quiet announcement-history-link">Previous notifications</button></div></div>
         <form id="announcement-form" class="announcement-form">
           <div class="announcement-fields">
             <label>Title<input id="announcement-title" maxlength="60" value="Vaultlix update" required></label>
@@ -68,6 +68,7 @@
               <label>Update media<input id="announcement-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4"><small>Optional image or MP4 video · up to 8 MB</small></label>
               <label>Push thumbnail<input id="announcement-thumbnail" type="file" accept="image/jpeg,image/png,image/webp"><small id="announcement-thumbnail-help">Optional square image · the Vaultlix icon is the fallback</small></label>
             </div>
+            <div id="announcement-retained-assets" class="announcement-retained-assets" hidden><strong>Files retained from the previous notification</strong><div id="announcement-retained-assets-list" class="announcement-retained-assets-list"></div><small>Choose a new file above only if you want to replace one of these.</small></div>
             <div class="announcement-options">
               <label>Audience<select id="announcement-audience"><option value="test">Test accounts</option><option value="all">All opted-in users</option></select></label>
               <label>Platform<select id="announcement-platform"><option value="all">iOS and Android</option><option value="ios">iOS only</option><option value="android">Android only</option></select></label>
@@ -86,11 +87,13 @@
         </form>
         <p id="announcement-status" class="announcement-status" role="status"></p>
         <div id="announcement-source" class="announcement-source" hidden><span id="announcement-source-copy"></span><button id="announcement-source-clear" type="button" class="quiet">Start fresh</button></div>
-        <section class="announcement-history" aria-labelledby="announcement-history-title">
-          <div class="announcement-history-head"><div><h3 id="announcement-history-title">Push history</h3><p>Track what was sent or scheduled. Reuse loads a safe draft; nothing is sent until you publish it.</p></div><button id="announcement-history-refresh" type="button" class="quiet">Refresh history</button></div>
-          <p id="announcement-history-status" class="micro" role="status">Loading notification history…</p>
+      </section>
+      <section id="announcement-history-modal" class="announcement-history-modal" aria-labelledby="announcement-history-title" hidden>
+        <div class="announcement-history-sheet">
+          <div class="announcement-history-head"><div><p class="eyebrow">Vaultlix Updates</p><h2 id="announcement-history-title">Previous notifications</h2><p>Track sent and scheduled updates. Reuse loads the original files and copy as a draft; nothing is sent until you publish.</p></div><button id="announcement-history-close" type="button" class="announcement-history-close" aria-label="Close notification history">×</button></div>
+          <div class="announcement-history-tools"><p id="announcement-history-status" class="micro" role="status">Loading notification history…</p><button id="announcement-history-refresh" type="button" class="quiet">Refresh</button></div>
           <div id="announcement-history-list" class="announcement-history-list"></div>
-        </section>
+        </div>
       </section>
       <section class="panel" aria-labelledby="funnel-title">
         <div class="panel-head"><div><p class="eyebrow">Activation</p><h2 id="funnel-title">From sign-up to a first connection</h2><p class="panel-copy">How far new identities get. Counts only, nobody is named, and no messages are involved. Percentages use identities at least a day old. Accounts marked as tests are excluded.</p><p class="micro" id="funnel-exclusions"></p></div></div>

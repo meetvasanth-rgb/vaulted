@@ -26,7 +26,6 @@
       render(stats);
       if (!healthTimer) { loadHealth(); healthTimer=setInterval(loadHealth,30000); }
       loadSafetyReports();
-      if (initial) loadAnnouncementHistory();
       $('login').hidden = true;
       $('dashboard').hidden = false;
       history.replaceState({ signedOut: false }, '', '/admin');
@@ -345,6 +344,9 @@
   let announcementThumbnailDataUrl='';
   let announcementSourceId='';
   let announcementHistory=[];
+  let announcementRetainedThumbnailUrl='';
+  let announcementRetainedMediaUrl='';
+  let announcementRetainedMediaType='';
   const readFileDataUrl=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('The selected file could not be read.'));reader.readAsDataURL(file);});
   async function prepareAnnouncementThumbnail(file) {
     if(!file)return '';
@@ -359,11 +361,11 @@
   }
   $('announcement-media').addEventListener('change',async event=>{
     const file=event.target.files?.[0];announcementMediaDataUrl='';
-    if(!file){updateAnnouncementPreview();return;}
+    if(!file){renderAnnouncementRetainedAssets();updateAnnouncementPreview();return;}
     if(file.size>8*1024*1024){event.target.value='';$('announcement-status').textContent='Choose update media smaller than 8 MB.';return;}
     try{announcementMediaDataUrl=await readFileDataUrl(file);$('announcement-status').textContent=`${file.type.startsWith('video/')?'Video':'Image'} ready for the inbox update.`;}
     catch(error){event.target.value='';$('announcement-status').textContent=error.message;}
-    updateAnnouncementPreview();
+    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
   });
   $('announcement-thumbnail').addEventListener('change',async event=>{
     const file=event.target.files?.[0];announcementThumbnailDataUrl='';
@@ -373,8 +375,24 @@
       $('announcement-status').textContent=file?'Custom push thumbnail ready. It will upload when you publish the update.':'';
     }
     catch(error){event.target.value='';$('announcement-thumbnail-help').textContent='Optional square image · the Vaultlix icon is the fallback';$('announcement-status').textContent=error.message;}
-    updateAnnouncementPreview();
+    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
   });
+  function renderAnnouncementRetainedAssets() {
+    const list=$('announcement-retained-assets-list');list.replaceChildren();
+    if(announcementRetainedMediaUrl&&!announcementMediaDataUrl){
+      const item=document.createElement('div');item.className='announcement-retained-file';
+      const media=announcementRetainedMediaType==='video'?document.createElement('video'):document.createElement('img');
+      media.src=announcementRetainedMediaUrl;if(media.tagName==='VIDEO'){media.muted=true;media.preload='metadata';}
+      const label=document.createElement('span');label.textContent=`Original ${announcementRetainedMediaType || 'update'} media`;
+      item.append(media,label);list.append(item);
+    }
+    if(announcementRetainedThumbnailUrl&&!announcementThumbnailDataUrl){
+      const item=document.createElement('div');item.className='announcement-retained-file';
+      const image=document.createElement('img');image.src=announcementRetainedThumbnailUrl;image.alt='Original push thumbnail';
+      const label=document.createElement('span');label.textContent='Original push thumbnail';item.append(image,label);list.append(item);
+    }
+    $('announcement-retained-assets').hidden=!list.childElementCount;
+  }
   function updateAnnouncementPreview() {
     const title=$('announcement-title').value.trim();
     const body=$('announcement-body').value.trim();
@@ -403,8 +421,10 @@
   updateAnnouncementPreview();
   function clearAnnouncementSource() {
     announcementSourceId='';
+    announcementRetainedThumbnailUrl='';announcementRetainedMediaUrl='';announcementRetainedMediaType='';
     $('announcement-source').hidden=true;
     $('announcement-source-copy').textContent='';
+    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
   }
   $('announcement-source-clear').addEventListener('click',clearAnnouncementSource);
   function fillAnnouncementDraft(item, edit=false) {
@@ -420,12 +440,16 @@
     $('announcement-schedule-enabled').checked=false;
     $('announcement-scheduled-at').value='';
     announcementMediaDataUrl='';announcementThumbnailDataUrl='';
+    announcementRetainedThumbnailUrl=item.thumbnailUrl || '';
+    announcementRetainedMediaUrl=item.mediaUrl || '';
+    announcementRetainedMediaType=item.mediaType || '';
     $('announcement-media').value='';$('announcement-thumbnail').value='';
     $('announcement-thumbnail-help').textContent=item.hasThumbnail?'The original push thumbnail will be reused unless you choose another.':'Optional square image · the Vaultlix icon is the fallback';
     $('announcement-source-copy').textContent=`Draft copied from ${new Date(item.sentAt || item.scheduledAt || item.createdAt).toLocaleString()}${item.hasMedia?' · original media will be reused':''}.`;
     $('announcement-source').hidden=false;
     $('announcement-status').textContent='Previous notification loaded as a draft. Review it before publishing.';
-    updateAnnouncementPreview();
+    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
+    $('announcement-history-modal').hidden=true;
     $('announcement-form').scrollIntoView({behavior:'smooth',block:'start'});
     setTimeout(()=>$(edit?'announcement-body':'announcement-submit').focus({preventScroll:true}),350);
   }
@@ -435,6 +459,11 @@
     $('announcement-history-status').textContent=`Showing ${announcementHistory.length} most recent notification${announcementHistory.length===1?'':'s'}.`;
     for(const item of announcementHistory) {
       const card=document.createElement('article');card.className='announcement-history-card';
+      const media=document.createElement('div');media.className='announcement-history-media';
+      if(item.thumbnailUrl){const image=document.createElement('img');image.src=item.thumbnailUrl;image.alt='';media.append(image);}
+      else if(item.mediaUrl&&item.mediaType==='image'){const image=document.createElement('img');image.src=item.mediaUrl;image.alt='';media.append(image);}
+      else if(item.mediaUrl&&item.mediaType==='video'){const video=document.createElement('video');video.src=item.mediaUrl;video.muted=true;video.preload='metadata';media.append(video);}
+      else media.textContent='No media';
       const main=document.createElement('div');main.className='announcement-history-main';
       const heading=document.createElement('div');heading.className='announcement-history-title';
       const title=document.createElement('strong');title.textContent=item.title;
@@ -449,7 +478,7 @@
       const actions=document.createElement('div');actions.className='announcement-history-actions';
       const reuse=document.createElement('button');reuse.type='button';reuse.textContent='Reuse';reuse.addEventListener('click',()=>fillAnnouncementDraft(item,false));
       const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit copy';edit.addEventListener('click',()=>fillAnnouncementDraft(item,true));
-      actions.append(reuse,edit);card.append(main,actions);list.append(card);
+      actions.append(reuse,edit);card.append(media,main,actions);list.append(card);
     }
   }
   async function loadAnnouncementHistory() {
@@ -462,6 +491,9 @@
       announcementHistory=Array.isArray(data.announcements)?data.announcements:[];renderAnnouncementHistory();
     } catch(error) { if(adminKey===key)$('announcement-history-status').textContent=error.message; }
   }
+  $('announcement-history-open').addEventListener('click',()=>{$('announcement-history-modal').hidden=false;loadAnnouncementHistory();setTimeout(()=>$('announcement-history-close').focus(),0);});
+  $('announcement-history-close').addEventListener('click',()=>{$('announcement-history-modal').hidden=true;});
+  $('announcement-history-modal').addEventListener('click',event=>{if(event.target===$('announcement-history-modal'))$('announcement-history-modal').hidden=true;});
   $('announcement-history-refresh').addEventListener('click',loadAnnouncementHistory);
   $('announcement-form').addEventListener('submit',async event=>{
     event.preventDefault();
@@ -493,7 +525,7 @@
     $('admin-key').value = '';
     loadStats(true);
   });
-  $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); loadAnnouncementHistory(); });
+  $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); });
   function signOut() {
     adminKey = '';
     clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';

@@ -72,7 +72,7 @@ test('announcement endpoint requires admin authentication and never defaults to 
   assert.equal(historyResponse.status, 200);
   const history = await historyResponse.json();
   assert.equal(history.announcements.length, 1);
-  assert.deepEqual({ title:history.announcements[0].title, status:history.announcements[0].status, delivered:history.announcements[0].delivered }, { title:'Update', status:'sent', delivered:0 });
+  assert.deepEqual({ title:history.announcements[0].title, status:history.announcements[0].status, delivered:history.announcements[0].delivered, thumbnailUrl:history.announcements[0].thumbnailUrl, mediaUrl:history.announcements[0].mediaUrl }, { title:'Update', status:'sent', delivered:0, thumbnailUrl:'', mediaUrl:'' });
   const reused = await send({ title:'Update again', body:'Edited copy', platform:'android', audience:'test', sourceAnnouncementId:history.announcements[0].id });
   assert.equal(reused.status, 200);
 });
@@ -96,6 +96,8 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(script, /fetch\('\/api\/admin\/announcements'/);
   assert.match(script, /sourceAnnouncementId:announcementSourceId/);
   assert.match(script, /Previous notification loaded as a draft/);
+  assert.match(script, /announcementRetainedThumbnailUrl=item\.thumbnailUrl/);
+  assert.match(script, /announcementRetainedMediaUrl=item\.mediaUrl/);
   assert.match(script, /Ready: \$\{file\.name\}/);
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);
   assert.match(script, /else if\(!ctaLabel\.value\.trim\(\)\)ctaLabel\.value='Try it'/);

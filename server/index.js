@@ -6485,7 +6485,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         const records = postgresEnabled
           ? await postgresStore.listAdminAnnouncementHistory(50)
           : [...memoryAdminAnnouncements.values()].sort((a,b)=>(b.sentAt || b.scheduledAt || b.createdAt) - (a.sentAt || a.scheduledAt || a.createdAt)).slice(0,50);
-        return res200(res, { announcements:records.map(record => ({
+        const announcements = await Promise.all(records.map(async record => ({
           id:record.id, title:record.title, body:record.body,
           platform:record.platform, audience:record.audience,
           status:record.status, viewOnce:record.viewOnce !== false,
@@ -6494,7 +6494,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           targeted:Number(record.targeted || 0), delivered:Number(record.delivered || 0), failed:Number(record.failed || 0),
           viewed:Number(record.viewed || 0), hasThumbnail:!!record.thumbnailObjectKey,
           hasMedia:!!record.mediaObjectKey, mediaType:record.mediaType || null,
-        })) });
+          thumbnailUrl:record.thumbnailObjectKey && objectStorageEnabled ? await objectStorage.createDownloadUrl(record.thumbnailObjectKey).catch(() => '') : '',
+          mediaUrl:record.mediaObjectKey && objectStorageEnabled ? await objectStorage.createDownloadUrl(record.mediaObjectKey).catch(() => '') : '',
+        })));
+        return res200(res, { announcements });
       }
       const checked = validateAnnouncement(d);
       if (checked.error) return resErr(res, checked.error, 400);
