@@ -517,6 +517,46 @@ class PostgresStore {
     await this.pool.query("UPDATE admin_announcements SET status='failed' WHERE announcement_id=$1", [id]);
   }
 
+  async getAdminAnnouncement(id) {
+    if (!this.enabled) return null;
+    const { rows } = await this.pool.query('SELECT * FROM admin_announcements WHERE announcement_id=$1 LIMIT 1', [id]);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id:row.announcement_id, title:row.title, body:row.body,
+      platform:row.platform, audience:row.audience,
+      thumbnailObjectKey:row.thumbnail_object_key || null,
+      mediaObjectKey:row.media_object_key || null,
+      mediaType:row.media_type || null,
+      viewOnce:row.view_once !== false,
+      expiresAfterMs:Number(row.expires_after_ms || 43200000),
+      scheduledAt:Number(row.scheduled_at), status:row.status,
+      createdAt:Number(row.created_at), sentAt:row.sent_at === null ? null : Number(row.sent_at),
+      targeted:Number(row.targeted || 0), delivered:Number(row.delivered || 0), failed:Number(row.failed || 0),
+    };
+  }
+
+  async listAdminAnnouncementHistory(limit = 50) {
+    if (!this.enabled) return [];
+    const { rows } = await this.pool.query(`SELECT a.*,
+      (SELECT count(*)::int FROM admin_announcement_views v WHERE v.announcement_id=a.announcement_id) AS viewed
+      FROM admin_announcements a ORDER BY COALESCE(a.sent_at,a.scheduled_at,a.created_at) DESC LIMIT $1`,
+    [Math.max(1, Math.min(100, Number(limit) || 50))]);
+    return rows.map(row => ({
+      id:row.announcement_id, title:row.title, body:row.body,
+      platform:row.platform, audience:row.audience,
+      thumbnailObjectKey:row.thumbnail_object_key || null,
+      mediaObjectKey:row.media_object_key || null,
+      mediaType:row.media_type || null,
+      viewOnce:row.view_once !== false,
+      expiresAfterMs:Number(row.expires_after_ms || 43200000),
+      scheduledAt:Number(row.scheduled_at), status:row.status,
+      createdAt:Number(row.created_at), sentAt:row.sent_at === null ? null : Number(row.sent_at),
+      targeted:Number(row.targeted || 0), delivered:Number(row.delivered || 0), failed:Number(row.failed || 0),
+      viewed:Number(row.viewed || 0),
+    }));
+  }
+
   async listRecentAdminAnnouncements({ accountId, platform, isTestAccount, now = Date.now(), limit = 10 }) {
     if (!this.enabled) return [];
     const { rows } = await this.pool.query(`SELECT * FROM admin_announcements

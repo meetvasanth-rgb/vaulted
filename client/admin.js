@@ -26,6 +26,7 @@
       render(stats);
       if (!healthTimer) { loadHealth(); healthTimer=setInterval(loadHealth,30000); }
       loadSafetyReports();
+      if (initial) loadAnnouncementHistory();
       $('login').hidden = true;
       $('dashboard').hidden = false;
       history.replaceState({ signedOut: false }, '', '/admin');
@@ -342,6 +343,8 @@
   });
   let announcementMediaDataUrl='';
   let announcementThumbnailDataUrl='';
+  let announcementSourceId='';
+  let announcementHistory=[];
   const readFileDataUrl=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('The selected file could not be read.'));reader.readAsDataURL(file);});
   async function prepareAnnouncementThumbnail(file) {
     if(!file)return '';
@@ -398,6 +401,68 @@
   for (const id of ['announcement-title','announcement-body','announcement-audience','announcement-expiry','announcement-custom-expiry','announcement-view-once','announcement-schedule-enabled','announcement-scheduled-at','announcement-cta-label']) $(id).addEventListener('input',updateAnnouncementPreview);
   for (const id of ['announcement-audience','announcement-expiry','announcement-view-once','announcement-schedule-enabled','announcement-cta-action']) $(id).addEventListener('change',updateAnnouncementPreview);
   updateAnnouncementPreview();
+  function clearAnnouncementSource() {
+    announcementSourceId='';
+    $('announcement-source').hidden=true;
+    $('announcement-source-copy').textContent='';
+  }
+  $('announcement-source-clear').addEventListener('click',clearAnnouncementSource);
+  function fillAnnouncementDraft(item, edit=false) {
+    announcementSourceId=item.id;
+    $('announcement-title').value=item.title || '';
+    $('announcement-body').value=item.body || '';
+    $('announcement-platform').value=item.platform || 'all';
+    $('announcement-audience').value=item.audience || 'test';
+    $('announcement-view-once').checked=item.viewOnce !== false;
+    const hours=String(item.expiryHours || 12);
+    if ([...$('announcement-expiry').options].some(option=>option.value===hours)) $('announcement-expiry').value=hours;
+    else { $('announcement-expiry').value='custom'; $('announcement-custom-expiry').value=hours; }
+    $('announcement-schedule-enabled').checked=false;
+    $('announcement-scheduled-at').value='';
+    announcementMediaDataUrl='';announcementThumbnailDataUrl='';
+    $('announcement-media').value='';$('announcement-thumbnail').value='';
+    $('announcement-thumbnail-help').textContent=item.hasThumbnail?'The original push thumbnail will be reused unless you choose another.':'Optional square image · the Vaultlix icon is the fallback';
+    $('announcement-source-copy').textContent=`Draft copied from ${new Date(item.sentAt || item.scheduledAt || item.createdAt).toLocaleString()}${item.hasMedia?' · original media will be reused':''}.`;
+    $('announcement-source').hidden=false;
+    $('announcement-status').textContent='Previous notification loaded as a draft. Review it before publishing.';
+    updateAnnouncementPreview();
+    $('announcement-form').scrollIntoView({behavior:'smooth',block:'start'});
+    setTimeout(()=>$(edit?'announcement-body':'announcement-submit').focus({preventScroll:true}),350);
+  }
+  function renderAnnouncementHistory() {
+    const list=$('announcement-history-list');list.replaceChildren();
+    if(!announcementHistory.length){$('announcement-history-status').textContent='No push notifications have been sent or scheduled yet.';return;}
+    $('announcement-history-status').textContent=`Showing ${announcementHistory.length} most recent notification${announcementHistory.length===1?'':'s'}.`;
+    for(const item of announcementHistory) {
+      const card=document.createElement('article');card.className='announcement-history-card';
+      const main=document.createElement('div');main.className='announcement-history-main';
+      const heading=document.createElement('div');heading.className='announcement-history-title';
+      const title=document.createElement('strong');title.textContent=item.title;
+      const status=document.createElement('span');status.className=`announcement-history-pill ${item.status}`;status.textContent=item.status;
+      heading.append(title,status);
+      const body=document.createElement('p');body.textContent=item.body;
+      const meta=document.createElement('div');meta.className='announcement-history-meta';
+      const when=item.sentAt || item.scheduledAt || item.createdAt;
+      const delivery=item.status==='sent'?` · ${item.delivered}/${item.targeted} delivered${item.failed?` · ${item.failed} failed`:''}`:'';
+      meta.textContent=`${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()} · ${item.expiryHours}h${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
+      main.append(heading,body,meta);
+      const actions=document.createElement('div');actions.className='announcement-history-actions';
+      const reuse=document.createElement('button');reuse.type='button';reuse.textContent='Reuse';reuse.addEventListener('click',()=>fillAnnouncementDraft(item,false));
+      const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit copy';edit.addEventListener('click',()=>fillAnnouncementDraft(item,true));
+      actions.append(reuse,edit);card.append(main,actions);list.append(card);
+    }
+  }
+  async function loadAnnouncementHistory() {
+    if(!adminKey)return;
+    const key=adminKey;$('announcement-history-status').textContent='Loading notification history…';
+    try {
+      const response=await fetch('/api/admin/announcements',{headers:{Authorization:`Bearer ${key}`},cache:'no-store'});
+      const data=await response.json();if(adminKey!==key)return;
+      if(!response.ok)throw Error(data.error || 'Notification history is unavailable.');
+      announcementHistory=Array.isArray(data.announcements)?data.announcements:[];renderAnnouncementHistory();
+    } catch(error) { if(adminKey===key)$('announcement-history-status').textContent=error.message; }
+  }
+  $('announcement-history-refresh').addEventListener('click',loadAnnouncementHistory);
   $('announcement-form').addEventListener('submit',async event=>{
     event.preventDefault();
     const key=adminKey;if(!key)return;
@@ -410,14 +475,15 @@
       if(scheduled&&!$('announcement-scheduled-at').value)throw Error('Choose the date and time to publish this update.');
       const scheduledAt=scheduled?new Date($('announcement-scheduled-at').value).toISOString():null;
       const expiryHours=Number($('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value);
-      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt,ctaAction:$('announcement-cta-action').value,ctaLabel:$('announcement-cta-label').value}),cache:'no-store'});
+      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,sourceAnnouncementId:announcementSourceId || null,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt,ctaAction:$('announcement-cta-action').value,ctaLabel:$('announcement-cta-label').value}),cache:'no-store'});
       const result=await response.json();if(adminKey!==key)return;
       if(!response.ok)throw Error(result.error || 'Announcement could not be sent.');
-      if(result.scheduled){$('announcement-status').textContent=`Update scheduled for ${new Date(result.scheduledAt).toLocaleString()}.`;return;}
+      if(result.scheduled){$('announcement-status').textContent=`Update scheduled for ${new Date(result.scheduledAt).toLocaleString()}.`;clearAnnouncementSource();await loadAnnouncementHistory();return;}
       const scope=result.audience==='test'?'test devices':'opted-in devices';
       $('announcement-status').textContent=result.targeted
         ? `Delivered to ${result.delivered} of ${result.targeted} ${scope} (${result.ios} iOS, ${result.android} Android).${result.failed ? ` ${result.failed} delivery attempt${result.failed===1?'':'s'} failed.` : ''}`
         : `No matching ${scope} were found for this platform.`;
+      clearAnnouncementSource();await loadAnnouncementHistory();
     } catch(error) { if(adminKey===key)$('announcement-status').textContent=error.message; }
     finally { button.disabled=false; }
   });
@@ -427,7 +493,7 @@
     $('admin-key').value = '';
     loadStats(true);
   });
-  $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); });
+  $('refresh').addEventListener('click', () => { loadStats(false); loadHealth(); loadAnnouncementHistory(); });
   function signOut() {
     adminKey = '';
     clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';

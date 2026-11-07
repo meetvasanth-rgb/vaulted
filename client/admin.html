@@ -85,6 +85,12 @@
           <div class="announcement-actions"><button id="announcement-submit" type="submit">Publish to test accounts</button><span id="announcement-counter">0 / 180</span></div>
         </form>
         <p id="announcement-status" class="announcement-status" role="status"></p>
+        <div id="announcement-source" class="announcement-source" hidden><span id="announcement-source-copy"></span><button id="announcement-source-clear" type="button" class="quiet">Start fresh</button></div>
+        <section class="announcement-history" aria-labelledby="announcement-history-title">
+          <div class="announcement-history-head"><div><h3 id="announcement-history-title">Push history</h3><p>Track what was sent or scheduled. Reuse loads a safe draft; nothing is sent until you publish it.</p></div><button id="announcement-history-refresh" type="button" class="quiet">Refresh history</button></div>
+          <p id="announcement-history-status" class="micro" role="status">Loading notification history…</p>
+          <div id="announcement-history-list" class="announcement-history-list"></div>
+        </section>
       </section>
       <section class="panel" aria-labelledby="funnel-title">
         <div class="panel-head"><div><p class="eyebrow">Activation</p><h2 id="funnel-title">From sign-up to a first connection</h2><p class="panel-copy">How far new identities get. Counts only, nobody is named, and no messages are involved. Percentages use identities at least a day old. Accounts marked as tests are excluded.</p><p class="micro" id="funnel-exclusions"></p></div></div>

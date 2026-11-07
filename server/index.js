@@ -122,6 +122,7 @@ const objectStorage = new EncryptedObjectStorage();
 let postgresEnabled = false;
 let objectStorageEnabled = false;
 let adminAnnouncementTimer = null;
+const memoryAdminAnnouncements = new Map();
 const ANNOUNCEMENT_THUMBNAIL_LIFETIME_MS = 49 * 60 * 60 * 1000;
 const ANNOUNCEMENT_SCHEDULE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -6425,7 +6426,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && method === 'POST') || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && ['GET','POST'].includes(method)) || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -6480,6 +6481,21 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     if (path === '/api/admin/announcements') {
       res.setHeader('Cache-Control','no-store');
+      if (method === 'GET') {
+        const records = postgresEnabled
+          ? await postgresStore.listAdminAnnouncementHistory(50)
+          : [...memoryAdminAnnouncements.values()].sort((a,b)=>(b.sentAt || b.scheduledAt || b.createdAt) - (a.sentAt || a.scheduledAt || a.createdAt)).slice(0,50);
+        return res200(res, { announcements:records.map(record => ({
+          id:record.id, title:record.title, body:record.body,
+          platform:record.platform, audience:record.audience,
+          status:record.status, viewOnce:record.viewOnce !== false,
+          expiryHours:Math.max(1, Math.round(Number(record.expiresAfterMs || 43200000) / 3600000)),
+          scheduledAt:record.scheduledAt, createdAt:record.createdAt, sentAt:record.sentAt || null,
+          targeted:Number(record.targeted || 0), delivered:Number(record.delivered || 0), failed:Number(record.failed || 0),
+          viewed:Number(record.viewed || 0), hasThumbnail:!!record.thumbnailObjectKey,
+          hasMedia:!!record.mediaObjectKey, mediaType:record.mediaType || null,
+        })) });
+      }
       const checked = validateAnnouncement(d);
       if (checked.error) return resErr(res, checked.error, 400);
       const decodedThumbnail = decodeAnnouncementThumbnail(d.thumbnailDataUrl);
@@ -6502,6 +6518,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (await rateLimited(`admin-announcement:${checked.value.audience}`, checked.value.audience === 'all' ? 6 : 30, 60 * 60 * 1000)) {
         return resErr(res, 'Announcement sending limit reached. Try again later.', 429);
       }
+      let source = null;
+      if (d.sourceAnnouncementId !== undefined && d.sourceAnnouncementId !== null && d.sourceAnnouncementId !== '') {
+        const sourceId = String(d.sourceAnnouncementId);
+        if (!/^[a-f0-9-]{36}$/i.test(sourceId)) return resErr(res, 'The notification selected for reuse is invalid.', 400);
+        source = postgresEnabled ? await postgresStore.getAdminAnnouncement(sourceId) : memoryAdminAnnouncements.get(sourceId);
+        if (!source) return resErr(res, 'The original notification is no longer available.', 404);
+      }
       let thumbnail = null, media = null;
       try {
         media = await storeAnnouncementMedia(decodedMedia.value);
@@ -6511,9 +6534,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const id = crypto.randomUUID();
       const record = {
         id, ...checked.value,
-        thumbnailObjectKey:thumbnail?.objectKey || null,
-        mediaObjectKey:media?.objectKey || null,
-        mediaType:media?.mediaType || null,
+        thumbnailObjectKey:thumbnail?.objectKey || source?.thumbnailObjectKey || null,
+        mediaObjectKey:media?.objectKey || source?.mediaObjectKey || null,
+        mediaType:media?.mediaType || source?.mediaType || null,
         viewOnce:experience.value.viewOnce,
         ctaLabel:experience.value.ctaLabel,
         ctaAction:experience.value.ctaAction,
@@ -6527,6 +6550,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (postgresEnabled) await postgresStore.scheduleAdminAnnouncement({ ...record, status:'sending' });
       const result = await deliverAdminAnnouncement(record);
       if (postgresEnabled) await postgresStore.completeAdminAnnouncement(id, result, result.sentAt);
+      else memoryAdminAnnouncements.set(id, { ...record, ...result, status:'sent' });
       console.log(`Admin announcement: audience=${checked.value.audience} platform=${checked.value.platform} targeted=${result.targeted} delivered=${result.delivered}`);
       return res200(res, { ok:true, audience:checked.value.audience, platform:checked.value.platform, ...result });
     }
