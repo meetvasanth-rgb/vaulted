@@ -99,6 +99,10 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(script, /Previous notification loaded as a draft/);
   assert.match(script, /announcementRetainedThumbnailUrl=item\.thumbnailUrl/);
   assert.match(script, /announcementRetainedMediaUrl=item\.mediaUrl/);
+  assert.match(script, /dataset\.announcementTimer='trigger'/);
+  assert.match(script, /dataset\.announcementTimer='expiry'/);
+  assert.match(script, /Triggered at/);
+  assert.match(server, /expiresAt:record\.sentAt \? Number\(record\.sentAt\)/);
   assert.match(script, /Ready: \$\{file\.name\}/);
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);
   assert.match(script, /else if\(!ctaLabel\.value\.trim\(\)\)ctaLabel\.value='Try it'/);

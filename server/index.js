@@ -6490,6 +6490,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
           status:record.status, viewOnce:record.viewOnce !== false,
           expiryHours:Math.max(1, Math.round(Number(record.expiresAfterMs || 43200000) / 3600000)),
           scheduledAt:record.scheduledAt, createdAt:record.createdAt, sentAt:record.sentAt || null,
+          expiresAt:record.sentAt ? Number(record.sentAt) + Number(record.expiresAfterMs || 43200000) : null,
           targeted:Number(record.targeted || 0), delivered:Number(record.delivered || 0), failed:Number(record.failed || 0),
           viewed:Number(record.viewed || 0), hasThumbnail:!!record.thumbnailObjectKey,
           hasMedia:!!record.mediaObjectKey, mediaType:record.mediaType || null,

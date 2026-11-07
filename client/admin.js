@@ -3,6 +3,7 @@
   let adminKey = '';
   let refreshTimer = null;
   let healthTimer = null, healthBusy = false;
+  let announcementHistoryTimer = null, announcementHistoryRefreshTimer = null;
   const $ = id => document.getElementById(id);
   const number = value => new Intl.NumberFormat().format(value || 0);
   const bytes = value => {
@@ -473,14 +474,53 @@
       const meta=document.createElement('div');meta.className='announcement-history-meta';
       const when=item.sentAt || item.scheduledAt || item.createdAt;
       const delivery=item.status==='sent'?` · ${item.delivered}/${item.targeted} delivered${item.failed?` · ${item.failed} failed`:''}`:'';
-      meta.textContent=`${item.status==='pending'?'Scheduled for ':''}${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()} · ${item.expiryHours}h${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
+      const wasScheduled=Number(item.scheduledAt)>Number(item.createdAt)+30000;
+      meta.textContent=`${item.status==='pending'?'Scheduled for ':''}${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()}${wasScheduled?'':` · ${item.expiryHours}h`}${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
       main.append(heading,body,meta);
+      if(wasScheduled){
+        const timing=document.createElement('div');timing.className='announcement-history-timing';
+        const triggered=document.createElement('span');
+        if(item.status==='pending'||item.status==='sending'){
+          triggered.textContent=`Scheduled for ${new Date(item.scheduledAt).toLocaleString()}`;
+          const countdown=document.createElement('strong');countdown.dataset.announcementDeadline=String(item.scheduledAt);countdown.dataset.announcementTimer='trigger';timing.append(triggered,countdown);
+          const expiry=document.createElement('span');expiry.textContent=`Remains in Vaultlix for ${item.expiryHours} hour${item.expiryHours===1?'':'s'} after triggering`;timing.append(expiry);
+        } else {
+          triggered.textContent=item.sentAt?`Triggered at ${new Date(item.sentAt).toLocaleString()}`:`Scheduled for ${new Date(item.scheduledAt).toLocaleString()}`;
+          timing.append(triggered);
+          if(item.expiresAt){const countdown=document.createElement('strong');countdown.dataset.announcementDeadline=String(item.expiresAt);countdown.dataset.announcementTimer='expiry';timing.append(countdown);}
+        }
+        main.append(timing);
+      }
       const actions=document.createElement('div');actions.className='announcement-history-actions';
       const reuse=document.createElement('button');reuse.type='button';reuse.textContent='Reuse';reuse.addEventListener('click',()=>fillAnnouncementDraft(item,false));
       const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit copy';edit.addEventListener('click',()=>fillAnnouncementDraft(item,true));
       actions.append(reuse,edit);card.append(media,main,actions);list.append(card);
     }
+    updateAnnouncementHistoryTimers();
   }
+  function announcementCountdown(milliseconds) {
+    if(milliseconds<=0)return '';
+    const seconds=Math.ceil(milliseconds/1000),days=Math.floor(seconds/86400),hours=Math.floor(seconds%86400/3600),minutes=Math.floor(seconds%3600/60),remaining=seconds%60;
+    if(days)return `${days}d ${hours}h ${minutes}m`;
+    if(hours)return `${hours}h ${minutes}m ${String(remaining).padStart(2,'0')}s`;
+    return `${minutes}m ${String(remaining).padStart(2,'0')}s`;
+  }
+  function updateAnnouncementHistoryTimers() {
+    document.querySelectorAll('[data-announcement-deadline]').forEach(timer=>{
+      const remaining=Number(timer.dataset.announcementDeadline)-Date.now();
+      timer.textContent=remaining>0
+        ? `${timer.dataset.announcementTimer==='trigger'?'Triggers':'Expires'} in ${announcementCountdown(remaining)}`
+        : (timer.dataset.announcementTimer==='trigger'?'Triggering now…':'Expired');
+      timer.classList.toggle('expired',remaining<=0);
+    });
+  }
+  function startAnnouncementHistoryTimers() {
+    clearInterval(announcementHistoryTimer);clearInterval(announcementHistoryRefreshTimer);
+    updateAnnouncementHistoryTimers();
+    announcementHistoryTimer=setInterval(updateAnnouncementHistoryTimers,1000);
+    announcementHistoryRefreshTimer=setInterval(()=>{if(!$('announcement-history-modal').hidden)loadAnnouncementHistory();},15000);
+  }
+  function stopAnnouncementHistoryTimers() {clearInterval(announcementHistoryTimer);clearInterval(announcementHistoryRefreshTimer);announcementHistoryTimer=null;announcementHistoryRefreshTimer=null;}
   async function loadAnnouncementHistory() {
     if(!adminKey)return;
     const key=adminKey;$('announcement-history-status').textContent='Loading notification history…';
@@ -491,9 +531,9 @@
       announcementHistory=Array.isArray(data.announcements)?data.announcements:[];renderAnnouncementHistory();
     } catch(error) { if(adminKey===key){$('announcement-history-status').textContent=error.message;$('announcement-pending-badge').textContent='Unavailable';} }
   }
-  $('announcement-history-open').addEventListener('click',()=>{$('announcement-history-modal').hidden=false;loadAnnouncementHistory();setTimeout(()=>$('announcement-history-close').focus(),0);});
-  $('announcement-history-close').addEventListener('click',()=>{$('announcement-history-modal').hidden=true;});
-  $('announcement-history-modal').addEventListener('click',event=>{if(event.target===$('announcement-history-modal'))$('announcement-history-modal').hidden=true;});
+  $('announcement-history-open').addEventListener('click',()=>{$('announcement-history-modal').hidden=false;loadAnnouncementHistory();startAnnouncementHistoryTimers();setTimeout(()=>$('announcement-history-close').focus(),0);});
+  $('announcement-history-close').addEventListener('click',()=>{$('announcement-history-modal').hidden=true;stopAnnouncementHistoryTimers();});
+  $('announcement-history-modal').addEventListener('click',event=>{if(event.target===$('announcement-history-modal')){$('announcement-history-modal').hidden=true;stopAnnouncementHistoryTimers();}});
   $('announcement-history-refresh').addEventListener('click',loadAnnouncementHistory);
   $('announcement-form').addEventListener('submit',async event=>{
     event.preventDefault();
@@ -531,6 +571,7 @@
     clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';
     $('announcement-status').textContent='';
     clearInterval(healthTimer); healthTimer=null;
+    stopAnnouncementHistoryTimers();
     $('service-health-cards').replaceChildren();
     $('service-health-history').replaceChildren();
     $('safety-reports').replaceChildren();
