@@ -9,6 +9,8 @@ const THUMBNAIL_MAX_BYTES = 600 * 1024;
 const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 const EXPIRY_MIN_HOURS = 1;
 const EXPIRY_MAX_HOURS = 168;
+const CTA_LABEL_MAX = 28;
+const CTA_ACTIONS = new Set(['daily-look', 'status-composer']);
 
 function cleanText(value) {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
@@ -73,7 +75,12 @@ function decodeAnnouncementMedia(value) {
 function validateAnnouncementExperience(input = {}) {
   const expiryHours = Number(input.expiryHours ?? 12);
   if (!Number.isInteger(expiryHours) || expiryHours < EXPIRY_MIN_HOURS || expiryHours > EXPIRY_MAX_HOURS) return { error:'Choose an expiry from 1 to 168 hours.' };
-  return { value:{ viewOnce:input.viewOnce !== false, expiryHours } };
+  const ctaAction = cleanText(input.ctaAction);
+  const ctaLabel = cleanText(input.ctaLabel);
+  if (ctaAction && !CTA_ACTIONS.has(ctaAction)) return { error:'Choose a supported update action.' };
+  if ((ctaAction && !ctaLabel) || (!ctaAction && ctaLabel)) return { error:'Choose both an update action and button label.' };
+  if (ctaLabel.length > CTA_LABEL_MAX) return { error:`Keep the update button label within ${CTA_LABEL_MAX} characters.` };
+  return { value:{ viewOnce:input.viewOnce !== false, expiryHours, ctaAction:ctaAction || null, ctaLabel:ctaLabel || null } };
 }
 
 function trustedThumbnailUrl(value) {
@@ -105,6 +112,8 @@ module.exports = {
   MEDIA_MAX_BYTES,
   EXPIRY_MIN_HOURS,
   EXPIRY_MAX_HOURS,
+  CTA_LABEL_MAX,
+  CTA_ACTIONS,
   decodeAnnouncementThumbnail,
   decodeAnnouncementMedia,
   validateAnnouncementExperience,

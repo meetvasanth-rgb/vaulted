@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS admin_announcements (
   thumbnail_object_key text,
   media_object_key text,
   media_type varchar(16) CHECK (media_type IS NULL OR media_type IN ('image', 'video')),
+  cta_label varchar(28),
+  cta_action varchar(32),
   view_once boolean NOT NULL DEFAULT true,
   expires_after_ms bigint NOT NULL DEFAULT 43200000,
   scheduled_at bigint NOT NULL,
@@ -92,6 +94,8 @@ CREATE INDEX IF NOT EXISTS admin_announcements_due_idx
   ON admin_announcements(status, scheduled_at);
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS media_object_key text;
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS media_type varchar(16);
+ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS cta_label varchar(28);
+ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS cta_action varchar(32);
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS view_once boolean NOT NULL DEFAULT true;
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS expires_after_ms bigint NOT NULL DEFAULT 43200000;
 CREATE TABLE IF NOT EXISTS admin_announcement_views (
@@ -466,10 +470,11 @@ class PostgresStore {
     if (!this.enabled) return false;
     const { rowCount } = await this.pool.query(`INSERT INTO admin_announcements (
       announcement_id,title,body,platform,audience,thumbnail_object_key,media_object_key,media_type,
-      view_once,expires_after_ms,scheduled_at,status,created_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [
+      cta_label,cta_action,view_once,expires_after_ms,scheduled_at,status,created_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, [
       record.id, record.title, record.body, record.platform, record.audience,
       record.thumbnailObjectKey || null, record.mediaObjectKey || null, record.mediaType || null,
+      record.ctaLabel || null, record.ctaAction || null,
       record.viewOnce !== false, record.expiresAfterMs, record.scheduledAt,
       record.status || 'pending', record.createdAt,
     ]);
@@ -491,6 +496,8 @@ class PostgresStore {
       thumbnailObjectKey:row.thumbnail_object_key || null,
       mediaObjectKey:row.media_object_key || null,
       mediaType:row.media_type || null,
+      ctaLabel:row.cta_label || null,
+      ctaAction:row.cta_action || null,
       viewOnce:row.view_once !== false,
       expiresAfterMs:Number(row.expires_after_ms || 43200000),
       scheduledAt:Number(row.scheduled_at),
@@ -523,6 +530,7 @@ class PostgresStore {
       id:row.announcement_id, title:row.title, body:row.body,
       mediaObjectKey:row.media_object_key || null, mediaType:row.media_type || null,
       thumbnailObjectKey:row.thumbnail_object_key || null,
+      ctaLabel:row.cta_label || null, ctaAction:row.cta_action || null,
       viewOnce:row.view_once !== false, sentAt:Number(row.sent_at),
       expiresAt:Number(row.sent_at) + Number(row.expires_after_ms || 43200000),
     }));

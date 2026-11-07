@@ -73,6 +73,10 @@
               <label>Platform<select id="announcement-platform"><option value="all">iOS and Android</option><option value="ios">iOS only</option><option value="android">Android only</option></select></label>
               <label>Expiry<select id="announcement-expiry"><option value="1">1 hour</option><option value="6">6 hours</option><option value="12" selected>12 hours</option><option value="24">24 hours</option><option value="48">48 hours</option><option value="custom">Custom</option></select></label>
             </div>
+            <div class="announcement-media-grid">
+              <label>Action<select id="announcement-cta-action"><option value="">No button</option><option value="daily-look">Open Portrait Studio</option><option value="status-composer">Create a status</option></select><small>Optional in-app action shown over the update</small></label>
+              <label>Button label<input id="announcement-cta-label" maxlength="28" placeholder="Try it" disabled><small>Use a short instruction such as “Try it”</small></label>
+            </div>
             <label id="announcement-custom-expiry-wrap" hidden>Custom expiry (hours)<input id="announcement-custom-expiry" type="number" min="1" max="168" step="1" value="12"></label>
             <div class="announcement-toggle-row"><label><input id="announcement-view-once" type="checkbox" checked> Open once, then remove from the inbox</label><label><input id="announcement-schedule-enabled" type="checkbox"> Schedule for later</label></div>
             <label id="announcement-schedule-wrap" hidden>Publish time<input id="announcement-scheduled-at" type="datetime-local"></label>

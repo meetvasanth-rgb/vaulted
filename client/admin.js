@@ -382,16 +382,20 @@
     const scheduled=$('announcement-schedule-enabled').checked;
     const expiry=$('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value;
     const once=$('announcement-view-once').checked;
+    const ctaAction=$('announcement-cta-action').value;
+    const ctaLabel=$('announcement-cta-label');
+    ctaLabel.disabled=!ctaAction;
+    if(!ctaAction)ctaLabel.value='';
     $('announcement-submit').textContent=scheduled?'Schedule update':(all ? 'Publish to all opted-in users' : 'Publish to test accounts');
     $('announcement-submit').classList.toggle('danger',all);
     $('announcement-schedule-wrap').hidden=!scheduled;
     $('announcement-custom-expiry-wrap').hidden=$('announcement-expiry').value!=='custom';
     $('announcement-preview-time').textContent=scheduled?'Vaultlix · scheduled':'Vaultlix · now';
-    $('announcement-preview-note').textContent=`${once?'Opens once':'Can be reopened'} · expires in ${expiry} hour${expiry==='1'?'':'s'}`;
+    $('announcement-preview-note').textContent=`${once?'Opens once':'Can be reopened'} · expires in ${expiry} hour${expiry==='1'?'':'s'}${ctaAction&&ctaLabel.value.trim()?` · ${ctaLabel.value.trim()} button`:''}`;
     $('announcement-preview-icon').src=announcementThumbnailDataUrl || (announcementMediaDataUrl.startsWith('data:image/')?announcementMediaDataUrl:'/icons/icon-192.png');
   }
-  for (const id of ['announcement-title','announcement-body','announcement-audience','announcement-expiry','announcement-custom-expiry','announcement-view-once','announcement-schedule-enabled','announcement-scheduled-at']) $(id).addEventListener('input',updateAnnouncementPreview);
-  for (const id of ['announcement-audience','announcement-expiry','announcement-view-once','announcement-schedule-enabled']) $(id).addEventListener('change',updateAnnouncementPreview);
+  for (const id of ['announcement-title','announcement-body','announcement-audience','announcement-expiry','announcement-custom-expiry','announcement-view-once','announcement-schedule-enabled','announcement-scheduled-at','announcement-cta-label']) $(id).addEventListener('input',updateAnnouncementPreview);
+  for (const id of ['announcement-audience','announcement-expiry','announcement-view-once','announcement-schedule-enabled','announcement-cta-action']) $(id).addEventListener('change',updateAnnouncementPreview);
   updateAnnouncementPreview();
   $('announcement-form').addEventListener('submit',async event=>{
     event.preventDefault();
@@ -405,7 +409,7 @@
       if(scheduled&&!$('announcement-scheduled-at').value)throw Error('Choose the date and time to publish this update.');
       const scheduledAt=scheduled?new Date($('announcement-scheduled-at').value).toISOString():null;
       const expiryHours=Number($('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value);
-      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt}),cache:'no-store'});
+      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt,ctaAction:$('announcement-cta-action').value,ctaLabel:$('announcement-cta-label').value}),cache:'no-store'});
       const result=await response.json();if(adminKey!==key)return;
       if(!response.ok)throw Error(result.error || 'Announcement could not be sent.');
       if(result.scheduled){$('announcement-status').textContent=`Update scheduled for ${new Date(result.scheduledAt).toLocaleString()}.`;return;}

@@ -3325,6 +3325,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const updates = await Promise.all(records.map(async record => ({
       id:record.id, title:record.title, body:record.body,
       mediaType:record.mediaType, viewOnce:record.viewOnce,
+      ctaLabel:record.ctaLabel, ctaAction:record.ctaAction,
       sentAt:record.sentAt, expiresAt:record.expiresAt,
       mediaUrl:record.mediaObjectKey && objectStorageEnabled
         ? await objectStorage.createDownloadUrl(record.mediaObjectKey).catch(() => '') : '',
@@ -6514,6 +6515,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         mediaObjectKey:media?.objectKey || null,
         mediaType:media?.mediaType || null,
         viewOnce:experience.value.viewOnce,
+        ctaLabel:experience.value.ctaLabel,
+        ctaAction:experience.value.ctaAction,
         expiresAfterMs:experience.value.expiryHours * 60 * 60 * 1000,
         scheduledAt:scheduledAt || Date.now(), createdAt:Date.now(),
       };
