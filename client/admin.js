@@ -382,7 +382,7 @@
     if(announcementRetainedMediaUrl&&!announcementMediaDataUrl){
       const item=document.createElement('div');item.className='announcement-retained-file';
       const media=announcementRetainedMediaType==='video'?document.createElement('video'):document.createElement('img');
-      media.src=announcementRetainedMediaUrl;if(media.tagName==='VIDEO'){media.muted=true;media.preload='metadata';}
+      media.src=announcementRetainedMediaUrl;if(media.tagName==='VIDEO'){media.muted=true;media.preload='metadata';if(announcementRetainedThumbnailUrl)media.poster=announcementRetainedThumbnailUrl;}
       const label=document.createElement('span');label.textContent=`Original ${announcementRetainedMediaType || 'update'} media`;
       item.append(media,label);list.append(item);
     }

@@ -3158,10 +3158,9 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
   }
   if (u.pathname === '/admin' || u.pathname === '/admin.html' || u.pathname === '/admin.js' || u.pathname === '/admin.css') {
-    // The announcement composer renders a selected image through a local
-    // data URL before it is submitted. Keep every remote image blocked while
-    // allowing that in-memory preview alongside same-origin admin assets.
-    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    // Local selections use data URLs; previous notifications use short-lived
+    // HTTPS object-storage URLs returned only by the authenticated admin API.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; media-src https:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     res.setHeader('Cache-Control', 'no-store');
   }
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
