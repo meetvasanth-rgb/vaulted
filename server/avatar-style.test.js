@@ -107,5 +107,5 @@ test('The photo route opens the Daily Look sheet on the avatar style and the she
   assert.match(extractFunction('renderDailyLookStyles'), /style\.id === AVATAR_STYLE_ID/);
   assert.match(client, /onclick="closeProfilePhotoMenu\(\);openAvatarBuilder\(\)">Create my avatar<\/button>/);
   assert.match(client, /onclick="closeProfilePhotoMenu\(\);openAvatarFromPhoto\(\)">Avatar from a photo<\/button>/);
-  assert.match(client, /let html = searchQuery \? '' : vaultlixUpdateRowHtml\(latestVaultlixUpdate\) \+ inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
+  assert.match(client, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
 });

@@ -4,13 +4,16 @@ const { readFileSync } = require('node:fs');
 
 const client = readFileSync('client/index.html', 'utf8');
 
-test('Vaultlix update inbox row shows useful copy and only badges unseen updates', () => {
-  assert.match(client, /const seen=vaultlixSeenUpdateIds\(\)\.has\(item\.id\);/);
-  assert.match(client, /const preview=String\(item\.body\|\|item\.title\|\|''\)\.trim\(\);/);
-  assert.match(client, /vault-list-row-name">Vaultlix<\/span>/);
-  assert.doesNotMatch(client, /Vaultlix Updates<\/span>/);
+test('official Vaultlix updates render in Status instead of the chat inbox', () => {
+  assert.match(client, /function vaultlixStatusCircleHtml\(item\)/);
+  assert.match(client, /data-vaultlix-status-update/);
+  assert.match(client, /status-person-name">Vaultlix<\/span>/);
+  assert.match(client, /const viewed=vaultlixSeenUpdateIds\(\)\.has\(item\.id\);/);
+  assert.match(client, /status-ring\$\{viewed\?' viewed':''\}/);
+  assert.match(client, /vaultlixUpdateExpiryTimer=setTimeout\(\(\)=>\{vaultlixUpdateExpiryTimer=null;renderStatusRail\(\);\}/);
+  assert.match(client, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
+  assert.doesNotMatch(client, /vaultlixUpdateRowHtml\(latestVaultlixUpdate\)/);
   assert.doesNotMatch(client, /'Video update'/);
-  assert.match(client, /\$\{seen\?'':'<span class="vault-list-row-unread">1<\/span>'\}/);
 });
 
 test('opening any Vaultlix update clears its local unread state', () => {

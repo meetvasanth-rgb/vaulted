@@ -115,6 +115,6 @@ test('the optional recipient name personalizes only the outgoing text, and cance
 test('the one-time guide uses the same invitation text, and the card heads the inbox including the empty state', () => {
   assert.match(client, /const text = inviteShareText\(state, friendName, invitation\.url\);/);
   assert.equal(harness().context.inviteShareText({ displayName:'V', privateNumber:'2345678901' }, 'Sam', 'https://vaultlix.com/invite/K6AKTD'), 'Hi Sam, V invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD');
-  assert.match(client, /let html = searchQuery \? '' : vaultlixUpdateRowHtml\(latestVaultlixUpdate\) \+ inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
+  assert.match(client, /let html = searchQuery \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
   assert.match(client, /\$\{vaultSearchActive \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\)\}<div class="vault-list-empty">/);
 });
