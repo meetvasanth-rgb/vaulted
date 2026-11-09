@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateAnnouncement, selectAnnouncementTargets, buildAnnouncementPayload, decodeAnnouncementMedia, validateAnnouncementExperience } = require('./admin-announcements');
-const { PostgresStore } = require('./postgres');
 
 test('announcement validation protects an all-user broadcast and normalizes copy', () => {
   assert.match(validateAnnouncement({}).error, /title/i);
@@ -44,22 +43,6 @@ test('ephemeral update options, actions and media are validated before storage',
   assert.match(decodeAnnouncementMedia('data:text/html;base64,PGgxPg==').error, /JPEG|PNG|WebP|MP4/);
 });
 
-test('scheduled announcements can be cancelled or deleted only from safe states', async () => {
-  const queries=[];
-  const pool={query:async (sql,params)=>{
-    queries.push({sql,params});
-    if(sql.startsWith('UPDATE admin_announcements')) return {rows:[{announcement_id:params[0],status:'cancelled',cancelled_at:params[1]}]};
-    if(sql.startsWith('DELETE FROM admin_announcements')) return {rows:[{announcement_id:params[0],status:'cancelled',thumbnail_object_key:'thumb',media_object_key:'video'}]};
-    return {rowCount:0,rows:[]};
-  }};
-  const store=new PostgresStore('',{pool});
-  const id='56fdc337-4d75-4eaf-9022-74b85945e86a';
-  assert.deepEqual(await store.cancelAdminAnnouncement(id,1234),{id,status:'cancelled',cancelledAt:1234});
-  assert.match(queries[0].sql,/status='pending'/);
-  assert.deepEqual(await store.deleteAdminAnnouncement(id),{id,status:'cancelled',thumbnailObjectKey:'thumb',mediaObjectKey:'video'});
-  assert.match(queries[1].sql,/status IN \('pending','cancelled','failed'\)/);
-});
-
 test('announcement endpoint requires admin authentication and never defaults to all users', { timeout:15000 }, async t => {
   const { spawn } = require('node:child_process');
   const { mkdtemp, rm } = require('node:fs/promises');
@@ -85,13 +68,6 @@ test('announcement endpoint requires admin authentication and never defaults to 
   const testSend = await send({ title:'Update', body:'Ready', platform:'all', audience:'test' });
   assert.equal(testSend.status, 200);
   assert.deepEqual({ targeted:testSend.data.targeted, delivered:testSend.data.delivered, audience:testSend.data.audience }, { targeted:0, delivered:0, audience:'test' });
-  const historyResponse = await fetch(url, { headers:{ Authorization:'Bearer announcement-test-key' } });
-  assert.equal(historyResponse.status, 200);
-  const history = await historyResponse.json();
-  assert.equal(history.announcements.length, 1);
-  assert.deepEqual({ title:history.announcements[0].title, status:history.announcements[0].status, delivered:history.announcements[0].delivered, thumbnailUrl:history.announcements[0].thumbnailUrl, mediaUrl:history.announcements[0].mediaUrl }, { title:'Update', status:'sent', delivered:0, thumbnailUrl:'', mediaUrl:'' });
-  const reused = await send({ title:'Update again', body:'Edited copy', platform:'android', audience:'test', sourceAnnouncementId:history.announcements[0].id });
-  assert.equal(reused.status, 200);
 });
 
 test('admin screen exposes the protected composer and defaults it to test accounts', () => {
@@ -104,27 +80,13 @@ test('admin screen exposes the protected composer and defaults it to test accoun
   assert.match(html, /id="announcement-thumbnail"/);
   assert.match(html, /id="announcement-media"/);
   assert.match(html, /id="announcement-view-once"[^>]+checked/);
-  assert.match(html, /id="announcement-custom-expiry"[^>]+value="12"/);
-  assert.doesNotMatch(html, /id="announcement-expiry"/);
+  assert.match(html, /id="announcement-expiry"/);
   assert.match(html, /id="announcement-schedule-enabled"/);
   assert.match(html, /id="announcement-cta-action"/);
   assert.match(html, /id="announcement-cta-label"/);
   assert.match(html, /<option value="test">Test accounts<\/option><option value="all">/);
   assert.match(script, /Schedule.*Publish.*update for every opted-in Vaultlix app device/s);
   assert.match(script, /fetch\('\/api\/admin\/announcements'/);
-  assert.match(script, /sourceAnnouncementId:announcementSourceId/);
-  assert.match(script, /Previous notification loaded as a draft/);
-  assert.match(script, /announcementRetainedThumbnailUrl=item\.thumbnailUrl/);
-  assert.match(script, /announcementRetainedMediaUrl=item\.mediaUrl/);
-  assert.match(script, /dataset\.announcementTimer='trigger'/);
-  assert.match(script, /dataset\.announcementTimer='expiry'/);
-  assert.match(script, /Triggered at/);
-  assert.match(script, /manageScheduledAnnouncement\(item,'cancel'/);
-  assert.match(script, /manageScheduledAnnouncement\(item,'delete'/);
-  assert.match(script, /method:deleting\?'DELETE':'PATCH'/);
-  assert.match(server, /cancelAdminAnnouncement\(id\)/);
-  assert.match(server, /deleteAdminAnnouncement\(id\)/);
-  assert.match(server, /expiresAt:record\.sentAt \? Number\(record\.sentAt\)/);
   assert.match(script, /Ready: \$\{file\.name\}/);
   assert.match(script, /ctaAction:\$\('announcement-cta-action'\)\.value/);
   assert.match(script, /else if\(!ctaLabel\.value\.trim\(\)\)ctaLabel\.value='Try it'/);

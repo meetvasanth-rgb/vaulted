@@ -3,7 +3,6 @@
   let adminKey = '';
   let refreshTimer = null;
   let healthTimer = null, healthBusy = false;
-  let announcementHistoryTimer = null, announcementHistoryRefreshTimer = null;
   const $ = id => document.getElementById(id);
   const number = value => new Intl.NumberFormat().format(value || 0);
   const bytes = value => {
@@ -27,7 +26,6 @@
       render(stats);
       if (!healthTimer) { loadHealth(); healthTimer=setInterval(loadHealth,30000); }
       loadSafetyReports();
-      if (initial) loadAnnouncementHistory();
       $('login').hidden = true;
       $('dashboard').hidden = false;
       history.replaceState({ signedOut: false }, '', '/admin');
@@ -344,11 +342,6 @@
   });
   let announcementMediaDataUrl='';
   let announcementThumbnailDataUrl='';
-  let announcementSourceId='';
-  let announcementHistory=[];
-  let announcementRetainedThumbnailUrl='';
-  let announcementRetainedMediaUrl='';
-  let announcementRetainedMediaType='';
   const readFileDataUrl=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('The selected file could not be read.'));reader.readAsDataURL(file);});
   async function prepareAnnouncementThumbnail(file) {
     if(!file)return '';
@@ -363,11 +356,11 @@
   }
   $('announcement-media').addEventListener('change',async event=>{
     const file=event.target.files?.[0];announcementMediaDataUrl='';
-    if(!file){renderAnnouncementRetainedAssets();updateAnnouncementPreview();return;}
+    if(!file){updateAnnouncementPreview();return;}
     if(file.size>8*1024*1024){event.target.value='';$('announcement-status').textContent='Choose update media smaller than 8 MB.';return;}
     try{announcementMediaDataUrl=await readFileDataUrl(file);$('announcement-status').textContent=`${file.type.startsWith('video/')?'Video':'Image'} ready for the inbox update.`;}
     catch(error){event.target.value='';$('announcement-status').textContent=error.message;}
-    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
+    updateAnnouncementPreview();
   });
   $('announcement-thumbnail').addEventListener('change',async event=>{
     const file=event.target.files?.[0];announcementThumbnailDataUrl='';
@@ -377,24 +370,8 @@
       $('announcement-status').textContent=file?'Custom push thumbnail ready. It will upload when you publish the update.':'';
     }
     catch(error){event.target.value='';$('announcement-thumbnail-help').textContent='Optional square image · the Vaultlix icon is the fallback';$('announcement-status').textContent=error.message;}
-    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
+    updateAnnouncementPreview();
   });
-  function renderAnnouncementRetainedAssets() {
-    const list=$('announcement-retained-assets-list');list.replaceChildren();
-    if(announcementRetainedMediaUrl&&!announcementMediaDataUrl){
-      const item=document.createElement('div');item.className='announcement-retained-file';
-      const media=announcementRetainedMediaType==='video'?document.createElement('video'):document.createElement('img');
-      media.src=announcementRetainedMediaUrl;if(media.tagName==='VIDEO'){media.muted=true;media.preload='metadata';if(announcementRetainedThumbnailUrl)media.poster=announcementRetainedThumbnailUrl;}
-      const label=document.createElement('span');label.textContent=`Original ${announcementRetainedMediaType || 'update'} media`;
-      item.append(media,label);list.append(item);
-    }
-    if(announcementRetainedThumbnailUrl&&!announcementThumbnailDataUrl){
-      const item=document.createElement('div');item.className='announcement-retained-file';
-      const image=document.createElement('img');image.src=announcementRetainedThumbnailUrl;image.alt='Original push thumbnail';
-      const label=document.createElement('span');label.textContent='Original push thumbnail';item.append(image,label);list.append(item);
-    }
-    $('announcement-retained-assets').hidden=!list.childElementCount;
-  }
   function updateAnnouncementPreview() {
     const title=$('announcement-title').value.trim();
     const body=$('announcement-body').value.trim();
@@ -403,6 +380,7 @@
     $('announcement-preview-body').textContent=body || 'Your message preview appears here.';
     $('announcement-counter').textContent=`${$('announcement-body').value.length} / 180`;
     const scheduled=$('announcement-schedule-enabled').checked;
+    const expiry=$('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value;
     const once=$('announcement-view-once').checked;
     const ctaAction=$('announcement-cta-action').value;
     const ctaLabel=$('announcement-cta-label');
@@ -412,155 +390,14 @@
     $('announcement-submit').textContent=scheduled?'Schedule update':(all ? 'Publish to all opted-in users' : 'Publish to test accounts');
     $('announcement-submit').classList.toggle('danger',all);
     $('announcement-schedule-wrap').hidden=!scheduled;
+    $('announcement-custom-expiry-wrap').hidden=$('announcement-expiry').value!=='custom';
     $('announcement-preview-time').textContent=scheduled?'Vaultlix · scheduled':'Vaultlix · now';
-    $('announcement-preview-note').textContent=`${once?'Opens once':'Can be reopened'}${ctaAction&&ctaLabel.value.trim()?` · ${ctaLabel.value.trim()} button`:''}`;
+    $('announcement-preview-note').textContent=`${once?'Opens once':'Can be reopened'} · expires in ${expiry} hour${expiry==='1'?'':'s'}${ctaAction&&ctaLabel.value.trim()?` · ${ctaLabel.value.trim()} button`:''}`;
     $('announcement-preview-icon').src=announcementThumbnailDataUrl || (announcementMediaDataUrl.startsWith('data:image/')?announcementMediaDataUrl:'/icons/icon-192.png');
   }
-  for (const id of ['announcement-title','announcement-body','announcement-audience','announcement-custom-expiry','announcement-view-once','announcement-schedule-enabled','announcement-scheduled-at','announcement-cta-label']) $(id).addEventListener('input',updateAnnouncementPreview);
-  for (const id of ['announcement-audience','announcement-view-once','announcement-schedule-enabled','announcement-cta-action']) $(id).addEventListener('change',updateAnnouncementPreview);
+  for (const id of ['announcement-title','announcement-body','announcement-audience','announcement-expiry','announcement-custom-expiry','announcement-view-once','announcement-schedule-enabled','announcement-scheduled-at','announcement-cta-label']) $(id).addEventListener('input',updateAnnouncementPreview);
+  for (const id of ['announcement-audience','announcement-expiry','announcement-view-once','announcement-schedule-enabled','announcement-cta-action']) $(id).addEventListener('change',updateAnnouncementPreview);
   updateAnnouncementPreview();
-  function clearAnnouncementSource() {
-    announcementSourceId='';
-    announcementRetainedThumbnailUrl='';announcementRetainedMediaUrl='';announcementRetainedMediaType='';
-    $('announcement-source').hidden=true;
-    $('announcement-source-copy').textContent='';
-    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
-  }
-  $('announcement-source-clear').addEventListener('click',clearAnnouncementSource);
-  function fillAnnouncementDraft(item, edit=false) {
-    announcementSourceId=item.id;
-    $('announcement-title').value=item.title || '';
-    $('announcement-body').value=item.body || '';
-    $('announcement-platform').value=item.platform || 'all';
-    $('announcement-audience').value=item.audience || 'test';
-    $('announcement-view-once').checked=item.viewOnce !== false;
-    const hours=String(item.expiryHours || 12);
-    $('announcement-custom-expiry').value=hours;
-    $('announcement-schedule-enabled').checked=false;
-    $('announcement-scheduled-at').value='';
-    announcementMediaDataUrl='';announcementThumbnailDataUrl='';
-    announcementRetainedThumbnailUrl=item.thumbnailUrl || '';
-    announcementRetainedMediaUrl=item.mediaUrl || '';
-    announcementRetainedMediaType=item.mediaType || '';
-    $('announcement-media').value='';$('announcement-thumbnail').value='';
-    $('announcement-thumbnail-help').textContent=item.hasThumbnail?'The original push thumbnail will be reused unless you choose another.':'Optional square image · the Vaultlix icon is the fallback';
-    $('announcement-source-copy').textContent=`Draft copied from ${new Date(item.sentAt || item.scheduledAt || item.createdAt).toLocaleString()}${item.hasMedia?' · original media will be reused':''}.`;
-    $('announcement-source').hidden=false;
-    $('announcement-status').textContent='Previous notification loaded as a draft. Review it before publishing.';
-    renderAnnouncementRetainedAssets();updateAnnouncementPreview();
-    $('announcement-history-modal').hidden=true;
-    $('announcement-form').scrollIntoView({behavior:'smooth',block:'start'});
-    setTimeout(()=>$(edit?'announcement-body':'announcement-submit').focus({preventScroll:true}),350);
-  }
-  function renderAnnouncementHistory() {
-    const list=$('announcement-history-list');list.replaceChildren();
-    const pendingCount=announcementHistory.filter(item=>item.status==='pending'||item.status==='sending').length;
-    const badge=$('announcement-pending-badge');badge.textContent=`${pendingCount} pending`;badge.classList.toggle('has-pending',pendingCount>0);
-    if(!announcementHistory.length){$('announcement-history-status').textContent='No push notifications have been sent or scheduled yet.';return;}
-    $('announcement-history-status').textContent=`Showing ${announcementHistory.length} most recent notification${announcementHistory.length===1?'':'s'} · ${pendingCount ? `${pendingCount} scheduled notification${pendingCount===1?' is':'s are'} pending` : 'nothing is scheduled'}.`;
-    for(const item of announcementHistory) {
-      const card=document.createElement('article');card.className='announcement-history-card';
-      const media=document.createElement('div');media.className='announcement-history-media';
-      if(item.thumbnailUrl){const image=document.createElement('img');image.src=item.thumbnailUrl;image.alt='';media.append(image);}
-      else if(item.mediaUrl&&item.mediaType==='image'){const image=document.createElement('img');image.src=item.mediaUrl;image.alt='';media.append(image);}
-      else if(item.mediaUrl&&item.mediaType==='video'){const video=document.createElement('video');video.src=item.mediaUrl;video.muted=true;video.preload='metadata';media.append(video);}
-      else media.textContent='No media';
-      const main=document.createElement('div');main.className='announcement-history-main';
-      const heading=document.createElement('div');heading.className='announcement-history-title';
-      const title=document.createElement('strong');title.textContent=item.title;
-      const status=document.createElement('span');status.className=`announcement-history-pill ${item.status}`;status.textContent=item.status==='pending'?'Scheduled':item.status==='sending'?'Sending':item.status==='cancelled'?'Cancelled':item.status;
-      heading.append(title,status);
-      const body=document.createElement('p');body.textContent=item.body;
-      const meta=document.createElement('div');meta.className='announcement-history-meta';
-      const when=item.sentAt || item.cancelledAt || item.scheduledAt || item.createdAt;
-      const delivery=item.status==='sent'?` · ${item.delivered}/${item.targeted} delivered${item.failed?` · ${item.failed} failed`:''}`:'';
-      const wasScheduled=Number(item.scheduledAt)>Number(item.createdAt)+30000;
-      meta.textContent=`${item.status==='pending'?'Scheduled for ':''}${new Date(when).toLocaleString()} · ${item.audience==='all'?'All opted-in users':'Test accounts'} · ${item.platform==='all'?'iOS + Android':item.platform.toUpperCase()}${wasScheduled?'':` · ${item.expiryHours}h`}${item.viewOnce?' · opens once':''}${item.mediaType?` · ${item.mediaType}`:''}${delivery}`;
-      main.append(heading,body,meta);
-      if(wasScheduled){
-        const timing=document.createElement('div');timing.className='announcement-history-timing';
-        const triggered=document.createElement('span');
-        if(item.status==='pending'||item.status==='sending'){
-          triggered.textContent=`Scheduled for ${new Date(item.scheduledAt).toLocaleString()}`;
-          const countdown=document.createElement('strong');countdown.dataset.announcementDeadline=String(item.scheduledAt);countdown.dataset.announcementTimer='trigger';timing.append(triggered,countdown);
-          const expiry=document.createElement('span');expiry.textContent=`Remains in Vaultlix for ${item.expiryHours} hour${item.expiryHours===1?'':'s'} after triggering`;timing.append(expiry);
-        } else {
-          triggered.textContent=item.status==='cancelled'&&item.cancelledAt
-            ? `Cancelled at ${new Date(item.cancelledAt).toLocaleString()}`
-            : item.sentAt?`Triggered at ${new Date(item.sentAt).toLocaleString()}`:`Scheduled for ${new Date(item.scheduledAt).toLocaleString()}`;
-          timing.append(triggered);
-          if(item.expiresAt){const countdown=document.createElement('strong');countdown.dataset.announcementDeadline=String(item.expiresAt);countdown.dataset.announcementTimer='expiry';timing.append(countdown);}
-        }
-        main.append(timing);
-      }
-      const actions=document.createElement('div');actions.className='announcement-history-actions';
-      const reuse=document.createElement('button');reuse.type='button';reuse.textContent='Reuse';reuse.addEventListener('click',()=>fillAnnouncementDraft(item,false));
-      const edit=document.createElement('button');edit.type='button';edit.className='quiet';edit.textContent='Edit copy';edit.addEventListener('click',()=>fillAnnouncementDraft(item,true));
-      actions.append(reuse,edit);
-      if(item.status==='pending'){
-        const cancel=document.createElement('button');cancel.type='button';cancel.className='quiet announcement-cancel';cancel.textContent='Cancel';cancel.addEventListener('click',()=>manageScheduledAnnouncement(item,'cancel',cancel));actions.append(cancel);
-      }
-      if(['pending','cancelled','failed'].includes(item.status)){
-        const remove=document.createElement('button');remove.type='button';remove.className='danger announcement-delete';remove.textContent='Delete';remove.addEventListener('click',()=>manageScheduledAnnouncement(item,'delete',remove));actions.append(remove);
-      }
-      card.append(media,main,actions);list.append(card);
-    }
-    updateAnnouncementHistoryTimers();
-  }
-  async function manageScheduledAnnouncement(item,action,button) {
-    const deleting=action==='delete';
-    const message=deleting
-      ? `${item.status==='pending'?'Cancel and permanently delete':'Permanently delete'} “${item.title}”? This cannot be undone.`
-      : `Cancel the scheduled notification “${item.title}”? It will stay in history so you can reuse it.`;
-    if(!confirm(message))return;
-    const key=adminKey;button.disabled=true;
-    $('announcement-history-status').textContent=deleting?'Deleting notification…':'Cancelling scheduled notification…';
-    try{
-      const response=await fetch('/api/admin/announcements',{method:deleting?'DELETE':'PATCH',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({id:item.id,...(deleting?{}:{action:'cancel'})}),cache:'no-store'});
-      const result=await response.json();if(adminKey!==key)return;
-      if(!response.ok)throw Error(result.error || `Notification could not be ${deleting?'deleted':'cancelled'}.`);
-      await loadAnnouncementHistory();
-      $('announcement-history-status').textContent=deleting?'Notification deleted.':'Scheduled notification cancelled. You can still reuse it from this history.';
-    }catch(error){if(adminKey===key)$('announcement-history-status').textContent=error.message;}
-    finally{button.disabled=false;}
-  }
-  function announcementCountdown(milliseconds) {
-    if(milliseconds<=0)return '';
-    const seconds=Math.ceil(milliseconds/1000),days=Math.floor(seconds/86400),hours=Math.floor(seconds%86400/3600),minutes=Math.floor(seconds%3600/60),remaining=seconds%60;
-    if(days)return `${days}d ${hours}h ${minutes}m`;
-    if(hours)return `${hours}h ${minutes}m ${String(remaining).padStart(2,'0')}s`;
-    return `${minutes}m ${String(remaining).padStart(2,'0')}s`;
-  }
-  function updateAnnouncementHistoryTimers() {
-    document.querySelectorAll('[data-announcement-deadline]').forEach(timer=>{
-      const remaining=Number(timer.dataset.announcementDeadline)-Date.now();
-      timer.textContent=remaining>0
-        ? `${timer.dataset.announcementTimer==='trigger'?'Triggers':'Expires'} in ${announcementCountdown(remaining)}`
-        : (timer.dataset.announcementTimer==='trigger'?'Triggering now…':'Expired');
-      timer.classList.toggle('expired',remaining<=0);
-    });
-  }
-  function startAnnouncementHistoryTimers() {
-    clearInterval(announcementHistoryTimer);clearInterval(announcementHistoryRefreshTimer);
-    updateAnnouncementHistoryTimers();
-    announcementHistoryTimer=setInterval(updateAnnouncementHistoryTimers,1000);
-    announcementHistoryRefreshTimer=setInterval(()=>{if(!$('announcement-history-modal').hidden)loadAnnouncementHistory();},15000);
-  }
-  function stopAnnouncementHistoryTimers() {clearInterval(announcementHistoryTimer);clearInterval(announcementHistoryRefreshTimer);announcementHistoryTimer=null;announcementHistoryRefreshTimer=null;}
-  async function loadAnnouncementHistory() {
-    if(!adminKey)return;
-    const key=adminKey;$('announcement-history-status').textContent='Loading notification history…';
-    try {
-      const response=await fetch('/api/admin/announcements',{headers:{Authorization:`Bearer ${key}`},cache:'no-store'});
-      const data=await response.json();if(adminKey!==key)return;
-      if(!response.ok)throw Error(data.error || 'Notification history is unavailable.');
-      announcementHistory=Array.isArray(data.announcements)?data.announcements:[];renderAnnouncementHistory();
-    } catch(error) { if(adminKey===key){$('announcement-history-status').textContent=error.message;$('announcement-pending-badge').textContent='Unavailable';} }
-  }
-  $('announcement-history-open').addEventListener('click',()=>{$('announcement-history-modal').hidden=false;loadAnnouncementHistory();startAnnouncementHistoryTimers();setTimeout(()=>$('announcement-history-close').focus(),0);});
-  $('announcement-history-close').addEventListener('click',()=>{$('announcement-history-modal').hidden=true;stopAnnouncementHistoryTimers();});
-  $('announcement-history-modal').addEventListener('click',event=>{if(event.target===$('announcement-history-modal')){$('announcement-history-modal').hidden=true;stopAnnouncementHistoryTimers();}});
-  $('announcement-history-refresh').addEventListener('click',loadAnnouncementHistory);
   $('announcement-form').addEventListener('submit',async event=>{
     event.preventDefault();
     const key=adminKey;if(!key)return;
@@ -572,16 +409,15 @@
     try {
       if(scheduled&&!$('announcement-scheduled-at').value)throw Error('Choose the date and time to publish this update.');
       const scheduledAt=scheduled?new Date($('announcement-scheduled-at').value).toISOString():null;
-      const expiryHours=Number($('announcement-custom-expiry').value);
-      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,sourceAnnouncementId:announcementSourceId || null,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt,ctaAction:$('announcement-cta-action').value,ctaLabel:$('announcement-cta-label').value}),cache:'no-store'});
+      const expiryHours=Number($('announcement-expiry').value==='custom'?$('announcement-custom-expiry').value:$('announcement-expiry').value);
+      const response=await fetch('/api/admin/announcements',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({title:$('announcement-title').value,body:$('announcement-body').value,platform:$('announcement-platform').value,audience,confirmAll:audience==='all',thumbnailDataUrl:announcementThumbnailDataUrl,mediaDataUrl:announcementMediaDataUrl,viewOnce:$('announcement-view-once').checked,expiryHours,scheduledAt,ctaAction:$('announcement-cta-action').value,ctaLabel:$('announcement-cta-label').value}),cache:'no-store'});
       const result=await response.json();if(adminKey!==key)return;
       if(!response.ok)throw Error(result.error || 'Announcement could not be sent.');
-      if(result.scheduled){$('announcement-status').textContent=`Update scheduled for ${new Date(result.scheduledAt).toLocaleString()}.`;clearAnnouncementSource();await loadAnnouncementHistory();return;}
+      if(result.scheduled){$('announcement-status').textContent=`Update scheduled for ${new Date(result.scheduledAt).toLocaleString()}.`;return;}
       const scope=result.audience==='test'?'test devices':'opted-in devices';
       $('announcement-status').textContent=result.targeted
         ? `Delivered to ${result.delivered} of ${result.targeted} ${scope} (${result.ios} iOS, ${result.android} Android).${result.failed ? ` ${result.failed} delivery attempt${result.failed===1?'':'s'} failed.` : ''}`
         : `No matching ${scope} were found for this platform.`;
-      clearAnnouncementSource();await loadAnnouncementHistory();
     } catch(error) { if(adminKey===key)$('announcement-status').textContent=error.message; }
     finally { button.disabled=false; }
   });
@@ -597,7 +433,6 @@
     clearClaimQr();$('allocate-link').value='';$('allocate-result').hidden=true;$('allocate-status').textContent='';
     $('announcement-status').textContent='';
     clearInterval(healthTimer); healthTimer=null;
-    stopAnnouncementHistoryTimers();
     $('service-health-cards').replaceChildren();
     $('service-health-history').replaceChildren();
     $('safety-reports').replaceChildren();

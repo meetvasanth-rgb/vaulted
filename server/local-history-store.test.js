@@ -101,7 +101,8 @@ test('every way a message or conversation is removed also removes the stored cop
   assert.match(client, /function secureNativeClearConversation\(conversationId\) \{\s*if \(!conversationId\) return;\s*historyStoreClearRoom\(conversationId\);/);
   assert.match(client, /historyStoreWipeAll\(\);\s*\n\s*try \{ sessionStorage\.clear\(\); localStorage\.clear\(\); \}/);
   // the delete ledger and the server's own deletions
-  assert.match(client, /historyStoreDelete\(room\.code, msg\.id\); \/\/ gone by the delete ledger/);
+  assert.match(client, /function eraseExpiredMessageCopies[\s\S]*historyStoreDelete\(room\.code, msgId\)/);
+  assert.match(client, /ledgerDeleteAt && ledgerDeleteAt <= nowTs\) \{\s*eraseExpiredMessageCopies\(room, msg\.id/);
   assert.match(client, /for \(const id of remove\) \{\s*historyStoreDelete\(room\.code, id\);/);
 });
 

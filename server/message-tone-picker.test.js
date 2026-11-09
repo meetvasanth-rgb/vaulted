@@ -84,8 +84,10 @@ test('the Android push data carries the chosen tone', () => {
 test('both native registration routes store the tone, in the live record and in what is persisted', () => {
   assert.match(server, /m\.fcmToken = deviceToken;\s*m\.fcmTone = storedMessageTone\(d\.tone\);/);
   assert.match(server, /m\.apnsEnvironment = d\.environment;\s*m\.apnsTone = storedMessageTone\(d\.tone\);/);
-  assert.equal((server.match(/tone:storedMessageTone\(d\.tone\) \}/g) || []).length, 2, 'account destinations (create)');
-  assert.equal((server.match(/tone:storedMessageTone\(destination\.tone\) \}\] : \[\]/g) || []).length, 2, 'account destinations (reload)');
+  assert.match(server, /destination = \{ platform:'android',[^\n]*tone:storedMessageTone\(d\.tone\)[^\n]*\}/, 'Android account destination (create)');
+  assert.match(server, /destination = \{ platform:'ios',[^\n]*tone:storedMessageTone\(d\.tone\)[^\n]*\}/, 'iOS account destination (create)');
+  assert.match(server, /return fcmToken \? \[\{ platform:'android',[^\n]*tone:storedMessageTone\(destination\.tone\)[^\n]*\}\] : \[\]/, 'Android account destination (reload)');
+  assert.match(server, /return apnsToken \? \[\{ platform:'ios',[^\n]*tone:storedMessageTone\(destination\.tone\)[^\n]*\}\] : \[\]/, 'iOS account destination (reload)');
   const postgres = read('server', 'postgres.js');
   assert.match(postgres, /\.\.\.\(push\.tone \? \{ tone:push\.tone \} : \{\}\),/);
   assert.match(postgres, /tone:member\.tone \|\| undefined,/);

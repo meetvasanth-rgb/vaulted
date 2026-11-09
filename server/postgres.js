@@ -82,10 +82,9 @@ CREATE TABLE IF NOT EXISTS admin_announcements (
   view_once boolean NOT NULL DEFAULT true,
   expires_after_ms bigint NOT NULL DEFAULT 43200000,
   scheduled_at bigint NOT NULL,
-  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled')),
+  status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sending', 'sent', 'failed')),
   created_at bigint NOT NULL,
   claimed_at bigint,
-  cancelled_at bigint,
   sent_at bigint,
   targeted integer,
   delivered integer,
@@ -99,21 +98,6 @@ ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS cta_label varchar(28);
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS cta_action varchar(32);
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS view_once boolean NOT NULL DEFAULT true;
 ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS expires_after_ms bigint NOT NULL DEFAULT 43200000;
-ALTER TABLE admin_announcements ADD COLUMN IF NOT EXISTS cancelled_at bigint;
-DO $migration$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid='admin_announcements'::regclass
-      AND conname='admin_announcements_status_check'
-      AND position('cancelled' in pg_get_constraintdef(oid))=0
-  ) THEN
-    ALTER TABLE admin_announcements DROP CONSTRAINT admin_announcements_status_check;
-    ALTER TABLE admin_announcements ADD CONSTRAINT admin_announcements_status_check
-      CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled'));
-  END IF;
-END
-$migration$;
 CREATE TABLE IF NOT EXISTS admin_announcement_views (
   announcement_id uuid NOT NULL REFERENCES admin_announcements(announcement_id) ON DELETE CASCADE,
   account_id char(64) NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
@@ -531,82 +515,6 @@ class PostgresStore {
   async failAdminAnnouncement(id) {
     if (!this.enabled) return;
     await this.pool.query("UPDATE admin_announcements SET status='failed' WHERE announcement_id=$1", [id]);
-  }
-
-  async cancelAdminAnnouncement(id, cancelledAt = Date.now()) {
-    if (!this.enabled) return null;
-    const { rows } = await this.pool.query(`UPDATE admin_announcements
-      SET status='cancelled',cancelled_at=$2,claimed_at=NULL
-      WHERE announcement_id=$1 AND status='pending'
-      RETURNING announcement_id,status,cancelled_at`, [id, cancelledAt]);
-    return rows[0] ? {
-      id:rows[0].announcement_id,
-      status:rows[0].status,
-      cancelledAt:Number(rows[0].cancelled_at),
-    } : null;
-  }
-
-  async deleteAdminAnnouncement(id) {
-    if (!this.enabled) return null;
-    const { rows } = await this.pool.query(`DELETE FROM admin_announcements
-      WHERE announcement_id=$1 AND status IN ('pending','cancelled','failed')
-      RETURNING announcement_id,status,thumbnail_object_key,media_object_key`, [id]);
-    const row = rows[0];
-    return row ? {
-      id:row.announcement_id,
-      status:row.status,
-      thumbnailObjectKey:row.thumbnail_object_key || null,
-      mediaObjectKey:row.media_object_key || null,
-    } : null;
-  }
-
-  async isAdminAnnouncementObjectReferenced(objectKey) {
-    if (!this.enabled || !objectKey) return false;
-    const { rowCount } = await this.pool.query(`SELECT 1 FROM admin_announcements
-      WHERE thumbnail_object_key=$1 OR media_object_key=$1 LIMIT 1`, [objectKey]);
-    return rowCount > 0;
-  }
-
-  async getAdminAnnouncement(id) {
-    if (!this.enabled) return null;
-    const { rows } = await this.pool.query('SELECT * FROM admin_announcements WHERE announcement_id=$1 LIMIT 1', [id]);
-    const row = rows[0];
-    if (!row) return null;
-    return {
-      id:row.announcement_id, title:row.title, body:row.body,
-      platform:row.platform, audience:row.audience,
-      thumbnailObjectKey:row.thumbnail_object_key || null,
-      mediaObjectKey:row.media_object_key || null,
-      mediaType:row.media_type || null,
-      viewOnce:row.view_once !== false,
-      expiresAfterMs:Number(row.expires_after_ms || 43200000),
-      scheduledAt:Number(row.scheduled_at), status:row.status,
-      cancelledAt:row.cancelled_at === null ? null : Number(row.cancelled_at),
-      createdAt:Number(row.created_at), sentAt:row.sent_at === null ? null : Number(row.sent_at),
-      targeted:Number(row.targeted || 0), delivered:Number(row.delivered || 0), failed:Number(row.failed || 0),
-    };
-  }
-
-  async listAdminAnnouncementHistory(limit = 50) {
-    if (!this.enabled) return [];
-    const { rows } = await this.pool.query(`SELECT a.*,
-      (SELECT count(*)::int FROM admin_announcement_views v WHERE v.announcement_id=a.announcement_id) AS viewed
-      FROM admin_announcements a ORDER BY COALESCE(a.sent_at,a.cancelled_at,a.scheduled_at,a.created_at) DESC LIMIT $1`,
-    [Math.max(1, Math.min(100, Number(limit) || 50))]);
-    return rows.map(row => ({
-      id:row.announcement_id, title:row.title, body:row.body,
-      platform:row.platform, audience:row.audience,
-      thumbnailObjectKey:row.thumbnail_object_key || null,
-      mediaObjectKey:row.media_object_key || null,
-      mediaType:row.media_type || null,
-      viewOnce:row.view_once !== false,
-      expiresAfterMs:Number(row.expires_after_ms || 43200000),
-      scheduledAt:Number(row.scheduled_at), status:row.status,
-      cancelledAt:row.cancelled_at === null ? null : Number(row.cancelled_at),
-      createdAt:Number(row.created_at), sentAt:row.sent_at === null ? null : Number(row.sent_at),
-      targeted:Number(row.targeted || 0), delivered:Number(row.delivered || 0), failed:Number(row.failed || 0),
-      viewed:Number(row.viewed || 0),
-    }));
   }
 
   async listRecentAdminAnnouncements({ accountId, platform, isTestAccount, now = Date.now(), limit = 10 }) {

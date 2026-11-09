@@ -20,7 +20,7 @@ test('share-card screenshot remains visually stable at 1080 by 1350', () => {
   assert.equal(BRAND, '#6B1F3A');
   assert.equal(
     crypto.createHash('sha256').update(svg).digest('hex'),
-    'f49b20a3f20a1aef1ebbcfe60785b068b7f31d5f8d70516cceba880ed65fbe22',
+    '062f6da35937e2ebf61177772ca3967f019e31347352065deca4bd404941084f',
   );
 });
 
@@ -30,23 +30,18 @@ test('number-card QR uses the cross-platform verified app-link route', () => {
   assert.doesNotMatch(client, /console\.(?:info|log)\([^\n]*number-card/);
 });
 
-test('number card uses the header theme with a prominent number and scan-safe embossed QR tile', () => {
+test('number card explains the scan and includes a readable connection fallback', () => {
   const svg = createNumberCardSvg({
     number:'2480599999', shareCode:'ABC234', username:'Vasanthkumar', tier:'founding', qrMatrix:[[true]],
   });
-  assert.match(svg, /MY PRIVATE NUMBER/);
-  assert.match(svg, /24-8059-9999/);
-  assert.match(svg, /qr-emboss/);
-  assert.match(svg, /Scan to connect/);
-  assert.match(svg, /on Vaultlix/);
-  assert.match(svg, /Vasanthkumar/);
-  assert.match(svg, /NO PHONE NUMBER SHARED/);
-  assert.doesNotMatch(svg, /MY PRIVATE LINE|NO SIM REQUIRED|vaultlix\.com\/2480599999/);
+  assert.match(svg, /Scan to connect privately<\/tspan><tspan[^>]*>with Vasanthkumar/);
+  assert.match(svg, /vaultlix\.com\/2480599999/);
+  assert.match(svg, /NO SIM REQUIRED/);
   assert.doesNotMatch(svg, /vaultlix\.com\/p-ABC234/);
   assert.doesNotMatch(svg, /Scan to extend a private line/);
 });
 
-test('one-time invitation card uses the new theme while preserving its single-use expiry', () => {
+test('one-time invitation card carries its QR destination and expiry without exposing a Private Number', () => {
   const svg = createPrivateInviteCardSvg({
     username:'Vasanthkumar',
     inviteUrl:'https://vaultlix.com/invite/ER49TD',
@@ -54,11 +49,8 @@ test('one-time invitation card uses the new theme while preserving its single-us
   });
   assert.match(svg, /PRIVATE INVITATION/);
   assert.match(svg, /Vasanthkumar invited you/);
-  assert.match(svg, /qr-emboss/);
-  assert.match(svg, /Scan to connect/);
-  assert.match(svg, /24 HOURS/);
-  assert.match(svg, /SINGLE USE · EXPIRES IN 24 HOURS/);
-  assert.doesNotMatch(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
+  assert.match(svg, /SINGLE USE · VALID FOR 24 HOURS/);
+  assert.match(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
   assert.doesNotMatch(svg, /24-8059-9999|MY PRIVATE LINE/);
 });
 

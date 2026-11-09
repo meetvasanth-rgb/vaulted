@@ -30,13 +30,41 @@ test('iOS destroys the per-message ThisDeviceOnly Keychain item before deleting 
 
 test('native cache follows render, individual deletion, clear-chat and room removal', () => {
   assert.match(client, /function renderMessageRecord[\s\S]*secureNativeStoreMessage\(room, rec\)/);
-  assert.match(client, /function removeMessageRecord[\s\S]*secureNativeDeleteMessage\(room\.code, msgId\)/);
+  assert.match(client, /function removeMessageRecord[\s\S]*eraseExpiredMessageCopies\(room, msgId, record\)/);
+  assert.match(client, /function eraseExpiredMessageCopies[\s\S]*secureNativeDeleteMessage\(room\.code, msgId\)/);
   assert.match(client, /function clearRoomChatLocally[\s\S]*secureNativeClearConversation\(room\.code\)/);
   assert.match(client, /function removeRoomFromState[\s\S]*secureNativeClearConversation\(code\)/);
 });
 
+test('disappearing messages never enter the native plaintext-derived cache', () => {
+  const eligibility = client.match(/function nativeMessageCacheEligible\(room, rec\)[\s\S]*?\n}/)[0];
+  const context = {};
+  require('node:vm').createContext(context);
+  require('node:vm').runInContext(eligibility, context);
+  assert.equal(context.nativeMessageCacheEligible({ deleteTimerSeconds:30 }, {}), false);
+  assert.equal(context.nativeMessageCacheEligible({}, { deleteTimerSeconds:30 }), false);
+  assert.equal(context.nativeMessageCacheEligible({}, { deleteAt:Date.now() + 30_000 }), false);
+  assert.equal(context.nativeMessageCacheEligible({}, { expiresAt:Date.now() + 30_000 }), false);
+  assert.equal(context.nativeMessageCacheEligible({}, { deleteTimerSeconds:0 }), true);
+  assert.match(client, /function secureNativeStoreMessage\(room, rec\)[\s\S]*?!nativeMessageCacheEligible\(room, rec\)/);
+  assert.match(client, /function scheduleSecureNativeHistoryCache\(room, records\)[\s\S]*?!nativeMessageCacheEligible\(room, rec\)/);
+});
+
+test('startup restoration cryptographically erases every message whose timer expired while the app was closed', () => {
+  const body = client.match(/function eraseExpiredMessageCopies\(room, msgId, record = null\)[\s\S]*?\n}/)[0];
+  assert.ok(body.indexOf('secureNativeDeleteMessage') < body.indexOf('historyStoreDelete'));
+  assert.match(body, /cancelSecureNativeCacheWrite/);
+  assert.match(body, /scrubMessageRecord/);
+  const restoreCalls = client.match(/ledgerDeleteAt && ledgerDeleteAt <= nowTs\) \{\s*eraseExpiredMessageCopies\(room, msg\.id(?:, rec)?\)/g) || [];
+  assert.equal(restoreCalls.length, 2);
+  const sweep = client.match(/function purgeExpiredDeleteLedgerCopies\(room, now = Date\.now\(\)\)[\s\S]*?\n}/)[0];
+  assert.match(sweep, /for \(const \[msgId, deleteAt\] of room\.deleteLedger\)/);
+  assert.match(sweep, /eraseExpiredMessageCopies\(room, msgId\)/);
+  assert.equal((client.match(/room\.deleteLedger = new Map\(Object\.entries\(session\.deleteLedger[\s\S]{0,180}purgeExpiredDeleteLedgerCopies\(room\)/g) || []).length, 2);
+});
+
 test('a deleted record cannot be recreated by a queued native history-cache write', () => {
-  const body = client.match(/function removeMessageRecord\(room, msgId\)[\s\S]*?\n}/)[0];
+  const body = client.match(/function eraseExpiredMessageCopies\(room, msgId, record = null\)[\s\S]*?\n}/)[0];
   assert.ok(body.indexOf('cancelSecureNativeCacheWrite') < body.indexOf('secureNativeDeleteMessage'));
   assert.match(client, /function cancelSecureNativeCacheWrite[\s\S]*secureNativeCacheQueue\.splice/);
   assert.match(client, /function clearRoomChatLocally[\s\S]*cancelAndScrubConversationCache\(room\)[\s\S]*secureNativeClearConversation/);
@@ -53,7 +81,8 @@ test('restored native history caching yields to opening, back and scroll input',
 test('message records and rendered media references are scrubbed during deletion', () => {
   assert.match(client, /function scrubMessageRecord[\s\S]*record\[field\] = ''/);
   const body = client.match(/function removeMessageRecord\(room, msgId\)[\s\S]*?\n}/)[0];
-  assert.match(body, /scrubMessageRecord\(record\)/);
+  assert.match(body, /eraseExpiredMessageCopies\(room, msgId, record\)/);
+  assert.match(client, /function eraseExpiredMessageCopies[\s\S]*scrubMessageRecord\(record\)/);
   assert.match(body, /removeAttribute\('src'\)/);
   assert.match(body, /replaceChildren\(\)/);
 });

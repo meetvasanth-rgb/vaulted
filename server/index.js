@@ -122,7 +122,6 @@ const objectStorage = new EncryptedObjectStorage();
 let postgresEnabled = false;
 let objectStorageEnabled = false;
 let adminAnnouncementTimer = null;
-const memoryAdminAnnouncements = new Map();
 const ANNOUNCEMENT_THUMBNAIL_LIFETIME_MS = 49 * 60 * 60 * 1000;
 const ANNOUNCEMENT_SCHEDULE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -3158,9 +3157,10 @@ const srv = http.createServer((req, res) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
   }
   if (u.pathname === '/admin' || u.pathname === '/admin.html' || u.pathname === '/admin.js' || u.pathname === '/admin.css') {
-    // Local selections use data URLs; previous notifications use short-lived
-    // HTTPS object-storage URLs returned only by the authenticated admin API.
-    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; media-src https:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+    // The announcement composer renders a selected image through a local
+    // data URL before it is submitted. Keep every remote image blocked while
+    // allowing that in-memory preview alongside same-origin admin assets.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
     res.setHeader('Cache-Control', 'no-store');
   }
   if (!u.pathname.startsWith('/api/')) { serveStatic(req,res); return; }
@@ -6425,7 +6425,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
   // with crypto.timingSafeEqual rather than !== so a wrong guess can't be
   // narrowed down via response-time differences; timingSafeEqual throws on
   // mismatched buffer lengths, so that has to be checked first.
-  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && ['GET','POST','PATCH','DELETE'].includes(method)) || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
+  if ((path === '/api/admin/stats' && method === 'GET') || (path === '/api/admin/health' && method === 'GET') || (path === '/api/admin/allocate-number' && method === 'POST') || (path === '/api/admin/announcements' && method === 'POST') || (path === '/api/admin/test-account' && method === 'POST') || (path === '/api/admin/safety' && ['GET','POST'].includes(method))) {
     const authHeader = (headers && headers['authorization']) || '';
     const bearerMatch = /^Bearer (.+)$/.exec(authHeader);
     const providedKey = bearerMatch ? bearerMatch[1] : null;
@@ -6480,61 +6480,6 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     }
     if (path === '/api/admin/announcements') {
       res.setHeader('Cache-Control','no-store');
-      if (method === 'GET') {
-        const records = postgresEnabled
-          ? await postgresStore.listAdminAnnouncementHistory(50)
-          : [...memoryAdminAnnouncements.values()].sort((a,b)=>(b.sentAt || b.scheduledAt || b.createdAt) - (a.sentAt || a.scheduledAt || a.createdAt)).slice(0,50);
-        const announcements = await Promise.all(records.map(async record => ({
-          id:record.id, title:record.title, body:record.body,
-          platform:record.platform, audience:record.audience,
-          status:record.status, viewOnce:record.viewOnce !== false,
-          expiryHours:Math.max(1, Math.round(Number(record.expiresAfterMs || 43200000) / 3600000)),
-          scheduledAt:record.scheduledAt, createdAt:record.createdAt, sentAt:record.sentAt || null,
-          cancelledAt:record.cancelledAt || null,
-          expiresAt:record.sentAt ? Number(record.sentAt) + Number(record.expiresAfterMs || 43200000) : null,
-          targeted:Number(record.targeted || 0), delivered:Number(record.delivered || 0), failed:Number(record.failed || 0),
-          viewed:Number(record.viewed || 0), hasThumbnail:!!record.thumbnailObjectKey,
-          hasMedia:!!record.mediaObjectKey, mediaType:record.mediaType || null,
-          thumbnailUrl:record.thumbnailObjectKey && objectStorageEnabled ? await objectStorage.createDownloadUrl(record.thumbnailObjectKey).catch(() => '') : '',
-          mediaUrl:record.mediaObjectKey && objectStorageEnabled ? await objectStorage.createDownloadUrl(record.mediaObjectKey).catch(() => '') : '',
-        })));
-        return res200(res, { announcements });
-      }
-      if (method === 'PATCH') {
-        const id=String(d.id || '');
-        if (!/^[a-f0-9-]{36}$/i.test(id) || d.action !== 'cancel') return resErr(res,'Choose a valid scheduled notification to cancel.',400);
-        if (!postgresEnabled) return resErr(res,'Notification scheduling is temporarily unavailable.',503);
-        const cancelled=await postgresStore.cancelAdminAnnouncement(id);
-        if (!cancelled) {
-          const current=await postgresStore.getAdminAnnouncement(id);
-          if (!current) return resErr(res,'Scheduled notification not found.',404);
-          return resErr(res,current.status==='sending'
-            ? 'This notification is already being sent and can no longer be cancelled.'
-            : 'Only pending scheduled notifications can be cancelled.',409);
-        }
-        return res200(res,{ok:true,...cancelled});
-      }
-      if (method === 'DELETE') {
-        const id=String(d.id || '');
-        if (!/^[a-f0-9-]{36}$/i.test(id)) return resErr(res,'Choose a valid notification to delete.',400);
-        if (!postgresEnabled) return resErr(res,'Notification scheduling is temporarily unavailable.',503);
-        const deleted=await postgresStore.deleteAdminAnnouncement(id);
-        if (!deleted) {
-          const current=await postgresStore.getAdminAnnouncement(id);
-          if (!current) return resErr(res,'Notification not found.',404);
-          return resErr(res,current.status==='sending'
-            ? 'This notification is being sent and cannot be deleted.'
-            : 'Sent notifications remain in the delivery record and cannot be deleted.',409);
-        }
-        if (objectStorageEnabled) {
-          const keys=[...new Set([deleted.thumbnailObjectKey,deleted.mediaObjectKey].filter(Boolean))];
-          for (const objectKey of keys) {
-            const referenced=await postgresStore.isAdminAnnouncementObjectReferenced(objectKey);
-            if (!referenced) await objectStorage.delete(objectKey).catch(error => console.error(`Admin announcement asset cleanup failed: ${error.message}`));
-          }
-        }
-        return res200(res,{ok:true,id:deleted.id,deleted:true});
-      }
       const checked = validateAnnouncement(d);
       if (checked.error) return resErr(res, checked.error, 400);
       const decodedThumbnail = decodeAnnouncementThumbnail(d.thumbnailDataUrl);
@@ -6557,13 +6502,6 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (await rateLimited(`admin-announcement:${checked.value.audience}`, checked.value.audience === 'all' ? 6 : 30, 60 * 60 * 1000)) {
         return resErr(res, 'Announcement sending limit reached. Try again later.', 429);
       }
-      let source = null;
-      if (d.sourceAnnouncementId !== undefined && d.sourceAnnouncementId !== null && d.sourceAnnouncementId !== '') {
-        const sourceId = String(d.sourceAnnouncementId);
-        if (!/^[a-f0-9-]{36}$/i.test(sourceId)) return resErr(res, 'The notification selected for reuse is invalid.', 400);
-        source = postgresEnabled ? await postgresStore.getAdminAnnouncement(sourceId) : memoryAdminAnnouncements.get(sourceId);
-        if (!source) return resErr(res, 'The original notification is no longer available.', 404);
-      }
       let thumbnail = null, media = null;
       try {
         media = await storeAnnouncementMedia(decodedMedia.value);
@@ -6573,9 +6511,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       const id = crypto.randomUUID();
       const record = {
         id, ...checked.value,
-        thumbnailObjectKey:thumbnail?.objectKey || source?.thumbnailObjectKey || null,
-        mediaObjectKey:media?.objectKey || source?.mediaObjectKey || null,
-        mediaType:media?.mediaType || source?.mediaType || null,
+        thumbnailObjectKey:thumbnail?.objectKey || null,
+        mediaObjectKey:media?.objectKey || null,
+        mediaType:media?.mediaType || null,
         viewOnce:experience.value.viewOnce,
         ctaLabel:experience.value.ctaLabel,
         ctaAction:experience.value.ctaAction,
@@ -6589,7 +6527,6 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       if (postgresEnabled) await postgresStore.scheduleAdminAnnouncement({ ...record, status:'sending' });
       const result = await deliverAdminAnnouncement(record);
       if (postgresEnabled) await postgresStore.completeAdminAnnouncement(id, result, result.sentAt);
-      else memoryAdminAnnouncements.set(id, { ...record, ...result, status:'sent' });
       console.log(`Admin announcement: audience=${checked.value.audience} platform=${checked.value.platform} targeted=${result.targeted} delivered=${result.delivered}`);
       return res200(res, { ok:true, audience:checked.value.audience, platform:checked.value.platform, ...result });
     }
