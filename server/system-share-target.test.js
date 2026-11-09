@@ -32,6 +32,11 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   assert.match(controller, /CCKeyDerivationPBKDF/);
   assert.match(controller, /NativeCallRoomStore\.shared\.shareEligibleRooms\(\)/);
   assert.match(controller, /AES\.GCM\.seal/);
+  assert.match(controller, /import ImageIO/);
+  assert.match(controller, /CGImageSourceCreateThumbnailAtIndex/);
+  assert.match(controller, /kCGImageSourceThumbnailMaxPixelSize: 2048/);
+  assert.match(controller, /func loadProvider\(at index: Int\)/);
+  assert.doesNotMatch(controller, /UIImage\(data:/);
   assert.match(controller, /\/api\/attachment\/prepare/);
   assert.match(controller, /\/api\/send/);
   assert.match(controller, /obj:v1:/);

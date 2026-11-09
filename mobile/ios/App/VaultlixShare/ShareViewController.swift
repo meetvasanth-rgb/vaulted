@@ -2,6 +2,7 @@ import UIKit
 import UniformTypeIdentifiers
 import CryptoKit
 import CommonCrypto
+import ImageIO
 
 final class ShareViewController: UIViewController {
     private struct PreparedImage { let name: String; let mime: String; let data: Data }
@@ -123,35 +124,53 @@ final class ShareViewController: UIViewController {
     }
 
     private func prepareImages() {
-        let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
+        let providers = Array((extensionContext?.inputItems as? [NSExtensionItem] ?? [])
             .flatMap { $0.attachments ?? [] }
             .filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
-            .prefix(10)
+            .prefix(10))
         guard !providers.isEmpty else { showFailure("No supported image was selected."); return }
-        let group = DispatchGroup()
-        let lock = NSLock()
         var loaded: [(Int, PreparedImage)] = []
-        for (index, provider) in providers.enumerated() {
-            group.enter()
+
+        // Share extensions have a much smaller memory budget than the main app.
+        // Process one provider at a time so selecting several modern camera
+        // photos cannot retain several compressed sources/thumbnails together.
+        func loadProvider(at index: Int) {
+            guard providers.indices.contains(index) else {
+                self.preparedImages = loaded.sorted { $0.0 < $1.0 }.map(\.1)
+                guard !self.preparedImages.isEmpty else { self.showFailure("The selected image could not be read."); return }
+                if let config = self.loadAppLockConfig() { self.showAppLock(config) } else { self.showRecipients() }
+                return
+            }
+            let provider = providers[index]
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                defer { group.leave() }
-                guard let data, !data.isEmpty, data.count <= self.maximumImageBytes,
-                      let image = UIImage(data: data),
-                      let prepared = self.optimizedImage(image, sourceName: provider.suggestedName, index: index) else { return }
-                lock.lock(); loaded.append((index, prepared)); lock.unlock()
+                let prepared: PreparedImage? = autoreleasepool {
+                    guard let data, !data.isEmpty, data.count <= self.maximumImageBytes else { return nil }
+                    return self.optimizedImage(data, sourceName: provider.suggestedName, index: index)
+                }
+                DispatchQueue.main.async {
+                    if let prepared { loaded.append((index, prepared)) }
+                    loadProvider(at: index + 1)
+                }
             }
         }
-        group.notify(queue: .main) {
-            self.preparedImages = loaded.sorted { $0.0 < $1.0 }.map(\.1)
-            guard !self.preparedImages.isEmpty else { self.showFailure("The selected image could not be read."); return }
-            if let config = self.loadAppLockConfig() { self.showAppLock(config) } else { self.showRecipients() }
-        }
+        loadProvider(at: 0)
     }
 
-    private func optimizedImage(_ image: UIImage, sourceName: String?, index: Int) -> PreparedImage? {
-        let maxDimension: CGFloat = 2048
-        let scale = min(1, maxDimension / max(image.size.width, image.size.height))
-        let size = CGSize(width: max(1, image.size.width * scale), height: max(1, image.size.height * scale))
+    private func optimizedImage(_ sourceData: Data, sourceName: String?, index: Int) -> PreparedImage? {
+        // Direct UIImage decoding may materialize the complete 24/48-MP camera image before
+        // drawing the smaller result, which is enough for iOS to terminate a
+        // Share Extension. ImageIO decodes only a correctly oriented thumbnail.
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(sourceData as CFData, sourceOptions) else { return nil }
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 2048,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else { return nil }
+        let image = UIImage(cgImage: thumbnail)
+        let size = CGSize(width: CGFloat(max(1, thumbnail.width)), height: CGFloat(max(1, thumbnail.height)))
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
@@ -159,8 +178,8 @@ final class ShareViewController: UIViewController {
             UIColor.white.setFill(); context.fill(CGRect(origin: .zero, size: size)); image.draw(in: CGRect(origin: .zero, size: size))
         }
         guard let data = rendered.jpegData(compressionQuality: 0.82) else { return nil }
-        let source = (sourceName ?? "Vaultlix image \(index + 1)").replacingOccurrences(of: "/", with: "_")
-        return PreparedImage(name: String((source as NSString).deletingPathExtension.prefix(120)) + ".jpg", mime: "image/jpeg", data: data)
+        let sourceFilename = (sourceName ?? "Vaultlix image \(index + 1)").replacingOccurrences(of: "/", with: "_")
+        return PreparedImage(name: String((sourceFilename as NSString).deletingPathExtension.prefix(120)) + ".jpg", mime: "image/jpeg", data: data)
     }
 
     private func showAppLock(_ config: AppLockConfig) {
