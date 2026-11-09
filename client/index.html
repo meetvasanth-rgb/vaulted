@@ -13626,11 +13626,9 @@ let dailyLookDestination = null;
 let dailyLookPreviewZoomCleanup = null;
 const DAILY_LOOK_RESULT_DB = 'vaultlix-daily-look';
 const AVATAR_STYLE_ID = 'vaultlix-avatar';
-const DIWALI_GLOW_STYLE_ID = 'diwali-glow';
 
 function dailyLookGenerateCopy(busy = false) {
   if (dailyLookAvatarMode) return busy ? 'Creating your avatar…' : 'Create My Avatar';
-  if (dailyLookStyleId === DIWALI_GLOW_STYLE_ID) return busy ? 'Creating your Diwali portrait…' : 'Create My Diwali Portrait';
   return busy ? 'Creating your portrait…' : 'Create My Portrait';
 }
 
@@ -13847,9 +13845,7 @@ async function generateDailyLook() {
   if (button) { button.disabled = true; button.textContent = dailyLookGenerateCopy(true); }
   if (status) status.textContent = dailyLookAvatarMode
     ? 'Creating your avatar. This can take a moment.'
-    : dailyLookStyleId === DIWALI_GLOW_STYLE_ID
-      ? 'Creating your Diwali portrait. This can take a moment.'
-      : 'Creating your portrait. This can take a moment.';
+    : 'Creating your portrait. This can take a moment.';
   const result = await api('/api/account/daily-look', {
     accountId:state.accountId, sessionToken:state.sessionToken,
     image:dailyLookSourceImage, styleId:dailyLookStyleId,

@@ -67,28 +67,9 @@ test('Daily Look offers curated rotating styles, profile use, and download', () 
   assert.match(client, /downloadDataUri\(dailyLookGeneratedImage/);
 });
 
-test('Diwali Glow is a temporary featured style with five natural non-repeating scenes', () => {
-  assert.match(server, /const DIWALI_GLOW_STYLE_ID = 'diwali-glow'/);
-  assert.match(server, /name:'Diwali Glow', note:'A natural festive portrait in warm diya light'/);
-  assert.match(server, /function diwaliGlowActive\(now = Date\.now\(\)\)/);
-  assert.match(server, /featuredId = diwaliGlowActive\(now\) \? DIWALI_GLOW_STYLE_ID/);
-  assert.match(server, /style\.id !== DIWALI_GLOW_STYLE_ID \|\| diwaliGlowActive\(now\)/);
-  const scenes = server.match(/const DIWALI_GLOW_SCENES = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || '';
-  assert.equal((scenes.match(/`/g) || []).length / 2, 5);
-  assert.match(scenes, /well-designed home[\s\S]*contemporary living room[\s\S]*balcony or terrace[\s\S]*courtyard or verandah[\s\S]*contemporary home/);
-  assert.match(server, /dailyLookRotationItem\(DIWALI_GLOW_SCENES, variantIndex\)/);
-  assert.match(server, /Preserve every visible person's unmistakable face/);
-  assert.match(server, /head size as a percentage of the frame/);
-  assert.match(server, /face-to-shoulder ratio/);
-  assert.match(server, /selfie foreshortening/);
-  assert.match(server, /never recompose, recrop/);
-  assert.match(server, /contemporary 2020s festive clothing/);
-  assert.match(server, /deep teal, midnight blue, muted emerald, wine, charcoal/);
-  assert.match(server, /Avoid 1980s or 1990s interiors/);
-  assert.match(server, /sepia grading/);
-  assert.match(server, /Avoid fireworks, floating lamps, gold particles, magical sparkles/);
-  assert.match(client, /Create My Diwali Portrait/);
-  assert.match(client, /Creating your Diwali portrait/);
+test('Diwali Glow is retired after the festival', () => {
+  assert.doesNotMatch(server, /diwali/i);
+  assert.doesNotMatch(client, /diwali/i);
 });
 
 test('status creation can return a generated Daily Look into preview before audience selection', () => {
