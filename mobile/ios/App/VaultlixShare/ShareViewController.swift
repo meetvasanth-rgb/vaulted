@@ -5,7 +5,7 @@ import CommonCrypto
 import ImageIO
 
 final class ShareViewController: UIViewController {
-    private struct PreparedImage { let name: String; let mime: String; let data: Data }
+    private struct PreparedImage { let name: String; let mime: String; let data: Data; let preview: String }
     private struct AppLockConfig { let salt: Data; let verifier: Data; let iterations: Int; let passcodeLength: Int }
     private enum ShareFailure: LocalizedError {
         case message(String)
@@ -20,6 +20,7 @@ final class ShareViewController: UIViewController {
     private var started = false
     private var preparedImages: [PreparedImage] = []
     private var rooms: [NativeCallRoom] = []
+    private var selectedRoomIndex: Int?
 
     private let titleLabel = UILabel()
     private let statusLabel = UILabel()
@@ -29,11 +30,23 @@ final class ShareViewController: UIViewController {
     private let recipientsStack = UIStackView()
     private let recipientsScroll = UIScrollView()
     private var recipientsHeightConstraint: NSLayoutConstraint?
+    private let sendButton = UIButton(type: .system)
     private let activity = UIActivityIndicatorView(style: .medium)
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        preferredContentSize = UIScreen.main.bounds.size
         buildInterface()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        preferredContentSize = UIScreen.main.bounds.size
+        if #available(iOS 15.0, *), let sheet = sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.selectedDetentIdentifier = .large
+            sheet.prefersGrabberVisible = false
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -97,19 +110,25 @@ final class ShareViewController: UIViewController {
             recipientsStack.bottomAnchor.constraint(equalTo: recipientsScroll.contentLayoutGuide.bottomAnchor),
             recipientsStack.widthAnchor.constraint(equalTo: recipientsScroll.frameLayoutGuide.widthAnchor),
             recipientsHeightConstraint,
-            recipientsScroll.heightAnchor.constraint(lessThanOrEqualToConstant: 340),
+            recipientsScroll.heightAnchor.constraint(lessThanOrEqualToConstant: max(116, UIScreen.main.bounds.height - 300)),
         ])
         recipientsScroll.layer.borderColor = UIColor.separator.cgColor
         recipientsScroll.layer.borderWidth = 0.5
         recipientsScroll.layer.cornerRadius = 14
         recipientsScroll.isHidden = true
 
+        configurePrimaryButton(sendButton, title: "Send")
+        sendButton.addTarget(self, action: #selector(sendToSelectedRecipient), for: .touchUpInside)
+        sendButton.isEnabled = false
+        sendButton.alpha = 0.45
+        sendButton.isHidden = true
+
         let cancel = UIButton(type: .system)
         cancel.setTitle("Cancel", for: .normal)
         cancel.addTarget(self, action: #selector(cancelShare), for: .touchUpInside)
         activity.hidesWhenStopped = true
 
-        let stack = UIStackView(arrangedSubviews: [mark, titleLabel, statusLabel, activity, passcodeStack, recipientsScroll, cancel])
+        let stack = UIStackView(arrangedSubviews: [mark, titleLabel, statusLabel, activity, passcodeStack, recipientsScroll, sendButton, cancel])
         stack.axis = .vertical
         stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -117,9 +136,8 @@ final class ShareViewController: UIViewController {
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
             stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-            stack.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
-            stack.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
         ])
     }
 
@@ -188,7 +206,16 @@ final class ShareViewController: UIViewController {
         }
         guard let data = rendered.jpegData(compressionQuality: 0.82) else { return nil }
         let sourceFilename = (sourceName ?? "Vaultlix image \(index + 1)").replacingOccurrences(of: "/", with: "_")
-        return PreparedImage(name: String((sourceFilename as NSString).deletingPathExtension.prefix(120)) + ".jpg", mime: "image/jpeg", data: data)
+        let previewOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 640,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let previewImage = CGImageSourceCreateThumbnailAtIndex(source, 0, previewOptions as CFDictionary),
+              let previewData = UIImage(cgImage: previewImage).jpegData(compressionQuality: 0.72) else { return nil }
+        let preview = "data:image/jpeg;base64," + previewData.base64EncodedString()
+        return PreparedImage(name: String((sourceFilename as NSString).deletingPathExtension.prefix(120)) + ".jpg", mime: "image/jpeg", data: data, preview: preview)
     }
 
     private func showAppLock(_ config: AppLockConfig) {
@@ -197,6 +224,7 @@ final class ShareViewController: UIViewController {
         passcodeField.maxLength = config.passcodeLength
         passcodeStack.isHidden = false
         recipientsScroll.isHidden = true
+        sendButton.isHidden = true
         passcodeField.becomeFirstResponder()
     }
 
@@ -206,21 +234,29 @@ final class ShareViewController: UIViewController {
         }
         passcodeField.resignFirstResponder()
         passcodeStack.isHidden = true
+        selectedRoomIndex = nil
         recipientsStack.arrangedSubviews.forEach { recipientsStack.removeArrangedSubview($0); $0.removeFromSuperview() }
         titleLabel.text = "Send to"
         guard !rooms.isEmpty else {
             statusLabel.text = "Open Vaultlix once to prepare your secure contacts, then share the image again."
             recipientsScroll.isHidden = true
+            sendButton.isHidden = true
             return
         }
         statusLabel.text = message ?? "Choose who should receive \(preparedImages.count == 1 ? "this image" : "these images")."
         for (index, room) in rooms.enumerated() {
             let button = UIButton(type: .system)
             button.tag = index
-            button.contentHorizontalAlignment = .left
-            button.setTitle("  " + displayName(for: room), for: .normal)
-            button.setTitleColor(.label, for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+            var configuration = UIButton.Configuration.plain()
+            configuration.title = displayName(for: room)
+            configuration.image = UIImage(systemName: "circle")
+            configuration.imagePlacement = .trailing
+            configuration.imagePadding = 12
+            configuration.titleAlignment = .leading
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+            configuration.baseForegroundColor = .label
+            button.configuration = configuration
+            button.contentHorizontalAlignment = .fill
             button.backgroundColor = .secondarySystemBackground
             button.heightAnchor.constraint(equalToConstant: 58).isActive = true
             button.addTarget(self, action: #selector(recipientSelected(_:)), for: .touchUpInside)
@@ -233,8 +269,11 @@ final class ShareViewController: UIViewController {
         }
         let rowHeights = CGFloat(rooms.count) * 58
         let separatorHeights = CGFloat(max(0, rooms.count - 1)) * 0.5
-        recipientsHeightConstraint?.constant = min(340, rowHeights + separatorHeights)
+        let availableHeight = max(116, UIScreen.main.bounds.height - 300)
+        recipientsHeightConstraint?.constant = min(availableHeight, rowHeights + separatorHeights)
         recipientsScroll.isHidden = false
+        sendButton.isHidden = false
+        updateRecipientSelection()
     }
 
     private func displayName(for room: NativeCallRoom) -> String {
@@ -279,7 +318,27 @@ final class ShareViewController: UIViewController {
 
     @objc private func recipientSelected(_ sender: UIButton) {
         guard rooms.indices.contains(sender.tag) else { return }
-        let room = rooms[sender.tag]
+        selectedRoomIndex = sender.tag
+        updateRecipientSelection()
+    }
+
+    private func updateRecipientSelection() {
+        for button in recipientsStack.arrangedSubviews.compactMap({ $0 as? UIButton }) {
+            let selected = button.tag == selectedRoomIndex
+            guard var configuration = button.configuration else { continue }
+            configuration.image = UIImage(systemName: selected ? "checkmark.circle.fill" : "circle")
+            configuration.baseForegroundColor = selected
+                ? UIColor(red: 104/255, green: 44/255, blue: 67/255, alpha: 1)
+                : .label
+            button.configuration = configuration
+        }
+        sendButton.isEnabled = selectedRoomIndex != nil
+        sendButton.alpha = sendButton.isEnabled ? 1 : 0.45
+    }
+
+    @objc private func sendToSelectedRecipient() {
+        guard let selectedRoomIndex, rooms.indices.contains(selectedRoomIndex) else { return }
+        let room = rooms[selectedRoomIndex]
         setSending(true, message: "Encrypting for \(displayName(for: room))…")
         Task {
             do {
@@ -296,6 +355,8 @@ final class ShareViewController: UIViewController {
     @MainActor private func setSending(_ sending: Bool, message: String) {
         statusLabel.text = message
         recipientsStack.arrangedSubviews.compactMap { $0 as? UIButton }.forEach { $0.isEnabled = !sending }
+        sendButton.isEnabled = !sending && selectedRoomIndex != nil
+        sendButton.alpha = sendButton.isEnabled ? 1 : 0.45
         if sending { activity.startAnimating() } else { activity.stopAnimating() }
     }
 
@@ -323,18 +384,32 @@ final class ShareViewController: UIViewController {
         guard let uploadHTTP = uploadResponse as? HTTPURLResponse, (200..<300).contains(uploadHTTP.statusCode) else {
             throw ShareFailure.message("Could not upload the encrypted image.")
         }
-        let sent = try await postJSON(path: "/api/send", body: ["code": room.code, "token": room.token, "content": "obj:v1:\(attachmentId)", "attachmentId": attachmentId, "msgId": msgId, "viewOnce": false])
+        let content = "obj:v1:\(attachmentId)"
+        let sent = try await postJSON(path: "/api/send", body: ["code": room.code, "token": room.token, "content": content, "attachmentId": attachmentId, "msgId": msgId, "viewOnce": false])
         guard sent["ok"] as? Bool == true else { throw ShareFailure.message(apiError(sent, fallback: "Could not send the image.")) }
+        storeSentHandoff(room: room, msgId: msgId, content: content, response: sent)
+    }
+
+    private func storeSentHandoff(room: NativeCallRoom, msgId: String, content: String, response: [String: Any]) {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return }
+        let now = Date().timeIntervalSince1970 * 1000
+        defaults.set([
+            "code": room.code,
+            "msgId": msgId,
+            "content": content,
+            "seq": (response["seq"] as? NSNumber)?.doubleValue ?? 0,
+            "sentAt": now,
+        ], forKey: "vaultlix.share-sent.v1." + msgId)
     }
 
     private func messagePayload() -> [String: Any] {
         if preparedImages.count == 1, let image = preparedImages.first {
             return ["type": "file", "name": image.name, "mime": image.mime, "size": image.data.count,
                     "data": image.data.base64EncodedString(), "pdfPreview": NSNull(), "videoThumb": NSNull(),
-                    "imagePreview": NSNull(), "pageCount": 0, "viewOnce": false, "caption": ""]
+                    "imagePreview": image.preview, "pageCount": 0, "viewOnce": false, "caption": ""]
         }
         return ["type": "album", "viewOnce": false, "caption": "", "images": preparedImages.map { image in
-            ["name": image.name, "mime": image.mime, "size": image.data.count, "data": image.data.base64EncodedString(), "preview": NSNull()] as [String: Any]
+            ["name": image.name, "mime": image.mime, "size": image.data.count, "data": image.data.base64EncodedString(), "preview": image.preview] as [String: Any]
         }]
     }
 

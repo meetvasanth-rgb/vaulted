@@ -1169,6 +1169,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 "active": window?.windowScene?.activationState == .foregroundActive
             ])
             flushPendingBackgroundInboxMessages()
+            flushPendingShareSentMessages()
             emit(name: "vaultlix:emoji-effect-capability", detail: ["available": true])
             emit(name: "vaultlix:speech-to-text-capability", detail: ["available": SFSpeechRecognizer() != nil])
             emit(name: "vaultlix:voice-transcript-capability", detail: ["available": SFSpeechRecognizer() != nil])
@@ -1184,6 +1185,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
         if action == "flushExternalShares" {
             flushPendingExternalShares()
+            return
+        }
+        if action == "ackShareSent",
+           let msgId = body["msgId"] as? String,
+           msgId.range(of: "^[A-Fa-f0-9]{32}$", options: .regularExpression) != nil {
+            UserDefaults(suiteName: "group.com.vaultlix.app")?
+                .removeObject(forKey: "vaultlix.share-sent.v1." + msgId)
             return
         }
         if action == "syncShareExtension",
@@ -1660,6 +1668,28 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         emit(name: "vaultlix:background-inbox", detail: ["messages": messages])
     }
 
+    private func flushPendingShareSentMessages() {
+        guard webReady,
+              let defaults = UserDefaults(suiteName: "group.com.vaultlix.app") else { return }
+        let prefix = "vaultlix.share-sent.v1."
+        var messages: [[String: Any]] = []
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
+            guard let item = value as? [String: Any],
+                  let code = item["code"] as? String,
+                  let msgId = item["msgId"] as? String,
+                  let content = item["content"] as? String,
+                  !code.isEmpty, !msgId.isEmpty, content.hasPrefix("obj:v1:") else { continue }
+            messages.append([
+                "code": code, "msgId": msgId, "content": content,
+                "seq": (item["seq"] as? NSNumber)?.doubleValue ?? 0,
+                "sentAt": (item["sentAt"] as? NSNumber)?.doubleValue ?? Date().timeIntervalSince1970 * 1000,
+            ])
+        }
+        guard !messages.isEmpty else { return }
+        messages.sort { (($0["sentAt"] as? Double) ?? 0) < (($1["sentAt"] as? Double) ?? 0) }
+        emit(name: "vaultlix:share-sent", detail: ["messages": messages])
+    }
+
     deinit {
         (window?.rootViewController as? CAPBridgeViewController)?
             .webView?.configuration.userContentController.removeScriptMessageHandler(forName: "vaultlixCall")
@@ -1828,6 +1858,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         if webReady {
             emit(name: "vaultlix:app-state", detail: ["active": true])
             flushPendingBackgroundInboxMessages()
+            flushPendingShareSentMessages()
         }
         VaultlixCallManager.shared.refreshActiveNativeCallAudio(reason: "scene-active")
         presentNativeVideoConsentPrompt()

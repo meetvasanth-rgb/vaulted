@@ -33,7 +33,13 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   assert.match(controller, /NativeCallRoomStore\.shared\.shareEligibleRooms\(\)/);
   assert.match(controller, /titleLabel\.text = "Send to"/);
   assert.match(controller, /recipientsScroll\.heightAnchor\.constraint\(equalToConstant: 58\)/);
-  assert.match(controller, /recipientsHeightConstraint\?\.constant = min\(340, rowHeights \+ separatorHeights\)/);
+  assert.match(controller, /preferredContentSize = UIScreen\.main\.bounds\.size/);
+  assert.match(controller, /sheet\.detents = \[\.large\(\)\]/);
+  assert.match(controller, /configuration\.image = UIImage\(systemName: selected \? "checkmark\.circle\.fill" : "circle"\)/);
+  assert.match(controller, /sendButton\.addTarget\(self, action: #selector\(sendToSelectedRecipient\)/);
+  assert.match(controller, /recipientsHeightConstraint\?\.constant = min\(availableHeight, rowHeights \+ separatorHeights\)/);
+  assert.match(controller, /"imagePreview": image\.preview/);
+  assert.match(controller, /"vaultlix\.share-sent\.v1\." \+ msgId/);
   assert.match(controller, /AES\.GCM\.seal/);
   assert.match(controller, /import ImageIO/);
   assert.match(controller, /CGImageSourceCreateThumbnailAtIndex/);

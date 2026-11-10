@@ -6259,6 +6259,44 @@ window.addEventListener('vaultlix:background-inbox', event => {
   applyBackgroundInboxHints();
 });
 
+// The iOS share extension sends while the main web view is suspended. Unlike
+// ordinary in-app sends, that path cannot create the sender's optimistic local
+// record, and the server intentionally omits a sender's own messages from the
+// incremental receive stream. Import the encrypted object reference here;
+// plaintext remains inside the E2E attachment and is decrypted only in-app.
+window.addEventListener('vaultlix:share-sent', event => {
+  (async () => {
+    for (const item of event.detail?.messages || []) {
+      const code = typeof item?.code === 'string' ? item.code : '';
+      const msgId = typeof item?.msgId === 'string' ? item.msgId : '';
+      const content = typeof item?.content === 'string' ? item.content : '';
+      const room = rooms.get(code);
+      if (!room || !msgId || !content.startsWith(ENCRYPTED_ATTACHMENT_PREFIX)) continue;
+      const acknowledge = () => window.webkit?.messageHandlers?.vaultlixCall?.postMessage({ action:'ackShareSent', msgId });
+      if (room.seenMsgIds.has(msgId) || room.messages.some(message => message.id === msgId)) {
+        acknowledge();
+        continue;
+      }
+      const ts = Number(item.sentAt) || Date.now();
+      const seq = Number(item.seq) || 0;
+      const envelope = { id:msgId, seq, type:'message', from:room.token, name:room.myName || null,
+        content, viewOnce:false, deleteTimerSeconds:room.deleteTimerSeconds || 0, ts };
+      historyStorePut(code, [envelope]);
+      const rec = await processIncomingContent(room, content, envelope.name, formatMsgTime(ts), msgId, ts,
+        room.token, envelope.deleteTimerSeconds, null);
+      if (!rec || rec.pending) continue;
+      room.seenMsgIds.add(msgId);
+      if (seq > room.lastSeq) room.lastSeq = seq;
+      room.messages.push(rec);
+      room.lastMessageAt = Math.max(Number(room.lastMessageAt) || 0, ts);
+      if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
+      persistRoomSeq(room);
+      renderVaultList();
+      acknowledge();
+    }
+  })().catch(error => console.warn('Shared image handoff failed:', error?.message || error));
+});
+
 const ROOMS_INDEX_KEY = 'vaulted_rooms_index';
 const ACTIVE_ROOM_KEY = 'vaulted_active_room';
 const ACCOUNT_STATE_KEY = 'vaultlix_anonymous_account_v1';
