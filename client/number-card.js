@@ -73,9 +73,10 @@
 </svg>`;
   }
 
-  function createPrivateInviteCardSvg({ username, inviteUrl, qrMatrix = [] }) {
+  function createPrivateInviteCardSvg({ username, number, inviteUrl, qrMatrix = [] }) {
     const displayUsername = String(username || 'A Vaultlix member').trim().slice(0, 32);
     const safeUsername = escapeXml(displayUsername);
+    const safeNumber = escapeXml(formatNumber(number));
     const headlineSize = displayUsername.length > 24 ? 36 : (displayUsername.length > 18 ? 44 : 56);
     const safeInviteUrl = escapeXml(inviteUrl || 'https://vaultlix.com');
     const safeInviteCode = escapeXml(String(inviteUrl || '').split('/').pop().slice(0, 12));
@@ -85,7 +86,7 @@
   <defs>
     <linearGradient id="invite-frame" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#54172E"/><stop offset=".55" stop-color="${BRAND}"/><stop offset="1" stop-color="#2E0B19"/></linearGradient>
     <filter id="invite-shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#250812" flood-opacity=".28"/></filter>
-    <style>.brand{font:600 48px Georgia,serif;fill:#FFF8FA}.brand-pill{font:700 15px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF8FA}.eyebrow{font:700 21px Inter,Arial,sans-serif;letter-spacing:5px;fill:#A04D6C}.headline{font:750 56px Inter,Arial,sans-serif;fill:#681F3A}.copy{font:600 29px Inter,Arial,sans-serif;fill:#34242A}.url{font:700 29px Inter,Arial,sans-serif;fill:#681F3A}.small{font:700 19px Inter,Arial,sans-serif;letter-spacing:4px;fill:#9A536C}.hours{font:700 18px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF9FB}</style>
+    <style>.brand{font:600 48px Georgia,serif;fill:#FFF8FA}.brand-pill{font:700 15px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF8FA}.eyebrow{font:700 21px Inter,Arial,sans-serif;letter-spacing:5px;fill:#A04D6C}.headline{font:750 56px Inter,Arial,sans-serif;fill:#681F3A}.private-number{font:700 30px Inter,Arial,sans-serif;letter-spacing:2px;fill:#8C5368}.copy{font:600 29px Inter,Arial,sans-serif;fill:#34242A}.url{font:700 29px Inter,Arial,sans-serif;fill:#681F3A}.small{font:700 19px Inter,Arial,sans-serif;letter-spacing:4px;fill:#9A536C}.hours{font:700 18px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF9FB}</style>
   </defs>
   <rect width="1080" height="1350" fill="url(#invite-frame)"/>
   <text x="64" y="102" class="brand">Vaultlix</text>
@@ -95,8 +96,9 @@
   <rect x="38" y="160" width="18" height="1118" rx="9" fill="#F08AB1"/>
   <text x="104" y="264" class="eyebrow">PRIVATE INVITATION</text>
   <text x="104" y="370" class="headline" style="font-size:${headlineSize}px">${safeUsername} invited you</text>
-  <text x="104" y="430" class="copy">Connect without sharing your mobile number</text>
-  <path d="M104 482H974" stroke="#D9AABD" stroke-width="2" stroke-dasharray="9 10"/>
+  <text x="104" y="420" class="private-number">Vaultlix No. ${safeNumber}</text>
+  <text x="104" y="468" class="copy">Connect without sharing your mobile number</text>
+  <path d="M104 510H974" stroke="#D9AABD" stroke-width="2" stroke-dasharray="9 10"/>
   <rect x="82" y="548" width="470" height="470" rx="34" fill="#FFF" stroke="#E8D9DF" stroke-width="2"/>
   <path d="${modules}" fill="#2D0C18"/>
   <text x="604" y="648" class="copy"><tspan x="604">Scan to connect directly</tspan><tspan x="604" dy="44">No approval needed</tspan></text>

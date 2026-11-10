@@ -14304,6 +14304,7 @@ function cancelInviteRecipientName() {
 async function renderPrivateInviteCard(state, invitation) {
   const svg = VaultlixNumberCard.createPrivateInviteCardSvg({
     username:state.displayName,
+    number:state.privateNumber,
     inviteUrl:invitation.url,
     qrMatrix:privateInviteQrMatrix(invitation.url),
   });

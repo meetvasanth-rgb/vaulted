@@ -42,20 +42,22 @@ test('number card explains the scan and includes a readable connection fallback'
   assert.doesNotMatch(svg, /Scan to extend a private line/);
 });
 
-test('one-time invitation card carries its QR destination and expiry without exposing a Private Number', () => {
+test('one-time invitation card carries the inviter Vaultlix number, QR destination and expiry', () => {
   const svg = createPrivateInviteCardSvg({
     username:'Vasanthkumar',
+    number:'2480599999',
     inviteUrl:'https://vaultlix.com/invite/ER49TD',
     qrMatrix:[[true, false], [false, true]],
   });
   assert.match(svg, /PRIVATE INVITATION/);
   assert.match(svg, /Vasanthkumar invited you/);
+  assert.match(svg, /Vaultlix No\. 24-8059-9999/);
   assert.match(svg, /ONE PERSON · PRE-APPROVED · EXPIRES IN 24 HOURS/);
   assert.match(svg, /Scan to connect directly/);
   assert.match(svg, /No approval needed/);
   assert.match(svg, /fill="#FFF9FA"/);
   assert.match(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
-  assert.doesNotMatch(svg, /24-8059-9999|MY PRIVATE LINE/);
+  assert.doesNotMatch(svg, /MY PRIVATE LINE/);
 });
 
 test('native apps prepare the image before opening the system share sheet', () => {
