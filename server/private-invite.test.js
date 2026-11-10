@@ -63,6 +63,12 @@ test('every 24-hour invitation share includes a branded QR image', () => {
   assert.match(renderer, /privateInviteQrMatrix\(invitation\.url\)/);
   assert.match(renderer, /androidShare \? 720 : VaultlixNumberCard\.WIDTH/);
   assert.match(renderer, /androidShare \? 900 : VaultlixNumberCard\.HEIGHT/);
+  assert.match(client, /Your one-time invite is ready/);
+  assert.match(client, /Show this QR directly to the other person/);
+  assert.match(client, />Done<\/button>/);
+  assert.match(client, />Share card<\/button>/);
+  assert.match(share, /await previewPrivateInvitationCard\(asset\)/);
+  assert.match(share, /return 'shown'/);
   assert.match(share, /vaultlix-private-invitation\.png/);
   assert.match(share, /shareImageWithText\(asset\.dataUrl, invitation\.url, text\)/);
   assert.match(share, /shareImageWithLink\(asset\.dataUrl, invitation\.url\)/);
