@@ -963,7 +963,7 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 .msg-video-card img{display:block;width:100%;height:100%;object-fit:cover}.msg-video-card::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 45%,#0009)}
 .msg-video-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border:0;padding:0;border-radius:50%;display:grid;place-items:center;background:#682C43E8;color:#fff;cursor:pointer;box-shadow:0 4px 18px #0006}
 .msg-video-play svg{width:22px;height:22px;fill:#fff;stroke:none;margin-left:3px}.msg-video-name{position:absolute;z-index:2;left:10px;right:10px;bottom:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:600 11px/1.2 Inter,sans-serif}
-.msg-upload-pending{position:relative;overflow:hidden;border-radius:12px}.msg-upload-animation{position:absolute;left:8px;right:8px;bottom:8px;z-index:4;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;min-height:32px;padding:6px 10px;border:1px solid #ffffff2e;border-radius:999px;background:#171216c7;color:#fff;font:700 10px/1.2 Inter,sans-serif;letter-spacing:.02em;box-shadow:0 3px 12px #0005;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none}.msg-upload-animation .vault-upload-orbit{width:18px;height:18px;flex:none}.msg-upload-animation .vault-upload-orbit:before{content:'';position:absolute;inset:0;border:1.5px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:photo-send-spin .8s linear infinite}.msg-upload-animation .vault-upload-orbit svg{width:10px;height:10px;animation:none}.msg-upload-animation .vault-upload-orbit i{display:none}
+.msg-upload-pending{position:relative;overflow:hidden;border-radius:12px}.msg-upload-animation{position:absolute;left:8px;right:8px;bottom:8px;z-index:4;display:flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;min-height:32px;padding:6px 10px;border:1px solid #ffffff2e;border-radius:999px;background:#171216c7;color:#fff;font:700 10px/1.2 Inter,sans-serif;letter-spacing:.02em;box-shadow:0 3px 12px #0005;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none}.msg-upload-animation .vault-upload-orbit{width:18px;height:18px;flex:none}.msg-upload-animation .vault-upload-orbit:before{content:'';position:absolute;inset:0;border:1.5px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:photo-send-spin .8s linear infinite}.msg-upload-animation .vault-upload-orbit svg{width:10px;height:10px;animation:none}.msg-upload-animation .vault-upload-orbit i{display:none}.msg-upload-cancel{pointer-events:auto;border:0;border-left:1px solid #ffffff3d;background:transparent;color:#fff;padding:2px 0 2px 8px;font:750 10px Inter,sans-serif}
 .vault-upload-orbit{position:relative;width:48px;height:48px;display:grid;place-items:center}.vault-upload-orbit svg{width:21px;height:21px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;animation:vault-upload-lock 1.4s ease-in-out infinite}
 .vault-upload-orbit i{position:absolute;width:7px;height:7px;border-radius:50%;background:#C87588;box-shadow:0 0 12px #C87588}.vault-upload-orbit i:nth-child(1){animation:vault-upload-dot-a 1.7s linear infinite}.vault-upload-orbit i:nth-child(2){animation:vault-upload-dot-b 1.7s linear infinite}.vault-upload-orbit i:nth-child(3){animation:vault-upload-dot-c 1.7s linear infinite}
 @keyframes vault-upload-dot-a{from{transform:rotate(0) translateX(22px) rotate(0)}to{transform:rotate(360deg) translateX(22px) rotate(-360deg)}}@keyframes vault-upload-dot-b{from{transform:rotate(120deg) translateX(22px) rotate(-120deg)}to{transform:rotate(480deg) translateX(22px) rotate(-480deg)}}@keyframes vault-upload-dot-c{from{transform:rotate(240deg) translateX(22px) rotate(-240deg)}to{transform:rotate(600deg) translateX(22px) rotate(-600deg)}}@keyframes vault-upload-lock{50%{transform:scale(1.12);stroke:#F2CCD8}}
@@ -22721,17 +22721,50 @@ function buildReplyQuotePhotoHtml(replyData) {
   return `<div class="msg-reply-quote msg-reply-quote-photo"${replyData.msgId ? ` data-reply-to="${escHtml(replyData.msgId)}"` : ''}>${thumbHtml}<span>${isVideo ? '▶' : '📷'} ${escHtml(label)}</span></div>`;
 }
 
-function attachmentUploadAnimationHtml(label = 'Encrypting & sending…') {
-  return `<span class="msg-upload-animation" role="status"><span class="vault-upload-orbit" aria-hidden="true"><i></i><i></i><i></i><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>${escHtml(label)}</span></span>`;
+function attachmentUploadAnimationHtml(label = 'Encrypting & sending…', cancelId = '') {
+  const cancel = cancelId ? `<button type="button" class="msg-upload-cancel" onclick="event.stopPropagation();cancelPendingVideoPreparation('${escHtml(cancelId)}')">Cancel</button>` : '';
+  return `<span class="msg-upload-animation" role="status"><span class="vault-upload-orbit" aria-hidden="true"><i></i><i></i><i></i><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span><span>${escHtml(label)}</span>${cancel}</span>`;
 }
 
-function buildVideoAttachmentHtml({ id, name, thumb, pending = false, group = false }) {
+function buildVideoAttachmentHtml({ id, name, thumb, pending = false, preparing = false, group = false }) {
   const safeThumb = thumb ? safeImageDataUri('image/jpeg', thumb) : null;
   const preview = safeThumb ? `<img src="${safeThumb}" alt="Video preview"/>` : '';
   const handler = group ? `openPrivateGroupVideo('${escHtml(id)}')` : `handleVideoTap('${escHtml(id)}')`;
   // One tap plays the video, in direct chats and groups alike; long-press selects it.
-  const cardHandler = ` onclick="${handler}"`;
-  return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card"${cardHandler} oncontextmenu="return false">${preview}<button type="button" class="msg-video-play" aria-label="Play video" onclick="event.stopPropagation();${handler}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button><span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml() : ''}</div>`;
+  const cardHandler = preparing ? '' : ` onclick="${handler}"`;
+  const play = preparing ? '' : `<button type="button" class="msg-video-play" aria-label="Play video" onclick="event.stopPropagation();${handler}"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>`;
+  return `<div class="${pending ? 'msg-upload-pending' : ''}"><div class="msg-video-card"${cardHandler} oncontextmenu="return false">${preview}${play}<span class="msg-video-name">${escHtml(name || 'Video')}</span></div>${pending ? attachmentUploadAnimationHtml('Encrypting & sending…', preparing ? id : '') : ''}</div>`;
+}
+
+const pendingVideoPreparations = new Map();
+function cancelPendingVideoPreparation(id) {
+  const pending = pendingVideoPreparations.get(id);
+  if (!pending) return;
+  pending.controller.cancelled = true;
+  cancelNativeVideoCompression(pending.controller.requestId);
+  const button = document.querySelector(`.msg[data-msg-id="${CSS.escape(id)}"] .msg-upload-cancel`);
+  if (button) { button.disabled = true; button.textContent = 'Cancelling…'; }
+}
+function beginPendingVideoPreparation(room, file, videoThumb, controller) {
+  const now = new Date();
+  const rec = {
+    id:newMsgId(), kind:'file', isMe:true, name:room.myName,
+    time:now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'), ts:now.getTime(),
+    fileName:file.name, mime:file.type || 'video/mp4', base64:'', isImage:false, videoThumb,
+    pending:true, preparing:true, receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null,
+  };
+  room.messages.push(rec);
+  pendingVideoPreparations.set(rec.id, { controller, rec });
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+  return {
+    close() {
+      pendingVideoPreparations.delete(rec.id);
+      const index = room.messages.indexOf(rec);
+      if (index >= 0) room.messages.splice(index, 1);
+      messageActionRegistry.delete(rec.id);
+      document.querySelector(`.msg[data-msg-id="${CSS.escape(rec.id)}"]`)?.remove();
+    },
+  };
 }
 
 function encryptedMediaObjectUrl(mime, base64) {
@@ -23088,7 +23121,7 @@ function renderMessageRecord(room, rec, animate) {
     let mediaHtml;
     const isVideo = String(rec.mime || '').startsWith('video/');
     if (isVideo) {
-      mediaHtml = buildVideoAttachmentHtml({ id:rec.id, name:rec.fileName, thumb:rec.videoThumb, pending:!!rec.pending });
+      mediaHtml = buildVideoAttachmentHtml({ id:rec.id, name:rec.fileName, thumb:rec.videoThumb, pending:!!rec.pending, preparing:!!rec.preparing });
     } else if (rec.isImage && rec.viewOnce && !rec.isMe && !rec.viewed) {
       // Hidden by default — this is the entire point of view-once: unlike
       // the regular disappearing timer, which leaves an image sitting
@@ -28070,38 +28103,27 @@ async function sendSelectedFilesToRoom(room, files) {
 
   const images = [];
   const others = [];
-  const photoCount = valid.filter(file => file.type.startsWith('image/')).length;
-  const videoCount = valid.filter(file => String(file.type || '').startsWith('video/')).length;
-  // The Cancel button only ever does anything while currentVideoController
-  // is set — between/outside videos (including during the near-instant
-  // image path) it's a harmless no-op, so one shared button for the whole
-  // batch is enough rather than needing to swap it in and out per file.
   let currentVideoController = null;
-  const progress = valid.length ? beginPhotoSendProgress(valid.length, photoCount ? `Encrypting ${photoCount === 1 ? 'image' : photoCount + ' images'}…` : (videoCount ? `Encrypting ${videoCount === 1 ? 'video' : videoCount + ' videos'}…` : 'Encrypting attachment…'),
-    videoCount ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null,
-    valid.find(file => /^(?:image|video)\//.test(String(file.type || ''))) || null) : null;
-  let photoIndex = 0;
-  let videoIndex = 0;
+  let currentVideoPreparation = null;
   try {
     for (const file of valid) {
       if (file.type.startsWith('image/')) {
         // Compressed here, before anything else touches it — base64/encrypt/
         // send all work on the already-shrunk bytes, and so does the picker
         // preview below.
-        progress?.update(`Encrypting image ${++photoIndex} of ${photoCount}…`);
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const { base64, mime } = await compressImageFile(file);
         const imagePreview = await makeTinyThumbnail(base64, mime, 640, 0.76);
         images.push({ file, base64, mime, imagePreview });
       } else {
         const isVideo = String(file.type || '').startsWith('video/');
-        if (isVideo) progress?.update(`Optimising video ${++videoIndex} of ${videoCount}…`);
-        else progress?.update('Encrypting attachment…');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
-        if (videoThumb) progress?.setPreview(safeImageDataUri('image/jpeg', videoThumb));
         currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
+        currentVideoPreparation = isVideo ? beginPendingVideoPreparation(room, file, videoThumb, currentVideoController) : null;
         const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
+        currentVideoPreparation?.close();
+        currentVideoPreparation = null;
         currentVideoController = null;
         if (isVideo && compressedVideo?.cancelled) continue;
         // Never fall back to the raw original when a video genuinely needed
@@ -28124,10 +28146,6 @@ async function sendSelectedFilesToRoom(room, files) {
 
     // Non-image files send immediately, one after another — view-once isn't a
     // meaningful concept for a PDF or a zip, so no picker needed for these.
-    // Their optimistic chat bubble has its own encrypted-upload animation, so
-    // close the preparation notice before the bubble appears instead of
-    // showing two progress indicators for the same upload.
-    if (others.length) progress?.close();
     for (const { file, base64, pdfPreview, videoThumb } of others) {
       await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount, undefined, videoThumb);
     }
@@ -28135,7 +28153,7 @@ async function sendSelectedFilesToRoom(room, files) {
     toast('Could not prepare the selected attachments. Please select them again.');
     return;
   } finally {
-    progress?.close();
+    currentVideoPreparation?.close();
   }
 
   // Photos get the view-once choice, asked once for the whole batch (not
@@ -28280,7 +28298,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   };
   let encryptedPayload;
   try {
-    onProgress?.(String(mime || '').startsWith('video/') ? 'Encrypting video…' : (isImage ? 'Encrypting image…' : 'Encrypting attachment…'));
+    onProgress?.('Encrypting & sending…');
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
     discardPending();
@@ -28289,7 +28307,6 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   }
   let attachmentId;
   try {
-    onProgress?.('Sending securely…');
     attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
   } catch (error) {
     discardPending();
@@ -29432,23 +29449,20 @@ function showSendImageOptions(room, items, options = {}) {
     if (sending) return;
     sending = true;
     const caption = (overlay.querySelector('#send-img-caption')?.value || '').trim();
-    const progress = beginPhotoSendProgress(items.length);
     close();
     try {
       // Paint feedback before hashing, serialization and encryption begin.
       await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
       if (onSend) {
-        await onSend(caption, viewOnce, progress.update);
+        await onSend(caption, viewOnce);
       } else if (items.length > 1) {
-        await sendAlbumMessage(room, items, viewOnce, progress.update, caption);
+        await sendAlbumMessage(room, items, viewOnce, undefined, caption);
       } else {
         const { file, base64, mime, imagePreview } = items[0];
-        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, progress.update, null, imagePreview, caption);
+        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, undefined, null, imagePreview, caption);
       }
     } catch (error) {
       toast('Could not send photos. Please try again.');
-    } finally {
-      progress.close();
     }
   };
   const onceBtn = overlay.querySelector('#send-img-once-toggle');

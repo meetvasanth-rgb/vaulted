@@ -277,9 +277,8 @@ async function sendPrivateGroupAttachment(payload, onProgress) {
     createdAt:Date.now(), keyVersion:group.keyVersion, pending:true };
   group.messages = [...(group.messages || []), pending]; renderPrivateGroupMessages(group);
   try {
-    onProgress?.('Encrypting attachment…');
+    onProgress?.('Encrypting & sending…');
     const encryptedPayload = await encryptPrivateGroupValue(key, payload);
-    onProgress?.('Sending securely…');
     const attachmentId = await uploadPrivateGroupAttachment(state, group, messageId, encryptedPayload);
     // We just made this ciphertext, so keep it: our own photo must not be downloaded back.
     attachmentCachePut(privateGroupCacheCode(group.id), attachmentId, messageId, encryptedPayload).catch(() => {});
@@ -336,19 +335,14 @@ async function handlePrivateGroupFileSelect(event) {
     }
     let attachmentName = file.name;
     let currentVideoController = null;
-    const progress = beginPhotoSendProgress(1, isVideo ? 'Encrypting video…' : 'Encrypting attachment…',
-      isVideo ? () => { if (currentVideoController) { currentVideoController.cancelled = true; toast('Cancelling video…'); } } : null,
-      /^(?:image|video)\//.test(String(file.type || '')) ? file : null);
     try {
       if (file.size > (isVideo ? MAX_VIDEO_SOURCE_BYTES : MAX_PRIVATE_GROUP_FILE_BYTES)) {
         toast(isVideo ? `“${file.name}” is too large — maximum 100MB` : `“${file.name}” is too large — maximum 25MB`);
         continue;
       }
       let base64, mime = file.type || 'application/octet-stream';
-      progress.update(isVideo ? 'Optimising video…' : 'Encrypting attachment…');
       await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
       const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
-      if (videoThumb) progress.setPreview(safeImageDataUri('image/jpeg', videoThumb));
       currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
       const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
       currentVideoController = null;
@@ -367,10 +361,9 @@ async function handlePrivateGroupFileSelect(event) {
       await sendPrivateGroupAttachment({ type:'group-file',
         name:String(attachmentName || 'Attachment').slice(0,180), mime, size:Math.ceil(base64.length * 3 / 4), data:base64,
         ...(videoThumb && safeImageDataUri('image/jpeg', videoThumb) ? { videoThumb } : {}),
-        ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) }, progress.update);
+        ...(pdfPreview ? { pdfPreview:pdfPreview.base64, pageCount:pdfPreview.pageCount } : {}) });
       toast(isVideo ? 'Video sent' : 'File sent');
     } catch (error) { toast(error.message || 'Attachment could not be sent'); }
-    finally { progress.close(); }
   }
 
   if (imageItems.length) {
