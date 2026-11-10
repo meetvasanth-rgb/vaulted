@@ -18,9 +18,10 @@ test('share-card screenshot remains visually stable at 1080 by 1350', () => {
   assert.equal(WIDTH, 1080);
   assert.equal(HEIGHT, 1350);
   assert.equal(BRAND, '#6B1F3A');
+  assert.match(svg, /fill="#FFF9FA"/);
   assert.equal(
     crypto.createHash('sha256').update(svg).digest('hex'),
-    '062f6da35937e2ebf61177772ca3967f019e31347352065deca4bd404941084f',
+    '0ed8089c4c1d2cca240e79f390010696c55a8a34598ee7a97e95392c8af767cd',
   );
 });
 
@@ -34,7 +35,7 @@ test('number card explains the scan and includes a readable connection fallback'
   const svg = createNumberCardSvg({
     number:'2480599999', shareCode:'ABC234', username:'Vasanthkumar', tier:'founding', qrMatrix:[[true]],
   });
-  assert.match(svg, /Scan to connect privately<\/tspan><tspan[^>]*>with Vasanthkumar/);
+  assert.match(svg, /Scan to connect<\/tspan><tspan[^>]*>privately on Vaultlix/);
   assert.match(svg, /vaultlix\.com\/2480599999/);
   assert.match(svg, /NO SIM REQUIRED/);
   assert.doesNotMatch(svg, /vaultlix\.com\/p-ABC234/);
@@ -49,7 +50,8 @@ test('one-time invitation card carries its QR destination and expiry without exp
   });
   assert.match(svg, /PRIVATE INVITATION/);
   assert.match(svg, /Vasanthkumar invited you/);
-  assert.match(svg, /SINGLE USE · VALID FOR 24 HOURS/);
+  assert.match(svg, /SINGLE USE · EXPIRES IN 24 HOURS/);
+  assert.match(svg, /fill="#FFF9FA"/);
   assert.match(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
   assert.doesNotMatch(svg, /24-8059-9999|MY PRIVATE LINE/);
 });

@@ -45,31 +45,31 @@
     const safeUsername = escapeXml(username || 'Vaultlix identity');
     const badge = tier === 'reserve' ? 'RESERVE' : (tier === 'founding' ? 'FOUNDING MEMBER' : '');
     const badgeMarkup = badge
-      ? `<g transform="translate(540 513)"><rect x="-150" y="-28" width="300" height="56" rx="28" fill="#F2D8E1" fill-opacity=".16" stroke="#F7DCE5" stroke-opacity=".52"/><text text-anchor="middle" y="7" class="badge">${badge}</text></g>`
+      ? `<g transform="translate(780 849)"><rect x="-176" y="-32" width="352" height="64" rx="32" fill="#7A2343"/><text text-anchor="middle" y="7" class="badge">${badge}</text></g>`
       : '';
-    const modules = qrPath(qrMatrix, 334, 594, 412);
+    const modules = qrPath(qrMatrix, 82, 560, 470);
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7B2947"/><stop offset=".52" stop-color="${BRAND}"/><stop offset="1" stop-color="#3D1022"/></linearGradient>
-    <radialGradient id="glow"><stop stop-color="#F6DCE5" stop-opacity=".22"/><stop offset="1" stop-color="#F6DCE5" stop-opacity="0"/></radialGradient>
-    <filter id="emboss" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="2" flood-color="#260713" flood-opacity=".75"/><feDropShadow dx="0" dy="-2" stdDeviation="1" flood-color="#FFDCE8" flood-opacity=".45"/></filter>
-    <style>.brand{font:700 34px Inter,Arial,sans-serif;letter-spacing:12px;fill:#FFF5F8}.eyebrow{font:700 22px Inter,Arial,sans-serif;letter-spacing:7px;fill:#EDC5D2}.number{font:700 86px Inter,Arial,sans-serif;letter-spacing:5px;fill:#FFF7FA}.name{font:600 38px Inter,Arial,sans-serif;fill:#FFF7FA}.badge{font:700 20px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF7FA}.copy{font:600 34px Inter,Arial,sans-serif;fill:#F3DDE5}.fallback{font:700 42px Inter,Arial,sans-serif;fill:#FFF7FA}.small{font:700 30px Inter,Arial,sans-serif;letter-spacing:5px;fill:#E9C5D1}</style>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#54172E"/><stop offset=".55" stop-color="${BRAND}"/><stop offset="1" stop-color="#2E0B19"/></linearGradient>
+    <filter id="card-shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#250812" flood-opacity=".28"/></filter>
+    <style>.brand{font:600 48px Georgia,serif;fill:#FFF8FA}.brand-pill{font:700 15px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF8FA}.eyebrow{font:700 21px Inter,Arial,sans-serif;letter-spacing:5px;fill:#A04D6C}.number{font:800 82px Inter,Arial,sans-serif;letter-spacing:4px;fill:#681F3A}.name{font:650 35px Inter,Arial,sans-serif;fill:#32151F}.badge{font:700 18px Inter,Arial,sans-serif;letter-spacing:3px;fill:#FFF9FB}.copy{font:650 32px Inter,Arial,sans-serif;fill:#34242A}.fallback{font:700 34px Inter,Arial,sans-serif;fill:#681F3A}.small{font:700 19px Inter,Arial,sans-serif;letter-spacing:4px;fill:#9A536C}</style>
   </defs>
-  <rect width="1080" height="1350" fill="url(#bg)"/>
-  <circle cx="540" cy="420" r="470" fill="url(#glow)"/>
-  <path d="M80 84h920M80 1320h920" stroke="#F6DCE5" stroke-opacity=".24"/>
-  <g text-anchor="middle">
-    <text x="540" y="150" class="brand">VAULTLIX</text>
-    <text x="540" y="235" class="eyebrow">MY PRIVATE LINE</text>
-    <text x="540" y="365" class="number" filter="url(#emboss)">${safeNumber}</text>
-    <text x="540" y="445" class="name">${safeUsername}</text>
-    ${badgeMarkup}
-  </g>
-  <rect x="320" y="580" width="440" height="440" rx="46" fill="#FFF"/>
+  <rect width="1080" height="1350" fill="url(#frame)"/>
+  <text x="64" y="102" class="brand">Vaultlix</text>
+  <rect x="708" y="55" width="306" height="66" rx="33" fill="none" stroke="#F7DCE5" stroke-width="2"/>
+  <text x="861" y="96" text-anchor="middle" class="brand-pill">PRIVATE BY DESIGN</text>
+  <rect x="38" y="160" width="1004" height="1118" rx="46" fill="#FFF9FA" filter="url(#card-shadow)"/>
+  <rect x="38" y="160" width="18" height="1118" rx="9" fill="#F08AB1"/>
+  <text x="104" y="264" class="eyebrow">YOUR PRIVATE LINE</text>
+  <text x="104" y="382" class="number">${safeNumber}</text>
+  <text x="104" y="448" class="name">${safeUsername}</text>
+  <path d="M104 492H974" stroke="#D9AABD" stroke-width="2" stroke-dasharray="9 10"/>
+  <rect x="82" y="560" width="470" height="470" rx="34" fill="#FFF" stroke="#E8D9DF" stroke-width="2"/>
   <path d="${modules}" fill="#2D0C18"/>
-  <text x="540" y="1090" text-anchor="middle" class="copy"><tspan x="540">Scan to connect privately</tspan><tspan x="540" dy="42">with ${safeUsername}</tspan></text>
-  <text x="540" y="1203" text-anchor="middle" class="fallback">vaultlix.com/${safeSharePath}</text>
-  <text x="540" y="1280" text-anchor="middle" class="small">NO SIM REQUIRED</text>
+  <text x="604" y="665" class="copy"><tspan x="604">Scan to connect</tspan><tspan x="604" dy="44">privately on Vaultlix</tspan></text>
+  ${badgeMarkup}
+  <text x="604" y="948" class="fallback">vaultlix.com/${safeSharePath}</text>
+  <text x="104" y="1188" class="small">NO SIM REQUIRED · PRIVATE BY DESIGN</text>
 </svg>`;
   }
 
@@ -78,28 +78,32 @@
     const safeUsername = escapeXml(displayUsername);
     const headlineSize = displayUsername.length > 24 ? 36 : (displayUsername.length > 18 ? 44 : 56);
     const safeInviteUrl = escapeXml(inviteUrl || 'https://vaultlix.com');
-    const modules = qrPath(qrMatrix, 314, 438, 452);
+    const safeInviteCode = escapeXml(String(inviteUrl || '').split('/').pop().slice(0, 12));
+    const modules = qrPath(qrMatrix, 82, 548, 470);
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
+  <desc>Private invitation to ${safeInviteUrl}</desc>
   <defs>
-    <linearGradient id="invite-bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7B2947"/><stop offset=".52" stop-color="${BRAND}"/><stop offset="1" stop-color="#3D1022"/></linearGradient>
-    <radialGradient id="invite-glow"><stop stop-color="#F6DCE5" stop-opacity=".22"/><stop offset="1" stop-color="#F6DCE5" stop-opacity="0"/></radialGradient>
-    <style>.brand{font:700 34px Inter,Arial,sans-serif;letter-spacing:12px;fill:#FFF5F8}.eyebrow{font:700 22px Inter,Arial,sans-serif;letter-spacing:7px;fill:#EDC5D2}.headline{font:700 56px Inter,Arial,sans-serif;fill:#FFF7FA}.copy{font:600 31px Inter,Arial,sans-serif;fill:#F3DDE5}.url{font:700 32px Inter,Arial,sans-serif;fill:#FFF7FA}.small{font:700 25px Inter,Arial,sans-serif;letter-spacing:4px;fill:#E9C5D1}</style>
+    <linearGradient id="invite-frame" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#54172E"/><stop offset=".55" stop-color="${BRAND}"/><stop offset="1" stop-color="#2E0B19"/></linearGradient>
+    <filter id="invite-shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#250812" flood-opacity=".28"/></filter>
+    <style>.brand{font:600 48px Georgia,serif;fill:#FFF8FA}.brand-pill{font:700 15px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF8FA}.eyebrow{font:700 21px Inter,Arial,sans-serif;letter-spacing:5px;fill:#A04D6C}.headline{font:750 56px Inter,Arial,sans-serif;fill:#681F3A}.copy{font:600 29px Inter,Arial,sans-serif;fill:#34242A}.url{font:700 29px Inter,Arial,sans-serif;fill:#681F3A}.small{font:700 19px Inter,Arial,sans-serif;letter-spacing:4px;fill:#9A536C}.hours{font:700 18px Inter,Arial,sans-serif;letter-spacing:4px;fill:#FFF9FB}</style>
   </defs>
-  <rect width="1080" height="1350" fill="url(#invite-bg)"/>
-  <circle cx="540" cy="420" r="470" fill="url(#invite-glow)"/>
-  <path d="M80 84h920M80 1320h920" stroke="#F6DCE5" stroke-opacity=".24"/>
-  <g text-anchor="middle">
-    <text x="540" y="150" class="brand">VAULTLIX</text>
-    <text x="540" y="230" class="eyebrow">PRIVATE INVITATION</text>
-    <text x="540" y="325" class="headline" style="font-size:${headlineSize}px">${safeUsername} invited you</text>
-    <text x="540" y="382" class="copy">Connect without sharing your mobile number</text>
-  </g>
-  <rect x="300" y="424" width="480" height="480" rx="48" fill="#FFF"/>
+  <rect width="1080" height="1350" fill="url(#invite-frame)"/>
+  <text x="64" y="102" class="brand">Vaultlix</text>
+  <rect x="708" y="55" width="306" height="66" rx="33" fill="none" stroke="#F7DCE5" stroke-width="2"/>
+  <text x="861" y="96" text-anchor="middle" class="brand-pill">PRIVATE BY DESIGN</text>
+  <rect x="38" y="160" width="1004" height="1118" rx="46" fill="#FFF9FA" filter="url(#invite-shadow)"/>
+  <rect x="38" y="160" width="18" height="1118" rx="9" fill="#F08AB1"/>
+  <text x="104" y="264" class="eyebrow">PRIVATE INVITATION</text>
+  <text x="104" y="370" class="headline" style="font-size:${headlineSize}px">${safeUsername} invited you</text>
+  <text x="104" y="430" class="copy">Connect without sharing your mobile number</text>
+  <path d="M104 482H974" stroke="#D9AABD" stroke-width="2" stroke-dasharray="9 10"/>
+  <rect x="82" y="548" width="470" height="470" rx="34" fill="#FFF" stroke="#E8D9DF" stroke-width="2"/>
   <path d="${modules}" fill="#2D0C18"/>
-  <text x="540" y="982" text-anchor="middle" class="copy">Scan to connect privately</text>
-  <text x="540" y="1052" text-anchor="middle" class="small">SINGLE USE · VALID FOR 24 HOURS</text>
-  <text x="540" y="1143" text-anchor="middle" class="url">${safeInviteUrl}</text>
-  <text x="540" y="1252" text-anchor="middle" class="small">PRIVATE BY DESIGN</text>
+  <text x="604" y="662" class="copy"><tspan x="604">Scan to connect</tspan><tspan x="604" dy="44">on Vaultlix</tspan></text>
+  <rect x="604" y="790" width="290" height="64" rx="32" fill="#7A2343"/>
+  <text x="749" y="830" text-anchor="middle" class="hours">24 HOURS</text>
+  <text x="604" y="916" class="url"><tspan x="604">vaultlix.com/invite/</tspan><tspan x="604" dy="38">${safeInviteCode}</tspan></text>
+  <text x="104" y="1188" class="small">SINGLE USE · EXPIRES IN 24 HOURS</text>
 </svg>`;
   }
 
