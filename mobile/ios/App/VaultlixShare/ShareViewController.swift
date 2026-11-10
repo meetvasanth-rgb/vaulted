@@ -3,9 +3,18 @@ import UniformTypeIdentifiers
 import CryptoKit
 import CommonCrypto
 import ImageIO
+import AVFoundation
 
 final class ShareViewController: UIViewController {
-    private struct PreparedImage { let name: String; let mime: String; let data: Data; let preview: String }
+    private struct PreparedAttachment {
+        let name: String
+        let mime: String
+        let data: Data
+        let imagePreview: String?
+        let videoThumb: String?
+        var isImage: Bool { mime.hasPrefix("image/") }
+    }
+    private struct ProviderInput { let provider: NSItemProvider; let type: UTType; let identifier: String }
     private struct AppLockConfig { let salt: Data; let verifier: Data; let iterations: Int; let passcodeLength: Int }
     private enum ShareFailure: LocalizedError {
         case message(String)
@@ -15,10 +24,10 @@ final class ShareViewController: UIViewController {
     private let appGroup = "group.com.vaultlix.app"
     private let appLockKey = "vaultlix.share.app-lock.v1"
     private let appLockFailureKey = "vaultlix.share.app-lock-failures.v1"
-    private let maximumImageBytes = 25 * 1024 * 1024
+    private let maximumSourceBytes = 25 * 1024 * 1024
     private let maximumEncryptedBytes = 48 * 1024 * 1024
     private var started = false
-    private var preparedImages: [PreparedImage] = []
+    private var preparedAttachments: [PreparedAttachment] = []
     private var rooms: [NativeCallRoom] = []
     private var selectedRoomIndex: Int?
 
@@ -53,7 +62,7 @@ final class ShareViewController: UIViewController {
         super.viewDidAppear(animated)
         guard !started else { return }
         started = true
-        prepareImages()
+        prepareAttachments()
     }
 
     private func buildInterface() {
@@ -65,7 +74,7 @@ final class ShareViewController: UIViewController {
         titleLabel.text = "Share with Vaultlix"
         titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
         titleLabel.textAlignment = .center
-        statusLabel.text = "Preparing your image securely…"
+        statusLabel.text = "Preparing your attachment securely…"
         statusLabel.font = .systemFont(ofSize: 15)
         statusLabel.textColor = .secondaryLabel
         statusLabel.numberOfLines = 0
@@ -150,29 +159,32 @@ final class ShareViewController: UIViewController {
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
     }
 
-    private func prepareImages() {
+    private func prepareAttachments() {
         let providers = Array((extensionContext?.inputItems as? [NSExtensionItem] ?? [])
             .flatMap { $0.attachments ?? [] }
-            .filter { $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
+            .compactMap(providerInput)
             .prefix(10))
-        guard !providers.isEmpty else { showFailure("No supported image was selected."); return }
-        var loaded: [(Int, PreparedImage)] = []
+        guard !providers.isEmpty else { showFailure("No supported photo, video, or file was selected."); return }
+        var loaded: [(Int, PreparedAttachment)] = []
 
         // Share extensions have a much smaller memory budget than the main app.
         // Process one provider at a time so selecting several modern camera
         // photos cannot retain several compressed sources/thumbnails together.
         func loadProvider(at index: Int) {
             guard providers.indices.contains(index) else {
-                self.preparedImages = loaded.sorted { $0.0 < $1.0 }.map(\.1)
-                guard !self.preparedImages.isEmpty else { self.showFailure("The selected image could not be read."); return }
+                self.preparedAttachments = loaded.sorted { $0.0 < $1.0 }.map(\.1)
+                guard !self.preparedAttachments.isEmpty else { self.showFailure("The selected attachment could not be read or was larger than 25 MB."); return }
                 if let config = self.loadAppLockConfig() { self.showAppLock(config) } else { self.showRecipients() }
                 return
             }
-            let provider = providers[index]
-            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                let prepared: PreparedImage? = autoreleasepool {
-                    guard let data, !data.isEmpty, data.count <= self.maximumImageBytes else { return nil }
-                    return self.optimizedImage(data, sourceName: provider.suggestedName, index: index)
+            let input = providers[index]
+            input.provider.loadDataRepresentation(forTypeIdentifier: input.identifier) { data, _ in
+                let prepared: PreparedAttachment? = autoreleasepool {
+                    guard let data, !data.isEmpty, data.count <= self.maximumSourceBytes else { return nil }
+                    if input.type.conforms(to: .image) {
+                        return self.optimizedImage(data, sourceName: input.provider.suggestedName, index: index)
+                    }
+                    return self.preparedFile(data, type: input.type, sourceName: input.provider.suggestedName, index: index)
                 }
                 DispatchQueue.main.async {
                     if let prepared { loaded.append((index, prepared)) }
@@ -183,7 +195,46 @@ final class ShareViewController: UIViewController {
         loadProvider(at: 0)
     }
 
-    private func optimizedImage(_ sourceData: Data, sourceName: String?, index: Int) -> PreparedImage? {
+    private func providerInput(_ provider: NSItemProvider) -> ProviderInput? {
+        let registered = provider.registeredTypeIdentifiers.compactMap { identifier -> ProviderInput? in
+            guard let type = UTType(identifier), type.conforms(to: .data) || type.conforms(to: .content) else { return nil }
+            return ProviderInput(provider: provider, type: type, identifier: identifier)
+        }
+        return registered.first(where: { $0.type.conforms(to: .image) })
+            ?? registered.first(where: { $0.type.conforms(to: .movie) })
+            ?? registered.first
+    }
+
+    private func safeFilename(_ sourceName: String?, fallback: String, type: UTType) -> String {
+        let raw = (sourceName?.isEmpty == false ? sourceName! : fallback).replacingOccurrences(of: "/", with: "_")
+        let shortened = String(raw.prefix(120))
+        guard (shortened as NSString).pathExtension.isEmpty, let ext = type.preferredFilenameExtension else { return shortened }
+        return shortened + "." + ext
+    }
+
+    private func preparedFile(_ data: Data, type: UTType, sourceName: String?, index: Int) -> PreparedAttachment {
+        let name = safeFilename(sourceName, fallback: "Vaultlix attachment \(index + 1)", type: type)
+        let mime = type.preferredMIMEType ?? (type.conforms(to: .movie) ? "video/mp4" : "application/octet-stream")
+        let videoThumb = type.conforms(to: .movie) ? videoThumbnail(data: data, filename: name) : nil
+        return PreparedAttachment(name: name, mime: mime, data: data, imagePreview: nil, videoThumb: videoThumb)
+    }
+
+    private func videoThumbnail(data: Data, filename: String) -> String? {
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vaultlix-share-" + UUID().uuidString)
+            .appendingPathExtension((filename as NSString).pathExtension.isEmpty ? "mp4" : (filename as NSString).pathExtension)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        do {
+            try data.write(to: temporary, options: .atomic)
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: temporary))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 640, height: 640)
+            let image = try generator.copyCGImage(at: CMTime(seconds: 0.1, preferredTimescale: 600), actualTime: nil)
+            return UIImage(cgImage: image).jpegData(compressionQuality: 0.72)?.base64EncodedString()
+        } catch { return nil }
+    }
+
+    private func optimizedImage(_ sourceData: Data, sourceName: String?, index: Int) -> PreparedAttachment? {
         // Direct UIImage decoding may materialize the complete 24/48-MP camera image before
         // drawing the smaller result, which is enough for iOS to terminate a
         // Share Extension. ImageIO decodes only a correctly oriented thumbnail.
@@ -215,7 +266,8 @@ final class ShareViewController: UIViewController {
         guard let previewImage = CGImageSourceCreateThumbnailAtIndex(source, 0, previewOptions as CFDictionary),
               let previewData = UIImage(cgImage: previewImage).jpegData(compressionQuality: 0.72) else { return nil }
         let preview = "data:image/jpeg;base64," + previewData.base64EncodedString()
-        return PreparedImage(name: String((sourceFilename as NSString).deletingPathExtension.prefix(120)) + ".jpg", mime: "image/jpeg", data: data, preview: preview)
+        return PreparedAttachment(name: String((sourceFilename as NSString).deletingPathExtension.prefix(120)) + ".jpg",
+            mime: "image/jpeg", data: data, imagePreview: preview, videoThumb: nil)
     }
 
     private func showAppLock(_ config: AppLockConfig) {
@@ -243,7 +295,7 @@ final class ShareViewController: UIViewController {
             sendButton.isHidden = true
             return
         }
-        statusLabel.text = message ?? "Choose who should receive \(preparedImages.count == 1 ? "this image" : "these images")."
+        statusLabel.text = message ?? "Choose who should receive \(preparedAttachments.count == 1 ? "this attachment" : "these attachments")."
         for (index, room) in rooms.enumerated() {
             let button = UIButton(type: .system)
             button.tag = index
@@ -342,7 +394,7 @@ final class ShareViewController: UIViewController {
         setSending(true, message: "Encrypting for \(displayName(for: room))…")
         Task {
             do {
-                try await sendImages(to: room)
+                try await sendAttachments(to: room)
                 await MainActor.run { self.statusLabel.text = "Sent securely."; self.activity.stopAnimating() }
                 try? await Task.sleep(nanoseconds: 450_000_000)
                 await MainActor.run { self.extensionContext?.completeRequest(returningItems: nil) }
@@ -360,14 +412,20 @@ final class ShareViewController: UIViewController {
         if sending { activity.startAnimating() } else { activity.stopAnimating() }
     }
 
-    private func sendImages(to room: NativeCallRoom) async throws {
+    private func sendAttachments(to room: NativeCallRoom) async throws {
         guard room.aesKey.count == 32 else { throw ShareFailure.message("This conversation needs to reconnect in Vaultlix.") }
-        let plaintext = try JSONSerialization.data(withJSONObject: messagePayload())
+        for payload in messagePayloads() {
+            try await sendPayload(payload, to: room)
+        }
+    }
+
+    private func sendPayload(_ payload: [String: Any], to room: NativeCallRoom) async throws {
+        let plaintext = try JSONSerialization.data(withJSONObject: payload)
         let sealed = try AES.GCM.seal(plaintext, using: SymmetricKey(data: room.aesKey))
-        guard let combined = sealed.combined else { throw ShareFailure.message("Could not encrypt the image.") }
+        guard let combined = sealed.combined else { throw ShareFailure.message("Could not encrypt the attachment.") }
         let ciphertext = "v:" + combined.base64EncodedString()
         guard let encryptedData = ciphertext.data(using: .utf8), encryptedData.count <= maximumEncryptedBytes else {
-            throw ShareFailure.message("The selected images are too large to send together.")
+            throw ShareFailure.message("The selected attachment is too large to send.")
         }
         let msgId = UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let prepared = try await postJSON(path: "/api/attachment/prepare", body: ["code": room.code, "token": room.token, "msgId": msgId, "size": encryptedData.count])
@@ -382,11 +440,11 @@ final class ShareViewController: UIViewController {
         upload.httpBody = encryptedData
         let (_, uploadResponse) = try await URLSession.shared.data(for: upload)
         guard let uploadHTTP = uploadResponse as? HTTPURLResponse, (200..<300).contains(uploadHTTP.statusCode) else {
-            throw ShareFailure.message("Could not upload the encrypted image.")
+            throw ShareFailure.message("Could not upload the encrypted attachment.")
         }
         let content = "obj:v1:\(attachmentId)"
         let sent = try await postJSON(path: "/api/send", body: ["code": room.code, "token": room.token, "content": content, "attachmentId": attachmentId, "msgId": msgId, "viewOnce": false])
-        guard sent["ok"] as? Bool == true else { throw ShareFailure.message(apiError(sent, fallback: "Could not send the image.")) }
+        guard sent["ok"] as? Bool == true else { throw ShareFailure.message(apiError(sent, fallback: "Could not send the attachment.")) }
         storeSentHandoff(room: room, msgId: msgId, content: content, response: sent)
     }
 
@@ -402,15 +460,24 @@ final class ShareViewController: UIViewController {
         ], forKey: "vaultlix.share-sent.v1." + msgId)
     }
 
-    private func messagePayload() -> [String: Any] {
-        if preparedImages.count == 1, let image = preparedImages.first {
-            return ["type": "file", "name": image.name, "mime": image.mime, "size": image.data.count,
-                    "data": image.data.base64EncodedString(), "pdfPreview": NSNull(), "videoThumb": NSNull(),
-                    "imagePreview": image.preview, "pageCount": 0, "viewOnce": false, "caption": ""]
+    private func filePayload(_ attachment: PreparedAttachment) -> [String: Any] {
+        return ["type": "file", "name": attachment.name, "mime": attachment.mime, "size": attachment.data.count,
+                "data": attachment.data.base64EncodedString(), "pdfPreview": NSNull(),
+                "videoThumb": attachment.videoThumb as Any? ?? NSNull(), "imagePreview": attachment.imagePreview as Any? ?? NSNull(),
+                "pageCount": 0, "viewOnce": false, "caption": ""]
+    }
+
+    private func messagePayloads() -> [[String: Any]] {
+        if preparedAttachments.count == 1, let attachment = preparedAttachments.first {
+            return [filePayload(attachment)]
         }
-        return ["type": "album", "viewOnce": false, "caption": "", "images": preparedImages.map { image in
-            ["name": image.name, "mime": image.mime, "size": image.data.count, "data": image.data.base64EncodedString(), "preview": image.preview] as [String: Any]
-        }]
+        if preparedAttachments.allSatisfy(\.isImage) {
+            return [["type": "album", "viewOnce": false, "caption": "", "images": preparedAttachments.map { image in
+                ["name": image.name, "mime": image.mime, "size": image.data.count, "data": image.data.base64EncodedString(),
+                 "preview": image.imagePreview as Any? ?? NSNull()] as [String: Any]
+            }]]
+        }
+        return preparedAttachments.map(filePayload)
     }
 
     private func postJSON(path: String, body: [String: Any]) async throws -> [String: Any] {

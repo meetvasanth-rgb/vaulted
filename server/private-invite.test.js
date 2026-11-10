@@ -35,7 +35,7 @@ test('Share invitation creates a private invite URL instead of sharing the perma
 });
 
 test('existing users can create a one-time approved invitation from the number-card screen', () => {
-  assert.match(client, /onclick="shareOneTimePrivateInvitation\(\)">Create 24-hour invitation<\/button>/);
+  assert.match(client, /onclick="shareOneTimePrivateInvitation\(\)">Create one-time invite<\/button>/);
   assert.match(client, /Share the card for a normal connection request, or create a single-use invitation that is already approved by you\./);
   const share = extract('shareOneTimePrivateInvitation', 'async function');
   assert.match(share, /await requestInviteRecipientName\(\)/);

@@ -5188,7 +5188,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
     <div class="number-card-actions">
       <button class="number-card-close" type="button" onclick="closeNumberCard()">Not now</button>
       <button class="number-card-share" type="button" onclick="shareNumberCard()">Share card</button>
-      <button class="number-card-invite" type="button" onclick="shareOneTimePrivateInvitation()">Create 24-hour invitation</button>
+      <button class="number-card-invite" type="button" onclick="shareOneTimePrivateInvitation()">Create one-time invite</button>
     </div>
   </div>
 </div>
@@ -12934,7 +12934,7 @@ async function shareOneTimePrivateInvitation() {
     if (error?.name !== 'AbortError') toast('Could not share the invitation');
   } finally {
     privateInviteShareInFlight = false;
-    if (button) { button.disabled = false; button.textContent = 'Create 24-hour invitation'; }
+    if (button) { button.disabled = false; button.textContent = 'Create one-time invite'; }
   }
 }
 
@@ -14270,7 +14270,7 @@ function recordActivationEvent(event) {
 // Private Number link (which continues to require the owner to accept).
 function inviteShareText(state, friendName = '', inviteUrl = '') {
   const greeting = friendName ? `Hi ${friendName}, ` : '';
-  return `${greeting}${state.displayName} invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: ${inviteUrl}`;
+  return `${greeting}${state.displayName} invited you to connect directly on Vaultlix. This pre-approved, one-time invite needs no further approval and expires in 24 hours: ${inviteUrl}`;
 }
 function sanitizeInviteRecipientName(value = '') {
   return String(value).trim().replace(/\s+/g, ' ').slice(0, 32);
@@ -14381,7 +14381,7 @@ async function showPrivateInvitationQr(invitation, friendName = '') {
   const overlay = document.createElement('div');
   overlay.id = 'qr-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(26,25,22,0.72);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
-  overlay.innerHTML = `<div style="background:#fff;border-radius:20px;padding:24px;max-width:340px;width:100%;text-align:center;font-family:inherit"><div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#A65B72;margin-bottom:5px">24-hour invitation</div><div style="font-size:22px;font-weight:700;color:#241B1E;margin-bottom:6px">${escapeHtml(friendName ? `For ${friendName}` : 'Scan to connect')}</div><div style="display:flex;justify-content:center;margin:16px 0"><canvas id="qr-canvas"></canvas></div><div style="font-size:12px;line-height:1.5;color:#7A6E65;margin-bottom:16px">One person can use this invitation. It expires in 24 hours.</div><button style="background:#682C43;color:#fff;border:none;border-radius:20px;padding:10px 28px;font-size:13px;cursor:pointer" onclick="closeQrPanel()">Done</button></div>`;
+  overlay.innerHTML = `<div style="background:#fff;border-radius:20px;padding:24px;max-width:340px;width:100%;text-align:center;font-family:inherit"><div style="font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#A65B72;margin-bottom:5px">One-time invite</div><div style="font-size:22px;font-weight:700;color:#241B1E;margin-bottom:6px">${escapeHtml(friendName ? `For ${friendName}` : 'Scan to connect directly')}</div><div style="display:flex;justify-content:center;margin:16px 0"><canvas id="qr-canvas"></canvas></div><div style="font-size:12px;line-height:1.5;color:#7A6E65;margin-bottom:16px">Pre-approved: one person connects directly without another approval. Expires in 24 hours.</div><button style="background:#682C43;color:#fff;border:none;border-radius:20px;padding:10px 28px;font-size:13px;cursor:pointer" onclick="closeQrPanel()">Done</button></div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', event => { if (event.target === overlay) closeQrPanel(); });
   renderQrCanvas(document.getElementById('qr-canvas'), invitation.url);
@@ -23193,6 +23193,15 @@ function renderMessageRecord(room, rec, animate) {
     requestAnimationFrame(() => requestAnimationFrame(() => loadDeferredKlipyGif(gif)));
   }
   renderReactionsForRec(div, rec);
+  // A live decrypted image can arrive without the compact preview carried by
+  // newer senders. Full chat re-renders already schedule this work, but the
+  // one-record live path previously left "Opening encrypted image…" in place
+  // until the app was reopened even though the original was ready to view.
+  if (animate && rec.kind === 'file' && rec.isImage && !rec.imagePreview) {
+    queueMessageImagePreview(rec);
+  } else if (animate && rec.kind === 'album') {
+    for (const image of rec.images || []) if (!image.imagePreview) queueMessageImagePreview(image);
+  }
   // A message arriving (or being scrolled into view) while a selection is
   // already in progress should look like every other message in that mode
   // — an empty checkbox, ready to be picked.

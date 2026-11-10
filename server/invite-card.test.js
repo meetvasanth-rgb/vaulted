@@ -89,7 +89,7 @@ test('"Later" hides it for two days, per account, in its own key, then it comes 
 test('share opens the system share sheet with the invitation QR card, falling back to copying its text', async () => {
   const shared = harness();
   await shared.context.shareInviteFromCard();
-  assert.deepEqual(shared.shared, ['Vasanth invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD']);
+  assert.deepEqual(shared.shared, ['Vasanth invited you to connect directly on Vaultlix. This pre-approved, one-time invite needs no further approval and expires in 24 hours: https://vaultlix.com/invite/K6AKTD']);
   assert.deepEqual(shared.copied, []);
   const fallback = harness({ share: async () => false });
   await fallback.context.shareInviteFromCard();
@@ -104,7 +104,7 @@ test('the optional recipient name personalizes only the outgoing text, and cance
   const named = harness({ recipientName:'Sam' });
   await named.context.shareInviteFromCard();
   assert.equal(named.created(), 1);
-  assert.deepEqual(named.shared, ['Hi Sam, Vasanth invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD']);
+  assert.deepEqual(named.shared, ['Hi Sam, Vasanth invited you to connect directly on Vaultlix. This pre-approved, one-time invite needs no further approval and expires in 24 hours: https://vaultlix.com/invite/K6AKTD']);
 
   const cancelled = harness({ recipientName:null });
   await cancelled.context.shareInviteFromCard();
@@ -114,7 +114,7 @@ test('the optional recipient name personalizes only the outgoing text, and cance
 
 test('the one-time guide uses the same invitation text, and the card heads the inbox including the empty state', () => {
   assert.match(client, /const text = inviteShareText\(state, friendName, invitation\.url\);/);
-  assert.equal(harness().context.inviteShareText({ displayName:'V', privateNumber:'2345678901' }, 'Sam', 'https://vaultlix.com/invite/K6AKTD'), 'Hi Sam, V invited you to connect on Vaultlix. This one-time invitation expires in 24 hours: https://vaultlix.com/invite/K6AKTD');
+  assert.equal(harness().context.inviteShareText({ displayName:'V', privateNumber:'2345678901' }, 'Sam', 'https://vaultlix.com/invite/K6AKTD'), 'Hi Sam, V invited you to connect directly on Vaultlix. This pre-approved, one-time invite needs no further approval and expires in 24 hours: https://vaultlix.com/invite/K6AKTD');
   assert.match(client, /let html = searchQuery \? '' : vaultlixUpdateRowHtml\(latestVaultlixUpdate\) \+ inviteCardHtml\(\) \+ avatarOfferHtml\(\) \+ dailyLookNudgeHtml\(\) \+ requestsRowHtml\(\);/);
   assert.match(client, /\$\{vaultSearchActive \? '' : inviteCardHtml\(\) \+ avatarOfferHtml\(\)\}<div class="vault-list-empty">/);
 });

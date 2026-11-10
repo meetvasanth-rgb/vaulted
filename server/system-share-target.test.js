@@ -16,7 +16,7 @@ test('Android registers Vaultlix for one or many shared images', () => {
   assert.match(activity, /25 \* 1024 \* 1024/);
 });
 
-test('iOS embeds a photo Share Extension with the same private app group', () => {
+test('iOS embeds a photo, video and file Share Extension with the same private app group', () => {
   const project = read('mobile/ios/App/App.xcodeproj/project.pbxproj');
   assert.match(project, /VaultlixShare\.appex in Embed Foundation Extensions/);
   assert.match(project, /productType = "com\.apple\.product-type\.app-extension"/);
@@ -24,6 +24,8 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   const plist = read('mobile/ios/App/VaultlixShare/Info.plist');
   assert.match(plist, /com\.apple\.share-services/);
   assert.match(plist, /NSExtensionActivationSupportsImageWithMaxCount/);
+  assert.match(plist, /NSExtensionActivationSupportsMovieWithMaxCount/);
+  assert.match(plist, /NSExtensionActivationSupportsFileWithMaxCount/);
   const entitlements = read('mobile/ios/App/VaultlixShare/VaultlixShare.entitlements');
   assert.match(entitlements, /group\.com\.vaultlix\.app/);
   assert.match(entitlements, /keychain-access-groups/);
@@ -38,7 +40,10 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   assert.match(controller, /configuration\.image = UIImage\(systemName: selected \? "checkmark\.circle\.fill" : "circle"\)/);
   assert.match(controller, /sendButton\.addTarget\(self, action: #selector\(sendToSelectedRecipient\)/);
   assert.match(controller, /recipientsHeightConstraint\?\.constant = min\(availableHeight, rowHeights \+ separatorHeights\)/);
-  assert.match(controller, /"imagePreview": image\.preview/);
+  assert.match(controller, /"imagePreview": attachment\.imagePreview/);
+  assert.match(controller, /preparedFile\(data, type: input\.type/);
+  assert.match(controller, /videoThumbnail\(data: data, filename: name\)/);
+  assert.match(controller, /return preparedAttachments\.map\(filePayload\)/);
   assert.match(controller, /"vaultlix\.share-sent\.v1\." \+ msgId/);
   assert.match(controller, /AES\.GCM\.seal/);
   assert.match(controller, /import ImageIO/);

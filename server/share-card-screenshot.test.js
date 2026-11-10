@@ -50,7 +50,9 @@ test('one-time invitation card carries its QR destination and expiry without exp
   });
   assert.match(svg, /PRIVATE INVITATION/);
   assert.match(svg, /Vasanthkumar invited you/);
-  assert.match(svg, /SINGLE USE · EXPIRES IN 24 HOURS/);
+  assert.match(svg, /ONE PERSON · PRE-APPROVED · EXPIRES IN 24 HOURS/);
+  assert.match(svg, /Scan to connect directly/);
+  assert.match(svg, /No approval needed/);
   assert.match(svg, /fill="#FFF9FA"/);
   assert.match(svg, /https:\/\/vaultlix\.com\/invite\/ER49TD/);
   assert.doesNotMatch(svg, /24-8059-9999|MY PRIVATE LINE/);

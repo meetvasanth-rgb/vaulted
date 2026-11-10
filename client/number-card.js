@@ -99,11 +99,11 @@
   <path d="M104 482H974" stroke="#D9AABD" stroke-width="2" stroke-dasharray="9 10"/>
   <rect x="82" y="548" width="470" height="470" rx="34" fill="#FFF" stroke="#E8D9DF" stroke-width="2"/>
   <path d="${modules}" fill="#2D0C18"/>
-  <text x="604" y="662" class="copy"><tspan x="604">Scan to connect</tspan><tspan x="604" dy="44">on Vaultlix</tspan></text>
+  <text x="604" y="648" class="copy"><tspan x="604">Scan to connect directly</tspan><tspan x="604" dy="44">No approval needed</tspan></text>
   <rect x="604" y="790" width="290" height="64" rx="32" fill="#7A2343"/>
   <text x="749" y="830" text-anchor="middle" class="hours">24 HOURS</text>
   <text x="604" y="916" class="url"><tspan x="604">vaultlix.com/invite/</tspan><tspan x="604" dy="38">${safeInviteCode}</tspan></text>
-  <text x="104" y="1188" class="small">SINGLE USE · EXPIRES IN 24 HOURS</text>
+  <text x="104" y="1188" class="small">ONE PERSON · PRE-APPROVED · EXPIRES IN 24 HOURS</text>
 </svg>`;
   }
 
