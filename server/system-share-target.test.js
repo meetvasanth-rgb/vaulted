@@ -31,6 +31,9 @@ test('iOS embeds a photo Share Extension with the same private app group', () =>
   assert.match(controller, /vaultlix\.share\.app-lock\.v1/);
   assert.match(controller, /CCKeyDerivationPBKDF/);
   assert.match(controller, /NativeCallRoomStore\.shared\.shareEligibleRooms\(\)/);
+  assert.match(controller, /titleLabel\.text = "Send to"/);
+  assert.match(controller, /recipientsScroll\.heightAnchor\.constraint\(equalToConstant: 58\)/);
+  assert.match(controller, /recipientsHeightConstraint\?\.constant = min\(340, rowHeights \+ separatorHeights\)/);
   assert.match(controller, /AES\.GCM\.seal/);
   assert.match(controller, /import ImageIO/);
   assert.match(controller, /CGImageSourceCreateThumbnailAtIndex/);

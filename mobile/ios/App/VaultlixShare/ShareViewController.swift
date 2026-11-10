@@ -28,6 +28,7 @@ final class ShareViewController: UIViewController {
     private let passcodeStack = UIStackView()
     private let recipientsStack = UIStackView()
     private let recipientsScroll = UIScrollView()
+    private var recipientsHeightConstraint: NSLayoutConstraint?
     private let activity = UIActivityIndicatorView(style: .medium)
 
     override func viewDidLoad() {
@@ -82,12 +83,20 @@ final class ShareViewController: UIViewController {
         recipientsStack.spacing = 0
         recipientsStack.translatesAutoresizingMaskIntoConstraints = false
         recipientsScroll.addSubview(recipientsStack)
+        let recipientsHeightConstraint = recipientsScroll.heightAnchor.constraint(equalToConstant: 58)
+        // UIStackView temporarily constrains hidden arranged subviews to zero.
+        // Keep this just below required priority so hiding the chooser does not
+        // produce an Auto Layout conflict while still giving UIScrollView the
+        // explicit visible height it cannot infer from its content layout guide.
+        recipientsHeightConstraint.priority = .defaultHigh
+        self.recipientsHeightConstraint = recipientsHeightConstraint
         NSLayoutConstraint.activate([
             recipientsStack.leadingAnchor.constraint(equalTo: recipientsScroll.contentLayoutGuide.leadingAnchor),
             recipientsStack.trailingAnchor.constraint(equalTo: recipientsScroll.contentLayoutGuide.trailingAnchor),
             recipientsStack.topAnchor.constraint(equalTo: recipientsScroll.contentLayoutGuide.topAnchor),
             recipientsStack.bottomAnchor.constraint(equalTo: recipientsScroll.contentLayoutGuide.bottomAnchor),
             recipientsStack.widthAnchor.constraint(equalTo: recipientsScroll.frameLayoutGuide.widthAnchor),
+            recipientsHeightConstraint,
             recipientsScroll.heightAnchor.constraint(lessThanOrEqualToConstant: 340),
         ])
         recipientsScroll.layer.borderColor = UIColor.separator.cgColor
@@ -198,7 +207,7 @@ final class ShareViewController: UIViewController {
         passcodeField.resignFirstResponder()
         passcodeStack.isHidden = true
         recipientsStack.arrangedSubviews.forEach { recipientsStack.removeArrangedSubview($0); $0.removeFromSuperview() }
-        titleLabel.text = "Send securely"
+        titleLabel.text = "Send to"
         guard !rooms.isEmpty else {
             statusLabel.text = "Open Vaultlix once to prepare your secure contacts, then share the image again."
             recipientsScroll.isHidden = true
@@ -222,6 +231,9 @@ final class ShareViewController: UIViewController {
                 recipientsStack.addArrangedSubview(separator)
             }
         }
+        let rowHeights = CGFloat(rooms.count) * 58
+        let separatorHeights = CGFloat(max(0, rooms.count - 1)) * 0.5
+        recipientsHeightConstraint?.constant = min(340, rowHeights + separatorHeights)
         recipientsScroll.isHidden = false
     }
 
