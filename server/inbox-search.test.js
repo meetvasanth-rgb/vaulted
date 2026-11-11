@@ -45,6 +45,13 @@ test('closing search clears the query and switching to the Calls tab auto-closes
   assert.match(client, /function setVaultListMode\(mode\) \{[\s\S]{0,200}if \(currentVaultListMode === 'calls' && vaultSearchActive\) closeVaultSearch\(\);/);
 });
 
+test('Android search expands across the header and leaves only its close button visible', () => {
+  assert.match(client, /vault-list-hdr\.search-open \.vault-list-nav \.vault-list-settings:not\(#vault-search-toggle\)\{\s*display:none!important;/);
+  assert.match(client, /vault-list-hdr\.search-open \.vault-search-input\{[\s\S]{0,220}height:52px;/);
+  assert.match(client, /function openVaultSearch\(\) \{[\s\S]{0,180}classList\.add\('search-open'\)/);
+  assert.match(client, /function closeVaultSearch\(\) \{[\s\S]{0,260}classList\.remove\('search-open'\)/);
+});
+
 // Functional check of the actual filter predicate, extracted and run
 // directly against hand-picked room/group fixtures — the structural checks
 // above only confirm the wiring exists, not that the matching logic works.

@@ -2978,6 +2978,33 @@ html.vaultlix-native-android #s-landing .landing-back-btn{
 html.vaultlix-native-android #s-vault-list .vault-list-hdr{
   padding-top:calc(14px + var(--android-safe-area-top,0px))!important;
 }
+/* Android search is a focused mode, not a fifth cramped header control. */
+html.vaultlix-native-android #s-vault-list .vault-list-hdr.search-open{
+  gap:10px;
+}
+html.vaultlix-native-android #s-vault-list .vault-list-hdr.search-open .vault-list-search{
+  flex:1 1 auto;
+  min-width:0;
+}
+html.vaultlix-native-android #s-vault-list .vault-list-hdr.search-open .vault-search-input{
+  height:52px;
+  padding:0 17px;
+  border-radius:17px;
+  font-size:17px;
+  box-sizing:border-box;
+}
+html.vaultlix-native-android #s-vault-list .vault-list-hdr.search-open .vault-list-nav{
+  flex:0 0 52px;
+  gap:0;
+}
+html.vaultlix-native-android #s-vault-list .vault-list-hdr.search-open .vault-list-nav .vault-list-settings:not(#vault-search-toggle){
+  display:none!important;
+}
+html.vaultlix-native-android #s-vault-list .vault-list-hdr.search-open #vault-search-toggle{
+  width:52px;
+  height:52px;
+  flex:0 0 52px;
+}
 html.vaultlix-native-android #s-vault-list .vault-list-actions{
   bottom:calc(10px + var(--android-safe-area-bottom,0px))!important;
 }
@@ -20504,6 +20531,7 @@ function toggleVaultSearch() {
 
 function openVaultSearch() {
   vaultSearchActive = true;
+  document.querySelector('#s-vault-list .vault-list-hdr')?.classList.add('search-open');
   document.getElementById('vault-list-heading')?.setAttribute('hidden', '');
   document.getElementById('vault-list-search')?.removeAttribute('hidden');
   const toggleBtn = document.getElementById('vault-search-toggle');
@@ -20520,6 +20548,7 @@ function closeVaultSearch() {
   document.documentElement.classList.remove('vault-search-typing');
   vaultSearchActive = false;
   vaultSearchQuery = '';
+  document.querySelector('#s-vault-list .vault-list-hdr')?.classList.remove('search-open');
   document.getElementById('vault-list-search')?.setAttribute('hidden', '');
   document.getElementById('vault-list-heading')?.removeAttribute('hidden');
   const toggleBtn = document.getElementById('vault-search-toggle');

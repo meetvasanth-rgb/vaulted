@@ -69,6 +69,20 @@ test('the engine negotiates video up front and gates every camera and peer pictu
   assert.match(engine, /videoState\.reset\(\)/);
 });
 
+test('native Android preserves 720p detail and reports transport quality without recording content', () => {
+  const engine = read(java + 'NativeWebRtcCallEngine.java');
+  assert.match(engine, /capturer\.startCapture\(1280, 720, 30\)/);
+  assert.match(engine, /videoSender = peer\.addTrack\(videoTrack/);
+  assert.match(engine, /DegradationPreference\.MAINTAIN_RESOLUTION/);
+  assert.match(engine, /encoding\.minBitrateBps = VIDEO_MIN_BITRATE_BPS/);
+  assert.match(engine, /encoding\.maxBitrateBps = VIDEO_MAX_BITRATE_BPS/);
+  assert.match(engine, /encoding\.scaleResolutionDownBy = 1\.0/);
+  assert.match(engine, /videoSender\.setParameters\(parameters\)/);
+  assert.match(engine, /video quality direction=/);
+  assert.match(engine, /qualityLimitationReason/);
+  assert.doesNotMatch(engine, /captureFrameForDiagnostics|writeVideoFrame|recordCallVideo/);
+});
+
 test('the call screen asks before switching and again on the other side', () => {
   const screen = read(java + 'NativeCallActivity.java');
   assert.match(screen, /if \(!engine\.hasVideoConsent\(\)\)/);

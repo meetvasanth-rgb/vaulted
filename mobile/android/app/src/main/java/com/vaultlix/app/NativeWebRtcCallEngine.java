@@ -23,6 +23,8 @@ import org.webrtc.MediaStream;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RtpReceiver;
+import org.webrtc.RtpParameters;
+import org.webrtc.RtpSender;
 import org.webrtc.RTCStats;
 import org.webrtc.RTCStatsReport;
 import org.webrtc.SdpObserver;
@@ -117,6 +119,7 @@ final class NativeWebRtcCallEngine {
     private final ProxySink remoteVideoSink = new ProxySink();
     private VideoSource videoSource;
     private VideoTrack videoTrack;
+    private RtpSender videoSender;
     private VideoTrack remoteVideoTrack;
     private CameraVideoCapturer capturer;
     private SurfaceTextureHelper surfaceHelper;
@@ -158,6 +161,9 @@ final class NativeWebRtcCallEngine {
     private static final long RECONNECT_DEADLINE_MS = 30_000L;
     private static final long RECONNECT_UI_DELAY_MS = 900L;
     private static final long AUDIO_FLOW_POLL_MS = 1_000L;
+    private static final int VIDEO_MIN_BITRATE_BPS = 650_000;
+    private static final int VIDEO_MAX_BITRATE_BPS = 2_500_000;
+    private static final long VIDEO_QUALITY_LOG_MS = 5_000L;
     private static final long AUDIO_FLOW_STALL_MS = 4_000L;
     private boolean reconnecting;
     private boolean reconnectingVisible;
@@ -170,6 +176,9 @@ final class NativeWebRtcCallEngine {
     private int audioFlowRun;
     private long lastInboundAudioBytes = -1L;
     private long lastInboundAudioProgressMs;
+    private long lastVideoQualityLogMs;
+    private long lastOutboundVideoBytes = -1L;
+    private long lastInboundVideoBytes = -1L;
 
     private NativeWebRtcCallEngine(Context context) {
         this.context = context;
@@ -606,7 +615,8 @@ final class NativeWebRtcCallEngine {
                 videoTrack = factory.createVideoTrack("vaultlix-native-video", videoSource);
                 videoTrack.setEnabled(false);
                 videoTrack.addSink(localVideoSink);
-                peer.addTrack(videoTrack, Collections.singletonList("vaultlix-native-stream"));
+                videoSender = peer.addTrack(videoTrack, Collections.singletonList("vaultlix-native-stream"));
+                configureVideoSender();
                 for (RtpTransceiver transceiver : peer.getTransceivers()) {
                     if (transceiver.getMediaType() == org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO
                             && transceiver.getReceiver().track() instanceof VideoTrack) {
@@ -868,7 +878,11 @@ final class NativeWebRtcCallEngine {
             if (capturer == null) return false;
             surfaceHelper = SurfaceTextureHelper.create("vaultlix-capture", eglBase.getEglBaseContext());
             capturer.initialize(surfaceHelper, context, videoSource.getCapturerObserver());
-            capturer.startCapture(960, 540, 24);
+            // Match the iOS and browser call paths at 720p30. WebRTC can still
+            // adapt the transmitted resolution and frame rate when the
+            // connection cannot sustain the requested capture quality.
+            capturer.startCapture(1280, 720, 30);
+            configureVideoSender();
             return true;
         } catch (Exception error) {
             Log.w(TAG, "camera start failed", error);
@@ -895,6 +909,7 @@ final class NativeWebRtcCallEngine {
 
     /** Free the local track and source once the peer connection no longer uses them. */
     private void disposeVideo() {
+        videoSender = null;
         if (videoTrack != null) { videoTrack.dispose(); videoTrack = null; }
         if (videoSource != null) { videoSource.dispose(); videoSource = null; }
         boolean changed;
@@ -924,6 +939,7 @@ final class NativeWebRtcCallEngine {
         stopWatchingNetworkChanges();
         recoveryRun++; reconnectPresentationRun++; reconnecting = false; reconnectingVisible = false; answeredAtMs = 0L;
         audioFlowRun++; lastInboundAudioBytes = -1L; lastInboundAudioProgressMs = 0L;
+        lastVideoQualityLogMs = 0L; lastOutboundVideoBytes = -1L; lastInboundVideoBytes = -1L;
         room = null; signalingReady = false; outgoing = false; outgoingVideoCall = false; answered = false; offerReceived = false; ending = false;
         ringingAcknowledged = false; initialOfferStarted = false; transportReady = false; pendingOffer = null;
         offerCreationInFlight = false; connectWatchdogStarted = false;
@@ -1019,6 +1035,7 @@ final class NativeWebRtcCallEngine {
             currentPeer.getStats(report -> executor.execute(() -> {
                 if (run != generation || token != audioFlowRun || peer != currentPeer || connectedAtMs == 0L || ending) return;
                 observeInboundAudioBytes(report);
+                logVideoQuality(report);
                 scheduleAudioFlowPoll(run, token);
             }));
         }), AUDIO_FLOW_POLL_MS, TimeUnit.MILLISECONDS);
@@ -1056,6 +1073,65 @@ final class NativeWebRtcCallEngine {
             Log.w(TAG, "audio flow stalled: starting recovery room=" + currentRoomCode);
             beginMediaRecovery(0L);
         }
+    }
+
+    /**
+     * Keep a good Wi-Fi video call at 720p before sacrificing spatial detail.
+     * These are encoder bounds rather than a promise: congestion control can
+     * still lower the transmitted rate when the relay path cannot sustain it.
+     */
+    private void configureVideoSender() {
+        if (videoSender == null) return;
+        RtpParameters parameters = videoSender.getParameters();
+        if (parameters == null || parameters.encodings.isEmpty()) return;
+        parameters.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION;
+        for (RtpParameters.Encoding encoding : parameters.encodings) {
+            encoding.active = true;
+            encoding.minBitrateBps = VIDEO_MIN_BITRATE_BPS;
+            encoding.maxBitrateBps = VIDEO_MAX_BITRATE_BPS;
+            encoding.maxFramerate = 30;
+            encoding.scaleResolutionDownBy = 1.0;
+            encoding.bitratePriority = 2.0;
+        }
+        boolean applied = videoSender.setParameters(parameters);
+        Log.i(TAG, "video sender 720p30 quality parameters applied=" + applied);
+    }
+
+    /** Log transport quality only; no frame, audio or conversation content is retained. */
+    private void logVideoQuality(RTCStatsReport report) {
+        long now = System.currentTimeMillis();
+        if (now - lastVideoQualityLogMs < VIDEO_QUALITY_LOG_MS) return;
+        long elapsedMs = lastVideoQualityLogMs == 0L ? 0L : now - lastVideoQualityLogMs;
+        lastVideoQualityLogMs = now;
+
+        for (RTCStats stat : report.getStatsMap().values()) {
+            String type = stat.getType();
+            if (!"outbound-rtp".equals(type) && !"inbound-rtp".equals(type)) continue;
+            Map<String, Object> values = stat.getMembers();
+            Object kind = values.containsKey("kind") ? values.get("kind") : values.get("mediaType");
+            if (!"video".equals(kind)) continue;
+
+            boolean outbound = "outbound-rtp".equals(type);
+            long bytes = number(values.get(outbound ? "bytesSent" : "bytesReceived"), -1L);
+            long previous = outbound ? lastOutboundVideoBytes : lastInboundVideoBytes;
+            long kbps = elapsedMs > 0L && bytes >= 0L && previous >= 0L
+                    ? Math.max(0L, (bytes - previous) * 8L / elapsedMs)
+                    : -1L;
+            if (outbound) lastOutboundVideoBytes = bytes;
+            else lastInboundVideoBytes = bytes;
+
+            Log.i(TAG, "video quality direction=" + (outbound ? "out" : "in")
+                    + " size=" + number(values.get("frameWidth"), 0L) + "x"
+                    + number(values.get("frameHeight"), 0L)
+                    + " fps=" + number(values.get("framesPerSecond"), 0L)
+                    + " kbps=" + kbps
+                    + " packetsLost=" + number(values.get("packetsLost"), 0L)
+                    + " limitation=" + String.valueOf(values.get("qualityLimitationReason")));
+        }
+    }
+
+    private static long number(Object value, long fallback) {
+        return value instanceof Number ? ((Number) value).longValue() : fallback;
     }
 
     private void scheduleRecoveryAttempt(int run, int token, long startedAt, long delayMs) {
