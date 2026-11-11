@@ -111,7 +111,7 @@ test('the Android native call screen offers Bluetooth and no longer forces the e
   assert.match(nativeCall, /new String\[\] \{ "bluetooth", "speaker", "phone" \}/);
   assert.match(nativeCall, /R\.string\.native_bluetooth/);
   assert.doesNotMatch(nativeCall, /speakerRequested/);
-  assert.match(nativeCall, /route = isBluetoothAudioAvailable\(\) \? "bluetooth" : "phone"/);
+  assert.match(nativeCall, /if \(isBluetoothAudioAvailable\(\)\) return "bluetooth";[\s\S]*return videoCall \? "speaker" : "phone"/);
   assert.match(nativeCall, /requestCode == 74[\s\S]*requestAudioRoute\(null\)/);
 });
 
@@ -147,6 +147,25 @@ test('new native calls actively prefer a connected Bluetooth headset', () => {
   assert.match(app, /guard userSelectedAudioRoute == nil, let input = bluetoothInput\(\)/);
   assert.match(app, /try session\.setPreferredInput\(input\)/);
   assert.match(main, /hasBluetoothPermission\(\) && isBluetoothCallDevice\(device\)[\s\S]*setCommunicationDevice\(device\)/);
+});
+
+test('native video calls default to Bluetooth, then speaker, without overriding a manual route', () => {
+  const app = read('mobile/ios/App/App/AppDelegate.swift');
+  const scene = read('mobile/ios/App/App/SceneDelegate.swift');
+  const nativeCall = read('mobile/android/app/src/main/java/com/vaultlix/app/NativeCallActivity.java');
+  const incoming = read('mobile/android/app/src/main/java/com/vaultlix/app/IncomingCallActivity.java');
+  const main = read('mobile/android/app/src/main/java/com/vaultlix/app/MainActivity.java');
+
+  assert.match(app, /guard userSelectedAudioRoute == nil, !calls\.isEmpty/);
+  assert.match(app, /liveBluetoothAudioAvailable\(\) \? "bluetooth" : \(automaticVideoRoute \? "speaker" : "phone"\)/);
+  assert.match(app, /func provider\([^)]*didActivate[\s\S]*applyAutomaticAudioRouteIfNeeded\(\)/);
+  assert.match(app, /func audioRouteDidChange\(\)[\s\S]*applyAutomaticAudioRouteIfNeeded\(\)/);
+  assert.match(scene, /if enabled \|\| remoteOn \{ VaultlixCallManager\.shared\.useAutomaticAudioRoute\(video: true\) \}/);
+
+  assert.match(nativeCall, /return videoCall \? "speaker" : "phone"/);
+  assert.match(nativeCall, /requestedRoute == null && !defaultAudioRoute\(\)\.equals\(current\)/);
+  assert.match(incoming, /putExtra\(NativeCallActivity\.EXTRA_VIDEO_CALL, videoCall\)/);
+  assert.match(main, /putExtra\(NativeCallActivity\.EXTRA_VIDEO_CALL, startWithVideo\)/);
 });
 
 test('iOS-on-Mac reactivates CallKit audio after first-use microphone permission', () => {

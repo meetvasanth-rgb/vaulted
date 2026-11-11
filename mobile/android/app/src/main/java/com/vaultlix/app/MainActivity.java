@@ -1835,6 +1835,7 @@ public class MainActivity extends BridgeActivity {
                         .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, saved.code)
                         .putExtra(NativeCallActivity.EXTRA_CALLER_AVATAR_PATH, saved.avatarPath)
                         .putExtra(NativeCallActivity.EXTRA_START_WITH_VIDEO, startWithVideo)
+                        .putExtra(NativeCallActivity.EXTRA_VIDEO_CALL, startWithVideo)
                         .putExtra(NativeCallActivity.EXTRA_OUTGOING, true);
                 startActivity(call);
                 overridePendingTransition(0, 0);

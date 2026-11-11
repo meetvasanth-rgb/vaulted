@@ -312,6 +312,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         }
 
         clearPreferredAudioInput()
+        automaticVideoRoute = hasVideo
         calls[callID] = data
         // Keep CallKit and libwebrtc as the single audio owner in every app
         // state. Splitting foreground media into WKWebView left connected
@@ -921,6 +922,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
                            completion: @escaping (Bool) -> Void) {
         dismissAppKeyboard()
         clearPreferredAudioInput()
+        automaticVideoRoute = video
         requestMicrophonePermission { [weak self] granted in
             guard let self, granted else {
                 completion(false)
@@ -1118,6 +1120,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         // reliably select it. Prefer the connected HFP/LE input once CallKit
         // has activated the session, unless the user already chose a route.
         preferBluetoothForNewCall()
+        applyAutomaticAudioRouteIfNeeded()
         // CallKit owns the VoIP audio session. Starting a player before this
         // callback creates an apparently running engine whose route is replaced
         // during activation, producing silent ringback. Let libwebrtc attach to
@@ -1229,6 +1232,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var bluetoothExcludedByPhoneRoute = false
     private var bluetoothSeenConnected = false
     private var userSelectedAudioRoute: String?
+    private var automaticVideoRoute = false
 
     func isBluetoothAudioAvailable() -> Bool {
         if bluetoothExcludedByPhoneRoute { return bluetoothSeenConnected }
@@ -1305,7 +1309,47 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         bluetoothExcludedByPhoneRoute = false
         bluetoothSeenConnected = false
         userSelectedAudioRoute = nil
+        automaticVideoRoute = false
         try? AVAudioSession.sharedInstance().setPreferredInput(nil)
+    }
+
+    /// Video calls use the loudspeaker by default, but never override a route
+    /// the user selected. A connected call-capable Bluetooth device remains
+    /// the first automatic choice for both audio and video calls.
+    func useAutomaticAudioRoute(video: Bool) {
+        automaticVideoRoute = automaticVideoRoute || video
+        applyAutomaticAudioRouteIfNeeded()
+    }
+
+    private func automaticAudioRoute() -> String {
+        liveBluetoothAudioAvailable() ? "bluetooth" : (automaticVideoRoute ? "speaker" : "phone")
+    }
+
+    private func applyAutomaticAudioRouteIfNeeded() {
+        guard userSelectedAudioRoute == nil, !calls.isEmpty else { return }
+        let target = automaticAudioRoute()
+        guard currentAudioRoute() != target else { return }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            bluetoothExcludedByPhoneRoute = false
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+            switch target {
+            case "speaker":
+                try session.setPreferredInput(nil)
+                try session.overrideOutputAudioPort(.speaker)
+            case "bluetooth":
+                try session.overrideOutputAudioPort(.none)
+                if let input = bluetoothInput() { try session.setPreferredInput(input) }
+            default:
+                try session.overrideOutputAudioPort(.none)
+                if let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) {
+                    try session.setPreferredInput(builtIn)
+                }
+            }
+            print("VXCALL manager automatic audio route \(target)")
+        } catch {
+            print("VXCALL manager automatic route failed: \(error.localizedDescription)")
+        }
     }
 
     /// Use an already-connected headset for a new call. Manual selections are
@@ -1330,6 +1374,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// local ringback player without clearing the outgoing call intent.
     func audioRouteDidChange() {
         restartRingbackForCurrentRoute()
+        applyAutomaticAudioRouteIfNeeded()
     }
 
     private func restartRingbackForCurrentRoute() {

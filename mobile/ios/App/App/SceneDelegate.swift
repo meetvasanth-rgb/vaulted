@@ -234,6 +234,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 return
             }
             if requested {
+                VaultlixCallManager.shared.useAutomaticAudioRoute(video: true)
                 self?.pendingNativeVideoConsentRequest = true
                 self?.nativeVideoSessionActive = true
                 self?.updateNativeVideoPlaceholder(waiting: true)
@@ -242,6 +243,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
                 return
             }
             self?.nativeLocalVideoEnabled = enabled
+            if enabled || remoteOn { VaultlixCallManager.shared.useAutomaticAudioRoute(video: true) }
             if enabled || remoteOn || waiting { self?.nativeVideoSessionActive = true }
             self?.updateNativeVideoPlaceholder(waiting: waiting)
             if self?.nativeVideoSessionActive == true { self?.showNativeVideoViews(remote: remoteOn) }

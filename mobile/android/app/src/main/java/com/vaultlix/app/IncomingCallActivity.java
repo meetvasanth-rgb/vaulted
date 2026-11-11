@@ -281,6 +281,7 @@ public class IncomingCallActivity extends Activity {
             Intent call = new Intent(this, NativeCallActivity.class)
                     .putExtra(NativeCallActivity.EXTRA_CALLER, caller)
                     .putExtra(NativeCallActivity.EXTRA_ROOM_CODE, extractRoomCode())
+                    .putExtra(NativeCallActivity.EXTRA_VIDEO_CALL, videoCall)
                     .putExtra(NativeCallActivity.EXTRA_CALLER_AVATAR_PATH, callerAvatarPath);
             startActivity(call);
             finish();

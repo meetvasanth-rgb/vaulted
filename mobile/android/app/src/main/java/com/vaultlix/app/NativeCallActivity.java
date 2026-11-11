@@ -57,6 +57,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     static final String EXTRA_ROOM_CODE = "roomCode";
     static final String EXTRA_OUTGOING = "outgoing";
     static final String EXTRA_START_WITH_VIDEO = "startWithVideo";
+    static final String EXTRA_VIDEO_CALL = "videoCall";
     static final String EXTRA_CALLER_AVATAR_PATH = "callerAvatarPath";
     private static final int INK = Color.rgb(39, 29, 37);
     private static final int IVORY = Color.rgb(250, 246, 247);
@@ -111,6 +112,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     private boolean finishingCall;
     private boolean outgoing;
     private boolean startWithVideo;
+    private boolean videoCall;
     private String pendingHistory = "";
     private AudioTrack ringbackTrack;
     private final Runnable enforceRequestedAudioRoute = () -> {
@@ -124,7 +126,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             // reapply MODE_IN_COMMUNICATION or a device every two seconds:
             // Samsung can tear down WebRTC's active AudioTrack when an app
             // repeatedly claims the route, even if the selection is unchanged.
-            renderAudioRoute(currentRouteName());
+            String current = currentRouteName();
+            if (requestedRoute == null && !defaultAudioRoute().equals(current)) {
+                requestAudioRoute(null);
+            } else {
+                renderAudioRoute(current);
+            }
             handler.postDelayed(this, 2_000);
         }
     };
@@ -164,6 +171,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         roomCode = getIntent().getStringExtra(EXTRA_ROOM_CODE);
         outgoing = getIntent().getBooleanExtra(EXTRA_OUTGOING, false);
         startWithVideo = outgoing && getIntent().getBooleanExtra(EXTRA_START_WITH_VIDEO, false);
+        videoCall = getIntent().getBooleanExtra(EXTRA_VIDEO_CALL, startWithVideo);
         engine = NativeWebRtcCallEngine.get(this);
         engine.addListener(this);
         clearIncomingCallBanner();
@@ -476,7 +484,13 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
     }
 
     @Override public void onVideoState(boolean localOn, boolean remoteOn) {
-        runOnUiThread(() -> renderVideo(localOn, remoteOn));
+        runOnUiThread(() -> {
+            if ((localOn || remoteOn) && !videoCall) {
+                videoCall = true;
+                if (requestedRoute == null) requestAudioRoute(null);
+            }
+            renderVideo(localOn, remoteOn);
+        });
     }
 
     // Remote video takes the whole screen (the peer's identity is on it); the
@@ -852,7 +866,12 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
         handler.postDelayed(enforceRequestedAudioRoute, 1_400);
     }
 
-    /** route: "phone", "bluetooth", "speaker", or null for the default (keep a connected headset, else earpiece). */
+    private String defaultAudioRoute() {
+        if (isBluetoothAudioAvailable()) return "bluetooth";
+        return videoCall ? "speaker" : "phone";
+    }
+
+    /** route: "phone", "bluetooth", "speaker", or null for the call-aware default. */
     @SuppressWarnings("deprecation")
     private boolean applyAudioRoute(String route) {
         if (audioManager == null) return false;
@@ -866,7 +885,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
                 // A connected call-capable headset is the default even when
                 // Android has not selected it yet. Merely preserving the
                 // current route left new calls on the receiver indefinitely.
-                route = isBluetoothAudioAvailable() ? "bluetooth" : "phone";
+                route = defaultAudioRoute();
             }
             if ("bluetooth".equals(route) && !hasBluetoothPermission()) {
                 renderAudioRoute(currentRouteName());
@@ -895,7 +914,7 @@ public class NativeCallActivity extends Activity implements NativeWebRtcCallEngi
             }
             return applied && actual.equals(route);
         }
-        if (route == null) route = isBluetoothAudioAvailable() ? "bluetooth" : "phone";
+        if (route == null) route = defaultAudioRoute();
         if ("bluetooth".equals(route)) {
             audioManager.setSpeakerphoneOn(false);
             audioManager.startBluetoothSco();

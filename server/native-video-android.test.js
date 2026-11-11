@@ -32,6 +32,7 @@ test('an incoming direct video call is identified before Android answers it', ()
   assert.match(messaging, /IncomingCallActivity\.EXTRA_VIDEO_CALL/);
   assert.match(incoming, /EXTRA_VIDEO_CALL/);
   assert.match(incoming, /native_incoming_encrypted_video_call/);
+  assert.match(incoming, /NativeCallActivity\.EXTRA_VIDEO_CALL, videoCall/);
   assert.match(strings, /name="native_incoming_encrypted_video_call">Incoming encrypted video call/);
   assert.match(incoming, /videoCall \? R\.drawable\.ic_call_video : R\.drawable\.ic_call_end/);
   assert.match(incoming, /videoCall \? R\.string\.native_answer_video : R\.string\.native_answer/);
