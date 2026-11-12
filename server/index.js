@@ -1029,6 +1029,16 @@ function hasPushDestination(member) {
   return !!(member && (member.pushSub || member.apnsToken || member.fcmToken));
 }
 
+function shouldSendMessagePush(privacyEvent, lastSeen, now = Date.now()) {
+  return !privacyEvent || now - Number(lastSeen || 0) >= 8000;
+}
+
+function messageNotificationBody(privacyEvent, senderName, hidePreview = false) {
+  if (privacyEvent === 'screenshot') return 'A screenshot was taken in your private conversation.';
+  if (privacyEvent === 'screen-recording') return 'Screen recording started in your private conversation.';
+  return hidePreview || !senderName ? 'New message' : `New message from ${senderName}`;
+}
+
 function membersShareNativeCallDevice(left, right) {
   if (!left || !right) return false;
   return ['fcmToken', 'apnsToken', 'voipToken'].some(field =>
@@ -4016,6 +4026,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         (d.attachmentId != null && !validAttachmentId(d.attachmentId))) {
       return resErr(res, 'Invalid encrypted group message.', 400);
     }
+    const privacyEvent = d.privacyEvent === 'screenshot' || d.privacyEvent === 'screen-recording'
+      ? d.privacyEvent : null;
     let pending = null;
     if (d.attachmentId) {
       if (!objectStorageEnabled || !postgresEnabled) return resErr(res, 'Encrypted attachment storage is unavailable.', 503);
@@ -4030,7 +4042,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (pending && !await groupStore.markAttachmentAttached(pending.id)) return resErr(res, 'Encrypted attachment could not be finalized.', 409);
     for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
       publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'message' });
-      sendAccountPush(member.accountId, { title:'Vaultlix', body:'New encrypted group message',
+      sendAccountPush(member.accountId, { title:'Vaultlix', body:privacyEvent
+        ? messageNotificationBody(privacyEvent, null)
+        : 'New encrypted group message',
         tag:`private-group-${group.id}`, privateGroup:true, groupId:group.id }, 'private group message');
     }
     return res200(res, { ok:true, createdAt:group.updatedAt, keyVersion:group.keyVersion });
@@ -5647,6 +5661,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
+    const privacyEvent = d.privacyEvent === 'screenshot' || d.privacyEvent === 'screen-recording'
+      ? d.privacyEvent : null;
     let messageContent = d.content;
     if (attachmentId) {
       if (!objectStorageEnabled || !postgresEnabled || !clientMsgId) return resErr(res,'Encrypted attachment storage is unavailable.',503);
@@ -5675,7 +5691,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, deleteTimerSeconds:room.deleteTimer || 0, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, privacyEvent, deleteTimerSeconds:room.deleteTimer || 0, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
     if (postgresEnabled) {
       seq = await postgresStore.appendEncryptedMessage(d.code, d.token, message, room.dbClient || null);
       message.seq = seq;
@@ -5699,6 +5715,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // encrypted record, inbox event, receipts and catch-up behavior are kept.
     if (d.suppressNotification !== true) for (const [t, mb] of room.members) {
       if (!sameConversationToken(t, d.token) && hasPushDestination(mb)) {
+        if (!shouldSendMessagePush(privacyEvent, mb.lastSeen)) continue;
         // tag used to just be d.code (the room code) — same tag for every
         // message in the room, combined with sw.js's renotify:true. That
         // combination hits a long-standing, still-unresolved Chrome bug
@@ -5721,7 +5738,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
         const senderLabel = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : null;
-        const payload = JSON.stringify({ title: 'Vaultlix', body: mb.hidePreview || !senderLabel ? 'New message' : `New message from ${senderLabel}`, tag: `${d.code}-${msgId}`, code: d.code, msgId, hidePreview:mb.hidePreview === true });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, hidePreview:mb.hidePreview === true });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a

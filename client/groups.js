@@ -727,6 +727,10 @@ function groupReactionChipsHtml(reactionMap, myId) {
 }
 
 function privateGroupRowHtml(group, message, reactions, state) {
+    if (message.captureEvent) {
+      const actor = message.senderId === state?.accountId ? 'You' : groupMemberLabel(group, message.senderId);
+      return `<div class="sys-msg" data-group-msg-id="${escHtml(message.id)}">${escHtml(captureEventText(message.captureEvent, actor))}</div>`;
+    }
     let content;
     const kind = groupMessageKind(message);
     // Same long-press action row as a direct conversation. Hidden, blocked or
@@ -1350,6 +1354,9 @@ async function decodePrivateGroupEnvelope(group, message) {
   const plaintext = await decryptPrivateGroupValue(group.keys?.[message.keyVersion], message.ciphertext);
   let metadata = null;
   try { metadata = JSON.parse(plaintext); } catch (_) {}
+  if (metadata?.type === 'group-capture-event' && ['screenshot','screen-recording'].includes(metadata.event)) {
+    return { decoded:{ ...message, captureEvent:metadata.event } };
+  }
   if (metadata?.type === 'group-gif' && safeKlipyMediaUrl(metadata.url)) return { decoded:{ ...message, gif:metadata } };
   // Replies, reactions and deletes ride inside the same encrypted message
   // stream. Everything here comes from another member, so each field is
@@ -1751,6 +1758,29 @@ async function sendPrivateGroupMessage() {
     input.focus({ preventScroll:true });
   } catch (error) { toast(error.message || 'Message could not be sent'); }
   finally { delete input.dataset.sending; input.focus({ preventScroll:true }); }
+}
+
+async function sendPrivateGroupCaptureEvent(type) {
+  if (!['screenshot','screen-recording'].includes(type) || document.hidden || !tabFocused) return false;
+  const state = loadAccountState();
+  const group = privateGroups.get(activePrivateGroupId);
+  const key = group?.keys?.[group?.keyVersion];
+  if (!state || !group || !key || !document.getElementById('group-chat')?.classList.contains('open')) return false;
+  const messageId = newMsgId();
+  const ciphertext = await encryptPrivateGroupValue(key, { type:'group-capture-event', event:type });
+  const result = await api('/api/groups/send', {
+    accountId:state.accountId, sessionToken:state.sessionToken, groupId:group.id,
+    messageId, ciphertext, privacyEvent:type,
+  });
+  if (result.error) throw new Error(result.error);
+  group.messages = [...(group.messages || []), {
+    id:messageId, senderId:state.accountId, captureEvent:type,
+    createdAt:result.createdAt, keyVersion:result.keyVersion,
+  }];
+  group.updatedAt = result.createdAt;
+  renderPrivateGroupMessages(group);
+  renderVaultList();
+  return true;
 }
 
 // Search matches a name or any part of a Private Number (digits only, so

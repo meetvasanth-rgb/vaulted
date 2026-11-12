@@ -205,6 +205,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             self?.emitSpeakerState(success: true)
         })
         observers.append(NotificationCenter.default.addObserver(
+            forName: UIApplication.userDidTakeScreenshotNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard self?.webReady == true else { return }
+            self?.emit(name: "vaultlix:native-capture", detail: ["type": "screenshot"])
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIScreen.capturedDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard self?.webReady == true else { return }
+            self?.emit(name: "vaultlix:native-capture", detail: [
+                "type": "screen-recording",
+                "active": UIScreen.main.isCaptured,
+            ])
+        })
+        observers.append(NotificationCenter.default.addObserver(
             forName: .vaultlixRemoteVideoTrack, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, let track = note.object as? RTCVideoTrack else { return }

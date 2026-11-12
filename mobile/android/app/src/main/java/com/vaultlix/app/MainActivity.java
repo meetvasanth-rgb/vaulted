@@ -1,5 +1,6 @@
 package com.vaultlix.app;
 
+import android.app.Activity;
 import android.app.NotificationManager;
 import android.hardware.biometrics.BiometricPrompt;
 import android.Manifest;
@@ -32,6 +33,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
@@ -72,6 +74,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.function.Consumer;
 
 public class MainActivity extends BridgeActivity {
     private static final int SAVE_MEDIA_REQUEST = 4107;
@@ -98,6 +101,11 @@ public class MainActivity extends BridgeActivity {
     private SecureMessageStore secureMessageStore;
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
+    private Activity.ScreenCaptureCallback screenCaptureCallback;
+    private Consumer<Integer> screenRecordingCallback;
+    private boolean screenCaptureRegistered;
+    private boolean screenRecordingRegistered;
+    private boolean screenRecordingVisible;
     private SpeechRecognizer speechRecognizer;
     private SpeechRecognizer voiceTranscriptRecognizer;
     private ParcelFileDescriptor voiceTranscriptAudio;
@@ -267,6 +275,18 @@ public class MainActivity extends BridgeActivity {
 
     public static boolean isAppInForeground() {
         return appInForeground;
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        registerCaptureDetection();
+    }
+
+    @Override
+    public void onStop() {
+        unregisterCaptureDetection();
+        super.onStop();
     }
 
     @Override
@@ -852,6 +872,55 @@ public class MainActivity extends BridgeActivity {
         if (path == null || path.equals("/") || path.startsWith("/join/")
                 || path.matches("/invite/[A-HJ-NP-Za-hj-np-z2-9]{6}/?")) return true;
         return path.matches("/[A-Za-z0-9][A-Za-z0-9._-]{2,30}[A-Za-z0-9]/?");
+    }
+
+    private void registerCaptureDetection() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && !screenCaptureRegistered) {
+            screenCaptureCallback = () -> emitNativeCapture("screenshot", null);
+            registerScreenCaptureCallback(getMainExecutor(), screenCaptureCallback);
+            screenCaptureRegistered = true;
+        }
+        if (Build.VERSION.SDK_INT >= 35 && !screenRecordingRegistered) {
+            screenRecordingCallback = state -> {
+                boolean visible = state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE;
+                if (visible == screenRecordingVisible) return;
+                screenRecordingVisible = visible;
+                emitNativeCapture("screen-recording", visible);
+            };
+            WindowManager manager = getSystemService(WindowManager.class);
+            if (manager != null) {
+                int initialState = manager.addScreenRecordingCallback(getMainExecutor(), screenRecordingCallback);
+                screenRecordingVisible = initialState == WindowManager.SCREEN_RECORDING_STATE_VISIBLE;
+                screenRecordingRegistered = true;
+            }
+        }
+    }
+
+    private void unregisterCaptureDetection() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && screenCaptureRegistered) {
+            unregisterScreenCaptureCallback(screenCaptureCallback);
+            screenCaptureRegistered = false;
+        }
+        if (Build.VERSION.SDK_INT >= 35 && screenRecordingRegistered) {
+            WindowManager manager = getSystemService(WindowManager.class);
+            if (manager != null) manager.removeScreenRecordingCallback(screenRecordingCallback);
+            screenRecordingRegistered = false;
+            screenRecordingVisible = false;
+        }
+    }
+
+    private void emitNativeCapture(String type, Boolean active) {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        JSONObject detail = new JSONObject();
+        try {
+            detail.put("type", type);
+            if (active != null) detail.put("active", active);
+        } catch (Exception ignored) {
+            return;
+        }
+        String script = "window.dispatchEvent(new CustomEvent('vaultlix:native-capture',{detail:"
+                + detail + "}));";
+        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(script, null));
     }
 
     private boolean hasOnDeviceSpeechRecognition() {
