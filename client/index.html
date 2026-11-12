@@ -6965,6 +6965,7 @@ function isRoomVisible(room) {
 }
 
 let nativeScreenRecordingActive = false;
+let pendingNativeScreenRecordingAlert = false;
 let lastNativeScreenshotAt = 0;
 
 function captureEventText(type, actor) {
@@ -6998,14 +6999,24 @@ async function handleNativeCapture(detail) {
     const active = detail?.active === true;
     if (active === nativeScreenRecordingActive) return;
     nativeScreenRecordingActive = active;
-    if (!active) return;
+    if (!active) {
+      pendingNativeScreenRecordingAlert = false;
+      return;
+    }
   } else if (type === 'screenshot') {
     const now = Date.now();
     if (now - lastNativeScreenshotAt < 750) return;
     lastNativeScreenshotAt = now;
   } else return;
 
-  if (document.hidden || !tabFocused) return;
+  // Starting a recording from iOS Control Centre briefly resigns the scene.
+  // The capture callback therefore arrives while WebKit is hidden/unfocused.
+  // Preserve that start edge and deliver it when the same conversation becomes
+  // visible again instead of silently discarding it.
+  if (document.hidden || !tabFocused) {
+    if (type === 'screen-recording') pendingNativeScreenRecordingAlert = true;
+    return;
+  }
   try {
     if (document.getElementById('group-chat')?.classList.contains('open')
         && typeof sendPrivateGroupCaptureEvent === 'function') {
@@ -7015,6 +7026,23 @@ async function handleNativeCapture(detail) {
     const room = getActiveRoom();
     if (room && isRoomVisible(room)) await sendDirectCaptureEvent(room, type);
   } catch (_) { toast('Capture alert could not be sent'); }
+}
+
+async function flushPendingNativeScreenRecordingAlert() {
+  if (!pendingNativeScreenRecordingAlert || document.hidden || !tabFocused) return;
+  pendingNativeScreenRecordingAlert = false;
+  try {
+    if (document.getElementById('group-chat')?.classList.contains('open')
+        && typeof sendPrivateGroupCaptureEvent === 'function') {
+      await sendPrivateGroupCaptureEvent('screen-recording');
+      return;
+    }
+    const room = getActiveRoom();
+    if (room && isRoomVisible(room)) await sendDirectCaptureEvent(room, 'screen-recording');
+  } catch (_) {
+    pendingNativeScreenRecordingAlert = true;
+    toast('Capture alert could not be sent');
+  }
 }
 
 window.addEventListener('vaultlix:native-capture', event => {
@@ -9694,6 +9722,7 @@ function resumeForegroundWork() {
   }
   hidePrivacyCover();
   tabFocused = true;
+  queueMicrotask(flushPendingNativeScreenRecordingAlert);
   lastInteractionTime = Date.now();
   const active = getActiveRoom();
   if (isRoomVisible(active)) {
