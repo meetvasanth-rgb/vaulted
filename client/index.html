@@ -19432,7 +19432,7 @@ function toggleVaultPreviews() {
 function isVisibleConversationRecord(rec) {
   if (!rec || rec.deleted) return false;
   if (rec.kind !== 'sys') return true;
-  if (rec.timerEvent === true || rec.contactEvent === true) return true;
+  if (rec.timerEvent === true || rec.contactEvent === true || rec.captureEvent) return true;
   // Other lifecycle events remain hidden; call history keeps its existing chips.
   return /^(?:Encrypted call|Missed(?: encrypted)? call|No answer|Call declined|Declined call|Caller cancelled|Cancel(?:l)?ed(?: encrypted)? call)\b/i.test(String(rec.content || ''));
 }

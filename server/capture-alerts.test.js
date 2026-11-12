@@ -62,4 +62,5 @@ test('the web bridge requires a visible conversation and deduplicates recording 
   assert.match(client, /if \(active === nativeScreenRecordingActive\) return/);
   assert.match(client, /if \(document\.hidden\) nativeScreenRecordingActive = false/);
   assert.match(client, /classList\.contains\('open'\)/);
+  assert.match(client, /rec\.timerEvent === true \|\| rec\.contactEvent === true \|\| rec\.captureEvent/);
 });
