@@ -94,17 +94,19 @@ test('large compressed videos remain downloadable and shareable in both native a
   assert.match(ios, /compressed\.count <= Self\.maxCompressedVideoBytes/);
 });
 
-test('message notifications and the in-app player use the supplied Vaultlix chime', () => {
+test('message media and system alerts use their supplied bundled sounds', () => {
   assert.match(messaging, /vaultlix_messages_universal_v2/);
   assert.match(messaging, /R\.raw\.vault_chime/);
+  assert.match(messaging, /R\.raw\.vault_tone_glow/);
   assert.match(server, /sound: tone === 'chime' \? 'vault_chime\.caf' : `vault_tone_\$\{tone\}\.caf`/);
-  assert.match(server, /sound: 'vault_chime'/);
+  assert.match(server, /sound: 'vault_tone_glow'/);
   assert.match(client, /return id === 'chime' \? '\/vault_chime\.mp3' : `\/tones\/\$\{id\}\.mp3`;/);
   assert.match(client, /fetch\(messageToneUrl\(id\), \{ cache:'force-cache' \}\)/);
   assert.match(client, /source\.buffer = buffer;[\s\S]*source\.start\(0\)/);
   assert.doesNotMatch(client.slice(client.indexOf('function playChime()'), client.indexOf('// ── TAB VISIBILITY')), /createOscillator/);
   assert.ok(fs.statSync(path.join(root, 'client', 'vault_chime.mp3')).size > 1000);
   assert.ok(fs.statSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'res', 'raw', 'vault_chime.wav')).size > 1000);
+  assert.ok(fs.statSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'res', 'raw', 'vault_tone_glow.wav')).size > 1000);
   assert.ok(fs.statSync(path.join(root, 'mobile', 'ios', 'App', 'App', 'Sounds', 'vault_chime.caf')).size > 1000);
 });
 

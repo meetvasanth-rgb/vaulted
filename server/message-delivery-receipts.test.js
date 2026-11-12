@@ -63,7 +63,8 @@ test('a call push stays data-only (unchanged behavior)', async () => {
 test('a push with no msgId and not a call (e.g. a connection request) keeps the existing system-rendered path', async () => {
   const message = await buildFcmMessage({ title: 'Vaultlix', body: 'New connection request', connectionRequest: true, requestId: 'req1' });
   assert.deepEqual(message.notification, { title: 'Vaultlix', body: 'New connection request' });
-  assert.equal(message.android.notification.channelId, 'vaultlix_messages_universal_v2');
+  assert.equal(message.android.notification.channelId, 'vaultlix_system_glow_v1');
+  assert.equal(message.android.notification.sound, 'vault_tone_glow');
 });
 
 test('an app announcement is data-only so Android can reliably render its sound and thumbnail natively', async () => {
@@ -93,7 +94,10 @@ test('Android build 120 advertises native announcement support while older build
 
 test('Android announcements use a dedicated audible channel, safe thumbnail download, and update deep link', () => {
   assert.match(android, /if \("true"\.equalsIgnoreCase\(data\.get\("announcement"\)\)\) \{\s*showAnnouncementNotification\(data\);\s*return;/);
-  assert.match(android, /UPDATE_CHANNEL_ID = "vaultlix_updates_v1"/);
+  assert.match(android, /UPDATE_CHANNEL_ID = "vaultlix_updates_glow_v2"/);
+  assert.match(android, /SYSTEM_CHANNEL_ID = "vaultlix_system_glow_v1"/);
+  assert.match(android, /R\.raw\.vault_tone_glow/);
+  assert.match(androidActivity, /VaultlixMessagingService\.ensureSystemNotificationChannels\(this\)/);
   assert.match(android, /private void showAnnouncementNotification\(Map<String, String> data\)/);
   assert.match(android, /appendQueryParameter\("update", updateId\.isEmpty\(\) \? "latest" : updateId\)/);
   assert.match(android, /builder\.setLargeIcon\(thumbnail\)/);
@@ -125,7 +129,8 @@ test('FCM forwards the capture type so Android preserves the security alert word
   const message = await buildFcmMessage({ title:'Vaultlix', body:'A screenshot was taken in your private conversation.', code:'room1', msgId:'capture1', privacyEvent:'screenshot' });
   assert.equal(message.data.privacyEvent, 'screenshot');
   assert.deepEqual(message.notification, { title:'Vaultlix', body:'A screenshot was taken in your private conversation.' });
-  assert.equal(message.android.notification.channelId, 'vaultlix_messages_universal_v2');
+  assert.equal(message.android.notification.channelId, 'vaultlix_system_glow_v1');
+  assert.equal(message.android.notification.sound, 'vault_tone_glow');
 });
 
 test('room push destinations are persisted so a PostgreSQL reload cannot discard Android FCM registration', () => {

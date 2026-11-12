@@ -3,6 +3,7 @@ package com.vaultlix.app;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Bitmap;
@@ -39,7 +40,13 @@ public class VaultlixMessagingService extends MessagingService {
     // quieter chime needs a new channel id for installs that already have v2.
     private static final String MESSAGE_CHANNEL_ID = "vaultlix_messages_universal_v2";
     private static final String CHIME_CHANNEL_ID = "vaultlix_messages_universal_v3";
-    private static final String UPDATE_CHANNEL_ID = "vaultlix_updates_v1";
+    // System-rendered FCM alerts (capture warnings, connection requests and
+    // session notices) must use a channel that already exists before Firebase
+    // receives the push. MainActivity creates this channel on every launch.
+    // Keep a fresh id because Android never updates the sound of an existing
+    // notification channel after it has been created on a device.
+    public static final String SYSTEM_CHANNEL_ID = "vaultlix_system_glow_v1";
+    private static final String UPDATE_CHANNEL_ID = "vaultlix_updates_glow_v2";
     private static final String MISSED_CALL_CHANNEL_ID = "vaultlix_missed_calls_silent_v1";
     public static final String EXTRA_CALL_NOTIFICATION_ID = "callNotificationId";
 
@@ -142,21 +149,39 @@ public class VaultlixMessagingService extends MessagingService {
 
     private String ensureUpdateChannel(NotificationManager manager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return MESSAGE_CHANNEL_ID;
-        if (manager.getNotificationChannel(UPDATE_CHANNEL_ID) != null) return UPDATE_CHANNEL_ID;
+        ensureSystemNotificationChannels(this);
+        return UPDATE_CHANNEL_ID;
+    }
+
+    /**
+     * Creates the Glow-backed channels before a system-rendered FCM push can
+     * arrive. This is called from MainActivity.onCreate(), not only from the
+     * messaging service, because Firebase does not start the service for a
+     * notification+data payload while Vaultlix is frozen in the background.
+     */
+    public static void ensureSystemNotificationChannels(Context context) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        createGlowChannel(context, manager, SYSTEM_CHANNEL_ID, "Vaultlix alerts");
+        createGlowChannel(context, manager, UPDATE_CHANNEL_ID, "Vaultlix updates");
+    }
+
+    private static void createGlowChannel(Context context, NotificationManager manager, String id, String name) {
+        if (manager.getNotificationChannel(id) != null) return;
         NotificationChannel channel = new NotificationChannel(
-                UPDATE_CHANNEL_ID,
-                "Vaultlix updates",
+                id,
+                name,
                 NotificationManager.IMPORTANCE_HIGH
         );
         channel.enableVibration(true);
-        Uri sound = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.vault_chime);
+        Uri sound = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.vault_tone_glow);
         channel.setSound(sound, new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build());
         channel.setLockscreenVisibility(NotificationCompat.VISIBILITY_PUBLIC);
         manager.createNotificationChannel(channel);
-        return UPDATE_CHANNEL_ID;
     }
 
     private void createChimeChannel(NotificationManager manager, String id, String name) {
@@ -351,7 +376,7 @@ public class VaultlixMessagingService extends MessagingService {
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent);
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            builder.setSound(Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.vault_chime));
+            builder.setSound(Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.vault_tone_glow));
             builder.setVibrate(new long[]{0, 180, 90, 180});
         }
         // Alert immediately. A remote image is an enhancement and must never

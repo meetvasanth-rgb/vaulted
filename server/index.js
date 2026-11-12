@@ -962,10 +962,10 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         ...(parsed.thumbnailUrl ? { imageUrl:String(parsed.thumbnailUrl) } : {}),
       };
       message.android.notification = {
-        channelId: 'vaultlix_messages_universal_v2',
+        channelId: 'vaultlix_system_glow_v1',
         icon: 'ic_stat_vaultlix',
         color: '#682C43',
-        sound: 'vault_chime',
+        sound: 'vault_tone_glow',
         ...(parsed.thumbnailUrl ? { imageUrl:String(parsed.thumbnailUrl) } : {}),
         ...(parsed.tag ? { tag:String(parsed.tag) } : {}),
       };

@@ -163,6 +163,10 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         showLaunchCover();
         activeInstance = new WeakReference<>(this);
+        // System-rendered FCM alerts do not start VaultlixMessagingService on
+        // a frozen app. Create their Glow channel while the app is open so a
+        // later screenshot/admin alert can use it reliably on OxygenOS too.
+        VaultlixMessagingService.ensureSystemNotificationChannels(this);
         secureMessageStore = new SecureMessageStore(this);
         nativeCallRoomStore = new NativeCallRoomStore(this);
         nativeCallEngine = NativeWebRtcCallEngine.get(this);
