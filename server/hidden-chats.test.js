@@ -338,6 +338,7 @@ test('the conversation menu offers Hide chat / Unhide chat and Settings manages 
 test('server: a hidden chat\'s pushes stop naming the other person', () => {
   assert.match(server, /if \(path==='\/api\/notification-privacy' && method==='POST'\) \{[\s\S]{0,200}!room\.members\.has\(d\.token\)\) return resErr\(res,'Not in conversation\.',403\)/);
   assert.match(server, /body: messageNotificationBody\(privacyEvent, senderLabel, mb\.hidePreview === true\)/);
+  assert.match(server, /hidePreview:!!privacyEvent \|\| mb\.hidePreview === true/);
   assert.match(server, /Incoming video call' : 'Incoming call'/);
   assert.match(server, /body: caller && caller\.name && !peerMember\.hidePreview \? `Missed call from/);
   assert.equal((server.match(/caller: peerMember\.hidePreview \? ''/g) || []).length, 4, 'incoming and missed-call data carry no caller name');

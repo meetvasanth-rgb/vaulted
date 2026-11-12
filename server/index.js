@@ -5772,7 +5772,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
         const senderLabel = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : null;
-        const payload = JSON.stringify({ title: 'Vaultlix', body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, privacyEvent, hidePreview:mb.hidePreview === true });
+        const title = privacyEvent === 'screenshot' ? 'Screenshot detected'
+          : privacyEvent === 'screen-recording' ? 'Screen recording detected' : 'Vaultlix';
+        // Older Android builds do not understand privacyEvent yet and would
+        // otherwise replace the security wording with "New message from …".
+        // A dedicated title plus hidden-preview fallback makes the alert clear
+        // and privacy-safe during the native rollout.
+        const payload = JSON.stringify({ title, body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, privacyEvent, hidePreview:!!privacyEvent || mb.hidePreview === true });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a

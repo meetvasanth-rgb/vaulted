@@ -118,7 +118,7 @@ test('groupId is never forwarded for a non-group push, even if a caller accident
 });
 
 test('the message push carries its id and explicit hidden-preview state', () => {
-  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: messageNotificationBody\(privacyEvent, senderLabel, mb\.hidePreview === true\), tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId, privacyEvent, hidePreview:mb\.hidePreview === true \}\);/);
+  assert.match(server, /const payload = JSON\.stringify\(\{ title, body: messageNotificationBody\(privacyEvent, senderLabel, mb\.hidePreview === true\), tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId, privacyEvent, hidePreview:!!privacyEvent \|\| mb\.hidePreview === true \}\);/);
 });
 
 test('FCM forwards the capture type so Android preserves the security alert wording', async () => {

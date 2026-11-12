@@ -63,6 +63,8 @@ test('Android keeps capture alerts visible and preserves their privacy-safe word
   const service = fs.readFileSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'vaultlix', 'app', 'VaultlixMessagingService.java'), 'utf8');
   assert.match(server, /privacyEvent: parsed\.privacyEvent === 'screenshot'/);
   assert.match(server, /msgId, privacyEvent, hidePreview/);
+  assert.match(server, /privacyEvent === 'screenshot' \? 'Screenshot detected'/);
+  assert.match(server, /hidePreview:!!privacyEvent \|\| mb\.hidePreview === true/);
   assert.match(service, /boolean privacyAlert = "screenshot"\.equals\(privacyEvent\) \|\| "screen-recording"\.equals\(privacyEvent\)/);
   assert.match(service, /MainActivity\.isAppInForeground\(\) && !privacyAlert/);
   assert.match(service, /if \(privacyAlert\) \{/);
