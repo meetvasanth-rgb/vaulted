@@ -266,7 +266,9 @@ public class VaultlixMessagingService extends MessagingService {
         // While Vaultlix is on screen the message already appears in the chat (or as the
         // in-app banner for another conversation). A system pop-up and sound for every
         // message on top of that was the annoying double alert.
-        if (MainActivity.isAppInForeground()) return;
+        String privacyEvent = safe(data.get("privacyEvent"));
+        boolean privacyAlert = "screenshot".equals(privacyEvent) || "screen-recording".equals(privacyEvent);
+        if (MainActivity.isAppInForeground() && !privacyAlert) return;
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager == null) return;
         String channelId = ensureMessageChannel(manager, chosenTone(data));
@@ -281,7 +283,11 @@ public class VaultlixMessagingService extends MessagingService {
         // an account rename and is already the authority used by incoming
         // calls, so use the same current label on the lock screen. Never let
         // this override the generic wording chosen for a hidden conversation.
-        if (hidePreview) {
+        if (privacyAlert) {
+            // Keep the server's generic security wording. Replacing it with
+            // the saved peer name would turn a screenshot alert back into an
+            // ordinary "New message" notification on Android.
+        } else if (hidePreview) {
             body = "New message";
         } else if (savedRoom != null && !savedRoom.peerName.isEmpty()) {
             body = "New message from " + savedRoom.peerName;

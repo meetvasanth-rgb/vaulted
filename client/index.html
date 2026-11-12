@@ -26589,7 +26589,10 @@ async function closeActiveRoom() {
   const eraseChoice = await askCloseEraseChoice(room);
   if (!eraseChoice) return;
   const erasedPeerNumber = room.peerPrivateNumber;
-  try { await api('/api/close', { code: room.code, token: room.token, name: room.myName }); } catch(e) {}
+  let closeResult;
+  try { closeResult = await api('/api/close', { code: room.code, token: room.token, name: room.myName }); }
+  catch(e) { closeResult = { error:e.message || 'Conversation could not be erased.' }; }
+  if (closeResult?.error) { toast(closeResult.error); return; }
   removeRoomFromState(room.code);
   if (eraseChoice === 'contact') removeContact(erasedPeerNumber);
   // #chat-body still shows this room's messages at this point — the vanish
@@ -26647,7 +26650,7 @@ function clearRoomChatLocally(room) {
   secureNativeClearConversation(room.code);
   for (const handle of room.msgTimers.values()) clearTimeout(handle);
   room.msgTimers.clear();
-  room.messages = [];
+  room.messages = room.messages.filter(record => record.captureEvent);
   room.historyOldestSeq = undefined;
   room.historyEarlierExhausted = false;
   room.deleteLedger.clear();
@@ -26655,8 +26658,7 @@ function clearRoomChatLocally(room) {
   room.unread = 0; room.unreadSystemCount = 0;
   persistRoomSeq(room);
   if (room.code === activeRoomCode) {
-    const body = document.getElementById('chat-body');
-    if (body) body.innerHTML = '';
+    renderChatBody(room);
   }
   renderRoomTabs();
   updateDocumentTitle();

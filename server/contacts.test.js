@@ -269,7 +269,7 @@ test('the other side sees the notice as their own action, and notices are visibl
   const branch = client.slice(client.indexOf("if (parsed.contactEvent === 'reopened') {"), client.indexOf('const callRecord = {', client.indexOf("if (parsed.contactEvent === 'reopened') {")));
   assert.match(branch, /fromMe \? `\$\{actor\} reopened this chat · \$\{time\}` : `You reopened this chat · \$\{time\}`/);
   assert.match(branch, /contactEvent:true/);
-  assert.match(client, /if \(rec\.timerEvent === true \|\| rec\.contactEvent === true\) return true;/);
+  assert.match(client, /if \(rec\.timerEvent === true \|\| rec\.contactEvent === true \|\| rec\.captureEvent\) return true;/);
 });
 
 test('the notice is queued for the room the automatic accept creates, and flushed on poll', () => {

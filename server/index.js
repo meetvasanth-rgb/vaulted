@@ -102,6 +102,15 @@ class ConversationMembers extends Map {
 function messageFromToken(message, token) {
   return !!message && sameConversationToken(message.from, token);
 }
+function isPrivacyCaptureEvent(message) {
+  return message?.privacyEvent === 'screenshot' || message?.privacyEvent === 'screen-recording';
+}
+function isUnacknowledgedPrivacyCaptureEvent(message) {
+  return isPrivacyCaptureEvent(message) && !message.readAt;
+}
+function hasUnacknowledgedPrivacyCaptureEventFrom(room, token) {
+  return !!room?.msgs?.some(message => isUnacknowledgedPrivacyCaptureEvent(message) && messageFromToken(message, token));
+}
 function reactionsForViewer(reactions, token) {
   return Object.fromEntries(Object.entries(reactions || {}).map(([reactor, value]) => [
     sameConversationToken(reactor, token) ? token : reactor, value,
@@ -485,7 +494,9 @@ function pushRoomMsg(room, msg) {
 
   while (room.msgs.length > 100 || room.byteSize > ROOM_BYTE_BUDGET) {
     if (!room.msgs.length) break; // defensive — byteSize should already be 0 here too
-    const removed = room.msgs.shift();
+    const removableIndex = room.msgs.findIndex(message => !isUnacknowledgedPrivacyCaptureEvent(message));
+    if (removableIndex < 0) break;
+    const [removed] = room.msgs.splice(removableIndex, 1);
     const freed = removed.content ? removed.content.length : 0;
     room.byteSize -= freed;
     totalByteSize -= freed;
@@ -495,11 +506,13 @@ function pushRoomMsg(room, msg) {
   while (totalByteSize > GLOBAL_BYTE_BUDGET) {
     let largest = null;
     for (const r of rooms.values()) {
-      if (!r.msgs.length) continue;
+      if (!r.msgs.some(message => !isUnacknowledgedPrivacyCaptureEvent(message))) continue;
       if (!largest || (r.byteSize || 0) > (largest.byteSize || 0)) largest = r;
     }
     if (!largest) break; // defensive — totalByteSize should already be 0 if nothing has content left
-    const removed = largest.msgs.shift();
+    const removableIndex = largest.msgs.findIndex(message => !isUnacknowledgedPrivacyCaptureEvent(message));
+    if (removableIndex < 0) break;
+    const [removed] = largest.msgs.splice(removableIndex, 1);
     const freed = removed.content ? removed.content.length : 0;
     largest.byteSize = Math.max(0, (largest.byteSize || 0) - freed);
     totalByteSize -= freed;
@@ -514,7 +527,12 @@ function pushRoomMsg(room, msg) {
 // /api/poll) reloads the conversation from PostgreSQL, so in any busy chat the
 // peer was never told about a "delete for everyone".
 function withRetainedTombstones(liveMessages, tombstones) {
-  const live = [...liveMessages].sort((left, right) => (left.seq || 0) - (right.seq || 0)).slice(-100);
+  const ordered = [...liveMessages].sort((left, right) => (left.seq || 0) - (right.seq || 0));
+  const protectedEvents = ordered.filter(message =>
+    (message?.privacyEvent === 'screenshot' || message?.privacyEvent === 'screen-recording') && !message.readAt);
+  const protectedIds = new Set(protectedEvents.map(message => message.id));
+  const live = [...ordered.filter(message => !protectedIds.has(message.id)).slice(-100), ...protectedEvents]
+    .sort((left, right) => (left.seq || 0) - (right.seq || 0));
   const liveIds = new Set(live.map(message => message.id));
   const kept = (tombstones || []).filter(tombstone => !liveIds.has(tombstone.id))
     .sort((left, right) => (left.deletionSeq || 0) - (right.deletionSeq || 0));
@@ -528,10 +546,12 @@ function withRetainedTombstones(liveMessages, tombstones) {
 async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
   if (!postgresEnabled) return;
   const databaseClient = client || postgresStore.pool;
-  const [durableMessages, tombstones] = await Promise.all([
+  const [recentMessages, protectedEvents, tombstones] = await Promise.all([
     postgresStore.loadEncryptedMessages(roomCode, 100, Date.now(), databaseClient),
+    postgresStore.loadUnacknowledgedPrivacyEvents(roomCode, 100, Date.now(), databaseClient),
     postgresStore.loadDeletionTombstones(roomCode, Date.now(), databaseClient),
   ]);
+  const durableMessages = [...new Map([...recentMessages, ...protectedEvents].map(message => [message.id, message])).values()];
   const tokenByHash = new Map();
   for (const tokenHash of room.members.keys()) tokenByHash.set(tokenHash, tokenHash);
 
@@ -555,6 +575,7 @@ async function hydrateRoomMessagesFromPostgres(roomCode, room, client = null) {
       ts:durable.ts,
       expiresAt:durable.expiresAt,
       deleteTimerSeconds:durable.deleteTimerSeconds,
+      privacyEvent:durable.privacyEvent,
       deliveredAt:durable.deliveredAt ?? existing?.deliveredAt ?? null,
       readAt:durable.readAt ?? existing?.readAt ?? null,
       reactions:durable.reactions || existing?.reactions || {},
@@ -594,10 +615,12 @@ async function loadConversationFromPostgres(roomCode, client = null) {
     activeCall:false, ringingUntil:0, callTerminal:null,
     nativeCallId:null, nativeCalleeToken:null, nativeInviteId:null,
   };
-  const [durableMessages, tombstones] = await Promise.all([
+  const [recentMessages, protectedEvents, tombstones] = await Promise.all([
     postgresStore.loadEncryptedMessages(roomCode, 100, Date.now(), client || postgresStore.pool),
+    postgresStore.loadUnacknowledgedPrivacyEvents(roomCode, 100, Date.now(), client || postgresStore.pool),
     postgresStore.loadDeletionTombstones(roomCode, Date.now(), client || postgresStore.pool),
   ]);
+  const durableMessages = [...new Map([...recentMessages, ...protectedEvents].map(message => [message.id, message])).values()];
   room.msgs = withRetainedTombstones(durableMessages.map(message => {
     const member = room.members.get(message.senderTokenHash);
     const sentAt = new Date(message.ts);
@@ -606,6 +629,7 @@ async function loadConversationFromPostgres(roomCode, client = null) {
       name:member?.name || null, content:message.content, viewOnce:message.viewOnce,
       time:`${sentAt.getHours().toString().padStart(2,'0')}:${sentAt.getMinutes().toString().padStart(2,'0')}`,
       ts:message.ts, expiresAt:message.expiresAt,
+      deleteTimerSeconds:message.deleteTimerSeconds, privacyEvent:message.privacyEvent,
       deliveredAt:message.deliveredAt, readAt:message.readAt,
       reactions:message.reactions || {}, reactionSeq:message.reactionSequence || 0,
       readReported:false,
@@ -895,6 +919,8 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
         callId: String(parsed.callId || ''),
         inviteId: String(parsed.inviteId || ''),
         msgId: String(parsed.msgId || ''),
+        privacyEvent: parsed.privacyEvent === 'screenshot' || parsed.privacyEvent === 'screen-recording'
+          ? parsed.privacyEvent : '',
         tone: messageToneForPush(member, 'android'),
         connectionRequest: parsed.connectionRequest ? 'true' : 'false',
         requestId: parsed.connectionRequest ? String(parsed.requestId || '') : '',
@@ -1030,7 +1056,12 @@ function hasPushDestination(member) {
 }
 
 function shouldSendMessagePush(privacyEvent, lastSeen, now = Date.now()) {
-  return !privacyEvent || now - Number(lastSeen || 0) >= 8000;
+  // A recent poll does not prove that the conversation is still visible: on
+  // Android the app may have just moved to the background or the device may
+  // have been locked. A capture alert is security-sensitive and has only one
+  // opportunity to wake the recipient, so never suppress its push based on
+  // the last-seen timestamp.
+  return true;
 }
 
 function messageNotificationBody(privacyEvent, senderName, hidePreview = false) {
@@ -2754,7 +2785,7 @@ setInterval(async () => {
     // explicit revoke (/api/revoke-link) or Close & erase. Otherwise the
     // whole point of a "permanent room" (reopen it weeks later, still
     // there) breaks the first time both people go quiet for a few days.
-    if (r.persistent) continue;
+    if (r.persistent || r.msgs.some(isUnacknowledgedPrivacyCaptureEvent)) continue;
     const ttl = r.isNamed ? NAMED_ROOM_TTL : ONE_TIME_ROOM_TTL;
     if (now - r.lastActivity > ttl) { destroyRoom(k); console.log(`Conversation ${logCode(k)} expired`); }
   }
@@ -2775,6 +2806,7 @@ setInterval(async () => {
 // setting changes. Both local countdowns and the PostgreSQL sweep use the
 // same policy; deletion tombstones synchronize the result to both peers.
 function messageDeleteTimer(room, msg) {
+  if (isPrivacyCaptureEvent(msg)) return 0;
   if (Number.isFinite(msg.deleteTimerSeconds)) return Math.max(0, msg.deleteTimerSeconds);
   // Legacy records only inherit the old server rule, never a newer setting.
   return msg.ts >= (room.deleteTimerSetAt || 0) ? Math.max(0, room.deleteTimer || 0) : 0;
@@ -2784,7 +2816,7 @@ setInterval(() => {
   for (const [roomCode, room] of rooms) {
     let changed = false;
     for (const msg of room.msgs) {
-      if (msg.type !== 'message' || msg.deleted || !msg.readAt) continue;
+      if (msg.type !== 'message' || msg.deleted || isPrivacyCaptureEvent(msg) || !msg.readAt) continue;
       const seconds = messageDeleteTimer(room, msg);
       if (seconds > 0 && now - msg.readAt >= seconds * 1000) {
         deleteRoomMsgContent(room, msg);
@@ -4037,7 +4069,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         if (await objectStorage.sizeOf(pending.objectKey) !== pending.size) return resErr(res, 'Encrypted attachment upload is incomplete.', 409);
       } catch (error) { return resErr(res, 'Encrypted attachment upload is incomplete.', 409); }
     }
-    const group = await groupStore.send(d.groupId, d.accountId, { id:d.messageId, ciphertext:d.ciphertext, attachmentId:d.attachmentId || null });
+    const group = await groupStore.send(d.groupId, d.accountId, {
+      id:d.messageId, ciphertext:d.ciphertext, attachmentId:d.attachmentId || null, privacyEvent,
+    });
     if (!group) return resErr(res, 'This group needs a new encryption key before messages can continue.', 409);
     if (pending && !await groupStore.markAttachmentAttached(pending.id)) return resErr(res, 'Encrypted attachment could not be finalized.', 409);
     for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
@@ -5691,7 +5725,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, privacyEvent, deleteTimerSeconds:room.deleteTimer || 0, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, privacyEvent, deleteTimerSeconds:privacyEvent ? 0 : (room.deleteTimer || 0), time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
     if (postgresEnabled) {
       seq = await postgresStore.appendEncryptedMessage(d.code, d.token, message, room.dbClient || null);
       message.seq = seq;
@@ -5738,7 +5772,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
         const senderLabel = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : null;
-        const payload = JSON.stringify({ title: 'Vaultlix', body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, hidePreview:mb.hidePreview === true });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: messageNotificationBody(privacyEvent, senderLabel, mb.hidePreview === true), tag: `${d.code}-${msgId}`, code: d.code, msgId, privacyEvent, hidePreview:mb.hidePreview === true });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a
@@ -5950,6 +5984,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const msg = room.msgs.find(mm => mm.id === d.msgId && mm.type === 'message');
     if (!msg) return resErr(res,'Message not found.',404);
     if (!messageFromToken(msg, d.token)) return resErr(res,'Only the sender can delete this for everyone.',403);
+    if (isPrivacyCaptureEvent(msg)) return resErr(res,'Screenshot and screen-recording alerts cannot be deleted.',409);
     const deletedAt = Date.now();
     let deletionSequence = room.deletionSeq + 1;
     if (postgresEnabled) deletionSequence = await postgresStore.deleteEncryptedMessage(d.code, msg.id, deletionSequence, deletedAt, deletedAt + DELETION_TOMBSTONE_TTL_MS, room.dbClient || null);
@@ -6044,9 +6079,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!room) return resErr(res,'Conversation not found.',404);
     const m = room.members.get(d.token);
     if (!m) return resErr(res,'Not in conversation.',403);
-    room.msgs = [];
-    totalByteSize = Math.max(0, totalByteSize - (room.byteSize || 0)); // this room's share is gone too
-    room.byteSize = 0; // everything that byte total was tracking is gone with room.msgs
+    const previousBytes = room.byteSize || 0;
+    room.msgs = room.msgs.filter(isPrivacyCaptureEvent);
+    room.byteSize = room.msgs.reduce((sum, message) => sum + (message.content ? message.content.length : 0), 0);
+    totalByteSize = Math.max(0, totalByteSize - previousBytes + room.byteSize);
     room.clearedAt = Date.now();
     if (postgresEnabled) await postgresStore.clearConversationMessages(d.code, room.clearedAt, room.dbClient || null);
     room.lastActivity = Date.now();
@@ -6339,7 +6375,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // silently idempotent (always {ok:true}) either way, so this doesn't
     // leak whether a given code currently exists to an unauthenticated caller.
     const room = await ensureConversationLoaded(d.code);
-    if (room && room.members.has(d.token)) destroyRoom(d.code);
+    if (room && room.members.has(d.token)) {
+      if (hasUnacknowledgedPrivacyCaptureEventFrom(room, d.token)) {
+        return resErr(res,'A capture alert is waiting for the other participant to open it. This conversation cannot be erased yet.',409,
+          { pendingPrivacyAlert:true });
+      }
+      destroyRoom(d.code);
+    }
     return res200(res,{ok:true});
   }
 
@@ -6380,6 +6422,10 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!room) return resErr(res,'Conversation not found.',404);
     if (!room.members.has(d.token)) return resErr(res,'Not in conversation.',403);
     if (!room.persistent) return resErr(res,'This conversation is not persistent.',400);
+    if (hasUnacknowledgedPrivacyCaptureEventFrom(room, d.token)) {
+      return resErr(res,'A capture alert is waiting for the other participant to open it. This link cannot be revoked yet.',409,
+        { pendingPrivacyAlert:true });
+    }
     destroyRoom(d.code);
     console.log(`Anon Link revoked: ${logCode(d.code)}`);
     return res200(res,{ok:true});

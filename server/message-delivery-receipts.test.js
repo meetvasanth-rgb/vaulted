@@ -118,7 +118,13 @@ test('groupId is never forwarded for a non-group push, even if a caller accident
 });
 
 test('the message push carries its id and explicit hidden-preview state', () => {
-  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: mb\.hidePreview \|\| !senderLabel \? 'New message' : `New message from \$\{senderLabel\}`, tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId, hidePreview:mb\.hidePreview === true \}\);/);
+  assert.match(server, /const payload = JSON\.stringify\(\{ title: 'Vaultlix', body: messageNotificationBody\(privacyEvent, senderLabel, mb\.hidePreview === true\), tag: `\$\{d\.code\}-\$\{msgId\}`, code: d\.code, msgId, privacyEvent, hidePreview:mb\.hidePreview === true \}\);/);
+});
+
+test('FCM forwards the capture type so Android preserves the security alert wording', async () => {
+  const message = await buildFcmMessage({ title:'Vaultlix', body:'A screenshot was taken in your private conversation.', code:'room1', msgId:'capture1', privacyEvent:'screenshot' });
+  assert.equal(message.data.privacyEvent, 'screenshot');
+  assert.equal(message.notification, undefined);
 });
 
 test('Android builds the notification itself and reports delivery for a data-only message, using the room token from NativeCallRoomStore (not the WebView)', () => {

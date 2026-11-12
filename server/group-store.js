@@ -183,7 +183,7 @@ class GroupStore {
     const group = await this.mutate(id, current => {
       if (!current.members.some(member => member.accountId === accountId && member.active)) return null;
       current.messages = current.messages.filter(message => {
-        if (!wanted.has(message.id) || message.senderId !== accountId) return true;
+        if (!wanted.has(message.id) || message.senderId !== accountId || message.privacyEvent) return true;
         removed.push({ id:message.id, attachmentId:message.attachmentId || null });
         return false;
       });
