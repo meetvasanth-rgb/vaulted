@@ -1,6 +1,7 @@
 package com.vaultlix.app;
 
 import android.app.NotificationManager;
+import android.app.Activity;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.ClipData;
@@ -22,6 +23,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowInsets;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
@@ -35,6 +37,7 @@ import org.json.JSONObject;
 import java.lang.ref.WeakReference;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.function.Consumer;
 
 public class MainActivity extends BridgeActivity {
     private static WeakReference<MainActivity> activeInstance = new WeakReference<>(null);
@@ -47,6 +50,11 @@ public class MainActivity extends BridgeActivity {
     private SecureMessageStore secureMessageStore;
     private NativeCallRoomStore nativeCallRoomStore;
     private NativeWebRtcCallEngine nativeCallEngine;
+    private Activity.ScreenCaptureCallback screenCaptureCallback;
+    private Consumer<Integer> screenRecordingCallback;
+    private boolean screenCaptureRegistered;
+    private boolean screenRecordingRegistered;
+    private boolean screenRecordingVisible;
     private final NativeWebRtcCallEngine.Listener nativeCallListener = new NativeWebRtcCallEngine.Listener() {
         @Override public void onState(String state) { emitNativeCallAction("native" + capitalize(state)); }
         @Override public void onConnected() { emitNativeCallAction("nativeConnected"); }
@@ -67,6 +75,18 @@ public class MainActivity extends BridgeActivity {
         nativeCallEngine.addListener(nativeCallListener);
         getBridge().getWebView().addJavascriptInterface(new AndroidCallBridge(), "VaultlixAndroid");
         openVaultlixInvite(getIntent());
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        registerCaptureDetection();
+    }
+
+    @Override
+    public void onStop() {
+        unregisterCaptureDetection();
+        super.onStop();
     }
 
     @Override
@@ -267,6 +287,54 @@ public class MainActivity extends BridgeActivity {
         }
 
         getBridge().getWebView().loadUrl(uri.toString());
+    }
+
+    private void registerCaptureDetection() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && !screenCaptureRegistered) {
+            screenCaptureCallback = () -> emitNativeCapture("screenshot", null);
+            registerScreenCaptureCallback(getMainExecutor(), screenCaptureCallback);
+            screenCaptureRegistered = true;
+        }
+        if (Build.VERSION.SDK_INT >= 35 && !screenRecordingRegistered) {
+            screenRecordingCallback = state -> {
+                boolean visible = state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE;
+                if (visible == screenRecordingVisible) return;
+                screenRecordingVisible = visible;
+                emitNativeCapture("screen-recording", visible);
+            };
+            WindowManager manager = getSystemService(WindowManager.class);
+            if (manager != null) {
+                int initialState = manager.addScreenRecordingCallback(getMainExecutor(), screenRecordingCallback);
+                screenRecordingVisible = initialState == WindowManager.SCREEN_RECORDING_STATE_VISIBLE;
+                screenRecordingRegistered = true;
+            }
+        }
+    }
+
+    private void unregisterCaptureDetection() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && screenCaptureRegistered) {
+            unregisterScreenCaptureCallback(screenCaptureCallback);
+            screenCaptureRegistered = false;
+        }
+        if (Build.VERSION.SDK_INT >= 35 && screenRecordingRegistered) {
+            WindowManager manager = getSystemService(WindowManager.class);
+            if (manager != null) manager.removeScreenRecordingCallback(screenRecordingCallback);
+            screenRecordingRegistered = false;
+            screenRecordingVisible = false;
+        }
+    }
+
+    private void emitNativeCapture(String type, Boolean active) {
+        JSONObject detail = new JSONObject();
+        try {
+            detail.put("type", type);
+            if (active != null) detail.put("active", active);
+        } catch (Exception ignored) {
+            return;
+        }
+        String script = "window.dispatchEvent(new CustomEvent('vaultlix:native-capture',{detail:"
+                + detail + "}));";
+        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(script, null));
     }
 
     private boolean isAllowedVaultlixPath(String path) {

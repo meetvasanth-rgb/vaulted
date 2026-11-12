@@ -32,6 +32,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler 
             VaultlixCallManager.shared.audioRouteDidChange()
             self?.emitSpeakerState(success: true)
         })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIApplication.userDidTakeScreenshotNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard self?.webReady == true else { return }
+            self?.emit(name: "vaultlix:native-capture", detail: ["type": "screenshot"])
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: UIScreen.capturedDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard self?.webReady == true else { return }
+            self?.emit(name: "vaultlix:native-capture", detail: [
+                "type": "screen-recording",
+                "active": UIScreen.main.isCaptured,
+            ])
+        })
 
         // PushKit can issue the token before the remote page finishes loading.
         // Re-emit the persisted value after the bridge has had time to attach.

@@ -534,6 +534,16 @@ function hasPushDestination(member) {
   return !!(member && (member.pushSub || member.apnsToken || member.fcmToken));
 }
 
+function shouldSendMessagePush(privacyEvent, lastSeen, now = Date.now()) {
+  return !privacyEvent || now - Number(lastSeen || 0) >= 8000;
+}
+
+function messageNotificationBody(privacyEvent, senderName) {
+  if (privacyEvent === 'screenshot') return 'A screenshot was taken in your private conversation.';
+  if (privacyEvent === 'screen-recording') return 'Screen recording started in your private conversation.';
+  return `New message from ${senderName}`;
+}
+
 function sendMemberPush(member, payload, { urgency = 'high', TTL = 60, label = 'push' } = {}) {
   const hasNativeDestination = !!(member && (member.apnsToken || member.fcmToken));
   // A synced vault credential can carry the same room member token from a
@@ -2952,6 +2962,8 @@ async function api(path, method, d, p, res, ip, headers) {
     // that same lookup — never fired. A client-chosen id removes the window.
     const clientMsgId = typeof d.msgId === 'string' ? d.msgId.replace(/[^a-zA-Z0-9_-]/g,'').slice(0,64) : '';
     const msgId = clientMsgId || uid();
+    const privacyEvent = d.privacyEvent === 'screenshot' || d.privacyEvent === 'screen-recording'
+      ? d.privacyEvent : null;
     // Call completion is observed independently by both native endpoints.
     // They deliberately submit the same stable call-event ID, so make the
     // encrypted message stream idempotent before allocating a new sequence.
@@ -2967,7 +2979,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: d.content, viewOnce: !!d.viewOnce, privacyEvent, time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
     if (postgresEnabled) await postgresStore.appendEncryptedMessage(d.code, d.token, message);
     room.seq = seq;
     pushRoomMsg(room, message);
@@ -2988,6 +3000,7 @@ async function api(path, method, d, p, res, ip, headers) {
     // encrypted record, inbox event, receipts and catch-up behavior are kept.
     if (d.suppressNotification !== true) for (const [t, mb] of room.members) {
       if (t !== d.token && hasPushDestination(mb)) {
+        if (!shouldSendMessagePush(privacyEvent, mb.lastSeen)) continue;
         // tag used to just be d.code (the room code) — same tag for every
         // message in the room, combined with sw.js's renotify:true. That
         // combination hits a long-standing, still-unresolved Chrome bug
@@ -3009,7 +3022,7 @@ async function api(path, method, d, p, res, ip, headers) {
         // handler itself, the moment the notification is shown, rather
         // than only when/if the page's own poll loop happens to run — see
         // the mark-delivered fetch in sw.js's push listener.
-        const payload = JSON.stringify({ title: 'Vaultlix', body: `New message from ${m.name}`, tag: `${d.code}-${msgId}`, code: d.code, msgId });
+        const payload = JSON.stringify({ title: 'Vaultlix', body: messageNotificationBody(privacyEvent, m.name), tag: `${d.code}-${msgId}`, code: d.code, msgId });
         // urgency:'high' asks the push service (Apple/Google's relay) to wake the
         // device promptly instead of batching/deferring — matters most on iOS,
         // which is more aggressive about delaying "normal" priority pushes to a

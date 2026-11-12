@@ -4302,6 +4302,59 @@ function isRoomVisible(room) {
   return !!room && room.code === activeRoomCode && document.getElementById('s-chat')?.classList.contains('active');
 }
 
+let nativeScreenRecordingActive = false;
+let lastNativeScreenshotAt = 0;
+
+function captureEventText(type, actor) {
+  return type === 'screen-recording'
+    ? `${actor} started screen recording`
+    : `${actor} took a screenshot`;
+}
+
+async function sendDirectCaptureEvent(room, type) {
+  if (!room?.sharedKey || !isRoomVisible(room) || document.hidden || !tabFocused) return false;
+  const msgId = newMsgId();
+  const encrypted = await encryptMsg(room, JSON.stringify({ type:'capture-event', event:type }));
+  const result = await api('/api/send', {
+    code:room.code, token:room.token, content:encrypted, msgId, privacyEvent:type,
+  });
+  if (result?.error) throw new Error(result.error);
+  const now = new Date();
+  const rec = {
+    id:msgId, kind:'sys', captureEvent:type, isMe:true, name:room.myName,
+    time:`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`,
+  };
+  room.messages.push(rec);
+  if (isRoomVisible(room)) renderMessageRecord(room, rec, true);
+  return true;
+}
+
+async function handleNativeCapture(detail) {
+  const type = detail?.type;
+  if (type === 'screen-recording') {
+    const active = detail?.active === true;
+    if (active === nativeScreenRecordingActive) return;
+    nativeScreenRecordingActive = active;
+    if (!active) return;
+  } else if (type === 'screenshot') {
+    const now = Date.now();
+    if (now - lastNativeScreenshotAt < 750) return;
+    lastNativeScreenshotAt = now;
+  } else return;
+
+  const room = getActiveRoom();
+  if (!room || !isRoomVisible(room) || document.hidden || !tabFocused) return;
+  try { await sendDirectCaptureEvent(room, type); }
+  catch (_) { toast('Capture alert could not be sent'); }
+}
+
+window.addEventListener('vaultlix:native-capture', event => {
+  handleNativeCapture(event.detail);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) nativeScreenRecordingActive = false;
+});
+
 // Populated only by the signed native iOS wrapper. Browser/PWA clients never
 // see this event and continue using Web Push exactly as before.
 let nativeVoipRegistration = null;
@@ -10571,7 +10624,9 @@ function renderMessageRecord(room, rec, animate) {
     if (rec.verifyNudge) return null;
     const div = document.createElement('div');
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
-    div.textContent = rec.content === 'Reconnected' ? i18n('reconnected') : rec.content;
+    div.textContent = rec.captureEvent
+      ? captureEventText(rec.captureEvent, rec.isMe ? 'You' : (rec.name || 'Someone'))
+      : (rec.content === 'Reconnected' ? i18n('reconnected') : rec.content);
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
     return div;
@@ -10964,6 +11019,9 @@ async function processIncomingContent(room, content, name, time, msgId) {
 
   try {
     const parsed = JSON.parse(decrypted);
+    if (parsed.type === 'capture-event' && ['screenshot','screen-recording'].includes(parsed.event)) {
+      return { ...base, kind:'sys', captureEvent:parsed.event };
+    }
     if (parsed.type === 'file' && parsed.data) {
       const isImage = (parsed.mime || '').startsWith('image/');
       return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, viewOnce: !!parsed.viewOnce, viewed: false };
