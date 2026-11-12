@@ -954,7 +954,8 @@ async function sendFcmNotification(member, payload, ttlSeconds) {
     // announcements; older builds keep Firebase's system-rendered path during
     // rollout. Connection requests and session-replaced notices are unchanged.
     const nativeAnnouncement = parsed.announcement && Number(member.announcementPushVersion) >= 1;
-    if (!parsed.isCall && !parsed.isCallEnd && !parsed.missedCall && !parsed.msgId && !parsed.groupId && (!parsed.announcement || !nativeAnnouncement)) {
+    const privacyNotification = parsed.privacyEvent === 'screenshot' || parsed.privacyEvent === 'screen-recording';
+    if (!parsed.isCall && !parsed.isCallEnd && !parsed.missedCall && (!parsed.msgId || privacyNotification) && !parsed.groupId && (!parsed.announcement || !nativeAnnouncement)) {
       message.notification = {
         title: parsed.title || 'Vaultlix',
         body: parsed.body || 'New activity',
@@ -5822,6 +5823,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!validated) return resErr(res, 'Invalid push subscription.', 400);
     const m = room.members.get(d.token);
     m.pushSub = validated;
+    if (postgresEnabled) {
+      await postgresStore.upsertConversationMember(d.code, m.slot, d.token, m, room.dbClient || postgresStore.pool);
+    }
     return res200(res, { ok: true });
   }
 
@@ -5841,6 +5845,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     m.voipToken = null;
     m.voipEnvironment = null;
     m.nativeRoomHandle = null;
+    if (postgresEnabled) {
+      await postgresStore.upsertConversationMember(d.code, m.slot, d.token, m, room.dbClient || postgresStore.pool);
+    }
     return res200(res, { ok: true });
   }
 
@@ -5856,6 +5863,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (await rateLimited(`notification-privacy:${d.token}`, 30, 60 * 1000)) return resErr(res,'Too many requests.',429);
     const m = room.members.get(d.token);
     if (d.hidden) m.hidePreview = true; else delete m.hidePreview;
+    if (postgresEnabled) {
+      await postgresStore.upsertConversationMember(d.code, m.slot, d.token, m, room.dbClient || postgresStore.pool);
+    }
     return res200(res, { ok: true, hidden: d.hidden });
   }
 
@@ -5885,6 +5895,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     } else {
       return resErr(res,'Invalid native platform.',400);
     }
+    if (postgresEnabled) {
+      await postgresStore.upsertConversationMember(d.code, m.slot, d.token, m, room.dbClient || postgresStore.pool);
+    }
     return res200(res, { ok: true });
   }
 
@@ -5902,6 +5915,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     m.voipToken = d.voipToken.toLowerCase();
     m.voipEnvironment = d.environment;
     m.nativeRoomHandle = d.roomHandle;
+    if (postgresEnabled) {
+      await postgresStore.upsertConversationMember(d.code, m.slot, d.token, m, room.dbClient || postgresStore.pool);
+    }
     console.log(`VoIP token registered for conversation ${logCode(d.code)} (${d.environment}).`);
     return res200(res, { ok: true });
   }

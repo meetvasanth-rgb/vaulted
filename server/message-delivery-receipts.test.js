@@ -124,7 +124,15 @@ test('the message push carries its id and explicit hidden-preview state', () => 
 test('FCM forwards the capture type so Android preserves the security alert wording', async () => {
   const message = await buildFcmMessage({ title:'Vaultlix', body:'A screenshot was taken in your private conversation.', code:'room1', msgId:'capture1', privacyEvent:'screenshot' });
   assert.equal(message.data.privacyEvent, 'screenshot');
-  assert.equal(message.notification, undefined);
+  assert.deepEqual(message.notification, { title:'Vaultlix', body:'A screenshot was taken in your private conversation.' });
+  assert.equal(message.android.notification.channelId, 'vaultlix_messages_universal_v2');
+});
+
+test('room push destinations are persisted so a PostgreSQL reload cannot discard Android FCM registration', () => {
+  const nativeRoute = server.slice(server.indexOf("if (path==='/api/native-push-subscribe'"), server.indexOf("// A PushKit token", server.indexOf("if (path==='/api/native-push-subscribe'")));
+  assert.match(nativeRoute, /await postgresStore\.upsertConversationMember\(d\.code, m\.slot, d\.token, m/);
+  const pushRoute = server.slice(server.indexOf("if (path==='/api/push-subscribe'"), server.indexOf("// POST \/api\/push-unsubscribe", server.indexOf("if (path==='/api/push-subscribe'")));
+  assert.match(pushRoute, /await postgresStore\.upsertConversationMember\(d\.code, m\.slot, d\.token, m/);
 });
 
 test('Android builds the notification itself and reports delivery for a data-only message, using the room token from NativeCallRoomStore (not the WebView)', () => {

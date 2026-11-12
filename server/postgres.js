@@ -817,6 +817,7 @@ class PostgresStore {
           ...(push.tone ? { tone:push.tone } : {}),
           ...(push.apnsTone ? { apnsTone:push.apnsTone } : {}),
           ...(push.fcmTone ? { fcmTone:push.fcmTone } : {}),
+          ...(Number(push.announcementPushVersion) >= 1 ? { announcementPushVersion:1 } : {}),
         }];
       }),
     };
@@ -923,6 +924,7 @@ class PostgresStore {
         tone:member.tone || undefined,
         apnsTone:member.apnsTone || undefined,
         fcmTone:member.fcmTone || undefined,
+        announcementPushVersion:Number(member.announcementPushVersion) >= 1 ? 1 : undefined,
       }),
       member.lastSeen || 0,
     ]);

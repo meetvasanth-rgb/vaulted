@@ -78,7 +78,7 @@ test('calls keep the standard sound whatever tone was chosen', async () => {
 });
 
 test('the Android push data carries the chosen tone', () => {
-  assert.match(server, /msgId: String\(parsed\.msgId \|\| ''\),\s*tone: messageToneForPush\(member, 'android'\),/);
+  assert.match(server, /msgId: String\(parsed\.msgId \|\| ''\),[\s\S]{0,180}tone: messageToneForPush\(member, 'android'\),/);
 });
 
 test('both native registration routes store the tone, in the live record and in what is persisted', () => {
@@ -429,7 +429,7 @@ test('every non-call chime caller goes through the Android guard in playChime', 
 // on top of the chat itself.
 test('Android shows no message notification while the app is on screen', () => {
   const oneToOne = extractBlock(android, 'private void showMessageNotification(', 'NotificationManager manager');
-  assert.match(oneToOne, /if \(MainActivity\.isAppInForeground\(\)\) return;/);
+  assert.match(oneToOne, /if \(MainActivity\.isAppInForeground\(\) && !privacyAlert\) return;/);
   const group = extractBlock(android, 'private void showGroupMessageNotification(', 'NotificationManager manager');
   assert.match(group, /if \(MainActivity\.isAppInForeground\(\)\) return;/);
   assert.match(mainActivity, /public void onPause\(\) \{[\s\S]*?appInForeground = false;/);
