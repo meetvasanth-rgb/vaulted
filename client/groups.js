@@ -1856,6 +1856,19 @@ function choosePrivateGroupProfileImage() {
   if (input) { input.value = ''; input.click(); }
 }
 
+function openPrivateGroupProfileImage() {
+  const group = privateGroups.get(activePrivateGroupId);
+  const image = safeProfileImageUri(group?.profileImage);
+  if (!image) { toast('This group has no image yet'); return; }
+  viewImage(image, { hideDownload:true, zIndex:10060 });
+}
+
+function handlePrivateGroupProfileAvatarTap() {
+  const group = privateGroups.get(activePrivateGroupId);
+  if (group?.profileImage) openPrivateGroupProfileImage();
+  else choosePrivateGroupProfileImage();
+}
+
 async function compressPrivateGroupProfileImage(file) {
   const source = await compressProfileImage(file);
   const image = new Image();
@@ -1928,10 +1941,10 @@ function openGroupMembers() {
   renderPrivateGroupProfile(group);
   const profileAvatar = document.getElementById('group-profile-avatar');
   if (profileAvatar) {
-    profileAvatar.disabled = !profileEditor;
-    profileAvatar.setAttribute('aria-label', profileEditor
-      ? (group.profileImage ? 'Change group image' : 'Add group image')
-      : 'Group image');
+    profileAvatar.disabled = !group.profileImage && !profileEditor;
+    profileAvatar.setAttribute('aria-label', group.profileImage
+      ? 'View group image'
+      : profileEditor ? 'Add group image' : 'Group image');
   }
   const profileButtons = document.getElementById('group-profile-buttons');
   if (profileButtons) profileButtons.innerHTML = profileEditor
