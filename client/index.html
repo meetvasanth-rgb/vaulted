@@ -4058,7 +4058,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="group-chat" id="group-chat" aria-hidden="true">
   <header class="group-chat-head">
     <button type="button" onclick="closePrivateGroup()" aria-label="Back">‹</button>
-    <div><span class="group-chat-avatar" id="group-chat-avatar"></span><span class="group-chat-head-copy"><div class="group-chat-title" id="group-chat-title">Private group</div><div class="group-chat-sub" id="group-chat-sub">End-to-end encrypted</div></span></div>
+    <div><button class="group-chat-avatar" id="group-chat-avatar" type="button" onclick="openPrivateGroupProfileImage()" aria-label="View group image"></button><span class="group-chat-head-copy"><div class="group-chat-title" id="group-chat-title">Private group</div><div class="group-chat-sub" id="group-chat-sub">End-to-end encrypted</div></span></div>
     <button type="button" onclick="openGroupMembers()" aria-label="Group members">⋮</button>
   </header>
   <main class="group-chat-body" id="group-chat-body"></main>

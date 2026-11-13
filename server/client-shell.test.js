@@ -49,7 +49,7 @@ test('deferred scripts retain their dependency order', () => {
 
 test('service worker recognizes the generated immutable assets', () => {
   const worker = fs.readFileSync(path.join(root, 'client/sw.js'), 'utf8');
-  assert.match(worker, /vaultlix-app-shell-v257/);
+  assert.match(worker, /vaultlix-app-shell-v258/);
   assert.match(worker, /shellHtml\.matchAll/);
   assert.match(worker, /compiledAssets\.map\(assetPath => cache\.add\(assetPath\)\)/);
   for (const assetPath of compiled.assets.keys()) {
@@ -75,4 +75,8 @@ test('private-group images are not resized and recompressed a second time', () =
   assert.match(groups, /async function compressPrivateGroupProfileImage\(file\) \{[\s\S]*return compressProfileImage\(file\);[\s\S]*\n\}/);
   assert.doesNotMatch(groups, /canvas\.width = 256; canvas\.height = 256/);
   assert.doesNotMatch(groups, /result\.length <= 96 \* 1024/);
+});
+
+test('group header image opens the preview for every member', () => {
+  assert.match(source, /id="group-chat-avatar"[^>]*onclick="openPrivateGroupProfileImage\(\)"[^>]*aria-label="View group image"/);
 });
