@@ -1875,23 +1875,10 @@ function handlePrivateGroupProfileAvatarTap() {
 }
 
 async function compressPrivateGroupProfileImage(file) {
-  const source = await compressProfileImage(file);
-  const image = new Image();
-  await new Promise((resolve, reject) => {
-    image.onload = resolve;
-    image.onerror = () => reject(new Error('Could not read this image'));
-    image.src = source;
-  });
-  const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 256;
-  const context = canvas.getContext('2d', { alpha:false });
-  context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, 256, 256);
-  context.drawImage(image, 0, 0, 256, 256);
-  for (const quality of [.84, .76, .68, .58, .48]) {
-    const result = canvas.toDataURL('image/jpeg', quality);
-    if (result.length <= 96 * 1024) return result;
-  }
-  throw new Error('This image could not be reduced enough');
+  // compressProfileImage already produces the encrypted profile asset at
+  // 512×512 within the server's size budget. Reusing it directly avoids the
+  // former second 256×256 / 96 KB pass that made full-screen previews blocky.
+  return compressProfileImage(file);
 }
 
 async function updatePrivateGroupProfileImage(profileImage) {
