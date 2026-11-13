@@ -69,7 +69,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     // A source video is streamed to disk in bounded chunks from the web side
     // (see beginVideoCompression/appendVideoCompressionChunk below) rather
     // than arriving as one giant base64 data: URL — that used to mean a
-    // 100MB video became a ~133MB JS string AND a ~133MB Swift Data value
+    // 150MB video would become a ~200MB JS string AND a ~200MB Swift Data value
     // held for the whole compression. Every access to this dictionary and
     // to each upload's FileHandle happens only on chunkedVideoUploadQueue,
     // which is what actually makes it safe to touch from the main-thread
@@ -570,11 +570,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         }
     }
 
-    // Source videos up to 100MB are allowed through — the exported result
+    // Source videos up to 150MB are allowed through — the exported result
     // must still land at or under 25MB (see attemptVideoExport below); that
     // output ceiling, not this input one, is what a message can actually
     // carry.
-    private static let maxChunkedVideoSourceBytes = 100 * 1024 * 1024
+    private static let maxChunkedVideoSourceBytes = 150 * 1024 * 1024
     private static let maxCompressedVideoBytes = 25 * 1024 * 1024
 
     private func beginVideoCompression(requestId: String, filename: String, totalBytes: Int, mime: String) {

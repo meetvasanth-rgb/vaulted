@@ -29,6 +29,23 @@ function groupMemberLabel(group, accountId) {
 
 const MAX_PRIVATE_GROUP_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_PRIVATE_GROUP_ATTACHMENT_BYTES = 48 * 1024 * 1024;
+const PRIVATE_GROUP_AVATAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg>';
+
+function privateGroupAvatarMarkup(group) {
+  const image = safeProfileImageUri(group?.profileImage);
+  return image ? `<img src="${escHtml(image)}" alt=""/>` : PRIVATE_GROUP_AVATAR_SVG;
+}
+
+function renderPrivateGroupProfile(group = privateGroups.get(activePrivateGroupId)) {
+  if (!group) return;
+  const avatar = privateGroupAvatarMarkup(group);
+  const header = document.getElementById('group-chat-avatar');
+  const info = document.getElementById('group-profile-avatar');
+  if (header) header.innerHTML = avatar;
+  if (info) info.innerHTML = avatar;
+  const name = document.getElementById('group-profile-name');
+  if (name) name.textContent = group.name || 'Private group';
+}
 let privateGroupVoiceRecorder = null;
 let privateGroupVoiceStream = null;
 let privateGroupVoiceChunks = [];
@@ -337,7 +354,7 @@ async function handlePrivateGroupFileSelect(event) {
     let currentVideoController = null;
     try {
       if (file.size > (isVideo ? MAX_VIDEO_SOURCE_BYTES : MAX_PRIVATE_GROUP_FILE_BYTES)) {
-        toast(isVideo ? `“${file.name}” is too large — maximum 100MB` : `“${file.name}” is too large — maximum 25MB`);
+        toast(isVideo ? `“${file.name}” is too large — maximum 150MB` : `“${file.name}” is too large — maximum 25MB`);
         continue;
       }
       let base64, mime = file.type || 'application/octet-stream';
@@ -496,7 +513,12 @@ async function refreshPrivateGroups() {
     if (keys[serverGroup.keyVersion]) {
       try { name = await decryptPrivateGroupValue(keys[serverGroup.keyVersion], serverGroup.encryptedName); } catch (_) {}
     }
-    privateGroups.set(serverGroup.id, { ...local, ...serverGroup, name, keys,
+    let profileImage = safeProfileImageUri(local?.profileImage);
+    const profileImageKeyVersion = Number(serverGroup.profileImageKeyVersion) || null;
+    if (serverGroup.encryptedProfileImage && keys[profileImageKeyVersion]) {
+      try { profileImage = safeProfileImageUri(await decryptPrivateGroupValue(keys[profileImageKeyVersion], serverGroup.encryptedProfileImage)); } catch (_) { profileImage = null; }
+    } else if (!serverGroup.encryptedProfileImage) profileImage = null;
+    privateGroups.set(serverGroup.id, { ...local, ...serverGroup, name, profileImage, keys,
       ownerAccountId:state.accountId, messages:local?.messages || [],
       unread:Math.max(0, Number(local?.unread) || 0),
       lastReadAt:local?.lastReadAt === undefined
@@ -588,6 +610,7 @@ async function openPrivateGroup(id) {
     updatePrivateGroupComposer();
     document.getElementById('group-chat-title').textContent = group.name || 'Private group';
     document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
+    renderPrivateGroupProfile(group);
     renderPrivateGroupMessages(group);
     retryTransientPrivateGroupAttachments(group);
     document.getElementById('group-chat').classList.add('open');
@@ -1816,11 +1839,84 @@ function renderGroupMembersList(query = '') {
     : '<div class="group-chat-empty" style="padding:22px 0">No one in this group matches.</div>';
 }
 
+function choosePrivateGroupProfileImage() {
+  const input = document.getElementById('group-profile-image-input');
+  if (input) { input.value = ''; input.click(); }
+}
+
+async function compressPrivateGroupProfileImage(file) {
+  const source = await compressProfileImage(file);
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Could not read this image'));
+    image.src = source;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 256;
+  const context = canvas.getContext('2d', { alpha:false });
+  context.fillStyle = '#FBF7F8'; context.fillRect(0, 0, 256, 256);
+  context.drawImage(image, 0, 0, 256, 256);
+  for (const quality of [.84, .76, .68, .58, .48]) {
+    const result = canvas.toDataURL('image/jpeg', quality);
+    if (result.length <= 96 * 1024) return result;
+  }
+  throw new Error('This image could not be reduced enough');
+}
+
+async function updatePrivateGroupProfileImage(profileImage) {
+  const state = loadAccountState();
+  const group = privateGroups.get(activePrivateGroupId);
+  if (!state || !group || group.ownerId !== state.accountId) return false;
+  const cleanImage = safeProfileImageUri(profileImage);
+  const encryptedProfileImage = cleanImage
+    ? await encryptPrivateGroupValue(group.keys?.[group.keyVersion], cleanImage)
+    : null;
+  const result = await api('/api/groups/profile-image', {
+    accountId:state.accountId,
+    sessionToken:state.sessionToken,
+    groupId:group.id,
+    encryptedProfileImage,
+  });
+  if (result.error) throw new Error(result.error);
+  group.profileImage = cleanImage;
+  group.encryptedProfileImage = result.group.encryptedProfileImage || null;
+  group.profileImageKeyVersion = Number(result.group.profileImageKeyVersion) || null;
+  group.updatedAt = result.group.updatedAt;
+  savePrivateGroupSessions();
+  renderPrivateGroupProfile(group);
+  renderVaultList();
+  return true;
+}
+
+async function handlePrivateGroupProfileImage(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  try {
+    const image = await compressPrivateGroupProfileImage(file);
+    await updatePrivateGroupProfileImage(image);
+    toast('Group image updated');
+  } catch (error) { toast(error.message || 'Could not update the group image'); }
+  finally { if (event?.target) event.target.value = ''; }
+}
+
+async function removePrivateGroupProfileImage() {
+  const group = privateGroups.get(activePrivateGroupId);
+  if (!group?.profileImage || !confirm('Remove this group image?')) return;
+  try { await updatePrivateGroupProfileImage(null); toast('Group image removed'); }
+  catch (error) { toast(error.message || 'Could not remove the group image'); }
+}
+
 function openGroupMembers() {
   const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState(); if (!group || !state) return;
   const owner = group.ownerId === state.accountId;
   const search = document.getElementById('group-members-search');
   if (search) search.value = '';
+  renderPrivateGroupProfile(group);
+  const profileButtons = document.getElementById('group-profile-buttons');
+  if (profileButtons) profileButtons.innerHTML = owner
+    ? `<button type="button" onclick="choosePrivateGroupProfileImage()">${group.profileImage ? 'Change image' : 'Add image'}</button>${group.profileImage ? '<button class="remove" type="button" onclick="removePrivateGroupProfileImage()">Remove</button>' : ''}`
+    : '';
   renderGroupMembersList('');
   document.getElementById('group-members-actions').innerHTML = `${owner
     ? groupIconButton('add', 'Add people', 'openAddGroupMembers()', 'add') + groupIconButton('danger', 'Delete group', 'deletePrivateGroup()', 'trash')
@@ -1895,6 +1991,9 @@ async function rotatePrivateGroupKey(group, removedAccountId = null, addRoomCode
   const nextVersion = Number(group.keyVersion) + 1;
   const encodedKey = bytesToBase64UrlCompact(crypto.getRandomValues(new Uint8Array(32)));
   const encryptedName = await encryptPrivateGroupValue(encodedKey, group.name);
+  const encryptedProfileImage = group.profileImage
+    ? await encryptPrivateGroupValue(encodedKey, group.profileImage)
+    : null;
   const remaining = (group.members || []).filter(member => member.accountId !== state.accountId && member.accountId !== removedAccountId);
   const envelopes = [];
   for (const member of remaining) {
@@ -1914,12 +2013,14 @@ async function rotatePrivateGroupKey(group, removedAccountId = null, addRoomCode
   }
   const result = additions.length
     ? await api('/api/groups/add-members', { accountId:state.accountId, sessionToken:state.sessionToken,
-        groupId:group.id, encryptedName, envelopes, additions })
+        groupId:group.id, encryptedName, encryptedProfileImage, envelopes, additions })
     : await api('/api/groups/rekey', { accountId:state.accountId, sessionToken:state.sessionToken,
-        groupId:group.id, removedAccountId, encryptedName, envelopes });
+        groupId:group.id, removedAccountId, encryptedName, encryptedProfileImage, envelopes });
   if (result.error) throw new Error(result.error);
   group.keys = { ...(group.keys || {}), [nextVersion]:encodedKey };
   group.keyVersion = nextVersion; group.requiresRekey = false; group.members = result.group.members; group.updatedAt = result.group.updatedAt;
+  group.encryptedProfileImage = result.group.encryptedProfileImage || null;
+  group.profileImageKeyVersion = Number(result.group.profileImageKeyVersion) || null;
   savePrivateGroupSessions(); scheduleAccountSync(); renderVaultList(); return true;
 }
 

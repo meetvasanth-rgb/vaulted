@@ -34,6 +34,27 @@ test('private group schema stores opaque JSON records', () => {
   assert.match(SCHEMA, /group_id uuid NOT NULL REFERENCES private_groups\(id\) ON DELETE CASCADE/);
 });
 
+test('only the owner can update an encrypted group image and rekey binds it to the new key version', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vaultlix-group-image-'));
+  const store = new GroupStore(directory);
+  await store.initialize();
+  const ownerId = 'a'.repeat(64);
+  const memberId = 'b'.repeat(64);
+  const group = await store.create(ownerId, 'g1:name', [
+    { accountId:ownerId, role:'owner', active:true, keyVersion:1 },
+    { accountId:memberId, role:'member', active:true, keyVersion:1, wrapRoomCode:'room-b', wrappedKey:'wk1', wrappedKeys:{ 1:'wk1' } },
+  ], 'binding-key-123456789012');
+  assert.equal(await store.updateProfileImage(group.id, memberId, 'g1:not-allowed'), null);
+  const updated = await store.updateProfileImage(group.id, ownerId, 'g1:encrypted-avatar', 100);
+  assert.equal(updated.encryptedProfileImage, 'g1:encrypted-avatar');
+  assert.equal(updated.profileImageKeyVersion, 1);
+  const rotated = await store.rekey(group.id, ownerId, null, 'g1:new-name',
+    [{ accountId:memberId, wrapRoomCode:'room-b', wrappedKey:'wk2' }], 200, [], 'g1:reencrypted-avatar');
+  assert.equal(rotated.keyVersion, 2);
+  assert.equal(rotated.encryptedProfileImage, 'g1:reencrypted-avatar');
+  assert.equal(rotated.profileImageKeyVersion, 2);
+});
+
 test('retrying a private group message id is idempotent', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vaultlix-group-retry-'));
   const store = new GroupStore(directory);

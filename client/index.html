@@ -3319,6 +3319,9 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 /* Invitations: the "Have an invite code?" link and the store button on a friend's page. */
 .landing-invite-link{display:block;margin:12px 0 0;padding:6px 2px;border:0;background:none;color:#682C43;font:650 13px/1.3 'Manrope',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .public-profile-get-app .account-copy{margin-top:-4px;font-size:12.5px}
+.group-row-avatar{overflow:hidden}.group-row-avatar img,.group-chat-avatar img,.group-profile-avatar img{width:100%;height:100%;display:block;object-fit:cover}
+.group-chat-head>div{min-width:0;display:flex;align-items:center;gap:10px}.group-chat-head-copy{min-width:0}.group-chat-avatar{flex:0 0 40px;width:40px;height:40px;border-radius:14px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#7b2949,#c87588);color:#fff}.group-chat-avatar svg,.group-profile-avatar svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.group-profile-editor{display:flex;align-items:center;gap:13px;padding:2px 2px 14px}.group-profile-avatar{width:68px;height:68px;flex:0 0 68px;border-radius:22px;overflow:hidden;display:grid;place-items:center;background:linear-gradient(145deg,#7b2949,#c87588);color:#fff}.group-profile-copy{min-width:0;flex:1}.group-profile-copy strong{display:block;font:750 16px Manrope,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.group-profile-copy small{display:block;margin-top:3px;color:#88767e;font:500 11px/1.4 Inter,sans-serif}.group-profile-buttons{display:flex;gap:7px;margin-top:8px}.group-profile-buttons button{height:34px;padding:0 11px;border-radius:10px;background:#f3e7eb;color:#682c43;font:700 11px Inter,sans-serif}.group-profile-buttons button.remove{background:#f6edef;color:#8b2949}
 </style>
 <style id="vaultlix-native-typography">
 /* Match WhatsApp's platform-native typography throughout the application:
@@ -4054,7 +4057,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="group-chat" id="group-chat" aria-hidden="true">
   <header class="group-chat-head">
     <button type="button" onclick="closePrivateGroup()" aria-label="Back">‹</button>
-    <div><div class="group-chat-title" id="group-chat-title">Private group</div><div class="group-chat-sub" id="group-chat-sub">End-to-end encrypted</div></div>
+    <div><span class="group-chat-avatar" id="group-chat-avatar"></span><span class="group-chat-head-copy"><div class="group-chat-title" id="group-chat-title">Private group</div><div class="group-chat-sub" id="group-chat-sub">End-to-end encrypted</div></span></div>
     <button type="button" onclick="openGroupMembers()" aria-label="Group members">⋮</button>
   </header>
   <main class="group-chat-body" id="group-chat-body"></main>
@@ -4073,7 +4076,7 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 </div>
 
 <div class="group-members" id="group-members" role="dialog" aria-modal="true" onclick="if(event.target===this)closeGroupMembers()">
-  <div class="group-members-card"><div class="group-members-title">Group members</div><input class="group-search-input" id="group-members-search" type="search" placeholder="Search people in this group" aria-label="Search people in this group" autocomplete="off" oninput="renderGroupMembersList(this.value)"/><div id="group-members-list"></div><div class="group-members-actions" id="group-members-actions"></div></div>
+  <div class="group-members-card"><div class="group-members-title">Group info</div><div class="group-profile-editor"><span class="group-profile-avatar" id="group-profile-avatar"></span><span class="group-profile-copy"><strong id="group-profile-name">Private group</strong><small>Encrypted group image</small><span class="group-profile-buttons" id="group-profile-buttons"></span></span></div><input type="file" id="group-profile-image-input" hidden accept="image/*,.heic,.heif" onchange="handlePrivateGroupProfileImage(event)"/><input class="group-search-input" id="group-members-search" type="search" placeholder="Search people in this group" aria-label="Search people in this group" autocomplete="off" oninput="renderGroupMembersList(this.value)"/><div id="group-members-list"></div><div class="group-members-actions" id="group-members-actions"></div></div>
 </div>
 
 <div class="group-create-overlay" id="group-add-overlay" role="dialog" aria-modal="true" aria-labelledby="group-add-title" onclick="if(event.target===this)closeAddGroupMembers()">
@@ -6349,10 +6352,10 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB attachment limit — also the ha
 // the limit for what actually goes on the wire, but a source video well
 // above that can still legitimately compress down under it. Bounded (not
 // unlimited) so a single source file can't be arbitrarily large on-device.
-const MAX_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024;
+const MAX_VIDEO_SOURCE_BYTES = 150 * 1024 * 1024;
 // The source video is streamed to native compression in bounded chunks
-// rather than read into one base64 string first — a 100MB source read via
-// FileReader.readAsDataURL becomes a ~133MB JS string held for the entire
+// rather than read into one base64 string first — a 150MB source read via
+// FileReader.readAsDataURL becomes a ~200MB JS string held for the entire
 // compression, which is exactly the memory spike (and the Android WebView
 // freezes it can cause) this chunked handoff exists to avoid. Only the
 // final, already-compressed (<=MAX_FILE_SIZE) result is ever held as one
@@ -6533,6 +6536,9 @@ function savePrivateGroupSessions(groups = [...privateGroups.values()]) {
     .filter(hasPrivateGroupKeys).map(group => ({
     id:group.id, ownerAccountId:group.ownerAccountId || accountId, ownerId:group.ownerId, keyBinding:group.keyBinding,
     name:group.name || 'Private group', keys:group.keys, keyVersion:group.keyVersion || 1,
+    encryptedProfileImage:group.encryptedProfileImage || null,
+    profileImageKeyVersion:Number(group.profileImageKeyVersion) || null,
+    profileImage:typeof group.profileImage === 'string' ? group.profileImage : null,
     // "Delete for me" choices live with the group (and its backup). Falling back to the stored copy keeps
     // them from being lost when an in-memory group has not loaded them yet.
     hiddenIds:Array.isArray(group.hiddenIds) ? group.hiddenIds.slice(-PRIVATE_GROUP_HIDDEN_MAX) : (stored.get(group.id)?.hiddenIds || []),
@@ -6598,14 +6604,17 @@ function accountBundleWithoutMedia(snapshot) {
     delete mediaFree.peerProfileImage;
     return mediaFree;
   });
-  const groups = (snapshot.groups || []).map(group => ({
-    ...group,
-    members:(group.members || []).map(member => {
+  const groups = (snapshot.groups || []).map(group => {
+    const mediaFreeGroup = { ...group };
+    delete mediaFreeGroup.profileImage;
+    delete mediaFreeGroup.encryptedProfileImage;
+    mediaFreeGroup.members = (group.members || []).map(member => {
       const mediaFree = { ...member };
       delete mediaFree.profileImage;
       return mediaFree;
-    }),
-  }));
+    });
+    return mediaFreeGroup;
+  });
   return { ...snapshot, sessions, groups };
 }
 
@@ -21095,7 +21104,7 @@ function renderVaultList() {
       const opening = openingPrivateGroupId === group.id;
       const preview = opening ? 'Opening encrypted group…' : group.requiresRekey ? 'Updating group encryption…' : `${group.members?.length || 1} members · Encrypted group`;
       html += `<div class="vault-list-row group-list-row${opening ? ' opening' : ''}" data-group="${escHtml(group.id)}" data-group-opening="${opening}" aria-busy="${opening}">
-        <span class="vault-list-avatar group-row-avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg></span>
+        <span class="vault-list-avatar group-row-avatar">${privateGroupAvatarMarkup(group)}</span>
         <span class="vault-list-row-name">${escHtml(group.name || 'Private group')}</span>
         <span class="vault-list-row-preview${group.requiresRekey ? ' alert' : ''}">${escHtml(preview)}</span>
         <span class="vault-list-row-meta">${group.updatedAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(group.updatedAt)}</span>` : ''}${group.unread > 0 ? `<span class="vault-list-row-unread">${group.unread > 9 ? '9+' : group.unread}</span>` : ''}</span>
@@ -28225,7 +28234,7 @@ async function sendSelectedFilesToRoom(room, files) {
     else valid.push(file);
   }
   if (tooLargeVideos.length) {
-    toast(tooLargeVideos.length === 1 ? `“${tooLargeVideos[0]}” too large — maximum 100MB` : `${tooLargeVideos.length} videos skipped — maximum 100MB each`);
+    toast(tooLargeVideos.length === 1 ? `“${tooLargeVideos[0]}” too large — maximum 150MB` : `${tooLargeVideos.length} videos skipped — maximum 150MB each`);
   }
   if (tooLarge.length) {
     toast(tooLarge.length === 1 ? `“${tooLarge[0]}” too large — maximum 25MB` : `${tooLarge.length} files skipped — maximum 25MB each`);

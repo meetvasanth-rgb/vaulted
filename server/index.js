@@ -1709,6 +1709,8 @@ function publicGroupFor(group, accountId) {
     id:group.id,
     ownerId:group.ownerId,
     encryptedName:group.encryptedName,
+    encryptedProfileImage:group.encryptedProfileImage || null,
+    profileImageKeyVersion:Number(group.profileImageKeyVersion) || null,
     keyBinding:group.keyBinding,
     keyVersion:group.keyVersion,
     wrappedKey:viewer.wrappedKey || null,
@@ -3058,6 +3060,7 @@ function serveStatic(req, res) {
 // buffering up to that ceiling before any handler or auth check ever runs.
 const BODY_LIMIT_SEND = 20 * 1024 * 1024;
 const BODY_LIMIT_PROFILE = 384 * 1024;
+const BODY_LIMIT_GROUP_PROFILE = 700 * 1024;
 const BODY_LIMIT_DAILY_LOOK = 1300 * 1024;
 const BODY_LIMIT_STATUS = 8 * 1024 * 1024;
 const BODY_LIMIT_ADMIN_ANNOUNCEMENT = 12 * 1024 * 1024;
@@ -3078,6 +3081,7 @@ function bodyLimitFor(pathname, req) {
   }
   if (pathname === '/api/account/register') return 1100 * 1024;
   if (pathname === '/api/account/profile') return BODY_LIMIT_PROFILE;
+  if (pathname === '/api/groups/profile-image' || pathname === '/api/groups/rekey' || pathname === '/api/groups/add-members') return BODY_LIMIT_GROUP_PROFILE;
   if (pathname === '/api/account/daily-look' || pathname === '/api/account/avatar-suggest') return BODY_LIMIT_DAILY_LOOK;
   if (pathname === '/api/status/publish') return BODY_LIMIT_STATUS;
   if (pathname === '/api/admin/announcements') {
@@ -3923,6 +3927,21 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
   }
 
+  if (path === '/api/groups/profile-image' && method === 'POST') {
+    if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to update a private group.', 401);
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (d.encryptedProfileImage !== null && !validEncryptedField(d.encryptedProfileImage, 600 * 1024)) {
+      return resErr(res, 'The encrypted group image is invalid or too large.', 400);
+    }
+    const group = await groupStore.updateProfileImage(d.groupId, d.accountId, d.encryptedProfileImage);
+    if (!group) return resErr(res, 'Only the group owner can change the group image.', 403);
+    for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'profile' });
+    }
+    return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
+  }
+
   if (path === '/api/groups/report' && method === 'POST') {
     if (await rateLimited(`group-report:${ip}`, 20, 60 * 60 * 1000)) return resErr(res, 'Too many safety requests — try again later.', 429);
     if (!validAccountId(d.accountId) || !validAccountId(d.reportedAccountId) || d.accountId === d.reportedAccountId) return resErr(res, 'Invalid group report.', 400);
@@ -4170,7 +4189,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to manage a private group.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    if (!validEncryptedField(d.encryptedName, 8192) || !Array.isArray(d.envelopes) || d.envelopes.length > 49) {
+    if (!validEncryptedField(d.encryptedName, 8192) ||
+        (d.encryptedProfileImage != null && !validEncryptedField(d.encryptedProfileImage, 600 * 1024)) ||
+        !Array.isArray(d.envelopes) || d.envelopes.length > 49) {
       return resErr(res, 'Invalid group encryption update.', 400);
     }
     const source = await groupStore.get(d.groupId);
@@ -4186,7 +4207,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       supplied.push({ accountId:member.accountId, wrapRoomCode:roomCode, wrappedKey:entry.wrappedKey });
     }
     if (supplied.length !== activeAfterRemoval.length) return resErr(res, 'Could not securely update every remaining member.', 400);
-    const group = await groupStore.rekey(d.groupId, d.accountId, d.removedAccountId || null, d.encryptedName, supplied);
+    const group = await groupStore.rekey(d.groupId, d.accountId, d.removedAccountId || null,
+      d.encryptedName, supplied, Date.now(), [], d.encryptedProfileImage);
     if (!group) return resErr(res, 'Private group could not be updated.', 409);
     for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
       publishInboxAccount(member.accountId, 'group-update', { groupId:group.id });
@@ -4200,7 +4222,9 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     if (!validAccountId(d.accountId)) return resErr(res, 'Sign in to manage a private group.', 401);
     const account = authenticateAccountSession(d.accountId, d.sessionToken);
     if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
-    if (!validEncryptedField(d.encryptedName, 8192) || !Array.isArray(d.envelopes) || d.envelopes.length > 49 ||
+    if (!validEncryptedField(d.encryptedName, 8192) ||
+        (d.encryptedProfileImage != null && !validEncryptedField(d.encryptedProfileImage, 600 * 1024)) ||
+        !Array.isArray(d.envelopes) || d.envelopes.length > 49 ||
         !Array.isArray(d.additions) || d.additions.length < 1 || d.additions.length > 49) {
       return resErr(res, 'Invalid group encryption update.', 400);
     }
@@ -4234,7 +4258,8 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       additions.push({ accountId:recipientId, wrapRoomCode:roomCode, wrappedKey:entry.wrappedKey });
     }
     if (existing.length + additions.length > 49) return resErr(res, 'A private group can have up to 50 people.', 400);
-    const group = await groupStore.rekey(d.groupId, d.accountId, null, d.encryptedName, supplied, Date.now(), additions);
+    const group = await groupStore.rekey(d.groupId, d.accountId, null, d.encryptedName,
+      supplied, Date.now(), additions, d.encryptedProfileImage);
     if (!group) return resErr(res, 'Private group could not be updated.', 409);
     for (const member of additions) {
       publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'created' });

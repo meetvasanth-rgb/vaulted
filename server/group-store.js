@@ -141,6 +141,16 @@ class GroupStore {
     });
   }
 
+  async updateProfileImage(id, ownerId, encryptedProfileImage, now = Date.now()) {
+    return this.mutate(id, group => {
+      if (group.ownerId !== ownerId) return null;
+      group.encryptedProfileImage = encryptedProfileImage || null;
+      group.profileImageKeyVersion = encryptedProfileImage ? group.keyVersion : null;
+      group.updatedAt = now;
+      return group;
+    });
+  }
+
   async editMessage(id, accountId, targetId, message, now = Date.now()) {
     let reason = 'not-found';
     const group = await this.mutate(id, current => {
@@ -260,7 +270,7 @@ class GroupStore {
   // `additions` are new members ({ accountId, wrapRoomCode, wrappedKey }) joining
   // with this key change. They receive only the new key version, so they can
   // never read anything sent before they joined.
-  async rekey(id, ownerId, removedAccountId, encryptedName, envelopes, now = Date.now(), additions = []) {
+  async rekey(id, ownerId, removedAccountId, encryptedName, envelopes, now = Date.now(), additions = [], encryptedProfileImage = undefined) {
     return this.mutate(id, group => {
       if (group.ownerId !== ownerId) return null;
       const removed = removedAccountId
@@ -281,6 +291,10 @@ class GroupStore {
       if (active.some(member => !supplied.has(member.accountId))) return null;
       group.keyVersion += 1;
       group.encryptedName = encryptedName;
+      if (encryptedProfileImage !== undefined) {
+        group.encryptedProfileImage = encryptedProfileImage || null;
+        group.profileImageKeyVersion = encryptedProfileImage ? group.keyVersion : null;
+      }
       for (const member of active) {
         const entry = supplied.get(member.accountId);
         member.wrappedKey = entry.wrappedKey;

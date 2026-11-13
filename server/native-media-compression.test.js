@@ -21,7 +21,7 @@ test('photos use a high-quality mobile-size compression profile', () => {
 test('direct and group videos compress before encryption, streamed to native in chunks, with no oversized-original fallback', () => {
   assert.match(client, /async function compressVideoFile\(file, controller = null\)/);
   assert.match(client, /nativeChunkedVideoCompressionAvailable/);
-  assert.match(client, /const MAX_VIDEO_SOURCE_BYTES = 100 \* 1024 \* 1024/);
+  assert.match(client, /const MAX_VIDEO_SOURCE_BYTES = 150 \* 1024 \* 1024/);
   assert.match(client, /const VIDEO_COMPRESSION_CHUNK_BYTES = 2 \* 1024 \* 1024/);
   assert.match(client, /action:'beginVideoCompression'/);
   assert.match(client, /action:'appendVideoCompressionChunk'/);
@@ -58,7 +58,7 @@ test('Android streams chunks to a temp file and retries at a lower quality tier 
   assert.match(android, /public boolean appendVideoCompressionChunk\(/);
   assert.match(android, /public void finishVideoCompression\(/);
   assert.match(android, /public void cancelVideoCompression\(/);
-  assert.match(android, /MAX_CHUNKED_VIDEO_SOURCE_BYTES = 100 \* 1024 \* 1024/);
+  assert.match(android, /MAX_CHUNKED_VIDEO_SOURCE_BYTES = 150 \* 1024 \* 1024/);
   assert.match(android, /MAX_COMPRESSED_VIDEO_BYTES = 25 \* 1024 \* 1024/);
   assert.match(android, /VIDEO_COMPRESSION_TIER_HEIGHTS = \{ 720, 480 \}/);
   assert.match(android, /VIDEO_COMPRESSION_TIER_BITRATES = \{ 2_500_000, 1_200_000 \}/);
@@ -77,7 +77,7 @@ test('iOS streams chunks to a temp file and retries at a lower quality tier befo
   assert.match(ios, /func appendVideoCompressionChunk\(/);
   assert.match(ios, /func finishVideoCompression\(/);
   assert.match(ios, /func cancelVideoCompression\(/);
-  assert.match(ios, /maxChunkedVideoSourceBytes = 100 \* 1024 \* 1024/);
+  assert.match(ios, /maxChunkedVideoSourceBytes = 150 \* 1024 \* 1024/);
   assert.match(ios, /maxCompressedVideoBytes = 25 \* 1024 \* 1024/);
   assert.match(ios, /\[AVAssetExportPreset1280x720, AVAssetExportPreset640x480, AVAssetExportPresetMediumQuality\]/);
   assert.match(ios, /exporter\.outputFileType = \.mp4/);

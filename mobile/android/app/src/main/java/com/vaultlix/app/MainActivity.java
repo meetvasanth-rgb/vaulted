@@ -1265,7 +1265,7 @@ public class MainActivity extends BridgeActivity {
         // A source video is streamed here from the web side in bounded
         // chunks (see beginVideoCompression/appendVideoCompressionChunk)
         // rather than arriving as one base64 data: URL — that used to mean a
-        // 100MB video became a ~133MB JS string AND a ~133MB decoded byte
+        // 150MB video would become a ~200MB JS string AND a ~200MB decoded byte
         // array held for the whole compression, a real source of the
         // WebView memory spikes/freezes this chunked handoff exists to
         // avoid. Every access to this map, and to the FileOutputStream it
@@ -1274,7 +1274,7 @@ public class MainActivity extends BridgeActivity {
         // here despite being touched from both the JS bridge thread-hop and
         // the export callback.
         private final java.util.Map<String, ChunkedVideoUpload> chunkedVideoUploads = new java.util.HashMap<>();
-        private static final int MAX_CHUNKED_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024;
+        private static final int MAX_CHUNKED_VIDEO_SOURCE_BYTES = 150 * 1024 * 1024;
         private static final int MAX_COMPRESSED_VIDEO_BYTES = 25 * 1024 * 1024;
         // 720p first; if that still doesn't fit under the 25MB ceiling, one
         // more attempt at a visibly lower resolution/bitrate rather than

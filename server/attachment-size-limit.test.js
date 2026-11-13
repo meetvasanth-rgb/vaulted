@@ -21,3 +21,11 @@ test('encrypted attachment ceilings accommodate double-base64 expansion', () => 
   assert.match(server, /const MAX_MESSAGE_CONTENT_BYTES = 48 \* 1024 \* 1024/);
   assert.match(server, /const BODY_LIMIT_SEND = 20 \* 1024 \* 1024/);
 });
+
+test('group profile images stay encrypted and receive a narrowly scoped request allowance', () => {
+  assert.match(groups, /encryptPrivateGroupValue\(group\.keys\?\.\[group\.keyVersion\], cleanImage\)/);
+  assert.match(groups, /compressPrivateGroupProfileImage/);
+  assert.match(server, /const BODY_LIMIT_GROUP_PROFILE = 700 \* 1024/);
+  assert.match(server, /pathname === '\/api\/groups\/profile-image'/);
+  assert.match(server, /encryptedProfileImage:group\.encryptedProfileImage \|\| null/);
+});
