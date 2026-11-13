@@ -49,7 +49,7 @@ test('deferred scripts retain their dependency order', () => {
 
 test('service worker recognizes the generated immutable assets', () => {
   const worker = fs.readFileSync(path.join(root, 'client/sw.js'), 'utf8');
-  assert.match(worker, /vaultlix-app-shell-v259/);
+  assert.match(worker, /vaultlix-app-shell-v260/);
   assert.match(worker, /shellHtml\.matchAll/);
   assert.match(worker, /compiledAssets\.map\(assetPath => cache\.add\(assetPath\)\)/);
   for (const assetPath of compiled.assets.keys()) {
@@ -87,4 +87,13 @@ test('private-group multi-photo sends use one encrypted album and immediate prog
   assert.match(groups, /privateGroupAlbumGridHtml/);
   assert.match(groups, /beginPhotoSendProgress\(files\.length/);
   assert.match(source, /await onSend\(caption, viewOnce, message => progress\.update\(message\)\)/);
+});
+
+test('direct media picker keeps mixed photos and videos in one album', () => {
+  assert.match(source, /media\.push\(\{ kind:'video'/);
+  assert.match(source, /kind:kind === 'video'.*\? 'video' : 'image'/);
+  assert.match(source, /videoThumb:safeImageDataUri\('image\/jpeg', videoThumb\)/);
+  assert.match(source, /handleAlbumItemTap/);
+  assert.match(source, /View once is unavailable for multiple selections/);
+  assert.match(source, /viewOnce = !!viewOnce && items\.length === 1/);
 });
