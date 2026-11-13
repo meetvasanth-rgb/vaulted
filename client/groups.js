@@ -603,20 +603,26 @@ function scrollPrivateGroupToLatest() {
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
   const requestId = ++privateGroupOpenRequestId;
+  let openStage = 'G1';
   openingPrivateGroupId = group.historyHydrated ? null : id;
   renderVaultList();
   try {
     activePrivateGroupId = id; group.unread = 0;
+    openStage = 'G2';
     group.lastReadAt = Math.max(Number(group.lastReadAt) || 0, Number(group.messageCursor) || 0,
       ...(group.messages || []).map(message => Number(message.createdAt) || 0));
     savePrivateGroupSessions();
+    openStage = 'G3';
     const input = document.getElementById('group-message-input');
     if (input) input.value = '';
     updatePrivateGroupComposer();
+    openStage = 'G4';
     document.getElementById('group-chat-title').textContent = group.name || 'Private group';
     document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
     renderPrivateGroupProfile(group);
+    openStage = 'G5';
     renderPrivateGroupMessages(group);
+    openStage = 'G6';
     retryTransientPrivateGroupAttachments(group);
     document.getElementById('group-chat').classList.add('open');
     document.getElementById('group-chat').setAttribute('aria-hidden','false');
@@ -633,8 +639,9 @@ async function openPrivateGroup(id) {
       if (!ready) { toast('Could not load this encrypted group. Try again.'); return; }
       renderPrivateGroupMessages(group);
     }
-  } catch (_) {
-    if (requestId === privateGroupOpenRequestId) toast('Could not open this encrypted group. Try again.');
+  } catch (error) {
+    console.error('Private group open failed', openStage, error);
+    if (requestId === privateGroupOpenRequestId) toast(`Could not open this encrypted group (${openStage}). Try again.`);
   } finally {
     if (requestId === privateGroupOpenRequestId) {
       openingPrivateGroupId = null;
