@@ -603,26 +603,20 @@ function scrollPrivateGroupToLatest() {
 async function openPrivateGroup(id) {
   const group = privateGroups.get(id); if (!group) return;
   const requestId = ++privateGroupOpenRequestId;
-  let openStage = 'G1';
   openingPrivateGroupId = group.historyHydrated ? null : id;
   renderVaultList();
   try {
     activePrivateGroupId = id; group.unread = 0;
-    openStage = 'G2';
     group.lastReadAt = Math.max(Number(group.lastReadAt) || 0, Number(group.messageCursor) || 0,
       ...(group.messages || []).map(message => Number(message.createdAt) || 0));
     savePrivateGroupSessions();
-    openStage = 'G3';
     const input = document.getElementById('group-message-input');
     if (input) input.value = '';
     updatePrivateGroupComposer();
-    openStage = 'G4';
     document.getElementById('group-chat-title').textContent = group.name || 'Private group';
     document.getElementById('group-chat-sub').textContent = `${group.members?.length || 1} members · end-to-end encrypted`;
     renderPrivateGroupProfile(group);
-    openStage = 'G5';
     renderPrivateGroupMessages(group);
-    openStage = 'G6';
     retryTransientPrivateGroupAttachments(group);
     document.getElementById('group-chat').classList.add('open');
     document.getElementById('group-chat').setAttribute('aria-hidden','false');
@@ -640,8 +634,8 @@ async function openPrivateGroup(id) {
       renderPrivateGroupMessages(group);
     }
   } catch (error) {
-    console.error('Private group open failed', openStage, error);
-    if (requestId === privateGroupOpenRequestId) toast(`Could not open this encrypted group (${openStage}). Try again.`);
+    console.error('Private group open failed', error);
+    if (requestId === privateGroupOpenRequestId) toast('Could not open this encrypted group. Try again.');
   } finally {
     if (requestId === privateGroupOpenRequestId) {
       openingPrivateGroupId = null;
@@ -870,14 +864,18 @@ function renderPrivateGroupMessages(group, { keepDistanceFromBottom = null } = {
 // tap on plain text does nothing (photos, videos and files open as usual).
 function wirePrivateGroupMessage(row) {
   const id = row.dataset.groupMsgId;
-  attachLongPress(row.querySelector('.group-message'), id, () => { if (groupSelectMode) togglePrivateGroupSelection(id); else enterPrivateGroupSelectMode(id); });
+  const card = row.querySelector('.group-message');
+  // Screenshot and screen-recording notices are system rows, not selectable
+  // message bubbles. Trying to wire bubble gestures to their missing card used
+  // to throw and prevent an otherwise healthy encrypted group from opening.
+  if (!card) return;
+  attachLongPress(card, id, () => { if (groupSelectMode) togglePrivateGroupSelection(id); else enterPrivateGroupSelectMode(id); });
   row.addEventListener('click', event => {
     if (groupSelectMode) { event.preventDefault(); event.stopPropagation(); togglePrivateGroupSelection(id); }
   }, true);
   const quote = row.querySelector('[data-reply-to]');
   if (quote) quote.onclick = event => { if (!groupSelectMode) { event.stopPropagation(); jumpToPrivateGroupMessage(quote.dataset.replyTo); } };
   // Swipe a message to the right to reply, as in a direct conversation (attachSwipeToReply lives in index.html).
-  const card = row.querySelector('.group-message');
   if (card && privateGroupMessageById(id)) {
     attachSwipeToReply(card, () => { if (!groupSelectMode) startPrivateGroupReply(id); }, () => groupSelectMode);
   }
