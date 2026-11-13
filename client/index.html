@@ -1012,6 +1012,7 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 .msg-album-more{position:absolute;inset:0;background:rgba(0,0,0,0.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:500}
 .msg-album-viewonce{position:absolute;inset:0;background:#1A1916;display:flex;align-items:center;justify-content:center}
 .msg-album-viewonce svg{stroke:#D9B94E;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.msg-album-pending{position:relative;display:inline-block;max-width:240px}.msg-album-pending .msg-album-grid{filter:brightness(.78)}.msg-album-pending .msg-album-video-play{display:none}.msg-album-progress{position:absolute;z-index:4;left:50%;top:50%;transform:translate(-50%,-50%);width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:rgba(30,22,27,.62);box-shadow:0 3px 15px rgba(0,0,0,.28);pointer-events:none}.msg-album-progress svg{width:38px;height:38px;transform:rotate(-90deg)}.msg-album-progress-track{fill:none;stroke:rgba(255,255,255,.32);stroke-width:3}.msg-album-progress-value{fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-dasharray:76 100;transform-origin:20px 20px;animation:msg-album-progress-spin 1.05s linear infinite}@keyframes msg-album-progress-spin{to{transform:rotate(360deg)}}
 
 /* ── LEGAL PAGES ──────────────────────────────────────────────── */
 #s-privacy, #s-terms {
@@ -22866,7 +22867,11 @@ function buildAlbumGridHtml(rec) {
   // a single message-level qualifier would be misleading for a partially-
   // opened album.
   const badge = rec.viewOnce ? `<div class="msg-viewonce-badge">👁 View once</div>` : '';
-  return `${badge}<div class="${gridClass}">${tiles}</div>`;
+  const grid = `<div class="${gridClass}">${tiles}</div>`;
+  const pending = rec.pending
+    ? `<div class="msg-album-pending">${grid}<span class="msg-album-progress" role="status" aria-label="Sending album"><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="msg-album-progress-track" cx="20" cy="20" r="15.5"></circle><circle class="msg-album-progress-value" cx="20" cy="20" r="15.5"></circle></svg></span></div>`
+    : grid;
+  return `${badge}${pending}`;
 }
 
 // replyData travels inside the peer's decrypted payload — thumbMime/thumb
@@ -23284,8 +23289,8 @@ function renderMessageRecord(room, rec, animate) {
   div.dataset.msgId = rec.id;
   if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
 
-  const receiptHtml = rec.isMe
-    ? `<span class="msg-receipt${rec.receiptState === 'delivered' ? ' delivered' : ''}${rec.receiptState === 'read' ? ' read' : ''}" id="receipt-${rec.id}">${rec.pending ? '◷' : (rec.receiptState ? '✓✓' : '✓')}</span>`
+  const receiptHtml = rec.isMe && !rec.pending
+    ? `<span class="msg-receipt${rec.receiptState === 'delivered' ? ' delivered' : ''}${rec.receiptState === 'read' ? ' read' : ''}" id="receipt-${rec.id}">${rec.receiptState ? '✓✓' : '✓'}</span>`
     : '';
 
   let contentHtml;
