@@ -6539,7 +6539,10 @@ function savePrivateGroupSessions(groups = [...privateGroups.values()]) {
     name:group.name || 'Private group', keys:group.keys, keyVersion:group.keyVersion || 1,
     encryptedProfileImage:group.encryptedProfileImage || null,
     profileImageKeyVersion:Number(group.profileImageKeyVersion) || null,
-    profileImage:typeof group.profileImage === 'string' ? group.profileImage : null,
+    // The decrypted image is presentation cache only. Keeping a second copy
+    // here can push a busy WebView over its localStorage quota and used to
+    // make opening the group fail. The encrypted server value plus the group
+    // key reconstructs it during refresh.
     // "Delete for me" choices live with the group (and its backup). Falling back to the stored copy keeps
     // them from being lost when an in-memory group has not loaded them yet.
     hiddenIds:Array.isArray(group.hiddenIds) ? group.hiddenIds.slice(-PRIVATE_GROUP_HIDDEN_MAX) : (stored.get(group.id)?.hiddenIds || []),
@@ -6550,7 +6553,18 @@ function savePrivateGroupSessions(groups = [...privateGroups.values()]) {
     lastReadAt:Math.max(0, Number(group.lastReadAt) || 0),
     savedAt:Date.now(),
   }));
-  localStorage.setItem(PRIVATE_GROUPS_KEY, JSON.stringify(safe));
+  try {
+    localStorage.setItem(PRIVATE_GROUPS_KEY, JSON.stringify(safe));
+  } catch (error) {
+    // A cache write must never prevent an encrypted group from opening. Under
+    // pressure, retain the keys and membership but discard refetchable image
+    // ciphertext from the local copy. The server remains the source of truth.
+    const compact = safe.map(({ encryptedProfileImage, ...group }) => ({
+      ...group, encryptedProfileImage:null, profileImageKeyVersion:null,
+    }));
+    try { localStorage.setItem(PRIVATE_GROUPS_KEY, JSON.stringify(compact)); }
+    catch (_) { console.warn('Private group cache is full; continuing without updating it'); }
+  }
 }
 function accountBundleSnapshot(accountId = loadAccountState()?.accountId, includeUnowned = false, recoveryCodeWrap = loadAccountState()?.recoveryCodeWrap || null, privacy = null) {
   const sessions = [];

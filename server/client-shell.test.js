@@ -49,7 +49,7 @@ test('deferred scripts retain their dependency order', () => {
 
 test('service worker recognizes the generated immutable assets', () => {
   const worker = fs.readFileSync(path.join(root, 'client/sw.js'), 'utf8');
-  assert.match(worker, /vaultlix-app-shell-v253/);
+  assert.match(worker, /vaultlix-app-shell-v254/);
   assert.match(worker, /shellHtml\.matchAll/);
   assert.match(worker, /compiledAssets\.map\(assetPath => cache\.add\(assetPath\)\)/);
   for (const assetPath of compiled.assets.keys()) {
@@ -57,4 +57,10 @@ test('service worker recognizes the generated immutable assets', () => {
     else if (assetPath.startsWith('/vendor/')) assert.match(assetPath, /^\/vendor\/qrcode\.[a-f0-9]{16}\.js$/);
     else assert.match(assetPath, /^\/app-core\.[a-f0-9]{16}\.js$/);
   }
+});
+
+test('private-group image presentation cache cannot block opening a group', () => {
+  assert.doesNotMatch(source, /profileImage:typeof group\.profileImage/);
+  assert.match(source, /A cache write must never prevent an encrypted group from opening/);
+  assert.match(source, /continuing without updating it/);
 });
