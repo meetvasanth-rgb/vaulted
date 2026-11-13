@@ -1008,7 +1008,7 @@ html.voice-transcript-ready .voice-transcript-action{display:block}
 .msg-album-grid-3{grid-template-columns:repeat(3,1fr)}
 .msg-album-tile{position:relative;aspect-ratio:1;overflow:hidden;cursor:pointer;background:#EAEAEA}
 .msg-album-tile .msg-image{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover;border-radius:0;margin-top:0;display:block}
-.msg-album-video-thumb{width:100%;height:100%;object-fit:cover;display:block}.msg-album-video-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:rgba(104,44,67,.9);color:#fff;font-size:19px;padding-left:3px}
+.msg-album-video-thumb,.msg-album-video-local{width:100%;height:100%;object-fit:cover;display:block}.msg-album-video-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:rgba(104,44,67,.9);color:#fff;font-size:19px;padding-left:3px}
 .msg-album-more{position:absolute;inset:0;background:rgba(0,0,0,0.45);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:500}
 .msg-album-viewonce{position:absolute;inset:0;background:#1A1916;display:flex;align-items:center;justify-content:center}
 .msg-album-viewonce svg{stroke:#D9B94E;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -22840,19 +22840,26 @@ function buildAlbumGridHtml(rec) {
     const isVideo = img.kind === 'video' || String(img.mime || '').startsWith('video/');
     const overlay = (i === visibleCount - 1 && remaining > 0) ? `<div class="msg-album-more">+${remaining}</div>` : '';
     const hidden = img.viewOnce && !rec.isMe && !img.viewed;
-    const safeSrc = hidden ? null : (isVideo ? safeImageDataUri('image/jpeg', img.videoThumb) : safeMessageImagePreview(img.imagePreview));
+    // blob: previews are created only from files this device has just picked
+    // and exist only on our optimistic pending record. Never accept a blob
+    // URL from decrypted peer data or a restored record.
+    const localSrc = rec.pending && rec.isMe && String(img.localPreviewUrl || '').startsWith('blob:') ? img.localPreviewUrl : null;
+    const safeSrc = hidden ? null : (localSrc || (isVideo ? safeImageDataUri('image/jpeg', img.videoThumb) : safeMessageImagePreview(img.imagePreview)));
     const inner = hidden
       ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
       : (safeSrc
           ? (isVideo
-              ? `<img class="msg-album-video-thumb" src="${safeSrc}" alt="Video preview" loading="lazy" decoding="async" draggable="false"/><span class="msg-album-video-play">▶</span>`
+              ? (localSrc
+                  ? `<video class="msg-album-video-local" src="${safeSrc}" muted playsinline preload="metadata"></video><span class="msg-album-video-play">▶</span>`
+                  : `<img class="msg-album-video-thumb" src="${safeSrc}" alt="Video preview" loading="lazy" decoding="async" draggable="false"/><span class="msg-album-video-play">▶</span>`)
               : `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>`)
           : `<div class="msg-image-preview-loading" data-image-preview-msg="${escHtml(rec.id)}" data-image-preview-item="${escHtml(img.id)}" role="status">Opening encrypted media…</div>`);
     // Keyed off img.id (a stable local id), not the loop position i —
     // opening two view-once photos in the same album close together would
     // otherwise let the first one's later array splice shift which photo
     // the second one's pending timer thinks it's targeting.
-    tiles += `<div class="msg-album-tile" data-img-id="${img.id}" onclick="handleAlbumItemTap('${rec.id}', '${img.id}')" oncontextmenu="return false">${inner}${overlay}</div>`;
+    const tapHandler = rec.pending ? '' : ` onclick="handleAlbumItemTap('${rec.id}', '${img.id}')"`;
+    tiles += `<div class="msg-album-tile" data-img-id="${img.id}"${tapHandler} oncontextmenu="return false">${inner}${overlay}</div>`;
   }
   // No "· Opened" qualifier here the way a single view-once photo's badge
   // has one — each tile now tracks its own opened state independently, so
@@ -23278,7 +23285,7 @@ function renderMessageRecord(room, rec, animate) {
   if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
 
   const receiptHtml = rec.isMe
-    ? `<span class="msg-receipt${rec.receiptState === 'delivered' ? ' delivered' : ''}${rec.receiptState === 'read' ? ' read' : ''}" id="receipt-${rec.id}">${rec.receiptState ? '✓✓' : '✓'}</span>`
+    ? `<span class="msg-receipt${rec.receiptState === 'delivered' ? ' delivered' : ''}${rec.receiptState === 'read' ? ' read' : ''}" id="receipt-${rec.id}">${rec.pending ? '◷' : (rec.receiptState ? '✓✓' : '✓')}</span>`
     : '';
 
   let contentHtml;
@@ -28262,6 +28269,55 @@ async function handleFileSelect(event) {
   await sendSelectedFilesToRoom(room, files);
 }
 
+// WhatsApp-style optimistic album: the selected files appear in the chat
+// immediately from local object URLs. Compression, encryption and upload can
+// then run without leaving an empty chat or showing a per-file preparation
+// toast. The object URLs never leave this device and are revoked as soon as
+// the final encrypted record replaces this preview (or the send fails).
+function beginPendingMediaAlbum(room, files) {
+  const now = new Date();
+  const objectUrls = [];
+  const images = files.map((file, index) => {
+    let localPreviewUrl = '';
+    try { localPreviewUrl = URL.createObjectURL(file); objectUrls.push(localPreviewUrl); } catch (_) {}
+    const isVideo = String(file.type || '').startsWith('video/');
+    return {
+      id:`pending_${index}_${now.getTime().toString(36)}`,
+      fileName:file.name,
+      mime:file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+      kind:isVideo ? 'video' : 'image',
+      base64:'', imagePreview:null, videoThumb:null, localPreviewUrl,
+      viewOnce:false, viewed:false,
+    };
+  });
+  const rec = {
+    id:newMsgId(), kind:'album', isMe:true, name:room.myName,
+    time:now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0'),
+    ts:now.getTime(), viewOnce:false, caption:'', images, pending:true,
+    receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null,
+  };
+  room.messages.push(rec);
+  room.lastMessageAt = rec.ts;
+  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+  const revoke = () => { objectUrls.splice(0).forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} }); };
+  return {
+    rec,
+    discard() {
+      revoke();
+      const index = room.messages.indexOf(rec);
+      if (index >= 0) room.messages.splice(index, 1);
+      messageActionRegistry.delete(rec.id);
+      document.querySelector(`.msg[data-msg-id="${CSS.escape(rec.id)}"]`)?.remove();
+    },
+    finalize(finalRecord) {
+      revoke();
+      Object.assign(rec, finalRecord, { id:rec.id, pending:false });
+      if (room.code === activeRoomCode) renderChatBody(room);
+      else secureNativeStoreMessage(room, rec);
+    },
+  };
+}
+
 // Shared images received from the Android Sharesheet or the iOS Share
 // Extension join the exact same preparation/encryption path as images picked
 // from inside a conversation. Native code only stages the bytes until the
@@ -28288,12 +28344,11 @@ async function sendSelectedFilesToRoom(room, files) {
   const media = [];
   const documents = [];
   let currentVideoController = null;
-  const preparation = beginPhotoSendProgress(valid.length,
-    `Preparing 1 of ${valid.length}…`, null, valid[0] || null);
+  const selectedMediaFiles = valid.filter(file => String(file.type || '').startsWith('image/') || String(file.type || '').startsWith('video/'));
+  let pendingAlbum = selectedMediaFiles.length > 1 ? beginPendingMediaAlbum(room, selectedMediaFiles) : null;
   try {
     for (let fileIndex = 0; fileIndex < valid.length; fileIndex++) {
       const file = valid[fileIndex];
-      preparation.update(`Preparing ${fileIndex + 1} of ${valid.length}…`);
       if (file.type.startsWith('image/')) {
         // Compressed here, before anything else touches it — base64/encrypt/
         // send all work on the already-shrunk bytes, and so does the picker
@@ -28338,20 +28393,24 @@ async function sendSelectedFilesToRoom(room, files) {
       await sendFileMessage(room, file, base64, false, false, undefined, pdfPreview?.base64, pdfPreview?.pageCount);
     }
   } catch (error) {
+    pendingAlbum?.discard();
     toast('Could not prepare the selected attachments. Please select them again.');
     return;
-  } finally {
-    preparation.close();
   }
 
   if (media.length > 1) {
     const combinedBytes = media.reduce((total, item) => total + Math.ceil(item.base64.length * 3 / 4), 0);
     if (combinedBytes > MAX_MEDIA_ALBUM_SOURCE_BYTES) {
+      pendingAlbum?.discard();
       toast('This media album is too large to send securely. Select fewer or shorter videos.');
       return;
     }
   }
-  if (!media.length) return;
+  if (media.length < 2 && pendingAlbum) {
+    pendingAlbum.discard();
+    pendingAlbum = null;
+  }
+  if (!media.length) { pendingAlbum?.discard(); return; }
 
   // Only a single photo needs the one-time-view decision. A single video
   // sends normally, while every multi-selection skips the extra composer
@@ -28363,20 +28422,20 @@ async function sendSelectedFilesToRoom(room, files) {
     return;
   }
 
-  const sendProgress = beginPhotoSendProgress(media.length,
-    media.length > 1 ? `Encrypting ${media.length} items…` : 'Encrypting video…', null, only.file || null);
+  const sendProgress = media.length > 1 ? null : beginPhotoSendProgress(1, 'Encrypting video…', null, only.file || null);
   try {
     await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
     if (media.length > 1) {
-      await sendAlbumMessage(room, media, false, message => sendProgress.update(message));
+      await sendAlbumMessage(room, media, false, null, '', pendingAlbum);
     } else {
       await sendFileMessage(room, only.file, only.base64, false, false, only.mime, null, 0,
-        message => sendProgress.update(message), only.videoThumb);
+        message => sendProgress?.update(message), only.videoThumb);
     }
   } catch (error) {
+    pendingAlbum?.discard();
     toast('Could not send media. Please try again.');
   } finally {
-    sendProgress.close();
+    sendProgress?.close();
   }
 }
 
@@ -28562,11 +28621,11 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
 // of a wall of separate image messages. A single photo still goes through
 // sendFileMessage as its own normal message; grouping only makes sense
 // once there's more than one.
-async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '') {
+async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '', pendingAlbum = null) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-  const msgId = newMsgId();
+  const msgId = pendingAlbum?.rec?.id || newMsgId();
   const safeCaption = String(caption || '').slice(0, 2000);
   // Multi-item albums are deliberately never view-once. This mirrors the
   // picker state (the ① control is disabled as soon as more than one item
@@ -28595,6 +28654,7 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '')
     onProgress?.('Encrypting media…');
     encryptedPayload = await encryptMsg(room, payload);
   } catch (e) {
+    pendingAlbum?.discard();
     toast("Couldn't encrypt — message not sent");
     return false;
   }
@@ -28603,6 +28663,7 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '')
     onProgress?.('Sending media…');
     attachmentId = await uploadEncryptedAttachment(room, msgId, encryptedPayload);
   } catch (error) {
+    pendingAlbum?.discard();
     toast('Could not securely upload media');
     return false;
   }
@@ -28619,10 +28680,12 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '')
     })),
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
-  room.messages.push(rec);
-  room.lastMessageAt = sentAt;
-  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
-  else secureNativeStoreMessage(room, rec);
+  if (!pendingAlbum) {
+    room.messages.push(rec);
+    room.lastMessageAt = sentAt;
+    if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+    else secureNativeStoreMessage(room, rec);
+  }
 
   try {
     // Same plain top-level viewOnce field as sendFileMessage above, for the
@@ -28633,8 +28696,13 @@ async function sendAlbumMessage(room, items, viewOnce, onProgress, caption = '')
       attachmentId, msgId, viewOnce:!!viewOnce,
     });
     if (result?.error) throw new Error(result.error);
+    if (pendingAlbum) {
+      pendingAlbum.finalize(rec);
+      room.lastMessageAt = Math.max(room.lastMessageAt || 0, rec.ts || 0);
+    }
     return true;
   } catch (e) {
+    pendingAlbum?.discard();
     toast('Failed to send media');
     return false;
   }
