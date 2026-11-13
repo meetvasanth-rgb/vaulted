@@ -49,7 +49,7 @@ test('deferred scripts retain their dependency order', () => {
 
 test('service worker recognizes the generated immutable assets', () => {
   const worker = fs.readFileSync(path.join(root, 'client/sw.js'), 'utf8');
-  assert.match(worker, /vaultlix-app-shell-v263/);
+  assert.match(worker, /vaultlix-app-shell-v264/);
   assert.match(worker, /shellHtml\.matchAll/);
   assert.match(worker, /compiledAssets\.map\(assetPath => cache\.add\(assetPath\)\)/);
   for (const assetPath of compiled.assets.keys()) {
@@ -97,9 +97,12 @@ test('direct media picker keeps mixed photos and videos in one album', () => {
   assert.match(source, /View once is unavailable for multiple selections/);
   assert.match(source, /viewOnce = !!viewOnce && items\.length === 1/);
   assert.match(source, /if \(onlyIsImage\) \{\s*showSendImageOptions\(room, media\)/);
-  assert.match(source, /if \(media\.length > 1\) \{\s*await sendAlbumMessage\(room, media, false/);
+  assert.match(source, /async function sendGroupedMediaItems\(room, media, pendingAlbum = null\)/);
+  assert.match(source, /albumGroupId, albumIndex:index, albumCount:media\.length, deferRender:true/);
+  assert.match(source, /if \(media\.length > 1\) \{\s*await sendGroupedMediaItems\(room, media, pendingAlbum\)/);
+  assert.doesNotMatch(source, /MAX_MEDIA_ALBUM_SOURCE_BYTES/);
   assert.match(source, /function beginPendingMediaAlbum\(room, files\)/);
   assert.match(source, /selectedMediaFiles\.length > 1 \? beginPendingMediaAlbum/);
-  assert.match(source, /await sendAlbumMessage\(room, media, false, null, '', pendingAlbum\)/);
+  assert.match(source, /function mediaAlbumRecord\(records, albumGroupId\)/);
   assert.match(source, /class="msg-album-progress" role="status" aria-label="Sending album"/);
 });

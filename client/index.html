@@ -11360,11 +11360,8 @@ const ENCRYPTED_ATTACHMENT_PREFIX = 'obj:v1:';
 // A 25 MiB source grows to about 44.45 MiB after file base64 plus the
 // encrypted envelope's base64. Keep a small allowance for JSON metadata.
 const MAX_ENCRYPTED_ATTACHMENT_BYTES = 48 * 1024 * 1024;
-// A mixed album is encrypted and uploaded as one object. Keep its combined
-// prepared media near the same safe source budget as one compressed video,
-// otherwise base64 + the encrypted envelope can exceed the 48 MiB object
-// ceiling even when every individual selection was valid.
-const MAX_MEDIA_ALBUM_SOURCE_BYTES = 25 * 1024 * 1024;
+// Album members are separate encrypted attachment objects, so this ceiling
+// applies independently to each selected photo or video.
 const ATTACHMENT_DOWNLOAD_RETRY_DELAYS_MS = [0, 500, 1500, 4000];
 
 async function uploadEncryptedAttachment(room, msgId, ciphertext) {
@@ -19591,6 +19588,41 @@ function rememberCallHistoryAlias(record, aliasId) {
   if (!record.callHistoryAliasIds.includes(aliasId)) record.callHistoryAliasIds.push(aliasId);
 }
 
+// New media albums keep every photo/video as its own encrypted attachment.
+// That preserves the per-item 25 MB ceiling and avoids constructing one very
+// large encrypted object in memory. Records sharing albumGroupId are folded
+// back into one display-only album so the chat still behaves like a single
+// WhatsApp-style media bubble.
+function mediaAlbumRecord(records, albumGroupId) {
+  if (!albumGroupId) return null;
+  const members = (records || [])
+    .filter(record => record?.kind === 'file' && record.albumGroupId === albumGroupId && !record.hiddenUntilAlbumReady)
+    .sort((left, right) => (Number(left.albumIndex) || 0) - (Number(right.albumIndex) || 0));
+  if (!members.length) return null;
+  const first = members[0];
+  return {
+    ...first,
+    id:first.id,
+    kind:'album',
+    viewOnce:false,
+    pending:members.some(record => record.pending),
+    caption:'',
+    albumGroupId,
+    albumBackingIds:members.map(record => record.id),
+    images:members.map(record => ({
+      id:record.id,
+      fileName:record.fileName,
+      mime:record.mime,
+      base64:record.base64,
+      kind:String(record.mime || '').startsWith('video/') ? 'video' : 'image',
+      imagePreview:record.imagePreview || null,
+      videoThumb:record.videoThumb || null,
+      viewOnce:false,
+      viewed:false,
+    })),
+  };
+}
+
 // A single call can have more than one server message id when both devices
 // independently finish it and an older/native fallback path did not retain
 // the shared invite id. Rendering collapses those messages into one row, but
@@ -19609,8 +19641,17 @@ function callHistoryRecordIds(room, visibleRecord) {
 
 function uniqueVisibleConversationRecords(records) {
   const visible = [];
+  const renderedAlbums = new Set();
   for (const rec of records || []) {
+    if (rec?.hiddenUntilAlbumReady) continue;
     if (!isVisibleConversationRecord(rec)) continue;
+    if (rec.kind === 'file' && rec.albumGroupId) {
+      if (renderedAlbums.has(rec.albumGroupId)) continue;
+      const album = mediaAlbumRecord(records, rec.albumGroupId);
+      if (album) visible.push(album);
+      renderedAlbums.add(rec.albumGroupId);
+      continue;
+    }
     if (rec.kind === 'sys') {
       const duplicate = visible.some(existing => isSameCallHistoryRecord(existing, rec));
       if (duplicate) continue;
@@ -22679,7 +22720,9 @@ async function deleteMessage(room, msgIdOrIds, forEveryone) {
   const callDeletionKeys = [];
   for (const msgId of requestedIds) {
     const record = room.messages.find(message => message.id === msgId);
-    const expanded = !forEveryone && callHistoryFamily(record) ? callHistoryRecordIds(room, record) : [msgId];
+    const expanded = record?.albumGroupId
+      ? room.messages.filter(message => message.albumGroupId === record.albumGroupId).map(message => message.id)
+      : (!forEveryone && callHistoryFamily(record) ? callHistoryRecordIds(room, record) : [msgId]);
     if (!forEveryone) {
       const callDeletionKey = callHistoryDeletionKey(record);
       if (callDeletionKey && !callDeletionKeys.includes(callDeletionKey)) callDeletionKeys.push(callDeletionKey);
@@ -23225,6 +23268,13 @@ function applyPendingDirectMessageEdit(room, message) {
 }
 
 function renderMessageRecord(room, rec, animate) {
+  // Grouped attachments arrive as separate encrypted messages. Rebuild the
+  // room once so uniqueVisibleConversationRecords can fold them into the
+  // shared album bubble instead of briefly drawing an individual file row.
+  if (rec.kind === 'file' && rec.albumGroupId && !rec.hiddenUntilAlbumReady) {
+    renderChatBody(room);
+    return null;
+  }
   if (rec.replyData?.msgId && room.deleteLedger.get(rec.replyData.msgId) <= Date.now()) {
     redactDeletedReply(rec.replyData);
     if (!cacheRecordErased(room.code, rec.id)) secureNativeDeleteMessage(room.code, rec.id);
@@ -23989,6 +24039,9 @@ function handleAlbumItemTap(msgId, imgId) {
     const found = r.messages.find(m => m.id === msgId);
     if (found) { room = r; rec = found; break; }
   }
+  if (room && rec?.kind === 'file' && rec.albumGroupId) {
+    rec = mediaAlbumRecord(room.messages, rec.albumGroupId);
+  }
   if (!room || !rec || !rec.images) return;
   const item = rec.images.find(candidate => candidate.id === imgId);
   if (!item) return;
@@ -24108,7 +24161,14 @@ async function processIncomingContent(room, content, name, time, msgId, timestam
       const pdfPreview = safeImageDataUri('image/jpeg', parsed.pdfPreview) ? parsed.pdfPreview : null;
       const videoThumb = String(parsed.mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', parsed.videoThumb) ? parsed.videoThumb : null;
       const caption = typeof parsed.caption === 'string' ? parsed.caption.slice(0, 2000) : '';
-      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, caption, viewed: false, encryptedAttachmentRef };
+      const candidateAlbumGroupId = typeof parsed.albumGroupId === 'string' && /^[a-zA-Z0-9_-]{16,64}$/.test(parsed.albumGroupId)
+        ? parsed.albumGroupId : null;
+      const albumIndex = candidateAlbumGroupId && Number.isInteger(parsed.albumIndex) && parsed.albumIndex >= 0 && parsed.albumIndex < 20
+        ? parsed.albumIndex : null;
+      const albumCount = candidateAlbumGroupId && Number.isInteger(parsed.albumCount) && parsed.albumCount >= 2 && parsed.albumCount <= 20
+        ? parsed.albumCount : null;
+      const albumGroupId = albumIndex !== null && albumCount !== null && albumIndex < albumCount ? candidateAlbumGroupId : null;
+      return { ...base, kind: 'file', fileName: parsed.name, mime: parsed.mime, base64: parsed.data, isImage, imagePreview, pdfPreview, videoThumb, pageCount:Number(parsed.pageCount) || 0, viewOnce: !!parsed.viewOnce, caption, viewed: false, albumGroupId, albumIndex, albumCount, encryptedAttachmentRef };
     }
     // Several photos/videos picked together arrive as ONE message with an
     // images[] array (see sendAlbumMessage) rather than one message per
@@ -28403,14 +28463,6 @@ async function sendSelectedFilesToRoom(room, files) {
     return;
   }
 
-  if (media.length > 1) {
-    const combinedBytes = media.reduce((total, item) => total + Math.ceil(item.base64.length * 3 / 4), 0);
-    if (combinedBytes > MAX_MEDIA_ALBUM_SOURCE_BYTES) {
-      pendingAlbum?.discard();
-      toast('This media album is too large to send securely. Select fewer or shorter videos.');
-      return;
-    }
-  }
   if (media.length < 2 && pendingAlbum) {
     pendingAlbum.discard();
     pendingAlbum = null;
@@ -28431,7 +28483,7 @@ async function sendSelectedFilesToRoom(room, files) {
   try {
     await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
     if (media.length > 1) {
-      await sendAlbumMessage(room, media, false, null, '', pendingAlbum);
+      await sendGroupedMediaItems(room, media, pendingAlbum);
     } else {
       await sendFileMessage(room, only.file, only.base64, false, false, only.mime, null, 0,
         message => sendProgress?.update(message), only.videoThumb);
@@ -28542,7 +28594,7 @@ window.vaultlixReceiveExternalShare = function(payload) {
 // its real post-compression type instead of the original file's — and size
 // is always derived from the base64 actually being sent rather than
 // file.size, since compression means those two routinely no longer match.
-async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null, imagePreview = null, caption = '') {
+async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverride, pdfPreview = null, pageCount = 0, onProgress, videoThumb = null, imagePreview = null, caption = '', options = {}) {
   const now = new Date();
   const sentAt = now.getTime();
   const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
@@ -28562,18 +28614,24 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
   const safeVideoThumb = String(mime || '').startsWith('video/') && safeImageDataUri('image/jpeg', videoThumb) ? videoThumb : null;
   const safeImagePreview = isImage && safeMessageImagePreview(imagePreview) ? imagePreview : null;
   const safeCaption = String(caption || '').slice(0, 2000);
+  const albumGroupId = typeof options.albumGroupId === 'string' && /^[a-zA-Z0-9_-]{16,64}$/.test(options.albumGroupId)
+    ? options.albumGroupId : null;
+  const albumIndex = albumGroupId && Number.isInteger(options.albumIndex) && options.albumIndex >= 0 ? options.albumIndex : null;
+  const albumCount = albumGroupId && Number.isInteger(options.albumCount) && options.albumCount >= 2 && options.albumCount <= 20 ? options.albumCount : null;
   const payload = JSON.stringify({ type: 'file', name: file.name, mime, size: sizeBytes, data: base64, pdfPreview,
     videoThumb:safeVideoThumb,
     imagePreview:safeImagePreview,
-    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, caption:safeCaption });
+    pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, caption:safeCaption,
+    albumGroupId, albumIndex, albumCount });
   const rec = {
     id: msgId, kind: 'file', isMe: true, name: room.myName, time, ts: sentAt,
     fileName: file.name, mime, base64, isImage, imagePreview:safeImagePreview, pdfPreview, videoThumb:safeVideoThumb,
     pageCount:Number(pageCount) || 0, viewOnce: !!viewOnce, caption:safeCaption, viewed: false, pending:true,
+    albumGroupId, albumIndex, albumCount, hiddenUntilAlbumReady:!!options.deferRender,
     receiptState: null, timerStarted: false, reactionMine: null, reactionTheirs: null, deleteAt: null,
   };
   room.messages.push(rec); room.lastMessageAt = sentAt;
-  if (room.code === activeRoomCode) renderMessageRecord(room, rec, true);
+  if (room.code === activeRoomCode && !options.deferRender) renderMessageRecord(room, rec, true);
   const discardPending = () => {
     const index = room.messages.indexOf(rec); if (index >= 0) room.messages.splice(index, 1);
     if (room.code === activeRoomCode) renderChatBody(room);
@@ -28606,17 +28664,53 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     const result = await api('/api/send', {
       code:room.code, token:room.token, content:`${ENCRYPTED_ATTACHMENT_PREFIX}${attachmentId}`,
       attachmentId, msgId, viewOnce:!!viewOnce,
+      suppressNotification:options.suppressNotification === true,
     });
     if (result?.error) throw new Error(result.error);
     rec.pending = false;
-    if (room.code === activeRoomCode) renderChatBody(room);
-    else secureNativeStoreMessage(room, rec);
-    return true;
+    if (room.code === activeRoomCode && !options.deferRender) renderChatBody(room);
+    else if (!options.deferRender) secureNativeStoreMessage(room, rec);
+    return rec;
   } catch(e) {
     discardPending();
     toast('Failed to send file');
     return false;
   }
+}
+
+// Upload every album member as an independent encrypted attachment. This is
+// intentionally sequential: it avoids constructing one huge encrypted object
+// while preserving 25 MB per photo/video instead of imposing 25 MB on the
+// entire selection.
+// albumGroupId is encrypted inside each item and is only used by the two
+// clients to reconstruct one visual album bubble.
+async function sendGroupedMediaItems(room, media, pendingAlbum = null) {
+  const albumGroupId = newMsgId();
+  const sent = [];
+  for (let index = 0; index < media.length; index++) {
+    const item = media[index];
+    const isImage = item.kind !== 'video' && !String(item.mime || '').startsWith('video/');
+    const record = await sendFileMessage(
+      room, item.file, item.base64, isImage, false, item.mime, null, 0, null,
+      item.videoThumb, item.imagePreview, '',
+      {
+        albumGroupId, albumIndex:index, albumCount:media.length, deferRender:true,
+        // Alert once, after the complete album has reached the server, rather
+        // than ringing once for every photo/video in the same selection.
+        suppressNotification:index < media.length - 1,
+      }
+    );
+    if (record) sent.push(record);
+  }
+
+  pendingAlbum?.discard();
+  if (!sent.length) return false;
+  for (const record of sent) {
+    record.hiddenUntilAlbumReady = false;
+    secureNativeStoreMessage(room, record);
+  }
+  if (room.code === activeRoomCode) renderChatBody(room);
+  return sent.length === media.length;
 }
 
 // Multiple photos picked together send as ONE encrypted message carrying
