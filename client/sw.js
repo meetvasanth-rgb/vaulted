@@ -2,7 +2,7 @@
 // shell available for an offline launch. API responses, ciphertext, account
 // data, messages and keys are deliberately never written to this cache.
 
-const APP_SHELL_CACHE = 'vaultlix-app-shell-v250';
+const APP_SHELL_CACHE = 'vaultlix-app-shell-v251';
 const APP_SHELL_FILES = [
   '/',
   '/index.html',
@@ -116,7 +116,7 @@ self.addEventListener('fetch', (event) => {
       // link while an older cached generator still rendered the previous card.
       // Refresh it whenever online, with the installed copy retained for
       // offline sharing.
-      if (url.pathname === '/number-card.js') {
+      if (url.pathname === '/number-card.js' || url.pathname === '/groups.js') {
         try {
           const response = await fetch(request);
           if (response.ok) await cache.put(url.pathname, response.clone());

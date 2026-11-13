@@ -21104,7 +21104,7 @@ function renderVaultList() {
       const opening = openingPrivateGroupId === group.id;
       const preview = opening ? 'Opening encrypted group…' : group.requiresRekey ? 'Updating group encryption…' : `${group.members?.length || 1} members · Encrypted group`;
       html += `<div class="vault-list-row group-list-row${opening ? ' opening' : ''}" data-group="${escHtml(group.id)}" data-group-opening="${opening}" aria-busy="${opening}">
-        <span class="vault-list-avatar group-row-avatar">${privateGroupAvatarMarkup(group)}</span>
+        <span class="vault-list-avatar group-row-avatar">${typeof privateGroupAvatarMarkup === 'function' ? privateGroupAvatarMarkup(group) : '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20v-2a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v2M15 14.5a4 4 0 0 1 6 3.5v2"/></svg>'}</span>
         <span class="vault-list-row-name">${escHtml(group.name || 'Private group')}</span>
         <span class="vault-list-row-preview${group.requiresRekey ? ' alert' : ''}">${escHtml(preview)}</span>
         <span class="vault-list-row-meta">${group.updatedAt ? `<span class="vault-list-row-time">${formatVaultInboxTime(group.updatedAt)}</span>` : ''}${group.unread > 0 ? `<span class="vault-list-row-unread">${group.unread > 9 ? '9+' : group.unread}</span>` : ''}</span>
