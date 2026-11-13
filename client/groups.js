@@ -337,6 +337,9 @@ async function sendPrivateGroupGif(item, searchQuery) {
 async function handlePrivateGroupFileSelect(event) {
   const files = Array.from(event.target.files || []); event.target.value = '';
   if (!files.length) return;
+  const preparation = beginPhotoSendProgress(files.length,
+    `Preparing ${files.length === 1 ? 'attachment' : files.length + ' attachments'}…`, null,
+    files.find(file => String(file.type || '').startsWith('image/')) || null);
   // Images are prepared here but held back from sending — they're batched
   // into one caption-entry step below (showSendImageOptions, the same
   // dialog 1:1 chat uses), rather than sent immediately per file like every
@@ -344,7 +347,8 @@ async function handlePrivateGroupFileSelect(event) {
   // picked batch, matching how 1:1 asks its view-once question once per
   // pick rather than once per photo.
   const imageItems = [];
-  for (const file of files) {
+  for (const [fileIndex, file] of files.entries()) {
+    preparation.update(`Preparing ${fileIndex + 1} of ${files.length}…`);
     const isVideo = String(file.type || '').startsWith('video/');
     const isImage = String(file.type || '').startsWith('image/');
     if (isImage) {
@@ -388,21 +392,31 @@ async function handlePrivateGroupFileSelect(event) {
     } catch (error) { toast(error.message || 'Attachment could not be sent'); }
   }
 
+  preparation.close();
   if (imageItems.length) {
     // room is unused when onSend is provided — groups have their own send
     // pipeline (sendPrivateGroupAttachment), unrelated to 1:1's.
     showSendImageOptions(null, imageItems, {
       groupMode: true,
       onSend: async (caption, viewOnce, onProgress) => {
-        for (const item of imageItems) {
+        if (imageItems.length > 1) {
+          try {
+            await sendPrivateGroupAttachment({ type:'group-album',
+              items:imageItems.map(item => ({
+                name:String(item.file.name || 'Photo').slice(0,180), mime:item.mime,
+                size:Math.ceil(item.base64.length * 3 / 4), data:item.base64,
+              })), ...(caption ? { caption } : {}) }, onProgress);
+          } catch (error) {
+            toast(error.message || 'The photo album could not be sent');
+          }
+        } else {
+          const item = imageItems[0];
           try {
             await sendPrivateGroupAttachment({ type:'group-image',
               name:String(item.file.name || 'Photo').slice(0,180), mime:item.mime,
               size:Math.ceil(item.base64.length * 3 / 4), data:item.base64,
               ...(caption ? { caption } : {}) }, onProgress);
-          } catch (error) {
-            toast(error.message || `“${item.file.name}” could not be sent`);
-          }
+          } catch (error) { toast(error.message || `“${item.file.name}” could not be sent`); }
         }
         toast(imageItems.length > 1 ? 'Photos sent' : 'Photo sent');
       },
@@ -680,6 +694,7 @@ function sanitizeGroupReply(value) {
 }
 
 function groupMessageKind(message) {
+  if (message.attachment?.type === 'group-album') return 'album';
   if (message.attachment?.type === 'group-image') return 'image';
   if (message.attachment?.type === 'group-voice') return 'voice';
   if (message.attachment?.type === 'group-file') return 'file';
@@ -769,6 +784,10 @@ function privateGroupRowHtml(group, message, reactions, state) {
       content = ATTACHMENT_LOADING_HTML; usable = false;
     } else if (message.attachmentState === 'unavailable') {
       content = attachmentUnavailableHtml({ unavailableReason:message.unavailableReason }); usable = false;
+    } else if (message.attachment?.type === 'group-album') {
+      content = `<div class="msg-media-wrap">${privateGroupAlbumGridHtml(message)}</div>`;
+      if (message.pending) content = `<div class="msg-upload-pending">${content}${attachmentUploadAnimationHtml()}</div>`;
+      if (message.attachment.caption) content += `<div class="group-message-text">${linkifyHtml(message.attachment.caption)}</div>`;
     } else if (message.attachment?.type === 'group-image') {
       // Same photo markup and in-app viewer as direct conversations: tapping
       // opens viewImage(), and saving is an explicit action inside it.
@@ -811,6 +830,29 @@ function privateGroupRowHtml(group, message, reactions, state) {
     const quote = message.reply
       ? `<div class="msg-reply-quote group-reply-quote" data-reply-to="${escHtml(message.reply.id)}"><strong>${escHtml(message.reply.name || 'Member')}</strong> ${escHtml(message.reply.kind === 'text' ? message.reply.text : `${{ image:'📷', voice:'🎤', gif:'GIF', file:'📎' }[message.reply.kind] || ''} ${message.reply.text || ''}`)}</div>` : '';
     return `<div class="group-msg${mine ? ' mine' : ''}" data-group-msg-id="${escHtml(message.id)}" data-usable="${usable ? '1' : '0'}"><div class="group-message${mine ? ' mine' : ''}${message.attachment || message.gif || message.attachmentState ? ' has-attachment' : ''}"><div class="group-message-name">${escHtml(groupMemberLabel(group, message.senderId))}</div>${quote}${content}${groupReactionChipsHtml(reactions.get(message.id), state?.accountId)}<div class="group-message-time" title="${escHtml(formatFullDateTime(message.createdAt))}">${message.editedAt ? '<span class="msg-edited">Edited</span> · ' : ''}${escHtml(new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}))}</div></div></div>`;
+}
+
+function privateGroupAlbumGridHtml(message) {
+  const items = Array.isArray(message?.attachment?.items) ? message.attachment.items : [];
+  const visibleCount = Math.min(items.length, 4);
+  const remaining = Math.max(0, items.length - visibleCount);
+  const tiles = items.slice(0, visibleCount).map((item, index) => {
+    const safeSrc = safeImageDataUri(item.mime, item.data);
+    const image = safeSrc
+      ? `<img class="msg-image" src="${safeSrc}" alt="" loading="lazy" decoding="async" draggable="false"/>`
+      : MEDIA_BLOCKED_HTML;
+    const more = index === visibleCount - 1 && remaining ? `<div class="msg-album-more">+${remaining}</div>` : '';
+    return `<div class="msg-album-tile" onclick="openPrivateGroupAlbumItem('${escHtml(message.id)}',${index})" oncontextmenu="return false">${image}${more}</div>`;
+  }).join('');
+  return `<div class="msg-album-grid msg-album-grid-${visibleCount}">${tiles}</div>`;
+}
+
+function openPrivateGroupAlbumItem(messageId, index) {
+  const message = privateGroupMessageById(messageId);
+  const item = message?.attachment?.items?.[Number(index)];
+  const image = safeImageDataUri(item?.mime, item?.data);
+  if (!image) { toast('This photo is unavailable'); return; }
+  viewImage(image);
 }
 
 function requestPrivateGroupVoiceTranscript(messageId) {
@@ -1418,7 +1460,14 @@ async function decodePrivateGroupAttachment(group, state, message, attachmentId,
   let payload;
   try {
     payload = JSON.parse(await decryptPrivateGroupValue(group.keys?.[message.keyVersion], encryptedPayload));
-    if (!['group-image','group-file','group-voice'].includes(payload?.type) || typeof payload.data !== 'string' || payload.data.length > 36 * 1024 * 1024) {
+    const validAlbum = payload?.type === 'group-album'
+      && Array.isArray(payload.items) && payload.items.length >= 2 && payload.items.length <= 10
+      && payload.items.every(item => /^image\/[a-z0-9.+-]+$/i.test(String(item?.mime || ''))
+        && typeof item?.data === 'string' && isValidMediaBase64(item.data))
+      && payload.items.reduce((size, item) => size + item.data.length, 0) <= 36 * 1024 * 1024;
+    const validSingle = ['group-image','group-file','group-voice'].includes(payload?.type)
+      && typeof payload.data === 'string' && payload.data.length <= 36 * 1024 * 1024;
+    if (!validAlbum && !validSingle) {
       throw new Error('Invalid group attachment');
     }
   } catch (error) {

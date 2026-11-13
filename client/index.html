@@ -29605,20 +29605,22 @@ function showSendImageOptions(room, items, options = {}) {
     sending = true;
     const caption = (overlay.querySelector('#send-img-caption')?.value || '').trim();
     close();
+    const progress = beginPhotoSendProgress(items.length,
+      `Preparing ${items.length === 1 ? 'photo' : items.length + ' photos'}…`, null, items[0]?.file || null);
     try {
       // Paint feedback before hashing, serialization and encryption begin.
       await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
       if (onSend) {
-        await onSend(caption, viewOnce);
+        await onSend(caption, viewOnce, message => progress.update(message));
       } else if (items.length > 1) {
-        await sendAlbumMessage(room, items, viewOnce, undefined, caption);
+        await sendAlbumMessage(room, items, viewOnce, message => progress.update(message), caption);
       } else {
         const { file, base64, mime, imagePreview } = items[0];
-        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, undefined, null, imagePreview, caption);
+        await sendFileMessage(room, file, base64, true, viewOnce, mime, null, 0, message => progress.update(message), null, imagePreview, caption);
       }
     } catch (error) {
       toast('Could not send photos. Please try again.');
-    }
+    } finally { progress.close(); }
   };
   const onceBtn = overlay.querySelector('#send-img-once-toggle');
   const onceHint = overlay.querySelector('#send-img-once-hint');
