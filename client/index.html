@@ -28351,7 +28351,33 @@ async function sendSelectedFilesToRoom(room, files) {
       return;
     }
   }
-  if (media.length) showSendImageOptions(room, media);
+  if (!media.length) return;
+
+  // Only a single photo needs the one-time-view decision. A single video
+  // sends normally, while every multi-selection skips the extra composer
+  // step and is delivered immediately as one encrypted mixed-media album.
+  const only = media[0];
+  const onlyIsImage = media.length === 1 && only.kind !== 'video' && !String(only.mime || '').startsWith('video/');
+  if (onlyIsImage) {
+    showSendImageOptions(room, media);
+    return;
+  }
+
+  const sendProgress = beginPhotoSendProgress(media.length,
+    media.length > 1 ? `Encrypting ${media.length} items…` : 'Encrypting video…', null, only.file || null);
+  try {
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    if (media.length > 1) {
+      await sendAlbumMessage(room, media, false, message => sendProgress.update(message));
+    } else {
+      await sendFileMessage(room, only.file, only.base64, false, false, only.mime, null, 0,
+        message => sendProgress.update(message), only.videoThumb);
+    }
+  } catch (error) {
+    toast('Could not send media. Please try again.');
+  } finally {
+    sendProgress.close();
+  }
 }
 
 let pendingExternalShareFiles = [];
