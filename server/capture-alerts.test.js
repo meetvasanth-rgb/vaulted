@@ -100,6 +100,11 @@ test('the web bridge requires a visible conversation and deduplicates recording 
   assert.match(client, /queueMicrotask\(flushPendingNativeScreenRecordingAlert\)/);
 });
 
+test('direct capture alerts use the locally known peer name after a durable server reload', () => {
+  assert.match(client, /rec\.name \|\| room\.peerName \|\| 'Your contact'/);
+  assert.doesNotMatch(client, /rec\.name \|\| 'Someone'/);
+});
+
 test('capture alerts are durable security events rather than ordinary deletable messages', () => {
   assert.match(server, /deleteTimerSeconds:privacyEvent \? 0/);
   assert.match(server, /room\.msgs = room\.msgs\.filter\(isPrivacyCaptureEvent\)/);

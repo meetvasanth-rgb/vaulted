@@ -23213,7 +23213,12 @@ function renderMessageRecord(room, rec, animate) {
     div.className = animate ? 'sys-msg msg-enter' : 'sys-msg';
     if (Number(rec.ts) > 0) div.dataset.ts = String(Number(rec.ts));
     div.textContent = rec.captureEvent
-      ? captureEventText(rec.captureEvent, rec.isMe ? 'You' : (rec.name || 'Someone'))
+      // New durable conversations keep member names encrypted, so a privacy
+      // event restored after a server reload can legitimately have no
+      // server-supplied rec.name. The device already has the peer's current
+      // label in this E2E room; use it instead of degrading the alert to
+      // "Someone took a screenshot".
+      ? captureEventText(rec.captureEvent, rec.isMe ? 'You' : (rec.name || room.peerName || 'Your contact'))
       : rec.content;
     body.insertBefore(div, typing);
     body.scrollTop = body.scrollHeight;
