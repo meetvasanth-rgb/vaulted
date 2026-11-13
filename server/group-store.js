@@ -141,11 +141,23 @@ class GroupStore {
     });
   }
 
-  async updateProfileImage(id, ownerId, encryptedProfileImage, now = Date.now()) {
+  async updateProfileImage(id, accountId, encryptedProfileImage, now = Date.now()) {
     return this.mutate(id, group => {
-      if (group.ownerId !== ownerId) return null;
+      const member = group.members.find(candidate => candidate.accountId === accountId && candidate.active);
+      if (!member || (member.role !== 'owner' && member.role !== 'admin')) return null;
       group.encryptedProfileImage = encryptedProfileImage || null;
       group.profileImageKeyVersion = encryptedProfileImage ? group.keyVersion : null;
+      group.updatedAt = now;
+      return group;
+    });
+  }
+
+  async setMemberRole(id, ownerId, accountId, role, now = Date.now()) {
+    return this.mutate(id, group => {
+      if (group.ownerId !== ownerId || accountId === ownerId || !['admin', 'member'].includes(role)) return null;
+      const member = group.members.find(candidate => candidate.accountId === accountId && candidate.active);
+      if (!member) return null;
+      member.role = role;
       group.updatedAt = now;
       return group;
     });

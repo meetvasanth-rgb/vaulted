@@ -46,6 +46,11 @@ function renderPrivateGroupProfile(group = privateGroups.get(activePrivateGroupI
   const name = document.getElementById('group-profile-name');
   if (name) name.textContent = group.name || 'Private group';
 }
+
+function canEditPrivateGroupProfile(group, state = loadAccountState()) {
+  const member = group?.members?.find(candidate => candidate.accountId === state?.accountId);
+  return !!member && (member.role === 'owner' || member.role === 'admin');
+}
 let privateGroupVoiceRecorder = null;
 let privateGroupVoiceStream = null;
 let privateGroupVoiceChunks = [];
@@ -1825,6 +1830,7 @@ const GROUP_ICONS = {
   close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   remove: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/>',
   report: '<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
+  admin: '<path d="M5 9l3 3 4-7 4 7 3-3-1.5 9h-11z"/><path d="M7 21h10"/>',
 };
 function groupIconButton(kind, label, onclick, icon) {
   return `<button class="${kind}" type="button" onclick="${onclick}" aria-label="${label}" title="${label}"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS[icon]}</svg></button>`;
@@ -1835,11 +1841,17 @@ function renderGroupMembersList(query = '') {
   const owner = group.ownerId === state.accountId;
   const shown = (group.members || []).filter(member => groupSearchMatches(query, member.displayName || 'Vaultlix member', member.privateNumber));
   document.getElementById('group-members-list').innerHTML = shown.length
-    ? shown.map(member => `<div class="group-member"><span><strong>${escHtml(member.displayName || 'Vaultlix member')}${member.accountId === state.accountId ? ' · You' : ''}</strong><small>${escHtml(formatPrivateNumber(member.privateNumber))}${member.role === 'owner' ? ' · Owner' : ''}</small></span>${member.accountId !== state.accountId ? `<span>${owner ? `<button type="button" class="icon-btn" onclick="removePrivateGroupMember('${escHtml(member.accountId)}')" aria-label="Remove from group" title="Remove from group"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.remove}</svg></button>` : ''}<button type="button" class="icon-btn report" onclick="reportPrivateGroupMember('${escHtml(member.accountId)}')" aria-label="Report or block" title="Report or block"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.report}</svg></button></span>` : ''}</div>`).join('')
+    ? shown.map(member => `<div class="group-member"><span><strong>${escHtml(member.displayName || 'Vaultlix member')}${member.accountId === state.accountId ? ' · You' : ''}</strong><small>${escHtml(formatPrivateNumber(member.privateNumber))}${member.role === 'owner' ? ' · Owner' : member.role === 'admin' ? ' · Admin' : ''}</small></span>${member.accountId !== state.accountId ? `<span>${owner ? `<button type="button" class="icon-btn admin${member.role === 'admin' ? ' active' : ''}" onclick="setPrivateGroupMemberRole('${escHtml(member.accountId)}','${member.role === 'admin' ? 'member' : 'admin'}')" aria-label="${member.role === 'admin' ? 'Remove admin' : 'Make admin'}" title="${member.role === 'admin' ? 'Remove admin' : 'Make admin'}"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.admin}</svg></button><button type="button" class="icon-btn" onclick="removePrivateGroupMember('${escHtml(member.accountId)}')" aria-label="Remove from group" title="Remove from group"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.remove}</svg></button>` : ''}<button type="button" class="icon-btn report" onclick="reportPrivateGroupMember('${escHtml(member.accountId)}')" aria-label="Report or block" title="Report or block"><svg viewBox="0 0 24 24" aria-hidden="true">${GROUP_ICONS.report}</svg></button></span>` : ''}</div>`).join('')
     : '<div class="group-chat-empty" style="padding:22px 0">No one in this group matches.</div>';
 }
 
 function choosePrivateGroupProfileImage() {
+  const state = loadAccountState();
+  const group = privateGroups.get(activePrivateGroupId);
+  if (!canEditPrivateGroupProfile(group, state)) {
+    toast('Only a group owner or admin can change the group image');
+    return;
+  }
   const input = document.getElementById('group-profile-image-input');
   if (input) { input.value = ''; input.click(); }
 }
@@ -1867,7 +1879,7 @@ async function compressPrivateGroupProfileImage(file) {
 async function updatePrivateGroupProfileImage(profileImage) {
   const state = loadAccountState();
   const group = privateGroups.get(activePrivateGroupId);
-  if (!state || !group || group.ownerId !== state.accountId) return false;
+  if (!canEditPrivateGroupProfile(group, state)) return false;
   const cleanImage = safeProfileImageUri(profileImage);
   const encryptedProfileImage = cleanImage
     ? await encryptPrivateGroupValue(group.keys?.[group.keyVersion], cleanImage)
@@ -1910,11 +1922,19 @@ async function removePrivateGroupProfileImage() {
 function openGroupMembers() {
   const group = privateGroups.get(activePrivateGroupId); const state = loadAccountState(); if (!group || !state) return;
   const owner = group.ownerId === state.accountId;
+  const profileEditor = canEditPrivateGroupProfile(group, state);
   const search = document.getElementById('group-members-search');
   if (search) search.value = '';
   renderPrivateGroupProfile(group);
+  const profileAvatar = document.getElementById('group-profile-avatar');
+  if (profileAvatar) {
+    profileAvatar.disabled = !profileEditor;
+    profileAvatar.setAttribute('aria-label', profileEditor
+      ? (group.profileImage ? 'Change group image' : 'Add group image')
+      : 'Group image');
+  }
   const profileButtons = document.getElementById('group-profile-buttons');
-  if (profileButtons) profileButtons.innerHTML = owner
+  if (profileButtons) profileButtons.innerHTML = profileEditor
     ? `<button type="button" onclick="choosePrivateGroupProfileImage()">${group.profileImage ? 'Change image' : 'Add image'}</button>${group.profileImage ? '<button class="remove" type="button" onclick="removePrivateGroupProfileImage()">Remove</button>' : ''}`
     : '';
   renderGroupMembersList('');
@@ -1922,6 +1942,26 @@ function openGroupMembers() {
     ? groupIconButton('add', 'Add people', 'openAddGroupMembers()', 'add') + groupIconButton('danger', 'Delete group', 'deletePrivateGroup()', 'trash')
     : groupIconButton('danger', 'Leave group', 'leavePrivateGroup()', 'leave')}${groupIconButton('close', 'Close', 'closeGroupMembers()', 'close')}`;
   document.getElementById('group-members').classList.add('open');
+}
+
+async function setPrivateGroupMemberRole(memberAccountId, role) {
+  const state = loadAccountState();
+  const group = privateGroups.get(activePrivateGroupId);
+  if (!state || !group || group.ownerId !== state.accountId || memberAccountId === state.accountId) return;
+  const action = role === 'admin' ? 'make this person an admin' : 'remove this person as admin';
+  if (!confirm(`Are you sure you want to ${action}?`)) return;
+  try {
+    const result = await api('/api/groups/member-role', {
+      accountId:state.accountId, sessionToken:state.sessionToken,
+      groupId:group.id, memberAccountId, role,
+    });
+    if (result.error) throw new Error(result.error);
+    group.members = result.group.members;
+    group.updatedAt = result.group.updatedAt;
+    savePrivateGroupSessions();
+    renderGroupMembersList(document.getElementById('group-members-search')?.value || '');
+    toast(role === 'admin' ? 'Group admin added' : 'Group admin removed');
+  } catch (error) { toast(error.message || 'Could not update the group admin'); }
 }
 
 function closeGroupMembers() { document.getElementById('group-members')?.classList.remove('open'); }

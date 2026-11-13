@@ -3935,9 +3935,24 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
       return resErr(res, 'The encrypted group image is invalid or too large.', 400);
     }
     const group = await groupStore.updateProfileImage(d.groupId, d.accountId, d.encryptedProfileImage);
-    if (!group) return resErr(res, 'Only the group owner can change the group image.', 403);
+    if (!group) return resErr(res, 'Only a group owner or admin can change the group image.', 403);
     for (const member of group.members) if (member.active && member.accountId !== d.accountId) {
       publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'profile' });
+    }
+    return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
+  }
+
+  if (path === '/api/groups/member-role' && method === 'POST') {
+    if (!validAccountId(d.accountId) || !validAccountId(d.memberAccountId)) {
+      return resErr(res, 'Choose a valid group member.', 400);
+    }
+    const account = authenticateAccountSession(d.accountId, d.sessionToken);
+    if (!account) return resErr(res, 'Your Vaultlix session has expired.', 401);
+    if (!['admin', 'member'].includes(d.role)) return resErr(res, 'Choose a valid group role.', 400);
+    const group = await groupStore.setMemberRole(d.groupId, d.accountId, d.memberAccountId, d.role);
+    if (!group) return resErr(res, 'Only the group owner can change admin roles.', 403);
+    for (const member of group.members) if (member.active) {
+      publishInboxAccount(member.accountId, 'group-update', { groupId:group.id, kind:'role' });
     }
     return res200(res, { ok:true, group:publicGroupFor(group, d.accountId) });
   }

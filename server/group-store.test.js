@@ -34,7 +34,7 @@ test('private group schema stores opaque JSON records', () => {
   assert.match(SCHEMA, /group_id uuid NOT NULL REFERENCES private_groups\(id\) ON DELETE CASCADE/);
 });
 
-test('only the owner can update an encrypted group image and rekey binds it to the new key version', async () => {
+test('owners and admins can update an encrypted group image and rekey binds it to the new key version', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vaultlix-group-image-'));
   const store = new GroupStore(directory);
   await store.initialize();
@@ -45,6 +45,10 @@ test('only the owner can update an encrypted group image and rekey binds it to t
     { accountId:memberId, role:'member', active:true, keyVersion:1, wrapRoomCode:'room-b', wrappedKey:'wk1', wrappedKeys:{ 1:'wk1' } },
   ], 'binding-key-123456789012');
   assert.equal(await store.updateProfileImage(group.id, memberId, 'g1:not-allowed'), null);
+  const promoted = await store.setMemberRole(group.id, ownerId, memberId, 'admin', 90);
+  assert.equal(promoted.members.find(member => member.accountId === memberId).role, 'admin');
+  const adminUpdated = await store.updateProfileImage(group.id, memberId, 'g1:admin-avatar', 95);
+  assert.equal(adminUpdated.encryptedProfileImage, 'g1:admin-avatar');
   const updated = await store.updateProfileImage(group.id, ownerId, 'g1:encrypted-avatar', 100);
   assert.equal(updated.encryptedProfileImage, 'g1:encrypted-avatar');
   assert.equal(updated.profileImageKeyVersion, 1);
@@ -53,6 +57,9 @@ test('only the owner can update an encrypted group image and rekey binds it to t
   assert.equal(rotated.keyVersion, 2);
   assert.equal(rotated.encryptedProfileImage, 'g1:reencrypted-avatar');
   assert.equal(rotated.profileImageKeyVersion, 2);
+  const demoted = await store.setMemberRole(group.id, ownerId, memberId, 'member', 210);
+  assert.equal(demoted.members.find(member => member.accountId === memberId).role, 'member');
+  assert.equal(await store.setMemberRole(group.id, memberId, ownerId, 'admin', 220), null);
 });
 
 test('retrying a private group message id is idempotent', async () => {
