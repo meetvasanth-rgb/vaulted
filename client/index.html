@@ -28500,8 +28500,6 @@ async function sendSelectedFilesToRoom(room, files) {
       } else {
         const isVideo = String(file.type || '').startsWith('video/');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-        const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
-        if (isVideo) pendingAlbum?.updatePreview(file, { videoThumb });
         currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
         const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
         currentVideoController = null;
@@ -28517,6 +28515,21 @@ async function sendSelectedFilesToRoom(room, files) {
           ? { name:compressedVideo.name, type:compressedVideo.mime }
           : file;
         const base64 = compressedVideo ? compressedVideo.base64 : await fileToBase64(file);
+        let videoThumb = null;
+        if (isVideo) {
+          // Android pickers can expose a source that the native compressor
+          // can read but the WebView video element cannot decode reliably.
+          // Build the poster from the final MP4 bytes instead: this is the
+          // exact file the recipient will play and avoids black/play-icon
+          // frames taken from the original picker wrapper.
+          videoThumb = await createVideoAttachmentThumbnailFromBase64(
+            base64, preparedFile.type || 'video/mp4'
+          );
+          // Plain browsers can still send formats that remain easier to
+          // decode from the original File. Keep it as a last-resort fallback.
+          if (!videoThumb) videoThumb = await createVideoAttachmentThumbnail(file);
+          pendingAlbum?.updatePreview(file, { videoThumb });
+        }
         const pdfPreview = isPdfAttachment(file.type, file.name)
           ? await createPdfFirstPagePreview(base64)
           : null;
@@ -30197,21 +30210,48 @@ function createVideoAttachmentThumbnail(file, maxDim = 480) {
     video.setAttribute('muted', ''); video.setAttribute('playsinline', '');
     video.style.cssText = 'position:fixed;left:-2px;bottom:-2px;width:1px;height:1px;opacity:.001;pointer-events:none';
     video.onerror = () => finish(null);
-    video.onseeked = queueCapture;
-    video.onloadeddata = () => { if (!seekRequested) queueCapture(); };
-    video.oncanplay = () => { if (!seekRequested) queueCapture(); };
+    const decodeThenCapture = () => {
+      if (settled) return;
+      try {
+        const playback = video.play();
+        if (playback?.then) playback.then(queueCapture).catch(queueCapture);
+        else queueCapture();
+      } catch (_) { queueCapture(); }
+    };
+    video.onseeked = decodeThenCapture;
+    video.onloadeddata = () => { if (!seekRequested) decodeThenCapture(); };
+    video.oncanplay = () => { if (!seekRequested) decodeThenCapture(); };
     video.onloadedmetadata = () => {
       const duration = Number(video.duration);
       if (!Number.isFinite(duration) || duration <= .12) return;
       seekRequested = true;
-      // Avoid the commonly black first encoded frame. Ten percent in, capped
-      // at one second, remains representative even for a very short clip.
-      try { video.currentTime = Math.min(1, Math.max(.12, duration * .1)); }
+      // Avoid black title frames and the large native play glyph frequently
+      // present at the start of shared/screen-recorded videos. Sampling a
+      // little deeper produces a useful scene thumbnail for short and long
+      // clips without seeking so far that the preview becomes misleading.
+      try { video.currentTime = Math.min(4, Math.max(.75, duration * .28)); }
       catch (_) { seekRequested = false; queueCapture(); }
       setTimeout(queueCapture, 1800);
     };
     document.body.appendChild(video); video.src = url; video.load();
   });
+}
+
+function createVideoAttachmentThumbnailFromBase64(base64, mime, maxDim = 480) {
+  if (!isValidMediaBase64(base64) || !String(mime || '').startsWith('video/')) return Promise.resolve(null);
+  try {
+    const parts = [];
+    const encodedChunkSize = 256 * 1024; // divisible by four: every slice remains valid base64
+    for (let offset = 0; offset < base64.length; offset += encodedChunkSize) {
+      const binary = atob(base64.slice(offset, offset + encodedChunkSize));
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      parts.push(bytes);
+    }
+    return createVideoAttachmentThumbnail(new Blob(parts, { type:mime }), maxDim);
+  } catch (_) {
+    return Promise.resolve(null);
+  }
 }
 
 // Compress a photo before it's ever encrypted/sent — same idea as

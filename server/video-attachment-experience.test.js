@@ -21,9 +21,10 @@ test('direct and group attachment sends remain visible with encrypted upload ani
   assert.match(groups, /pending:true[\s\S]{0,300}group\.messages = [\s\S]{0,500}await encryptPrivateGroupValue/);
   const directSelection = client.slice(client.indexOf('async function sendSelectedFilesToRoom'), client.indexOf('let pendingExternalShareFiles'));
   const imageConfirmation = client.slice(client.indexOf('function showSendImageOptions'), client.indexOf('let pdfRendererPromise'));
-  assert.doesNotMatch(directSelection, /beginPhotoSendProgress|Optimising video|Sending securely/);
-  assert.doesNotMatch(imageConfirmation, /beginPhotoSendProgress|Sending securely/);
-  assert.doesNotMatch(groups, /beginPhotoSendProgress|Optimising video|Sending securely/);
+  assert.doesNotMatch(directSelection, /Optimising video|Sending securely/);
+  assert.match(directSelection, /media\.length > 1 \? null : beginPhotoSendProgress/);
+  assert.doesNotMatch(imageConfirmation, /Sending securely/);
+  assert.doesNotMatch(groups, /Optimising video|Sending securely/);
   assert.doesNotMatch(client.slice(client.indexOf('async function handleFileSelect'), client.indexOf('async function sendAlbumMessage')), /Preparing photo/);
 });
 
@@ -42,7 +43,10 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
   assert.match(client, /function createVideoAttachmentThumbnail/);
   assert.match(client, /document\.body\.appendChild\(video\)/);
   assert.match(client, /requestVideoFrameCallback/);
-  assert.match(client, /video\.currentTime = Math\.min\(1, Math\.max\(\.12, duration \* \.1\)\)/);
+  assert.match(client, /video\.currentTime = Math\.min\(4, Math\.max\(\.75, duration \* \.28\)\)/);
+  assert.match(client, /function createVideoAttachmentThumbnailFromBase64/);
+  assert.match(client, /createVideoAttachmentThumbnail\(new Blob\(parts, \{ type:mime \}\), maxDim\)/);
+  assert.match(client, /videoThumb = await createVideoAttachmentThumbnailFromBase64/);
   assert.match(client, /videoThumb:safeVideoThumb/);
   assert.match(client, /function buildVideoAttachmentHtml/);
   assert.match(client, /function openVideoAttachmentViewer/);
@@ -76,7 +80,7 @@ test('video attachments carry an encrypted thumbnail and open in the in-app play
   assert.match(client, /mediaType:replyTo\.mediaType/);
   assert.match(groups, /function openPrivateGroupVideo/);
   assert.match(groups, /videoThumb:safeImageDataUri/);
-  assert.match(groups, /payload\.data\.length > 36 \* 1024 \* 1024/);
+  assert.match(groups, /payload\.data\.length <= 36 \* 1024 \* 1024/);
 });
 
 test('new attachment experience is shipped through a fresh app-shell cache', () => {
@@ -107,7 +111,8 @@ test('media-heavy Android chats release hidden decoders and avoid identical inbo
   assert.match(client, /function scheduleMessageImagePreviews/);
   assert.match(client, /makeTinyThumbnail\(target\.base64, target\.mime, 640, 0\.76\)/);
   assert.match(client, /const safeSrc = safeMessageImagePreview\(rec\.imagePreview\)/);
-  assert.match(client, /const safeSrc = hidden \? null : safeMessageImagePreview\(img\.imagePreview\)/);
+  assert.match(client, /const generatedPreview = isVideo \? safeImageDataUri\('image\/jpeg', img\.videoThumb\) : safeMessageImagePreview\(img\.imagePreview\)/);
+  assert.match(client, /const safeSrc = hidden \? null : \(generatedPreview \|\| localSrc\)/);
   assert.match(client, /imagePreview:safeImagePreview/);
   assert.match(client, /imagePreview:safeMessageImagePreview\(img\.preview\)/);
   assert.match(client, /const MAX_MESSAGE_IMAGE_PREVIEW_BASE64 = 1024 \* 1024/);
