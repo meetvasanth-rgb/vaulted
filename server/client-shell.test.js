@@ -49,7 +49,7 @@ test('deferred scripts retain their dependency order', () => {
 
 test('service worker recognizes the generated immutable assets', () => {
   const worker = fs.readFileSync(path.join(root, 'client/sw.js'), 'utf8');
-  assert.match(worker, /vaultlix-app-shell-v264/);
+  assert.match(worker, /vaultlix-app-shell-v265/);
   assert.match(worker, /shellHtml\.matchAll/);
   assert.match(worker, /compiledAssets\.map\(assetPath => cache\.add\(assetPath\)\)/);
   for (const assetPath of compiled.assets.keys()) {
@@ -105,4 +105,8 @@ test('direct media picker keeps mixed photos and videos in one album', () => {
   assert.match(source, /selectedMediaFiles\.length > 1 \? beginPendingMediaAlbum/);
   assert.match(source, /function mediaAlbumRecord\(records, albumGroupId\)/);
   assert.match(source, /class="msg-album-progress" role="status" aria-label="Sending album"/);
+  assert.match(source, /function openAlbumMediaAt\(room, rec, itemId\)/);
+  assert.match(source, /attachVideoViewerAlbumSwipe\(overlay, gallery\)/);
+  assert.match(source, /rec\?\.kind === 'file' && rec\.albumGroupId\) rec = mediaAlbumRecord/);
+  assert.match(source, /albumGroupId:msg\.albumGroupId \|\| null/);
 });

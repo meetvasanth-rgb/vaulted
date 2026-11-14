@@ -19596,7 +19596,8 @@ function rememberCallHistoryAlias(record, aliasId) {
 function mediaAlbumRecord(records, albumGroupId) {
   if (!albumGroupId) return null;
   const members = (records || [])
-    .filter(record => record?.kind === 'file' && record.albumGroupId === albumGroupId && !record.hiddenUntilAlbumReady)
+    .filter(record => ['file','attachment-loading','attachment-unavailable'].includes(record?.kind)
+      && record.albumGroupId === albumGroupId && !record.hiddenUntilAlbumReady)
     .sort((left, right) => (Number(left.albumIndex) || 0) - (Number(right.albumIndex) || 0));
   if (!members.length) return null;
   const first = members[0];
@@ -19605,7 +19606,7 @@ function mediaAlbumRecord(records, albumGroupId) {
     id:first.id,
     kind:'album',
     viewOnce:false,
-    pending:members.some(record => record.pending),
+    pending:members.some(record => record.pending || record.kind === 'attachment-loading'),
     caption:'',
     albumGroupId,
     albumBackingIds:members.map(record => record.id),
@@ -19645,7 +19646,7 @@ function uniqueVisibleConversationRecords(records) {
   for (const rec of records || []) {
     if (rec?.hiddenUntilAlbumReady) continue;
     if (!isVisibleConversationRecord(rec)) continue;
-    if (rec.kind === 'file' && rec.albumGroupId) {
+    if (['file','attachment-loading','attachment-unavailable'].includes(rec.kind) && rec.albumGroupId) {
       if (renderedAlbums.has(rec.albumGroupId)) continue;
       const album = mediaAlbumRecord(records, rec.albumGroupId);
       if (album) visible.push(album);
@@ -21517,6 +21518,11 @@ function messageImagePreviewTarget(room, node) {
   const rec = room.messages.find(message => message.id === node.dataset.imagePreviewMsg);
   if (!rec) return null;
   if (!node.dataset.imagePreviewItem) return rec.kind === 'file' && rec.isImage ? rec : null;
+  if (rec.kind === 'file' && rec.albumGroupId) {
+    const member = room.messages.find(message => message.id === node.dataset.imagePreviewItem
+      && message.albumGroupId === rec.albumGroupId);
+    return member?.kind === 'file' && member.isImage ? member : null;
+  }
   return rec.kind === 'album' ? rec.images?.find(image => image.id === node.dataset.imagePreviewItem) || null : null;
 }
 
@@ -21652,6 +21658,9 @@ async function loadAttachmentRecord(room, msgId) {
   restored.receiptState = current.receiptState;
   restored.reactionMine = current.reactionMine;
   restored.reactionTheirs = current.reactionTheirs;
+  restored.albumGroupId = restored.albumGroupId || current.albumGroupId || null;
+  restored.albumIndex = Number.isInteger(restored.albumIndex) ? restored.albumIndex : current.albumIndex;
+  restored.albumCount = Number.isInteger(restored.albumCount) ? restored.albumCount : current.albumCount;
   restored.deleteAt = current.deleteAt;
   restored.timerStarted = current.timerStarted;
   if (restored.kind === 'attachment-unavailable') restored.autoRetries = current.autoRetries || 0;
@@ -22888,7 +22897,8 @@ function buildAlbumGridHtml(rec) {
     // and exist only on our optimistic pending record. Never accept a blob
     // URL from decrypted peer data or a restored record.
     const localSrc = rec.pending && rec.isMe && String(img.localPreviewUrl || '').startsWith('blob:') ? img.localPreviewUrl : null;
-    const safeSrc = hidden ? null : (localSrc || (isVideo ? safeImageDataUri('image/jpeg', img.videoThumb) : safeMessageImagePreview(img.imagePreview)));
+    const generatedPreview = isVideo ? safeImageDataUri('image/jpeg', img.videoThumb) : safeMessageImagePreview(img.imagePreview);
+    const safeSrc = hidden ? null : (generatedPreview || localSrc);
     const inner = hidden
       ? `<div class="msg-album-viewonce"><svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>`
       : (safeSrc
@@ -22998,7 +23008,7 @@ function encryptedMediaObjectUrl(mime, base64) {
   } catch (_) { return null; }
 }
 
-function openVideoAttachmentViewer(mime, base64, name) {
+function openVideoAttachmentViewer(mime, base64, name, options = {}) {
   if (!/^video\/[a-zA-Z0-9.+-]{1,80}$/.test(String(mime || '')) || !isValidMediaBase64(base64)) {
     toast('This video is unavailable.'); return;
   }
@@ -23019,6 +23029,7 @@ function openVideoAttachmentViewer(mime, base64, name) {
   if (!objectUrl) { toast('This video could not be prepared.'); return; }
   closeVideoAttachmentViewer();
   const overlay = document.createElement('div'); overlay.id = 'video-attachment-viewer'; overlay.className = 'video-attachment-viewer loading';
+  const gallery = options.gallery || null;
   const close = document.createElement('button'); close.type = 'button'; close.className = 'video-attachment-close'; close.setAttribute('aria-label','Back to chat'); close.title = 'Back to chat';
   close.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
   close.onclick = closeVideoAttachmentViewer;
@@ -23088,7 +23099,17 @@ function openVideoAttachmentViewer(mime, base64, name) {
     loader.classList.add('awaiting-tap');
   };
   loader.querySelector('.video-attachment-tap').onclick = startPlayback;
-  overlay.append(close, download, share, loader, video, controls); overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
+  overlay.append(close, download, share, loader, video, controls);
+  if (gallery) {
+    const index = gallery.rec.images.findIndex(item => item.id === gallery.startImgId);
+    const counter = document.createElement('div');
+    counter.className = 'video-attachment-gallery-counter';
+    counter.textContent = index < 0 ? '' : `${index + 1} / ${gallery.rec.images.length}`;
+    counter.style.cssText = 'position:absolute;top:calc(20px + env(safe-area-inset-top));left:0;right:0;text-align:center;color:#fff;font:600 13px Inter,sans-serif;z-index:4;pointer-events:none';
+    overlay.appendChild(counter);
+    attachVideoViewerAlbumSwipe(overlay, gallery);
+  }
+  overlay.addEventListener('click', event => { if (event.target === overlay) closeVideoAttachmentViewer(); });
   attachVideoViewerSwipeDown(overlay);
   document.body.appendChild(overlay); startPlayback();
   // `play()` is allowed to remain pending by WebKit. Always offer a manual
@@ -23106,6 +23127,42 @@ function openVideoAttachmentViewer(mime, base64, name) {
     action.onclick = () => downloadDataUri(`data:${mime};base64,${base64}`, name || 'vaultlix-video');
     loader.classList.add('awaiting-tap');
   }, 10000);
+}
+function attachVideoViewerAlbumSwipe(overlay, gallery) {
+  let startX = 0, startY = 0, deltaX = 0, tracking = false, claimed = false;
+  overlay.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1 || event.target.closest?.('button, input, .video-attachment-controls')) return;
+    const touch = event.touches[0];
+    startX = touch.clientX; startY = touch.clientY; deltaX = 0; tracking = true; claimed = false;
+  }, { passive:true, capture:true });
+  overlay.addEventListener('touchmove', event => {
+    if (!tracking || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if (!claimed && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) claimed = true;
+    if (!claimed) return;
+    deltaX = dx; event.preventDefault(); event.stopPropagation();
+    const video = overlay.querySelector('video');
+    if (video) video.style.transform = `translateX(${dx}px)`;
+  }, { passive:false, capture:true });
+  overlay.addEventListener('touchend', event => {
+    if (!tracking) return;
+    tracking = false;
+    const video = overlay.querySelector('video');
+    if (claimed) event.stopPropagation();
+    if (claimed && Math.abs(deltaX) > 60) {
+      const items = gallery.rec.images || [];
+      const index = items.findIndex(item => item.id === gallery.startImgId);
+      const target = items[index + (deltaX < 0 ? 1 : -1)];
+      if (target) {
+        closeVideoAttachmentViewer();
+        requestAnimationFrame(() => openAlbumMediaAt(gallery.room, gallery.rec, target.id));
+        return;
+      }
+    }
+    if (video) video.style.transform = '';
+  }, { passive:true, capture:true });
 }
 function attachVideoViewerSwipeDown(overlay) {
   let startX = 0, startY = 0, deltaY = 0, tracking = false, claimed = false;
@@ -24011,7 +24068,8 @@ function scheduleViewOnceDelete(room, msgId) {
 // so two view-once photos opened close together in the same album can't
 // have one's later splice shift what the other's pending timer targets.
 function revealAlbumImage(room, msgId, imgId) {
-  const rec = room.messages.find(m => m.id === msgId);
+  let rec = room.messages.find(m => m.id === msgId);
+  if (rec?.kind === 'file' && rec.albumGroupId) rec = mediaAlbumRecord(room.messages, rec.albumGroupId);
   if (!rec || !rec.images) return null;
   const img = rec.images.find(im => im.id === imgId);
   if (!img) return null;
@@ -24043,14 +24101,18 @@ function handleAlbumItemTap(msgId, imgId) {
     rec = mediaAlbumRecord(room.messages, rec.albumGroupId);
   }
   if (!room || !rec || !rec.images) return;
-  const item = rec.images.find(candidate => candidate.id === imgId);
-  if (!item) return;
+  openAlbumMediaAt(room, rec, imgId);
+}
+
+function openAlbumMediaAt(room, rec, itemId) {
+  const item = rec?.images?.find(candidate => candidate.id === itemId);
+  if (!room || !item) return;
+  const gallery = { room, rec, startImgId:itemId };
   if (item.kind === 'video' || String(item.mime || '').startsWith('video/')) {
-    openVideoAttachmentViewer(item.mime, item.base64, item.fileName);
+    openVideoAttachmentViewer(item.mime, item.base64, item.fileName, { gallery });
     return;
   }
-  const galleryRec = { ...rec, images: rec.images.filter(candidate => candidate.kind !== 'video' && !String(candidate.mime || '').startsWith('video/')) };
-  viewImage(null, { gallery: { room, rec:galleryRec, startImgId: imgId }, info: rec.viewOnce ? undefined : viewerInfoForRec(room, rec) });
+  viewImage(null, { gallery, info:rec.viewOnce ? undefined : viewerInfoForRec(room, rec) });
 }
 
 // Older cached HTML and native offline records can still call the original
@@ -24381,6 +24443,8 @@ async function applyRestoredHistory(room, messages, nowTs, { confirmReads = true
     const placeholder = { id:msg.id, isMe:msg.from === room.token, name:msg.name,
       time:formatMsgTime(msg.ts), ts:Number(msg.ts) || 0, kind:'attachment-loading',
       encryptedAttachmentRef:msg.content, fromToken:msg.from,
+      albumGroupId:msg.albumGroupId || null, albumIndex:Number.isInteger(msg.albumIndex) ? msg.albumIndex : null,
+      albumCount:Number.isInteger(msg.albumCount) ? msg.albumCount : null,
       deleteTimerSeconds:msg.deleteTimerSeconds || 0, readAt:msg.readAt,
       receiptState:null, timerStarted:false, reactionMine:null, reactionTheirs:null, deleteAt:null };
     applyReactionSnapshot(placeholder, msg.reactions, room.token);
@@ -28348,6 +28412,7 @@ function beginPendingMediaAlbum(room, files) {
     const isVideo = String(file.type || '').startsWith('video/');
     return {
       id:`pending_${index}_${now.getTime().toString(36)}`,
+      sourceFile:file,
       fileName:file.name,
       mime:file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
       kind:isVideo ? 'video' : 'image',
@@ -28367,6 +28432,15 @@ function beginPendingMediaAlbum(room, files) {
   const revoke = () => { objectUrls.splice(0).forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} }); };
   return {
     rec,
+    updatePreview(file, preview) {
+      const item = rec.images.find(candidate => candidate.sourceFile === file);
+      if (!item) return;
+      if (preview?.videoThumb) item.videoThumb = preview.videoThumb;
+      if (preview?.imagePreview) item.imagePreview = preview.imagePreview;
+      if (room.code !== activeRoomCode) return;
+      const mediaWrap = document.querySelector(`.msg[data-msg-id="${CSS.escape(rec.id)}"] .msg-media-wrap`);
+      if (mediaWrap) mediaWrap.innerHTML = buildAlbumGridHtml(rec);
+    },
     discard() {
       revoke();
       const index = room.messages.indexOf(rec);
@@ -28421,11 +28495,13 @@ async function sendSelectedFilesToRoom(room, files) {
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const { base64, mime } = await compressImageFile(file);
         const imagePreview = await makeTinyThumbnail(base64, mime, 640, 0.76);
+        pendingAlbum?.updatePreview(file, { imagePreview });
         media.push({ kind:'image', file, base64, mime, imagePreview, videoThumb:null });
       } else {
         const isVideo = String(file.type || '').startsWith('video/');
         await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
         const videoThumb = isVideo ? await createVideoAttachmentThumbnail(file) : null;
+        if (isVideo) pendingAlbum?.updatePreview(file, { videoThumb });
         currentVideoController = isVideo ? { cancelled:false, requestId:null } : null;
         const compressedVideo = isVideo ? await compressVideoFile(file, currentVideoController) : null;
         currentVideoController = null;
@@ -28664,6 +28740,7 @@ async function sendFileMessage(room, file, base64, isImage, viewOnce, mimeOverri
     const result = await api('/api/send', {
       code:room.code, token:room.token, content:`${ENCRYPTED_ATTACHMENT_PREFIX}${attachmentId}`,
       attachmentId, msgId, viewOnce:!!viewOnce,
+      albumGroupId, albumIndex, albumCount,
       suppressNotification:options.suppressNotification === true,
     });
     if (result?.error) throw new Error(result.error);
@@ -30457,6 +30534,11 @@ function viewImage(src, opts) {
     const newIdx = idx + delta;
     if (newIdx < 0 || newIdx >= imgs.length) return false;
     const target = imgs[newIdx];
+    if (target.kind === 'video' || String(target.mime || '').startsWith('video/')) {
+      cleanup();
+      requestAnimationFrame(() => openAlbumMediaAt(gallery.room, gallery.rec, target.id));
+      return true;
+    }
     const revealed = revealAlbumImage(gallery.room, gallery.rec.id, target.id);
     if (!revealed) return false;
     if (!revealed.src) { toast('Could not open photo'); return false; }

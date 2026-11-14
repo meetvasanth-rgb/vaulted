@@ -17,6 +17,9 @@ test('v2 schema stores only ciphertext and supports deletion synchronization', (
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS message_reactions/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS encrypted_attachments/);
   assert.match(SCHEMA_SQL, /ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS attachment_id uuid/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS album_group_id varchar\(64\)/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS album_index smallint/);
+  assert.match(SCHEMA_SQL, /ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS album_count smallint/);
   assert.match(SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS private_number_lifecycle/);
   assert.match(SCHEMA_SQL, /last_active_at bigint/);
   assert.match(SCHEMA_SQL, /number_protection varchar/);
@@ -217,10 +220,14 @@ test('attachment metadata is claimed in the same transaction as its encrypted me
   await store.appendEncryptedMessage('room-1', 'bearer-secret', {
     id:'message-1', seq:1, content:'obj:v1:attachment-id', ts:2,
     attachmentId:'1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e',
+    albumGroupId:'albumGroup_1234567890', albumIndex:1, albumCount:3,
   }, transactionClient);
   assert.match(calls[1][0], /UPDATE encrypted_attachments SET[\s\S]*status='attached'/);
   assert.match(calls[2][0], /attachment_id/);
   assert.equal(calls[2][1][8], '1e438a3a-e2f7-4dc0-9085-2fe27cb6a19e');
+  assert.equal(calls[2][1][13], 'albumGroup_1234567890');
+  assert.equal(calls[2][1][14], 1);
+  assert.equal(calls[2][1][15], 3);
 });
 
 test('production startup fails closed and account mutations await PostgreSQL', () => {
@@ -235,6 +242,12 @@ test('production startup fails closed and account mutations await PostgreSQL', (
   assert.match(server, /await postgresStore\.withConversationLock\(roomCode/);
   assert.match(server, /evictConversationCache\(event\.roomCode\)/);
   assert.match(server, /databaseWasEmpty/);
+});
+
+test('direct-message album grouping is validated and persisted with each encrypted attachment', () => {
+  const directSend = server.slice(server.indexOf("if (path==='/api/send'"), server.indexOf("if (path==='/api/poll'"));
+  assert.match(directSend, /const candidateAlbumGroupId/);
+  assert.match(directSend, /albumGroupId, albumIndex, albumCount/);
 });
 
 test('PostgreSQL startup ignores the legacy checkpoint once the database is authoritative', () => {

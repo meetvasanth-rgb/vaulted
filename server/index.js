@@ -5738,6 +5738,13 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const msgId = clientMsgId || uid();
     const privacyEvent = d.privacyEvent === 'screenshot' || d.privacyEvent === 'screen-recording'
       ? d.privacyEvent : null;
+    const candidateAlbumGroupId = typeof d.albumGroupId === 'string' && /^[a-zA-Z0-9_-]{16,64}$/.test(d.albumGroupId)
+      ? d.albumGroupId : null;
+    const albumIndex = candidateAlbumGroupId && Number.isInteger(d.albumIndex) && d.albumIndex >= 0 && d.albumIndex < 20
+      ? d.albumIndex : null;
+    const albumCount = candidateAlbumGroupId && Number.isInteger(d.albumCount) && d.albumCount >= 2 && d.albumCount <= 20
+      ? d.albumCount : null;
+    const albumGroupId = albumIndex !== null && albumCount !== null && albumIndex < albumCount ? candidateAlbumGroupId : null;
     let messageContent = d.content;
     if (attachmentId) {
       if (!objectStorageEnabled || !postgresEnabled || !clientMsgId) return resErr(res,'Encrypted attachment storage is unavailable.',503);
@@ -5766,7 +5773,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     // reset) and the byte budget in one place now — see its definition.
     // Lowered from 300: applies regardless of whether disappearing-message
     // timers are on, so even a room without them retains less on the server.
-    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, privacyEvent, deleteTimerSeconds:privacyEvent ? 0 : (room.deleteTimer || 0), time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
+    const message = { seq, id: msgId, type:'message', from: d.token, name: m.name, content: messageContent, attachmentId, viewOnce: !!d.viewOnce, privacyEvent, albumGroupId, albumIndex, albumCount, deleteTimerSeconds:privacyEvent ? 0 : (room.deleteTimer || 0), time, ts: Date.now(), deliveredAt: null, readAt: null, reactions: {}, reactionSeq: 0 };
     if (postgresEnabled) {
       seq = await postgresStore.appendEncryptedMessage(d.code, d.token, message, room.dbClient || null);
       message.seq = seq;

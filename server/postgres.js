@@ -167,6 +167,9 @@ CREATE TABLE IF NOT EXISTS encrypted_messages (
   message_type varchar(16) NOT NULL DEFAULT 'message',
   edit_of text,
   privacy_event varchar(24),
+  album_group_id varchar(64),
+  album_index smallint,
+  album_count smallint,
   PRIMARY KEY (conversation_id, message_id),
   UNIQUE (conversation_id, sequence)
 );
@@ -299,6 +302,9 @@ ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS delete_timer_seconds int
 ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS message_type varchar(16) NOT NULL DEFAULT 'message';
 ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS edit_of text;
 ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS privacy_event varchar(24);
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS album_group_id varchar(64);
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS album_index smallint;
+ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS album_count smallint;
 UPDATE encrypted_messages m SET delete_timer_seconds = CASE
   WHEN m.created_at >= c.delete_timer_set_at THEN c.delete_timer ELSE 0 END
 FROM conversations c WHERE c.conversation_id=m.conversation_id AND m.delete_timer_seconds IS NULL;
@@ -1104,12 +1110,14 @@ class PostgresStore {
       await client.query(`INSERT INTO encrypted_messages (
         conversation_id, message_id, sender_token_hash, sequence, ciphertext,
         created_at, expires_at, view_once, attachment_id, delete_timer_seconds,
-        message_type, edit_of, privacy_event
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        message_type, edit_of, privacy_event, album_group_id, album_index, album_count
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (conversation_id, message_id) DO NOTHING`, [
         conversationId, message.id, senderTokenHash, sequence, message.content,
         message.ts, message.expiresAt || null, !!message.viewOnce, message.attachmentId || null, message.deleteTimerSeconds || 0,
         message.type === 'edit' ? 'edit' : 'message', message.editOf || null, message.privacyEvent || null,
+        message.albumGroupId || null, Number.isInteger(message.albumIndex) ? message.albumIndex : null,
+        Number.isInteger(message.albumCount) ? message.albumCount : null,
       ]);
       return sequence;
     });
@@ -1120,7 +1128,8 @@ class PostgresStore {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
     const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
-        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds, message_type, edit_of, privacy_event
+        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds, message_type, edit_of, privacy_event,
+        album_group_id, album_index, album_count
       FROM encrypted_messages
       WHERE conversation_id=$1 AND (expires_at IS NULL OR expires_at > $2)
       ORDER BY sequence DESC
@@ -1134,7 +1143,8 @@ class PostgresStore {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
     const { rows } = await client.query(`SELECT m.conversation_id, m.message_id, m.sender_token_hash, m.sequence,
         m.ciphertext, m.created_at, m.expires_at, m.view_once, m.attachment_id,
-        m.delete_timer_seconds, m.message_type, m.edit_of, m.privacy_event
+        m.delete_timer_seconds, m.message_type, m.edit_of, m.privacy_event,
+        m.album_group_id, m.album_index, m.album_count
       FROM encrypted_messages m
       LEFT JOIN message_receipts r ON r.conversation_id=m.conversation_id AND r.message_id=m.message_id
       WHERE m.conversation_id=$1 AND m.privacy_event IN ('screenshot','screen-recording')
@@ -1153,7 +1163,8 @@ class PostgresStore {
     if (!Number.isSafeInteger(before) || before < 1) return [];
     const { rows } = await client.query(`SELECT * FROM (
       SELECT conversation_id, message_id, sender_token_hash, sequence,
-        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds, message_type, edit_of, privacy_event
+        ciphertext, created_at, expires_at, view_once, attachment_id, delete_timer_seconds, message_type, edit_of, privacy_event,
+        album_group_id, album_index, album_count
       FROM encrypted_messages
       WHERE conversation_id=$1 AND sequence < $2 AND (expires_at IS NULL OR expires_at > $3)
         AND view_once IS NOT TRUE AND COALESCE(delete_timer_seconds, 0) = 0
@@ -1194,6 +1205,11 @@ class PostgresStore {
       editOf:row.edit_of || null,
       };
       if (['screenshot','screen-recording'].includes(row.privacy_event)) value.privacyEvent = row.privacy_event;
+      if (row.album_group_id) {
+        value.albumGroupId = row.album_group_id;
+        value.albumIndex = Number(row.album_index);
+        value.albumCount = Number(row.album_count);
+      }
       if (row.attachment_id) value.attachmentId = row.attachment_id;
       if (receipt) {
         value.deliveredAt = receipt.delivered_at == null ? null : Number(receipt.delivered_at);
