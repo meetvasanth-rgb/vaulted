@@ -445,7 +445,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         let content = UNMutableNotificationContent()
         content.title = "Vaultlix"
         content.body = caller.isEmpty ? "Missed call" : "Missed call from \(String(caller.prefix(80)))"
-        content.sound = UNNotificationSound(named: UNNotificationSoundName("vault_chime.caf"))
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("vault_tone_glow.caf"))
         if let code = payload["code"] as? String, !code.isEmpty {
             content.threadIdentifier = code
             content.userInfo["code"] = code
@@ -1233,6 +1233,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     private var bluetoothSeenConnected = false
     private var userSelectedAudioRoute: String?
     private var automaticVideoRoute = false
+    private var audioRouteSelectionGeneration = 0
 
     func isBluetoothAudioAvailable() -> Bool {
         if bluetoothExcludedByPhoneRoute { return bluetoothSeenConnected }
@@ -1262,13 +1263,32 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// "speaker" put it back so the headset stays selectable.
     @discardableResult
     func setAudioRoute(_ route: String, activateSession: Bool = false) -> Bool {
+        guard ["phone", "bluetooth", "speaker"].contains(route) else { return false }
+        userSelectedAudioRoute = route
+        audioRouteSelectionGeneration += 1
+        let generation = audioRouteSelectionGeneration
+        let applied = applyAudioRoute(route, activateSession: activateSession)
+        guard applied else { return false }
+
+        // CallKit/libwebrtc can rebuild the output graph just after a tap.
+        // Reassert the explicit selection after both settling windows; a
+        // newer tap invalidates these delayed applications.
+        for delay in [0.18, 0.65] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self,
+                      self.audioRouteSelectionGeneration == generation,
+                      self.userSelectedAudioRoute == route,
+                      !self.calls.isEmpty else { return }
+                _ = self.applyAudioRoute(route, activateSession: false)
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    private func applyAudioRoute(_ route: String, activateSession: Bool) -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            switch route {
-            case "speaker", "bluetooth", "phone": break
-            default: return false
-            }
-            userSelectedAudioRoute = route
             if route == "phone" {
                 if !bluetoothExcludedByPhoneRoute { bluetoothSeenConnected = liveBluetoothAudioAvailable() }
                 bluetoothExcludedByPhoneRoute = true
@@ -1310,6 +1330,7 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
         bluetoothSeenConnected = false
         userSelectedAudioRoute = nil
         automaticVideoRoute = false
+        audioRouteSelectionGeneration += 1
         try? AVAudioSession.sharedInstance().setPreferredInput(nil)
     }
 
@@ -1374,7 +1395,20 @@ final class VaultlixCallManager: NSObject, PKPushRegistryDelegate, CXProviderDel
     /// local ringback player without clearing the outgoing call intent.
     func audioRouteDidChange() {
         restartRingbackForCurrentRoute()
-        applyAutomaticAudioRouteIfNeeded()
+        if let selected = userSelectedAudioRoute,
+           currentAudioRoute() != selected {
+            let generation = audioRouteSelectionGeneration
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                guard let self,
+                      self.audioRouteSelectionGeneration == generation,
+                      self.userSelectedAudioRoute == selected,
+                      !self.calls.isEmpty,
+                      self.currentAudioRoute() != selected else { return }
+                _ = self.applyAudioRoute(selected, activateSession: false)
+            }
+        } else {
+            applyAutomaticAudioRouteIfNeeded()
+        }
     }
 
     private func restartRingbackForCurrentRoute() {

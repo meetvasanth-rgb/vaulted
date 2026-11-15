@@ -62,6 +62,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
     private var nativeVideoMuted = false
     private var nativeLocalVideoEnabled = false
     private var nativeVideoSessionActive = false
+    private var nativeVideoControlsHidden = false
+    private var nativeLocalVideoWasMoved = false
     private weak var nativeVideoConsentAlert: UIAlertController?
     private var pendingNativeVideoConsentRequest = false
     private var keyboardAccessorySuppressedClasses = Set<ObjectIdentifier>()
@@ -688,7 +690,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             nativeRemoteVideoView.backgroundColor = .black
             nativeRemoteVideoView.layer.cornerRadius = 0
             nativeRemoteVideoView.clipsToBounds = true
-            nativeRemoteVideoView.isUserInteractionEnabled = false
+            nativeRemoteVideoView.isUserInteractionEnabled = true
+            nativeRemoteVideoView.addGestureRecognizer(UITapGestureRecognizer(
+                target: self, action: #selector(toggleNativeVideoControlsVisibility)
+            ))
             root.addSubview(nativeRemoteVideoView)
         }
         if nativeLocalVideoView.superview == nil {
@@ -696,7 +701,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
             nativeLocalVideoView.backgroundColor = UIColor(white: 0.08, alpha: 1)
             nativeLocalVideoView.layer.cornerRadius = 13
             nativeLocalVideoView.clipsToBounds = true
-            nativeLocalVideoView.isUserInteractionEnabled = false
+            nativeLocalVideoView.isUserInteractionEnabled = true
+            nativeLocalVideoView.addGestureRecognizer(UIPanGestureRecognizer(
+                target: self, action: #selector(dragNativeLocalVideo(_:))
+            ))
             root.addSubview(nativeLocalVideoView)
         }
         installNativeVideoPausedViewIfNeeded(in: root)
@@ -704,7 +712,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         let safe = root.safeAreaInsets
         // Remote video is the full call canvas; local video remains a native PiP.
         nativeRemoteVideoView.frame = root.bounds
-        nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 64, width: 96, height: 136)
+        if !nativeLocalVideoWasMoved {
+            nativeLocalVideoView.frame = CGRect(x: root.bounds.width - 112, y: safe.top + 64, width: 96, height: 136)
+        }
         nativeRemoteVideoView.isHidden = !remote
         nativeLocalVideoView.isHidden = nativeLocalVideoTrack == nil
         root.bringSubviewToFront(nativeVideoBackdropView)
@@ -714,6 +724,42 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         root.bringSubviewToFront(nativeLocalVideoView)
         root.bringSubviewToFront(nativeVideoControlsView)
         updateNativeVideoControls()
+    }
+
+    @objc private func toggleNativeVideoControlsVisibility() {
+        nativeVideoControlsHidden.toggle()
+        if !nativeVideoControlsHidden { nativeVideoControlsView.isHidden = false }
+        UIView.animate(withDuration: 0.2, animations: {
+            self.nativeVideoControlsView.alpha = self.nativeVideoControlsHidden ? 0 : 1
+        }, completion: { _ in
+            self.nativeVideoControlsView.isHidden = self.nativeVideoControlsHidden
+        })
+    }
+
+    @objc private func dragNativeLocalVideo(_ gesture: UIPanGestureRecognizer) {
+        guard let root = nativeLocalVideoView.superview else { return }
+        let translation = gesture.translation(in: root)
+        nativeLocalVideoView.center = CGPoint(
+            x: nativeLocalVideoView.center.x + translation.x,
+            y: nativeLocalVideoView.center.y + translation.y
+        )
+        gesture.setTranslation(.zero, in: root)
+        nativeLocalVideoWasMoved = true
+
+        let safe = root.safeAreaInsets
+        let halfWidth = nativeLocalVideoView.bounds.width / 2
+        let halfHeight = nativeLocalVideoView.bounds.height / 2
+        let minX = 12 + halfWidth
+        let maxX = root.bounds.width - 12 - halfWidth
+        let minY = safe.top + 12 + halfHeight
+        let maxY = root.bounds.height - safe.bottom - 12 - halfHeight
+        nativeLocalVideoView.center.x = min(max(nativeLocalVideoView.center.x, minX), maxX)
+        nativeLocalVideoView.center.y = min(max(nativeLocalVideoView.center.y, minY), maxY)
+
+        if gesture.state == .ended || gesture.state == .cancelled {
+            let snapX = nativeLocalVideoView.center.x < root.bounds.midX ? minX : maxX
+            UIView.animate(withDuration: 0.2) { self.nativeLocalVideoView.center.x = snapX }
+        }
     }
 
     private func installNativeVideoPausedViewIfNeeded(in root: UIView) {
@@ -798,7 +844,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         let content = UNMutableNotificationContent()
         content.title = "Vaultlix"
         content.body = "Video requested — unlock Vaultlix to accept."
-        content.sound = UNNotificationSound(named: UNNotificationSoundName("vault_chime.caf"))
+        content.sound = UNNotificationSound(named: UNNotificationSoundName("vault_tone_glow.caf"))
         content.userInfo["videoRequest"] = true
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(
@@ -927,6 +973,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate, WKScriptMessageHandler,
         nativeVideoMuted = false
         nativeLocalVideoEnabled = false
         nativeVideoSessionActive = false
+        nativeVideoControlsHidden = false
+        nativeVideoControlsView.alpha = 1
+        nativeVideoControlsView.isHidden = false
+        nativeLocalVideoWasMoved = false
     }
 
     private func flushPendingCallActions() {

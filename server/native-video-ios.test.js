@@ -88,6 +88,24 @@ test('native iOS video calls keep controls available and label CallKit clearly',
   assert.ok(manager.includes('"VIDEO CALL · \\(cleanName)"'));
 });
 
+test('native iOS video surface supports transient controls and a draggable self-view', () => {
+  const scene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
+  assert.match(scene, /toggleNativeVideoControlsVisibility/);
+  assert.match(scene, /nativeVideoControlsView\.alpha = self\.nativeVideoControlsHidden \? 0 : 1/);
+  assert.match(scene, /UIPanGestureRecognizer/);
+  assert.match(scene, /dragNativeLocalVideo/);
+  assert.match(scene, /let snapX = nativeLocalVideoView\.center\.x < root\.bounds\.midX/);
+});
+
+test('native iOS local notifications use the Glow sound', () => {
+  const scene = fs.readFileSync('mobile/ios/App/App/SceneDelegate.swift', 'utf8');
+  const manager = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
+  assert.doesNotMatch(scene, /content\.sound = UNNotificationSound\(named: UNNotificationSoundName\("vault_chime\.caf"\)\)/);
+  assert.doesNotMatch(manager, /content\.sound = UNNotificationSound\(named: UNNotificationSoundName\("vault_chime\.caf"\)\)/);
+  assert.match(scene, /vault_tone_glow\.caf/);
+  assert.match(manager, /vault_tone_glow\.caf/);
+});
+
 test('native iOS and Apple-silicon Mac calls gate signaling on microphone permission', () => {
   const manager = fs.readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8');
   const client = fs.readFileSync('client/index.html', 'utf8');

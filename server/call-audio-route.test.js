@@ -90,6 +90,9 @@ test('iOS reports the route and accepts an explicit route request', () => {
   assert.match(app, /func setAudioRoute\(_ route: String/);
   // a route chosen in one call must not leak into the next
   assert.match(app, /clearPreferredAudioInput\(\)/);
+  assert.match(client, /postMessage\(\{ action: 'setAudioRoute', route: target/);
+  assert.match(app, /audioRouteSelectionGeneration/);
+  assert.match(app, /applyAudioRoute\(route, activateSession: false\)/);
 });
 
 test('Android exposes the same route API on both call bridges and asks for the Bluetooth permission', () => {

@@ -10660,11 +10660,9 @@ async function toggleSpeaker() {
     room.speakerOn = target === 'speaker';
     renderCallOverlay(room);
     try {
-      // Bluetooth is only offered by app builds that can also select it;
-      // older builds keep the original speaker on/off message.
-      iosBridge.postMessage(room.bluetoothAvailable
-        ? { action: 'setAudioRoute', route: target, outgoing: !room.nativeCallActive }
-        : { action: 'setSpeaker', enabled: target === 'speaker', outgoing: !room.nativeCallActive });
+      // Always send the explicit route. Native iOS remembers and reasserts
+      // this choice if CallKit or WebRTC rebuilds the audio graph.
+      iosBridge.postMessage({ action: 'setAudioRoute', route: target, outgoing: !room.nativeCallActive });
     } catch (e) {
       room.audioRoute = previous;
       room.speakerOn = previous === 'speaker';
