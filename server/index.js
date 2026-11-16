@@ -264,6 +264,8 @@ The result must look like a premium real photograph, not synthetic art. Do not g
 // appended to every Gemini-backed recipe, regardless of collection.
 const GEMINI_PORTRAIT_FINISH_PROMPT = `Mandatory Gemini portrait finishing: the background change and the subject relighting are one coherent edit. Re-evaluate the person's face after creating the requested setting and give the face, neck, ears, hair, clothing and body professional light that matches that setting. Keep both eyes readable, add only physically plausible catchlights, lift muddy shadows, control highlights and retain natural depth and texture. Match the person's source skin hue and depth exactly after neutralising only the original lighting cast. Never tan, darken, whiten, lighten, redden, orange-shift, grey or desaturate the skin. Improve a dull face through neutral exposure, key light and fill light only, not by recolouring, smoothing or reconstructing it. Before returning the image, verify that identity, expression, skin tone and facial proportions still match the source and that the face is not flat, dull, underexposed or disconnected from the new environment.`;
 
+const PROFESSIONAL_PORTRAIT_FINISH_PROMPT = `Mandatory Professional collection finishing: keep the requested professional environment, wardrobe, posture and composition, but make the face the visual exposure priority. Correct the person's facial white balance independently from ambient office or interior colour casts, removing unwanted yellow, orange, green, cyan or magenta contamination while preserving the exact source skin hue and depth. Use a broad neutral key and soft frontal fill to lift the eyes, eye sockets, cheeks and jaw; add restrained natural catchlights; and keep facial midtones clear and luminous with smooth highlight roll-off. The face must be at least as clearly exposed as in the source and must not remain dull, muddy, grey, dim or colour-cast. Do not brighten by whitening or recolouring the skin, and do not alter identity, expression, age, texture or facial geometry.`;
+
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
@@ -1520,7 +1522,7 @@ function dailyLookDirectedPrompt(style, variantIndex) {
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
     : style.kind === 'curated'
-      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}`
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}`
       : style.prompt;
 }
 
