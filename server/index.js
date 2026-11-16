@@ -268,6 +268,8 @@ const PROFESSIONAL_PORTRAIT_FINISH_PROMPT = `Mandatory Professional collection f
 
 const LIFESTYLE_PORTRAIT_FINISH_PROMPT = `Mandatory Lifestyle collection finishing: preserve the requested real-world atmosphere, location, wardrobe, pose and candid character, but expose and white-balance the face as carefully as a premium lifestyle photograph. Correct facial skin independently from warm café lamps, green foliage, sunset warmth or mixed ambient light so the person's exact source skin hue and depth remain natural. Use believable environmental key light plus soft local fill to keep both eyes readable, open dull eye-socket and cheek shadows, add restrained natural catchlights and retain dimensional facial texture. The setting may remain warm or dramatic, but the face must not become orange, red, green, grey, tanned, muddy, flat or underexposed. Improve facial brightness through physically coherent light and exposure only; never whiten, recolour, smooth or reconstruct the person.`;
 
+const SELFIE_PORTRAIT_FINISH_PROMPT = `Mandatory Selfies collection rules: treat the source as a real phone selfie and edit that same photograph rather than generating a new portrait. Preserve the original background, crop, camera angle, pose, gaze, expression, hairstyle, clothing, jewellery, facial geometry and every recognisable feature. Preserve the person's exact source skin hue and depth, pores, fine texture, natural asymmetry and apparent age. Do not replace or restage the environment; do not tan, whiten, lighten, reshape or slim the face; do not enlarge eyes, narrow the nose, sharpen the jaw, add makeup, remove permanent features, erase all skin texture or apply a beauty filter. Improve only the photographic capture qualities requested by the named preset. The result must look like the same selfie captured with better light and a better phone camera, never like an AI-generated studio portrait.`;
+
 const DAILY_LOOK_STYLES = Object.freeze([
   {
     // A once-in-a-while profile picture, not a daily look: a friendly stylised head-and-shoulders
@@ -298,8 +300,24 @@ For Fix Lighting and Enhance Photo, treat this as a restrained edit of the origi
     prompt:`Retain the original composition and environment. Apply restrained professional retouching only: correct exposure and white balance, recover highlights and shadows, reduce camera noise, soften temporary blemishes while retaining pores, and add delicate eye and hair detail. Keep makeup, clothing, background, pose and lighting direction unchanged. It must look like the same photograph captured and finished more carefully.`,
   },
   {
-    id:'selfie-polish', name:'Selfie Polish', note:'Better light and clarity for selfies', collection:'Face Booster', provider:'gemini', kind:'curated', quality:'high',
+    id:'selfie-polish', name:'Selfie Polish', note:'Balanced natural selfie enhancement', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
     prompt:`Enhance the uploaded selfie as a restrained edit of the same photograph. Preserve the original background, crop, camera angle, pose, gaze, expression, hairstyle, clothing, jewellery and every recognisable facial feature. Do not replace the setting or turn the image into a studio portrait. Correct front-camera exposure and mixed white balance; lift dull facial and under-eye shadows with believable soft fill; recover highlights; reduce phone-camera luminance and colour noise; restore gentle eye, eyebrow and hair detail; and improve mild softness without creating brittle sharpening. Preserve the person's exact source skin hue and depth, pores, fine texture, natural asymmetry and real apparent age. Do not tan, whiten, lighten, reshape or slim the face; do not enlarge eyes, narrow the nose, sharpen the jaw, add makeup, remove permanent features, erase all skin texture or apply a beauty filter. The result must look like the same selfie captured in better natural light with a better phone camera, not an AI-generated portrait.`,
+  },
+  {
+    id:'selfie-soft-daylight', name:'Soft Daylight', note:'Fresh, natural window light', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Refine the same selfie with believable soft daylight while retaining its original setting and composition. Correct white balance to clean neutral daylight, use a broad window-like key that agrees with the existing light direction, add gentle facial fill, open eye and cheek shadows, protect bright areas and retain smooth natural highlight roll-off. Keep the background recognisable and naturally illuminated; do not replace it, blur it excessively or create visible sun rays or artificial glow.`,
+  },
+  {
+    id:'selfie-indoor-balance', name:'Indoor Balance', note:'Fix mixed room lighting', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Correct the same indoor selfie without changing the room or the person. Remove unwanted yellow, orange, green or magenta colour casts from the face while allowing practical room lights to remain believable. Balance facial exposure with soft local fill, preserve ambient atmosphere, recover shadow and highlight detail, reduce phone noise and keep skin colour neutral and faithful to the source. Do not make the room look like daylight or replace its lighting design.`,
+  },
+  {
+    id:'selfie-low-light', name:'Low-Light Selfie', note:'Clearer selfies in dim light', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Rescue the same dim selfie while preserving its real night-time or low-light atmosphere. Lift the face naturally, correct mixed-light colour casts, reduce luminance and chroma noise, recover realistic eye and hair detail, protect lamps and bright screens from clipping and retain believable shadows. Do not turn night into daytime, invent facial detail, create waxy skin or replace the background.`,
+  },
+  {
+    id:'selfie-outdoor', name:'Outdoor Selfie', note:'Balanced face and bright background', collection:'Selfies', provider:'gemini', kind:'curated', quality:'high',
+    prompt:`Finish the same outdoor selfie with balanced natural daylight. Recover bright sky or background detail where available, lift facial shadows with believable sky fill, neutralise reflected green or blue colour casts, control highlights and keep the actual weather and location authentic. Preserve the original background, crop and pose; do not add sunset light, fantasy skies, artificial lens flare or excessive background blur.`,
   },
   {
     id:'soft-daylight', name:'Soft Daylight', note:'Clean window-light freshness', collection:'Face Booster', kind:'curated', quality:'high',
@@ -1528,7 +1546,7 @@ function dailyLookDirectedPrompt(style, variantIndex) {
   return enhancerLook
     ? `${style.prompt}\n\nSelected surprise transformation for this generation:\n${enhancerLookBrief(enhancerLook)}`
     : style.kind === 'curated'
-      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}`
+      ? `${CURATED_PORTRAIT_IDENTITY_PROMPT}${style.provider === 'gemini' ? `\n\n${GEMINI_PORTRAIT_FINISH_PROMPT}` : ''}\n\nCurated preset: ${style.name}\n${style.prompt}${style.collection === 'Professional' ? `\n\n${PROFESSIONAL_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Lifestyle' ? `\n\n${LIFESTYLE_PORTRAIT_FINISH_PROMPT}` : ''}${style.collection === 'Selfies' ? `\n\n${SELFIE_PORTRAIT_FINISH_PROMPT}` : ''}`
       : style.prompt;
 }
 
