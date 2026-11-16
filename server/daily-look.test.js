@@ -199,11 +199,16 @@ test('the per-account rotation seed is unbounded and applied by modulo at the st
   assert.match(server, /dailyLookVariantIndex\(d\.accountId, usage\.count, now\)/);
 });
 
-test('Android Daily Look offers a dedicated camera capture path', () => {
+test('Daily Look offers etched camera, gallery and file source icons inside the preview', () => {
   assert.match(client, /id="daily-look-camera-input"[^>]*accept="image\/\*"[^>]*capture="environment"/);
-  assert.match(client, /id="daily-look-camera-button"[^>]*onclick="chooseDailyLookCamera\(\)"/);
-  assert.match(client, /\.vaultlix-native-android \.daily-look-camera-button\{display:block\}/);
+  assert.match(client, /id="daily-look-camera-button"[^>]*onclick="chooseDailyLookCamera\(\)"[^>]*aria-label="Take photo"/);
+  assert.match(client, /id="daily-look-photo-button"[^>]*onclick="chooseDailyLookPhoto\(\)"[^>]*aria-label="Choose from gallery"/);
+  assert.match(client, /id="daily-look-file-button"[^>]*onclick="chooseDailyLookFile\(\)"[^>]*aria-label="Choose from files"/);
+  assert.match(client, /id="daily-look-file-input"[^>]*\.heic/);
+  assert.match(client, /\.daily-look-photo-actions\{position:absolute/);
+  assert.match(client, /\.daily-look-source-button svg \.sketch-light/);
   assert.match(client, /function chooseDailyLookCamera\(\)/);
+  assert.match(client, /function chooseDailyLookFile\(\)/);
 });
 
 test('Daily Look opens fresh instead of restoring the previous generated preview', () => {

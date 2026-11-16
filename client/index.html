@@ -3063,7 +3063,7 @@ html.vaultlix-native-android .emergency-sheet{
 @keyframes daily-look-silk-flow{0%,100%{transform:translate3d(-2%,0,0) rotate(-1deg) scale(1)}50%{transform:translate3d(3%,-2%,0) rotate(1.2deg) scale(1.04)}}@keyframes daily-look-silk-drift{0%,100%{transform:translate3d(-1%,1%,0) scale(1.02)}50%{transform:translate3d(2%,-1%,0) scale(1.06)}}@keyframes daily-look-silk-glint{0%,60%,100%{opacity:0;transform:translateY(20px) scaleY(.5)}72%{opacity:.82;transform:translateY(0) scaleY(1)}86%{opacity:0;transform:translateY(-22px) scaleY(.68)}}@keyframes daily-look-silk-progress{0%{transform:translateX(-115%)}60%,100%{transform:translateX(285%)}}@keyframes daily-look-result-reveal{0%{opacity:0;transform:scale(.86) rotate(-.7deg);filter:blur(10px)}65%{filter:blur(0)}100%{opacity:1;transform:none;filter:none}}@keyframes daily-look-reveal-ring{0%{opacity:.9;transform:scale(.72)}100%{opacity:0;transform:scale(1.18)}}
 @media(prefers-reduced-motion:reduce){.daily-look-bold-count:before,.daily-look-bold-count:after,.daily-look-count-step{animation:none!important}.daily-look-count-step{display:none}.daily-look-count-step:first-child{display:grid;opacity:1;transform:none;filter:none}}
 .daily-look-consent{padding:11px 12px;border-radius:12px;background:#F7F1F3}
-.daily-look-photo-actions{display:grid;grid-template-columns:1fr;gap:9px}.daily-look-camera-button{display:none}.vaultlix-native-android .daily-look-photo-actions{grid-template-columns:1fr 1fr}.vaultlix-native-android .daily-look-camera-button{display:block}.daily-look-another{grid-column:1/-1}
+.daily-look-photo-actions{position:absolute;z-index:5;left:50%;top:18px;display:flex;align-items:center;justify-content:center;gap:10px;transform:translateX(-50%)}.daily-look-source-button{width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(107,31,58,.2);border-radius:16px;background:rgba(255,251,252,.82);color:#86425D;box-shadow:0 8px 22px rgba(78,34,51,.08),inset 0 0 0 1px rgba(255,255,255,.74);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:transform .18s ease,background .18s ease,color .18s ease,box-shadow .18s ease}.daily-look-source-button:active{transform:scale(.9);background:#6B1F3A;color:#fff;box-shadow:0 5px 13px rgba(107,31,58,.2)}.daily-look-source-button:disabled{opacity:.5}.daily-look-source-button svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round}.daily-look-source-button svg .sketch-light{opacity:.42;transform:translate(.8px,.6px)}.daily-look-preview-copy{padding-top:82px}.daily-look-another{grid-column:1/-1}
 .daily-look-adjustment{margin:0 0 14px;padding:12px;border:1px solid #E1D2D8;border-radius:14px;background:#FBF7F8}.daily-look-adjustment[hidden]{display:none}.daily-look-adjustment label{display:block;margin:0 0 7px;color:#4B303D;font:750 11px/1.2 'Manrope',sans-serif}.daily-look-adjustment select{width:100%;min-height:42px;padding:0 12px;border:1px solid #D7C5CC;border-radius:11px;background:#fff;color:#38262F;font:650 11px/1.2 'Manrope',sans-serif}.daily-look-adjustment small{display:block;margin-top:7px;color:#806E76;font:500 9px/1.4 'Manrope',sans-serif}
 .account-creation-transition{position:absolute;z-index:8;inset:0;min-height:100%;display:grid;place-items:center;overflow:hidden;padding:30px;background:radial-gradient(circle at 50% 38%,rgba(200,117,136,.21),transparent 34%),#271D25;color:#fff;text-align:center;border-radius:inherit}
 .account-creation-transition[hidden]{display:none}
@@ -5176,7 +5176,14 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
 <div class="account-overlay" id="daily-look-overlay" onclick="if(event.target===this)closeDailyLook()">
   <div class="account-card daily-look-card" role="dialog" aria-modal="true" aria-labelledby="daily-look-title">
     <div class="account-head"><div><div class="account-kicker" id="daily-look-kicker">Up to 15 portraits daily</div><div class="account-title" id="daily-look-title">Portrait Studio</div></div><button class="account-close" type="button" onclick="closeDailyLook()" aria-label="Close">×</button></div>
-    <div class="daily-look-preview" id="daily-look-preview"><div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div></div>
+    <div class="daily-look-preview" id="daily-look-preview">
+      <div class="daily-look-photo-actions" id="daily-look-photo-actions" aria-label="Choose a portrait source">
+        <button class="daily-look-source-button" id="daily-look-camera-button" type="button" onclick="chooseDailyLookCamera()" aria-label="Take photo" title="Take photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sketch-light" d="M4 7.5h3l1.5-2h7l1.5 2h3v11H4z"/><path d="M3.5 7h3.2l1.5-2h7.6l1.5 2h3.2v11.5h-17z"/><circle cx="12" cy="12.7" r="3.4"/><path d="M18 9.2h.01"/></svg></button>
+        <button class="daily-look-source-button" id="daily-look-photo-button" type="button" onclick="chooseDailyLookPhoto()" aria-label="Choose from gallery" title="Gallery"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="sketch-light" x="3.8" y="4.7" width="16.2" height="14.2" rx="2"/><rect x="3" y="4" width="17" height="15" rx="2"/><circle cx="8.2" cy="8.8" r="1.4"/><path d="m4.5 16 4.2-4.2 3.1 3 2.2-2.1 4.5 4.3"/></svg></button>
+        <button class="daily-look-source-button" id="daily-look-file-button" type="button" onclick="chooseDailyLookFile()" aria-label="Choose from files" title="Files"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="sketch-light" d="M4.5 7.5h6l1.8 2H20v9.7H4.5z"/><path d="M3.5 7h6l2-2h3l2 2H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 .5-1z"/><path d="M3.5 10h17"/></svg></button>
+      </div>
+      <div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div>
+    </div>
     <div class="daily-look-collections" id="daily-look-collections" aria-label="Portrait collections"></div>
     <div class="daily-look-styles" id="daily-look-styles" aria-label="Choose a portrait style"></div>
     <div class="daily-look-adjustment" id="daily-look-blemish-control" hidden>
@@ -5189,12 +5196,9 @@ html.vaultlix-native-ios #s-chat.active{position:fixed!important;inset:0!importa
       <small>Permanent features, skin tone and natural texture stay unchanged.</small>
     </div>
     <input id="daily-look-profile-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookProfilePhoto(event)"/>
-        <input id="daily-look-photo-input" type="file" accept="image/*,.heic,.heif" hidden onchange="handleDailyLookPhoto(event)"/>
+    <input id="daily-look-photo-input" type="file" accept="image/*" hidden onchange="handleDailyLookPhoto(event)"/>
     <input id="daily-look-camera-input" type="file" accept="image/*" capture="environment" hidden onchange="handleDailyLookPhoto(event)"/>
-    <div class="daily-look-photo-actions" id="daily-look-photo-actions">
-      <button class="account-secondary" id="daily-look-photo-button" type="button" onclick="chooseDailyLookPhoto()">Choose gallery</button>
-      <button class="account-secondary daily-look-camera-button" id="daily-look-camera-button" type="button" onclick="chooseDailyLookCamera()">Take photo</button>
-    </div>
+    <input id="daily-look-file-input" type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif" hidden onchange="handleDailyLookPhoto(event)"/>
     <div class="daily-look-status" id="daily-look-status" role="status" aria-live="polite"></div>
     <button class="account-primary" id="daily-look-generate" type="button" onclick="generateDailyLook()">Create My Portrait</button>
     <div class="daily-look-result-actions" id="daily-look-result-actions" hidden>
@@ -14103,7 +14107,17 @@ function resetDailyLookView() {
   dailyLookSourceDimensions = null;
   dailyLookGeneratedImage = null;
   const preview = document.getElementById('daily-look-preview');
-  if (preview) { preview.style.removeProperty('--daily-look-aspect'); preview.removeAttribute('tabindex'); preview.innerHTML = '<div class="daily-look-preview-copy">Choose a clear photo of yourself to begin.</div>'; }
+  if (preview) {
+    const sourceTools = preview.querySelector('.daily-look-photo-actions');
+    preview.style.removeProperty('--daily-look-aspect');
+    preview.removeAttribute('tabindex');
+    preview.replaceChildren();
+    if (sourceTools) preview.append(sourceTools);
+    const copy = document.createElement('div');
+    copy.className = 'daily-look-preview-copy';
+    copy.textContent = 'Choose a clear photo of yourself to begin.';
+    preview.append(copy);
+  }
   const card = document.querySelector('#daily-look-overlay .daily-look-card');
   if (card) card.scrollTop = 0;
   document.getElementById('daily-look-result-actions')?.setAttribute('hidden', '');
@@ -14112,9 +14126,11 @@ function resetDailyLookView() {
   const photoActions = document.getElementById('daily-look-photo-actions');
   if (photoActions) photoActions.hidden = false;
   const photoButton = document.getElementById('daily-look-photo-button');
-  if (photoButton) { photoButton.disabled = false; photoButton.textContent = 'Choose gallery'; }
+  if (photoButton) photoButton.disabled = false;
   const cameraButton = document.getElementById('daily-look-camera-button');
-  if (cameraButton) { cameraButton.disabled = false; cameraButton.textContent = 'Take photo'; }
+  if (cameraButton) cameraButton.disabled = false;
+  const fileButton = document.getElementById('daily-look-file-button');
+  if (fileButton) fileButton.disabled = false;
   const statusUse = document.getElementById('daily-look-use-status');
   if (statusUse) statusUse.hidden = true;
 }
@@ -14171,6 +14187,11 @@ function chooseDailyLookCamera() {
   if (input) { input.value = ''; input.click(); }
 }
 
+function chooseDailyLookFile() {
+  const input = document.getElementById('daily-look-file-input');
+  if (input) { input.value = ''; input.click(); }
+}
+
 async function handleDailyLookProfilePhoto(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -14188,18 +14209,28 @@ async function handleDailyLookProfilePhoto(event) {
 async function handleDailyLookPhoto(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  const fromCamera = event.target?.id === 'daily-look-camera-input';
-  const button = document.getElementById(fromCamera ? 'daily-look-camera-button' : 'daily-look-photo-button');
+  const sourceButtonId = event.target?.id === 'daily-look-camera-input'
+    ? 'daily-look-camera-button'
+    : event.target?.id === 'daily-look-file-input' ? 'daily-look-file-button' : 'daily-look-photo-button';
+  const button = document.getElementById(sourceButtonId);
   const status = document.getElementById('daily-look-status');
-  if (button) { button.disabled = true; button.textContent = 'Preparing photo…'; }
+  if (button) button.disabled = true;
   try {
     const prepared = await prepareDailyLookImage(file);
     dailyLookSourceImage = prepared.image;
     dailyLookSourceDimensions = { width:prepared.width, height:prepared.height };
     const preview = document.getElementById('daily-look-preview');
-    if (preview) { resetDailyLookPreviewZoom(); preview.style.setProperty('--daily-look-aspect', `${prepared.width} / ${prepared.height}`); const image = document.createElement('img'); image.src = dailyLookSourceImage; image.alt = 'Selected portrait photo'; preview.replaceChildren(image); }
+    if (preview) {
+      resetDailyLookPreviewZoom();
+      const sourceTools = preview.querySelector('.daily-look-photo-actions');
+      preview.style.setProperty('--daily-look-aspect', `${prepared.width} / ${prepared.height}`);
+      const image = document.createElement('img');
+      image.src = dailyLookSourceImage;
+      image.alt = 'Selected portrait photo';
+      preview.replaceChildren(image);
+      if (sourceTools) preview.append(sourceTools);
+    }
     if (status) status.textContent = dailyLookAvatarMode ? 'Photo ready. Create your avatar.' : 'Photo ready. Choose a style and create your portrait.';
-    if (button) button.textContent = fromCamera ? 'Take another photo' : 'Choose another photo';
   } catch (error) {
     dailyLookSourceImage = null;
     dailyLookSourceDimensions = null;
