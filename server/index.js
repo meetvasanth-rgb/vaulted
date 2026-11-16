@@ -4504,6 +4504,7 @@ async function api(path, method, d, p, res, ip, headers, transactionClient = nul
     const style = DAILY_LOOK_STYLES.find(item => item.id === d.styleId);
     const image = parseDailyLookImage(d.image);
     if (!style || !image) return resErr(res, 'Choose a valid photo and style.', 400);
+    if (d.portraitConsentVersion !== 1) return resErr(res, 'Allow Portrait Studio photo processing before creating a portrait.', 403);
     const apiKey = style.provider === 'gemini' ? GEMINI_API_KEY : OPENAI_API_KEY;
     if (!apiKey) return resErr(res, 'This portrait style is temporarily unavailable.', 503);
     const usage = dailyLookUsage(account, now);

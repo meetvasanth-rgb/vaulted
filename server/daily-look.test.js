@@ -39,7 +39,14 @@ test('Daily Look allows five successful creations and resets at midnight IST acr
 });
 
 test('Daily Look sends only an explicitly selected, reduced image, preserves its original dimensions, and never stores the source', () => {
-  assert.match(client, /id="daily-look-consent" type="checkbox"/);
+  assert.doesNotMatch(client, /id="daily-look-consent" type="checkbox"/);
+  assert.match(client, /PORTRAIT_STUDIO_CONSENT_KEY/);
+  assert.match(client, /requestPortraitStudioConsent\(\)/);
+  assert.match(client, /portraitConsentVersion:PORTRAIT_STUDIO_CONSENT_VERSION/);
+  assert.match(server, /d\.portraitConsentVersion !== 1/);
+  assert.match(client, /data-native-onboarding-page="portrait-consent"/);
+  assert.match(client, /Permission can be withdrawn in Settings/);
+  assert.match(client, /id="settings-portrait-consent-row"/);
   assert.match(client, /const prepared = await prepareDailyLookImage\(file\)/);
   assert.match(client, /1600 \/ longestEdge/);
   assert.match(client, /result\.length <= 1200 \* 1024/);
